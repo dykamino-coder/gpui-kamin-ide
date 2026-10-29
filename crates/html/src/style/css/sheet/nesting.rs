@@ -11,6 +11,7 @@
 //! `style/stylesheets/rule_parser.rs` (`NestedRuleParser`).
 
 use super::*;
+use crate::budget::admission::{Admission, Buffer, Error};
 
 mod items;
 use items::{Item, items};
@@ -24,7 +25,7 @@ pub(super) fn rule(
     cx: &SheetCx,
     out: &mut Vec<Rule>,
     order: &mut usize,
-) -> bool {
+) -> Result<bool, Error> {
     // Nested @supports keeps the parent selector even without nested style rules
     // (CSS Nesting 1 §2.3). Preserve declaration recovery for other at-rules,
     // including malformed @media in CSS2 declarations-009.
@@ -32,9 +33,9 @@ pub(super) fn rule(
         .iter()
         .any(|i| matches!(i, Item::Block(p, _) if !p.starts_with('@') || supports_group(p)));
     if nested {
-        expand(parts, body, media, cx, out, order);
+        expand(parts, body, media, cx, out, order)?;
     }
-    nested
+    Ok(nested)
 }
 
 /// Части списка селекторов верхнего уровня: `&` вне правила — `:scope`,
@@ -130,16 +131,24 @@ pub(super) fn expand(
     cx: &SheetCx,
     out: &mut Vec<Rule>,
     order: &mut usize,
-) {
+) -> Result<(), Error> {
     let vcx = cx.doc.values();
-    for item in items(body) {
+    let admission = Admission::new(cx.doc.revision_budget());
+    let mut stack = Buffer::default();
+    stack.push((parents.to_vec(), items(body).into_iter()), &admission)?;
+    while let Some((parents, siblings)) = stack.last_mut() {
+        admission.work(1)?;
+        let Some(item) = siblings.next() else {
+            stack.pop();
+            continue;
+        };
         match item {
             Item::Decls(text) => {
                 let decls = parse_decls_in(text, vcx);
                 if decls.is_empty() {
                     continue;
                 }
-                for p in parents {
+                for p in parents.iter() {
                     let Some(sel) = Selector::parse_in(p, &cx.selectors) else {
                         continue;
                     };
@@ -166,16 +175,18 @@ pub(super) fn expand(
                     name.starts_with("@layer")
                 };
                 if holds {
-                    expand(parents, inner, media, cx, out, order);
+                    let parents = parents.clone();
+                    stack.push((parents, items(inner).into_iter()), &admission)?;
                 }
             }
             Item::Block(prelude, inner) => {
                 if let Some(sels) = resolve(parents, prelude, &cx.selectors) {
-                    expand(&sels, inner, media, cx, out, order);
+                    stack.push((sels, items(inner).into_iter()), &admission)?;
                 }
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

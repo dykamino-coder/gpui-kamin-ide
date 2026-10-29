@@ -5,7 +5,7 @@
 
 use crate::dom::Element;
 use crate::layout::cx::FrameCx;
-use crate::layout::fragment::Shape;
+use crate::layout::fragment::FlowMargins;
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::{BoxStyle, Display, Position};
 use std::cell::RefCell;
@@ -55,17 +55,16 @@ pub(super) fn measured(
     vcx: FrameCx<'_>,
     w: f32,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
-) -> Option<(Element, Shape)> {
+) -> Option<(Element, FlowMargins)> {
     let c = resolved_lengths(c, merged, vcx);
     let c = crate::layout::block::margins::fragment_box(c, w, vcx.values);
     let (margin_top, margin_bottom) = crate::layout::block::margins::fragment_margins(&c)?;
     measured_kids.borrow_mut().push((c.node_id, w));
     Some((
         c,
-        Shape {
+        FlowMargins {
             margin_top,
             margin_bottom,
-            ..Shape::default()
         },
     ))
 }

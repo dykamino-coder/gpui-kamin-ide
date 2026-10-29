@@ -35,7 +35,6 @@ fn copies_export_collapsed_margins_before_root_layout() {
     )
     .expect("all copies are recorded");
     assert_eq!(kids[0].1.margin_top, 7.0);
-    assert_eq!(kids[0].1.height, 0.0);
     let Node::Element(inner) = &kids[0].0.children[0] else {
         panic!("inner")
     };
@@ -88,7 +87,6 @@ fn pending_tree_waits_for_width_without_resolving_percentages() {
     let kids = children(host, &BoxStyle::default(), frame(&tree), 120.0, &measured)
         .expect("definite width");
     assert_eq!(kids[0].1.margin_top, 12.0);
-    assert_eq!(kids[0].1.height, 0.0);
 }
 
 #[test]
@@ -116,7 +114,6 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
             &measured,
         )
         .expect("vertical copy");
-        assert_eq!(kids[0].1.height, 0.0);
         assert_eq!(kids[0].1.margin_top, if reverse { 7.0 } else { 3.0 });
         assert_eq!(kids[0].1.margin_bottom, if reverse { 3.0 } else { 7.0 });
         assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
@@ -136,8 +133,19 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
         .expect("converted float has one ordinary block flow");
     assert!(kids[0].0.marks.float_block);
     assert!(kids[0].0.style.used().float.is_none());
-    assert_eq!(kids[0].1.height, 0.0);
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
+}
+
+#[test]
+fn float_wider_than_the_column_is_a_stack_block_but_a_narrower_one_is_not() {
+    for (width, lifted) in [("300%", true), ("50%", false)] {
+        let html = format!(
+            "<div><div style='height:5px'></div><div style='float:left;width:{width};height:20px'></div><div style='height:5px'></div></div>"
+        );
+        let tree = crate::dom::parse(&html, "");
+        let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), frame(&tree));
+        assert_eq!(host.is_some(), lifted, "{width}");
+    }
 }
 
 #[test]
@@ -157,7 +165,6 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
         let kids = children(host, &BoxStyle::default(), frame(&tree), width, &measured)
             .expect("definite calc basis");
         assert_eq!(kids[0].1.margin_top, width * 0.2 + 7.0);
-        assert_eq!(kids[0].1.height, 0.0);
         let Node::Element(inner) = &kids[0].0.children[0] else {
             panic!("inner")
         };

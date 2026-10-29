@@ -33,14 +33,6 @@ fn empty_grid_uses_measured_copy_at_known_and_deferred_widths(cx: &mut gpui::Tes
             },
         );
     }
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
-    );
 }
 
 #[test]
@@ -60,6 +52,5 @@ fn percent_margins_use_the_copy_inline_size() {
     )
     .expect("copy");
     assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
-    assert_eq!(shape.height, 0.0);
     assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);
 }

@@ -20,7 +20,6 @@ import { tabAgentTrees, tabJsonlLive, ingestAgentEntries, clearAgentTabState } f
 // Terminal registry for bridge.onOutput routing
 import { terminalSnapshots } from '../signals/terminal-snapshots'
 import { terminalRegistry, resetConsoleForReconnect } from '../signals/terminal-registry'
-import { splitTrailingEscape, stripMouseTracking } from '../lib/strip-mouse-tracking'
 
 // Agent tree helpers
 import { parseAgentEntries, markAllAgentsExited, scheduleCleanup, mergeAgentTree, touchAgentAlive } from './useAgentTree'
@@ -243,8 +242,9 @@ export function useBridgeListeners(
       const entry = terminalRegistry.get(tabId)
       if (entry) {
         if (entry.needsClear) {
-          // A clear resets the buffer; drop anything we queued before it.
-          entry.terminal.clear()
+          // A new PTY owns both buffers and input modes; discard the previous
+          // parser state too (including a split sequence from the old process).
+          entry.terminal.reset()
           entry.needsClear = false
           entry.pendingOutput.length = 0
         }
@@ -258,15 +258,11 @@ export function useBridgeListeners(
             if (!live) return
             live.rafHandle = null
             if (live.pendingOutput.length === 0) return
-            const joined = live.outputCarry + live.pendingOutput.join('')
+            const joined = live.pendingOutput.join('')
             live.pendingOutput.length = 0
-            // Strip mouse-tracking DECSET so plain drag SELECTS text in the
-            // console instead of feeding mouse events to the CLI (which made
-            // the Bridge Console entirely unselectable). Split-sequence-safe:
-            // a trailing partial escape is carried to the next flush.
-            const [writable, carry] = splitTrailingEscape(joined)
-            live.outputCarry = carry
-            if (writable) live.terminal.write(stripMouseTracking(writable))
+            // xterm's parser retains incomplete sequences across writes. Pass
+            // modes through intact so the application owns mouse/wheel input.
+            live.terminal.write(joined)
           })
         }
       }

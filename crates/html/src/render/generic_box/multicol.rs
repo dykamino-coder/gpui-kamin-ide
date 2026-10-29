@@ -107,7 +107,12 @@ fn settled(
     let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
-    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
+    let nest_report = outer_space.as_ref().map(|n| n.first_row.clone());
+    // `continue: discard` без рядов (или с потолком баланса): линии и спаннеры одним проходом стопки — только
+    // раскладка узнаёт, есть ли у линии переполняющие колонки (`balance_discard`).
+    let discard = rows.is_none_or(|r| r.cap) && e.style.used().clamp_discard == Some(true);
+    let unified =
+        (rows.is_some_and(|r| r.wrap && r.h.is_some()) || discard) && !opts.frag.in_stack_copy;
     if e.children.iter().any(&is_span) && !unified {
         let d = ClampScope::close(scope, d, e, &merged);
         return Err(multicol_spanner_segments(
@@ -116,7 +121,7 @@ fn settled(
     }
     // Текстовый путь `text-box-trim` не знает (ни у краёв колонок, ни у
     // первой/последней строки) — такой многоколоночник идёт стопкой
-    // со строками (`line_run_shape`; `text-box-trim-multicol-009/010`).
+    // со строками (`text-box-trim-multicol-009/010`).
     let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
     let flow = match dimensions {
         Some((dimensions, _)) => {
@@ -176,6 +181,7 @@ fn settled(
             rows,
             nest_rows,
             nest_phase,
+            nest_report,
             scope,
         );
     }

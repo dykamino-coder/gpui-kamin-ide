@@ -12,6 +12,7 @@ impl ColumnStack {
     /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),
     /// `clone` и хвост `slack` сюда не приходят: `render::generic_box::multicol` их в вертикали
     /// не взводит.
+    #[inline(never)]
     pub(crate) fn prepaint_axis(
         &mut self,
         bounds: Bounds<Pixels>,

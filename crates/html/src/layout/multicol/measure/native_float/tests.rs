@@ -33,14 +33,6 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
             assert_eq!(kids[0].measure, Some(120.0));
             assert_eq!(kids[0].mt, 15.0);
             assert!(kids[0].regrow.is_some());
-            #[cfg(feature = "wpt-harness")]
-            assert!(
-                opts.frag
-                    .probe
-                    .take()
-                    .values()
-                    .all(|p| p.estimate_calls == 0)
-            );
             gpui::div()
         },
     );
@@ -70,14 +62,6 @@ fn empty_float_host_is_measured_without_a_height_estimate(cx: &mut gpui::TestApp
             assert_eq!(kids[0].measure, Some(100.0));
             assert!(kids[0].paginate.is_none());
             assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
-            #[cfg(feature = "wpt-harness")]
-            assert!(
-                opts.frag
-                    .probe
-                    .take()
-                    .values()
-                    .all(|p| p.estimate_calls == 0)
-            );
             gpui::div()
         },
     );

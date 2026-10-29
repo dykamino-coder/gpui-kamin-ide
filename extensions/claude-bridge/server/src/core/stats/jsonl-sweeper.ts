@@ -56,6 +56,7 @@ interface UsageBlock {
   output_tokens?: number
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
+  cache_creation?: { ephemeral_1h_input_tokens?: number }
 }
 
 /** All time-grouping (heatmap, peakHour, streaks, daily timeseries) is
@@ -73,9 +74,10 @@ const INSERT_CHUNK_ROWS = 100
 const insertEventsSql = (rows: number): string => `
   INSERT INTO jsonl_events
     (uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
-     cache_read_tokens, cache_write_tokens, tool_name, message_id)
-  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
-  ON CONFLICT (uuid) DO NOTHING
+     cache_read_tokens, cache_write_tokens, tool_name, message_id, cache_write_1h_tokens)
+  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
+  ON CONFLICT (uuid) DO UPDATE SET cache_write_1h_tokens = excluded.cache_write_1h_tokens
+  WHERE excluded.cache_write_1h_tokens > jsonl_events.cache_write_1h_tokens
 `
 
 const SQL_GET_OFFSET = `
@@ -121,18 +123,20 @@ const SQL_LOOKUP_TOKEN = `
 // bloating to 1.7 GB. The extra predicate makes the UPDATE a true no-op (0 rows
 // matched) once a session is fully attributed, so steady-state sweeps stop
 // churning. Bind order: SET(?,?,?,?) then WHERE(session_id, is_subagent, parent).
-const SQL_APPLY_TOKEN_AND_SUBAGENT = `
+export const SQL_APPLY_TOKEN_AND_SUBAGENT = `
   UPDATE jsonl_events
-  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN ? ELSE token_id END,
-      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN ? ELSE user_name END,
-      is_subagent = ?,
-      parent_session_id = COALESCE(parent_session_id, ?)
-  WHERE session_id = ?
+  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN COALESCE(NULLIF($1, ''), token_id) ELSE token_id END,
+      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN COALESCE(NULLIF($2, ''), user_name) ELSE user_name END,
+      is_subagent = $3,
+      parent_session_id = COALESCE(parent_session_id, $4)
+  WHERE session_id = $5
     AND (
-      token_id IS NULL OR token_id = ''
-      OR user_name IS NULL OR user_name = ''
-      OR is_subagent IS DISTINCT FROM ?
-      OR (parent_session_id IS NULL AND ? IS NOT NULL)
+      -- Only rows this statement actually changes: an unknown (NULL/empty)
+      -- attribution must not re-select the same rows on every sweep.
+      ((token_id IS NULL OR token_id = '') AND NULLIF($1, '') IS NOT NULL)
+      OR ((user_name IS NULL OR user_name = '') AND NULLIF($2, '') IS NOT NULL)
+      OR is_subagent IS DISTINCT FROM $3
+      OR (parent_session_id IS NULL AND $4 IS NOT NULL)
     )
 `
 
@@ -338,15 +342,7 @@ async function processOneFileUnguarded(
   }
 
   const subFlag = info.isSubagent ? 1 : 0
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
-    tokenId,
-    userName,
-    subFlag,
-    info.parentSessionId,
-    sessionId,
-    subFlag,
-    info.parentSessionId,
-  ])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
@@ -506,7 +502,7 @@ async function processOneFileUnguarded(
         const toolUseId = Array.isArray(c)
           ? (c.find((b: any) => b?.type === 'tool_result') as any)?.tool_use_id
           : undefined
-        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null])
+        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null, 0])
         continue
       }
       const text =
@@ -535,7 +531,7 @@ async function processOneFileUnguarded(
       }
       // model left NULL — backfilled per-session below from next assistant.
       // hour/day are NULL — clients group by local TZ from `timestamp`.
-      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null])
+      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null, 0])
     } else {
       // assistant — store raw token components separately so SQL doesn't
       // double-count when summing input + cache_read + cache_write.
@@ -559,7 +555,20 @@ async function processOneFileUnguarded(
         for (const b of content) {
           if (b?.type === 'tool_use' && b.name) {
             const toolUuid = `${uuid}#tool${toolIdx++}`
-            buffer.push([toolUuid, sessionId, tsStr, 'tool_use', model || null, 0, 0, 0, 0, b.name, messageId ?? null])
+            buffer.push([
+              toolUuid,
+              sessionId,
+              tsStr,
+              'tool_use',
+              model || null,
+              0,
+              0,
+              0,
+              0,
+              b.name,
+              messageId ?? null,
+              0,
+            ])
           }
         }
       }
@@ -575,6 +584,7 @@ async function processOneFileUnguarded(
         cacheW,
         null,
         messageId ?? null,
+        Math.max(0, Math.min(cacheW, usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0)),
       ])
     }
   }
@@ -604,15 +614,7 @@ async function processOneFileUnguarded(
       : (slugInfo?.userName ?? null)
   const tokenIdAfter =
     slugInfo?.tokenId ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
-    tokenIdAfter,
-    userNameAfter,
-    subFlag,
-    info.parentSessionId,
-    sessionId,
-    subFlag,
-    info.parentSessionId,
-  ])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
 
   // Persist accumulated session metadata (only for non-subagent files —
   // subagents share parent's title etc).

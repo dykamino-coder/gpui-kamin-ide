@@ -1,6 +1,29 @@
 import { describe, it, expect } from 'vitest'
 import { computeContextStats, contextLimitForModel, costForUsage, tierForModel } from './session-cost'
 
+describe('cache TTL and side-call accounting', () => {
+  it('matches real CLI one-hour writes and prices mixed TTLs independently', () => {
+    const tier = tierForModel('claude-haiku-5-5')
+    expect(costForUsage({ input_tokens: 2, output_tokens: 4,
+      cache_creation_input_tokens: 57871,
+      cache_creation: { ephemeral_1h_input_tokens: 57871 } }, tier)).toBeCloseTo(0.0115764, 10)
+    const mixed = { cache_creation_input_tokens: 1000,
+      cache_creation: { ephemeral_5m_input_tokens: 600, ephemeral_1h_input_tokens: 400 } }
+    expect(costForUsage(mixed, tier)).toBeCloseTo((600 * 0.125 + 400 * 0.2) / 1e6, 10)
+    expect(costForUsage({ cache_creation_input_tokens: 1000 }, tier)).toBeCloseTo(0.000125, 10)
+  })
+
+  it('counts side-calls and final streaming output once while retaining main context', () => {
+    const main = turn('main', 1000, { output: 10 })
+    const final = turn('main', 1000, { output: 100 })
+    const child = { ...turn('child', 90000, { output: 200 }), isSidechain: true }
+    const stats = computeContextStats([main, child, final, child], true, TAB_MODEL)!
+    expect(stats.used).toBe(1000)
+    expect(stats.cost).toBeCloseTo(costForUsage(final.message.usage, tierForModel(TAB_MODEL)) +
+      costForUsage(child.message.usage, tierForModel(TAB_MODEL)), 10)
+  })
+})
+
 // One assistant turn on the 1M Opus tier. `used` = input + cache_read + cache_creation.
 const turn = (msgId: string, inputTok: number, opts: { output?: number; cacheRead?: number } = {}) => ({
   type: 'assistant',
@@ -97,7 +120,7 @@ describe('Fable 5.1 estimates', () => {
 
 describe('Sonnet 5.5 estimates', () => {
   it('uses the published Sonnet 5 rates without repricing older Sonnet logs', () => {
-    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 })
     expect(tierForModel('claude-sonnet-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
     expect(tierForModel('claude-sonnet-4-6')).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 })
   })

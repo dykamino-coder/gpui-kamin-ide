@@ -5,19 +5,6 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::probe::size_monolith;
 use crate::style::computed::Display;
 
-/// A monolithic descendant overflows its fragmentainer instead of taking
-/// space in the flow (css-break-3 §4.1), so the unfragmented height no
-/// longer counts the columns the content needs.
-pub(super) fn has_monolith(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                crate::layout::fragment::clone::monolith_box(k) || has_monolith(k, depth - 1)
-            }
-            _ => false,
-        })
-}
-
 pub(super) fn copy_monolith(
     copy: &Element,
     cuts: &[(f32, f32)],
@@ -33,8 +20,8 @@ pub(super) fn copy_monolith(
         matches!(n, Node::Element(k)
             if !k.inline || k.style.used().display == Some(Display::Block))
     };
-    // Size containment uses the same monolith predicate as fragment
-    // measurement and grow_pushed. Nested row copies remain fragmentable.
+    // Size containment uses the shared monolith predicate. Nested row copies
+    // remain fragmentable.
     let monolith = nest_row.is_none()
         && (size_monolith(copy)
         || copy.style.used().break_inside_avoid
@@ -66,7 +53,7 @@ pub(super) fn copy_monolith(
         // высоте (css-break-4 §4.2; корень A3).
         || (copy.children.iter().any(|n| !is_blank(n))
             && !copy.children.iter().any(block_kid)
-            // Строки измерены (`line_run_shape`) — режется
+            // Строки измерены раскладкой копии — режется
             // между строк, не монолит.
             && cuts.is_empty()));
     (scrolls, monolith)

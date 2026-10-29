@@ -1,8 +1,10 @@
+import { createProxyUsageRecorder } from '../stats/proxy-usage'
 // ============================================================================
 // PTY Session Manager core — spawns and manages Claude CLI sessions
 // ============================================================================
 
 import { devCli, waitForDevCliStartup } from './dev-cli'
+import { mcpIdentity, startMcpTaskDelivery } from './mcp-tasks'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import { ResumeNotFoundError } from './session-resume-not-found'
@@ -236,7 +238,8 @@ async function createAdmittedSession(
 
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash)
+  const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
+  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd
@@ -273,6 +276,10 @@ async function createAdmittedSession(
   // messages. JsonlViewer renders the live entry until JSONL watcher
   // delivers the final one with the same message.id.
   let streamingProxy: { port: number; caCertPath: string; stop: () => Promise<void>; interrupt: () => void } | undefined
+  const usageRecorder = createProxyUsageRecorder({ tokenId, userName }, (err) =>
+    warnLog('Proxy usage accounting failed', { error: String(err) }),
+  )
+  if (config.resumeConversationId) usageRecorder.bind(config.resumeConversationId)
   try {
     const settings = await getStreamingSettings(tokenId)
     if (settings.enabled && !developmentCli) {
@@ -306,6 +313,7 @@ async function createAdmittedSession(
       }
       const proxy = await startNativeMitm({
         ptySessionId: sessionId,
+        onUsage: usageRecorder.record,
         cliConversationId: config.resumeConversationId ?? undefined,
         upstreamProxyUrl: upstream && !upstream.startsWith('http://127.0.0.1') ? upstream : undefined,
         // Without the user's chosen model, the side-quest heuristic classifies
@@ -478,6 +486,7 @@ async function createAdmittedSession(
     mcpInitialized: false,
     mcpLastError: null,
     mcpToken,
+    mcpEndpoint,
     outputBuffer: [],
     outputBufferBytes: 0,
     lastResizeAt: Date.now(),
@@ -502,6 +511,7 @@ async function createAdmittedSession(
   }
 
   sessions.set(sessionId, session)
+  startMcpTaskDelivery(() => [...sessions.values()])
   registered(session)
 
   // Auto-answer interactive startup prompts:
@@ -544,6 +554,7 @@ async function createAdmittedSession(
         recordCompactLink(prev, conversationId)
       }
       session.cliConversationId = conversationId
+      usageRecorder.bind(conversationId)
       // INC-2026-0070: every identity the client is told to adopt, old→new.
       // `discovered` with previousRef equal to conversationRef confirms the
       // resumed id; a fresh session's first discovery has no previousRef.
@@ -593,7 +604,12 @@ async function createAdmittedSession(
       })()
     },
     (agentName, entries, agentId) =>
-      sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
+      trySendToClient(session.ws, {
+        type: 'jsonl:subagent-entries',
+        agentName,
+        agentId,
+        entries: leanEntries(entries),
+      }),
     () => resetJsonlStats(session),
     (entry) => accumulateJsonlStats(session, entry),
     // Bulk replay only goes out while the CURRENT socket (reattach swaps it)
@@ -1206,13 +1222,18 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
 // ---------------------------------------------------------------------------
 
 /**
- * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
+ * Send an MCP tool call to the client host via WebSocket. Resolves when it
  * responds (or rejects on timeout/denial).
  */
-export function sendMcpCall(sessionId: string, toolName: string, input: Record<string, unknown>): Promise<unknown> {
+export function sendMcpCall(
+  sessionId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const session = sessions.get(sessionId)
   if (!session) return Promise.reject(new Error(`Session ${sessionId} not found`))
-  return sendMcpCallToSession(session, toolName, input)
+  return sendMcpCallToSession(session, toolName, input, signal)
 }
 
 // ---------------------------------------------------------------------------

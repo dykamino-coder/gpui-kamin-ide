@@ -4,22 +4,18 @@ use super::stack_child_of;
 use crate::dom::Element;
 use crate::layout::cx::FrameCx;
 use crate::layout::fragment::line_shape::nested_rows_box;
-use crate::layout::fragment::probe::{plain_block_tree, size_monolith};
-use crate::layout::page::paged::visible_overflow;
-use crate::layout::positioned::predicates::carries_abspos;
+use crate::layout::fragment::probe::size_monolith;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
-use crate::tolerance::COORD_EPS;
 
 mod monolith;
-use monolith::{copy_monolith, has_monolith};
+use monolith::copy_monolith;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_stack_child(
     ix: usize,
     mt: f32,
     mb: f32,
-    e: &Element,
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
     rows: Option<crate::layout::fragment::types::Rows>,
@@ -48,25 +44,8 @@ pub(super) fn finish_stack_child(
     let (measure, monolith) =
         measured_monolith(measured_kids, copy, nest_row, whole, scrolls, monolith);
     let span = copy.style.used().column_span == Some(true) && !copy.inline;
-    // Переполняющие колонки (css-multicol-1 §8.2: «A multicol
-    // container can have more columns than it has room for due
-    // to: a declaration that constrains the column height … In
-    // this case, additional column boxes are created in the
-    // inline direction») — ТОЛЬКО ребёнку, который несёт
-    // абсолютного потомка: его содержащий блок сплошной, и
-    // абсолют режется по колонкам сам (css-position-3
-    // §abspos-breaking), а копий у ребёнка было ровно
-    // `column-count` — хвост уходил «за кадр» (`fragment::plan`
-    // `fill_at`, `copy + 1 >= limit`;
-    // `out-of-flow-in-multicolumn-007`: CB 300 при колонке 100,
-    // копий 2 из 3). Без гейта «несёт абсолют» ломаются дети
-    // БЕЗ абсолютов (вложенные многоколоночники, флекс,
-    // `multicol-fill-balance-*`), у которых мера `shape_full`
-    // не совпадает с рисунком. Гейт `plain_block_tree` — тот же,
-    // что у параллельного потока выше. Прочим детям — прежнее
-    // число копий, и стопка без такого ребёнка байт-в-байт
-    // прежняя (`ColumnStack::new` берёт наибольшее число копий).
-    let kid_copies = kid_copy_count(e, rows, copies, fixed, copy, h, over, measure, span);
+    // Число копий — по измеренной протяжённости (`reserve_overflow_copies`).
+    let kid_copies = copies;
     let mut child = stack_child_of(
         ix,
         mt,
@@ -92,40 +71,22 @@ pub(super) fn finish_stack_child(
         vcx,
     );
     child.fit_whole = whole && fixed.is_some() && measure.is_some();
+    child.replay = super::replay::replayable(copy);
     child
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn nest_row_of(
+/// Вложенный многоколоночник, которого режут ряды внешних колонок
+/// (css-multicol-1 §8, css-break-3 §2: вложенный контекст фрагментации): его ряд
+/// получает остаток внешнего фрагментаинера от места, где ребёнок начался
+/// (`StackChild::nest`), а это место знает только раскладка предшествующих
+/// детей (`ColumnStack::resume_nested`).
+pub(in crate::layout::multicol) fn nest_candidate(
     ix: usize,
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    fixed_nest: Option<f32>,
-    balanced_frag: Option<f32>,
-    nest_at: &[Option<f32>],
-    nested_auto: &std::cell::RefCell<Vec<u64>>,
     copy: &Element,
-) -> Option<f32> {
-    fixed_nest.filter(|hh| {
-        *hh > 0.0
-            && (rows.is_none() || balanced_frag.is_some())
-            && !col_vert
-            && kid_par.get(ix).is_none_or(|p| p.group == 0)
-            && nested_rows_box(copy)
-            && match nest_at.get(ix).copied().flatten() {
-                // С верха колонки — и заданная высота, и
-                // `auto` с мерой рядами.
-                Some(y0) if y0 < COORD_EPS => {
-                    matches!(copy.style.used().height, Some(Len::Px(_)))
-                        || nested_auto.borrow().contains(&copy.node_id)
-                }
-                // Ниже верха — только заданная высота: мера
-                // коробки от рядов не зависит.
-                Some(_) => matches!(copy.style.used().height, Some(Len::Px(_))),
-                None => false,
-            }
-    })
+) -> bool {
+    !col_vert && kid_par.get(ix).is_none_or(|p| p.group == 0) && nested_rows_box(copy)
 }
 
 pub(super) fn measured_monolith(
@@ -147,6 +108,18 @@ pub(super) fn measured_monolith(
         nest_row.is_none()
             && (size_monolith(copy)
                 || copy.style.used().break_inside_avoid
+                // Атомарная строчная коробка стоит в строке, а строка
+                // неделима (css-break-3 §4.1, §4.3 class B — только между
+                // строками; Blink `LayoutBox::IsMonolithic`: `IsInline()`).
+                || matches!(
+                    copy.style.used().display,
+                    Some(
+                        Display::InlineBlock
+                            | Display::InlineTable
+                            | Display::InlineFlex
+                            | Display::InlineGrid
+                    )
+                )
                 // css-break-3 §4.1 допускает монолитный overflow:hidden
                 // с auto block size; сохраняем выбор старого пути для строк.
                 || (monolith
@@ -159,66 +132,4 @@ pub(super) fn measured_monolith(
         monolith
     };
     (measure, monolith)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn kid_copy_count(
-    e: &Element,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    copies: usize,
-    fixed: Option<f32>,
-    copy: &Element,
-    h: f32,
-    over: f32,
-    measure: Option<f32>,
-    span: bool,
-) -> usize {
-    match fixed {
-        Some(per)
-            if rows.is_none()
-                && !span
-                && per > 0.0
-                && visible_overflow(&e.style.used())
-                && visible_overflow(&copy.style.used())
-                && plain_block_tree(copy, 4)
-                && carries_abspos(copy, 4) =>
-        {
-            ((h.max(over) / per).ceil() as usize + 1)
-                .min(16)
-                .max(copies)
-        }
-        // A grid continues in overflow columns too (css-multicol-1 §8.2:
-        // content that does not fit the column boxes of a fixed-height
-        // multicol creates additional columns in the inline direction); its
-        // fragments are row bands, so the extra copies follow the same plan.
-        Some(per)
-            if rows.is_none()
-                && !span
-                && per > 0.0
-                && visible_overflow(&e.style.used())
-                && visible_overflow(&copy.style.used())
-                && measure.is_none()
-                && matches!(copy.style.used().display, Some(Display::Grid))
-                && !has_monolith(copy, 4) =>
-        {
-            ((h.max(over) / per).ceil() as usize + 1)
-                .min(16)
-                .max(copies)
-        }
-        // Сетка с монолитом: его переполнение не занимает места в потоке,
-        // и разложенная высота числа колонок не даёт (как выше).
-        Some(_)
-            if measure.is_some()
-                && matches!(copy.style.used().display, Some(Display::Grid))
-                && has_monolith(copy, 4) =>
-        {
-            copies
-        }
-        // Высота неизвестна до раскладки: копий — на
-        // переполняющие колонки (css-multicol-1 §8.2).
-        Some(per) if measure.is_some() && rows.is_none() && !span && per > 0.0 => {
-            copies.clamp(8, 16)
-        }
-        _ => copies,
-    }
 }

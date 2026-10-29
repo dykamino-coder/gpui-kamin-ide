@@ -1787,10 +1787,10 @@ index 0000000000000000000000000000000000000000..487b3be1ce665eec3e31d55667e4c0bb
 +}
 diff --git a/vendor/taffy/src/compute/flex_fragmentation.rs b/vendor/taffy/src/compute/flex_fragmentation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..871ff9c375880cfec2601c1e04527b08f81c3672
+index 0000000000000000000000000000000000000000..c07518ed3ceed18f80a66b2a4b51603749be980e
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_fragmentation.rs
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,231 @@
 +//! KaminIDE patch: CSS Flexbox 1 §10 fragmentation in the writing-mode block axis.
 +//! Constraints consume space after native flexible sizing; they cannot add flex items or margins.
 +use super::*;
@@ -1915,13 +1915,21 @@ index 0000000000000000000000000000000000000000..871ff9c375880cfec2601c1e04527b08
 +        }
 +    } else if known.main(dir).is_none() {
 +        let growth = main_growth(tree, lines);
-+        constants.fragmentation_main_growth = growth;
-+        constants
-+            .container_size
-+            .set_main(dir, constants.container_size.main(dir) + growth);
++        // Space consumed by breaks belongs to the box's block size, which max-height
++        // still limits: content beyond it overflows the last fragment (Blink clamps
++        // the fragmented box after fragmentation growth).
++        let size = constants.container_size.main(dir);
++        let grown = if growth > 0.0 {
++            f32_max((size + growth).maybe_min(constants.max_size.main(dir)), size)
++        } else {
++            size + growth
++        };
++        let applied = grown - size;
++        constants.fragmentation_main_growth = applied;
++        constants.container_size.set_main(dir, grown);
 +        constants
 +            .inner_container_size
-+            .set_main(dir, constants.inner_container_size.main(dir) + growth);
++            .set_main(dir, constants.inner_container_size.main(dir) + applied);
 +    }
 +}
 +
@@ -19113,10 +19121,10 @@ index 0000000000000000000000000000000000000000..9cb36a646290677189065997e70cf9ae
 +}
 diff --git a/vendor/taffy/src/tree/flex_fragmentation_tests.rs b/vendor/taffy/src/tree/flex_fragmentation_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0debda70f9d6e779b5760124a90cf07927a16075
+index 0000000000000000000000000000000000000000..3fda94fbc4404aa903d7ce50d0b8aeb56c3c6ce7
 --- /dev/null
 +++ b/vendor/taffy/src/tree/flex_fragmentation_tests.rs
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,228 @@
 +//! KaminIDE patch: рост flex-линии не меняет завершённые элементы и OOF static position.
 +use crate::{DetailedLayoutInfo, Dimension, FlexWrap, Position, Style, TaffyTree};
 +use crate::geometry::Size;
@@ -19326,6 +19334,26 @@ index 0000000000000000000000000000000000000000..0debda70f9d6e779b5760124a90cf079
 +    assert_eq!(tree.layout(b).unwrap().location.y, 180.0);
 +    assert_eq!(tree.layout(root).unwrap().size.height, 200.0);
 +}
++
++#[test]
++fn column_break_offset_counts_toward_max_size() {
++    // A pushed item consumes the container's block size; max-height still
++    // limits the box and the item overflows its last fragment.
++    let mut tree: TaffyTree<()> = TaffyTree::new();
++    tree.disable_rounding();
++    let style = Style { size: Size::from_lengths(40.0, 30.0), flex_shrink: 0.0, ..Style::DEFAULT };
++    let a = tree.new_leaf(style.clone()).unwrap();
++    let b = tree.new_leaf(style).unwrap();
++    let root = tree.new_with_children(Style { flex_direction: crate::FlexDirection::Column,
++        size: Size { width: Dimension::length(40.0), height: Dimension::auto() },
++        max_size: Size { width: crate::LengthPercentageAuto::auto(), height: crate::LengthPercentageAuto::length(80.0) },
++        ..Style::DEFAULT }, &[a, b]).unwrap();
++    tree.set_flex_item_fragmentation_offset(b, 50.0).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.layout(root).unwrap().size.height, 80.0);
++    assert_eq!(tree.layout(b).unwrap().location.y, 80.0);
++}
+\ No newline at end of file
 diff --git a/vendor/taffy/src/tree/flex_intrinsic_cross_tests.rs b/vendor/taffy/src/tree/flex_intrinsic_cross_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..eec5ec4bcb48e6d119ab0efe2360d23239a3992a

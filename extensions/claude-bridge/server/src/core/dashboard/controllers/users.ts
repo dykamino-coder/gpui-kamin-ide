@@ -40,6 +40,7 @@ export function tierForModel(model: string | null | undefined): CostTier {
       return TIER_5_25
     return TIER_15_75
   }
+  if (m.includes('sonnet-5-5')) return { ...TIER_2_10, cacheRead: 0.1 }
   if (m.includes('sonnet-5')) return TIER_2_10
   return TIER_3_15
 }
@@ -74,7 +75,7 @@ export function registerUserRoutes(api: Hono): void {
               THEN COALESCE(e.cache_write_tokens,0) ELSE 0 END) as cache_creation,
         MIN(e.timestamp) as first_seen,
         MAX(e.timestamp) as last_seen
-      FROM jsonl_events e
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
@@ -116,13 +117,15 @@ export function registerUserRoutes(api: Hono): void {
         SUM(COALESCE(e.input_tokens,0)) as input_tokens,
         SUM(COALESCE(e.output_tokens,0)) as output_tokens,
         SUM(COALESCE(e.cache_read_tokens,0)) as cache_read_tokens,
-        SUM(COALESCE(e.cache_write_tokens,0)) as cache_write_tokens
-      FROM jsonl_events e
+        SUM(COALESCE(e.cache_write_tokens,0)) as cache_write_tokens,
+        SUM(COALESCE(e.cache_write_1h_tokens,0)) as cache_write_1h_tokens,
+        (COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0) > 100000) as long_prompt
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
         AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
-      GROUP BY st.user_name, e.model
+      GROUP BY st.user_name, e.model, long_prompt
     `)
     ).getRowObjects() as Array<{
       user_name: string
@@ -131,15 +134,25 @@ export function registerUserRoutes(api: Hono): void {
       output_tokens: bigint | number
       cache_read_tokens: bigint | number
       cache_write_tokens: bigint | number
+      cache_write_1h_tokens: bigint | number
+      long_prompt: boolean
     }>
     const costByUser = new Map<string, number>()
     for (const r of costRows) {
-      const tier = tierForModel(r.model)
+      const base = tierForModel(r.model)
+      const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
+      const tier = {
+        input: base.input * multiplier,
+        output: base.output * multiplier,
+        cacheRead: base.cacheRead * multiplier,
+        cacheWrite: base.cacheWrite * multiplier,
+      }
       const usd =
         (Number(r.input_tokens ?? 0) * tier.input +
           Number(r.output_tokens ?? 0) * tier.output +
           Number(r.cache_read_tokens ?? 0) * tier.cacheRead +
-          Number(r.cache_write_tokens ?? 0) * tier.cacheWrite) /
+          Number(r.cache_write_tokens ?? 0) * tier.cacheWrite +
+          Number(r.cache_write_1h_tokens ?? 0) * (2 * tier.input - tier.cacheWrite)) /
         1_000_000
       costByUser.set(r.user_name, (costByUser.get(r.user_name) ?? 0) + usd)
     }
@@ -154,12 +167,12 @@ export function registerUserRoutes(api: Hono): void {
           e.session_id,
           (
             SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
-            FROM jsonl_events a
-            WHERE a.session_id = e.session_id AND a.type = 'assistant'
+            FROM jsonl_accounting_events a
+            WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
               AND (a.model IS NULL OR a.model != '<synthetic>')
             ORDER BY a.timestamp DESC LIMIT 1
           ) as last_ctx
-        FROM (SELECT DISTINCT session_id FROM jsonl_events) e
+        FROM (SELECT DISTINCT session_id FROM jsonl_accounting_events) e
       ) sessCtx
       INNER JOIN session_tokens st ON st.session_id = sessCtx.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''

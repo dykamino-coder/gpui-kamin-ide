@@ -14,6 +14,7 @@ pub use calc_basis::CalcSizeBasis;
 mod appearance;
 pub(crate) mod flat_background;
 pub(crate) mod formatting_context;
+pub(crate) mod legend_band;
 pub(crate) mod math_style;
 pub(crate) mod shape_kind;
 pub(crate) mod single_corner;

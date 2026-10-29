@@ -341,6 +341,8 @@ export interface KaminBridgeApi {
   /** OS clipboard write via the host (works from sandboxed iframes where
    *  navigator.clipboard requires document focus). Channel: write-clipboard. */
   writeClipboard(text: string): Promise<void>
+  /** OS clipboard read through the existing read-clipboard host channel. */
+  readClipboard(): Promise<string>
 
   // ─── App log collector (Customize → Logs) ─────────────
   listLogs(): Promise<Array<{ ts: number; level: 'error' | 'warn' | 'info'; source: string; message: string; stack?: string }>>

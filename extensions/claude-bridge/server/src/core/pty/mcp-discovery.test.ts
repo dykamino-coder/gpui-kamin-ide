@@ -53,19 +53,20 @@ beforeEach(() => {
   mocks.getSession.mockReturnValue(session)
 })
 
-describe('legacy MCP discovery fallback', () => {
-  it.each(['server-discover-probe-1', 1, 0])('rejects probe %s without a sticky session error', async (id) => {
+describe('modern discovery and legacy compatibility', () => {
+  it.each(['server-discover-probe-1', 1, 0])('discovers modern protocol with request id %s', async (id) => {
     const response = await request('server/discover', id)
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      jsonrpc: '2.0',
-      id,
-      error: { code: -32601, message: 'Method not found: server/discover' },
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.id).toBe(id)
+    expect(body.result).toMatchObject({
+      resultType: 'complete',
+      supportedVersions: ['2026-07-28'],
+      capabilities: { extensions: { 'io.modelcontextprotocol/tasks': {} } },
     })
-    expect(response.headers.get('Mcp-Session-Id')).toBe(session.id)
-    expect(session.mcpInitialized).toBe(false)
+    expect(response.headers.get('Mcp-Session-Id')).toBeNull()
+    expect(session.mcpInitialized).toBe(true)
     expect(session.mcpLastError).toBeNull()
-    expect(session.mcpLog).toEqual([expect.objectContaining({ method: 'server/discover', status: 'error' })])
   })
 
   it('completes initialize and tools/list after a discovery probe', async () => {

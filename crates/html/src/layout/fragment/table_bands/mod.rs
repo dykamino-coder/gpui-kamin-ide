@@ -29,9 +29,10 @@ pub(crate) type RepeatSpec = (
 );
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
-/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): только
-/// `column-fill: auto` с заданной высотой и без рядов, когда размер
-/// фрагментаинера известен до укладки. Ряды таблицы даёт раскладка копии
+/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): когда
+/// размер фрагментаинера известен до укладки — `column-fill: auto` с заданной
+/// высотой или ряды (свои либо внешнего фрагментаинера у вложенного
+/// многоколоночника). Ряды таблицы даёт раскладка копии
 /// (`measured`: может ли по стилю повторяться шапка и подвал); полосы решаются
 /// по её разложенным секциям (`StackChild::refresh_repeat`), а здесь — пустые
 /// полосы под копии. Без записанной раскладки повтора нет.
@@ -41,7 +42,9 @@ pub(crate) fn repeat_bands(
     rows: Option<crate::layout::fragment::types::Rows>,
     measured: Option<(bool, bool)>,
 ) -> Option<RepeatSpec> {
-    fixed.filter(|_| rows.is_none() && table_box(c))?;
+    fixed
+        .or_else(|| rows.and_then(|r| r.outer.or(r.h)))
+        .filter(|_| table_box(c))?;
     let (head, foot) = measured?;
     (head || foot).then(|| {
         let band = |on: bool| on.then_some((0.0, 0.0));

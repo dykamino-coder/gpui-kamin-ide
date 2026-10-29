@@ -22,7 +22,7 @@ use crate::dom::walk::*;
 use crate::style::css::{
     LayerRegistry, Media, Rule, VarMap, parse_document_sheet, parse_keyframes,
 };
-use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
+use crate::style::select::has::{HasArg, mark_has, parse_has_arg, retain_valid_rules};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -90,9 +90,9 @@ pub(crate) fn convert(
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
     let mut layers = LayerRegistry::default();
-    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, vcx);
+    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, vcx)?;
     let base = rules.len();
-    for (i, r) in parse_document_sheet(extra_css, media, &mut layers, vcx)
+    for (i, r) in parse_document_sheet(extra_css, media, &mut layers, vcx)?
         .into_iter()
         .enumerate()
     {
@@ -106,7 +106,7 @@ pub(crate) fn convert(
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
     if doc.quirks() {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, vcx)
+        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, vcx)?
             .into_iter()
             .enumerate()
         {
@@ -123,7 +123,7 @@ pub(crate) fn convert(
     let sheets = try_collect_style_tags(&dom.document, &admission)?;
     for css in sheets.iter() {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)
+        for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)?
             .into_iter()
             .enumerate()
         {
@@ -160,7 +160,7 @@ pub(crate) fn convert(
     // вложенным `:has` выкидываются (спека: cannot be nested), отметки
     // считаются отдельным проходом до обхода.
     let mut has_args_raw: Vec<String> = vec![];
-    rules.retain(|r| collect_has_args(&r.sel, &mut has_args_raw));
+    retain_valid_rules(&admission, &mut rules, &mut has_args_raw)?;
     let mut has_args: Vec<HasArg> = has_args_raw
         .iter()
         .filter_map(|a| parse_has_arg(a))
@@ -213,32 +213,35 @@ pub(crate) fn convert(
         false,
         &mut out,
         vcx,
-    );
+    )?;
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
-    resolve_display_inherit(&mut out, (None, None, None, None, None));
+    resolve_display_inherit(&admission, &mut out, (None, None, None, None, None))?;
     if tree.doc.quirks() {
-        super::quirks_color::resolve(&mut out, vcx);
+        super::quirks_color::resolve(&admission, &mut out, vcx)?;
     }
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
-    crate::dom::table_boxes::inline_anon_tables(&mut out);
+    crate::dom::table_boxes::inline_anon_tables(&admission, &mut out)?;
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
-    lanes_as_grid(&mut out);
-    subgrid_used::adjust(&mut out);
-    hoist_grid_abspos(&mut out);
-    grid_static_position::adjust(&mut out);
-    flex_items_lose_float(&mut out);
-    align_self_from_dom_parent(&mut out, None);
-    grid_table_items_keep_stretch(&mut out);
-    subgrid_takes_parent_tracks(&mut out);
-    filter_ref_only_empty(&mut out);
-    fold_run_ins(&mut out, None);
-    orthogonal_inlines_become_flow_roots(&mut out, (false, false, false), None);
-    float_tail::mark(&mut out);
+    lanes_as_grid(&admission, &mut out)?;
+    subgrid_used::adjust(&admission, &mut out)?;
+    hoist_grid_abspos(&admission, &mut out)?;
+    grid_static_position::adjust(&admission, &mut out)?;
+    flex_items_lose_float(&admission, &mut out)?;
+    align_self_from_dom_parent(&admission, &mut out, None)?;
+    grid_table_items_keep_stretch(&admission, &mut out)?;
+    subgrid_takes_parent_tracks(&admission, &mut out)?;
+    filter_ref_only_empty(&admission, &mut out)?;
+    fold_run_ins(&admission, &mut out, None)?;
+    orthogonal_inlines_become_flow_roots(&admission, &mut out, (false, false, false), None)?;
+    float_tail::mark(&admission, &mut out)?;
     if tree.doc.quirks() {
-        quirks_percent_heights(&mut out, None);
+        quirks_percent_heights(&admission, &mut out, None)?;
     }
-    super::state_identity::finalize(&out, vcx);
+    super::state_identity::finalize(&admission, &out, vcx)?;
+    if let Some(failure) = tree.doc.revision_budget().failure() {
+        return Err(failure);
+    }
     Ok(out)
 }

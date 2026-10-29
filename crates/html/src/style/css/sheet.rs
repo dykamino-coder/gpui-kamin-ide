@@ -113,7 +113,7 @@ pub fn parse_stylesheet_media(
         media,
         &mut LayerRegistry::default(),
         doc.values(),
-    ))
+    )?)
 }
 
 /// Таблица документа: слои — в общем реестре `layers`, пролог `@namespace`
@@ -124,7 +124,7 @@ pub(crate) fn parse_document_sheet(
     media: Media,
     layers: &mut LayerRegistry,
     vcx: ValueCx<'_>,
-) -> Vec<Rule> {
+) -> Result<Vec<Rule>, crate::budget::admission::Error> {
     let (prefixes, default_ns) = declared_prefixes(css);
     let mut cx = SheetCx {
         doc: vcx.doc,
@@ -134,7 +134,7 @@ pub(crate) fn parse_document_sheet(
             prefixes: Some(std::rc::Rc::new(prefixes)),
             default_ns,
         },
-        custom_media: custom_media_of(css),
+        custom_media: resolve_custom_media(custom_media_of(css), media, vcx)?,
     };
     sheet_rules(css, media, true, &mut cx)
 }

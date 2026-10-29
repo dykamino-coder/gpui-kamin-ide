@@ -112,8 +112,11 @@ pub(super) fn fill_pieces_inner(
         // класса A, иначе срезом по краю. Так делает Blink: сначала
         // перенос, и только на пустой странице разрыв внутри
         // (`block-page-break-inside-avoid-7/-15-print`).
-        let mono =
-            k.monolith && !((paged || k.par.avoid_only) && flow > target + 0.01 && cur <= 0.01);
+        // Колонка ряда, начатого под содержимым внешней колонки
+        // (`Space::not_at_start`), верхом не считается: разрыв хуже принятых
+        // уводит содержимое дальше (Blink `LayoutRow`, `min_break_appeal`).
+        let at_start = cur <= 0.01 && *col >= not_top;
+        let mono = k.monolith && !((paged || k.par.avoid_only) && flow > target + 0.01 && at_start);
         // Точка разреза `a` с усечением поля по классу A (`nf`).
         let at = |a: f32| -> (f32, f32) {
             let nf = k
@@ -138,11 +141,7 @@ pub(super) fn fill_pieces_inner(
         // `FinishFragmentation`: «If intrinsic block-size is larger than
         // space left, it means that we have some tall unbreakable child
         // content … this fragment will be allowed to take up more space …
-        // to encompass the unbreakable content»). Прежде ветка ниже отдавала
-        // `None` при `a <= from`, и ребёнок резался по краю колонки прямо
-        // сквозь монолит: `monolithic-overflow-003…005.tentative` (два
-        // `contain: size` по 100 в колонках по 60), `tall-line-in-short-
-        // fragmentainer-000/001` (строка `inline-block` 100 в колонке 50).
+        // to encompass the unbreakable content»; `monolithic-overflow-003`).
         // «Верх колонки» — пустая колонка, нулевой курсор (перед нами только
         // коробки нулевой высоты: разрыв перед монолитом прогресса не даёт,
         // `tall-line-…-000`) либо ПЕРВЫЙ кусок коробки с заданной высотой,
@@ -151,7 +150,7 @@ pub(super) fn fill_pieces_inner(
         // MustStayInCurrentFragmentainer`; `tall-content-inside-constrained-
         // block-000…002`: коробка 25 в остатке 25, внутри `contain: size` 50).
         let at_top =
-            !*placed || cur <= 0.01 || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
+            !*placed || at_start || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
         // Под повторяемой шапкой таблицы содержимое тоже стоит «с верха»:
         // Blink кладёт неповторяемые секции со смещением фрагментаинера за
         // вычетом шапки (`table_layout_algorithm.cc:1325-1354`
@@ -190,7 +189,7 @@ pub(super) fn fill_pieces_inner(
         }
         let cut = cut_at(
             paged,
-            *placed,
+            (*placed, cur <= 0.01),
             k,
             from,
             room,

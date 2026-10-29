@@ -92,7 +92,8 @@ fn a_line_still_growing_from_a_forced_break_inside_keeps_its_gap() {
     item.inner = Some(inner);
     laid.boxes.insert(11, (0.0, 25.0));
     laid.boxes.insert(12, (25.0, 50.0));
-    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 50.0, 50.0);
+    let grows =
+        crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 50.0, 50.0, false);
     assert!(
         grows.iter().any(|g| g.amount > 0.0 && g.forced),
         "{grows:?}"

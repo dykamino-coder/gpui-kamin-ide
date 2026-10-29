@@ -1,131 +1,13 @@
-//! Разрезы и высота StackChild для копий ребёнка многоколоночника.
+//! Сборка StackChild из измеренной копии ребёнка многоколоночника.
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
-use crate::layout::fragment::clone::solid_box;
-use crate::layout::fragment::fragment_size::measure;
-use crate::layout::fragment::grid_bands::grid_stack;
-use crate::layout::fragment::line_shape::{slack_fill, transpose_tree};
-use crate::layout::fragment::probe::{plain_block_tree, stacked_flex_tree};
+use crate::layout::fragment::line_shape::slack_fill;
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::types::{Par, Repeat, Rows, StackChild};
-use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
-use crate::layout::options::RenderOpts;
-use crate::style::computed::BoxStyle;
 use crate::tolerance::COORD_EPS;
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
-pub(super) fn copy_cuts_and_height(
-    ix: usize,
-    h: f32,
-    cuts: Vec<(f32, f32)>,
-    forced: Vec<f32>,
-    solid: Vec<(f32, f32)>,
-    opts: &RenderOpts,
-    kid_par: &[Par],
-    col_vert: bool,
-    col_rl: bool,
-    line_col_w: Option<f32>,
-    fixed: Option<f32>,
-    merged: &BoxStyle,
-    copy: &Element,
-) -> (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, f32, f32, bool) {
-    let copy_m = if col_vert {
-        transpose_tree(copy, col_rl)
-    } else {
-        None
-    };
-    let (over, cuts, forced, solid, own) = line_cuts(
-        h, cuts, forced, solid, opts, line_col_w, fixed, merged, copy, copy_m,
-    );
-    // Последнее поле — мера без дотяга внепоточных: высота коробки та же, что
-    // у её раскладки (`Regrow::laid_h`).
-    let reach = own.is_some();
-    // Мера с дотягом внепоточных — поток, а не
-    // коробка (`Measure::own` меры копии): сосед встаёт
-    // под концом коробки, абсолют продолжается в колонках.
-    let (h, over) = match own {
-        // Только когда за коробкой в стопке есть
-        // сосед: последней коробке её дотяг —
-        // мера колонок многоколоночника.
-        Some((own, full))
-            if (full - h).abs() < COORD_EPS && !solid_box(copy) && ix + 1 < kid_par.len() =>
-        {
-            (own, over.max(full))
-        }
-        _ => (h, over),
-    };
-    (cuts, forced, solid, h, over, !reach)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
-pub(super) fn line_cuts(
-    h: f32,
-    cuts: Vec<(f32, f32)>,
-    forced: Vec<f32>,
-    solid: Vec<(f32, f32)>,
-    opts: &RenderOpts,
-    line_col_w: Option<f32>,
-    fixed: Option<f32>,
-    merged: &BoxStyle,
-    copy: &Element,
-    copy_m: Option<Element>,
-) -> (
-    f32,
-    Vec<(f32, f32)>,
-    Vec<f32>,
-    Vec<(f32, f32)>,
-    Option<(f32, f32)>,
-) {
-    let measured = with_lines(merged, line_col_w, opts, |opts| {
-        let vcx = opts.cx.frame();
-        // TRANSITIONAL(F2-4): Разрезы копии читаются через estimator; удалить в P21 после recorded cuts и child resume поверх P05/P08/P10.
-        measure(
-            copy_m.as_ref().unwrap_or(copy),
-            4,
-            ShapeCx {
-                unclamped: true,
-                ..ShapeCx::COLUMNS
-            },
-            vcx,
-        )
-    });
-    // Собственный размер копии при мере с дотягом внепоточных (`Measure::own`).
-    let own = measured.as_ref().and_then(|m| m.own);
-    let (over, cuts, forced, solid) = match measured
-        .map(|m| m.shape)
-        .filter(|_| {
-            // Сетка-стопка меряется как блок: ряд = элемент. `overflow-x: clip`
-            // с `visible` не создаёт прокрутку (css-overflow-3):
-            // grid-container-fragmentation-006, сетка 200 с содержимым 400.
-            let plain = plain_block_tree(copy, 4)
-                || stacked_flex_tree(copy, 4)
-                || (grid_stack(copy)
-                    && copy.children.iter().all(|n| match n {
-                        Node::Element(k) => k.inline || plain_block_tree(k, 3),
-                        _ => true,
-                    }));
-            let ov = copy_m.as_ref().unwrap_or(copy);
-            let block_visible = matches!(
-                ov.style.used().overflow_y,
-                None | Some(crate::style::computed::Overflow::Visible)
-            ) && matches!(
-                ov.style.used().overflow_x,
-                None | Some(crate::style::computed::Overflow::Visible)
-                    | Some(crate::style::computed::Overflow::Clip)
-            );
-            fixed.is_some() && plain && block_visible
-        })
-        .filter(|s| s.height > h + COORD_EPS)
-    {
-        Some(s) => (s.height, s.cuts, s.forced, s.solid),
-        None => (h, cuts, forced, solid),
-    };
-    (over, cuts, forced, solid, own)
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stack_child_of(
@@ -165,6 +47,7 @@ pub(super) fn stack_child_of(
         #[cfg(feature = "wpt-harness")]
         probe: Default::default(),
         source: Some(copy.node_id),
+        static_of: None,
         watched: None,
         breaks_w: None,
         regrow: None,
@@ -193,6 +76,14 @@ pub(super) fn stack_child_of(
         over,
         rel,
         clone_dec: dec,
+        line_trim: None,
+        clone_fixed: dec.is_some()
+            && crate::layout::block::sizing::BoxDimensions::for_element(copy, &copy.style.used())
+                .border_box
+            && matches!(
+                copy.style.used().height,
+                Some(crate::style::values::value::Len::Px(_))
+            ),
         // Монолит с верха колонки переполняет её
         // (`layout::fragment::plan` `fill_at`, `overflow_to`) —
         // только при `column-fill: auto` без рядов
@@ -228,7 +119,13 @@ pub(super) fn stack_child_of(
             None
         },
         laid_w: Default::default(),
+        replay: false,
         paginate: None,
+        clone_frags: None,
+        copier: None,
+        nest: None,
+        nest_report: None,
+        resume: None,
         // Повтор шапки/подвала — копии flow::Repeat, полосы по разложенным секциям.
         repeat: repeat
             .filter(|_| !span && !col_vert)

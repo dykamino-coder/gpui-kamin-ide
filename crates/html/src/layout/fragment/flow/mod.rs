@@ -192,9 +192,8 @@ impl FlowGeometry {
 #[cfg(test)]
 mod tests;
 
-mod logical;
-pub(crate) use logical::transpose_tree;
 mod independent;
+mod logical;
 pub(crate) use independent::{
     PagePercentages, Parallel, column_percentages, column_percentages_in, flow_end,
     independent_copy, logical_copy, page_copy, page_percentages, regrow_copy, vertical_copy,

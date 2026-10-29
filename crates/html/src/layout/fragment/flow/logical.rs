@@ -6,27 +6,14 @@
 
 use crate::dom::{Element, Node};
 
-/// CSS Writing Modes 3 §6.4: block-start становится верхом, inline-start —
-/// левым краем при direction:ltr. Направление RTL здесь ещё не поддержано.
-/// Физическая копия для отрисовки не транспонируется.
-pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
-    transpose(c, rl, false)
-}
-
 /// Native recorder читает блочную ось независимо от inline direction.
-/// Старой оценке строк RTL по-прежнему недоступно.
 pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
-    transpose(c, rl, true)
-}
-
-fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
-    if recorded && c.style.used().display == Some(crate::style::computed::Display::None) {
+    if c.style.used().display == Some(crate::style::computed::Display::None) {
         return Some(c.clone());
     }
     // TRANSITIONAL(F2-3): Transpose отказывает ортогональным потокам и оценочным RTL строкам; удалить отказ в P10 после child logical Space и собственного resume.
     if c.style.cascaded().vertical_decl() == Some(false)
         || c.style.cascaded().rl_decl().is_some_and(|v| v != rl)
-        || (!recorded && c.style.cascaded().wm().rtl())
     {
         return None;
     }
@@ -82,7 +69,7 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
         .children
         .iter()
         .map(|n| match n {
-            Node::Element(k) => transpose(k, rl, recorded).map(Node::Element),
+            Node::Element(k) => recorded_tree(k, rl).map(Node::Element),
             other => Some(other.clone()),
         })
         .collect::<Option<Vec<Node>>>()?

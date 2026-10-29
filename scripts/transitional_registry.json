@@ -35,16 +35,6 @@
     "reason": "Transpose отказывает ортогональным потокам и оценочным RTL строкам; удалить отказ в P10 после child logical Space и собственного resume."
   },
   {
-    "file": "crates/html/src/layout/fragment/fragment_size.rs",
-    "task": "F2-7",
-    "reason": "Estimator применяет ограничения к гипотетической форме; удалить в P22 после удаления всех production readers в P21, сохранив реальные geometry types."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/oof_reach.rs",
-    "task": "F2-2",
-    "reason": "Reach/Measure сохраняют оценочную legacy-модель страниц и clone; удалить в P22 после живых OOF fragments из P08 и последних readers из P21."
-  },
-  {
     "file": "crates/html/src/layout/fragment/paginate/gate.rs",
     "task": "F2-7",
     "reason": "Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22."
@@ -55,74 +45,14 @@
     "reason": "Rebuild повторно строит полные копии с распорками вместо продолжения; удалить callback в P22 после перевода consumers P13–P21 на child tokens."
   },
   {
-    "file": "crates/html/src/layout/fragment/push/mod.rs",
-    "task": "F2-4",
-    "reason": "Рост перенесённой коробки пересчитывается через shape_full; удалить в P21 после FragmentPlacement/GrowthDelta по actual resume поверх P05/P10."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/push/spacer/grow.rs",
-    "task": "F2-4",
-    "reason": "После распорки форма ребёнка оценивается заново; удалить в P21 после continuation placement без мутации spacer поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/shape.rs",
-    "task": "F2-7",
-    "reason": "Shape объединяет оценочную высоту и synthetic cuts/forced/solid; удалить оценочную роль в P22 после P21, сохранив только реальные geometry types."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/shape_contents/kid_shapes.rs",
-    "task": "F2-4",
-    "reason": "Inflow cuts строятся рекурсивной оценкой ребёнка; удалить в P21 после recorded geometry и child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/shape_contents/kid_shapes.rs",
-    "task": "F2-4",
-    "reason": "OOF ребёнок рекурсивно измеряется вместо child resume; удалить в P21 после записанной геометрии и static position поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/shape_contents/mod.rs",
-    "task": "F2-7",
-    "reason": "DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21."
-  },
-  {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
   },
   {
-    "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
-    "task": "F2-4",
-    "reason": "Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/children.rs",
-    "task": "F2-4",
-    "reason": "Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/children.rs",
-    "task": "F2-6",
-    "reason": "Смешанная горизонтальная группа попадает в preplan без clamp scope и child resume; удалить в P21 после typed dispatch поверх P05/P08/P10/P16."
-  },
-  {
     "file": "crates/html/src/layout/multicol/measure/laid.rs",
     "task": "F2-2",
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/stack_child/cuts.rs",
-    "task": "F2-4",
-    "reason": "Разрезы копии читаются через estimator; удалить в P21 после recorded cuts и child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/stack_child/prepare.rs",
-    "task": "F2-4",
-    "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/page/paged/kids/shape.rs",
-    "task": "F2-6",
-    "reason": "Группа листа оценивается целиком без PageIdentity и clamp scope продолжения; удалить в P21 после typed child resume поверх P05/P08/P10/P16."
   },
   {
     "file": "crates/html/src/style/cascade/compute/fonts.rs",

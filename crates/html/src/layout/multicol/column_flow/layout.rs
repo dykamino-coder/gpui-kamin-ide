@@ -15,6 +15,7 @@ impl ColumnFlow {
         let line_height = self.line_height;
         let cuts = self.cuts.clone();
         let fill_height = self.fill_height;
+        let cap = self.cap;
         let whole = self.whole;
         let line_breaks = self.line_breaks;
         let outer = self.outer.clone();
@@ -53,6 +54,7 @@ impl ColumnFlow {
                     font_size,
                     line_height,
                     fill_height,
+                    cap,
                     whole,
                     line_breaks,
                     width,

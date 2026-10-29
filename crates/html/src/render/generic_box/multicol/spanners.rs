@@ -93,6 +93,39 @@ pub(super) fn deferred(
             {
                 host.children = kids.into();
             }
+            // Каждый ряд между спаннерами — свой набор колонок (css-multicol-1
+            // §6.1; Blink `ColumnLayoutAlgorithm::LayoutRow`): исходный OOF-поток
+            // ряда раскладывается от начала ряда и рисуется своей стопкой.
+            let row_geometry = probe_opts
+                .cx
+                .position
+                .geometry
+                .is_some()
+                .then(|| {
+                    let mut source_opts = probe_opts.clone();
+                    source_opts.cx.position.geometry = None;
+                    crate::layout::multicol::container::row_bodies(&host, is_span)
+                    .into_iter()
+                    .map(|body| {
+                        let kids: Vec<_> = body
+                            .iter()
+                            .filter_map(|n| match n {
+                                Node::Element(e) => Some(e.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        Some(crate::layout::positioned::containing_block::metrics::layout::collect(
+                            &kids,
+                            &style,
+                            column_width,
+                            &source_opts,
+                            window,
+                            cx,
+                        ))
+                    })
+                    .collect::<Rc<[_]>>()
+                })
+                .map(|rows| (style.self_node, rows));
             let rows = row_plan_in(
                 &host,
                 &opts,
@@ -145,6 +178,7 @@ pub(super) fn deferred(
                 probe_opts.clone()
             };
             final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
+            final_opts.cx.position.row_geometry = row_geometry;
             build(
                 &host,
                 style,

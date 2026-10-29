@@ -74,7 +74,6 @@ fn flex_avoid_boundaries_keep_solver_line_membership() {
         None,
         None,
         (Some(50.0), Some(50.0)),
-        &RefCell::new(Vec::new()),
         false,
         &RefCell::new(Vec::new()),
         &measured,
@@ -117,7 +116,6 @@ fn wrapped_multicol_uses_its_laid_height_instead_of_summing_inner_columns() {
         None,
         None,
         (Some(100.0), Some(100.0)),
-        &RefCell::default(),
         true,
         &RefCell::default(),
         &measured,
@@ -129,10 +127,6 @@ fn wrapped_multicol_uses_its_laid_height_instead_of_summing_inner_columns() {
     .expect("independently laid-out multicol descendant");
     assert_eq!(kids.len(), 1);
     assert!(!kids[0].0.marks.paginate);
-    assert_eq!(
-        kids[0].1.height, 0.0,
-        "height is deferred to the copy layout"
-    );
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
 

@@ -14,7 +14,7 @@ pub(super) fn leave(
     counters: &mut crate::style::generated::counters::Counters,
     mut children: Vec<Node>,
     out: &mut Vec<Node>,
-) {
+) -> Result<(), crate::budget::admission::Error> {
     let rules = &p.visit.scope.rules;
     let frames = &p.visit.scope.frames;
     let vars = &p.vars;
@@ -40,7 +40,7 @@ pub(super) fn leave(
             children: children.into(),
             attrs: p.attrs,
         }));
-        return;
+        return Ok(());
     }
     if let Some(el) = pseudo_box(
         rules, vars, counters, me, path, sibs, "after", &p.attrs, vcx,
@@ -59,7 +59,7 @@ pub(super) fn leave(
         &p.attrs,
         &mut children,
         vcx,
-    );
+    )?;
     if let Some(el) = pseudo_box(
         rules,
         vars,
@@ -112,5 +112,5 @@ pub(super) fn leave(
         scroll_pseudos,
         out,
         vcx,
-    );
+    )
 }

@@ -60,6 +60,7 @@ export interface WsMsgSessionResize {
 
 export interface WsMsgMcpResponse {
   type: 'mcp:response'
+  taskOwner?: string
   sessionId?: string
   requestId: string
   result: unknown
@@ -67,6 +68,7 @@ export interface WsMsgMcpResponse {
 
 export interface WsMsgMcpDenied {
   type: 'mcp:denied'
+  taskOwner?: string
   sessionId?: string
   requestId: string
   reason: string
@@ -215,6 +217,7 @@ export type ClientToServerMsg =
 
 export interface WsMsgSessionCreated {
   type: 'session:created'
+  mcpTaskOwner?: string
   sessionId: string
   /** Resume target conversation was not found — a fresh session started instead. */
   resumeNotFound?: boolean
@@ -239,6 +242,7 @@ export interface WsMsgSessionError {
 
 export interface WsMsgMcpCall {
   type: 'mcp:call'
+  taskOwner?: string
   requestId: string
   toolName: string
   input: Record<string, unknown>
@@ -303,6 +307,7 @@ export interface WsMsgTreeUpdate {
 /** Server notifies the client that session was restarted (e.g., effort or model change) */
 export interface WsMsgSessionRestarted {
   type: 'session:restarted'
+  mcpTaskOwner?: string
   sessionId: string
   effort?: string
   model?: string
@@ -346,6 +351,7 @@ export type ServerToClientMsg =
   | WsMsgSessionOutput
   | WsMsgSessionExit
   | WsMsgSessionError
+  | { type: 'mcp:cancel'; requestId: string; taskOwner?: string }
   | WsMsgMcpCall
   | WsMsgJsonlEntries
   | WsMsgJsonlStatus

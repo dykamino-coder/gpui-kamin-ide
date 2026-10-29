@@ -13,6 +13,9 @@
 
 import type { Context } from 'hono'
 import crypto from 'crypto'
+import { MODERN_MCP, TASK_EXTENSION, modernRequest, record, supportsTasks } from './mcp-modern'
+import { createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
+import { taskView } from './mcp-task-store'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
 import { eventBus } from '../events/bus'
@@ -21,11 +24,31 @@ import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
 import { matchesResourceTemplate } from './resource-template'
-import { openToolNotificationStream } from './mcp-tool-notify'
+import { notifyTaskChanged, openToolNotificationStream } from './mcp-tool-notify'
 import { PROJECT_SESSION_TOOLS, isProjectSessionTool, projectSessionToolsEnabled } from '../project-sessions/tools'
 import { runForSession } from '../project-sessions/session-glue'
+import { observeMcpCatalog, observeMcpCall } from '../stats/mcp-catalog'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
+
+function mcpInstructions(tasks = false): string {
+  return `This MCP server provides tools that execute on the user's local machine. All file, shell, and search operations run locally, not on the server.
+
+Key tool capabilities:
+- **Read**: Reads any file. Supports images (PNG, JPG, GIF, WebP) — image contents are presented visually. Also reads PDFs (use pages parameter for large files) and Jupyter notebooks (.ipynb). ALWAYS use Read to view screenshots or image files the user mentions.
+- **Write**: Creates or overwrites files. Use Read first for existing files. Prefer Edit for modifications.
+- **Edit**: Exact string replacement in files. Must Read the file first. Use replace_all for bulk replacements.
+- **Glob**: Fast file pattern matching (e.g. "**/*.ts"). Returns paths sorted by modification time.
+- **Grep**: Powerful ripgrep-based search. ALWAYS use this instead of grep/rg via Bash.
+- **Bash**: Execute shell commands. Default timeout 25 min, max 30 min. ${tasks ? 'Leave run_in_background false or omitted to run long commands as durable MCP Tasks; completion is delivered asynchronously. Explicit run_in_background:true instead uses BashOutput (poll by bash_id) and KillShell.' : 'For long-running jobs pass run_in_background:true, then read output with **BashOutput** (poll by bash_id) and stop it with **KillShell** — NOT TaskOutput, which cannot see these processes.'}
+- **PowerShell**: Execute PowerShell commands (Windows). Same background/BashOutput/KillShell semantics as Bash.
+- **BashOutput**: Read new stdout/stderr from a background Bash/PowerShell shell started with run_in_background (by bash_id).
+- **KillShell**: Terminate a background shell by bash_id.
+- **WebFetch**: Fetch URL content, convert HTML to markdown, process with a prompt.
+- **NotebookEdit**: Edit Jupyter notebook cells. Read the notebook first.
+- **EnterWorktree**: Create isolated git worktree (only when user explicitly asks).
+- **AskUserQuestion**: ALWAYS use this tool to ask the user questions — shows an interactive widget with clickable buttons. NEVER print questions as plain text.`
+}
 
 const MCP_LOG_MAX = 50 // keep last N entries per session
 
@@ -241,13 +264,15 @@ function timingSafeEqualStr(actual: string | undefined, expected: string): boole
  * - Notifications (without id): return 202 Accepted
  */
 export async function handleMcpRequest(c: Context): Promise<Response> {
-  const sessionId = c.req.param('sessionId')
+  const endpointId = c.req.param('sessionId')
+  const resolvedSession = endpointId ? (getSession(endpointId) ?? resolveMcpEndpoint(endpointId)) : undefined
+  const sessionId = resolvedSession?.id ?? endpointId
   if (!sessionId) {
     return c.json(jsonRpcError(undefined, -32000, 'sessionId is required'), 400)
   }
 
   // Validate session exists
-  const session = getSession(sessionId)
+  const session = resolvedSession
   if (!session) {
     return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} not found`), 404)
   }
@@ -257,7 +282,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
   // token byte-by-byte via response-timing (uuid entropy makes this impractical
   // anyway, but timing-safe is the correct default for a bearer check).
   const authHeader = c.req.header('authorization')
-  const expectedToken = `Bearer ${session.mcpToken}`
+  const expectedToken = `Bearer ${session.mcpEndpoint && session.mcpEndpoint.id === endpointId ? session.mcpEndpoint.token : session.mcpToken}`
   if (!timingSafeEqualStr(authHeader, expectedToken)) {
     warnLog('MCP auth failed', { sessionId, hasAuth: !!authHeader })
     return c.json(jsonRpcError(undefined, -32000, 'Unauthorized'), 401)
@@ -276,6 +301,36 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     return c.json(jsonRpcError(undefined, -32700, 'Parse error'), 400)
   }
 
+  if (
+    !record(body) ||
+    body.jsonrpc !== '2.0' ||
+    typeof body.method !== 'string' ||
+    (body.id !== undefined && typeof body.id !== 'string' && typeof body.id !== 'number')
+  )
+    return c.json(jsonRpcError(undefined, -32600, 'Invalid request'), 400)
+  const negotiated = modernRequest(body, (name) => c.req.header(name))
+  const modern = negotiated.modern
+  if (negotiated.error) return c.json({ jsonrpc: '2.0', id: body.id, error: negotiated.error }, 400)
+  function jsonRpcResponse(id: string | number | undefined, result: unknown): unknown {
+    return {
+      jsonrpc: '2.0',
+      id: id ?? null,
+      result: modern
+        ? {
+            resultType: 'complete',
+            ...record(result),
+            _meta: {
+              ...record(record(result)?._meta),
+              'io.modelcontextprotocol/serverInfo': { name: 'open-claude-bridge-user-tools', version: '4.0.0' },
+            },
+          }
+        : result,
+    }
+  }
+  if (modern && body.id === undefined && !body.method.startsWith('notifications/'))
+    return c.json(jsonRpcError(undefined, -32600, 'Request id required'), 400)
+  const disconnected = new AbortController()
+  const requestSignal = modern ? AbortSignal.any([c.req.raw.signal, disconnected.signal]) : undefined
   debugLog('MCP request', { sessionId, method: body.method, id: body.id })
   const reqStart = Date.now()
 
@@ -283,7 +338,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
   // Helper: return JSON response with Mcp-Session-Id header (required by Streamable HTTP spec)
   function jsonResponse(data: unknown, status = 200): Response {
     const res = c.json(data, status as 200)
-    res.headers.set('Mcp-Session-Id', sid)
+    if (!modern) res.headers.set('Mcp-Session-Id', sid)
     return res
   }
 
@@ -374,6 +429,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         // <synthetic> resume bug.
         closed = true
         clearHeartbeat()
+        if (modern) disconnected.abort()
       },
     })
 
@@ -384,21 +440,83 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no', // disable nginx/proxy buffering if present
-        'Mcp-Session-Id': sid,
+        ...(!modern ? { 'Mcp-Session-Id': sid } : {}),
       },
     })
   }
 
   switch (body.method) {
     case 'server/discover': {
-      // Bridge uses the legacy initialize handshake. A discovery success would
-      // identify it as a modern peer to CLI 2.1.296. Keep the expected fallback
-      // signal (HTTP 400 / -32601), but don't present this probe as a failure of
-      // the session. Other errors remain sticky, including ones predating it.
-      // https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#backward-compatibility
-      const message = 'Method not found: server/discover'
-      logMcpRequest(session, body.method, 'error', message, Date.now() - reqStart, false)
-      return jsonResponse(jsonRpcError(body.id, -32601, message), 400)
+      session.mcpInitialized = true
+      logMcpRequest(session, body.method, 'ok', undefined, Date.now() - reqStart)
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          supportedVersions: [MODERN_MCP],
+          capabilities: {
+            tools: { listChanged: true },
+            resources: {},
+            prompts: {},
+            extensions: { [TASK_EXTENSION]: {} },
+          },
+          instructions:
+            mcpInstructions(supportsTasks(body.params)) +
+            '\nForeground Bash and PowerShell commands may return a durable MCP task; use tasks/get to follow it and tasks/cancel to stop it. Explicit run_in_background commands retain BashOutput/KillShell semantics.',
+        }),
+      )
+    }
+    case 'tasks/get':
+    case 'tasks/cancel':
+    case 'tasks/update': {
+      if (!modern) return jsonResponse(jsonRpcError(body.id, -32601, 'Tasks require MCP 2026-07-28'), 400)
+      const params = record(body.params)
+      const id = params?.taskId
+      if (typeof id !== 'string' || id.length > 128 || !/^[!-~]+$/.test(id) || !session.mcpEndpoint)
+        return jsonResponse(jsonRpcError(body.id, -32602, 'Invalid taskId'), 400)
+      const owner = session.mcpEndpoint.id
+      try {
+        const task =
+          body.method === 'tasks/cancel'
+            ? await mcpTasks.update(owner, id, (task) => {
+                task.cancelRequested = true
+                if (!task.delivered) {
+                  task.status = 'cancelled'
+                  task.input = {}
+                }
+              })
+            : await mcpTasks.get(owner, id)
+        if (task && body.method === 'tasks/cancel') notifyTaskChanged(session.id, taskView(task))
+        if (!task) return jsonResponse(jsonRpcError(body.id, -32602, 'Unknown task'), 400)
+        if (body.method === 'tasks/update' && !record(params?.inputResponses))
+          return jsonResponse(jsonRpcError(body.id, -32602, 'Invalid inputResponses'), 400)
+        return jsonResponse(jsonRpcResponse(body.id, body.method === 'tasks/get' ? taskView(task) : {}))
+      } catch {
+        return jsonResponse(jsonRpcError(body.id, -32603, 'Task persistence unavailable'), 503)
+      }
+    }
+    case 'subscriptions/listen': {
+      if (!modern || body.id === undefined)
+        return jsonResponse(jsonRpcError(body.id, -32602, 'Modern subscription request required'), 400)
+      const notifications = record(record(body.params)?.notifications)
+      const ids = notifications?.taskIds ?? []
+      if (!Array.isArray(ids) || ids.length > 64 || ids.some((id) => typeof id !== 'string' || id.length > 128))
+        return jsonResponse(jsonRpcError(body.id, -32602, 'Invalid task subscription'), 400)
+      try {
+        const tasks = []
+        if (session.mcpEndpoint)
+          for (const id of ids) {
+            const task = await mcpTasks.get(session.mcpEndpoint.id, id)
+            if (task) tasks.push(task)
+          }
+        const response = openToolNotificationStream(sessionId, () => !!getSession(sessionId), c.req.raw.signal, {
+          id: body.id,
+          toolsListChanged: notifications?.toolsListChanged === true,
+          taskIds: tasks.map((task) => task.taskId),
+        })
+        for (const task of tasks) notifyTaskChanged(sessionId, taskView(task))
+        return response
+      } catch {
+        return jsonResponse(jsonRpcError(body.id, -32603, 'Task persistence unavailable'), 503)
+      }
     }
 
     case 'initialize': {
@@ -434,22 +552,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             name: 'open-claude-bridge-user-tools',
             version: '4.0.0',
           },
-          instructions: `This MCP server provides tools that execute on the user's local machine. All file, shell, and search operations run locally, not on the server.
-
-Key tool capabilities:
-- **Read**: Reads any file. Supports images (PNG, JPG, GIF, WebP) — image contents are presented visually. Also reads PDFs (use pages parameter for large files) and Jupyter notebooks (.ipynb). ALWAYS use Read to view screenshots or image files the user mentions.
-- **Write**: Creates or overwrites files. Use Read first for existing files. Prefer Edit for modifications.
-- **Edit**: Exact string replacement in files. Must Read the file first. Use replace_all for bulk replacements.
-- **Glob**: Fast file pattern matching (e.g. "**/*.ts"). Returns paths sorted by modification time.
-- **Grep**: Powerful ripgrep-based search. ALWAYS use this instead of grep/rg via Bash.
-- **Bash**: Execute shell commands. Default timeout 25 min, max 30 min. For long-running jobs pass run_in_background:true, then read output with **BashOutput** (poll by bash_id) and stop it with **KillShell** — NOT TaskOutput, which cannot see these processes.
-- **PowerShell**: Execute PowerShell commands (Windows). Same background/BashOutput/KillShell semantics as Bash.
-- **BashOutput**: Read new stdout/stderr from a background Bash/PowerShell shell started with run_in_background (by bash_id).
-- **KillShell**: Terminate a background shell by bash_id.
-- **WebFetch**: Fetch URL content, convert HTML to markdown, process with a prompt.
-- **NotebookEdit**: Edit Jupyter notebook cells. Read the notebook first.
-- **EnterWorktree**: Create isolated git worktree (only when user explicitly asks).
-- **AskUserQuestion**: ALWAYS use this tool to ask the user questions — shows an interactive widget with clickable buttons. NEVER print questions as plain text.`,
+          instructions: mcpInstructions(),
         }),
       )
     }
@@ -477,6 +580,7 @@ Key tool capabilities:
           inputSchema: t.inputSchema,
         }))
       const toolList = [...MCP_TOOLS, ...serverTools, ...externalTools]
+      observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
       debugLog('tools/list response', {
@@ -494,6 +598,8 @@ Key tool capabilities:
     case 'tools/call': {
       const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined
       const toolName = params?.name
+      if (params?.arguments !== undefined && !record(params.arguments))
+        return jsonResponse(jsonRpcError(body.id, -32602, 'Tool arguments must be an object'), 400)
       const toolInput = params?.arguments ?? {}
 
       if (!toolName) {
@@ -505,6 +611,7 @@ Key tool capabilities:
       // never reach the client host. Same SSE envelope and size cap as forwarded
       // tools; scope comes from the authenticated session, not the arguments.
       if (isProjectSessionTool(toolName) && projectSessionToolsEnabled()) {
+        observeMcpCall(session, toolName)
         return sseStreamResponse(body.id ?? null, async () => {
           const result = await runForSession(session, toolName, toolInput)
           logMcpRequest(
@@ -526,6 +633,20 @@ Key tool capabilities:
         logMcpRequest(session, `tools/call:${toolName}`, 'error', `Unknown tool: ${toolName}`)
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)
       }
+      observeMcpCall(session, toolName)
+
+      if (
+        modern &&
+        supportsTasks(body.params) &&
+        ['Bash', 'PowerShell'].includes(toolName) &&
+        toolInput.run_in_background !== true
+      ) {
+        try {
+          return jsonResponse(jsonRpcResponse(body.id, await createMcpTask(session, toolName, toolInput)))
+        } catch {
+          return jsonResponse(jsonRpcError(body.id, -32000, 'Task admission unavailable or capacity exceeded'), 503)
+        }
+      }
 
       // Stream the response as SSE so the headers reach the CLI within
       // milliseconds. Without this, CLI's `wrapFetchWithTimeout` (60s hard
@@ -535,7 +656,7 @@ Key tool capabilities:
       // the client, even though our bridge happily finishes the work.
       return sseStreamResponse(body.id ?? null, async () => {
         try {
-          const result = await sendMcpCall(sessionId, toolName, toolInput)
+          const result = await sendMcpCall(sessionId, toolName, toolInput, requestSignal)
           const dur = Date.now() - reqStart
           logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, dur)
 
@@ -696,6 +817,7 @@ Key tool capabilities:
           sessionId,
           '__bridge_mcp_resource_read',
           resource ? { uri: resource.uri } : { uri: params!.uri!, serverId: template!.serverId },
+          requestSignal,
         )
         if (!result || typeof result !== 'object' || !Array.isArray((result as { contents?: unknown[] }).contents)) {
           throw new Error('External MCP server returned an invalid resources/read result')
@@ -728,10 +850,15 @@ Key tool capabilities:
       if (!prompt)
         return jsonResponse(jsonRpcError(body.id, -32602, `Prompt not found: ${params?.name ?? '(no name)'}`))
       try {
-        const result = await sendMcpCall(sessionId, '__bridge_mcp_prompt_get', {
-          name: prompt.name,
-          arguments: params?.arguments ?? {},
-        })
+        const result = await sendMcpCall(
+          sessionId,
+          '__bridge_mcp_prompt_get',
+          {
+            name: prompt.name,
+            arguments: params?.arguments ?? {},
+          },
+          requestSignal,
+        )
         if (!result || typeof result !== 'object' || !Array.isArray((result as { messages?: unknown[] }).messages)) {
           throw new Error('External MCP server returned an invalid prompts/get result')
         }
@@ -746,7 +873,7 @@ Key tool capabilities:
 
     default: {
       // Unknown notifications (no id) → 202
-      if (!body.id) {
+      if (body.id === undefined) {
         debugLog('Unknown MCP notification', { method: body.method })
         logMcpRequest(session, body.method, 'ok')
         return new Response(null, {
@@ -756,7 +883,7 @@ Key tool capabilities:
       }
       warnLog('Unknown MCP method', { method: body.method })
       logMcpRequest(session, body.method, 'error', `Method not found: ${body.method}`)
-      return jsonResponse(jsonRpcError(body.id, -32601, `Method not found: ${body.method}`), 400)
+      return jsonResponse(jsonRpcError(body.id, -32601, `Method not found: ${body.method}`), modern ? 404 : 400)
     }
   }
 }
@@ -769,6 +896,7 @@ Key tool capabilities:
  */
 export function handleMcpGet(c: Context): Response {
   const sessionId = c.req.param('sessionId') ?? ''
+  if (c.req.header('MCP-Protocol-Version') === MODERN_MCP) return new Response(null, { status: 405 })
   const accept = c.req.header('accept') ?? ''
   if (!accept.includes('text/event-stream')) {
     return new Response(null, {
@@ -777,11 +905,16 @@ export function handleMcpGet(c: Context): Response {
       headers: { 'Mcp-Session-Id': sessionId },
     })
   }
-  const session = sessionId ? getSession(sessionId) : undefined
+  const session = sessionId ? (getSession(sessionId) ?? resolveMcpEndpoint(sessionId)) : undefined
   if (!session) {
     return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} not found`), 404)
   }
-  if (!timingSafeEqualStr(c.req.header('authorization'), `Bearer ${session.mcpToken}`)) {
+  if (
+    !timingSafeEqualStr(
+      c.req.header('authorization'),
+      `Bearer ${session.mcpEndpoint?.id === sessionId ? session.mcpEndpoint.token : session.mcpToken}`,
+    )
+  ) {
     warnLog('MCP stream auth failed', { sessionId })
     return c.json(jsonRpcError(undefined, -32000, 'Unauthorized'), 401)
   }
@@ -789,9 +922,9 @@ export function handleMcpGet(c: Context): Response {
     return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} is shutting down`), 409)
   }
   return openToolNotificationStream(
-    sessionId,
+    session.id,
     () => {
-      const current = getSession(sessionId)
+      const current = getSession(session.id)
       return current === session && !current.teardown
     },
     c.req.raw.signal,

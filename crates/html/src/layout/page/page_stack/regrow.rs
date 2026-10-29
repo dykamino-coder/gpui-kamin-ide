@@ -61,7 +61,7 @@ pub(super) fn growths(
     let end = f.from + f.h;
     let edge = f.from + height - f.y;
     let mut grows =
-        crate::layout::fragment::push::flex_flow::growths(blocks, laid, f.from, end, edge);
+        crate::layout::fragment::push::flex_flow::growths(blocks, laid, f.from, end, edge, false);
     let solid = k
         .solid
         .iter()

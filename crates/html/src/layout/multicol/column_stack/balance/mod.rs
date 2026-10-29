@@ -8,10 +8,12 @@ use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
+mod discard;
 #[cfg(test)]
 mod float_tests;
 mod growth;
 mod line;
+mod outer;
 mod run;
 pub(crate) mod search;
 
@@ -24,9 +26,8 @@ fn failed(error: crate::layout::fragment::token::Error) -> Plan {
 
 impl ColumnStack {
     /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и
-    /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1
-    /// (прежний `balance`).
-    ///
+    /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1;
+    /// при `continue: discard` — линии между спаннерами (`balance_discard`).
     /// Не брать порознь ни переполняющие колонки (число копий не упирается в
     /// `column-count` при `column-fill: auto` с заданной высотой,
     /// css-multicol-1 §Overflow), ни статическую позицию прямого
@@ -38,7 +39,6 @@ impl ColumnStack {
     /// `multicol-fill-balance-038`, `multi-line-*-flex-fragmentation-*`).
     /// Вернуть можно только с разделением «переполнение» и «балансировка»
     /// в самой `balance`.
-    // Балансировка возвращает геометрию колонок и статус продолжения плана.
     #[allow(clippy::type_complexity)]
     pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Plan, Vec<(usize, f32)>) {
         if let Some(error) = self.balance_failure {
@@ -49,6 +49,9 @@ impl ColumnStack {
         // выше высоты коробки; копий — сколько построил `render::generic_box::multicol`, лишние
         // колонки переполняют вбок (`place`: `(col, 0.0)`). Линия — высотой
         // в баланс, не в потолок: по ней `growths` меряет рост.
+        if self.discard {
+            return self.balance_discard(kids);
+        }
         if let Some(Rows {
             h: Some(lim),
             cap: true,
@@ -79,6 +82,11 @@ impl ColumnStack {
             return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;
+        if let Some(outer) = rows.outer
+            && !kids.iter().any(|k| k.span)
+        {
+            return self.balance_outer_rows(kids, rows, outer);
+        }
         let Some(h) = rows.h else {
             // Ряд без потолка: колонки балансируются одной линией, а лишние
             // (от принудительных разрывов) идут рядами ниже; высота ряда — по
@@ -190,8 +198,9 @@ impl ColumnStack {
             // decorations-011`: 120px в трёх колонках по 40, а не 60 + 60).
             let balance_last = self.fixed_height.is_none() || j < kids.len();
             let base = lines.len() * count;
+            let room = self.row_limit.map(|lim| lim - (y - phase0));
             let (n, frags, tail) =
-                self.balance_run(&kids[i..j], first, cap, balance_last, not_at_start);
+                self.balance_run(&kids[i..j], (first, cap, room), balance_last, not_at_start);
             if frags.completion == crate::layout::fragment::plan::Completion::Incomplete {
                 plan.incomplete();
             }
@@ -211,10 +220,8 @@ impl ColumnStack {
                 };
                 let lh = if l + 1 == n {
                     tail
-                } else if l == 0 {
-                    first
                 } else {
-                    cap
+                    Self::run_line(l, first, cap, room)
                 };
                 lines.push((ly, lh));
             }

@@ -11176,10 +11176,10 @@ var require_dist = __commonJS({
 // src/main/plugin-helpers.ts
 async function loadEnabledPluginsMap() {
   const out = /* @__PURE__ */ new Map();
-  const settingsPath = import_path2.default.join(import_os.default.homedir(), ".claude", "settings.json");
+  const settingsPath = import_path.default.join(import_os.default.homedir(), ".claude", "settings.json");
   let raw;
   try {
-    raw = await import_fs2.default.promises.readFile(settingsPath, "utf-8");
+    raw = await import_fs.default.promises.readFile(settingsPath, "utf-8");
   } catch {
     return out;
   }
@@ -11300,10 +11300,10 @@ function matchYamlField(fm, key2) {
   }
 }
 async function readPluginManifest(pluginRoot) {
-  const manifestPath = import_path2.default.join(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifestPath = import_path.default.join(pluginRoot, ".claude-plugin", "plugin.json");
   let raw;
   try {
-    raw = await import_fs2.default.promises.readFile(manifestPath, "utf-8");
+    raw = await import_fs.default.promises.readFile(manifestPath, "utf-8");
   } catch {
     return null;
   }
@@ -11316,13 +11316,13 @@ async function readPluginManifest(pluginRoot) {
 async function readMarketplacePluginEntry(pluginName, marketplace) {
   if (!pluginName || !marketplace || marketplace === "local") return null;
   try {
-    const known = JSON.parse(await import_fs2.default.promises.readFile(
-      import_path2.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
+    const known = JSON.parse(await import_fs.default.promises.readFile(
+      import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
       "utf-8"
     ));
     const root = known?.[marketplace]?.installLocation;
     if (typeof root !== "string") return null;
-    const catalog = JSON.parse(await import_fs2.default.promises.readFile(import_path2.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const catalog = JSON.parse(await import_fs.default.promises.readFile(import_path.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
     const entry = Array.isArray(catalog?.plugins) ? catalog.plugins.find((candidate) => candidate?.name === pluginName) : null;
     return entry && typeof entry === "object" && !Array.isArray(entry) ? entry : null;
   } catch {
@@ -11359,7 +11359,7 @@ function mergePluginDeclarations(pluginRoot, pluginName, entry, manifest) {
     if (merged !== void 0) effective[key2] = merged;
   }
   if (typeof entry?.defaultEnabled === "boolean") effective.defaultEnabled = entry.defaultEnabled;
-  effective.name = pluginName || manifest?.name || entry?.name || import_path2.default.basename(pluginRoot);
+  effective.name = pluginName || manifest?.name || entry?.name || import_path.default.basename(pluginRoot);
   return effective;
 }
 async function readEffectivePluginManifest(pluginRoot, pluginName, marketplace) {
@@ -11373,18 +11373,18 @@ function readEffectivePluginManifestSync(pluginRoot, pluginName, marketplace) {
   let manifest = null;
   let entry = null;
   try {
-    manifest = JSON.parse(import_fs2.default.readFileSync(import_path2.default.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf-8"));
+    manifest = JSON.parse(import_fs.default.readFileSync(import_path.default.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf-8"));
   } catch {
   }
   if (marketplace && marketplace !== "local") {
     try {
-      const known = JSON.parse(import_fs2.default.readFileSync(
-        import_path2.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
+      const known = JSON.parse(import_fs.default.readFileSync(
+        import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
         "utf-8"
       ));
       const root = known?.[marketplace]?.installLocation;
       if (typeof root === "string") {
-        const catalog = JSON.parse(import_fs2.default.readFileSync(import_path2.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+        const catalog = JSON.parse(import_fs.default.readFileSync(import_path.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
         const match = Array.isArray(catalog?.plugins) ? catalog.plugins.find((candidate) => candidate?.name === pluginName) : null;
         if (match && typeof match === "object" && !Array.isArray(match)) entry = match;
       }
@@ -11439,7 +11439,7 @@ async function listEnabledInstalledPlugins() {
     if (!entry.installPath) continue;
     let exists = false;
     try {
-      exists = import_fs2.default.existsSync(entry.installPath);
+      exists = import_fs.default.existsSync(entry.installPath);
     } catch {
     }
     if (!exists) continue;
@@ -11465,9 +11465,9 @@ async function listEnabledInstalledPlugins() {
 }
 async function listEnabledPluginBinDirs() {
   const plugins = await listEnabledInstalledPlugins();
-  return plugins.map((plugin) => import_path2.default.join(plugin.installPath, "bin")).filter((binDir) => {
+  return plugins.map((plugin) => import_path.default.join(plugin.installPath, "bin")).filter((binDir) => {
     try {
-      return import_fs2.default.statSync(binDir).isDirectory();
+      return import_fs.default.statSync(binDir).isDirectory();
     } catch {
       return false;
     }
@@ -11476,8 +11476,8 @@ async function listEnabledPluginBinDirs() {
 function loadPluginOptions(pluginId) {
   const out = {};
   try {
-    const installedPath = import_path2.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-    const installed3 = JSON.parse(import_fs2.default.readFileSync(installedPath, "utf-8"));
+    const installedPath = import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const installed3 = JSON.parse(import_fs.default.readFileSync(installedPath, "utf-8"));
     const root = installed3?.plugins?.[pluginId]?.[0]?.installPath;
     if (typeof root === "string") {
       const at = pluginId.lastIndexOf("@");
@@ -11492,9 +11492,9 @@ function loadPluginOptions(pluginId) {
     }
   } catch {
   }
-  const settingsPath = import_path2.default.join(import_os.default.homedir(), ".claude", "settings.json");
+  const settingsPath = import_path.default.join(import_os.default.homedir(), ".claude", "settings.json");
   try {
-    const raw = import_fs2.default.readFileSync(settingsPath, "utf-8");
+    const raw = import_fs.default.readFileSync(settingsPath, "utf-8");
     const data = JSON.parse(raw);
     const opts = data?.pluginConfigs?.[pluginId]?.options;
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
@@ -11502,9 +11502,9 @@ function loadPluginOptions(pluginId) {
     }
   } catch {
   }
-  const credsPath = import_path2.default.join(import_os.default.homedir(), ".claude", ".credentials.json");
+  const credsPath = import_path.default.join(import_os.default.homedir(), ".claude", ".credentials.json");
   try {
-    const raw = import_fs2.default.readFileSync(credsPath, "utf-8");
+    const raw = import_fs.default.readFileSync(credsPath, "utf-8");
     const data = JSON.parse(raw);
     const opts = data?.pluginSecrets?.[pluginId];
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
@@ -11522,10 +11522,10 @@ function substituteUserConfig(value, options) {
 }
 async function loadInstalledPluginsMap() {
   const out = /* @__PURE__ */ new Map();
-  const filePath = import_path2.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  const filePath = import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
   let raw;
   try {
-    raw = await import_fs2.default.promises.readFile(filePath, "utf-8");
+    raw = await import_fs.default.promises.readFile(filePath, "utf-8");
   } catch {
     return out;
   }
@@ -11542,12 +11542,12 @@ async function loadInstalledPluginsMap() {
   }
   return out;
 }
-var import_fs2, import_path2, import_os, import_yaml, FM_CACHE_CAP, fmCache;
+var import_fs, import_path, import_os, import_yaml, FM_CACHE_CAP, fmCache;
 var init_plugin_helpers = __esm({
   "src/main/plugin-helpers.ts"() {
     "use strict";
-    import_fs2 = __toESM(require("fs"), 1);
-    import_path2 = __toESM(require("path"), 1);
+    import_fs = __toESM(require("fs"), 1);
+    import_path = __toESM(require("path"), 1);
     import_os = __toESM(require("os"), 1);
     import_yaml = __toESM(require_dist(), 1);
     FM_CACHE_CAP = 200;
@@ -11713,9 +11713,9 @@ function substituteAll(str, pluginRoot, pluginId, projectCwd) {
   out = out.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot);
   out = out.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, projectCwd || import_os2.default.homedir());
   if (pluginId && out.includes("${CLAUDE_PLUGIN_DATA}")) {
-    const dataDir = import_path3.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
-      import_fs3.default.mkdirSync(dataDir, { recursive: true });
+      import_fs2.default.mkdirSync(dataDir, { recursive: true });
     } catch {
     }
     out = out.replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir);
@@ -11771,11 +11771,11 @@ function spawnMonitor(inst) {
 }
 async function loadMonitorDeclarations(pluginRoot, manifest) {
   const readFile2 = async (ref2) => {
-    const resolved = import_path3.default.resolve(pluginRoot, ref2);
-    const relative = import_path3.default.relative(pluginRoot, resolved);
-    if (relative === ".." || relative.startsWith(".." + import_path3.default.sep) || import_path3.default.isAbsolute(relative)) return [];
+    const resolved = import_path2.default.resolve(pluginRoot, ref2);
+    const relative = import_path2.default.relative(pluginRoot, resolved);
+    if (relative === ".." || relative.startsWith(".." + import_path2.default.sep) || import_path2.default.isAbsolute(relative)) return [];
     try {
-      const parsed = JSON.parse(await import_fs3.default.promises.readFile(resolved, "utf-8"));
+      const parsed = JSON.parse(await import_fs2.default.promises.readFile(resolved, "utf-8"));
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
@@ -11828,9 +11828,9 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
         broadcast("monitor:error", { tabId, pluginId: plugin.key, monitorName, error: message });
         continue;
       }
-      const pluginDataDir = import_path3.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+      const pluginDataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
       try {
-        import_fs3.default.mkdirSync(pluginDataDir, { recursive: true });
+        import_fs2.default.mkdirSync(pluginDataDir, { recursive: true });
       } catch {
       }
       const inst = {
@@ -11856,8 +11856,8 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
         startedAt: Date.now(),
         status: "running"
       };
-      const pluginBin = import_path3.default.join(pluginRoot, "bin");
-      if (import_fs3.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path3.default.delimiter}${process.env.PATH ?? ""}`;
+      const pluginBin = import_path2.default.join(pluginRoot, "bin");
+      if (import_fs2.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path2.default.delimiter}${process.env.PATH ?? ""}`;
       monitors.set(id, inst);
       if (!tabOwners.has(tabId)) tabOwners.set(tabId, /* @__PURE__ */ new Set());
       tabOwners.get(tabId).add(id);
@@ -11950,9 +11950,9 @@ async function handleMonitorTriggerCommand(tabId, command, payload, sourcePlugin
     broadcast("monitor:error", { tabId, pluginId: plugin.key, monitorName, error: message });
     return true;
   }
-  const pluginDataDir = import_path3.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+  const pluginDataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
   try {
-    import_fs3.default.mkdirSync(pluginDataDir, { recursive: true });
+    import_fs2.default.mkdirSync(pluginDataDir, { recursive: true });
   } catch {
   }
   const inst = {
@@ -11978,8 +11978,8 @@ async function handleMonitorTriggerCommand(tabId, command, payload, sourcePlugin
     startedAt: Date.now(),
     status: "running"
   };
-  const pluginBin = import_path3.default.join(plugin.installPath, "bin");
-  if (import_fs3.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path3.default.delimiter}${process.env.PATH ?? ""}`;
+  const pluginBin = import_path2.default.join(plugin.installPath, "bin");
+  if (import_fs2.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path2.default.delimiter}${process.env.PATH ?? ""}`;
   monitors.set(id, inst);
   if (!tabOwners.has(tabId)) tabOwners.set(tabId, /* @__PURE__ */ new Set());
   tabOwners.get(tabId).add(id);
@@ -12013,13 +12013,13 @@ function getMonitorLog(id) {
   const inst = monitors.get(id);
   return inst ? inst.ring.toArray() : [];
 }
-var import_fs3, import_os2, import_path3, import_child_process, RING_CAP, MAX_PENDING_LINE_CHARS, MAX_NOTIFICATION_LINES, MAX_NOTIFICATION_CHARS, NOTIFICATION_DEBOUNCE_MS, NOTIFICATION_MIN_INTERVAL_MS, monitors, tabOwners, tabContexts, tabLoadTokens, mainWindow, TRIGGER_COMMAND;
+var import_fs2, import_os2, import_path2, import_child_process, RING_CAP, MAX_PENDING_LINE_CHARS, MAX_NOTIFICATION_LINES, MAX_NOTIFICATION_CHARS, NOTIFICATION_DEBOUNCE_MS, NOTIFICATION_MIN_INTERVAL_MS, monitors, tabOwners, tabContexts, tabLoadTokens, mainWindow, TRIGGER_COMMAND;
 var init_plugin_monitors = __esm({
   "src/main/plugin-monitors.ts"() {
     "use strict";
-    import_fs3 = __toESM(require("fs"), 1);
+    import_fs2 = __toESM(require("fs"), 1);
     import_os2 = __toESM(require("os"), 1);
-    import_path3 = __toESM(require("path"), 1);
+    import_path2 = __toESM(require("path"), 1);
     import_child_process = require("child_process");
     init_plugin_helpers();
     init_circular_buffer();
@@ -12075,7 +12075,7 @@ function lookupOptions(options) {
   return {
     platform,
     env: options.env ?? process.env,
-    exists: options.exists ?? import_node_fs4.default.existsSync,
+    exists: options.exists ?? import_node_fs2.default.existsSync,
     which: options.which ?? ((command) => whichExecutable(command, platform))
   };
 }
@@ -12091,13 +12091,13 @@ async function findBashExecutable(options = {}) {
   if (configured && exists(configured)) return configured;
   const gitPath = await which("git");
   if (gitPath) {
-    const derived = import_node_path3.default.win32.resolve(import_node_path3.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
+    const derived = import_node_path2.default.win32.resolve(import_node_path2.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
     if (exists(derived)) return derived;
   }
   const candidates = [
-    env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
-    env4["ProgramFiles(x86)"] && import_node_path3.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
-    env4.LOCALAPPDATA && import_node_path3.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
+    env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
+    env4["ProgramFiles(x86)"] && import_node_path2.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
+    env4.LOCALAPPDATA && import_node_path2.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
   ].filter((candidate) => Boolean(candidate));
   for (const candidate of candidates) {
     if (exists(candidate)) return candidate;
@@ -12110,8 +12110,8 @@ async function findPowerShellExecutable(options = {}) {
   if (pwsh) return pwsh;
   if (platform === "win32") {
     const candidates = [
-      env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
-      env4.SystemRoot && import_node_path3.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
+      env4.SystemRoot && import_node_path2.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     ].filter((candidate) => Boolean(candidate));
     for (const candidate of candidates) {
       if (exists(candidate)) return candidate;
@@ -12178,13 +12178,13 @@ function shellSingleQuote(value) {
 function powerShellSingleQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
-var import_node_child_process, import_node_fs4, import_node_path3;
+var import_node_child_process, import_node_fs2, import_node_path2;
 var init_command_runtime = __esm({
   "src/main/utils/command-runtime.ts"() {
     "use strict";
     import_node_child_process = require("node:child_process");
-    import_node_fs4 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
+    import_node_fs2 = __toESM(require("node:fs"), 1);
+    import_node_path2 = __toESM(require("node:path"), 1);
   }
 });
 
@@ -12203,7 +12203,7 @@ function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   for (const key2 of ["transcript_path", "agent_transcript_path"]) {
     const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key2] = import_node_path4.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -12278,7 +12278,7 @@ async function executeHook(req) {
   if (req.pluginId) {
     const installed3 = await loadInstalledPluginsMap();
     const pluginRoot = installed3.get(req.pluginId)?.installPath;
-    if (!pluginRoot || !import_node_fs5.default.existsSync(pluginRoot)) {
+    if (!pluginRoot || !import_node_fs3.default.existsSync(pluginRoot)) {
       return {
         stdout: "",
         stderr: `Plugin ${req.pluginId} is not installed on the client host`,
@@ -12288,9 +12288,9 @@ async function executeHook(req) {
       };
     }
     const options = loadPluginOptions(req.pluginId);
-    const dataDir = import_node_path4.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_node_path3.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
-      import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
+      import_node_fs3.default.mkdirSync(dataDir, { recursive: true });
     } catch {
     }
     if (!execForm && /\$\{user_config\.[^}]+\}/.test(command)) {
@@ -12311,8 +12311,8 @@ async function executeHook(req) {
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
-    const pluginBin = import_node_path4.default.join(pluginRoot, "bin");
-    if (import_node_fs5.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path4.default.delimiter}${process.env.PATH ?? ""}`;
+    const pluginBin = import_node_path3.default.join(pluginRoot, "bin");
+    if (import_node_fs3.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path3.default.delimiter}${process.env.PATH ?? ""}`;
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell2 ? shellPluginEnvValue(cwd, shell2) : cwd;
   if (execForm) command = nativeNodeCommand(command);
@@ -12409,14 +12409,14 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process2, import_node_os2, import_node_fs5, import_node_path4, DEFAULT_TIMEOUT_MS;
+var import_node_child_process2, import_node_os2, import_node_fs3, import_node_path3, DEFAULT_TIMEOUT_MS;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
     import_node_child_process2 = require("node:child_process");
     import_node_os2 = __toESM(require("node:os"), 1);
-    import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
+    import_node_fs3 = __toESM(require("node:fs"), 1);
+    import_node_path3 = __toESM(require("node:path"), 1);
     init_plugin_helpers();
     init_command_runtime();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -18170,11 +18170,11 @@ var require_out4 = __commonJS({
 
 // src/main/mcp/tools/notebook.ts
 async function readNotebookCapped(path46) {
-  const st = await import_promises2.default.stat(path46);
+  const st = await import_promises.default.stat(path46);
   if (st.size > MAX_NOTEBOOK_BYTES) {
     throw new Error(`Notebook too large (${Math.round(st.size / 1024 / 1024)} MB > 50 MB cap)`);
   }
-  return import_promises2.default.readFile(path46, "utf8");
+  return import_promises.default.readFile(path46, "utf8");
 }
 function textResult(text) {
   return { content: [{ type: "text", text }] };
@@ -18273,7 +18273,7 @@ async function notebookEdit(input) {
           cell.outputs = [];
           cell.execution_count = null;
         }
-        await import_promises2.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
+        await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
         return textResult(`Replaced cell ${cellNumber} in ${notebookPath}`);
       }
       case "insert": {
@@ -18297,7 +18297,7 @@ async function notebookEdit(input) {
           newCell.execution_count = null;
         }
         notebook.cells.splice(insertIndex, 0, newCell);
-        await import_promises2.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
+        await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
         return textResult(`Inserted ${cellType} cell at position ${insertIndex} in ${notebookPath}`);
       }
       case "delete": {
@@ -18308,7 +18308,7 @@ async function notebookEdit(input) {
           );
         }
         const deleted = notebook.cells.splice(cellNumber, 1)[0];
-        await import_promises2.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
+        await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
         return textResult(
           `Deleted ${deleted.cell_type} cell at position ${cellNumber} from ${notebookPath}`
         );
@@ -18323,11 +18323,11 @@ async function notebookEdit(input) {
     return errorResult(msg);
   }
 }
-var import_promises2, MAX_NOTEBOOK_BYTES;
+var import_promises, MAX_NOTEBOOK_BYTES;
 var init_notebook = __esm({
   "src/main/mcp/tools/notebook.ts"() {
     "use strict";
-    import_promises2 = __toESM(require("node:fs/promises"), 1);
+    import_promises = __toESM(require("node:fs/promises"), 1);
     MAX_NOTEBOOK_BYTES = 50 * 1024 * 1024;
   }
 });
@@ -18341,7 +18341,7 @@ function evictOldest() {
   cache.delete(oldest);
 }
 async function readFileCached(filePath) {
-  const stat = await import_promises3.default.stat(filePath);
+  const stat = await import_promises2.default.stat(filePath);
   if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`);
   const cached = cache.get(filePath);
   if (cached && cached.mtimeMs === stat.mtimeMs) {
@@ -18349,7 +18349,7 @@ async function readFileCached(filePath) {
     cache.set(filePath, cached);
     return cached.content;
   }
-  const content = await import_promises3.default.readFile(filePath, "utf8");
+  const content = await import_promises2.default.readFile(filePath, "utf8");
   const bytes = content.length * 2;
   if (bytes > MAX_CACHEABLE_FILE_BYTES) {
     invalidateFileCache(filePath);
@@ -18373,11 +18373,11 @@ function invalidateFileCache(filePath) {
   if (e) cacheBytes -= e.bytes;
   cache.delete(filePath);
 }
-var import_promises3, CACHE_CAP, CACHE_BYTES_BUDGET, MAX_CACHEABLE_FILE_BYTES, cache, cacheBytes;
+var import_promises2, CACHE_CAP, CACHE_BYTES_BUDGET, MAX_CACHEABLE_FILE_BYTES, cache, cacheBytes;
 var init_file_read_cache = __esm({
   "src/main/utils/file-read-cache.ts"() {
     "use strict";
-    import_promises3 = __toESM(require("node:fs/promises"), 1);
+    import_promises2 = __toESM(require("node:fs/promises"), 1);
     CACHE_CAP = 1024;
     CACHE_BYTES_BUDGET = 16 * 1024 * 1024;
     MAX_CACHEABLE_FILE_BYTES = 2 * 1024 * 1024;
@@ -18659,21 +18659,21 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
   async function searchDir(dir) {
     let entries2;
     try {
-      entries2 = await import_promises4.default.readdir(dir, { withFileTypes: true });
+      entries2 = await import_promises3.default.readdir(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const fullPath = import_node_path5.default.join(dir, entry.name);
+      const fullPath = import_node_path4.default.join(dir, entry.name);
       if (entry.isDirectory()) {
         await searchDir(fullPath);
       } else if (entry.isFile()) {
         try {
-          const stat = await import_promises4.default.stat(fullPath);
+          const stat = await import_promises3.default.stat(fullPath);
           if (stat.size > MAX_READ_BYTES) continue;
-          const content = await import_promises4.default.readFile(fullPath, "utf8");
+          const content = await import_promises3.default.readFile(fullPath, "utf8");
           const lines = content.split("\n");
           const matchingLines = [];
           for (let i = 0; i < lines.length; i++) {
@@ -18695,9 +18695,9 @@ ${matchingLines.join("\n")}`);
     }
   }
   try {
-    const stat = await import_promises4.default.stat(searchPath);
+    const stat = await import_promises3.default.stat(searchPath);
     if (stat.isFile()) {
-      const content = await import_promises4.default.readFile(searchPath, "utf8");
+      const content = await import_promises3.default.readFile(searchPath, "utf8");
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? "";
@@ -18717,12 +18717,12 @@ ${matchingLines.join("\n")}`);
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
   return textResult2(output || "No matches found.");
 }
-var import_promises4, import_node_path5, import_node_child_process3;
+var import_promises3, import_node_path4, import_node_child_process3;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
-    import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_promises3 = __toESM(require("node:fs/promises"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
     import_node_child_process3 = require("node:child_process");
     init_fs_shared();
   }
@@ -18792,7 +18792,7 @@ async function readFile(input) {
   if (!filePath) return errorResult2("file_path is required");
   if (isBlockedDevicePath(filePath)) return errorResult2(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path6.default.extname(filePath).toLowerCase();
+    const ext = import_node_path5.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
       return textResult2(
         "PDF reading requires the pdf-parse package. Use `Bash` tool with `pdftotext` or similar to extract PDF text."
@@ -18801,7 +18801,7 @@ async function readFile(input) {
     if (ext === ".ipynb") {
       return notebookRead({ file_path: filePath });
     }
-    const stat = await import_promises5.default.stat(filePath);
+    const stat = await import_promises4.default.stat(filePath);
     if (!stat.isFile()) return errorResult2(`Not a file: ${filePath}`);
     if (stat.size > MAX_READ_BYTES) {
       return errorResult2(
@@ -18809,7 +18809,7 @@ async function readFile(input) {
       );
     }
     if (IMAGE_EXTENSIONS.has(ext)) {
-      const raw2 = await import_promises5.default.readFile(filePath);
+      const raw2 = await import_promises4.default.readFile(filePath);
       const base64 = raw2.toString("base64");
       const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : `image/${ext.slice(1)}`;
       return { content: [{ type: "image", data: base64, mimeType }] };
@@ -18847,9 +18847,9 @@ async function writeFile(input) {
   if (!filePath) return errorResult2("file_path is required");
   if (typeof content !== "string") return errorResult2("content is required");
   try {
-    const dir = import_node_path6.default.dirname(filePath);
-    await import_promises5.default.mkdir(dir, { recursive: true });
-    await import_promises5.default.writeFile(filePath, content, "utf8");
+    const dir = import_node_path5.default.dirname(filePath);
+    await import_promises4.default.mkdir(dir, { recursive: true });
+    await import_promises4.default.writeFile(filePath, content, "utf8");
     invalidateFileCache(filePath);
     return textResult2(`Successfully wrote ${Buffer.byteLength(content, "utf8")} bytes to ${filePath}`);
   } catch (err) {
@@ -18879,7 +18879,7 @@ async function editFile(input) {
   if (typeof newString !== "string") return errorResult2("new_string is required");
   if (oldString === newString) return errorResult2("Original and edited file match exactly. Failed to apply edit.");
   try {
-    const stat = await import_promises5.default.stat(filePath);
+    const stat = await import_promises4.default.stat(filePath);
     if (stat.size > MAX_READ_BYTES) {
       return errorResult2(
         `File too large to edit (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit)`
@@ -18911,7 +18911,7 @@ async function editFile(input) {
     if (lineEnding === "CRLF") {
       result = result.replaceAll("\n", "\r\n");
     }
-    await import_promises5.default.writeFile(filePath, result, "utf8");
+    await import_promises4.default.writeFile(filePath, result, "utf8");
     invalidateFileCache(filePath);
     return textResult2(`The file ${filePath} has been updated successfully.`);
   } catch (err) {
@@ -18927,7 +18927,7 @@ async function batchedStat(files) {
     const stats = await Promise.all(
       batch.map(async (f) => {
         try {
-          const s = await import_promises5.default.stat(f);
+          const s = await import_promises4.default.stat(f);
           return { file: f, mtime: s.mtimeMs };
         } catch {
           return { file: f, mtime: 0 };
@@ -18977,12 +18977,12 @@ async function globSearch(input) {
     return errorResult2(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises5, import_node_path6, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
+var import_promises4, import_node_path5, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
-    import_promises5 = __toESM(require("node:fs/promises"), 1);
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_promises4 = __toESM(require("node:fs/promises"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_notebook();
     init_file_read_cache();
@@ -18996,6 +18996,132 @@ var init_file_system = __esm({
   }
 });
 
+// src/main/mcp/tools/shell-foreground.ts
+function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal) {
+  if (signal?.aborted) return Promise.resolve({ ...errorResult3("Command cancelled"), isError: true });
+  return new Promise((resolve) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let totalBytes = 0;
+    let stderrBytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    let cancelled = false;
+    let settled = false;
+    let forceTimer;
+    const finish = (code, failure) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!timedOut && !cancelled) clearTimeout(forceTimer);
+      signal?.removeEventListener("abort", abort);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      if (failure) {
+        resolve(errorResult3(failure));
+        return;
+      }
+      const parts = [];
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (stdout) parts.push(stdout);
+      if (stderr) parts.push(`
+--- stderr ---
+${stderr}`);
+      if (truncated || stderrBytes > MAX_OUTPUT_BYTES) parts.push(`
+[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`);
+      if (cancelled) parts.push("\n[Command cancelled; termination requested]");
+      if (timedOut) parts.push(`
+[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`);
+      if (code !== null && code !== 0) parts.push(`
+[Exit code: ${code}]`);
+      const result = textResult3(parts.join("") || `Command completed with exit code ${code ?? 0}`);
+      if (timedOut || cancelled) result.isError = true;
+      resolve(result);
+    };
+    const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
+      // identifies our session so plugins/scripts can adapt. See CLI's
+      // `utils/Shell.ts` — same two flags.
+      env: env4
+    });
+    const signalTree = (signal2) => {
+      if (process.platform !== "win32" && child.pid) {
+        try {
+          process.kill(-child.pid, signal2);
+          return;
+        } catch {
+        }
+      }
+      try {
+        child.kill(signal2);
+      } catch {
+      }
+    };
+    const terminate = () => {
+      if (forceTimer) return;
+      forceTimer = setTimeout(() => {
+        signalTree("SIGKILL");
+        finish(child.exitCode);
+      }, TERMINATION_GRACE_MS);
+      if (process.platform === "win32" && child.pid) {
+        try {
+          const killer = (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+          killer.on("error", () => {
+          });
+        } catch {
+        }
+      }
+      signalTree("SIGTERM");
+    };
+    const abort = () => {
+      cancelled = true;
+      terminate();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, timeout);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    child.stdout?.on("data", (chunk) => {
+      if (truncated) return;
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_OUTPUT_BYTES) {
+        truncated = true;
+        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
+        if (remaining > 0) {
+          stdoutChunks.push(chunk.subarray(0, remaining));
+        }
+      } else {
+        stdoutChunks.push(chunk);
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
+      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
+      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+      stderrBytes += chunk.length;
+    });
+    child.on("error", (err) => finish(null, `Failed to execute command: ${err.message}`));
+    child.on("close", (code) => finish(code));
+  });
+}
+var import_node_child_process4, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult3, errorResult3;
+var init_shell_foreground = __esm({
+  "src/main/mcp/tools/shell-foreground.ts"() {
+    "use strict";
+    import_node_child_process4 = require("node:child_process");
+    MAX_OUTPUT_BYTES = 100 * 1024;
+    TERMINATION_GRACE_MS = 1e3;
+    textResult3 = (text) => ({ content: [{ type: "text", text }] });
+    errorResult3 = (message) => textResult3(`Error: ${message}`);
+  }
+});
+
 // src/main/mcp/tools/shell-snapshot.ts
 function buildSnapshotScript() {
   return [
@@ -19006,7 +19132,7 @@ function buildSnapshotScript() {
   ].join("\n");
 }
 function captureSnapshot(bashPath) {
-  const tmpFile = import_path4.default.join(import_os3.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
+  const tmpFile = import_path3.default.join(import_os3.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
   return new Promise((resolve) => {
     const proc = (0, import_child_process2.spawn)(bashPath, ["-ilc", buildSnapshotScript()], {
       windowsHide: true,
@@ -19033,7 +19159,7 @@ function captureSnapshot(bashPath) {
       clearTimeout(timer);
       if (code !== 0 || !stdout) return resolve(null);
       try {
-        import_fs4.default.writeFileSync(tmpFile, stdout, "utf-8");
+        import_fs3.default.writeFileSync(tmpFile, stdout, "utf-8");
       } catch {
         return resolve(null);
       }
@@ -19060,13 +19186,13 @@ ${command}`;
 function shouldUseLoginShell(snapshotFile) {
   return !snapshotFile;
 }
-var import_fs4, import_os3, import_path4, import_child_process2, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
+var import_fs3, import_os3, import_path3, import_child_process2, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
 var init_shell_snapshot = __esm({
   "src/main/mcp/tools/shell-snapshot.ts"() {
     "use strict";
-    import_fs4 = __toESM(require("fs"), 1);
+    import_fs3 = __toESM(require("fs"), 1);
     import_os3 = __toESM(require("os"), 1);
-    import_path4 = __toESM(require("path"), 1);
+    import_path3 = __toESM(require("path"), 1);
     import_child_process2 = require("child_process");
     snapshotPath = null;
     snapshotAttempted = false;
@@ -19080,15 +19206,15 @@ async function shellEnv() {
   const binDirs = await listEnabledPluginBinDirs();
   return {
     ...process.env,
-    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path7.default.delimiter),
+    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path6.default.delimiter),
     GIT_EDITOR: "true",
     CLAUDECODE: "1"
   };
 }
-function textResult3(text) {
+function textResult4(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult3(message) {
+function errorResult4(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function evictOldBackgroundOutput() {
@@ -19107,29 +19233,29 @@ async function findBashAsync() {
   })();
   return bashLookupInFlight;
 }
-async function powerShellExecute(input) {
+async function powerShellExecute(input, context) {
   const command = input.command;
-  if (!command) return errorResult3("command is required");
-  const timeout = typeof input.timeout === "number" ? Math.min(input.timeout, 18e5) : 15e5;
+  if (!command) return errorResult4("command is required");
+  const timeout = typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
   let pwshPath;
   try {
     pwshPath = await resolvePowerShell();
   } catch (err) {
-    return errorResult3(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
-  return runForegroundCommand(command, pwshPath, timeout, ["-c"], await shellEnv());
+  return runForegroundCommand(command, pwshPath, timeout, ["-c"], await shellEnv(), context?.signal);
 }
-async function bashExecute(input) {
+async function bashExecute(input, context) {
   const command = input.command;
-  if (!command) return errorResult3("command is required");
-  const timeout = typeof input.timeout === "number" ? Math.min(input.timeout, 18e5) : 15e5;
+  if (!command) return errorResult4("command is required");
+  const timeout = typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
   const runInBackground = input.run_in_background === true;
   const description = input.description || "";
   let shell2;
   try {
     shell2 = await findBashAsync();
   } catch (err) {
-    return errorResult3(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
   const snapshot2 = await getOrCreateSnapshot(shell2);
   const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot2);
@@ -19138,7 +19264,7 @@ async function bashExecute(input) {
   if (runInBackground) {
     return runBackgroundCommand(wrapped, shell2, description, shellFlags, env4);
   }
-  return runForegroundCommand(wrapped, shell2, timeout, shellFlags, env4);
+  return runForegroundCommand(wrapped, shell2, timeout, shellFlags, env4, context?.signal);
 }
 function appendBounded(chunks, lengthRef, chunk) {
   lengthRef.size += chunk.length;
@@ -19158,7 +19284,7 @@ function appendBounded(chunks, lengthRef, chunk) {
 function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env) {
   evictOldBackgroundOutput();
   const bgId = nextBgId++;
-  const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
+  const child = (0, import_node_child_process5.spawn)(shell2, [...shellFlags, command], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
     // Suppress any child-console window flashing on Windows. Modal dialogs
@@ -19201,7 +19327,7 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
     });
     child.unref();
   }
-  return textResult3(
+  return textResult4(
     `Background process started (bash_id: ${bgId}, pid: ${child.pid || "unknown"}).
 ` + (description ? `Description: ${description}
 ` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
@@ -19210,9 +19336,9 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
 async function readBackgroundOutput(input) {
   const raw = input.bash_id ?? input.shell_id ?? input.id;
   const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult3("bash_id is required (the numeric id from run_in_background)");
+  if (!Number.isFinite(bgId)) return errorResult4("bash_id is required (the numeric id from run_in_background)");
   const out = backgroundOutput.get(bgId);
-  if (!out) return errorResult3(`No background shell with bash_id ${bgId} (it may have been evicted).`);
+  if (!out) return errorResult4(`No background shell with bash_id ${bgId} (it may have been evicted).`);
   let newStdout = out.stdout.slice(out.stdoutCursor);
   const newStderr = out.stderr.slice(out.stderrCursor);
   out.stdoutCursor = out.stdout.length;
@@ -19236,17 +19362,17 @@ ${newStdout}
 ${newStderr}
 </stderr>`);
   if (!newStdout && !newStderr) parts.push(out.running ? "\n(no new output yet)" : "\n(no more output)");
-  return textResult3(parts.join(""));
+  return textResult4(parts.join(""));
 }
 async function killBackgroundShell(input) {
   const raw = input.shell_id ?? input.bash_id ?? input.id;
   const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult3("shell_id is required (the numeric id from run_in_background)");
+  if (!Number.isFinite(bgId)) return errorResult4("shell_id is required (the numeric id from run_in_background)");
   const child = backgroundProcesses.get(bgId);
   const out = backgroundOutput.get(bgId);
-  if (!child && !out) return errorResult3(`No background shell with bash_id ${bgId}.`);
+  if (!child && !out) return errorResult4(`No background shell with bash_id ${bgId}.`);
   if (!child || child.killed || out && !out.running) {
-    return textResult3(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
+    return textResult4(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
   }
   try {
     if (typeof child.pid === "number" && process.platform !== "win32") {
@@ -19259,9 +19385,9 @@ async function killBackgroundShell(input) {
       child.kill();
     }
   } catch (e) {
-    return errorResult3(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
+    return errorResult4(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  return textResult3(`Killed background shell ${bgId}.`);
+  return textResult4(`Killed background shell ${bgId}.`);
 }
 async function resolvePowerShell() {
   if (cachedPwsh) return cachedPwsh;
@@ -19272,98 +19398,16 @@ async function resolvePowerShell() {
   })();
   return pwshLookupInFlight;
 }
-function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env) {
-  return new Promise((resolve) => {
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    let totalBytes = 0;
-    let stderrBytes = 0;
-    let truncated = false;
-    let timedOut = false;
-    const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
-      // identifies our session so plugins/scripts can adapt. See CLI's
-      // `utils/Shell.ts` — same two flags.
-      env: env4
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      if (process.platform === "win32" && child.pid) {
-        try {
-          (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
-        } catch {
-        }
-      }
-      child.kill("SIGTERM");
-      setTimeout(() => {
-        if (!child.killed) child.kill("SIGKILL");
-      }, 5e3);
-    }, timeout);
-    child.stdout?.on("data", (chunk) => {
-      if (truncated) return;
-      totalBytes += chunk.length;
-      if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true;
-        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
-        if (remaining > 0) {
-          stdoutChunks.push(chunk.subarray(0, remaining));
-        }
-      } else {
-        stdoutChunks.push(chunk);
-      }
-    });
-    child.stderr?.on("data", (chunk) => {
-      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
-      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
-      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
-      stderrBytes += chunk.length;
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve(errorResult3(`Failed to execute command: ${err.message}`));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      const parts = [];
-      if (stdout) {
-        parts.push(stdout);
-      }
-      if (stderr) {
-        parts.push(`
---- stderr ---
-${stderr}`);
-      }
-      if (truncated) {
-        parts.push(`
-[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB limit]`);
-      }
-      if (timedOut) {
-        parts.push(`
-[Command timed out after ${timeout}ms]`);
-      }
-      if (code !== null && code !== 0) {
-        parts.push(`
-[Exit code: ${code}]`);
-      }
-      const result = parts.join("") || `Command completed with exit code ${code ?? 0}`;
-      resolve(textResult3(result));
-    });
-  });
-}
-var import_node_child_process4, import_node_path7, MAX_OUTPUT_BYTES, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path6, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
-    import_node_child_process4 = require("node:child_process");
-    import_node_path7 = __toESM(require("node:path"), 1);
+    import_node_child_process5 = require("node:child_process");
+    init_shell_foreground();
+    import_node_path6 = __toESM(require("node:path"), 1);
     init_shell_snapshot();
     init_plugin_helpers();
     init_command_runtime();
-    MAX_OUTPUT_BYTES = 100 * 1024;
     WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
 ` : "";
     backgroundProcesses = /* @__PURE__ */ new Map();
@@ -36683,10 +36727,10 @@ var require_turndown_cjs = __commonJS({
 });
 
 // src/main/mcp/tools/web.ts
-function textResult4(text) {
+function textResult5(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult4(message) {
+function errorResult5(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function htmlToText(html) {
@@ -36787,7 +36831,7 @@ async function resolvesToPrivate(hostname) {
   const asInt = decodeIntHost(host);
   if (asInt) return ipv4IsPrivate(asInt);
   try {
-    const addrs = await (0, import_promises6.lookup)(host, { all: true });
+    const addrs = await (0, import_promises5.lookup)(host, { all: true });
     if (!addrs.length) return true;
     return addrs.some((a) => a.family === 4 ? ipv4IsPrivate(a.address) : ipv6IsPrivate(a.address));
   } catch {
@@ -36828,11 +36872,11 @@ async function fetchGuarded(start, headers, signal) {
   let current = start;
   for (let hop = 0; ; hop++) {
     const reason = await blockReason(current);
-    if (reason) return errorResult4(`URL targets a blocked address (${reason})`);
+    if (reason) return errorResult5(`URL targets a blocked address (${reason})`);
     const resp = await fetch(current.toString(), { headers, signal, redirect: "manual" });
     const isRedirect = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
     if (!isRedirect) return resp;
-    if (hop >= MAX_REDIRECTS) return errorResult4(`Too many redirects fetching ${start.toString()}`);
+    if (hop >= MAX_REDIRECTS) return errorResult5(`Too many redirects fetching ${start.toString()}`);
     try {
       await resp.body?.cancel();
     } catch {
@@ -36840,7 +36884,7 @@ async function fetchGuarded(start, headers, signal) {
     try {
       current = new URL(resp.headers.get("location"), current);
     } catch {
-      return errorResult4("Invalid redirect location");
+      return errorResult5("Invalid redirect location");
     }
   }
 }
@@ -36850,7 +36894,7 @@ function isLikelyIntranetHost(hostname) {
 }
 async function webFetch(input) {
   const url = input.url;
-  if (!url) return errorResult4("url is required");
+  if (!url) return errorResult5("url is required");
   const prompt = input.prompt || "Extract the main content from this page";
   const allowHttp = input.allow_http === true;
   try {
@@ -36858,7 +36902,7 @@ async function webFetch(input) {
     try {
       parsedUrl = new URL(url);
     } catch {
-      return errorResult4(`Invalid URL: ${url}`);
+      return errorResult5(`Invalid URL: ${url}`);
     }
     if (parsedUrl.protocol === "http:" && !allowHttp && !isLikelyIntranetHost(parsedUrl.hostname.toLowerCase())) {
       parsedUrl.protocol = "https:";
@@ -36870,11 +36914,11 @@ async function webFetch(input) {
     if (!(fetched instanceof Response)) return fetched;
     const response = fetched;
     if (!response.ok) {
-      return errorResult4(`HTTP ${response.status} ${response.statusText} for ${url}`);
+      return errorResult5(`HTTP ${response.status} ${response.statusText} for ${url}`);
     }
     const declaredLen = Number(response.headers.get("content-length") || "0");
     if (declaredLen > MAX_RAW_HTML_BYTES * 4) {
-      return errorResult4(`Response too large (${Math.round(declaredLen / 1024 / 1024)} MB) for ${url} \u2014 fetch a more specific URL.`);
+      return errorResult5(`Response too large (${Math.round(declaredLen / 1024 / 1024)} MB) for ${url} \u2014 fetch a more specific URL.`);
     }
     const contentType = response.headers.get("content-type") || "";
     const body = await readCapped(response, MAX_RAW_HTML_BYTES);
@@ -36889,7 +36933,7 @@ async function webFetch(input) {
 
 [Content truncated at ${Math.round(MAX_CONTENT_BYTES / 1024)}KB]`;
     }
-    return textResult4(
+    return textResult5(
       `URL: ${parsedUrl.toString()}
 Prompt: ${prompt}
 
@@ -36899,17 +36943,17 @@ ${content}`
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("AbortError") || msg.includes("timeout")) {
-      return errorResult4(`Request timed out fetching ${url}`);
+      return errorResult5(`Request timed out fetching ${url}`);
     }
-    return errorResult4(`Failed to fetch ${url}: ${msg}`);
+    return errorResult5(`Failed to fetch ${url}: ${msg}`);
   }
 }
-var import_turndown, import_promises6, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
+var import_turndown, import_promises5, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
 var init_web = __esm({
   "src/main/mcp/tools/web.ts"() {
     "use strict";
     import_turndown = __toESM(require_turndown_cjs(), 1);
-    import_promises6 = require("node:dns/promises");
+    import_promises5 = require("node:dns/promises");
     import_node_net = __toESM(require("node:net"), 1);
     MAX_CONTENT_BYTES = 500 * 1024;
     MAX_RAW_HTML_BYTES = 5 * 1024 * 1024;
@@ -36918,15 +36962,15 @@ var init_web = __esm({
 });
 
 // src/main/mcp/tools/git.ts
-function textResult5(text) {
+function textResult6(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult5(message) {
+function errorResult6(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function runGitLocal(args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = (0, import_node_child_process5.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = (0, import_node_child_process6.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     const timer = opts.timeoutMs ? setTimeout(() => {
       try {
@@ -36962,63 +37006,63 @@ async function getGitRoot(cwd) {
 }
 async function exitWorktree(input) {
   const worktreePath = input.path;
-  if (!worktreePath) return errorResult5("path is required");
-  const worktreeName = import_node_path8.default.basename(worktreePath);
+  if (!worktreePath) return errorResult6("path is required");
+  const worktreeName = import_node_path7.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
-    return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
+    return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot();
-    if (!gitRoot) return errorResult5("Not inside a git repository.");
-    if (!import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5(`Worktree path does not exist: ${worktreePath}`);
+    if (!gitRoot) return errorResult6("Not inside a git repository.");
+    if (!import_node_fs4.default.existsSync(worktreePath)) {
+      return errorResult6(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
-    return textResult5(`Removed worktree: ${worktreePath}`);
+    return textResult6(`Removed worktree: ${worktreePath}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult5(`Failed to remove worktree: ${msg}`);
+    return errorResult6(`Failed to remove worktree: ${msg}`);
   }
 }
 async function enterWorktree(input) {
-  const name = input.name || `worktree-${import_node_crypto3.default.randomBytes(4).toString("hex")}`;
+  const name = input.name || `worktree-${import_node_crypto.default.randomBytes(4).toString("hex")}`;
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
+    return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot();
     if (!gitRoot) {
-      return errorResult5("Not inside a git repository. Cannot create worktree.");
+      return errorResult6("Not inside a git repository. Cannot create worktree.");
     }
-    const worktreesDir = import_node_path8.default.join(gitRoot, ".claude", "worktrees");
-    import_node_fs6.default.mkdirSync(worktreesDir, { recursive: true });
-    const worktreePath = import_node_path8.default.join(worktreesDir, name);
-    if (import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5(`Worktree already exists at ${worktreePath}`);
+    const worktreesDir = import_node_path7.default.join(gitRoot, ".claude", "worktrees");
+    import_node_fs4.default.mkdirSync(worktreesDir, { recursive: true });
+    const worktreePath = import_node_path7.default.join(worktreesDir, name);
+    if (import_node_fs4.default.existsSync(worktreePath)) {
+      return errorResult6(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
-    if (!import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5("Worktree creation command succeeded but directory was not found");
+    if (!import_node_fs4.default.existsSync(worktreePath)) {
+      return errorResult6("Worktree creation command succeeded but directory was not found");
     }
-    return textResult5(
+    return textResult6(
       `Created worktree at: ${worktreePath}
 Branch: ${branchName}
 Based on: HEAD`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult5(`Failed to create worktree: ${msg}`);
+    return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process5, import_node_path8, import_node_fs6, import_node_crypto3;
+var import_node_child_process6, import_node_path7, import_node_fs4, import_node_crypto;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
-    import_node_child_process5 = require("node:child_process");
-    import_node_path8 = __toESM(require("node:path"), 1);
-    import_node_fs6 = __toESM(require("node:fs"), 1);
-    import_node_crypto3 = __toESM(require("node:crypto"), 1);
+    import_node_child_process6 = require("node:child_process");
+    import_node_path7 = __toESM(require("node:path"), 1);
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_crypto = __toESM(require("node:crypto"), 1);
   }
 });
 
@@ -37411,12 +37455,12 @@ function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
 function isInside(root, candidate) {
-  const rel = import_node_path9.default.relative(import_node_path9.default.resolve(root), import_node_path9.default.resolve(candidate));
-  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path9.default.sep) && !import_node_path9.default.isAbsolute(rel);
+  const rel = import_node_path8.default.relative(import_node_path8.default.resolve(root), import_node_path8.default.resolve(candidate));
+  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path8.default.sep) && !import_node_path8.default.isAbsolute(rel);
 }
 function readJson(filePath) {
   try {
-    return JSON.parse(import_node_fs7.default.readFileSync(filePath, "utf-8"));
+    return JSON.parse(import_node_fs5.default.readFileSync(filePath, "utf-8"));
   } catch {
     return null;
   }
@@ -37432,12 +37476,12 @@ async function discoverPluginLspConfigs() {
   for (const plugin of await listEnabledInstalledPlugins()) {
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     const rawMap = {};
-    collectConfigMap(rawMap, readJson(import_node_path9.default.join(plugin.installPath, ".lsp.json")));
+    collectConfigMap(rawMap, readJson(import_node_path8.default.join(plugin.installPath, ".lsp.json")));
     const declared = manifest.lspServers;
     const declarations = Array.isArray(declared) ? declared : declared === void 0 ? [] : [declared];
     for (const item of declarations) {
       if (typeof item === "string") {
-        const resolved = import_node_path9.default.resolve(plugin.installPath, item);
+        const resolved = import_node_path8.default.resolve(plugin.installPath, item);
         if (isInside(plugin.installPath, resolved)) collectConfigMap(rawMap, readJson(resolved));
       } else {
         collectConfigMap(rawMap, item);
@@ -37448,7 +37492,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path9.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -37476,7 +37520,7 @@ async function discoverPluginLspConfigs() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 function fileUri(filePath) {
-  return (0, import_node_url.pathToFileURL)(import_node_path9.default.resolve(filePath)).href;
+  return (0, import_node_url.pathToFileURL)(import_node_path8.default.resolve(filePath)).href;
 }
 function matchLspLanguage(extensionToLanguage, file) {
   const lower = file.toLowerCase();
@@ -37487,14 +37531,14 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process6, import_node_fs7, import_node_os3, import_node_path9, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process7, import_node_fs5, import_node_os3, import_node_path8, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
-    import_node_child_process6 = require("node:child_process");
-    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_child_process7 = require("node:child_process");
+    import_node_fs5 = __toESM(require("node:fs"), 1);
     import_node_os3 = __toESM(require("node:os"), 1);
-    import_node_path9 = __toESM(require("node:path"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
     LSP_MAX_HEADER_BYTES = 16 * 1024;
@@ -37545,7 +37589,7 @@ var init_plugin_lsp = __esm({
         }
       }
     };
-    resolveProject = (_tabId, file) => import_node_path9.default.dirname(file);
+    resolveProject = (_tabId, file) => import_node_path8.default.dirname(file);
     LspProcess = class {
       constructor(config, projectRoot) {
         this.config = config;
@@ -37603,23 +37647,23 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path9.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
-        import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
+        const dataDir = import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
-          const requested = import_node_path9.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
+          const requested = import_node_path8.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
           if (isInside(this.projectRoot, requested)) cwd = requested;
         }
-        const pluginBin = import_node_path9.default.join(this.config.pluginRoot, "bin");
+        const pluginBin = import_node_path8.default.join(this.config.pluginRoot, "bin");
         const env4 = {
           ...process.env,
           ...Object.fromEntries(Object.entries(this.config.env).map(([k, v]) => [k, this.substitute(v)])),
           CLAUDE_PLUGIN_ROOT: this.config.pluginRoot,
           CLAUDE_PLUGIN_DATA: dataDir,
           CLAUDE_PROJECT_DIR: this.projectRoot,
-          PATH: [import_node_fs7.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path9.default.delimiter)
+          PATH: [import_node_fs5.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path8.default.delimiter)
         };
-        this.child = (0, import_node_child_process6.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
+        this.child = (0, import_node_child_process7.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
           env: env4,
           stdio: ["pipe", "pipe", "pipe"],
@@ -37652,7 +37696,7 @@ var init_plugin_lsp = __esm({
         await this.request("initialize", {
           processId: process.pid,
           rootUri,
-          workspaceFolders: [{ uri: rootUri, name: import_node_path9.default.basename(this.projectRoot) }],
+          workspaceFolders: [{ uri: rootUri, name: import_node_path8.default.basename(this.projectRoot) }],
           capabilities: {
             workspace: { workspaceFolders: true, configuration: true },
             textDocument: {
@@ -37742,7 +37786,7 @@ var init_plugin_lsp = __esm({
             result = items.map(() => this.config.settings ?? null);
           } else if (message.method === "workspace/workspaceFolders") {
             const uri = fileUri(this.projectRoot);
-            result = [{ uri, name: import_node_path9.default.basename(this.projectRoot) }];
+            result = [{ uri, name: import_node_path8.default.basename(this.projectRoot) }];
           } else if (message.method === "workspace/applyEdit") {
             result = { applied: false, failureReason: "Plugin LSP edits are not applied automatically by the bridge" };
           }
@@ -37754,7 +37798,7 @@ var init_plugin_lsp = __esm({
       }
       async syncDocument(file, languageId) {
         const uri = fileUri(file);
-        const content = await import_node_fs7.default.promises.readFile(file, "utf-8");
+        const content = await import_node_fs5.default.promises.readFile(file, "utf-8");
         const previous = this.documents.get(uri);
         if (!previous) {
           this.documents.set(uri, { content, version: 1, languageId });
@@ -37841,11 +37885,11 @@ var init_plugin_lsp = __esm({
       }
       async matching(file, tabId) {
         if (this.definitions.length === 0) await this.refresh();
-        const projectRoot = resolveProject(tabId, file) ?? import_node_path9.default.dirname(file);
+        const projectRoot = resolveProject(tabId, file) ?? import_node_path8.default.dirname(file);
         for (const config of this.definitions) {
           const languageId = matchLspLanguage(config.extensionToLanguage, file);
           if (!languageId) continue;
-          const instanceKey = `${config.id}::${import_node_path9.default.resolve(projectRoot)}`;
+          const instanceKey = `${config.id}::${import_node_path8.default.resolve(projectRoot)}`;
           let process2 = this.instances.get(instanceKey);
           if (!process2) {
             process2 = new LspProcess(config, projectRoot);
@@ -37906,20 +37950,20 @@ var init_plugin_lsp = __esm({
 });
 
 // src/main/mcp/tools/lsp.ts
-function errorResult6(message) {
+function errorResult7(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
-function textResult6(text) {
+function textResult7(text) {
   return { content: [{ type: "text", text }] };
 }
 function requireAbsolutePath(input, key2 = "file") {
   const raw = input[key2];
   if (typeof raw !== "string" || !raw) return null;
-  return import_path5.default.isAbsolute(raw) ? raw : null;
+  return import_path4.default.isAbsolute(raw) ? raw : null;
 }
 async function lspDiagnostics(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const diags = vscode3.languages.getDiagnostics(vscode3.Uri.file(file));
   let pluginDiags = [];
   try {
@@ -37927,7 +37971,7 @@ async function lspDiagnostics(input, context) {
   } catch {
   }
   const combined = [...diags ?? [], ...pluginDiags];
-  if (combined.length === 0) return textResult6(`No diagnostics for ${file}.`);
+  if (combined.length === 0) return textResult7(`No diagnostics for ${file}.`);
   const sev = ["Error", "Warning", "Info", "Hint"];
   const lines = combined.map((d) => {
     const line = (d.range?.start?.line ?? 0) + 1;
@@ -37937,7 +37981,7 @@ async function lspDiagnostics(input, context) {
     const code = d.code != null ? ` [${typeof d.code === "object" ? JSON.stringify(d.code) : String(d.code)}]` : "";
     return `[${label}] ${file}:${line}:${col} ${d.message ?? ""}${src}${code}`;
   });
-  return textResult6(lines.join("\n"));
+  return textResult7(lines.join("\n"));
 }
 async function execCmd(command, ...args) {
   return Promise.race([
@@ -37955,23 +37999,23 @@ function hoverText(contents) {
 }
 async function lspHover(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   const uri = vscode3.Uri.file(file);
   const pos = new vscode3.Position(line, character);
   try {
     const pluginResults = await pluginLspManager.request(file, "textDocument/hover", { position: { line, character } }, context?.tabId);
     const pluginBody = pluginResults.map((result) => hoverText(result?.contents)).filter(Boolean).join("\n\n");
-    if (pluginBody) return textResult6(`Hover at ${file}:${line + 1}:${character + 1}
+    if (pluginBody) return textResult7(`Hover at ${file}:${line + 1}:${character + 1}
 
 ${pluginBody}`);
   } catch {
   }
   const hovers = await execCmd("vscode.executeHoverProvider", uri, pos);
-  if (!hovers || hovers.length === 0) return errorResult6(NO_SERVER);
+  if (!hovers || hovers.length === 0) return errorResult7(NO_SERVER);
   const body = hovers.map((h) => (h.contents ?? []).join("\n")).filter(Boolean).join("\n\n");
-  if (!body.trim()) return errorResult6(NO_SERVER);
-  return textResult6(`Hover at ${file}:${line + 1}:${character + 1}
+  if (!body.trim()) return errorResult7(NO_SERVER);
+  return textResult7(`Hover at ${file}:${line + 1}:${character + 1}
 
 ${body}`);
 }
@@ -38015,7 +38059,7 @@ function normalizePluginLocations(results) {
 }
 async function lspDefinition(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   let locs = [];
   try {
@@ -38023,12 +38067,12 @@ async function lspDefinition(input, context) {
   } catch {
   }
   if (locs.length === 0) locs = await locations("vscode.executeDefinitionProvider", file, line, character);
-  if (locs.length === 0) return errorResult6(NO_SERVER);
-  return textResult6(formatLocations(locs));
+  if (locs.length === 0) return errorResult7(NO_SERVER);
+  return textResult7(formatLocations(locs));
 }
 async function lspReferences(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   let locs = [];
   try {
@@ -38039,14 +38083,14 @@ async function lspReferences(input, context) {
   } catch {
   }
   if (locs.length === 0) locs = await locations("vscode.executeReferenceProvider", file, line, character);
-  if (locs.length === 0) return errorResult6(NO_SERVER);
-  return textResult6(formatLocations(locs));
+  if (locs.length === 0) return errorResult7(NO_SERVER);
+  return textResult7(formatLocations(locs));
 }
-var import_path5, vscode3, parseLine, parseChar, NO_SERVER, LSP_TIMEOUT_MS;
+var import_path4, vscode3, parseLine, parseChar, NO_SERVER, LSP_TIMEOUT_MS;
 var init_lsp = __esm({
   "src/main/mcp/tools/lsp.ts"() {
     "use strict";
-    import_path5 = __toESM(require("path"), 1);
+    import_path4 = __toESM(require("path"), 1);
     vscode3 = __toESM(require("vscode"), 1);
     init_plugin_lsp();
     parseLine = (input) => Math.max(0, Number(input.line ?? 0) || 0);
@@ -40959,6 +41003,137 @@ var JsonlBatcher = class {
   }
 };
 
+// src/main/ws/mcp-diagnostics.ts
+function mcpDiagnostic(phase, metadata) {
+  if (process.env.KAMIN_BRIDGE_MCP_DIAGNOSTICS !== "1") return;
+  console.info("[bridge:mcp]", JSON.stringify({ timestamp: Date.now(), phase, ...metadata }));
+}
+
+// src/main/ws/mcp-call-pipeline.ts
+function cancelMcpCall(ctx, requestId, taskOwner) {
+  const call = ctx.pendingMcpCalls.get(requestId);
+  if (!call || call.taskOwner !== taskOwner) return;
+  call.controller?.abort();
+  ctx.pendingPermissions.get(requestId)?.("deny");
+  ctx.pendingPermissions.delete(requestId);
+}
+function checkToolPermission(ctx, requestId, toolName, input) {
+  if (toolName.startsWith("__bridge_mcp_")) return true;
+  const mode = ctx.permissionMode();
+  if (mode === "bypassPermissions") return true;
+  const category = ctx.permissionManager.getToolCategory(toolName);
+  if (mode === "acceptEdits") {
+    if (category !== "shell" && category !== "git") return true;
+  } else {
+    const decision = ctx.permissionManager.checkPermission(toolName, input);
+    if (decision === "allow") return true;
+    if (decision === "deny") return false;
+  }
+  ctx.window.webContents.send("permission-request", ctx.tabId, {
+    requestId,
+    toolName,
+    input,
+    category
+  });
+  return new Promise((resolve) => {
+    ctx.pendingPermissions.set(requestId, (decision) => {
+      const allowed = decision !== "deny";
+      if (decision === "allow_session" || decision === "always") {
+        ctx.permissionManager.setSessionPermission(toolName, "allow");
+      }
+      resolve(allowed);
+    });
+  });
+}
+async function handleHookExecute(ctx, msg) {
+  try {
+    const { handleMonitorTriggerCommand: handleMonitorTriggerCommand2 } = await Promise.resolve().then(() => (init_plugin_monitors(), plugin_monitors_exports));
+    if (await handleMonitorTriggerCommand2(ctx.tabId, String(msg.command ?? ""), msg.payload ?? {}, msg.pluginId)) {
+      ctx.send({
+        type: "hook:response",
+        requestId: msg.requestId,
+        result: { stdout: "", stderr: "", exitCode: 0, outcome: "success", durationMs: 0 }
+      });
+      return;
+    }
+    const { executeHook: executeHook2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
+    const result = await executeHook2(msg);
+    ctx.send({ type: "hook:response", requestId: msg.requestId, result });
+  } catch (err) {
+    ctx.send({
+      type: "hook:response",
+      requestId: msg.requestId,
+      result: {
+        stdout: "",
+        stderr: err instanceof Error ? err.message : String(err),
+        exitCode: 1,
+        outcome: "error",
+        durationMs: 0
+      }
+    });
+  }
+}
+async function handleMcpCall(ctx, msg) {
+  if (ctx.pendingMcpCalls.has(msg.requestId)) return;
+  const correlation = { requestId: msg.requestId, toolName: msg.toolName };
+  mcpDiagnostic("request-received", correlation);
+  const controller = new AbortController();
+  ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input, taskOwner: msg.taskOwner, controller });
+  ctx.window.webContents.send("mcp-activity", ctx.tabId, {
+    requestId: msg.requestId,
+    toolName: msg.toolName,
+    input: msg.input,
+    timestamp: Date.now(),
+    status: "pending"
+  });
+  const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
+  mcpDiagnostic(allowed ? "permission-allowed" : "permission-denied", correlation);
+  if (!allowed || controller.signal.aborted) {
+    ctx.denyMcp(msg.requestId, "User denied permission");
+    return;
+  }
+  const start = Date.now();
+  mcpDiagnostic("execution-started", correlation);
+  let result;
+  try {
+    const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
+    result = await executeTool2(msg.toolName, msg.input, { tabId: ctx.tabId, signal: controller.signal });
+  } catch (err) {
+    result = `Error: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  mcpDiagnostic("execution-finished", { ...correlation, durationMs: Date.now() - start });
+  if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+  try {
+    const delivery = ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result, taskOwner: msg.taskOwner });
+    result = void 0;
+    const delivered = await delivery;
+    result = delivered.type === "mcp:response" ? delivered.result : delivered.reason;
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+    ctx.window.webContents.send("mcp-activity", ctx.tabId, {
+      requestId: msg.requestId,
+      toolName: msg.toolName,
+      input: msg.input,
+      timestamp: Date.now(),
+      status: "completed",
+      result,
+      durationMs: Date.now() - start
+    });
+  } catch (error) {
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+    ctx.reportDeliveryFailure();
+    ctx.window.webContents.send("mcp-activity", ctx.tabId, {
+      requestId: msg.requestId,
+      toolName: msg.toolName,
+      input: msg.input,
+      timestamp: Date.now(),
+      status: "denied",
+      result: `Delivery failed: ${String(error)}`
+    });
+  } finally {
+    ctx.pendingMcpCalls.delete(msg.requestId);
+  }
+}
+
 // src/main/ws/mcp-result-outbox.ts
 var MCP_RESULT_LIMITS = { count: 64, bytes: 16 * 1024 * 1024, frameBytes: 4 * 1024 * 1024, lifetimeMs: 12e4, retryMs: 1e3 };
 var McpResultOutbox = class {
@@ -40969,18 +41144,34 @@ var McpResultOutbox = class {
   slots = /* @__PURE__ */ new Map();
   bytes = 0;
   sessionId = null;
+  taskOwner;
   timer = null;
   deliver(sessionId, outcome) {
     const existing = this.slots.get(outcome.requestId);
-    if (existing) return existing.sessionId === sessionId ? existing.promise : Promise.reject(new Error("MCP result session mismatch"));
+    if (existing) return existing.taskOwner === outcome.taskOwner && (existing.sessionId === sessionId || !!outcome.taskOwner) ? existing.promise : Promise.reject(new Error("MCP result session mismatch"));
+    if (outcome.taskOwner && this.sessionId && outcome.taskOwner !== this.taskOwner) return Promise.reject(new Error("MCP result task owner mismatch"));
+    if (outcome.taskOwner && outcome.taskOwner === this.taskOwner && this.sessionId) sessionId = this.sessionId;
+    if (this.slots.size >= MCP_RESULT_LIMITS.count) return Promise.reject(new Error("MCP result delivery count capacity exceeded"));
     let frame;
+    const payloadBudget = MCP_RESULT_LIMITS.bytes - MCP_RESULT_LIMITS.count * 1024;
+    const failure = (reason) => ({
+      type: "mcp:response",
+      requestId: outcome.requestId,
+      taskOwner: outcome.taskOwner,
+      result: { isError: true, content: [{ type: "text", text: `Error: ${reason}. The tool may already have completed; inspect its effects before retrying. For reads, request a smaller range or narrower query.` }] }
+    });
     try {
       frame = JSON.stringify({ ...outcome, sessionId });
     } catch {
-      return Promise.reject(new Error("MCP result cannot be serialized"));
+      outcome = failure("Tool result cannot be serialized");
+      frame = JSON.stringify({ ...outcome, sessionId });
+    }
+    if (Buffer.byteLength(frame) > MCP_RESULT_LIMITS.frameBytes || this.bytes + Buffer.byteLength(frame) > payloadBudget) {
+      outcome = failure("Tool result exceeds the bounded delivery byte budget");
+      frame = JSON.stringify({ ...outcome, sessionId });
     }
     const bytes = Buffer.byteLength(frame);
-    if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes + bytes > MCP_RESULT_LIMITS.bytes || this.slots.size >= MCP_RESULT_LIMITS.count) {
+    if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes + bytes > MCP_RESULT_LIMITS.bytes) {
       return Promise.reject(new Error("MCP result delivery capacity exceeded"));
     }
     let resolve;
@@ -40989,21 +41180,35 @@ var McpResultOutbox = class {
       resolve = ok;
       reject = fail;
     });
-    this.slots.set(outcome.requestId, { sessionId, frame, bytes, expires: Date.now() + MCP_RESULT_LIMITS.lifetimeMs, promise, resolve, reject });
+    this.slots.set(outcome.requestId, { taskOwner: outcome.taskOwner, sessionId, frame, bytes, expires: Date.now() + (outcome.taskOwner ? 864e5 : MCP_RESULT_LIMITS.lifetimeMs), promise, resolve, reject });
     this.bytes += bytes;
+    mcpDiagnostic("result-queued", { requestId: outcome.requestId, sessionId, bytes, queuedBytes: this.bytes, queuedCount: this.slots.size });
     this.timer ??= setInterval(() => this.flush(), MCP_RESULT_LIMITS.retryMs);
     this.timer.unref?.();
     this.flush();
     return promise;
   }
-  attach(sessionId) {
+  attach(sessionId, taskOwner) {
+    this.taskOwner = taskOwner;
     this.sessionId = sessionId;
+    mcpDiagnostic("transport-attached", { sessionId, queuedCount: this.slots.size, queuedBytes: this.bytes });
     for (const [id, slot] of this.slots) {
-      if (slot.sessionId !== sessionId) this.finish(id, new Error("MCP result belongs to an ended server session"));
+      if (slot.taskOwner && slot.taskOwner === taskOwner) {
+        const frame = JSON.stringify({ ...JSON.parse(slot.frame), sessionId });
+        const bytes = Buffer.byteLength(frame);
+        if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes - slot.bytes + bytes > MCP_RESULT_LIMITS.bytes) {
+          this.finish(id, new Error("MCP result reattach capacity exceeded"));
+          continue;
+        }
+        this.bytes += bytes - slot.bytes;
+        Object.assign(slot, { sessionId, frame, bytes, lastSentAt: void 0 });
+      } else if (slot.taskOwner || slot.sessionId !== sessionId) this.finish(id, new Error("MCP result belongs to an ended server session"));
+      else slot.lastSentAt = void 0;
     }
     this.flush();
   }
   detach() {
+    mcpDiagnostic("transport-detached", { sessionId: this.sessionId ?? void 0, queuedCount: this.slots.size, queuedBytes: this.bytes });
     this.sessionId = null;
   }
   acknowledge(sessionId, requestId, accepted) {
@@ -41021,9 +41226,12 @@ var McpResultOutbox = class {
         this.finish(id, new Error("MCP result acknowledgement timed out"));
         continue;
       }
-      if (this.sessionId !== slot.sessionId) continue;
+      if (this.sessionId !== slot.sessionId || slot.taskOwner !== void 0 && slot.taskOwner !== this.taskOwner) continue;
+      if (slot.lastSentAt !== void 0 && Date.now() - slot.lastSentAt < MCP_RESULT_LIMITS.retryMs) continue;
       try {
-        this.sendFrame(slot.frame);
+        const enqueued = this.sendFrame(slot.frame);
+        mcpDiagnostic(enqueued ? "result-enqueued" : "result-backpressured", { requestId: id, sessionId: slot.sessionId, bytes: slot.bytes });
+        if (enqueued) slot.lastSentAt = Date.now();
       } catch {
       }
     }
@@ -41031,6 +41239,7 @@ var McpResultOutbox = class {
   finish(id, error) {
     const slot = this.slots.get(id);
     if (!slot) return;
+    mcpDiagnostic(error ? "result-delivery-failed" : "result-acknowledged", { requestId: id, sessionId: slot.sessionId });
     this.slots.delete(id);
     this.bytes -= slot.bytes;
     if (this.slots.size === 0 && this.timer) {
@@ -41038,14 +41247,14 @@ var McpResultOutbox = class {
       this.timer = null;
     }
     if (error) slot.reject(error);
-    else slot.resolve();
+    else slot.resolve(JSON.parse(slot.frame));
   }
 };
 
 // src/main/ws/transcript-mirror.ts
-var import_fs = require("fs");
-var import_promises = __toESM(require("fs/promises"), 1);
-var import_path = __toESM(require("path"), 1);
+var import_fs4 = require("fs");
+var import_promises6 = __toESM(require("fs/promises"), 1);
+var import_path5 = __toESM(require("path"), 1);
 var MAX_APPEND_GAP_BYTES = 256 * 1024;
 var TranscriptMirror = class {
   file;
@@ -41055,17 +41264,17 @@ var TranscriptMirror = class {
   /** Writes are chained so a burst of arriving batches cannot interleave. */
   queue = Promise.resolve();
   constructor(dir, conversationId) {
-    this.file = import_path.default.join(dir, `${conversationId}.jsonl`);
-    this.sidecar = import_path.default.join(dir, `${conversationId}.cursor.json`);
+    this.file = import_path5.default.join(dir, `${conversationId}.jsonl`);
+    this.sidecar = import_path5.default.join(dir, `${conversationId}.cursor.json`);
   }
   /** What we can prove we already hold. `null` = nothing usable. */
   async readCursor() {
     if (this.cursor) return this.cursor;
     try {
-      const raw = await import_promises.default.readFile(this.sidecar, "utf8");
+      const raw = await import_promises6.default.readFile(this.sidecar, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed.v !== 2 || typeof parsed.pos !== "number" || !parsed.head) return null;
-      const stat = await import_promises.default.stat(this.file);
+      const stat = await import_promises6.default.stat(this.file);
       if (stat.size === 0) return null;
       if (typeof parsed.size === "number" && stat.size < parsed.size) return null;
       this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid };
@@ -41099,7 +41308,7 @@ var TranscriptMirror = class {
     const start = beforePos - window9;
     let text;
     try {
-      const fh = await import_promises.default.open(this.file, "r");
+      const fh = await import_promises6.default.open(this.file, "r");
       try {
         const buf = Buffer.alloc(window9);
         const { bytesRead } = await fh.read(buf, 0, window9, start);
@@ -41134,7 +41343,7 @@ var TranscriptMirror = class {
   async readTail(maxRecords) {
     let size;
     try {
-      size = (await import_promises.default.stat(this.file)).size;
+      size = (await import_promises6.default.stat(this.file)).size;
     } catch {
       return [];
     }
@@ -41143,7 +41352,7 @@ var TranscriptMirror = class {
     const start = size - window9;
     let text;
     try {
-      const fh = await import_promises.default.open(this.file, "r");
+      const fh = await import_promises6.default.open(this.file, "r");
       try {
         const buf = Buffer.alloc(window9);
         const { bytesRead } = await fh.read(buf, 0, window9, start);
@@ -41176,7 +41385,7 @@ var TranscriptMirror = class {
       const fresh = records.filter((r) => typeof r._pos === "number" && r._pos >= cur).sort((a, b) => (a._pos ?? 0) - (b._pos ?? 0));
       if (fresh.length === 0) return;
       if ((fresh[0]._pos ?? 0) - cur > MAX_APPEND_GAP_BYTES) return;
-      this.stream ??= (0, import_fs.createWriteStream)(this.file, { flags: "a" });
+      this.stream ??= (0, import_fs4.createWriteStream)(this.file, { flags: "a" });
       const payload = fresh.map((r) => JSON.stringify(r)).join("\n") + "\n";
       await new Promise((resolve, reject) => {
         this.stream.write(payload, (err) => {
@@ -41223,13 +41432,13 @@ var TranscriptMirror = class {
     if (ordered.length === 0) return;
     this.queue = this.queue.then(async () => {
       try {
-        const st = await import_promises.default.stat(this.file);
+        const st = await import_promises6.default.stat(this.file);
         if (st.size > 0) return;
       } catch {
       }
       await this.close();
       const payload = ordered.map((r) => JSON.stringify(r)).join("\n") + "\n";
-      await import_promises.default.writeFile(this.file, payload, "utf8");
+      await import_promises6.default.writeFile(this.file, payload, "utf8");
       const last = ordered[ordered.length - 1];
       this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid };
       await this.writeSidecar();
@@ -41243,8 +41452,8 @@ var TranscriptMirror = class {
     this.queue = this.queue.then(async () => {
       await this.close();
       this.cursor = null;
-      await import_promises.default.rm(this.file, { force: true });
-      await import_promises.default.rm(this.sidecar, { force: true });
+      await import_promises6.default.rm(this.file, { force: true });
+      await import_promises6.default.rm(this.sidecar, { force: true });
     }).catch(() => {
     });
     return this.queue;
@@ -41277,11 +41486,11 @@ var TranscriptMirror = class {
   }
   async writeSidecar() {
     if (!this.cursor) return;
-    const st = await import_promises.default.stat(this.file).catch(() => null);
+    const st = await import_promises6.default.stat(this.file).catch(() => null);
     const body = { v: 2, ...this.cursor, ...st ? { size: st.size } : {} };
     const tmp = `${this.sidecar}.tmp`;
-    await import_promises.default.writeFile(tmp, JSON.stringify(body), "utf8");
-    await import_promises.default.rename(tmp, this.sidecar);
+    await import_promises6.default.writeFile(tmp, JSON.stringify(body), "utf8");
+    await import_promises6.default.rename(tmp, this.sidecar);
   }
 };
 
@@ -41306,38 +41515,38 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
 }
 
 // src/incident-diagnostics.ts
-var import_node_crypto2 = require("node:crypto");
-var import_node_fs3 = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs7 = require("node:fs");
+var import_node_path9 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
-var import_node_fs2 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 function removeIfPresent(path46) {
   try {
-    if ((0, import_node_fs2.existsSync)(path46)) (0, import_node_fs2.unlinkSync)(path46);
+    if ((0, import_node_fs6.existsSync)(path46)) (0, import_node_fs6.unlinkSync)(path46);
   } catch {
   }
 }
 function rotateLogFiles(path46, backups) {
   if (backups <= 0) {
     removeIfPresent(path46);
-    return !(0, import_node_fs2.existsSync)(path46);
+    return !(0, import_node_fs6.existsSync)(path46);
   }
   removeIfPresent(`${path46}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
     const from = `${path46}.${String(i)}`;
-    if (!(0, import_node_fs2.existsSync)(from)) continue;
+    if (!(0, import_node_fs6.existsSync)(from)) continue;
     const to = `${path46}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
-      (0, import_node_fs2.renameSync)(from, to);
+      (0, import_node_fs6.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs2.existsSync)(path46)) {
+  if ((0, import_node_fs6.existsSync)(path46)) {
     removeIfPresent(`${path46}.1`);
     try {
-      (0, import_node_fs2.renameSync)(path46, `${path46}.1`);
+      (0, import_node_fs6.renameSync)(path46, `${path46}.1`);
     } catch {
       return false;
     }
@@ -41354,7 +41563,7 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs2.existsSync)(path46) && (0, import_node_fs2.statSync)(path46).size > 0) {
+    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path46) && (0, import_node_fs6.statSync)(path46).size > 0) {
       rotateLogFiles(path46, options.backups);
     }
     this.open();
@@ -41388,7 +41597,7 @@ var RollingLogWriter = class {
     let offset = 0;
     while (offset < data.length) {
       try {
-        const written = (0, import_node_fs2.writeSync)(fd, data, offset, data.length - offset);
+        const written = (0, import_node_fs6.writeSync)(fd, data, offset, data.length - offset);
         if (written <= 0) return false;
         this.bytes += written;
         offset += written;
@@ -41411,7 +41620,7 @@ var RollingLogWriter = class {
       try {
         if (this.fd === null) this.open();
         if (this.fd === null) return;
-        const written = (0, import_node_fs2.writeSync)(this.fd, data, offset, size);
+        const written = (0, import_node_fs6.writeSync)(this.fd, data, offset, size);
         if (written <= 0) return;
         this.bytes += written;
         offset += written;
@@ -41431,7 +41640,7 @@ var RollingLogWriter = class {
   closeDescriptor() {
     if (this.fd === null) return;
     try {
-      (0, import_node_fs2.closeSync)(this.fd);
+      (0, import_node_fs6.closeSync)(this.fd);
     } catch {
     }
     this.fd = null;
@@ -41439,9 +41648,9 @@ var RollingLogWriter = class {
   open() {
     if (this.permanentlyClosed) return;
     try {
-      this.fd = (0, import_node_fs2.openSync)(this.path, "a");
+      this.fd = (0, import_node_fs6.openSync)(this.path, "a");
       try {
-        this.bytes = (0, import_node_fs2.statSync)(this.path).size;
+        this.bytes = (0, import_node_fs6.statSync)(this.path).size;
       } catch {
         this.closeDescriptor();
         this.bytes = 0;
@@ -41458,8 +41667,8 @@ var RollingLogWriter = class {
     const rotated = rotateLogFiles(this.path, this.options.backups);
     this.bytes = 0;
     try {
-      this.fd = (0, import_node_fs2.openSync)(this.path, rotated ? "a" : "w");
-      this.bytes = (0, import_node_fs2.statSync)(this.path).size;
+      this.fd = (0, import_node_fs6.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs6.statSync)(this.path).size;
     } catch {
       this.closeDescriptor();
       this.bytes = 0;
@@ -41468,9 +41677,9 @@ var RollingLogWriter = class {
 };
 
 // src/main/ws/conversation-ref.ts
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 function conversationRef(id) {
-  return (0, import_node_crypto.createHash)("sha256").update(`kamin-conversation-ref-v1:${id}`).digest("hex").slice(0, 12);
+  return (0, import_node_crypto2.createHash)("sha256").update(`kamin-conversation-ref-v1:${id}`).digest("hex").slice(0, 12);
 }
 
 // src/incident-diagnostics.ts
@@ -41480,7 +41689,7 @@ var MAX_COUNTER = 1e9;
 var MIN_SAMPLE_INTERVAL_MS = 1e4;
 var INCIDENT_LOG_MAX_BYTES = 1 * 1024 * 1024;
 var INCIDENT_LOG_BACKUPS = 3;
-var TAB_REF_KEY = (0, import_node_crypto2.randomBytes)(32);
+var TAB_REF_KEY = (0, import_node_crypto3.randomBytes)(32);
 var IDENTITY_ACTIONS = /* @__PURE__ */ new Set([
   "bind",
   "send-resume",
@@ -41530,7 +41739,7 @@ function classifyCause(value, status, closeCode) {
 }
 function tabRef(value) {
   const id = typeof value === "string" ? value : "missing";
-  return (0, import_node_crypto2.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
+  return (0, import_node_crypto3.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
 }
 function normalizeConnectionTransition(tabId, raw) {
   const state = raw && typeof raw === "object" ? raw : {};
@@ -41645,8 +41854,8 @@ function installIncidentDiagnostics(logDir, subscribe) {
   installed = true;
   dropMarked = false;
   try {
-    (0, import_node_fs3.mkdirSync)(logDir, { recursive: true });
-    incidentLog = new RollingLogWriter((0, import_node_path2.join)(logDir, "incident.log"), {
+    (0, import_node_fs7.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path9.join)(logDir, "incident.log"), {
       maxBytes: INCIDENT_LOG_MAX_BYTES,
       backups: INCIDENT_LOG_BACKUPS,
       rotateOnOpen: true
@@ -41999,115 +42208,6 @@ function handleServerMessage(msg, ctx) {
   }
 }
 
-// src/main/ws/mcp-call-pipeline.ts
-function checkToolPermission(ctx, requestId, toolName, input) {
-  if (toolName.startsWith("__bridge_mcp_")) return true;
-  const mode = ctx.permissionMode();
-  if (mode === "bypassPermissions") return true;
-  const category = ctx.permissionManager.getToolCategory(toolName);
-  if (mode === "acceptEdits") {
-    if (category !== "shell" && category !== "git") return true;
-  } else {
-    const decision = ctx.permissionManager.checkPermission(toolName, input);
-    if (decision === "allow") return true;
-    if (decision === "deny") return false;
-  }
-  ctx.window.webContents.send("permission-request", ctx.tabId, {
-    requestId,
-    toolName,
-    input,
-    category
-  });
-  return new Promise((resolve) => {
-    ctx.pendingPermissions.set(requestId, (decision) => {
-      const allowed = decision !== "deny";
-      if (decision === "allow_session" || decision === "always") {
-        ctx.permissionManager.setSessionPermission(toolName, "allow");
-      }
-      resolve(allowed);
-    });
-  });
-}
-async function handleHookExecute(ctx, msg) {
-  try {
-    const { handleMonitorTriggerCommand: handleMonitorTriggerCommand2 } = await Promise.resolve().then(() => (init_plugin_monitors(), plugin_monitors_exports));
-    if (await handleMonitorTriggerCommand2(ctx.tabId, String(msg.command ?? ""), msg.payload ?? {}, msg.pluginId)) {
-      ctx.send({
-        type: "hook:response",
-        requestId: msg.requestId,
-        result: { stdout: "", stderr: "", exitCode: 0, outcome: "success", durationMs: 0 }
-      });
-      return;
-    }
-    const { executeHook: executeHook2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
-    const result = await executeHook2(msg);
-    ctx.send({ type: "hook:response", requestId: msg.requestId, result });
-  } catch (err) {
-    ctx.send({
-      type: "hook:response",
-      requestId: msg.requestId,
-      result: {
-        stdout: "",
-        stderr: err instanceof Error ? err.message : String(err),
-        exitCode: 1,
-        outcome: "error",
-        durationMs: 0
-      }
-    });
-  }
-}
-async function handleMcpCall(ctx, msg) {
-  if (ctx.pendingMcpCalls.has(msg.requestId)) return;
-  ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input });
-  ctx.window.webContents.send("mcp-activity", ctx.tabId, {
-    requestId: msg.requestId,
-    toolName: msg.toolName,
-    input: msg.input,
-    timestamp: Date.now(),
-    status: "pending"
-  });
-  const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
-  if (!allowed) {
-    ctx.denyMcp(msg.requestId, "User denied permission");
-    return;
-  }
-  const start = Date.now();
-  let result;
-  try {
-    const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
-    result = await executeTool2(msg.toolName, msg.input, { tabId: ctx.tabId });
-  } catch (err) {
-    result = `Error: ${err instanceof Error ? err.message : String(err)}`;
-  }
-  if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
-  try {
-    await ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result });
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
-    ctx.window.webContents.send("mcp-activity", ctx.tabId, {
-      requestId: msg.requestId,
-      toolName: msg.toolName,
-      input: msg.input,
-      timestamp: Date.now(),
-      status: "completed",
-      result,
-      durationMs: Date.now() - start
-    });
-  } catch (error) {
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
-    ctx.reportDeliveryFailure();
-    ctx.window.webContents.send("mcp-activity", ctx.tabId, {
-      requestId: msg.requestId,
-      toolName: msg.toolName,
-      input: msg.input,
-      timestamp: Date.now(),
-      status: "denied",
-      result: `Delivery failed: ${String(error)}`
-    });
-  } finally {
-    ctx.pendingMcpCalls.delete(msg.requestId);
-  }
-}
-
 // src/main/ws/connection-manager.ts
 var MIRROR_PAINT_RECORDS = 2e3;
 var REPLAY_TAIL_MAX = 4500;
@@ -42234,8 +42334,9 @@ var ConnectionManager = class _ConnectionManager {
   lastReloadAt = 0;
   recentMcpCalls = /* @__PURE__ */ new Map();
   mcpSessionId = null;
+  mcpTaskOwner;
   mcpResults = new McpResultOutbox((frame) => {
-    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount > 4 * 1024 * 1024) return false;
+    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false;
     this.ws.send(frame);
     return true;
   });
@@ -42701,6 +42802,7 @@ var ConnectionManager = class _ConnectionManager {
       this.mcpResults.dispose();
       this.mcpSessionId = null;
       this.recentMcpCalls.clear();
+      for (const call of this.pendingMcpCalls.values()) call.controller?.abort();
       this.pendingMcpCalls.clear();
     }
     for (const resolve of this.pendingPermissions.values()) {
@@ -42771,7 +42873,7 @@ var ConnectionManager = class _ConnectionManager {
   async deliverMcpResult(outcome) {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;
     try {
-      await this.mcpResults.deliver(this.mcpSessionId, outcome);
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner });
       if (!this.pendingMcpCalls.has(outcome.requestId)) return;
       this.window.webContents.send("mcp-activity", this.tabId, {
         requestId: outcome.requestId,
@@ -42988,6 +43090,11 @@ var ConnectionManager = class _ConnectionManager {
     }
     if (msg.type === "session:output" && this.state.status !== "authenticated") return;
     if (this.identityHold && msg.type !== "session:created" && msg.type !== "session:error") return;
+    if (msg.type === "session:created" || msg.type === "session:restarted") this.mcpTaskOwner = msg.mcpTaskOwner;
+    if (msg.type === "mcp:cancel") {
+      cancelMcpCall(this.mcpCallCtx(), msg.requestId, msg.taskOwner);
+      return;
+    }
     if (msg.type === "mcp:call") {
       for (const [id, expires] of this.recentMcpCalls) {
         if (Date.now() >= expires) this.recentMcpCalls.delete(id);
@@ -43133,7 +43240,7 @@ var ConnectionManager = class _ConnectionManager {
       tabId: this.tabId,
       send: (m) => this.send(m),
       reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
-      deliverResult: (outcome) => this.mcpSessionId ? this.mcpResults.deliver(this.mcpSessionId, outcome) : Promise.reject(new Error("MCP server session ended")),
+      deliverResult: (outcome) => this.mcpSessionId ? this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner }) : Promise.reject(new Error("MCP server session ended")),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
       permissionMode: () => this.permissionMode,
@@ -43166,11 +43273,16 @@ var ConnectionManager = class _ConnectionManager {
       this.establishFailures = 0;
       if (state.sessionId) {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
-          this.pendingMcpCalls.clear();
+          for (const [id, call] of this.pendingMcpCalls) {
+            if (!call.taskOwner || call.taskOwner !== this.mcpTaskOwner) {
+              call.controller?.abort();
+              this.pendingMcpCalls.delete(id);
+            }
+          }
           this.recentMcpCalls.clear();
         }
         this.mcpSessionId = state.sessionId;
-        this.mcpResults.attach(state.sessionId);
+        this.mcpResults.attach(state.sessionId, this.mcpTaskOwner);
       }
     } else this.mcpResults.detach();
     const rendererState = this.getState();

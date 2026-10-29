@@ -39,7 +39,7 @@ fn floats_in(
         Some(Len::Px(v)) => v.abs() < COORD_EPS,
         _ => false,
     };
-    // Во всю ширину — `width: 100%` или точечная ширина не уже колонки.
+    // Во всю ширину — `width` не меньше 100% или точечная ширина не уже колонки.
     // Второе — только ПОСЛЕДНЕМУ содержательному ребёнку: блок-сосед
     // после флоата встал бы не под ним, а рядом по вертикали (его коробка
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
@@ -68,7 +68,7 @@ fn floats_in(
     };
     let full_float = |i: usize, c: &Element| {
         c.style.used().float.is_some_and(|f| f != 0)
-            && (matches!(c.style.used().width, Some(Len::Pct(k)) if (k - 1.0).abs() < 1e-4)
+            && (matches!(c.style.used().width, Some(Len::Pct(k)) if k >= 1.0 - 1e-4)
                 || (wide_px(c) && last_content(i)))
             && zero_m(&c.style.used().margin.left)
             && zero_m(&c.style.used().margin.right)
@@ -91,8 +91,7 @@ fn floats_in(
     // позиционирования) сама в колонку не режется иначе, чем её дети:
     // флоат во всю ширину внутри неё — тот же случай, что у прямого
     // ребёнка (`float-in-self-collapsing-block-000`: обёртка из одного
-    // флоата 100% рисовала его одним куском поверх разрыва колонки,
-    // а замер стопки — `block_like_float` в `kid_shapes` — уже резал).
+    // флоата 100% рисовала его одним куском поверх разрыва колонки).
     let nested: Vec<Option<Element>> = ge
         .children
         .iter()

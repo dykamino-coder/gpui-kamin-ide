@@ -115,7 +115,7 @@ fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui
             let host = super::tests::section(&tree);
             let before = format!("{:?}", host.style.used());
             let merged = crate::style::cascade::materialize::box_style(&opts.root_style(), &host.style, opts.cx.vcx());
-            let recipe = Recipe::new(host, &merged, &opts, 2, 0., None, StackAxis::Horizontal, None).expect("recorded float recipe");
+            let recipe = Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None).expect("recorded float recipe");
             let mut stack = ColumnStack::new(Vec::new(), 2, 0., None, None, None, None, Default::default());
             let mut heights = Vec::new();
             for width in [100., 80., 100.] {

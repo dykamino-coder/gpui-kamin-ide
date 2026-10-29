@@ -113,3 +113,40 @@ impl PageStack {
         }
     }
 }
+
+/// Block-axis span `(start, extent)` of fragment `f`'s page mask with the
+/// extent `ext` from [`PageStack::mask_extent`]: a fragment that starts its box
+/// is open up to the page area's start.
+pub(crate) fn mask_span(f: &Frag, ext: f32) -> (f32, f32) {
+    if f.from <= COORD_EPS {
+        (0.0, ext + f.y.max(0.0))
+    } else {
+        (f.y, ext)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mask_span;
+    use crate::layout::fragment::types::Frag;
+
+    fn frag(y: f32, from: f32, h: f32) -> Frag {
+        Frag {
+            kid: 0,
+            copy: 0,
+            col: 0,
+            y,
+            from,
+            h,
+            head: 0.0,
+            foot: 0.0,
+        }
+    }
+
+    #[test]
+    fn only_the_starting_fragment_opens_to_the_area_start() {
+        assert_eq!(mask_span(&frag(50.0, 0.0, 100.0), 100.0), (0.0, 150.0));
+        assert_eq!(mask_span(&frag(0.0, 100.0, 80.0), 80.0), (0.0, 80.0));
+        assert_eq!(mask_span(&frag(20.0, 100.0, 80.0), 80.0), (20.0, 80.0));
+    }
+}

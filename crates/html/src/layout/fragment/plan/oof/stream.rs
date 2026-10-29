@@ -16,6 +16,11 @@ pub(crate) struct Input {
     pub(crate) inline_start: f32,
     pub(crate) repeat_fixed: bool,
     pub(crate) fixed_content: bool,
+    /// Its containing block and static-position containing block are the
+    /// fragmentation host itself, whose principal box its own fragmentainers do
+    /// not break (css-multicol-1 §2): one whole fragment in the fragmentainer of
+    /// its anchor, overflowing it.
+    pub(crate) unfragmented: bool,
 }
 
 /// Все тяжёлые значения находятся в векторах, а не в рекурсивных кадрах сборки.
@@ -121,9 +126,12 @@ impl Streams {
             normal_complete,
             &mut self.store,
             |idx, space| {
-                if inputs[idx as usize].fixed_content
-                    && space.is_paginated()
-                    && space.may_break_inside()
+                // Unbroken content: a whole box, like the content of a
+                // repeated one (no break inside, no deferral to a later one).
+                if inputs[idx as usize].unfragmented
+                    || (inputs[idx as usize].fixed_content
+                        && space.is_paginated()
+                        && space.may_break_inside())
                 {
                     Space {
                         repeat: crate::layout::fragment::token::space::RepeatState::Inside,

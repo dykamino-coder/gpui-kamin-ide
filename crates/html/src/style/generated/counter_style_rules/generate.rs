@@ -3,152 +3,74 @@
 use super::*;
 use crate::document::state::ValueCx;
 
-/// Начальное представление по системе (§cyclic … §additive).
-fn initial(algo: &Algo, v: i128, context: Context) -> Option<String> {
-    match algo {
-        Algo::Builtin(name) => context.disclosure(name).map(str::to_owned).or_else(|| {
-            let magnitude = if matches!(name.as_str(), "disc" | "circle" | "square") {
-                0 // Cyclic systems represent every integer, including negative values.
-            } else {
-                u64::try_from(v).ok()?
-            };
-            builtin_initial(name, magnitude)
-        }),
-        Algo::Own(sys, syms, add) => {
-            let n = syms.len() as i128;
-            match sys {
-                System::Cyclic => {
-                    Some(syms[(v.rem_euclid(n) + n - 1).rem_euclid(n) as usize].clone())
-                }
-                System::Fixed(first) => {
-                    let i = v.checked_sub(i128::from(*first))?;
-                    (0..n).contains(&i).then(|| syms[i as usize].clone())
-                }
-                System::Symbolic => {
-                    if v < 1 {
-                        return None;
-                    }
-                    let reps = ((v - 1) / n + 1) as usize;
-                    if reps > 60 {
-                        return None;
-                    }
-                    Some(syms[((v - 1) % n) as usize].repeat(reps))
-                }
-                System::Alphabetic => {
-                    if v < 1 {
-                        return None;
-                    }
-                    let mut v = v;
-                    let mut out = vec![];
-                    while v > 0 {
-                        v -= 1;
-                        out.push(syms[(v % n) as usize].as_str());
-                        v /= n;
-                    }
-                    out.reverse();
-                    Some(out.concat())
-                }
-                System::Numeric => {
-                    let mut v = v;
-                    if v == 0 {
-                        return Some(syms[0].clone());
-                    }
-                    let mut out = vec![];
-                    while v > 0 {
-                        out.push(syms[(v % n) as usize].as_str());
-                        v /= n;
-                    }
-                    out.reverse();
-                    Some(out.concat())
-                }
-                System::Additive => {
-                    let mut v = v as u64;
-                    if v == 0 {
-                        return add.iter().find(|(w, _)| *w == 0).map(|(_, s)| s.clone());
-                    }
-                    let mut out = String::new();
-                    let mut count = 0;
-                    for (w, s) in add {
-                        if *w == 0 || v < *w {
-                            continue;
-                        }
-                        let reps = v / w;
-                        count += reps;
-                        if count > 1000 {
-                            return None;
-                        }
-                        out.push_str(&s.repeat(reps as usize));
-                        v -= reps * w;
-                        if v == 0 {
-                            break;
-                        }
-                    }
-                    (v == 0).then_some(out)
-                }
-                System::Extends(_) => None,
-            }
-        }
-    }
-}
-
 fn graphemes(s: &str) -> usize {
     unicode_segmentation::UnicodeSegmentation::graphemes(s, true).count()
 }
 
-/// §counter-style-generate для стиля `name` (уже нормализованного).
+/// §counter-style-generate: fallback follows only the edges actually selected by value.
 fn generate(
     rules: &HashMap<String, Raw>,
     v: i64,
     name: &str,
-    depth: usize,
     context: Context,
-    vcx: ValueCx<'_>,
-) -> String {
-    // Keep builtin fallback in this document's registry; re-entering repr()
-    // would lose this map and recursively acquire the public registry mutex.
-    let resolved = || {
-        resolve_counter_style(rules, name, 0)
-            .or_else(|| builtin(name).map(|_| super::resolve::builtin_resolved(name)))
-    };
-    let Some(r) = (depth < 16).then(resolved).flatten() else {
-        return if depth < 16 {
-            builtin_repr_in(v, name, context, vcx)
-        } else {
-            v.to_string()
+    admission: &crate::budget::admission::Admission,
+) -> Result<String, crate::budget::admission::Error> {
+    use crate::budget::admission::Buffer;
+    let mut visited = Buffer::default();
+    let mut seen = std::collections::HashSet::new();
+    let mut current = name.to_string();
+    loop {
+        admission.work(1)?;
+        if !seen.insert(current.clone()) {
+            return Ok(v.to_string());
+        }
+        visited.push(current.clone(), admission)?;
+        let Some(r) = resolve_counter_style(rules, &current, admission)?
+            .or_else(|| builtin(&current).map(|_| super::resolve::builtin_resolved(&current)))
+        else {
+            return Ok(v.to_string());
         };
-    };
-    let fallback = |rules: &HashMap<String, Raw>| {
-        let fb = r.fallback.clone();
-        if depth >= 15 || fb == name {
-            v.to_string()
-        } else {
-            generate(rules, v, &fb, depth + 1, context, vcx)
+        if in_range(&r, v) {
+            let neg = v < 0 && uses_negative(&r.algo);
+            if let Some(mut body) = super::initial::initial(
+                &r.algo,
+                if neg { -i128::from(v) } else { i128::from(v) },
+                context,
+                admission,
+            )? {
+                if let Some((width, sym)) = &r.pad {
+                    let len = graphemes(&body)
+                        + if neg {
+                            graphemes(&r.negative.0) + graphemes(&r.negative.1)
+                        } else {
+                            0
+                        };
+                    if len < *width {
+                        body = format!(
+                            "{}{body}",
+                            super::initial::repeat(sym, width - len, admission)?
+                        );
+                    }
+                }
+                if neg {
+                    body = format!("{}{body}{}", r.negative.0, r.negative.1);
+                }
+                return Ok(body);
+            }
         }
-    };
-    if !in_range(&r, v) {
-        return fallback(rules);
+        current = r.fallback;
     }
-    let neg = v < 0 && uses_negative(&r.algo);
-    let Some(mut body) = initial(
-        &r.algo,
-        if neg { -i128::from(v) } else { i128::from(v) },
-        context,
-    ) else {
-        return fallback(rules);
-    };
-    if let Some((width, sym)) = &r.pad {
-        let mut len = graphemes(&body);
-        if neg {
-            len += graphemes(&r.negative.0) + graphemes(&r.negative.1);
-        }
-        if len < *width {
-            body = format!("{}{body}", sym.repeat(width - len));
-        }
-    }
-    if neg {
-        body = format!("{}{body}{}", r.negative.0, r.negative.1);
-    }
-    body
+}
+
+fn finish<T>(result: Result<T, crate::budget::admission::Error>, vcx: ValueCx<'_>) -> Option<T> {
+    result
+        .map_err(|error| {
+            let failure = crate::dom::outcome::DocumentFailure::from(error);
+            vcx.doc.revision_budget().reject(failure);
+            vcx.doc
+                .record_observed(crate::diagnostics::Diagnostic::from(&failure));
+        })
+        .ok()
 }
 
 /// Представление значения стилем, заданным правилом документа; `None` —
@@ -156,8 +78,10 @@ fn generate(
 pub fn custom_repr(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
     let guard = vcx.doc.counter_styles.borrow();
     let rules = &*guard;
-    (rules.contains_key(name) || anonymous(name).is_some())
-        .then(|| generate(rules, v, name, 0, context, vcx))
+    (rules.contains_key(name) || anonymous(name).is_some()).then(|| {
+        let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
+        finish(generate(rules, v, name, context, &admission), vcx).unwrap_or_default()
+    })
 }
 
 /// Анонимный стиль `symbols()` (css-counter-styles-3 §symbols-function):
@@ -218,8 +142,9 @@ pub fn valid_symbols_fn(text: &str) -> bool {
 pub fn custom_marker(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
     let guard = vcx.doc.counter_styles.borrow();
     let rules = &*guard;
-    let r = resolve_counter_style(rules, name, 0)?;
-    let body = generate(rules, v, name, 0, context, vcx);
+    let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
+    let r = finish(resolve_counter_style(rules, name, &admission), vcx)??;
+    let body = finish(generate(rules, v, name, context, &admission), vcx)?;
     Some(format!("{}{body}{}", r.prefix, r.suffix))
 }
 

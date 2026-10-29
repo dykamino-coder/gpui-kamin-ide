@@ -63,22 +63,7 @@ pub(super) fn bind_measurements(
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
 ) {
-    space::use_text_system(text_system.clone(), fonts, vcx);
-    let text_system3 = text_system;
-    *fonts.metrics.wrap.borrow_mut() = Some(Box::new(
-        move |font: &gpui::Font, size: f32, text: &str, width: f32| {
-            let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
-            let mut lines = 0usize;
-            for seg in text.split('\n') {
-                lines += 1;
-                lines += wrapper
-                    .wrap_line_css(&[gpui::LineFragment::text(seg)], gpui::px(width.max(0.0)))
-                    .filter(|b| seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
-                    .count();
-            }
-            lines
-        },
-    ));
+    space::use_text_system(text_system, fonts, vcx);
 }
 
 pub(super) fn horizontal(

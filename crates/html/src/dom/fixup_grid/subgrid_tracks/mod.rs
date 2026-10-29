@@ -16,9 +16,11 @@ use super::{subgrid_gap_slice, subgrid_inhibited, subgrid_slot, subgrid_span};
 use crate::dom::*;
 use crate::style::computed::Display;
 
-pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
+pub(crate) fn subgrid_takes_parent_tracks(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, (), |el, _| {
         if matches!(
             el.style.cascaded().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
@@ -138,6 +140,6 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                 }
             }
         }
-        subgrid_takes_parent_tracks(&mut el.children);
-    }
+        Some(())
+    })
 }

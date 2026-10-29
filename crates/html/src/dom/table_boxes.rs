@@ -56,17 +56,18 @@ pub(crate) fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
 /// each run of consecutive proper table child boxes. Without it every orphan
 /// cell in a line got its own wrapper table, and the white space between
 /// consecutive cells (removed by §17.2.1 step 1) stayed in the line.
-pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
-    for n in nodes.iter_mut() {
-        let Node::Element(e) = n else { continue };
-        inline_anon_tables(&mut e.children);
+pub(crate) fn inline_anon_tables(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::postorder(admission, nodes, |e| {
         if e.style.used().display.is_none()
             && e.inline
             && e.children.iter().any(|c| anon_role(c).is_some())
         {
             e.children = wrap_anon_tables_as(&e.children, Display::InlineTable).into();
         }
-    }
+    })
 }
 
 fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {

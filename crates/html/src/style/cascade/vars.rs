@@ -9,14 +9,6 @@ use crate::document::state::ValueCx;
 use crate::style::css::VarMap;
 use crate::style::values::value::{Color, Len};
 
-/// Подстановка `var(--x)` и `var(--x, запасное)`.
-/// Сколько раз раскрывать переменные внутри переменных.
-///
-/// Тема обычно ссылается на тему: `--btn: var(--accent)`. Один проход такую
-/// цепочку не раскрывал, и объявление уходило в разбор строкой `var(--accent)`.
-/// Потолок нужен от кольцевых ссылок.
-const VAR_DEPTH: usize = 8;
-
 /// The element whose style is being cascaded, as far as substitution
 /// functions need it: its attributes for typed `attr()` (css-values-5 §7.7)
 /// and its place among siblings for `sibling-index()`/`sibling-count()`
@@ -44,6 +36,7 @@ impl CascadeCx<'_> {
 }
 
 mod attr_cast;
+mod attr_expansion;
 mod substitute;
 pub(super) use substitute::{resolve_attrs, resolve_sibling};
 
@@ -67,21 +60,10 @@ fn substitute_passes(
     vars: &VarMap,
     work: &crate::style::css::variable_values::Work<'_>,
 ) -> String {
-    use crate::style::css::variable_values::{has_var, substitute};
-    let mut out = value.to_string();
-    for _ in 0..VAR_DEPTH {
-        let Ok(next) = substitute(&out, &mut |name| vars.get(name).cloned(), work) else {
-            return "unset".into();
-        };
-        if next == out {
-            break;
-        }
-        out = next;
-        if !has_var(&out) {
-            break;
-        }
-    }
-    if out.trim().is_empty() && has_var(value) {
+    let Some(out) = crate::style::css::variable_values::resolve(value, vars, work) else {
+        return "unset".into();
+    };
+    if out.trim().is_empty() {
         "unset".into()
     } else {
         out
@@ -90,3 +72,6 @@ fn substitute_passes(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod attr_graph_tests;

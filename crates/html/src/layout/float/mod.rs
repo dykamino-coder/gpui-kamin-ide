@@ -65,7 +65,7 @@ pub(crate) fn block_like_float(c: &Computed) -> bool {
 /// точках. Вернуть высоту их общего ряда: наша раскладка ставит такую пару
 /// одним флекс-рядом (`wrap_floats`), и ряд высотой `max` — ровно то место,
 /// которое флоаты занимают в блочной оси и которое `clear` следующего брата
-/// обязан пройти (§9.5.2). Укладке колонок (`shape_full`) этого хватает,
+/// обязан пройти (§9.5.2). Укладке колонок этого хватает,
 /// чтобы резать коробку по колонкам вместо отказа от всей стопки
 /// (`floats-clear-multicol-*`: флоаты 250 в колонках по 100).
 pub(super) fn float_only_box(c: &Element) -> Option<f32> {
@@ -100,19 +100,6 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
         tall = tall.max(px_margin_box(&f.style.used())?.1);
     }
     ((left != 0 || right != 0) && left <= 1 && right <= 1).then_some(tall)
-}
-
-pub(super) fn has_float(n: &Element, depth: u8) -> bool {
-    if depth == 0 {
-        return false;
-    }
-    n.children.iter().any(|k| match k {
-        Node::Element(e) => {
-            (e.style.used().float.unwrap_or(0) != 0 && !block_like_float(&e.style.used()))
-                || has_float(e, depth - 1)
-        }
-        _ => false,
-    })
 }
 
 #[cfg(test)]

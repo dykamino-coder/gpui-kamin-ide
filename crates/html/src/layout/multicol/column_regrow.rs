@@ -5,157 +5,42 @@
 use crate::layout::fragment::types::BreaksAt;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
-use gpui::{App, AvailableSpace, Window, point, px, size};
+use gpui::{App, AvailableSpace, Window, px, size};
 
 mod copies;
 mod extent;
 mod items;
+mod nest;
+pub(crate) use nest::{first_row_overflow, fragmentainer_extent};
 mod owners;
 mod progress;
+mod record;
 mod trial;
 
 impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.
+    ///
+    /// Копия может сама содержать многоколоночник, и его раскладка идёт внутри
+    /// этой: кадр, живущий на время вложенной раскладки, держится малым, а
+    /// разбор её итога — отдельным кадром (`record_main`) после возврата.
     pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) {
-        let (axis, fixed) = (self.axis, self.fixed_height);
+        let axis = self.axis;
         let c = &mut self.children[i];
-        let measured_size;
-        if let Some(w) = c.measure {
-            let (sz, content) = c.el.layout_as_root_with_content(
-                if axis.is_vertical() {
-                    size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
-                } else {
-                    size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
-                },
-                window,
-                cx,
-            );
-            measured_size = sz;
-            let h = f32::from(if axis.is_vertical() {
-                sz.width
+        let (measured, w) = match (c.measure, c.breaks_w) {
+            (Some(w), _) => (true, w),
+            (None, Some(BreaksAt::Width(w))) => (false, w),
+            _ => return,
+        };
+        let (sz, content) = c.el.layout_as_root_with_content(
+            if axis.is_vertical() {
+                size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
             } else {
-                sz.height
-            });
-            c.h = h;
-            extent::measure(c, h, content, sz, axis, window);
-            if c.regrow.is_some() {
-                c.cuts.clear();
-                c.forced.clear();
-                c.solid.clear();
-                c.keep.clear();
-                c.line_keep.clear();
-            }
-            let sections = c.measure_breaks(sz, axis, window);
-            c.refresh_repeat(sections, fixed);
-            // Целый вложенный многоколоночник выше колонки — не монолит:
-            // его режет край внешней колонки (`StackChild::fit_whole`).
-            if c.fit_whole {
-                c.monolith = fixed.is_none_or(|f| h <= f + COORD_EPS);
-            }
-        } else if let Some(BreaksAt::Width(w)) = c.breaks_w {
-            // Точки разрыва блочной стопки — по раскладке главной копии
-            // в колонку (`StackChild::breaks_w`).
-            let (sz, content) = c.el.layout_as_root_with_content(
-                if axis.is_vertical() {
-                    size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
-                } else {
-                    size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
-                },
-                window,
-                cx,
-            );
-            measured_size = sz;
-            #[cfg(feature = "wpt-harness")]
-            if c.probe_pending && c.watched.is_some() {
-                c.probe.height(
-                    "columns.width",
-                    c.h,
-                    f32::from(if axis.is_vertical() {
-                        sz.width
-                    } else {
-                        sz.height
-                    }),
-                );
-            }
-            // Использованный блочный размер — разложенный border box: в нём
-            // уже `min-height`/`max-height` и распорки роста. Параллельный
-            // поток (css-break-3 §3) остаётся протяжённостью меры.
-            let table = c
-                .watched
-                .as_ref()
-                .is_some_and(|w| w.blocks().is_some_and(|b| b.table.is_some()));
-            let clipped = c
-                .watched
-                .as_ref()
-                .is_some_and(|w| w.blocks().is_some_and(|b| b.clips_block));
-            if clipped {
-                // Shape-оценка может включать содержимое за clip box. Только
-                // измеренный border box участвует в продолжении колонок.
-                c.h = f32::from(if axis.is_vertical() {
-                    sz.width
-                } else {
-                    sz.height
-                });
-                c.over = c.h;
-            } else if table {
-                // Таблица: высота — разложенные ряды, подписи и заданная
-                // высота (css-tables-3 §computing-the-table-height), поток —
-                // и видимое переполнение её содержимого (css-break-3 §3).
-                let h = f32::from(if axis.is_vertical() {
-                    sz.width
-                } else {
-                    sz.height
-                });
-                c.h = h;
-                c.over = h.max(f32::from(if axis.is_vertical() {
-                    content.width
-                } else {
-                    content.height
-                }));
-            } else if c.regrow.as_ref().is_some_and(|r| r.laid_h) {
-                let h = f32::from(if axis.is_vertical() {
-                    sz.width
-                } else {
-                    sz.height
-                });
-                c.over = if c.over > c.h + COORD_EPS {
-                    c.over.max(h)
-                } else {
-                    h
-                };
-                // Видимое переполнение измеренной блочной копии продолжает
-                // свой параллельный поток независимо от её border box; коробка,
-                // обрезающая блочную ось (`overflow: clip/hidden`), потока не
-                // имеет (css-break-3 §3, css-overflow-3).
-                if c.regrow.as_ref().is_some_and(|r| {
-                    crate::layout::page::paged::visible_overflow(&r.source.style.used())
-                }) {
-                    c.over = c.over.max(f32::from(content.height));
-                }
-                c.h = h;
-            }
-            let sections = c.replace_breaks(sz, axis, window);
-            c.refresh_repeat(sections, fixed);
-        } else {
-            return;
-        }
-        if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
-            let origin = point(px(0.0), px(0.0));
-            let flow = w.flow.at(origin, measured_size, axis, window);
-            r.laid = w
-                .laid_axis(origin, measured_size, axis, window)
-                .with_flow(&flow);
-            r.space = w.space(window);
-            if !r.laid.flexes.is_empty()
-                && let Some(blocks) = w.blocks()
-            {
-                let (before, after) = (blocks.edge(false, &r.laid), blocks.edge(true, &r.laid));
-                c.force_before = before.0;
-                c.force_after = after.0;
-                c.avoid_before = before.1;
-                c.avoid_after = after.1;
-            }
-        }
+                size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
+            },
+            window,
+            cx,
+        );
+        self.record_main(i, measured, (sz, content), window);
     }
 
     /// Один шаг роста при неизменной высоте пробного фрагментаинера.
@@ -187,7 +72,9 @@ impl ColumnStack {
                 continue;
             };
             let edge = f.from + height - f.y;
-            let local = r.fragment_growths(blocks, f.from, f.from + f.h, edge, height);
+            // Колонка первого ряда, начатого под содержимым внешней колонки.
+            let open = f.y <= COORD_EPS && self.row_phase > COORD_EPS && f.col < self.count;
+            let local = r.fragment_growths(blocks, f.from, f.from + f.h, edge, height, open);
             tagged[f.kid].extend(local.into_iter().map(|g| (f.copy, g)));
         }
         for &(kid, at, grow, forced) in &grows {
@@ -239,6 +126,7 @@ impl ColumnStack {
             self.lay_out_main(i, window, cx);
         }
         self.reserve_row_copies();
+        self.reserve_overflow_copies();
         true
     }
 }

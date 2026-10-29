@@ -42,13 +42,14 @@ pub(crate) fn block_ellipsis(v: &str) -> Option<Option<String>> {
     })
 }
 
-/// `continue: normal | collapse | -webkit-legacy` (`discard` не поддержан —
-/// как у Blink): (`collapse`, `-webkit-legacy`).
-pub(crate) fn continue_value(v: &str) -> Option<(bool, bool)> {
+/// `continue: normal | discard | collapse | -webkit-legacy`:
+/// (`collapse`, `-webkit-legacy`, `discard`).
+pub(crate) fn continue_value(v: &str) -> Option<(bool, bool, bool)> {
     match v.to_ascii_lowercase().as_str() {
-        "normal" => Some((false, false)),
-        "collapse" => Some((true, false)),
-        "-webkit-legacy" => Some((false, true)),
+        "normal" => Some((false, false, false)),
+        "collapse" => Some((true, false, false)),
+        "-webkit-legacy" => Some((false, true, false)),
+        "discard" => Some((false, false, true)),
         _ => None,
     }
 }
@@ -81,9 +82,10 @@ impl Computed {
                 }
             }
             Continue => {
-                if let Some((collapse, legacy)) = continue_value(v) {
+                if let Some((collapse, legacy, discard)) = continue_value(v) {
                     self.clamp_continue = Some(collapse);
                     self.clamp_legacy = Some(legacy);
+                    self.clamp_discard = Some(discard);
                 }
             }
             TextBoxTrim => {
