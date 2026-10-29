@@ -4,12 +4,15 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+// Sized for one server's ceiling of about 50 Bridge sessions. Commands run on the
+// users' machines, so a working task costs the server only its record.
+const SESSION_CEILING = 50
 export const TASK_LIMITS = {
-  active: 16,
-  activePerOwner: 4,
-  retained: 256,
-  perOwner: 64,
-  bytes: 64 * 1024 * 1024,
+  activePerOwner: 8,
+  active: SESSION_CEILING * 8,
+  retained: 2048,
+  perOwner: 256,
+  bytes: 128 * 1024 * 1024,
   resultBytes: 512 * 1024,
   inputBytes: 64 * 1024,
   ttlMs: 86_400_000,
@@ -18,7 +21,7 @@ export const TASK_LIMITS = {
   // A foreground command that settles within this window answers inline, like
   // native Bash's default 2-minute timeout; only longer runs stay a task.
   foregroundGraceMs: 120_000,
-  queued: 32,
+  queued: 1024,
 }
 export interface TaskRecord {
   taskId: string
@@ -59,6 +62,8 @@ export function taskDeadline(task: TaskRecord): number {
 
 export class McpTaskStore {
   private records = new Map<string, TaskRecord>()
+  private sizes = new Map<string, number>()
+  private bytes = 0
   private tail: Promise<unknown> = Promise.resolve()
   private queued = 0
   private loaded = false
@@ -88,6 +93,7 @@ export class McpTaskStore {
     const files = (await fs.readdir(this.directory)).filter((name) => /^[a-f0-9-]{36}\.json$/.test(name))
     if (files.length > TASK_LIMITS.retained) throw new Error('Task storage capacity exceeded')
     const loaded = new Map<string, TaskRecord>()
+    const sizes = new Map<string, number>()
     let bytes = 0
     for (const name of files) {
       const file = path.join(this.directory, name)
@@ -115,8 +121,11 @@ export class McpTaskStore {
       )
         throw new Error('Invalid task record')
       loaded.set(task.taskId, task)
+      sizes.set(task.taskId, size)
     }
     this.records = loaded
+    this.sizes = sizes
+    this.bytes = bytes
     this.loaded = true
   }
   private async expire(): Promise<void> {
@@ -130,33 +139,34 @@ export class McpTaskStore {
       if (error.code !== 'ENOENT') throw error
     })
     this.records.delete(id)
+    this.bytes -= this.sizes.get(id) ?? 0
+    this.sizes.delete(id)
   }
   // Retention bounds storage, not admission: settled outcomes stay readable until
   // room is needed, then the least recently settled ones make way for new work.
   // Only working tasks count against admission (INC-2026-0082).
-  private async evictSettled(owner: string, incomingBytes: number): Promise<void> {
+  private async evictSettled(owner: string | undefined, incomingBytes: number, keep?: string): Promise<void> {
     const settled = [...this.records.values()]
-      .filter((task) => task.status !== 'working')
+      .filter((task) => task.status !== 'working' && task.taskId !== keep)
       .sort((a, b) => Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt))
-    let bytes = incomingBytes
-    for (const task of this.records.values()) bytes += Buffer.byteLength(JSON.stringify(task))
-    const ownCount = () => [...this.records.values()].filter((task) => task.owner === owner).length
+    let ownCount = owner === undefined ? 0 : [...this.records.values()].filter((task) => task.owner === owner).length
     for (const task of settled) {
       const full =
-        this.records.size >= TASK_LIMITS.retained ||
-        (task.owner === owner && ownCount() >= TASK_LIMITS.perOwner) ||
-        bytes > TASK_LIMITS.bytes
+        (owner !== undefined && this.records.size >= TASK_LIMITS.retained) ||
+        (task.owner === owner && ownCount >= TASK_LIMITS.perOwner) ||
+        this.bytes + incomingBytes > TASK_LIMITS.bytes
       if (!full) continue
-      bytes -= Buffer.byteLength(JSON.stringify(task))
+      if (task.owner === owner) ownCount--
       await this.remove(task.taskId)
     }
   }
   private async save(task: TaskRecord): Promise<void> {
     const text = JSON.stringify(task)
-    let bytes = Buffer.byteLength(text)
-    for (const other of this.records.values())
-      if (other.taskId !== task.taskId) bytes += Buffer.byteLength(JSON.stringify(other))
-    if (bytes > TASK_LIMITS.bytes) throw new Error('Task storage byte capacity exceeded')
+    const size = Buffer.byteLength(text)
+    const growth = size - (this.sizes.get(task.taskId) ?? 0)
+    // A settling result may need room too; only other settled outcomes make way.
+    if (this.bytes + growth > TASK_LIMITS.bytes) await this.evictSettled(undefined, growth, task.taskId)
+    if (this.bytes + growth > TASK_LIMITS.bytes) throw new Error('Task storage byte capacity exceeded')
     const file = path.join(this.directory, `${task.taskId}.json`)
     const temporary = file + '.tmp'
     try {
@@ -183,6 +193,8 @@ export class McpTaskStore {
       })
     }
     this.records.set(task.taskId, task)
+    this.bytes += growth
+    this.sizes.set(task.taskId, size)
   }
   create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
     return this.run(async () => {
