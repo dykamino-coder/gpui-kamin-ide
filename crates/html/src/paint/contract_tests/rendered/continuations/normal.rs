@@ -99,3 +99,33 @@ fn replayed_grid_items_paint_in_their_own_windows() {
         "pushed item at the top of column 2"
     );
 }
+
+#[test]
+fn replayed_shadow_stays_with_the_fragment_of_its_box() {
+    // The first box ends exactly at the column break: its shadow belongs to column 1
+    // (below the column, at its genuine bottom edge), not to the top of column 2.
+    let html = "<style>body{margin:0}</style><div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'><div><div style='height:100px;background:#00ff00;box-shadow:0 10px 0 #0000ff'></div><div style='height:60px'></div></div></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 50.), 0x00ff00), "first box");
+    assert!(
+        is(top(&found, 25., 105.), 0x0000ff),
+        "shadow below column 1"
+    );
+    assert!(
+        !is(top(&found, 75., 5.), 0x0000ff),
+        "no shadow at the top of column 2"
+    );
+}
+
+#[test]
+fn replayed_transform_uses_the_reference_box_of_each_fragment() {
+    // scaleY(0.5) about the centre of each fragment's reference box (css-break-3 §5.5):
+    // column 1 holds [0, 100) scaled to [25, 75), column 2 holds [100, 160) scaled to
+    // [15, 45).
+    let html = "<style>body{margin:0}</style><div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'><div><div style='transform:scaleY(0.5);height:160px;background:#00ff00'></div></div></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 30.), 0x00ff00), "column 1, inside");
+    assert!(!is(top(&found, 25., 85.), 0x00ff00), "column 1, below");
+    assert!(is(top(&found, 75., 20.), 0x00ff00), "column 2, inside");
+    assert!(!is(top(&found, 75., 50.), 0x00ff00), "column 2, below");
+}

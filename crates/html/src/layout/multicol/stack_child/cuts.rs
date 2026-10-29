@@ -120,6 +120,7 @@ pub(super) fn stack_child_of(
         },
         laid_w: Default::default(),
         replay: false,
+        effects: false,
         paginate: None,
         clone_frags: None,
         copier: None,

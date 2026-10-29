@@ -6,6 +6,7 @@
 //! (`paint`): срез фрагмента идёт до эффектов и до привязки к пикселям.
 
 use crate::layout::cx::deferred::Deferred;
+pub(crate) mod pieces;
 use gpui::{Bounds, ContentMask, Pixels, TransformationMatrix, Window, point, px, size};
 
 #[derive(Clone, Copy)]
@@ -53,13 +54,16 @@ pub(crate) fn reference_box(
 
 /// CSS Break 3 §5.4: slice the continuous shadow at internal fragment edges,
 /// retaining its ink overflow at the box's genuine outer edges.
-pub(crate) fn paint_shadow<R>(
+pub(crate) fn paint_shadow(
     owner: Option<&Deferred>,
     bounds: Bounds<Pixels>,
     ink: (Pixels, Pixels),
     window: &mut Window,
-    f: impl FnOnce(&mut Window) -> R,
-) -> R {
+    f: impl FnOnce(&mut Window),
+) {
+    if let Some(all) = pieces::active(owner) {
+        return pieces::paint_shadow(&all, bounds, ink, window, f);
+    }
     let Some(scope) = owner.and_then(|owner| *owner.effect.borrow()) else {
         return f(window);
     };

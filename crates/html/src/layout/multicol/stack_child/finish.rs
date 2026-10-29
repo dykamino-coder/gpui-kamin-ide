@@ -71,7 +71,7 @@ pub(super) fn finish_stack_child(
         vcx,
     );
     child.fit_whole = whole && fixed.is_some() && measure.is_some();
-    child.replay = super::replay::replayable(copy);
+    (child.replay, child.effects) = super::replay::replayable(copy);
     child
 }
 
