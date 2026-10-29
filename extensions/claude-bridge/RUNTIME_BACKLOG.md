@@ -1,5 +1,29 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Выборочная системная сверка — 2026-10-29
+
+Это связанный маршрут для длинных бесед, compact, субагентов и команд;
+не полный пересчёт очереди и не расширение текущей execution-пачки. Исторические
+численности и базы ниже сохраняют свои даты.
+
+- [INC-0082](runtime-issues/INC-2026-0082.md): отдельный P1 — terminal MCP Tasks
+  занимают retained admission. Есть actual-source reproducer и private evidence;
+  обычный restart с тем же volume не освобождает лимит. Следующий owner: maintainer,
+  bounded capacity/result-retention fix и автоматическая приёмка.
+- [INC-0083](runtime-issues/INC-2026-0083.md): оставшаяся обязательная полная история
+  при open/reattach и множество historical children. В карточке — карта связей
+  со старыми BR/INC, предложенные независимые deliverables, workload и gates.
+  Наблюдение об улучшении после обрезки до последнего compact не доказывает причину.
+- [INC-0078](runtime-issues/INC-2026-0078.md): #495/#499/#500 уже merged и доставлены
+  в 1.0.81 / 6.3.158. Следующий шаг — сопоставить их evidence исходной приёмке,
+  затем выполнять только остаток. Не предлагать заново уже доставленный streaming/DB fix.
+
+Новый full-system rewrite не утверждён. Maintainer фиксирует связанный snapshot
+через coordination PR, начинает с независимого P1, затем выбирает bounded
+server/protocol/client changes. Native CEF/input gates сохраняются там, где
+они нужны; source/server work не ждёт нового полевого зависания. WPT/HTML progress
+не закрывает эти контракты без production migration и соответствующей приёмки.
+
 **Сверка доставки 2026-10-19:** public `origin/main`
 `5790ee05ab3fd2b348db0f9fc7f160ca77f45b4b`; последний опубликованный immutable
 release — KaminIDE **1.0.76 / server 6.3.153** (2026-10-19),
