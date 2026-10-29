@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { McpTaskStore, TASK_LIMITS, taskView } from './mcp-task-store'
+import { McpTaskStore, TASK_LIMITS, taskView, taskDeadline } from './mcp-task-store'
 let directory: string
 let clock: number
 let store: McpTaskStore
@@ -18,6 +18,20 @@ afterEach(async () => {
   await fs.rm(directory, { recursive: true, force: true })
 })
 describe('durable bounded task lifecycle', () => {
+  it('retains a background deadline across restart and past the foreground execution limit', async () => {
+    const fg = await store.create('owner', 'Bash', { command: 'foreground' })
+    const bg = await store.create('owner-bg', 'PowerShell', { command: 'background', run_in_background: true })
+    expect(taskDeadline(fg)).toBe(clock + TASK_LIMITS.executionMs)
+    expect(taskDeadline(bg)).toBe(clock + TASK_LIMITS.backgroundExecutionMs)
+    expect(taskDeadline(bg) + 60_000).toBe(clock + TASK_LIMITS.ttlMs)
+    expect(taskView(bg)).not.toHaveProperty('executionDeadlineMs')
+    clock += TASK_LIMITS.executionMs + 60_001
+    store = new McpTaskStore(directory, () => clock)
+    await store.working()
+    expect(store.hasWorkingOwner('owner')).toBe(false)
+    expect(store.hasWorkingOwner('owner-bg')).toBe(true)
+    expect(taskDeadline((await store.get('owner-bg', bg.taskId))!)).toBe(taskDeadline(bg))
+  })
   it('retains completed output across store restart and lost acknowledgement', async () => {
     const task = await store.create('owner', 'Bash', { command: 'echo test' })
     expect(taskView(task)).not.toHaveProperty('input')

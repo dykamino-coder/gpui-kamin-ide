@@ -1,0 +1,8 @@
+.controls {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.controls > :last-child {
+  margin-left: auto;
+}

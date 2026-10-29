@@ -2,6 +2,7 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
+import { acceptCommandReport, commandSnapshot, commandOutput, stopCommand, rememberCommandResult } from './commands'
 import { settleMcpTask } from './mcp-tasks'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -177,6 +178,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       }
     }, 15_000)
 
+    const commandsTimer = setInterval(() => {
+      if (authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws)
+        sendToClient(ws, { type: 'commands:request' })
+    }, 1000)
+    commandsTimer.unref?.()
+    ws.once('close', () => clearInterval(commandsTimer))
     ws.on('message', async (raw: Buffer | string) => {
       if (socketGone || ws.readyState !== WS.OPEN) return
       let msg: ClientToServerMsg
@@ -325,6 +332,24 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        case 'commands:list':
+        case 'commands:report':
+        case 'commands:stop':
+        case 'commands:output': {
+          if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          const session = getSession(authenticatedSessionId)
+          if (!session) return
+          if (msg.type === 'commands:report') await acceptCommandReport(session, msg.report)
+          if (msg.type === 'commands:stop' && typeof msg.id === 'string') await stopCommand(session, msg.id)
+          if (msg.type === 'commands:output') {
+            if (typeof msg.id === 'string')
+              sendToClient(ws, { type: 'commands:output', id: msg.id, output: await commandOutput(session, msg.id) })
+            break
+          }
+          sendToClient(ws, { type: 'commands:snapshot', snapshot: await commandSnapshot(session) })
+          break
+        }
+
         case 'mcp:response':
         case 'mcp:denied': {
           if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
@@ -334,6 +359,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             accepted = msg.taskOwner
               ? msg.sessionId === authenticatedSessionId && !!session && (await settleMcpTask(session, msg))
               : settleMcpResult(authenticatedSessionId, msg)
+            if (accepted && session)
+              rememberCommandResult(session, msg.requestId, msg.type === 'mcp:response' ? msg.result : msg.reason)
           } catch {
             break
           } // no ack until durable settlement; outbox retries
