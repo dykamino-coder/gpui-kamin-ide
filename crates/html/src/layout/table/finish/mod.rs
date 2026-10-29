@@ -41,7 +41,7 @@ pub(super) async fn table_finish(
             opts.cx
                 .contracts
                 .build
-                .layer(Layer::CollapsedEdges(out.table_edges.clone())),
+                .layer(Layer::collapsed_edges(out.table_edges.clone(), &opts.cx)),
         );
     }
     grid_children.append(&mut out.cells_over);
