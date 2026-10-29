@@ -4,6 +4,7 @@ The input checkout must already satisfy the semantic ownership contracts.
 The generated diff still requires compiler, visibility and behavioral checks.
 """
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
@@ -17,14 +18,49 @@ from migration_test_support import widen
 
 ROOT_OWNERS = {
     **dict.fromkeys(['defaults', 'cache', 'color', 'css_syntax', 'dom', 'style',
-                    'resources', 'tolerance', 'box_facts'], 'kamin-style'),
+                    'resources', 'tolerance', 'box_facts', 'budget', 'diagnostics'],
+                   'kamin-style'),
     'font_facts': 'kamin-font-facts',
     **dict.fromkeys(['layout', 'text', 'interactive', 'hooks'], 'kamin-layout'),
     **dict.fromkeys(['paint', 'svg'], 'kamin-paint'),
-    **dict.fromkeys(['animation', 'document', 'render', 'depth_tests', 'coverage'], 'kamin-html'),
+    **dict.fromkeys(['animation', 'document', 'render', 'depth_tests', 'coverage',
+                    'host'], 'kamin-html'),
 }
 RANK = {'kamin-font-facts': 0, 'kamin-style': 1, 'kamin-layout': 2,
         'kamin-paint': 3, 'kamin-html': 4}
+
+
+# Staged extraction: packages ranked above the stage stay in the facade package.
+FACADE_PATHS = [False]
+
+
+@contextmanager
+def stage(through):
+    """Extract only the packages ranked up to `through`; higher phases stay in kamin-html.
+
+    Facade code keeps its `crate::<root>` paths: the root declarations become
+    reexports of the extracted packages, so only extracted sources move and are
+    rewritten. The full ownership table and ranks are restored on exit.
+    """
+    if through not in RANK or through == 'kamin-html':
+        raise ValueError(f'Unknown extraction stage: {through}')
+    owners, ranks = dict(ROOT_OWNERS), dict(RANK)
+    limit = RANK[through]
+    for root, package in owners.items():
+        if RANK[package] > limit:
+            ROOT_OWNERS[root] = 'kamin-html'
+    for package, rank in ranks.items():
+        if rank > limit and package != 'kamin-html':
+            del RANK[package]
+    FACADE_PATHS[0] = True
+    try:
+        yield
+    finally:
+        ROOT_OWNERS.clear()
+        ROOT_OWNERS.update(owners)
+        RANK.clear()
+        RANK.update(ranks)
+        FACADE_PATHS[0] = False
 
 
 @dataclass(frozen=True)
@@ -142,6 +178,30 @@ def crate_attributes(source):
     return result
 
 
+LINT = re.compile(r'#\[\s*(?:cfg_attr\s*\(.*,\s*)?(?:allow|expect|warn|deny)\s*\(', re.S)
+
+
+def module_attributes(attrs):
+    """Attributes a facade declaration hands to the extracted module.
+
+    Lint levels on the facade item (`allow`/`expect`/`warn`/`deny`, also under
+    `cfg_attr`) configure the facade reexport only, so they stay in the facade.
+    """
+    kept, index = [], 0
+    while (start := attrs.find('#[', index)) >= 0:
+        depth, stop = 0, start + 1
+        while stop < len(attrs):
+            depth += (attrs[stop] == '[') - (attrs[stop] == ']')
+            stop += 1
+            if not depth:
+                break
+        item = attrs[start:stop]
+        if not LINT.match(item):
+            kept.append(item)
+        index = stop
+    return '\n'.join(kept)
+
+
 def lower_root(package, declarations, source):
     lines = ['//! Внутренняя фаза HTML/CSS: явные контракты конвейера.',
              '', *crate_attributes(source), '']
@@ -152,7 +212,7 @@ def lower_root(package, declarations, source):
         if module.declaration_file != 'lib.rs':
             raise ValueError(f'Unexpected root declaration: {path}')
         match = DECL.match(mask, module.declaration_start)
-        attrs = source[match.start('attrs'):match.end('attrs')].strip()
+        attrs = module_attributes(source[match.start('attrs'):match.end('attrs')])
         if attrs:
             lines.append(attrs)
         lines.append(f'pub mod {path[0]};')
@@ -202,6 +262,8 @@ def plan(sources, existing_files, physical=None, crate_roots=None):
         package = owner(filename)
         if filename == 'lib.rs':
             after = facade(source, declarations)
+        elif package == 'kamin-html' and FACADE_PATHS[0]:
+            after = source
         else:
             after = rewrite(source, filename, package, ROOT_OWNERS, resolve,
                             module_path=file_modules[filename])

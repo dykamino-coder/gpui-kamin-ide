@@ -53,8 +53,7 @@ class ModuleSourceTests(unittest.TestCase):
         changed = rewrite(source, 'text/fonts/math_constants.rs',
                           'kamin-layout', owners,
                           module_path=('text', 'fonts', 'math', 'constants'))
-        self.assertEqual(changed, 'use kamin_style::style::Computed; '
-                         'use crate::text::fonts::math::constants::Value;')
+        self.assertEqual(changed, 'use kamin_style::style::Computed; use self::Value;')
 
     def test_unknown_path_expression_is_rejected(self):
         with self.assertRaises(ValueError):

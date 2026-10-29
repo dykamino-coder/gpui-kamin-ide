@@ -59,11 +59,16 @@ def assemble(root):
         path = PACKAGES[package].removesuffix('/src/') + '/Cargo.toml'
         if (root / path).is_file():
             manifests[path] = (root / path).read_bytes().decode('utf-8')
-    original = original_contract(manifests)
-    for name, text in generate(original, package_sources, result.edges).items():
-        before = manifests.get(name, '')
-        if before != text:
-            result.changes.append(Change(name, name, before, text))
+    # A staged extraction keeps the reviewed manifests of the packages it
+    # touches (the extracted ones are written with the step, like
+    # kamin-font-facts); the final full split regenerates all of them.
+    from migration_plan import FACADE_PATHS
+    if not FACADE_PATHS[0]:
+        original = original_contract(manifests)
+        for name, text in generate(original, package_sources, result.edges).items():
+            before = manifests.get(name, '')
+            if before != text:
+                result.changes.append(Change(name, name, before, text))
     result.changes.extend(guard_plan(root))
     return result
 
@@ -72,7 +77,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('--through', metavar='PACKAGE',
+                        help='extract only the packages up to this one; higher phases stay in kamin-html')
     args = parser.parse_args(argv)
+    if args.through:
+        from migration_plan import stage
+        with stage(args.through):
+            return run(parser, args)
+    return run(parser, args)
+
+
+def run(parser, args):
     root = args.root.resolve()
     initial_status = git(root, 'status', '--porcelain', '--untracked-files=all')
     try:
