@@ -66,7 +66,10 @@ impl ColumnStack {
         if !self.children.iter().any(|c| c.regrow.is_some()) {
             return;
         }
-        if self.fixed_height.is_some() || self.rows.is_some_and(|r| !r.cap) {
+        // Линии между спаннерами `continue: discard` балансируются каждая своим
+        // поиском (`balance_discard`), как ряды: общая высота одной линии сюда не
+        // подходит.
+        if self.fixed_height.is_some() || self.rows.is_some_and(|r| !r.cap) || self.discard {
             self.balance_failure = self.settle(window, cx).err();
             return;
         }

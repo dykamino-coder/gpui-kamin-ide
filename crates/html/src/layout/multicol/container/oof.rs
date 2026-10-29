@@ -68,6 +68,7 @@ pub(super) fn column_stack_div(
             opts.cx.deferred.paint.clone(),
         )
         .with_deferred(deferred)
+        .with_discard(rows.is_none_or(|r| r.cap) && e.style.used().clamp_discard == Some(true))
         .with_nest_report(nest_report)
         .with_lead_report(opts.frag.watch.clone().map(|w| (w, e.node_id)))
         .with_row_extent(if nest_rows.is_some() {
