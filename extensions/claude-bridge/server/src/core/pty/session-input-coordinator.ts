@@ -122,7 +122,7 @@ function schedulePendingMaintenance(
 function updateRawInputState(state: SessionInputState, data: string): void {
   const pasteStart = '\x1b[200~'
   const pasteEnd = '\x1b[201~'
-  for (let i = 0; i < data.length; ) {
+  for (let i = 0; i < data.length;) {
     if (data.startsWith(pasteStart, i)) {
       state.rawPasteMode = true
       i += pasteStart.length

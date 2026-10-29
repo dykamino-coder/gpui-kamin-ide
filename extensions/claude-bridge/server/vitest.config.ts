@@ -19,11 +19,7 @@ export default defineConfig({
       // Only count code we actually exercise from tests. Excluding electron
       // renderer (no renderer-side tests yet — D6 Playwright covers that)
       // and the dashboard React app (`src/ui/`) which has its own surface.
-      include: [
-        'src/core/**/*.ts',
-        'electron/main/mcp/discovery.ts',
-        'electron/renderer/utils/render-markdown.ts',
-      ],
+      include: ['src/core/**/*.ts', 'electron/main/mcp/discovery.ts', 'electron/renderer/utils/render-markdown.ts'],
       exclude: [
         '**/*.d.ts',
         '**/*.test.ts',

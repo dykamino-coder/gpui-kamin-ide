@@ -22,11 +22,16 @@ import { setSessionPromptReady } from '../pty/session-input-coordinator'
 import type { PtySession } from '../types/pty'
 
 export const BRIDGE_STATUS_EVENTS = [
-  'UserPromptSubmit', 'Stop', 'SubagentStop', 'SessionStart', 'Notification',
+  'UserPromptSubmit',
+  'Stop',
+  'SubagentStop',
+  'SessionStart',
+  'Notification',
   // SubagentStart fires the instant the CLI creates a subagent's transcript —
   // we use it to kick an immediate subagent-file scan instead of waiting up to
   // 2s for the periodic sweep. SessionEnd gives a deterministic idle at teardown.
-  'SubagentStart', 'SessionEnd',
+  'SubagentStart',
+  'SessionEnd',
 ] as const
 
 export function isBridgeStatusEvent(event: string): boolean {
@@ -37,7 +42,7 @@ export function isBridgeStatusEvent(event: string): boolean {
  *  rewriteHooksForCli tags the registered hook `bridge`). host:'local' forces
  *  the http-webhook rewrite even for SERVER_PREFERRED events. */
 export function bridgeStatusHookMatchers(): Array<{ event: string; matcher: HookMatcher; source: HookSource }> {
-  return BRIDGE_STATUS_EVENTS.map(event => ({
+  return BRIDGE_STATUS_EVENTS.map((event) => ({
     event,
     matcher: { hooks: [{ type: 'command' as const, command: ':', host: 'local' as const }] },
     source: { kind: 'bridge' as const },
@@ -48,9 +53,7 @@ export function bridgeStatusHookMatchers(): Array<{ event: string; matcher: Hook
  *  for EVERY webhook of these events (idempotent — a user Stop hook firing too
  *  just re-asserts idle). `hookDriven:true` tells the client this beats the
  *  ❯-glyph heuristic. */
-export function applyDeterministicStatus(
-  session: PtySession, event: string, payload: HookInputPayload,
-): void {
+export function applyDeterministicStatus(session: PtySession, event: string, payload: HookInputPayload): void {
   // SubagentStart is ws-independent: the CLI just wrote a new subagents/*.jsonl,
   // so trigger an immediate discovery scan (the tile then appears at once rather
   // than after the periodic 2s sweep). Runs even if no client is attached.
@@ -70,7 +73,13 @@ export function applyDeterministicStatus(
       break
     case 'Stop': {
       const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : undefined
-      sendToClient(ws, { ...base, isWorking: false, promptReady: true, waiting: false, ...(last ? { lastMessage: last } : {}) })
+      sendToClient(ws, {
+        ...base,
+        isWorking: false,
+        promptReady: true,
+        waiting: false,
+        ...(last ? { lastMessage: last } : {}),
+      })
       break
     }
     case 'SessionStart':

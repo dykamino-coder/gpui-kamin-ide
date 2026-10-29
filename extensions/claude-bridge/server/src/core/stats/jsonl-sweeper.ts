@@ -11,8 +11,8 @@
 // Each user message is later annotated with the model the next assistant
 // reply used. We do this in two passes per file: first INSERT … ON
 // CONFLICT DO NOTHING every entry, then UPDATE jsonl_events SET model =
-// <derived> WHERE type='user' AND model IS NULL — derivation walks
-// parentUuid chain forward to the next assistant.
+// <derived> WHERE type='user' AND model IS NULL — derivation finds
+// the next assistant in timestamp order within the same session.
 //
 // Runs:
 //  - Once at server boot (full catch-up).
@@ -39,7 +39,7 @@ import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import type { DuckDBConnection } from '@duckdb/node-api'
-import { getDb, getDbByIndex } from './database/lifecycle'
+import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { dedupeByUuid } from './jsonl-batch'
 import { debugLog, warnLog } from '../logging'
@@ -50,6 +50,12 @@ const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 // commits the durable byte cursor after this many source bytes.
 const SWEEP_BATCH_ROWS = 500
 const SWEEP_BATCH_BYTES = 8 * 1024 * 1024
+// Historical accounting is eventual. One background turn reads one MiB (plus
+// its final record), then gives live replay/HTTP and other files a turn.
+export const SWEEP_SLICE_BYTES = 1024 * 1024
+const SWEEP_PAUSE_MS = 100
+const unchanged = new Map<string, { signature: string; attribution: string; checkedAt: number }>()
+const UNCHANGED_LIMIT = 2048
 
 interface UsageBlock {
   input_tokens?: number
@@ -81,30 +87,37 @@ const insertEventsSql = (rows: number): string => `
 `
 
 const SQL_GET_OFFSET = `
-  SELECT last_offset, last_size FROM jsonl_offsets WHERE file_path = ?
+  SELECT last_offset, last_size, last_mtime, file_identity FROM jsonl_offsets WHERE file_path = ?
 `
 
 const SQL_UPSERT_OFFSET = `
-  INSERT INTO jsonl_offsets (file_path, last_offset, last_size, last_scanned_at)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO jsonl_offsets (file_path, last_offset, last_size, last_scanned_at, last_mtime, file_identity)
+  VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT (file_path) DO UPDATE SET
     last_offset = excluded.last_offset,
     last_size = excluded.last_size,
-    last_scanned_at = excluded.last_scanned_at
+    last_scanned_at = excluded.last_scanned_at,
+    last_mtime = excluded.last_mtime,
+    file_identity = excluded.file_identity
 `
 
 // Backfill model for user rows from the next assistant in the same session.
 const SQL_FILL_USER_MODELS = `
-  UPDATE jsonl_events
-  SET model = (
-    SELECT a.model FROM jsonl_events a
-    WHERE a.session_id = jsonl_events.session_id
-      AND a.type = 'assistant'
-      AND a.timestamp >= jsonl_events.timestamp
-      AND a.model IS NOT NULL AND a.model != '<synthetic>'
-    ORDER BY a.timestamp ASC LIMIT 1
-  )
-  WHERE session_id = ? AND type = 'user' AND (model IS NULL OR model = '')
+  UPDATE jsonl_events AS target
+  SET model = next.model
+  FROM (
+    SELECT uuid, first_value(
+      CASE WHEN type = 'assistant' AND model != '<synthetic>' THEN model END
+      IGNORE NULLS
+    ) OVER (
+      ORDER BY timestamp, type = 'assistant', uuid
+      ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+    ) AS model
+    FROM jsonl_events
+    WHERE session_id = ? AND type IN ('user', 'assistant')
+  ) AS next
+  WHERE target.uuid = next.uuid AND target.type = 'user'
+    AND (target.model IS NULL OR target.model = '') AND next.model IS NOT NULL
 `
 
 const SQL_LOOKUP_TOKEN = `
@@ -264,30 +277,24 @@ async function tokenInfoFromSlug(
  *  live-mode trigger landing during the bulk sweep) would read the same
  *  unswept bytes and race on the offset row; the second caller shares the
  *  first pass instead, and the next sweep picks up whatever was appended. */
-const inFlight = new Map<string, Promise<{ inserted: number }>>()
+interface SweepResult {
+  inserted: number
+  pending?: boolean
+}
+const inFlight = new Map<string, Promise<SweepResult>>()
 
-async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnection): Promise<{ inserted: number }> {
+async function processOneFile(info: JsonlFileInfo, maxBytes = Infinity): Promise<SweepResult> {
   const active = inFlight.get(info.path)
   if (active) return active
-  const run = processOneFileUnguarded(info, dedicatedDb).finally(() => {
+  const run = processOneFileUnguarded(info, maxBytes).finally(() => {
     inFlight.delete(info.path)
   })
   inFlight.set(info.path, run)
   return run
 }
 
-async function processOneFileUnguarded(
-  info: JsonlFileInfo,
-  dedicatedDb?: DuckDBConnection,
-): Promise<{ inserted: number }> {
+async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): Promise<SweepResult> {
   const filePath = info.path
-  // Use dedicated connection if caller provided one (sweeper worker pool
-  // — one conn per worker so parallel files don't share a conn). Falls
-  // back to round-robin pool for ad-hoc callers.
-  const db = dedicatedDb ?? (await getDb())
-  // Single-statement write on this connection, serialised with every other
-  // writer of the stats DB (see header: a failed COMMIT is fatal).
-  const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
   let stat: fs.Stats
   try {
     stat = await fsp.stat(filePath)
@@ -295,14 +302,38 @@ async function processOneFileUnguarded(
     return { inserted: 0 }
   }
   const size = stat.size
+  const identity = `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`
+  const signature = `${identity}:${size}:${stat.mtimeMs}`
+  const cached = unchanged.get(filePath)
+  // Periodically recheck token attribution even when the source is unchanged.
+  // No SQL, decoding or transcript IO on repeated idle scans in between.
+  if (cached?.signature === signature && Date.now() - cached.checkedAt < 60_000) return { inserted: 0 }
+  const db = await getDb()
+  const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
+  const saveOffset = (offset: number) =>
+    write(SQL_UPSERT_OFFSET, [filePath, offset, size, new Date().toISOString(), stat.mtimeMs, identity])
+  const remember = () => {
+    unchanged.delete(filePath)
+    unchanged.set(filePath, { signature, attribution, checkedAt: Date.now() })
+    if (unchanged.size > UNCHANGED_LIMIT) unchanged.delete(unchanged.keys().next().value!)
+  }
 
   const offsetRows = (await db.runAndReadAll(SQL_GET_OFFSET, [filePath])).getRowObjects() as Array<{
     last_offset: bigint | number
     last_size: bigint | number
+    last_mtime: number | null
+    file_identity: string | null
   }>
   const offsetRow = offsetRows[0]
   let startByte = offsetRow ? Number(offsetRow.last_offset ?? 0) : 0
-  if (offsetRow && Number(offsetRow.last_size ?? 0) > size) {
+  const rewritten =
+    offsetRow &&
+    (Number(offsetRow.last_size ?? 0) > size ||
+      (offsetRow.file_identity != null && offsetRow.file_identity !== identity) ||
+      (offsetRow.last_mtime != null &&
+        Number(offsetRow.last_mtime) !== stat.mtimeMs &&
+        Number(offsetRow.last_size) === size))
+  if (rewritten) {
     // File shrank — most likely truncate / external rewrite. Re-scan.
     startByte = 0
   }
@@ -313,7 +344,7 @@ async function processOneFileUnguarded(
   // is empty/legacy (token_id=''). For real bridge JSONLs (subagent files
   // included), auto-INSERT a session_tokens row so the soft-delete model
   // works uniformly.
-  const slug = path.basename(path.dirname(filePath))
+  const slug = path.basename(info.isSubagent ? path.resolve(filePath, '../../..') : path.dirname(filePath))
   const slugInfo = await tokenInfoFromSlug(db, slug)
   const tokenRows = (await db.runAndReadAll(SQL_LOOKUP_TOKEN, [sessionId])).getRowObjects() as Array<{
     token_id: string | null
@@ -342,14 +373,25 @@ async function processOneFileUnguarded(
   }
 
   const subFlag = info.isSubagent ? 1 : 0
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
+  const attribution = JSON.stringify([tokenId, userName, subFlag, info.parentSessionId])
+  // A periodic attribution check must not run an UPDATE over every unchanged
+  // historical session when the mapping itself has not changed.
+  if (cached?.signature !== signature || cached.attribution !== attribution)
+    await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
     // unconditional upsert on every idle sweep is more needless MVCC churn.
-    if (!offsetRow || Number(offsetRow.last_offset ?? -1) !== size || Number(offsetRow.last_size ?? -1) !== size) {
-      await write(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
+    if (
+      !offsetRow ||
+      Number(offsetRow.last_offset ?? -1) !== size ||
+      Number(offsetRow.last_size ?? -1) !== size ||
+      offsetRow.file_identity !== identity ||
+      offsetRow.last_mtime !== stat.mtimeMs
+    ) {
+      await saveOffset(size)
     }
+    remember()
     return { inserted: 0 }
   }
   // The unread range is STREAMED (fd.read into a fixed buffer, byte-framed
@@ -399,7 +441,7 @@ async function processOneFileUnguarded(
     compact_boundaries: number | bigint | null
     pre_boundary_snapshots: string | null
   }>
-  const metaRow = metaRows[0]
+  const metaRow = rewritten ? undefined : metaRows[0]
   let metaTitle: string | null = metaRow?.title ?? null
   let metaCompactBoundaries: number = Number(metaRow?.compact_boundaries ?? 0)
   let metaPreBoundarySnapshots: number[] = (() => {
@@ -429,7 +471,7 @@ async function processOneFileUnguarded(
     }
     if (upTo === lastCheckpoint) return
     if (!info.isSubagent) await persistMeta()
-    await write(SQL_UPSERT_OFFSET, [filePath, upTo, size, new Date().toISOString()])
+    await saveOffset(upTo)
     lastCheckpoint = upTo
   }
   const persistMeta = async (): Promise<void> => {
@@ -444,6 +486,7 @@ async function processOneFileUnguarded(
     ])
   }
   for await (const rawLine of readJsonlLines(filePath, { start: startByte, end: size })) {
+    if (consumed - startByte >= maxBytes) break
     // Bounded transactions on EVERY path (the tool_result branch used to
     // `continue` past the size check and grow one transaction without limit).
     if (buffer.length >= SWEEP_BATCH_ROWS || rawLine.start - lastCheckpoint >= SWEEP_BATCH_BYTES) {
@@ -594,9 +637,10 @@ async function processOneFileUnguarded(
     buffer = []
   }
 
-  // Backfill model for user-rows (next-assistant lookup, per session).
+  // Backfill once the current snapshot is caught up, rather than repeating
+  // the next-assistant lookup over the growing session after every slice.
   try {
-    await write(SQL_FILL_USER_MODELS, [sessionId])
+    if (consumed >= size) await write(SQL_FILL_USER_MODELS, [sessionId])
   } catch (err) {
     warnLog('fillUserModels failed', { sessionId, error: String(err) })
   }
@@ -620,62 +664,48 @@ async function processOneFileUnguarded(
   // subagents share parent's title etc).
   if (!info.isSubagent) await persistMeta()
 
-  await write(SQL_UPSERT_OFFSET, [filePath, consumed, size, new Date().toISOString()])
-  return { inserted }
+  await saveOffset(consumed)
+  if (consumed >= size) remember()
+  return { inserted, pending: consumed < size && consumed > startByte }
 }
 
 let running = false
 let timer: ReturnType<typeof setInterval> | null = null
+let generation = 0
 
-// Sweep N JSONL files concurrently: the file reads, parsing and DuckDB
-// READS run in parallel; the writes of all workers are serialised by
-// `withStatsWrite` (concurrent write transactions were the crash of
-// 6.3.131, see header). Cap at 8 to balance FS read concurrency on
-// spinning disks; SSDs handle higher fine.
-const SWEEP_CONCURRENCY = 8
-
+// Only one historical slice is active. Live accounting and replay remain
+// independent; all database writes still use withStatsWrite.
 export async function sweepAll(): Promise<{ files: number; inserted: number }> {
   if (running) return { files: 0, inserted: 0 }
   running = true
+  const gen = generation
   let files = 0
   let inserted = 0
   try {
-    // Drain the async generator into an array first so we can dispatch
-    // chunks of CONCURRENCY in parallel without losing the queue.
-    // Sort by mtime DESC so fresh sessions (live activity) ingest first
-    // — old subagent files trickle in afterwards and don't block the UI.
+    // Keep paths only, never transcript bodies. Main sessions run before lazy
+    // subagent accounting; each file gets one bounded turn per round.
     const collected: JsonlFileInfo[] = []
     for await (const info of listJsonlFiles()) collected.push(info)
-    // Stat in parallel — the sweeper traverses thousands of files on
-    // boot and serial fsp.stat (one threadpool task each) used to add
-    // many seconds of stall before any worker started. Promise.all
-    // batches them across the libuv pool.
-    const stated = await Promise.all(
-      collected.map(async (info) => {
-        try {
-          const mtimeMs = (await fsp.stat(info.path)).mtimeMs
-          return { info, mtimeMs }
-        } catch {
-          return null
-        }
-      }),
-    )
-    const drained = stated.filter((x): x is { info: JsonlFileInfo; mtimeMs: number } => x !== null)
-    drained.sort((a, b) => b.mtimeMs - a.mtimeMs)
-    const queue: JsonlFileInfo[] = drained.map((d) => d.info)
+    const stated: Array<{ info: JsonlFileInfo; mtimeMs: number }> = []
+    // Bound filesystem work as well as content buffers: no unbounded stat fanout.
+    for (const info of collected) {
+      try {
+        const mtimeMs = (await fsp.stat(info.path)).mtimeMs
+        stated.push({ info, mtimeMs })
+      } catch {
+        /* vanished */
+      }
+    }
+    stated.sort((a, b) => Number(a.info.isSubagent) - Number(b.info.isSubagent) || b.mtimeMs - a.mtimeMs)
+    let queue = stated.map((d) => d.info)
 
-    // Worker pool — N parallel readers pull from the shared queue.
-    // Each worker gets a DEDICATED DuckDB connection (via getDbByIndex)
-    // so two workers never share a conn, which DuckDB requires for
-    // independent in-flight queries.
-    let cursor = 0
-    async function worker(workerIdx: number): Promise<void> {
-      const conn = await getDbByIndex(workerIdx)
-      while (true) {
-        const idx = cursor++
-        if (idx >= queue.length) return
-        const info = queue[idx]!
-        const r = await processOneFile(info, conn).catch((err) => {
+    // Round-robin complete-line slices. Subagents are discovered eagerly but
+    // their content is opened lazily here, never by the UI's reader subscription.
+    while (queue.length > 0 && gen === generation) {
+      const next: JsonlFileInfo[] = []
+      for (const info of queue) {
+        if (gen !== generation) break
+        const r = await processOneFile(info, SWEEP_SLICE_BYTES).catch((err) => {
           warnLog('jsonl-sweeper processOneFile failed', {
             path: info.path,
             error: err instanceof Error ? err.message : String(err),
@@ -684,9 +714,12 @@ export async function sweepAll(): Promise<{ files: number; inserted: number }> {
         })
         files++
         inserted += r.inserted
+        if ('pending' in r && r.pending) next.push(info)
+        if (r.inserted > 0 || ('pending' in r && r.pending))
+          await new Promise((resolve) => setTimeout(resolve, SWEEP_PAUSE_MS))
       }
+      queue = next
     }
-    await Promise.all(Array.from({ length: SWEEP_CONCURRENCY }, (_, i) => worker(i)))
   } finally {
     running = false
   }
@@ -706,9 +739,10 @@ export async function sweepOneByPath(
   filePath: string,
   isSubagent = false,
   parentSessionId: string | null = null,
-): Promise<void> {
-  await processOneFile({ path: filePath, isSubagent, parentSessionId }).catch((err) => {
+): Promise<SweepResult> {
+  return processOneFile({ path: filePath, isSubagent, parentSessionId }, SWEEP_SLICE_BYTES).catch((err) => {
     warnLog('sweepOneByPath failed', { filePath, error: String(err) })
+    return { inserted: 0 }
   })
 }
 
@@ -723,6 +757,7 @@ export function startJsonlSweeper(intervalMs = 5 * 60_000): void {
 }
 
 export function stopJsonlSweeper(): void {
+  generation++
   if (timer) {
     clearInterval(timer)
     timer = null

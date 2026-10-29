@@ -546,8 +546,18 @@ describe('bounded memory', () => {
     const tail = await call(ctx, 'project_session_read', { session_id: A, tail: 1 })
     expect(tail.body).toContain('the very end')
     expect(tail.page.first_index).toBe(40_000)
-    const search = await call(ctx, 'project_session_search', { query: 'very end' })
-    expect(search.page.results).toBe(1)
+    let search = await call(ctx, 'project_session_search', { query: 'very end' })
+    expect(search.page.next_cursor).toBeTruthy()
+    const cursors = new Set<string>()
+    let results = Number(search.page.results)
+    while (search.page.next_cursor) {
+      const cursor = search.page.next_cursor as string
+      expect(cursors.has(cursor)).toBe(false)
+      cursors.add(cursor)
+      search = await call(ctx, 'project_session_search', { query: 'very end', cursor })
+      results += Number(search.page.results)
+    }
+    expect(results).toBe(1)
     const outline = JSON.parse((await call(ctx, 'project_session_outline', { session_id: A })).body)
     expect(outline.lines).toBe(40_001)
     const brief = await call(ctx, 'project_session_brief', { session_id: A, turns: 2 })

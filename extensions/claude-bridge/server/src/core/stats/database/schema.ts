@@ -211,6 +211,10 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
     )
   `)
 
+  // Preserve old cursors while detecting same-size rewrites and replacements.
+  await tryExec(db, 'ALTER TABLE jsonl_offsets ADD COLUMN last_mtime DOUBLE')
+  await tryExec(db, 'ALTER TABLE jsonl_offsets ADD COLUMN file_identity TEXT')
+
   // Drop legacy tables that aren't used in PTY mode.
   await tryExec(db, 'DROP TABLE IF EXISTS sessions') // old SDK session table
   await tryExec(db, 'DROP TABLE IF EXISTS pty_sessions') // unused under new sweeper

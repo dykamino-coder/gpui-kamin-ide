@@ -49,9 +49,6 @@ export function useChatScrollPin(
   // mistaken for a user scroll (which would recompute + persist state).
   const programmaticRef = useRef<boolean>(false)
   const restoringRef = useRef<boolean>(false)
-  // Distance-from-bottom captured just before a scroll-up load — the invariant a
-  // prepend preserves. Null when no load is pending. See restoreAnchor.
-  const anchorRef = useRef<number | null>(null)
   const prevTopRef = useRef<number>(0)
   // Coalesces the many snap requests a streaming burst fires into one rAF pass.
   const pendingSnapRef = useRef<boolean>(false)
@@ -69,38 +66,6 @@ export function useChatScrollPin(
 
   function distFromBottom(el: HTMLElement): number {
     return el.scrollHeight - el.scrollTop - el.clientHeight
-  }
-
-  // Distance from the BOTTOM captured just before a scroll-up load, or null.
-  // See restoreAnchor: this is the invariant a prepend preserves.
-  function captureAnchor(): void {
-    const el = host()
-    if (el) anchorRef.current = el.scrollHeight - el.scrollTop
-  }
-
-  /** Keep the reader looking at the same content after older messages are
-   *  PREPENDED.
-   *
-   *  Scrolling up raises the render cap by 400 entries, which grow the document
-   *  ABOVE the viewport. scrollTop is measured from the TOP, so leaving it alone
-   *  silently moves the reader — the reported "I scroll up, it loads, and throws
-   *  me back down". Distance from the BOTTOM is what a prepend leaves untouched,
-   *  so we restore that instead. Runs in the growth observer, before paint.
-   *  `programmaticRef` keeps the write from being read back as a user scroll
-   *  (which would re-arm stick and snap to the end). */
-  function restoreAnchor(): boolean {
-    const anchor = anchorRef.current
-    if (anchor === null) return false
-    const el = host()
-    if (!el) { anchorRef.current = null; return false }
-    // The load only settles once the taller window has laid out; wait for the
-    // document to actually be bigger than the anchor we recorded.
-    if (el.scrollHeight <= anchor) return true // keep waiting, more is coming
-    anchorRef.current = null
-    programmaticRef.current = true
-    el.scrollTop = el.scrollHeight - anchor
-    prevTopRef.current = el.scrollTop
-    return true
   }
 
   function snap(): void {
@@ -131,7 +96,6 @@ export function useChatScrollPin(
   useEffect(() => {
     if (!currentTabId) return
     let cancelled = false
-    anchorRef.current = null
     const saved = tabScrollMemory.get(currentTabId)
     restoringRef.current = true
     requestAnimationFrame(() => {
@@ -190,7 +154,6 @@ export function useChatScrollPin(
       // Scrolled near the top → auto-load the next chunk of older messages
       // (replaces the "show earlier" button — plain scrolling is enough).
       if (movedUp && top < NEAR_TOP_PX) {
-        captureAnchor() // …before the window grows under us
         onNearTopRef.current?.()
       }
       const id = tabRef.current
@@ -203,9 +166,9 @@ export function useChatScrollPin(
     let mo: MutationObserver | null = null
     if (target && typeof MutationObserver !== 'undefined') {
       mo = new MutationObserver(() => {
-        // A pending scroll-up load outranks the bottom-snap: the user is reading
-        // history, not following the tail.
-        if (restoreAnchor()) return
+        // Chromium keeps the visible row anchored while older rows prepend.
+        // Manual scrollHeight deltas fight native anchoring and use estimated
+        // content-visibility heights, moving the reader after layout.
         if (stickRef.current && !restoringRef.current) requestSnap()
       })
       mo.observe(target, { childList: true, subtree: true, characterData: true })

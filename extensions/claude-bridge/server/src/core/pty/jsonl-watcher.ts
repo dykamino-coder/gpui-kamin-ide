@@ -209,6 +209,7 @@ export class JsonlWatcher {
   private filePath: string | null = null
   private lastOffset = 0
   private fileIdentity: string | null = null
+  private fileStamp: { size: number; mtime: number } | null = null
   private reading = false
   // Fast re-check after a backpressure DROP (offset not advanced) so recovery
   // doesn't wait on the 10s safety poll.
@@ -356,7 +357,9 @@ export class JsonlWatcher {
 
     let files: string[]
     try {
-      files = await fsp.readdir(subagentsDir)
+      // A paged client names the one file it opened. No O(agents) directory
+      // walk every four seconds, including when that file has not appeared yet.
+      files = this.history?.mode === 'paged' ? [`${this.activeSubagentId}.jsonl`] : await fsp.readdir(subagentsDir)
     } catch {
       if (!this.loggedScanSkip) {
         this.loggedScanSkip = true
@@ -376,19 +379,20 @@ export class JsonlWatcher {
         const jsonlPath = path.join(subagentsDir, file)
         // Already watching this file?
         if (this.subagentWatchers.has(jsonlPath)) continue
-
         const retired = this.retiredSubagents.get(jsonlPath)
+        if (retired && now < retired.nextCheckAt) continue
+        let stat: fs.Stats
+        try {
+          stat = await fsp.stat(jsonlPath)
+          if (!stat.isFile()) continue
+        } catch {
+          continue
+        }
+        if (this.stopped) return
+
         let startOffset: number | undefined
         if (retired) {
-          if (now < retired.nextCheckAt) continue
           retired.nextCheckAt = now + RETIRED_SUBAGENT_CHECK_MS
-          let stat: fs.Stats
-          try {
-            stat = await fsp.stat(jsonlPath)
-          } catch {
-            continue
-          }
-          if (this.stopped) return
           // dev/ino survive appends; birthtime/mtime are fallbacks for file
           // systems without inode IDs. A changed identity or shrink is new data.
           const sameFile =
@@ -397,7 +401,8 @@ export class JsonlWatcher {
               : stat.birthtimeMs && retired.birthtimeMs
                 ? stat.birthtimeMs === retired.birthtimeMs
                 : stat.mtimeMs === retired.mtimeMs
-          if (sameFile && stat.size >= retired.size) {
+          const rewritten = stat.size === retired.size && stat.mtimeMs !== retired.mtimeMs
+          if (sameFile && !rewritten && stat.size >= retired.size) {
             if (stat.size <= retired.offset) continue
             startOffset = retired.offset
           }
@@ -409,6 +414,7 @@ export class JsonlWatcher {
         const agentId = file.replace('.jsonl', '')
         let agentName = agentId // fallback: file hash
         try {
+          if ((await fsp.stat(metaPath)).size > 64 * 1024) throw new Error('Oversized agent metadata')
           const raw = await fsp.readFile(metaPath, 'utf-8')
           const meta = JSON.parse(raw)
           if (meta.agentType) agentName = meta.agentType
@@ -452,6 +458,9 @@ export class JsonlWatcher {
 
   selectSubagent(agentId: string | null): void {
     if (agentId !== null && !/^[a-zA-Z0-9_-]{1,160}$/.test(agentId)) return
+    // Download/selection commands use the bare hash; deliveries and filenames
+    // use the CLI's agent- prefix. Accept either representation at this boundary.
+    if (agentId !== null && !agentId.startsWith('agent-')) agentId = `agent-${agentId}`
     if (this.activeSubagentId === agentId) return
     this.activeSubagentId = agentId
     for (const watcher of this.subagentWatchers.values()) watcher.stop()
@@ -648,10 +657,10 @@ export class JsonlWatcher {
     let bestPath: string | null = null
     let bestMtime = 0
 
-    const results = await Promise.all(
-      slugDirs.filter((d) => d.isDirectory()).map((d) => this.scanDirectory(path.join(PROJECTS_DIR, d.name))),
-    )
-    for (const found of results) {
+    for (const dir of slugDirs) {
+      if (this.stopped) return null
+      if (!dir.isDirectory()) continue
+      const found = await this.scanDirectory(path.join(PROJECTS_DIR, dir.name))
       if (!found) continue
       try {
         const stat = await fsp.stat(found)
@@ -680,22 +689,20 @@ export class JsonlWatcher {
     let bestPath: string | null = null
     let bestMtime = 0
 
-    await Promise.all(
-      files
-        .filter((f) => f.isFile() && f.name.endsWith('.jsonl'))
-        .map(async (file) => {
-          const filePath = path.join(dir, file.name)
-          try {
-            const stat = await fsp.stat(filePath)
-            if (stat.mtimeMs > this.sessionCreatedAt && stat.mtimeMs > bestMtime) {
-              bestMtime = stat.mtimeMs
-              bestPath = filePath
-            }
-          } catch {
-            /* skip */
-          }
-        }),
-    )
+    for (const file of files) {
+      if (this.stopped) return null
+      if (!file.isFile() || !file.name.endsWith('.jsonl')) continue
+      const filePath = path.join(dir, file.name)
+      try {
+        const stat = await fsp.stat(filePath)
+        if (stat.mtimeMs > this.sessionCreatedAt && stat.mtimeMs > bestMtime) {
+          bestMtime = stat.mtimeMs
+          bestPath = filePath
+        }
+      } catch {
+        /* skip */
+      }
+    }
 
     return bestPath
   }
@@ -989,6 +996,7 @@ export class JsonlWatcher {
       this.timing('readInitialContent.stat', `${String(Math.round(stat.size / 1024))}KB`)
       if (!live()) return
       this.fileIdentity = `${stat.dev}:${stat.ino}`
+      this.fileStamp = { size: stat.size, mtime: stat.mtimeMs }
       if (stat.size === 0) {
         this.lastOffset = 0
         this.startPolling()
@@ -1009,13 +1017,20 @@ export class JsonlWatcher {
           (await recordUuidMatches(filePath, cursor.lastPos, cursor.lastUuid))
         if (!live()) return
         if (resume && stat.size - cursor.pos <= 512 * 1024) {
-          this.lastOffset = await this.streamFrom(cursor.pos, live)
+          const end = await this.streamFrom(cursor.pos, live)
+          if (!live()) return
+          this.lastOffset = end
         } else {
           const page = await readHistoryPage(filePath, stat.size)
           if (!live()) return
           const current = await fsp.stat(filePath)
           if (!live()) return
-          if (current.dev !== stat.dev || current.ino !== stat.ino || current.size < page.endPos) {
+          if (
+            current.dev !== stat.dev ||
+            current.ino !== stat.ino ||
+            current.size < page.endPos ||
+            (current.size === stat.size && current.mtimeMs !== stat.mtimeMs)
+          ) {
             this.replayAbort = null
             void this.readInitialContent()
             return
@@ -1025,6 +1040,7 @@ export class JsonlWatcher {
             this.sendStatus({ status: 'watching', filePath, compacted: true })
           this.replaceOnPage = false
           if (!(await this.deliver(page.records, true, live))) return
+          if (!live()) return
           this.lastOffset = page.endPos
         }
         if (!live()) return
@@ -1351,10 +1367,15 @@ export class JsonlWatcher {
     try {
       const stat = await fsp.stat(filePath)
       if (!live()) return
-      if (stat.size < this.lastOffset || (this.fileIdentity && `${stat.dev}:${stat.ino}` !== this.fileIdentity)) {
+      if (
+        stat.size < this.lastOffset ||
+        (this.fileIdentity && `${stat.dev}:${stat.ino}` !== this.fileIdentity) ||
+        (this.fileStamp?.size === stat.size && this.fileStamp.mtime !== stat.mtimeMs)
+      ) {
         this.replayRewrittenFile(filePath)
         return
       }
+      this.fileStamp = { size: stat.size, mtime: stat.mtimeMs }
       if (stat.size <= this.lastOffset) return
 
       // Bounded read: at most TAIL_BATCH_BYTES of complete records per pass

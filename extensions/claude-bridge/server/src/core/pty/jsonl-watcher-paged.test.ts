@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { JsonlWatcher } from './jsonl-watcher'
@@ -13,6 +13,75 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true })
 })
 const line = (uuid: string) => `${JSON.stringify({ type: 'assistant', uuid, message: { content: uuid } })}\n`
+
+it('cancels a paged replay blocked on transport when switching conversations', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'paged-switch-'))
+  dirs.push(dir)
+  const oldFile = join(dir, 'old.jsonl')
+  const newFile = join(dir, 'new.jsonl')
+  await writeFile(oldFile, line('old-tail'))
+  const next = line('new-first') + line('new-tail')
+  await writeFile(newFile, next)
+  const entries: JsonlEntry[] = []
+  const statuses: JsonlStatus[] = []
+  let blocked = true
+  let probes = 0
+  const w = new JsonlWatcher(
+    Date.now(),
+    (rows) => {
+      entries.push(...rows)
+      return true
+    },
+    (s) => {
+      statuses.push(s)
+    },
+  )
+  watchers.push(w)
+  Object.assign(w, {
+    filePath: oldFile,
+    writable: () => {
+      probes++
+      return !blocked
+    },
+  })
+  w.replayAll({ mode: 'paged' })
+  await expect.poll(() => probes).toBeGreaterThan(0)
+  ;(w as unknown as { switchToFile(file: string): void }).switchToFile(newFile)
+  blocked = false
+  await expect.poll(() => statuses.some((s) => s.replayComplete && s.filePath === newFile)).toBe(true)
+  expect(entries.map((r) => r.uuid)).toEqual(['new-first', 'new-tail'])
+  expect(statuses.some((s) => s.replayComplete && s.filePath === oldFile)).toBe(false)
+  expect((w as unknown as { lastOffset: number }).lastOffset).toBe(Buffer.byteLength(next))
+})
+
+it('replaces a same-size rewritten transcript after reattach', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'paged-rewrite-'))
+  dirs.push(dir)
+  const file = join(dir, 'conv.jsonl')
+  await writeFile(file, line('old-tail'))
+  const entries: JsonlEntry[] = []
+  const statuses: JsonlStatus[] = []
+  const w = new JsonlWatcher(
+    Date.now(),
+    (rows) => {
+      entries.push(...rows)
+      return true
+    },
+    (s) => {
+      statuses.push(s)
+    },
+  )
+  watchers.push(w)
+  Object.assign(w, { filePath: file })
+  w.replayAll({ mode: 'paged' })
+  await expect.poll(() => entries.at(-1)?.uuid).toBe('old-tail')
+  const previous = await stat(file)
+  await writeFile(file, line('new-tail'))
+  await utimes(file, previous.atime, new Date(previous.mtimeMs + 2000))
+  await (w as unknown as { checkForNewContent(): Promise<void> }).checkForNewContent()
+  await expect.poll(() => entries.at(-1)?.uuid).toBe('new-tail')
+  expect(statuses.some((s) => s.compacted)).toBe(true)
+})
 
 it('reattaches by verified offset, retains the tail and reads records arriving during replay exactly once', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'paged-reattach-'))
@@ -97,11 +166,14 @@ it('opens none of 300 subagent transcripts until selected and bounds the selecte
   await w.scanSubagents()
   expect(deliveries).toHaveLength(0)
   expect((w as unknown as { subagentWatchers: Map<string, unknown> }).subagentWatchers.size).toBe(0)
-  w.selectSubagent('agent-12')
+  w.selectSubagent('12')
   await expect.poll(() => deliveries.length).toBeGreaterThan(0)
   expect(deliveries.every((d) => d.id === 'agent-12')).toBe(true)
   expect(deliveries.flatMap((d) => d.rows).length).toBeLessThanOrEqual(200)
   expect(deliveries.flatMap((d) => d.rows).at(-1)?.uuid).toBe('agent-449')
+  const delivered = deliveries.length
+  w.selectSubagent('agent-12')
+  expect(deliveries).toHaveLength(delivered)
   w.selectSubagent(null)
   expect((w as unknown as { subagentWatchers: Map<string, unknown> }).subagentWatchers.size).toBe(0)
 }, 30_000)
