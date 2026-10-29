@@ -164,11 +164,11 @@ export async function searchSessions(ctx: CallerContext, args: Record<string, un
   const maxChars = maxCharsArg(args.max_chars)
   const withSubagents = boolArg(args.include_subagents, 'include_subagents', false)
   let ids: Set<string> | null = null
-  if (args.conversation_ids !== undefined && args.conversation_ids !== null) {
-    if (!Array.isArray(args.conversation_ids) || args.conversation_ids.length > 200) {
-      throw new ArgError('conversation_ids must be a list of at most 200 ids')
+  if (args.session_ids !== undefined && args.session_ids !== null) {
+    if (!Array.isArray(args.session_ids) || args.session_ids.length > 200) {
+      throw new ArgError('session_ids must be a list of at most 200 ids')
     }
-    ids = new Set(args.conversation_ids.filter(validConversationId))
+    ids = new Set(args.session_ids.filter(validConversationId))
   }
   const cursor: Cursor | null = decodeCursor(args.cursor)
 

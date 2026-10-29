@@ -135,7 +135,7 @@ export async function outlineSession(ctx: CallerContext, args: Record<string, un
   const sorted = (m: Map<string, number>) => Object.fromEntries([...m].sort((a, b) => b[1] - a[1]))
   const body = JSON.stringify(
     {
-      conversation_id: target.ref.conversationId,
+      session_id: target.ref.conversationId,
       agent_id: target.agentId,
       source: target.ref.source,
       title: title ? oneLine(title, 120) : (firstPrompts[0]?.text.slice(0, 120) ?? null),
