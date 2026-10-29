@@ -32,7 +32,7 @@ pub(super) fn zoom_own(
     own: &mut Computed,
     k: f32,
     eff: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     own.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
     crate::style::zoom::apply(own, Some(parent), eff, k, vcx);
@@ -44,7 +44,7 @@ pub(super) fn zoom_own(
 pub(super) fn parent_in_own_zoom(
     parent: &Computed,
     k: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Computed> {
     if (k - 1.0).abs() <= f32::EPSILON {
         return None;

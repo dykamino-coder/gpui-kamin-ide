@@ -1,8 +1,8 @@
 //! Разбор теней box-shadow/text-shadow: валидность и список теней.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::values::value::StyleColor;
+use crate::values::ValueCx;
 
 /// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
 /// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного

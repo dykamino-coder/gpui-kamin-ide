@@ -78,7 +78,7 @@ pub fn line_height_spans(
     base_size: f32,
     normal: f32,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     for (range, text, style) in text_ranges(pieces) {
@@ -118,7 +118,7 @@ pub fn line_height_spans(
 pub fn decor_spans(
     pieces: &[Piece],
     base: &TextStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();

@@ -1,9 +1,9 @@
 //! CSS-разрешение нейтральных метрик. Запасные длины выбирает style, не provider.
 //! Раздельные области запроса сохраняют прежние порядок замеров и округление.
 
-use crate::document::state::ValueCx;
 use crate::font_facts::{FontMetricFacts, FontMetricQuery, FontRequest, NormalLineFacts};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 fn facts(family: &str, size: f32, query: FontMetricQuery, vcx: ValueCx<'_>) -> FontMetricFacts {
     let request = FontRequest {

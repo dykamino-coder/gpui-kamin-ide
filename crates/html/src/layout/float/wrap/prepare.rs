@@ -1,7 +1,6 @@
 //! Подготовка обтекания: узлы с поднятыми флоатами, ранний выход без флоатов,
 //! бандовый хост пробега.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
 use crate::layout::box_kind::{inline_level, is_blank, out_of_flow, phantom_inline};
@@ -11,6 +10,7 @@ use crate::layout::float::initial_letter::{inline_float_host, split_leading_floa
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
 use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn unfloated_flow(
     cb_top_open: bool,
@@ -19,7 +19,7 @@ pub(super) fn unfloated_flow(
     parent_bfc: bool,
     cb: FloatCb,
     nodes: &mut Vec<Node>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.used().float.is_some_and(|f| f != 0),
@@ -151,7 +151,7 @@ pub(super) fn host_for_run(
     nodes: &[Node],
     out: &[Node],
     i: usize,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
     if !measured_ok {
         return None;

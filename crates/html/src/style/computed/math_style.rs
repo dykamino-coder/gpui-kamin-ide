@@ -17,11 +17,7 @@ pub(crate) fn depth(value: &str) -> Option<Depth> {
         value.parse().ok().map(Depth::Absolute)
     }
 }
-pub(crate) fn inherit(
-    parent: &Computed,
-    c: &mut Computed,
-    vcx: crate::document::state::ValueCx<'_>,
-) {
+pub(crate) fn inherit(parent: &Computed, c: &mut Computed, vcx: crate::values::ValueCx<'_>) {
     c.math_compact = c.math_compact.or(parent.math_compact);
     c.math_shift = c.math_shift.or(parent.math_shift);
     c.math_operator_form = c.math_operator_form.or(parent.math_operator_form);
@@ -83,7 +79,7 @@ mod tests {
     use crate::style::computed::BoxStyle;
     #[test]
     fn css_wide_style_reset_controls_auto_depth_font_size() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         use crate::style::{cascade::inherit::inherit, css::parse_decls};
         let parent = {

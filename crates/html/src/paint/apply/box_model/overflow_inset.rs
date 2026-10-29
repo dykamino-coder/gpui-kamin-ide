@@ -2,9 +2,9 @@
 //! непозиционированных; края inset, избыточные края и translate.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
+use crate::values::ValueCx;
 
 fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными

@@ -4,9 +4,9 @@
 //! стиля.
 
 use super::{gap_color, gap_inset, gap_list, gap_style, gap_width};
-use crate::document::state::ValueCx;
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству многоколонника или линейки.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

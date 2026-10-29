@@ -7,7 +7,7 @@ mod background;
 
 #[test]
 fn mixed_font_stops_compute_once_before_inheritance() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -40,7 +40,7 @@ fn mixed_font_stops_compute_once_before_inheritance() {
 
 #[test]
 fn radial_radii_center_and_line_stops_are_computed_lengths() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -71,7 +71,7 @@ fn radial_radii_center_and_line_stops_are_computed_lengths() {
 
 #[test]
 fn viewport_and_font_terms_share_the_computed_stop() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);

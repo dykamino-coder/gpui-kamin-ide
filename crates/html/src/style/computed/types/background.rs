@@ -2,7 +2,7 @@
 //! укладка.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// `background-clip`: до какого края коробки красится фон
 /// (css-backgrounds-3 §3.7).

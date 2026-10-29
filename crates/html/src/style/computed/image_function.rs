@@ -2,8 +2,8 @@
 //! (строка или `url()`) и/или цвет. Здесь только синтаксис: какой аргумент
 //! действует (запасной цвет при незагрузившемся адресе), решает загрузчик образа.
 
-use crate::document::state::ValueCx;
 use crate::style::{css, values::value::Color};
+use crate::values::ValueCx;
 
 pub(crate) struct Arguments<'a> {
     pub url: Option<String>,
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn image_arguments_preserve_fallback_until_loading() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let image = arguments(r#"image("missing.png", currentColor)"#, vcx).unwrap();
         assert_eq!(image.url.as_deref(), Some("missing.png"));

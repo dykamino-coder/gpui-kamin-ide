@@ -1,8 +1,8 @@
 //! Объявления: разбор блока, вложенные блоки, экранирование, url(), комментарии, деление
 //! аргументов.
 
-use crate::document::state::ValueCx;
 use crate::style::css::*;
+use crate::values::ValueCx;
 
 mod continuation;
 mod lexical;

@@ -2,7 +2,7 @@
 //! комбинаторы трёхзначной логики.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Media {
     /// `<mf-plain>` и разложенные диапазоны. `min-`/`max-` — те же `>=`/`<=`

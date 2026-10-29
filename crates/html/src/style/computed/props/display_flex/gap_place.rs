@@ -2,7 +2,7 @@
 //! justify-items/self. Ветви в исходном порядке после apply_flex_items.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_gap_place(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {

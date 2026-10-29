@@ -1,7 +1,7 @@
 //! apply_layout, этап выравнивания: align-items/self, flex-basis, justify-content, align-content.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(super) fn layout_alignment(
     mut d: Div,

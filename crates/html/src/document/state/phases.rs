@@ -3,8 +3,8 @@
 //! `Document` (или вложенный документ рамки); сборка кадра получает их через
 //! `LayoutCx`, нижний контекст значений — только `DocumentValues`.
 
-use super::{DocumentValues, ValueCx};
 use crate::style::css::{Media, PageRule};
+use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {

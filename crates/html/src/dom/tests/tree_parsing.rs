@@ -86,7 +86,7 @@ pub(super) fn list_item_counter_is_implicit() {
 
 #[test]
 pub(super) fn has_relational_pseudo() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let green = crate::style::values::value::Color::parse("green", vcx);
@@ -113,7 +113,7 @@ pub(super) fn has_relational_pseudo() {
 
 #[test]
 pub(super) fn nth_child_of_selector_list() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let green = crate::style::values::value::Color::parse("green", vcx);
@@ -132,7 +132,7 @@ pub(super) fn nth_child_of_selector_list() {
 
 #[test]
 pub(super) fn custom_properties_cascade_and_inherit() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let blue = crate::style::values::value::Color::parse("blue", vcx);
@@ -148,7 +148,7 @@ pub(super) fn custom_properties_cascade_and_inherit() {
 
 #[test]
 pub(super) fn nth_child_selects_by_position() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
@@ -160,7 +160,7 @@ pub(super) fn nth_child_selects_by_position() {
 
 #[test]
 pub(super) fn nth_child_understands_an_plus_b() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
@@ -172,7 +172,7 @@ pub(super) fn nth_child_understands_an_plus_b() {
 
 #[test]
 pub(super) fn last_child_counts_from_the_end() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
@@ -184,7 +184,7 @@ pub(super) fn last_child_counts_from_the_end() {
 
 #[test]
 pub(super) fn of_type_counts_only_the_same_tag() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     // Второй `<i>` — четвёртый ребёнок, но второй своего тега.

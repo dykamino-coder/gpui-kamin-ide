@@ -3,8 +3,8 @@
 //! выборки покрытия, а поворот уже готового растра сохранял бы покрытие и прозрачный RGB
 //! прежней ориентации. Масштаб, скос, произвольные углы и SVG-фильтры остаются на пути картинки.
 
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 use gpui::{Bounds, Corners, Pixels, TransformationMatrix, Window, point, px, size};
 
 pub(super) fn paint(

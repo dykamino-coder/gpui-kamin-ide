@@ -1,7 +1,7 @@
 //! Фоновые компоненты одного слоя: разбираются каскадом, копируются при отрисовке.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BgLayer {

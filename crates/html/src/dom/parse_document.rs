@@ -1,13 +1,12 @@
 //! Вход конвейера DOM: `parse`/`parse_media` — от разметки к дереву `Node` с
 //! вычисленными стилями. Правила, метрики и арены значений пишутся в состояние
-//! документа (`document::state`): своё у каждого разбора, не глобальное.
+//! документа (`values`): своё у каждого разбора, не глобальное.
 //! Порядок: разбор html5ever, схема цвета и quirks, сборка правил (лист агента →
 //! тема → quirks → каждый `<style>` отдельной таблицей), кадры анимаций, предпроходы
 //! `:has()` и теней, обход `walk_children`, затем проходы по собранному дереву
 //! в фиксированном порядке: `display: inherit`, quirks-цвета, анонимные таблицы,
 //! лунки, подсетки, подъёмы, run-in, флоаты.
 
-use super::Parsed;
 use super::input::Admitted;
 use super::style_sources::try_collect_style_tags;
 use super::{Node, user_agent_css};
@@ -27,30 +26,18 @@ use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Разобрать фрагмент и вернуть корневые узлы.
+/// Разобрать разметку в нижние данные документа `doc` и вернуть корневые узлы.
 ///
 /// `extra_css` — таблица уровня приложения (тема чата), применяется до
 /// `<style>` документа и до `style=""`.
 /// Глубина ограничивает только представление; исходный DOM сохраняется целиком.
-pub fn try_parse(html: &str, extra_css: &str) -> Result<Parsed, DocumentFailure> {
-    try_parse_media(html, extra_css, Media::default())
-}
-
-/// Разбор без Document, с полным DOM и тем же отчётом DocState.
-pub fn try_parse_media(
-    html: &str,
-    extra_css: &str,
-    media: Media,
-) -> Result<Parsed, DocumentFailure> {
-    parse_mode(html, extra_css, media, false)
-}
-
-pub(super) fn parse_mode(
+pub(crate) fn parse_into(
     html: &str,
     extra_css: &str,
     media: Media,
     xml: bool,
-) -> Result<Parsed, DocumentFailure> {
+    doc: &Rc<crate::values::DocumentValues>,
+) -> Result<Vec<Node>, DocumentFailure> {
     let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
         .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
     let revision = budget.revision();
@@ -59,11 +46,10 @@ pub(super) fn parse_mode(
         .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
     let input = Admitted::with_budget(html, xml, revision.clone())?;
     super::early_admission::admit_sources(&input, extra_css)?;
-    let doc = crate::document::state::DocState::new(media);
-    doc.values.admit_revision(revision, None);
-    let nodes = convert(&input, extra_css, media, &doc)?;
-    doc.values.traversal.retain(input);
-    Ok(Parsed { nodes, doc })
+    doc.admit_revision(revision, None);
+    let nodes = convert(&input, extra_css, media, doc)?;
+    doc.traversal.retain(input);
+    Ok(nodes)
 }
 
 /// Конвертация единственного исходного дерева в свежее состояние документа.
@@ -71,7 +57,7 @@ pub(crate) fn convert(
     input: &Admitted,
     extra_css: &str,
     mut media: Media,
-    doc: &Rc<crate::document::state::DocState>,
+    doc: &Rc<crate::values::DocumentValues>,
 ) -> Result<Vec<Node>, DocumentFailure> {
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
@@ -84,8 +70,7 @@ pub(crate) fn convert(
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). XML и HTML-адаптер XHTML всегда работают без quirks.
-    doc.values
-        .quirks
+    doc.quirks
         .set(dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks && !xhtml);
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
@@ -105,7 +90,7 @@ pub(crate) fn convert(
     // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
     // получает их копию, а правила документа в тень не попадают
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
-    if doc.values.quirks() {
+    if doc.quirks() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, vcx)?
             .into_iter()
@@ -169,7 +154,7 @@ pub(crate) fn convert(
     // Тени (`<template shadowrootmode>`): области стилей и распределение
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
-    let mut tree = TreeIndex::new(doc.values.clone(), xhtml);
+    let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope {
         rules,
         frames,

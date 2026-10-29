@@ -4,7 +4,7 @@
 //! части узнаёт разбор их значений; без него (CSS самого движка) — форма
 //! слова.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Узнавание частей слоя.
 pub(crate) struct Words<'v> {

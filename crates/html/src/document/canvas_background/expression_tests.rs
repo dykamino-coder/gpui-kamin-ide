@@ -15,7 +15,7 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
         "linear-gradient(rgb(from currentColor r g b),currentColor)",
         "linear-gradient(currentColor,currentColor),linear-gradient(lime,lime)",
     ] {
-        let parsed = crate::dom::parse(
+        let parsed = crate::document::parsed::parse(
             &format!(
                 "<style>html {{ color:red }} head {{ display:block; background-image:inherit }} body {{ color:blue; background-image:{image} }} div {{ color:green; background-image:inherit }}</style><div>x</div>"
             ),
@@ -61,7 +61,7 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
 #[test]
 fn canvas_keeps_computed_position_expressions_for_single_and_repeated_lists() {
     for image in ["url(a)", "url(a), url(b), url(c)"] {
-        let parsed = crate::dom::parse(
+        let parsed = crate::document::parsed::parse(
             &format!(
                 "<style>html {{ font:20px/1 Ahem }} body {{ font-size:40px; background-image:{image}; background-position:min(100%,1em) max(100%,2em), calc(50% - 1em) 0 }}</style>"
             ),

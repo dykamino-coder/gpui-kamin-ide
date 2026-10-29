@@ -3,9 +3,9 @@
 
 use super::{gradient_geometry::Geometry, gradient_raster::resolved_stops, len_px};
 use crate::cache::FloatKey;
-use crate::document::state::ValueCx;
 use crate::style::computed::{GradSpace, ImageFilter, ImageSource};
 use crate::style::values::{color_space::DirectGradient, value::Color};
+use crate::values::ValueCx;
 
 type Stop = ([FloatKey; 4], FloatKey);
 type Palette = (Vec<[FloatKey; 3]>, bool, bool);

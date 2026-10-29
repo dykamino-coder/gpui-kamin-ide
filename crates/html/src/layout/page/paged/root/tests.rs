@@ -17,7 +17,7 @@ fn body(nodes: &[Node]) -> &Element {
 #[test]
 fn forced_float_after_ends_its_shared_inline_run() {
     for forced in [false, true] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<body><br><div style='float:left;{}'>one</div><div style='clear:both'>two</div></body>",
                 if forced { "break-after:page" } else { "" }
@@ -39,7 +39,7 @@ fn forced_float_after_ends_its_shared_inline_run() {
 
 #[test]
 fn forced_boundary_does_not_carry_float_run_into_next_page() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<body><br><div style='float:left;break-after:page'>one</div><span>two</span><div>three</div></body>",
         "",
     );
@@ -57,7 +57,7 @@ fn forced_boundary_does_not_carry_float_run_into_next_page() {
 #[test]
 fn named_page_transition_closes_the_float_run_but_ignores_float_name() {
     for next in ["a", "c"] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<body><div style='page:a'>a</div><div style='page:b;float:left'>b</div><div style='page:{next}'>c</div></body>"
             ),

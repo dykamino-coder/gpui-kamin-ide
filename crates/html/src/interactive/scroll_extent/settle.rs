@@ -5,8 +5,8 @@
 
 use super::geometry::{sides, union};
 use super::*;
-use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::values::ValueCx;
 use gpui::ScrollHandle;
 impl Frame {
     pub(crate) fn settle(

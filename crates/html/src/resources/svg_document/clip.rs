@@ -1,6 +1,6 @@
 //! CSS `clip-path` на детях `<svg>`: синтез `<clipPath>` и опорные коробки фигур.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod ids;
 mod reference;
 pub(crate) use ids::ClipIds;

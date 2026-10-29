@@ -1,8 +1,8 @@
 //! Счётчики и содержимое ::marker перед ::before и детьми.
-use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::select::Ancestor;
+use crate::values::ValueCx;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn apply(
     style: &mut Computed,

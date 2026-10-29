@@ -1,7 +1,7 @@
 //! Таблица стилей: правила, каскадные слои, пространства имён.
 
-use crate::document::state::ValueCx;
 use crate::style::css::*;
+use crate::values::ValueCx;
 
 pub(crate) mod default_ns;
 mod nesting;
@@ -106,8 +106,8 @@ pub fn parse_stylesheet_media(
         css,
         &crate::budget::admission::Admission::new(revision.clone()),
     )?;
-    let doc = crate::document::state::DocState::new(media);
-    doc.values.admit_revision(revision, None);
+    let doc = crate::values::DocumentValues::detached(media);
+    doc.admit_revision(revision, None);
     Ok(parse_document_sheet(
         css,
         media,

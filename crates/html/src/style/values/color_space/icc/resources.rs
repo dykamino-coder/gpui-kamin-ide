@@ -1,8 +1,8 @@
 //! Загрузка именованных ICC-ресурсов (`@color-profile`) в реестр документа
-//! (`document::state`) относительно действующего базового URL документа.
+//! (`values`) относительно действующего базового URL документа.
 
 use crate::budget::admission::{Admission, Error};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 #[cfg(test)]
 fn load_profiles(css: &str, vcx: ValueCx<'_>) {
     load_profiles_with_base(css, None, vcx);
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn icc_resources_resolve_relative_urls_and_decode_file_paths() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let path = std::env::temp_dir().join(format!(
             "kamin-profile-{}-тест space.icc",

@@ -3,8 +3,8 @@
 //! математики с единой размерностью. Конические градиенты берут долю, трансформации и
 //! motion — градусы чистого `<angle>`.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(crate) fn fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let token = token.trim();
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn plain_angles_cover_every_unit_and_range() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(degrees("180deg", vcx, false), Some(180.0));
         assert_eq!(degrees("400grad", vcx, false), Some(360.0));
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn angles_and_percentages_share_a_turn_basis() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(fraction("calc(90deg + 50%)", vcx), Some(0.75));
         assert_eq!(fraction("calc(2 * (100grad - 10%))", vcx), Some(0.3));

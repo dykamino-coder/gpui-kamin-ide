@@ -2,7 +2,7 @@
 //! mix-blend-mode, isolation, user-select. Ветви в исходном порядке после apply_effects_timing.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_effects_containment(

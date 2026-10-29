@@ -19,7 +19,7 @@ pub(crate) enum Geometry {
     },
 }
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Geometry {
     pub(crate) fn new(
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn radial_extent_uses_center_and_ellipse_ratio() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let size = (300.0, 200.0);
         let g = Geometry::new(

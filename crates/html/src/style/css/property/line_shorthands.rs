@@ -7,7 +7,7 @@
 //! `border` `reset_border_image`).
 
 use super::{Grammar, LonghandId, ShorthandId};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use LonghandId::*;
 
 const BORDER: &[LonghandId] = &[

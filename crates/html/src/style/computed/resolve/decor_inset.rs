@@ -3,9 +3,9 @@
 //! наследования, единицы окна — отдельным проходом при сборке строки, у которой
 //! общего прохода разрешения окна нет. Смесь доли и точек остаётся `DecorLen::Mix`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, DecorLen};
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 fn map_length(value: DecorLen, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) -> DecorLen {
     let DecorLen::Raw(raw) = value else {

@@ -1,7 +1,7 @@
 //! Вычисление calc(): дерево выражения, сравнение min/max/clamp, разбор.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Операнд выражения: голое число участвует только в умножении и делении.
 #[derive(Clone, Copy, PartialEq, Debug)]

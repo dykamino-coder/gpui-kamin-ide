@@ -1,7 +1,7 @@
 //! Ключи состояния коробок GPUI: роль обёртки и отдельная идентичность synthetic.
 
 use super::{Element, Node};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Element {
     /// Роли не пересекаются; синтетические ключи отделены от авторских номеров.

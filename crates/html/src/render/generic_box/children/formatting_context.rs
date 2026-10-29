@@ -38,7 +38,7 @@ mod tests {
     use super::*;
     use crate::style::css::parse_decls;
 
-    fn context(css: &str, vcx: crate::document::state::ValueCx<'_>) -> bool {
+    fn context(css: &str, vcx: crate::values::ValueCx<'_>) -> bool {
         let mut style = Computed::default();
         style.apply_decls(&parse_decls(css), vcx);
         independent(&style, "div")

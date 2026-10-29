@@ -11,11 +11,11 @@
 //! входа пересчитывает стиль потомков до paint. Контекст коробки остаётся
 //! в `inherit::box_stage`; критерий кеша учитывает контейнерные оси.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::box_predicates::resolve_bidi_inheritance;
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::publication::{ComputedBuilder, Published};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 mod background;
 mod explicit;

@@ -1,9 +1,9 @@
 //! Итеративная материализация: родитель и курсор детей хранятся в куче.
 
 use super::{Inputs, Materialized};
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 use std::rc::Rc;
 
 /// Проход `materialize`. Родитель-элемент — не обязательно узел над элементом в дереве

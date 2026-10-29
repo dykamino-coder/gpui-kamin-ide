@@ -3,7 +3,7 @@
 //! раскрыты разбором блока). Ветви в исходном порядке после первых ветвей apply_grid.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(super) mod values;
 use values::placement_list;

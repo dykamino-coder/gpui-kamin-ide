@@ -2,7 +2,7 @@
 //! радиусы углов. Ветви в исходном порядке; не совпавший ключ — не свойство группы.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_border_corners(

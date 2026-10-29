@@ -125,8 +125,5 @@ impl DocumentValues {
 mod faces;
 pub(crate) use faces::FontFaces;
 
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod readers;
+mod detached;
+pub(crate) use detached::Detached;

@@ -2,7 +2,7 @@
 //! Ветви в исходном порядке; не совпавший ключ уходит в apply_effects_containment.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod animation_props;
 
 impl Computed {
@@ -25,7 +25,7 @@ impl Computed {
                 self.apply_animation(key, v);
             }
             "animation-timing-function" => {
-                if let Some(easing) = crate::animation::easing::Easing::parse(v) {
+                if let Some(easing) = crate::style::animation::easing::Easing::parse(v) {
                     self.accept_declaration();
                     self.animation_easing = Some(easing);
                 }
@@ -149,7 +149,7 @@ fn transition_value(v: &str, duration: bool) -> Option<Option<f32>> {
                 times += 1;
             } else if duration {
                 return None;
-            } else if crate::animation::easing::Easing::parse(&token).is_some() {
+            } else if crate::style::animation::easing::Easing::parse(&token).is_some() {
                 if easing {
                     return None;
                 }

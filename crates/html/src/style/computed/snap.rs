@@ -4,8 +4,8 @@
 //! помечается битами и копируется от родителя при наследовании по свойствам.
 
 use super::{Computed, Sides, split_outside_parens};
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SnapStyle {
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn snap_is_local_and_explicit_inheritance_copies_only_requested_properties() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("scroll-snap-type", "both mandatory", vcx);
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn snap_invalid_values_preserve_valid_declarations() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("scroll-snap-align", "start end", vcx);

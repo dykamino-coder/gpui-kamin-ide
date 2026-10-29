@@ -1,7 +1,6 @@
 //! Подготовка ряда и ячейки в цикле table_rows: пробы полос ряда/группы, дорожка пустого ряда,
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::build_contracts::Layer;
@@ -12,6 +11,7 @@ use crate::layout::table::{is_cell, row_span_in_group};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Overflow};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 pub(super) struct CellSpans {

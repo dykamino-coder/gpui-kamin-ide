@@ -11,7 +11,7 @@
 
 use super::Sum;
 use super::calc::{Calc, Val};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::f32::consts::{E, PI};
 
 const FNS: [&str; 17] = [

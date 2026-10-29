@@ -1,8 +1,8 @@
 //! Границы токенов, регистр имён языка документа и запасные значения attr().
 
 use super::*;
-use crate::document::state::DocState;
 use crate::style::css::{Media, parse_decls_in, property::has_substitution};
+use crate::values::DocumentValues;
 
 const ELEMENT: CascadeCx<'static> = CascadeCx {
     sibling: Some((2, 4)),
@@ -11,7 +11,7 @@ const ELEMENT: CascadeCx<'static> = CascadeCx {
 
 #[test]
 fn substitution_only_visits_function_tokens() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     for source in [
         r#""sibling-index() attr(n px)""#,
         r"/* sibling-count() attr(n px) */",
@@ -35,7 +35,7 @@ fn substitution_only_visits_function_tokens() {
 
 #[test]
 fn typed_attr_preserves_language_names_fallbacks_and_token_boundaries() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let attributes = [("DATA-X".into(), "12".into())];
     let xml = CascadeCx {
         attrs: &attributes,
@@ -65,7 +65,7 @@ fn typed_attr_preserves_language_names_fallbacks_and_token_boundaries() {
 
 #[test]
 fn attr_url_taint_is_not_a_cast_failure_or_a_string_search() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     for url in ["url(test.png)", r"\75 rl(test.png)"] {
         let attributes = [("x".into(), url.into())];
         let cx = CascadeCx {
@@ -114,7 +114,7 @@ fn attr_url_taint_is_not_a_cast_failure_or_a_string_search() {
 
 #[test]
 fn declaration_normalization_cannot_create_substitution_tokens() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     for source in [r"sibling-index\(\)", r"attr\(n px\)"] {
         let decls = parse_decls_in(&format!("--test: {source}"), doc.values());
         let value = decls.last("--test").unwrap();
@@ -125,7 +125,7 @@ fn declaration_normalization_cannot_create_substitution_tokens() {
 
 #[test]
 fn string_attribute_types_reach_the_originating_element_evaluator() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     for source in [
         "attr(x)",
         "attr(x raw-string)",

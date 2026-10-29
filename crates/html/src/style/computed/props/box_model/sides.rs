@@ -7,8 +7,8 @@
 
 use super::values::side_len;
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::css::{BoxGroup, Grammar, LonghandId, Slot};
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_box_model_sides(

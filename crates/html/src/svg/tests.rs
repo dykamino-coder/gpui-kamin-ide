@@ -2,7 +2,7 @@
 
 use super::serialize::serialize;
 use super::*;
-use crate::dom::parse;
+use crate::document::parsed::parse;
 
 fn rasterize(markup: &str, w: f32, h: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
     // SVG документа проверяется с его загрузчиком, включая внешние use.

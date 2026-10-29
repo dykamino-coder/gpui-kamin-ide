@@ -4,8 +4,8 @@
 //! longhand (`explicit_inherit`); `apply_explicit_inheritance` копирует поля родителя по
 //! реестру в стадии вычисленных значений (`compute::compute`).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 
 mod registry;
 pub(crate) use registry::{Property, of_longhand};
@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn computed_inheritance_and_cascade_order() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("column-width", "100px", vcx);
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn shorthand_inheritance_preserves_later_longhand() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("gap", "10px 20px", vcx);
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn initial_removes_both_previous_value_and_inheritance() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut child = Computed::default();
         child.apply_one("column-width", "60px", vcx);
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn direct_inheritance_uses_computed_parent_units() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut specified = Computed::default();
         specified.apply_one("font-size", "20px", vcx);

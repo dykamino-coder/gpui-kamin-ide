@@ -1,9 +1,9 @@
 //! Грамматика подсетки css-grid-2 §subgrid-listing: только имена линий,
 //! без размеров дорожек; всё объявление проверяется до записи полей стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::css::{block_end, selector_tokens, split_top_level};
 use crate::style::values::value::number;
+use crate::values::ValueCx;
 
 pub(super) fn valid(v: &str, vcx: ValueCx<'_>) -> bool {
     parse(v, vcx).is_some()
@@ -128,13 +128,13 @@ fn names(v: &str) -> Option<(Vec<String>, &str)> {
 #[cfg(test)]
 mod tests {
     use super::{parse, valid};
-    use crate::document::state::DocState;
     use crate::style::computed::Computed;
     use crate::style::css::{Media, parse_decls_in};
+    use crate::values::DocumentValues;
 
     #[test]
     fn subgrid_line_name_grammar() {
-        let state = DocState::new(Media::default());
+        let state = DocumentValues::detached(Media::default());
         let vcx = state.values();
         for value in [
             "subgrid",
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn subgrid_names_use_the_validated_parse() {
-        let state = DocState::new(Media::default());
+        let state = DocumentValues::detached(Media::default());
         let names = parse(
             "SUBGRID [a] REPEAT(calc(1.5), [b]) REPEAT(AUTO-FILL, []) [c]",
             state.values(),
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn invalid_subgrid_keeps_both_axes_and_names() {
-        let state = DocState::new(Media::default());
+        let state = DocumentValues::detached(Media::default());
         let mut style = Computed::default();
         let vcx = state.values();
         style.apply_decls_with_vars(

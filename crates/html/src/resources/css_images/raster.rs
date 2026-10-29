@@ -1,8 +1,8 @@
 //! Растр слоёв-изображений: cross-fade, градиенты, раскладка стопов.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::resources::images::types::CpuRaster;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 /// Premultiplied cross-fade over the computed operand weights.
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn procedural_images_keep_bgra_and_premultiplied_mixing_goldens() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for (css, expected) in [
             (

@@ -4,8 +4,8 @@
 //! `text-underline-*`, `-skip-*`, `text-emphasis-position`, `ruby-*` — в
 //! `props::inherited`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(crate) fn apply_text_decor(

@@ -6,7 +6,7 @@
 //! любому), затем кегль, `/ высота строки` и список семейств.
 
 use super::LonghandId;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use LonghandId::*;
 
 pub(super) const FONT: &[LonghandId] = &[

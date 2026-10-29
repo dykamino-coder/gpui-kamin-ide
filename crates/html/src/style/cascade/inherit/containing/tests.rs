@@ -5,7 +5,7 @@ use crate::style::values::value::Len;
 
 #[test]
 fn fixed_background_scrolls_under_a_transform() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let parent = Computed {
         translate: Some((Len::Px(1.0), Len::Px(0.0))),

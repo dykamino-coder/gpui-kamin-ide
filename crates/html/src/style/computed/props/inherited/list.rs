@@ -2,9 +2,9 @@
 //! css-counter-styles-3 §symbols-function), `list-style-position` (§3.5),
 //! `list-style-image` (§3.3), `quotes` (css-content-3 §4.1).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, ImageSource, collapse_segment_breaks, unescape_content};
 use crate::style::css::LonghandId;
+use crate::values::ValueCx;
 
 /// Вид маркера: стиль счётчика (имя или `symbols()`), строка или `none`.
 #[derive(Clone, Debug, PartialEq)]

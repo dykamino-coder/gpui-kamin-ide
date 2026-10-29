@@ -2,7 +2,7 @@
 //! запятую, пары процент/точки.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Validate the complete blend list before the cascade stores its first value.
 pub(crate) fn background_blend_valid(raw: &str) -> bool {

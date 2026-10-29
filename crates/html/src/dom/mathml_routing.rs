@@ -19,7 +19,7 @@ const CONSTRUCTS: &[&str] = &[
     "munderover",
 ];
 
-pub(super) fn enabled(handle: &Handle, vcx: crate::document::state::ValueCx<'_>) -> bool {
+pub(super) fn enabled(handle: &Handle, vcx: crate::values::ValueCx<'_>) -> bool {
     let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     match enabled_in(handle, &admission) {
         Ok(enabled) => enabled,

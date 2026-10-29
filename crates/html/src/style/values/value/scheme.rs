@@ -2,7 +2,7 @@
 //! наследование передаёт явно через `ValueCx`, без общего состояния: тёмная ли сейчас, задана
 //! ли явно и какую схему предпочитает окружение; от неё зависят системные цвета и
 //! `light-dark()`. Вложенный документ получает явную схему хозяина либо предпочтение окружения.
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct Scheme {
@@ -54,15 +54,15 @@ pub(crate) fn embedding_dark_scheme(vcx: ValueCx<'_>) -> bool {
 mod tests {
     use super::*;
     use crate::style::values::value::Color;
-    use crate::{document::state::DocState, style::css::Media};
+    use crate::{style::css::Media, values::DocumentValues};
 
     #[test]
     fn inherited_schemes_and_retained_values_do_not_share_mutable_state() {
-        let first = DocState::new(Media {
+        let first = DocumentValues::detached(Media {
             dark: true,
             ..Media::default()
         });
-        let second = DocState::new(Media {
+        let second = DocumentValues::detached(Media {
             dark: false,
             ..Media::default()
         });

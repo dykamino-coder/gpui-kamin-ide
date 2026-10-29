@@ -8,12 +8,12 @@
 //! слот с его именем, остальные не рисуются. Результат — черновики `SlotInfo`.
 
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
-use crate::document::state::ValueCx;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
 use crate::style::select::has::{HasArg, parse_has_arg, retain_valid_rules};
 use crate::style::select::{Ancestor, census_of};
+use crate::values::ValueCx;
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 use std::rc::Rc;

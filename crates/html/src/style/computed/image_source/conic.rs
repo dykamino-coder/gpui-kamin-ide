@@ -1,11 +1,11 @@
 //! Разобранные лучи conic-градиента, угловые позиции остановок и операнды интерполяции.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BgPos, GradSpace, Len};
 use crate::style::values::{
     color_space::{DirectGradient, StyleColor},
     value::Color,
 };
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConicGradient {

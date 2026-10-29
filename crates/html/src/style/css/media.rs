@@ -1,7 +1,7 @@
 //! Медиазапросы: Media (носитель задаёт документ), сравнения диапазонов.
 
-use crate::document::state::ValueCx;
 use crate::style::css::*;
+use crate::values::ValueCx;
 
 mod calc;
 mod comparison;

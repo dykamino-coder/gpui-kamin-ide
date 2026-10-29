@@ -162,7 +162,7 @@ mod tests {
             })
         }
         for clone in [false, true] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='height:100px; min-height:150px; max-height:180px; box-sizing:border-box; box-decoration-break:{}'><p>before</p><h2 style='column-span:all'>span</h2><p>after</p></div>",
                     if clone { "clone" } else { "slice" }

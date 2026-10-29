@@ -6,7 +6,7 @@ use super::*;
 pub(super) fn inherit_lh_units(
     parent: &Computed,
     c: &mut Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     // css-values-4 §6.1.4, оговорка про font-affecting properties:
     // «when ''lh'' or ''rlh'' units are used in the value of the

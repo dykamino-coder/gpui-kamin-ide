@@ -3,10 +3,10 @@
 //! цвет стороны, `outline-style`, `outline-color`, `outline-offset` и части
 //! `border-image`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, ParseResult};
 use crate::style::css::{Grammar, LonghandId};
 use crate::style::values::value::{ColorOrAuto, Len, StyleColor};
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству рамки или контура.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

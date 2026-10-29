@@ -16,7 +16,7 @@ pub(super) fn resolve(
     rows_left: &[usize],
     cols: u16,
     (table_font, table_family): (f32, &str),
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> (HashMap<u64, [f32; 4]>, [f32; 4]) {
     let collapse_cells_pre = e.style.cascaded().border_collapse == Some(true)
         || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some());

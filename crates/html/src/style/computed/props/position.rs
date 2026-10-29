@@ -4,7 +4,7 @@
 //! `overflow*` и `overflow-clip-margin`, `float`,
 //! `clear`, `opacity`. Разбор якорных значений — в `style::values::position_area`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod clip_margin;
 mod z_index;
 use crate::style::computed::*;

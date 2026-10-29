@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn prefixed_alias_and_invalid_values() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("-webkit-appearance", "none", vcx);

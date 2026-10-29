@@ -2,7 +2,7 @@
 //! трёхзначный результат.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// `selector(<complex-selector>)` (css-conditional-4 §at-supports-ext):
 /// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);

@@ -12,10 +12,10 @@
 //! повернул бы его дважды. `contain-intrinsic-*` всегда идёт по собственному письму.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::props::box_model::side_slot;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::css::BoxGroup;
+use crate::values::ValueCx;
 
 impl Computed {
     /// Место под логические значения — заводится по первому обращению: у

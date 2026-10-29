@@ -6,11 +6,11 @@
 //! решает `Computed::borders`, а вычисленная толщина остаётся заданной.
 
 use super::values::{border_style_rank, line_width, outline_line_style, outline_offset};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::computed::props::box_model::side_slot;
 use crate::style::css::{BoxGroup, Grammar, LonghandId, Slot};
 use crate::style::values::value::{ColorOrAuto, StyleColor};
+use crate::values::ValueCx;
 
 impl Computed {
     /// Длинное свойство рамки или контура; `false` — свойство не отсюда.

@@ -7,9 +7,9 @@
 //! достраиваются `0%`/`100%` (css-animations-1 §keyframes), несколько
 //! остановленных складываются слоями по порядку списка (§3).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Keyframes, VarMap};
+use crate::values::ValueCx;
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn only_declared_margin_tracks_replace_normalized_flow_edges() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut base = Computed::default();
         base.apply_one("animation", "a 1s linear", vcx);

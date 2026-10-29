@@ -1,10 +1,10 @@
 //! Нулевая normal-flow коробка float-хоста по CSS 2.1 §10.6.3 в блочной оси.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::block::struts::through_strut;
 use crate::layout::fragment::flow::{empty_floats, logical_copy};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn normalize(
     copy: &mut Element,
@@ -55,7 +55,7 @@ mod tests {
             ("vertical-rl", true, true),
         ] {
             for tail in ["", "<div style='clear:both;width:20px;height:20px'></div>"] {
-                let tree = crate::dom::parse(
+                let tree = crate::document::parsed::parse(
                     &format!(
                         "<div style='writing-mode:{mode}'><div style='float:left;width:70px;height:40px'></div>{tail}</div>"
                     ),

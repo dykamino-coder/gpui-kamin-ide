@@ -7,9 +7,9 @@
 //! атрибуты `<foreignObject>` (SVG 2 §6.6). `colors` — `bgcolor`/`text`
 //! в стиль; `dimension` — разбор размерного значения (HTML §2.3.4.4).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Rule, Selector, parse_decls};
+use crate::values::ValueCx;
 
 mod svg;
 use svg::foreign_object;

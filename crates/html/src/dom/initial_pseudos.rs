@@ -6,12 +6,12 @@
 //! прямого пути текста; без базы — только авторские объявления, отдельно от
 //! порождающей коробки (`first_letter_own`/`first_line_own`).
 
-use crate::document::state::ValueCx;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
+use crate::values::ValueCx;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn resolve(

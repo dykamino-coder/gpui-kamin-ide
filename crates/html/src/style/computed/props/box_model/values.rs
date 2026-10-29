@@ -3,11 +3,11 @@
 //! применение берут ОДНУ функцию разбора, поэтому годное при разборе
 //! объявление применяется целиком, а негодное в каскад не попадает.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::size_range::parse_nonnegative_size;
 use crate::style::computed::*;
 use crate::style::css::{Grammar, LonghandId, Slot};
 use crate::style::values::value::{Len, fold_zero_percentage};
+use crate::values::ValueCx;
 
 impl Computed {
     /// Годится ли значение длинному свойству реестра (без общих слов и

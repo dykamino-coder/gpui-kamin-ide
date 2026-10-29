@@ -4,9 +4,9 @@
 //! `scroll-marker-group`/`scroll-target-group`; линейки `*-rule*`, щели и
 //! `margin-trim` — в подмодулях `gap_rules`, `rule_props`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Len, StyleColor};
+use crate::values::ValueCx;
 
 mod gap_rules;
 mod rule_props;

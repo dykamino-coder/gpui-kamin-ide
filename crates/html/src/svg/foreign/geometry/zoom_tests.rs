@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn lengths_preserve_svg_units_for_css_attributes_and_percentages() {
-    let parsed = crate::dom::parse("", "");
+    let parsed = crate::document::parsed::parse("", "");
     let vcx = parsed.values();
     assert_eq!(
         length(Some(Len::Px(200.0)), Some("60"), 100.0, 4.0, vcx),

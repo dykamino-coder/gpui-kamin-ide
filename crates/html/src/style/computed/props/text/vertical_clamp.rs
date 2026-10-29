@@ -2,7 +2,7 @@
 //! `unicode-bidi`, `initial-letter`, `block-step-size`.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 mod clamp_values;
 use clamp_values::initial_letter;

@@ -4,12 +4,12 @@
 //! с UA-правилами css-lists-3 (`unicode-bidi: isolate`, без `letter-spacing` у символа).
 
 use super::tabular_marker;
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::anon_element;
 use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{BoxStyle, Computed, Display, MarkerType};
+use crate::values::ValueCx;
 
 #[cfg(test)]
 mod box_tests;

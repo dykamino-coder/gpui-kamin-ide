@@ -1,7 +1,7 @@
 //! Разбор размеров: fit-content(), calc-size(), view-box, назначение размера, flex-коэффициенты.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Довод `fit-content(<length-percentage>)` (css-sizing-3 §4.1): только
 /// точки или доля, неотрицательные. Прочее (`em`, `calc`) — `None`, и

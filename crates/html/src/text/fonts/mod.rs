@@ -115,7 +115,7 @@ pub use crate::text::fonts::stretch::alias_stretch;
 use crate::text::fonts::stretch::stretch_desc;
 use crate::text::fonts::windows_names::ensure_windows_names;
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Тег `cssw`: текст документа просит у gpui подбор веса грани по CSS
 /// (css-fonts-4 §5.2 шаг 4; `gpui-windows` `direct_write/css_weight.rs`).

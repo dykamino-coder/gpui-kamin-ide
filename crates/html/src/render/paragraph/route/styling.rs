@@ -10,7 +10,7 @@ pub(crate) fn style_pieces(
     first_line_at: usize,
     first_line: &Computed,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<inline::Piece> {
     // Свой `unicode-bidi` у самого абзаца знаками не обрамлялся: их ставит
     // сборка КУСКОВ, а корень абзаца куском не бывает. Из-за этого

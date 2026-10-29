@@ -27,7 +27,8 @@ pub(crate) mod writing_mode;
 
 #[cfg(test)]
 mod marks_tests {
-    use crate::dom::{Element, Marks, Node, parse};
+    use crate::document::parsed::parse;
+    use crate::dom::{Element, Marks, Node};
 
     /// Прежние служебные атрибуты протокола раскладки.
     const FORGED: &str = r#"kamin-outside-block="1" kamin-float-block="1"

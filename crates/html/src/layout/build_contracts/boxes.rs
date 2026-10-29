@@ -3,12 +3,12 @@
 //! which box it needs and under which style; the adapter from computed
 //! values to `gpui::Style` (paint's `box_tree` and `apply`) builds it.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::cx::LayoutCx;
 use crate::style::computed::{Align, BoxStyle, Sides};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::AnyElement;
 
 /// Where the wrapped item sits in its parent's grid: line placement and

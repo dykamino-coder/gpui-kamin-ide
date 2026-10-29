@@ -17,7 +17,7 @@ pub(super) enum Kind {
 
 /// Вычислить `raw`, если оно — математическая функция. `None` — не функция
 /// или негодное выражение.
-pub(super) fn eval(raw: &str, vcx: crate::document::state::ValueCx<'_>) -> Option<(f32, Kind)> {
+pub(super) fn eval(raw: &str, vcx: crate::values::ValueCx<'_>) -> Option<(f32, Kind)> {
     let s = raw.trim();
     let low = s.to_ascii_lowercase();
     let is_fn = ["calc(", "sign(", "abs(", "min(", "max(", "clamp("]
@@ -39,7 +39,7 @@ pub(super) fn eval(raw: &str, vcx: crate::document::state::ValueCx<'_>) -> Optio
 struct Parser<'a> {
     s: &'a [u8],
     at: usize,
-    vcx: crate::document::state::ValueCx<'a>,
+    vcx: crate::values::ValueCx<'a>,
 }
 
 impl Parser<'_> {
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn sign_and_resolution_math() {
-        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let metric_doc = crate::values::DocumentValues::detached(Default::default());
         let vcx = metric_doc.values();
         assert_eq!(
             eval("calc(1px * (1 + sign(16px - 1rem)))", vcx),
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn media_features_take_math_and_negative_ranges() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let m = crate::style::css::Media::default();
         for q in [

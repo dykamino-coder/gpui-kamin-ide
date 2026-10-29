@@ -1,7 +1,7 @@
 //! Длина CSS (Len) и её разбор для spacing/смешанных записей; разбор числа css_number.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Длина в терминах, которые понимает GPUI.
 #[derive(Clone, Copy, Debug, PartialEq)]

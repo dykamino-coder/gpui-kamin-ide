@@ -2,7 +2,7 @@
 //! url(#id); базовые фигуры — в basic_shape.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_clip_mask(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {

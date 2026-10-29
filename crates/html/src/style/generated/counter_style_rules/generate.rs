@@ -1,7 +1,7 @@
 //! Запись числа пользовательским стилем счётчика: начальные системы, графемы, маркеры.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 fn graphemes(s: &str) -> usize {
     unicode_segmentation::UnicodeSegmentation::graphemes(s, true).count()

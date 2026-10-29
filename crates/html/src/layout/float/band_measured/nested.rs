@@ -21,7 +21,7 @@ pub(crate) fn band_host_nested(
     em: f32,
     parent_bfc: bool,
     cb: crate::layout::float::FloatCb,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize)> {
     // Без следующей коробки обычному блоку не нужен общий хост. Проверяем
     // это до поиска флоатов: иначе цепочка одиночных блоков сканируется N² раз.
@@ -87,7 +87,7 @@ pub(crate) fn band_nest_ok(
     em: f32,
     wm: WritingMode,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> bool {
     if !band_nest_block(c, em, wm) {
         return false;

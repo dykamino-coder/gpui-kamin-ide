@@ -1,8 +1,8 @@
 //! Составление полотна многослойной маски на сетке устройства.
 
 use super::{MaskInput, mask_layer};
-use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::Grouped;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]

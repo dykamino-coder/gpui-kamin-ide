@@ -1,15 +1,15 @@
 //! Полоса фона ряда/группы, обрезанная прямоугольниками ячеек (CellsClipped).
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::layout::table::probes::RowRects;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Window};
 
 pub struct CellsClipped {
     pub(crate) style: crate::style::computed::Computed,
     pub(crate) rects: RowRects,
     /// Values of the document the band's style lengths come from.
-    pub(crate) values: crate::document::state::ValueDoc,
+    pub(crate) values: crate::values::ValueDoc,
 }
 
 impl CellsClipped {

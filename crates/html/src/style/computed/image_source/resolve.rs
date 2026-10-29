@@ -1,8 +1,8 @@
 //! Обход вычисленных длин изображений и самодостаточные операнды растрового кэша.
 
 use super::{ImageSource, Len};
-use crate::document::state::ValueCx;
 use crate::style::computed::{GradientShape, RadialSize};
+use crate::values::ValueCx;
 
 impl ImageSource {
     pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {

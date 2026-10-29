@@ -47,25 +47,19 @@ mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
 pub(crate) use parse_document::convert;
-pub use parse_document::{try_parse, try_parse_media};
-
-/// XML-вход без HTML-восстановления.
-pub fn try_parse_xml(
-    markup: &str,
-    css: &str,
-) -> Result<Parsed, crate::dom::outcome::DocumentFailure> {
-    parse_document::parse_mode(markup, css, crate::style::css::Media::default(), true)
-}
+pub(crate) use parse_document::parse_into;
 
 #[cfg(test)]
 mod fixture_parse;
 #[cfg(test)]
 pub(crate) use fixture_parse::{parse, parse_current, parse_xml};
+#[cfg(test)]
 mod parsed;
 use crate::dom::style_sources::try_collect_style_tags;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;
-pub use parsed::Parsed;
+#[cfg(test)]
+pub(crate) use parsed::Parsed;
 
 mod containment;
 mod counter_decls;

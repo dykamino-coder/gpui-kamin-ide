@@ -5,10 +5,10 @@
 
 use super::{gradient_geometry::Geometry, place_stops, wrap_repeat};
 use crate::cache::{BoundedCache, FloatKey, Hinted, MIB, hint};
-use crate::document::state::ValueCx;
 use crate::resources::images::pixels::optional_bytes as optional_image_bytes;
 use crate::resources::images::types::CpuRaster;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 type TileKey = Hinted<(super::raster_keys::ImageKey, u32, u32, [FloatKey; 2])>;

@@ -1,8 +1,8 @@
 //! Разрешает типизированные длины фильтров через общее замыкание вычисленных длин.
 
 use super::{ImageFilter, Len};
-use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 impl ImageFilter {
     pub(super) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn generated_filters_resolve_relative_lengths_once() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = {
             let mut with_inherited = Computed {
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn viewport_filter_lengths_do_not_enter_the_global_cache_unresolved() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one(
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn shadow_functions_keep_balanced_color_and_inherited_current_color() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for color in ["rgb(0, 128, 0)", "currentcolor"] {
             let mut image = ImageSource::parse(
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn adjacent_filter_functions_and_quoted_delimiters_stay_separate() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let program = super::ImageFilter::parse(
             "url(\"a)b.svg#mask\")grayscale(.5)invert(.25)",
             doc.values(),

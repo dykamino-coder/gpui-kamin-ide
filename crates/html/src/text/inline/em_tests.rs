@@ -1,9 +1,9 @@
 //! Тесты разрешения `em` при наследовании (от своего и унаследованного кегля) и знаков акцента
 //! `text-emphasis` у наследника: форма и сторона по режиму письма и языку, явное `none`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 use crate::style::cascade::inherit::inherit;
 use crate::style::css::parse_decls;

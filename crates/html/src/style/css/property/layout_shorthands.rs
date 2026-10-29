@@ -6,8 +6,8 @@
 //! часть — начальное значение или копия по правилу сокращения.
 
 use super::{LonghandId, ShorthandId};
-use crate::document::state::ValueCx;
 use crate::style::computed::split_outside_parens;
+use crate::values::ValueCx;
 use LonghandId::*;
 
 pub(super) const FLEX: &[LonghandId] = &[FlexGrow, FlexShrink, FlexBasis];

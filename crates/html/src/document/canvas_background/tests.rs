@@ -10,7 +10,7 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
     for image in ["", "background-image:url(clear.png)"] {
         for color in ["blue", "inherit", "currentColor"] {
             let root_color = if color == "blue" { "red" } else { "blue" };
-            let parsed = crate::dom::parse(
+            let parsed = crate::document::parsed::parse(
                 &format!(
                     "<style>html {{ color:{root_color} }} body {{ color:{color}; background-color:currentColor; {image} }}</style>"
                 ),
@@ -41,7 +41,7 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
 
 #[test]
 fn root_currentcolor_selects_the_root_and_leaves_body_background_in_place() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         "<style>html { color:red; background-color:currentColor } body { color:blue; background:green }</style>",
         "",
     );
@@ -62,7 +62,7 @@ fn root_currentcolor_selects_the_root_and_leaves_body_background_in_place() {
 
 #[test]
 fn transparent_root_currentcolor_still_allows_body_propagation() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         "<style>html { color:transparent; background-color:currentColor } body { color:blue; background-color:currentColor; filter:invert(1) }</style>",
         "",
     );

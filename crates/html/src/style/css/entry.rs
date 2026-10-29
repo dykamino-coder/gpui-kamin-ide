@@ -32,7 +32,7 @@ pub fn try_parse_keyframes(
     media: Media,
 ) -> Result<HashMap<String, Keyframes>, DocumentFailure> {
     let _admitted = admission::standalone(css)?;
-    let doc = crate::document::state::DocState::new(media);
+    let doc = crate::values::DocumentValues::detached(media);
     Ok(super::parse_keyframes_in(css, Some(media), doc.values()))
 }
 
@@ -40,7 +40,7 @@ impl Media {
     /// Отдельный медиазапрос допускается до выделения и обхода его грамматики.
     pub fn try_matches(&self, query: &str) -> Result<bool, DocumentFailure> {
         let _admitted = admission::standalone(query)?;
-        let doc = crate::document::state::DocState::new(*self);
+        let doc = crate::values::DocumentValues::detached(*self);
         Ok(self.matches(query, doc.values()))
     }
 }

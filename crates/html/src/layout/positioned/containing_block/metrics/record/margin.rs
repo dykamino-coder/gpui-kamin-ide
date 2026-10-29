@@ -1,7 +1,7 @@
 //! Смещение static margin edge в исходной normal-геометрии.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 use gpui::{Pixels, Point, point, px};
 
 pub(super) fn margin_offset(style: &Computed, rtl: bool, vcx: ValueCx<'_>) -> Point<Pixels> {

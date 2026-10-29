@@ -8,7 +8,7 @@
 
 use super::LonghandId;
 use super::layer_words::{Words, layer_list, layer_tokens, size_run};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Ось положения: `center | [left | right] <length-percentage>? |
 /// <length-percentage>` (и вертикальные слова у второй оси).

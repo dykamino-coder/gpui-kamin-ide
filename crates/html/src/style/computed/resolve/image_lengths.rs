@@ -4,9 +4,9 @@
 //! образов с относительными длинами, чтобы обычные фоны и маски его не платили;
 //! доли остаются для конкретной геометрии образа при краске.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, root_font_px};
+use crate::values::ValueCx;
 
 impl Computed {
     pub(crate) fn resolve_image_lengths(&mut self, vcx: ValueCx<'_>) {

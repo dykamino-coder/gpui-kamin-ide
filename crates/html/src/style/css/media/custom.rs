@@ -2,7 +2,7 @@
 //! подставляемые в `(--имя)`.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::collections::HashMap;
 
 /// Псевдонимы таблицы `css` — `@custom-media --имя <запрос>;` верхнего

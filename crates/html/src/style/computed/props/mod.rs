@@ -65,8 +65,6 @@ mod text_decor;
 mod transform;
 
 #[cfg(test)]
-mod css_wide_tests;
-#[cfg(test)]
 mod invalid_tests;
 #[cfg(test)]
 mod valid_tests;

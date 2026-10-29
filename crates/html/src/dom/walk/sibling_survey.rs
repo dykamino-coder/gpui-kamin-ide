@@ -1,9 +1,9 @@
 //! Полная перепись братьев для итеративного обхода и :nth-last-child().
-use crate::document::state::ValueCx;
 use crate::dom::shadow::Scope;
 use crate::dom::tree_index::TreeIndex;
 use crate::style::css::VarMap;
 use crate::style::select::{Ancestor, Sibs, Spot, census_of};
+use crate::values::ValueCx;
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 

@@ -1,7 +1,7 @@
 //! At-правила ресурсов используют токены таблицы стилей и те же условные правила, что каскад.
 
 use super::{Media, Piece, next_piece, strip_comments, supports, unescape};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(crate) struct ResourceRule {
     pub name: String,
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn resources_are_rules_rather_than_substrings() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let css = r#"
             /* @font-face { src: url(comment.ttf) } */

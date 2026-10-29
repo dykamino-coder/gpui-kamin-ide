@@ -3,10 +3,10 @@
 //! разбор на свойство — им реестр проверяет объявление, им же обработчик
 //! пишет поля стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству гибкой раскладки, выравнивания или
 /// промежутка.

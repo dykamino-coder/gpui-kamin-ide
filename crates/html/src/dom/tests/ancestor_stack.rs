@@ -5,7 +5,7 @@ use crate::style::values::value::Color;
 
 #[test]
 fn completed_subtrees_do_not_leak_ancestors_into_siblings() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let html = r#"<style>
         #box > section > span { color: green; }

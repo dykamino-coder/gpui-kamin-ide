@@ -1,7 +1,7 @@
 //! @supports: условия, селекторы, трёхзначная логика.
 
-use crate::document::state::ValueCx;
 use crate::style::css::*;
+use crate::values::ValueCx;
 
 mod at_rule;
 #[cfg(test)]

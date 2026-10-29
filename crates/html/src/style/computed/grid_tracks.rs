@@ -41,7 +41,7 @@ impl Track {
     pub(crate) fn resolve_font_one(
         &mut self,
         font: super::FontCx<'_>,
-        vcx: crate::document::state::ValueCx<'_>,
+        vcx: crate::values::ValueCx<'_>,
     ) {
         if let Track::Font(l) = *self {
             *self = Track::Px(l.to_px(None, font, vcx).unwrap_or(0.0));
@@ -54,7 +54,7 @@ impl TrackSize {
     pub(crate) fn resolve_font(
         &mut self,
         font: super::FontCx<'_>,
-        vcx: crate::document::state::ValueCx<'_>,
+        vcx: crate::values::ValueCx<'_>,
     ) {
         match self {
             TrackSize::Single(t) => t.resolve_font_one(font, vcx),

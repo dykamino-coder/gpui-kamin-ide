@@ -17,7 +17,7 @@ fn style(css: &str, vcx: ValueCx<'_>) -> Computed {
 
 #[test]
 fn shorthand_resets_longhands_and_longhands_override_in_order() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = Color::parse("red", vcx);
     let reset = style("background-color: red; background: url(a) no-repeat", vcx);
@@ -33,7 +33,7 @@ fn shorthand_resets_longhands_and_longhands_override_in_order() {
 
 #[test]
 fn initial_layer_values_compute_as_absent() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = style("background: url(a)", vcx);
     assert_eq!(c.bg_repeat, None);
@@ -47,7 +47,7 @@ fn initial_layer_values_compute_as_absent() {
 
 #[test]
 fn layer_lists_belong_to_their_longhand() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = style(
         "background: url(a) no-repeat, url(b) repeat-x; background-repeat: space",
@@ -65,7 +65,7 @@ fn layer_lists_belong_to_their_longhand() {
 
 #[test]
 fn invalid_substitution_in_the_shorthand_unsets_every_longhand() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut vars = crate::style::css::VarMap::new();
     vars.insert("--c".into(), "bogus".into());
@@ -90,7 +90,7 @@ fn invalid_substitution_in_the_shorthand_unsets_every_longhand() {
 
 #[test]
 fn inherit_shorthand_inherits_each_layer_longhand() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let parent = style(
         "background: url(a) right 4px bottom no-repeat fixed content-box, url(b) red",
@@ -111,7 +111,7 @@ fn inherit_shorthand_inherits_each_layer_longhand() {
 
 #[test]
 fn mask_shorthand_writes_its_longhands() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = style(
         "mask: url(m.svg) no-repeat content-box luminance, url(n.svg)",

@@ -2,8 +2,8 @@
 //! растяжение и определённость высоты.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Display as D, Overflow};
+use crate::values::ValueCx;
 mod identity;
 
 pub(super) fn inherit_containing(

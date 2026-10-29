@@ -5,7 +5,7 @@
 //! направления и позиции не трогаются.
 
 use super::{Color, Computed, Gradient};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 const BLACK: Color = Color {
     r: 0.0,

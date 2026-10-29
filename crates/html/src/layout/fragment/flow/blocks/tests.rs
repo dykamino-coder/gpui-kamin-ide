@@ -5,7 +5,7 @@ use crate::dom::Node;
 use crate::layout::fragment::flow::FlowGeometry;
 
 fn tree(html: &str) -> (BlockBox, Vec<u64>) {
-    let doc = crate::dom::parse(html, "");
+    let doc = crate::document::parsed::parse(html, "");
     // The first `div` of the parsed document (under `html` and `body`).
     fn div(n: &Node) -> Option<&crate::dom::Element> {
         let Node::Element(e) = n else { return None };

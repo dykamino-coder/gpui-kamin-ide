@@ -1,8 +1,8 @@
 //! MathML Core: умолчания каскада с учётом пространства имён и презентационные подсказки.
 
 pub(crate) use super::mathml_lengths::parse_mathml_length;
-use crate::document::state::ValueCx;
 use crate::style::css::{DeclBlock, Rule, Selector};
+use crate::values::ValueCx;
 use markup5ever_rcdom::{Handle, NodeData};
 
 pub(super) fn is_mathml(handle: &Handle) -> bool {
@@ -109,7 +109,7 @@ mod tests {
     }
     #[test]
     fn hints_are_namespace_scoped_and_below_author_css() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let nodes = parse(
             r#"<span id="html" mathcolor="red" mathsize="200%"></span>

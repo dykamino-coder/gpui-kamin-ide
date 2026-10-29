@@ -2,7 +2,7 @@
 //! apply_text_vertical_clamp.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_text_overflow_case(

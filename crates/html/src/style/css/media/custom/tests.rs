@@ -1,14 +1,14 @@
 //! Граф псевдонимов: глубина, логика зависимых запросов и участники цикла.
 
 use super::*;
-use crate::document::state::DocState;
+use crate::values::DocumentValues;
 
 #[test]
 fn deep_aliases_use_heap_frames() {
     std::thread::Builder::new()
         .stack_size(1024 * 1024)
         .spawn(|| {
-            let doc = DocState::new(Media::default());
+            let doc = DocumentValues::detached(Media::default());
             let mut raw: HashMap<_, _> = (0..4096)
                 .map(|n| (format!("--m{n:04}"), format!("(--m{:04})", n + 1)))
                 .collect();
@@ -16,7 +16,7 @@ fn deep_aliases_use_heap_frames() {
             let values = resolve_custom_media(raw, Media::default(), doc.values()).unwrap();
             assert_eq!(values.len(), 4097);
             assert!(values.values().all(|v| *v == SupTri::True));
-            assert!(doc.values.revision_budget().failure().is_none());
+            assert!(doc.revision_budget().failure().is_none());
         })
         .unwrap()
         .join()
@@ -25,7 +25,7 @@ fn deep_aliases_use_heap_frames() {
 
 #[test]
 fn cycle_members_remain_unknown_under_negation() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let raw = custom_media_of(
         "@custom-media --a (--b); @custom-media --b not (--a);
          @custom-media --c not (--a); @custom-media --last false;
@@ -40,7 +40,7 @@ fn cycle_members_remain_unknown_under_negation() {
 
 #[test]
 fn branching_cycle_includes_a_finished_dfs_branch() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let raw = custom_media_of(
         "@custom-media --a (--b) or (--c); @custom-media --b (--a);
          @custom-media --c not (--b); @custom-media --d not (--missing);

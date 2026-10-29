@@ -2,7 +2,7 @@
 
 #[test]
 fn variables_defer_values_only_for_recognized_properties() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for condition in [
         "(definitely-not-a-property: var(--x))",

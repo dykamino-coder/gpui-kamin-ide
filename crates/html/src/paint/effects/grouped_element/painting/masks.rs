@@ -1,7 +1,7 @@
 //! Разрешение изображения маски группы и размещение её плитки.
 
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 mod composite;
 pub(super) use composite::composite_mask;
 

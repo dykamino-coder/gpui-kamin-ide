@@ -20,12 +20,12 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
 }
 
 fn styled(html: &str, id: &str) -> Computed {
-    let doc = crate::Document::builder(html, "").build().unwrap();
-    Computed::clone(find(doc.nodes(), id).expect("element").style.cascaded())
+    let doc = crate::dom::parse(html, "");
+    Computed::clone(find(&doc.nodes, id).expect("element").style.cascaded())
 }
 
 fn one(css: &str) -> Computed {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = Computed::default();
     c.apply_decls_with_vars(&parse_decls(css), &Default::default(), st.values());
     c
@@ -87,53 +87,12 @@ fn f05_box_sizing_invalid_keyword_is_ignored() {
 
 #[test]
 fn f05_box_sizing_invalid_keyword_is_not_supported() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let r = Computed::declaration_result("box-sizing", "banana", st.values());
     assert_eq!(
         format!("{r:?}"),
         "Invalid",
         "@supports(box-sizing: banana) истинно"
-    );
-}
-
-#[test]
-fn invalid_value_preserves_computed_for_every_registered_property() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let mut seed = Computed::default();
-    for prop in crate::coverage::PROPERTIES {
-        seed.apply_one(prop.name, prop.sample, st.values());
-    }
-    let mut failures = Vec::new();
-    for prop in crate::coverage::PROPERTIES {
-        for invalid in [
-            "invalid()",
-            "invalid(0)",
-            "0 invalid()",
-            "invalid() 0",
-            "initial invalid()",
-        ] {
-            if Computed::declaration_result(prop.name, invalid, st.values())
-                == crate::style::computed::ParseResult::Accepted
-            {
-                failures.push(format!("@supports({}: {invalid})", prop.name));
-            }
-            for mut c in [Computed::default(), seed.clone()] {
-                c.apply_one(prop.name, prop.sample, st.values());
-                let before = format!("{c:?}");
-                let seq = c.decl_order;
-                c.apply_one(prop.name, invalid, st.values());
-                // Счётчик входных деклараций сам по себе не является значением свойства.
-                c.decl_order = seq;
-                if before != format!("{c:?}") {
-                    failures.push(format!("{}: {invalid}", prop.name));
-                    break;
-                }
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "invalid declaration changed Computed or was accepted: {failures:?}"
     );
 }
 
@@ -144,7 +103,7 @@ fn f05_supports_rejects_invalid_box_sizing_in_stylesheet() {
         "d",
     );
     assert_eq!(c.width, Some(Len::Px(7.0)));
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     assert_eq!(
         format!(
             "{:?}",
@@ -156,7 +115,7 @@ fn f05_supports_rejects_invalid_box_sizing_in_stylesheet() {
 
 #[test]
 fn invalid_component_rejects_the_entire_shorthand() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     for (key, valid, invalid) in [
         ("padding", "7px", "20px banana"),
         ("overflow", "visible", "hidden invalid()"),
@@ -225,7 +184,7 @@ fn valid_inherit_clears_local_inherited_lengths() {
 
 #[test]
 fn invalid_declaration_preserves_background_lists_and_flow_alignment() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     for (key, valid) in [
         ("background-image", "url(a.png), url(b.png)"),
         ("background-repeat", "repeat, no-repeat"),

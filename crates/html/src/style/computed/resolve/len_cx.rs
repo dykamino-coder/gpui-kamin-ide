@@ -10,9 +10,9 @@
 //! совпадают (`style::values::value::units`).
 
 use super::len_px::FontCx;
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 /// Окно для единиц окна: размер (уже без полос прокрутки), ось письма самой
 /// коробки (для `vi`/`vb`/`cqi`/`cqb`) и содержимое ближайшего контейнера

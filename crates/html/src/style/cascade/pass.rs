@@ -9,9 +9,9 @@ use super::compute_cx::ComputeCx;
 use super::map::{CascadeMap, Pick, Picks};
 use super::phase::Phase;
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::ParseResult;
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Origin, Specified, VarMap};
+use crate::values::ValueCx;
 mod all_reset;
 mod longhand;
 

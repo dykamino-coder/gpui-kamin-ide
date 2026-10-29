@@ -10,7 +10,7 @@ use crate::text::inline::*;
 pub fn letter_spans(
     pieces: &[Piece],
     base_size: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut zero = Vec::new();
@@ -89,7 +89,7 @@ pub(super) fn zero_width_format(ch: char) -> bool {
 pub fn word_spans(
     pieces: &[Piece],
     base_size: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     for (range, text, style) in text_ranges(pieces) {

@@ -1,8 +1,8 @@
 //! Каналы и альфа относительного цвета, разобранные независимо от текущего цвета.
 
 use super::Color;
-use crate::document::state::ValueCx;
 use crate::style::values::color_space::{hsl_to_rgb, rgb_to_hsl};
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RelativeColor {

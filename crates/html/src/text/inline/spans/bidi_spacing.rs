@@ -120,7 +120,7 @@ pub fn bidi_letter_spans(
 pub fn block_letter_spacing(
     style: &crate::style::computed::Computed,
     size: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Pixels {
     gpui::px(crate::text::metrics::spacing_px(
         style.letter_spacing,

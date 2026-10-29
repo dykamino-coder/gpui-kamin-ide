@@ -4,7 +4,7 @@ use crate::style::computed::BoxStyle;
 
 #[test]
 fn relative_identity_retains_precision_and_resolves_per_element() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let a = Color {
         r: 0.1234567,
@@ -33,7 +33,7 @@ fn relative_identity_retains_precision_and_resolves_per_element() {
 
 #[test]
 fn relative_channels_and_alpha_are_numeric_operands() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = Color {
         r: 0.2,
@@ -62,7 +62,7 @@ fn relative_channels_and_alpha_are_numeric_operands() {
 
 #[test]
 fn current_color_mix_retains_rounding_and_premultiplied_weights() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let expression =
         StyleColor::parse("color-mix(in srgb, currentcolor 25%, blue 75%)", vcx).unwrap();
@@ -95,7 +95,7 @@ fn current_color_mix_retains_rounding_and_premultiplied_weights() {
 
 #[test]
 fn background_expression_inherits_with_the_child_color() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     use crate::style::computed::Computed;
     let mut parent = Computed::default();
@@ -131,7 +131,7 @@ fn background_expression_inherits_with_the_child_color() {
 }
 #[test]
 fn absolute_mix_keeps_unmapped_interpolation_channels() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let raw = "color-mix(in oklch longer hue, red, blue)";
     let expected = interpolation_color(raw, vcx).unwrap();

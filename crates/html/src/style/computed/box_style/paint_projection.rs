@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn own_suppression_preserves_css_visibility_and_geometry() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = crate::values::DocumentValues::detached(Default::default());
         let mut css = Computed::default();
         for (name, value) in [
             ("visibility", "hidden"),
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn physical_projection_and_pseudo_color_keep_css_and_effect_ownership() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = crate::values::DocumentValues::detached(Default::default());
         let mut css = Computed::default();
         for (name, value) in [
             ("color", "red"),

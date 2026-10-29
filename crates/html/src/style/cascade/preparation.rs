@@ -1,8 +1,8 @@
 //! Цветовые входы подготовки документа без сборки коробок (Quirks Mode §3.12).
 
-use crate::document::state::ValueCx;
 use crate::dom::SharedStyle;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 use std::rc::Rc;
 
 /// Вычисленный CSS для распространения свойств документа до сборки коробок:

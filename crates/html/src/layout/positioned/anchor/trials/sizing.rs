@@ -1,9 +1,9 @@
 //! Перестановка входов расчёта размеров при перпендикулярной try-тактике.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::LonghandId as L;
 use crate::style::values::value::{AnchorFn, AnchorSize, Len, anchor_get, anchor_store};
+use crate::values::ValueCx;
 
 pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
     std::mem::swap(&mut c.width, &mut c.height);

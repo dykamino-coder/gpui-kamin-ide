@@ -4,8 +4,8 @@
 //! менялись бы координаты стопа и следующая интерполяция (CSS Color 4 §12,
 //! CSS Color 5 §color-mix); отображается только итоговая точка (`colour_at`).
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 pub(super) fn components(body: &str, ok: bool, polar: bool) -> Option<(f32, f32, f32, f32)> {
     let (list, alpha) = super::parts(body);
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn intermediate_mix_retains_extended_components() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let raw = "color-mix(in lch longer hue, red, blue)";
         let stop = parse(raw, vcx).unwrap();

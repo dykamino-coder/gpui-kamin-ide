@@ -14,7 +14,7 @@ mod families;
 mod font_loader;
 mod platform;
 mod state;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 pub use platform::FontContext;
 pub(crate) use state::Metrics;
 #[cfg(test)]

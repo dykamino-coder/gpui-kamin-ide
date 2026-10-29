@@ -12,9 +12,9 @@ use crate::animation::motion::anchors::origin_shift;
 use crate::animation::motion::anchors::position_in;
 use crate::animation::motion::anchors::rotation;
 use crate::animation::motion::anchors::start_of;
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// `ray(<angle> && <ray-size>? && contain? && [at <position>]?)` (§ray()).
 ///

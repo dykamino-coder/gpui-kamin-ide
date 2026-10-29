@@ -6,7 +6,7 @@
 use super::LonghandId;
 use super::layer_shorthands::{initial_layer, split_position};
 use super::layer_words::{Words, layer_list, layer_tokens, size_run};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// `<coord-box>` (css-masking-1 §7.4/§7.5).
 fn coord_box(w: &str) -> bool {

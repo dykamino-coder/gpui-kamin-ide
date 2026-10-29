@@ -2,9 +2,9 @@
 //! позиционирования (sticky выходит сразу); дальше — box_overflow.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
+use crate::values::ValueCx;
 
 pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная

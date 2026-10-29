@@ -7,9 +7,9 @@ mod fill;
 mod geometry;
 mod gradient;
 
-use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
 use crate::style::computed::{BgClip, Computed};
+use crate::values::ValueCx;
 use gpui::{AnyElement, Bounds, Corners, Edges, Pixels, Window, px};
 
 /// Использованная область задаётся источником геометрии: обычный слой

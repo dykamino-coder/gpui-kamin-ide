@@ -7,7 +7,7 @@ use gpui::{point, px, size};
 fn oof_owns_measured_breaks_without_propagating_its_root_break(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse("<section style='position:relative;width:100px;height:20px'><div style='position:absolute;top:65px;width:80px;break-before:column'><div style='height:30px'></div><div style='height:40px;break-before:column'></div></div><p style='height:20px;margin:0'></p></section>", "");
+        let tree = crate::document::parsed::parse("<section style='position:relative;width:100px;height:20px'><div style='position:absolute;top:65px;width:80px;break-before:column'><div style='height:30px'></div><div style='height:40px;break-before:column'></div></div><p style='height:20px;margin:0'></p></section>", "");
         let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
         opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;

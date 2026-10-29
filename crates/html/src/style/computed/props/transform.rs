@@ -4,9 +4,9 @@
 //! (motion-1, хранятся сырыми до сэмплера); отдельные `rotate`/`scale`,
 //! `perspective*` и 2D/3D-функции — в подмодулях.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 mod functions;
 mod functions_3d;

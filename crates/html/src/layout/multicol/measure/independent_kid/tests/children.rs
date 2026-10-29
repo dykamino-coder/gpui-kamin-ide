@@ -9,7 +9,7 @@ fn table_rows_and_cells_come_from_the_laid_copy() {
 
     // An out-of-flow sibling keeps the stack off the all-native path; the
     // table still gets its rows, spans and cell content from layout.
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='position:absolute'></div><table style='border-spacing:0'>\
          <tr><td style='break-inside:avoid'><div style='height:50px'></div></td></tr>\
          <tr><td rowspan=2><div style='height:70px'></div></td></tr><tr></tr></table></div>",
@@ -83,7 +83,7 @@ fn nested_columns_preserve_the_roots_fragmentation_dispatch() {
              <div style='height:30px'></div><div style='height:50px'></div>\
              </{tag}>{after}</div></div>"
         );
-        let tree = crate::dom::parse(&html, "");
+        let tree = crate::document::parsed::parse(&html, "");
         let host = host(&tree);
         let Node::Element(root) = &host.children[0] else {
             panic!("formatting root")

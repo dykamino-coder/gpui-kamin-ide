@@ -8,8 +8,8 @@
 //! с `UnresolvedColorFunction`).
 
 use super::{interpolation_color, mix};
-use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 mod mixing;
 mod relative;

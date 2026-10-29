@@ -8,7 +8,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 pub(super) fn defaults(
     handle: &Handle,
     index: usize,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Rule> {
     let parent = handle.parent.take();
     let hides = index > 1 && parent.as_ref().and_then(|parent| parent.upgrade())

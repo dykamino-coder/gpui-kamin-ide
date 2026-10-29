@@ -1,5 +1,5 @@
 //! Адаптер CPU-градиентов для канваса GPUI.
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::sync::Arc;
 pub(super) fn tile(
     src: &crate::style::computed::ImageSource,

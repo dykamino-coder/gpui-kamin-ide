@@ -124,7 +124,7 @@ fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
 
 /// Атомная или блочная коробка внутри абзаца: её содержимое в слой тени
 /// строк не идёт (рисуется своим путём).
-fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+fn atomic(e: &crate::dom::Element, vcx: crate::values::ValueCx<'_>) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
     let font = match e.style.used().font_size {

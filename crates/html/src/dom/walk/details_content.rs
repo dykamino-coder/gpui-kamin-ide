@@ -7,12 +7,12 @@
 //! `::before`/`::after` хозяина) — в слот. UA-стиль слота `display: block`,
 //! закрытого — `content-visibility: hidden`; авторские правила каскадируют поверх.
 
-use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Rule, Selector, VarMap, parse_decls};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
+use crate::values::ValueCx;
 
 fn ua_rule() -> Option<Rule> {
     let css = "display: block";

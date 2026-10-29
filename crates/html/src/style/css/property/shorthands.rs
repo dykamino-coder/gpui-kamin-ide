@@ -6,7 +6,7 @@
 
 pub use super::shorthand_ids::ShorthandId;
 use super::{CssWide, LonghandId, Specified, has_substitution};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use LonghandId::*;
 
 impl ShorthandId {

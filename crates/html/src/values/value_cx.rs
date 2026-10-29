@@ -88,17 +88,17 @@ impl<'a> ValueCx<'a> {
         self.scheme = scheme;
         self
     }
-    /// Удержать документ контекста. Документ всегда живёт в `Rc`
-    /// (`DocState::new`), так что ручка есть, пока жив заимствованный
-    /// документ; иначе — пустой документ, и чтение его ручек даёт запасное
-    /// значение.
+    /// Удержать документ контекста. Нижние данные создаются только в `Rc`
+    /// (`DocumentValues::new`), так что ручка есть, пока жив заимствованный
+    /// документ; иначе (документ уже освобождается) — пустые данные без
+    /// бэкенда шрифтов, и чтение его ручек даёт запасное значение.
     pub fn keep(self) -> ValueDoc {
         ValueDoc {
-            doc: self.doc.this.upgrade().unwrap_or_else(|| {
-                super::DocState::new(crate::style::css::Media::default())
-                    .values
-                    .clone()
-            }),
+            doc: self
+                .doc
+                .this
+                .upgrade()
+                .unwrap_or_else(|| DocumentValues::detached(crate::style::css::Media::default())),
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,

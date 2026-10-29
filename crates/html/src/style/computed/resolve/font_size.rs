@@ -5,8 +5,8 @@
 //! §6.1.4, `style::cascade::compute_cx`).
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::values::value::calc_get;
+use crate::values::ValueCx;
 
 /// Таблица ключевых кеглей при базовом 16px (CSS 2.1 §15.7, css-fonts-4
 /// §absolute-size): по ней шагают `larger`/`smaller`.
@@ -92,8 +92,8 @@ impl Computed {
 mod tests {
     use super::*;
 
-    fn computed(font_size: &str) -> (Computed, std::rc::Rc<crate::document::state::DocState>) {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    fn computed(font_size: &str) -> (Computed, std::rc::Rc<crate::values::DocumentValues>) {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let mut c = Computed::default();
         c.apply_one("font-size", font_size, doc.values());
         (c, doc)

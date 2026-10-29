@@ -1,9 +1,9 @@
 //! `shape()` (css-shapes-2 §2.4) в команды контура SVG относительно опорной коробки.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::css::value_tokens::split_top;
 use crate::style::values::basic_shape::commands::{Command, Sink};
+use crate::values::ValueCx;
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///

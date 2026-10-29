@@ -3,8 +3,8 @@
 //! (CSS Masking §7.8 → CSS Backgrounds §3.9), не дублируясь на обе оси.
 
 use super::Computed;
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
     let (size, fit) = match value.trim() {

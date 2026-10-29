@@ -2,7 +2,7 @@
 //! радиального): угол и номер первого стопа.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// CSS Images 3 §3.1: a corner direction is perpendicular to the diagonal
 /// between the two adjacent corners, rather than a fixed 45-degree bearing.
@@ -10,7 +10,7 @@ use crate::document::state::ValueCx;
 /// concrete image size before constructing its endpoints.
 #[cfg(test)]
 fn corner_angle(raw: &str, (width, height): (f32, f32)) -> Option<f32> {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     GradientShape::parse(raw, doc.values())?.corner_angle((width, height))
 }
 

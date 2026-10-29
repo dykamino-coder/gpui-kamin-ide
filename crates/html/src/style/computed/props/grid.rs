@@ -4,8 +4,8 @@
 //! по css-grid-2 §subgrid-listing) в `AutoRepeat`; остальные шаблоны и
 //! размещение — в подмодулях `templates`, `placement`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 mod placement;
 mod subgrid;

@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 #[test]
 fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         "<style>body { color:blue; background:currentColor linear-gradient(blue,blue) 12px 18px / 100px 120px no-repeat } div { background:inherit }</style><div>x</div>",
         "",
     );
@@ -99,7 +99,7 @@ fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
 
 #[test]
 fn suppressed_background_does_not_supply_a_drop_shadow_silhouette() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         "<style>body { background:blue; filter:drop-shadow(4px 4px 2px red) } div { background:inherit }</style><div>x</div>",
         "",
     );

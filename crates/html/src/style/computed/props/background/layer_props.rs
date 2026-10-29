@@ -7,7 +7,7 @@
 
 use super::values::{attachment, bg_size, clip_box, origin_box, repeat_style};
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_background_layers(

@@ -6,7 +6,7 @@ use crate::style::values::value::{Len, calc_get};
 
 #[test]
 fn scalar_background_lengths_compute_without_an_image_and_inherit_absolutely() {
-    let doc = crate::document::state::DocState::new(Default::default());
+    let doc = crate::values::DocumentValues::detached(Default::default());
     let vcx = doc.values();
     for image in ["none", "url(a)", "url(a), url(b)"] {
         let mut own = Computed::default();
@@ -40,7 +40,7 @@ fn scalar_background_lengths_compute_without_an_image_and_inherit_absolutely() {
 
 #[test]
 fn scalar_background_line_units_compute_without_an_image() {
-    let doc = crate::document::state::DocState::new(Default::default());
+    let doc = crate::values::DocumentValues::detached(Default::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);

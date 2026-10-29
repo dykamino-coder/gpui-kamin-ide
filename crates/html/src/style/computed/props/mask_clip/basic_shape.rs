@@ -2,8 +2,8 @@
 //! заливки и скруглением. Хвост ветви clip-path/mask из Computed::apply_clip_mask.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn clip_basic_shape(&mut self, v: &str, vcx: ValueCx<'_>) {

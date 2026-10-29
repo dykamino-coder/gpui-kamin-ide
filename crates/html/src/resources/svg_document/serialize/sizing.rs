@@ -1,12 +1,12 @@
 //! Сериализация SVG с заданным размером области просмотра.
 
 use super::{SerializeCx, escape_attr, escape_text, write_with};
-use crate::document::state::ValueCx;
 use crate::dom::resource_facts::view_box_ratio;
 use crate::dom::{Element, Node};
 use crate::resources::svg_document::serialize::filters::subtree_has;
 use crate::resources::svg_document::serialize::filters::untaint_filters;
 use crate::resources::svg_document::size::size_of;
+use crate::values::ValueCx;
 
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.

@@ -19,7 +19,7 @@ impl Scoped {
         let state = state.clone();
         let enter = Rc::new(move |phase: ScopePhase| -> Box<dyn std::any::Any> {
             if phase == ScopePhase::Paint {
-                state.values.painted.set(true);
+                state.values.mark_painted();
             }
             Box::new(())
         });

@@ -1,7 +1,7 @@
 //! Однотонный SVG: распознавание сплошной непрозрачной заливки без растра.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 /// SVG 2 §8.2 maps the viewBox into the image viewport. An opaque rectangle
 /// covering that viewport is a uniform image, even when its natural ratio

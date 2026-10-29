@@ -1,11 +1,11 @@
 //! Выбор вычисленного CSS-операнда через таблицу запросов документа.
 use super::Source;
-use crate::document::state::ValueCx;
 use crate::resources::images::{
     svg_fragment,
     types::{ColourPolicy, DecodeOptions, DecodedImage, OrientationMode},
     vector,
 };
+use crate::values::ValueCx;
 
 pub(crate) fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
     let (src, orient) = src
@@ -84,14 +84,14 @@ mod tests {
 
     use super::{Source, computed_source};
     use crate::style::computed::ImageSource;
-    fn parsed(raw: &str, vcx: crate::document::state::ValueCx<'_>) -> Option<Source> {
+    fn parsed(raw: &str, vcx: crate::values::ValueCx<'_>) -> Option<Source> {
         computed_source(&ImageSource::parse(raw, vcx)?, true, vcx)
     }
     use crate::style::{computed::Computed, values::value::Color};
 
     #[test]
     fn decode_url_before_using_fallback() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let image = parsed("image('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%222%22 height=%223%22/%3E', red)", vcx).unwrap();
         assert!(matches!(image, Source::Vector { .. }));
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn fallback_current_color_resolves_after_inheritance_with_alpha() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.color = Color::parse("rgba(0, 128, 0, 0.5)", vcx);

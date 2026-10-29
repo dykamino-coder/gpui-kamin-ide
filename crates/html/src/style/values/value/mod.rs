@@ -44,8 +44,8 @@ pub use calc_pool::{
     CalcId, calc_get, calc_pct_px, calc_store, fold_zero_percentage, lerp_len, number,
 };
 mod scheme;
-pub use crate::document::state::{ValueCx, ValueDoc};
 pub use crate::style::values::color_space::{ColorOrAuto, StyleColor};
+pub use crate::values::{ValueCx, ValueDoc};
 pub use color::Color;
 pub(crate) use color::light_dark_branch;
 use color_names::named;

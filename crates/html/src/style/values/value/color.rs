@@ -1,7 +1,7 @@
 //! Цвет CSS (Color): разбор hex/rgb/hsl и функций цвета, тёмная схема.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Цвет в формате GPUI (`Rgba` → `Hsla` конвертируется на месте применения).
 #[derive(Default, Clone, Copy, Debug, PartialEq)]

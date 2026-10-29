@@ -1,10 +1,10 @@
 //! Групповые эффекты блочного бокса: стиль, который читает его обёртка, и
 //! изоляция, нужная его blending-потомкам.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use gpui::AnyElement;
 
 /// The box's own style, with mask image lengths and colors taken from its

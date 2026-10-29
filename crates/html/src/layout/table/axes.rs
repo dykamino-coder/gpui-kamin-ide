@@ -2,9 +2,9 @@
 //! `Axes` переводит стороны между ними по режиму письма и направлению таблицы, как Blink
 //! `TableBorders::MergeBorders`; `inherited` доводит письмо родителя до стиля таблицы.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::{BoxStyle, Computed};
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy)]
 pub(super) struct Axes([usize; 4]);
@@ -68,7 +68,7 @@ mod tests {
         use crate::dom::Node;
         use crate::style::cascade::materialize::{box_style, materialize};
         use std::rc::Rc;
-        let parsed = crate::dom::parse(
+        let parsed = crate::document::parsed::parse(
             r#"<div style="writing-mode:vertical-rl;direction:rtl"><table><tr><td>x</td></tr></table></div>"#,
             "",
         );

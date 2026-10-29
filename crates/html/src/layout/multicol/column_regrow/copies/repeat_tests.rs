@@ -26,7 +26,7 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
         gpui::point(gpui::px(0.), gpui::px(0.)),
         gpui::size(gpui::px(400.), gpui::px(400.)),
         |window, app| {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 "<section><table><tr><td style='height:130px;break-after:column'></td></tr><tfoot style='break-inside:avoid'><tr><td style='height:20px'></td></tr></tfoot></table></section>",
                 "",
             );
@@ -92,7 +92,7 @@ fn reserved_copies_get_their_own_repeated_bands(cx: &mut gpui::TestAppContext) {
         gpui::point(gpui::px(0.), gpui::px(0.)),
         gpui::size(gpui::px(400.), gpui::px(400.)),
         |window, app| {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 "<section><table><tr><td style='height:130px;break-after:column'></td></tr><tfoot style='break-inside:avoid'><tr><td style='height:20px'></td></tr></tfoot></table></section>",
                 "",
             );

@@ -18,7 +18,7 @@ from migration_test_support import widen
 
 ROOT_OWNERS = {
     **dict.fromkeys(['defaults', 'cache', 'color', 'css_syntax', 'dom', 'style',
-                    'resources', 'tolerance', 'box_facts', 'budget', 'diagnostics'],
+                    'resources', 'tolerance', 'box_facts', 'budget', 'diagnostics', 'values'],
                    'kamin-style'),
     'font_facts': 'kamin-font-facts',
     **dict.fromkeys(['layout', 'text', 'interactive', 'hooks'], 'kamin-layout'),

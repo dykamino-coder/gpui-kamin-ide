@@ -2,9 +2,9 @@
 //! читаются обратно из `Style`, включая проекцию осей сетки на физические.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls;
+use crate::values::ValueCx;
 use gpui::{Styled, px, relative};
 
 /// Стиль применяется к настоящему `Div` и читается обратно из `Style` —

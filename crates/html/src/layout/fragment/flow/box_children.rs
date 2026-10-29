@@ -28,7 +28,7 @@ pub(crate) fn children(nodes: &[Node]) -> impl Iterator<Item = &Node> {
 pub(crate) fn projected(
     nodes: &[Node],
     parent: &crate::style::computed::BoxStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     use crate::style::cascade::{inherit::inherit_unpainted, materialize::box_style_unpainted};
     use crate::style::computed::Computed;

@@ -32,7 +32,7 @@ fn box_input_round_trip_preserves_decoration_and_shared_css() {
 
 #[test]
 fn synthetic_input_overrides_parent_band_without_projecting_css() {
-    let doc = crate::document::state::DocState::new(Default::default());
+    let doc = crate::values::DocumentValues::detached(Default::default());
     let mut parent = BoxStyle::default();
     parent.inline_decoration.physical_padding = Some([3.0; 4]);
     parent.inline_decoration.corner_radius = Some(7.0);

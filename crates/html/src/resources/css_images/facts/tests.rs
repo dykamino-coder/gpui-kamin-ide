@@ -104,7 +104,7 @@ fn base_changes_cannot_reuse_url_facts() {
 
 #[test]
 fn constant_gradient_facts_follow_resolved_current_color_and_hue_arc() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = crate::style::computed::Computed::default();
     own.apply_one("color", "green", vcx);

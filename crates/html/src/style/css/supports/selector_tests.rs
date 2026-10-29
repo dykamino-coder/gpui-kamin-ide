@@ -4,7 +4,7 @@ use super::supports;
 
 #[test]
 fn selector_queries_use_the_stylesheet_pseudo_grammar() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for selector in [
         "input::-webkit-slider-runnable-track",
@@ -111,7 +111,7 @@ fn pseudo_rules_do_not_style_the_originating_element() {
 
 #[test]
 fn nesting_and_pseudo_names_inside_attribute_strings_are_preserved() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for selector in [
         r#"[data-value="&"]"#,

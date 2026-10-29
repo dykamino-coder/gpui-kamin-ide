@@ -9,7 +9,7 @@
 //! фильтры, макеты интерфейса от модели. Пустое место вместо поля выглядит
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod indicators;
 use indicators::color_swatch;
 use indicators::progress;

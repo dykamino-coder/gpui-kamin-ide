@@ -1,8 +1,8 @@
 //! Вычисленные операнды изображений; декодирование ресурсов принадлежит resources.
 
 use super::{Computed, Filter, Gradient, Len, Shadow};
-use crate::document::state::ValueCx;
 use crate::style::values::{color_space::StyleColor, value::Color};
+use crate::values::ValueCx;
 
 mod conic;
 mod filter;

@@ -1,9 +1,9 @@
 //! Проверка без записи: есть ли у стиля длины в единицах окна или контейнера, которые решает
 //! `Computed::resolve_viewport`. Стиль коробки общий (P-18): копия нужна, только когда решать есть что.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Sides};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 impl Computed {
     /// Есть ли что решать `resolve_viewport`: длины в единицах окна или

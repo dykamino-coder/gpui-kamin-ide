@@ -1,6 +1,6 @@
 //! Модель абзаца `Paragraph`: поля строчной раскладки и состояние документа, общее с зондом.
 use crate::text::paragraph::{atom_fit, decor, tabs};
-use crate::{document::state::ValueDoc, layout::layout_state::LayoutState};
+use crate::{layout::layout_state::LayoutState, values::ValueDoc};
 mod configuration;
 mod construct;
 mod overflow_config;

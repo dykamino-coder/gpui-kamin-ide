@@ -7,10 +7,10 @@
 //! полей у `rbc`/`rtc` (css-ruby-1 §3.3), `lang` и `dir`.
 
 use super::presentational_hints;
-use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::select::Ancestor;
+use crate::values::ValueCx;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn normalize_style(

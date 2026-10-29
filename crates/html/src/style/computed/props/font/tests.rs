@@ -6,11 +6,11 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls;
 use crate::style::values::value::Len;
 
-fn doc() -> std::rc::Rc<crate::document::state::DocState> {
-    crate::document::state::DocState::new(crate::style::css::Media::default())
+fn doc() -> std::rc::Rc<crate::values::DocumentValues> {
+    crate::values::DocumentValues::detached(crate::style::css::Media::default())
 }
 
-fn style(css: &str, vcx: crate::document::state::ValueCx<'_>) -> Computed {
+fn style(css: &str, vcx: crate::values::ValueCx<'_>) -> Computed {
     let mut c = Computed::default();
     c.apply_decls(&crate::style::css::parse_decls_in(css, vcx), vcx);
     c

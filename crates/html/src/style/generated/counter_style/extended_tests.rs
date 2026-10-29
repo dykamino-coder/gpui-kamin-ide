@@ -6,7 +6,7 @@ use super::{builtin, builtin_initial, builtin_repr};
 
 #[test]
 fn cjk_groups_preserve_zeros_and_language_markers() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for (style, value, expected) in [
         ("japanese-informal", 10_001, "一万一"),
@@ -35,7 +35,7 @@ fn cjk_groups_preserve_zeros_and_language_markers() {
 
 #[test]
 fn cjk_extended_range_and_negative_descriptors() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for style in [
         "japanese-informal",
@@ -65,7 +65,7 @@ fn cjk_extended_range_and_negative_descriptors() {
 
 #[test]
 fn full_width_values_survive_numeric_and_fallback_styles() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         builtin_repr(i64::MIN, "decimal", vcx),

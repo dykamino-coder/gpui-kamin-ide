@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn zoom_keeps_fractions_and_scales_nested_absolute_lengths() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("grid-template-columns", "minmax(10px, 1fr) 25%", vcx);

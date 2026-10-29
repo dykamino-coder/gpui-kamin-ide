@@ -1,9 +1,9 @@
 //! Контекст единиц контейнера: только used content box, переданный оркестратором
 //! после завершённой раскладки (css-conditional-5 §container-lengths).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, ContainerType, Display};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 impl Computed {
     /// Кегль и строка разрешаются раньше зависимых от них em/lh.

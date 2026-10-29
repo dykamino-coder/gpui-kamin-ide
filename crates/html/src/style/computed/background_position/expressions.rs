@@ -4,9 +4,9 @@
 //! подставляются только при вычислении используемого значения (`PositionExpression::evaluate`).
 
 use super::PositionExpression;
-use crate::document::state::ValueCx;
 use crate::style::computed::split_outside_parens;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn math(raw: &str, vcx: ValueCx<'_>) -> Option<PositionExpression> {
     PositionExpression::parse(raw, vcx)

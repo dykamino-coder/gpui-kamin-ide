@@ -4,9 +4,9 @@
 //! стопы второй раз на дробном DPI. Цвет в точке считает общая для градиентов `colour_at`.
 
 use super::{len_px, wrap_repeat};
-use crate::document::state::ValueCx;
 use crate::resources::images::types::CpuRaster;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 /// CSS Images 4 §conic-gradients: positions translate the ray origin;

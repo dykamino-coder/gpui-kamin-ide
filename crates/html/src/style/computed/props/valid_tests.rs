@@ -4,7 +4,7 @@ use crate::style::computed::{Computed, ParseResult};
 use crate::style::css::LonghandId;
 
 fn accepted(key: &str, value: &str) -> bool {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     Computed::declaration_result(key, value, st.values()) == ParseResult::Accepted
 }
 
@@ -46,7 +46,7 @@ fn transform_functions_accept_every_angle_unit_and_range() {
 
 #[test]
 fn rotated_transform_reaches_the_matrix() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = Computed::default();
     c.apply_one("transform", "rotate(180deg)", st.values());
     let t = c.transform.expect("rotate(180deg) applied");
@@ -73,7 +73,7 @@ fn individual_rotate_and_offset_rotate_accept_full_angles() {
         &["auto", "reverse", "270deg", "auto 180deg", "-90deg reverse"],
         &["auto auto", "10deg 20deg", "0", "auto 10px"],
     );
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = Computed::default();
     c.apply_one("rotate", "180deg", st.values());
     assert!(
@@ -144,7 +144,7 @@ fn text_emphasis_accepts_currentcolor() {
 
 #[test]
 fn place_shorthands_forward_inherit() {
-    let st = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = Computed::default();
     c.apply_one("place-items", "inherit", st.values());
     c.apply_one("place-content", "inherit", st.values());

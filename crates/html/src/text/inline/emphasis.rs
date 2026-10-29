@@ -19,7 +19,7 @@ pub(crate) fn emphasis_spans(
     // Слои аннотаций руби-базы, в которой абзац собирается (`RubyContext::layers`).
     ruby: Option<&std::rc::Rc<crate::text::ruby::layers::Layers>>,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;

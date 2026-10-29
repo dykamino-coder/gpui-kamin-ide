@@ -5,8 +5,8 @@
 //! центру одной фигуры либо разность внешней и внутренней по яркостной маске.
 
 use super::border_scene::Contour;
-use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 
 /// The nine-number header describes reference-box outsets, stroke width and
 /// compositing outsets. Negative stroke contracts the inner overflow clip.

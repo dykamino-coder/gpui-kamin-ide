@@ -7,8 +7,8 @@
 //! `none` гасит картинку и градиент; `light-dark()` выбирает вариант по
 //! схеме. Грамматики — `values`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 mod layer_props;
 mod lists;

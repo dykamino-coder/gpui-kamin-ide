@@ -2,7 +2,7 @@
 //! (сокращения grid/grid-template и устаревшие grid-*-gap раскрыты разбором блока). Ветви в исходном порядке; не совпавший ключ уходит в apply_grid_placement.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_grid_templates(

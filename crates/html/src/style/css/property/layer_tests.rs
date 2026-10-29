@@ -3,11 +3,11 @@
 //! §8.7).
 
 use super::*;
-use crate::document::state::DocState;
 use crate::style::css::Media;
+use crate::values::DocumentValues;
 
-fn doc() -> std::rc::Rc<DocState> {
-    DocState::new(Media::default())
+fn doc() -> std::rc::Rc<DocumentValues> {
+    DocumentValues::detached(Media::default())
 }
 
 fn texts(s: ShorthandId, v: &str, vcx: ValueCx<'_>) -> Option<Vec<(LonghandId, String)>> {

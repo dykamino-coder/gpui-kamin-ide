@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn numeric_filters_hit_with_nan_and_signed_zero_without_hiding_changes() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let input =
         Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
@@ -31,7 +31,7 @@ fn numeric_filters_hit_with_nan_and_signed_zero_without_hiding_changes() {
 
 #[test]
 fn authored_operation_order_is_part_of_the_cache_key() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let input =
         Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
@@ -52,7 +52,7 @@ fn authored_operation_order_is_part_of_the_cache_key() {
 
 #[test]
 fn fractional_tile_scale_is_part_of_shadow_key() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let image =
         crate::resources::images::pixels::bgra(3, 1, vec![0, 128, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -70,7 +70,7 @@ fn fractional_tile_scale_is_part_of_shadow_key() {
 }
 #[test]
 fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let original =
         crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
@@ -104,7 +104,7 @@ fn smooth_scaling_preserves_color_beside_transparency() {
 
 #[test]
 fn allocation_limit_preserves_css_shadow_offset() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let original =
         crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
@@ -129,7 +129,7 @@ fn allocation_limit_preserves_css_shadow_offset() {
 
 #[test]
 fn radial_input_filters_rendered_samples_without_natural_dimensions() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let source = super::super::computed_source(
         &crate::style::computed::ImageSource::parse(

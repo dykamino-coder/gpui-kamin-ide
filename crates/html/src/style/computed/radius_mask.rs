@@ -5,9 +5,9 @@
 //! `contain: paint` со скруглением без рамки (css-contain-2 §3.3).
 
 use super::{Computed, Overflow};
-use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 
 impl Computed {
     /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.

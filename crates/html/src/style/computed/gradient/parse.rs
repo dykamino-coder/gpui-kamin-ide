@@ -1,7 +1,7 @@
 //! Разбор linear-/radial-gradient(): направление, пространство интерполяции, стопы с позициями.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Угол направления градиента по единице (css-values-4 §7.1): `Some(Some(deg))`
 /// — законный угол, `Some(None)` — число с НЕЗНАКОМОЙ единицей (`90degree`,

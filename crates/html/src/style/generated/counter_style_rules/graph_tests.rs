@@ -8,8 +8,8 @@ fn long_extends_and_fallback_chains_preserve_the_selected_style() {
     std::thread::Builder::new()
         .stack_size(1024 * 1024)
         .spawn(|| {
-            let doc = crate::document::state::DocState::new(Default::default());
-            let mut rules = doc.values.counter_styles.borrow_mut();
+            let doc = crate::values::DocumentValues::detached(Default::default());
+            let mut rules = doc.counter_styles.borrow_mut();
             for n in 0..4096 {
                 rules.insert(
                     format!("e{n}"),
@@ -47,7 +47,7 @@ fn long_extends_and_fallback_chains_preserve_the_selected_style() {
                 custom_repr(2, "f0", Context::default(), doc.values()).as_deref(),
                 Some("KEEP")
             );
-            assert!(doc.values.revision_budget().failure().is_none());
+            assert!(doc.revision_budget().failure().is_none());
         })
         .unwrap()
         .join()

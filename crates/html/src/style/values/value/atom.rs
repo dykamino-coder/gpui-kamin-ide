@@ -3,7 +3,7 @@
 use super::{
     Len, Sum, calc_store, css_number, root_font_px, root_font_unit, root_font_view, root_line_px,
 };
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(super) struct Atom {
     nature: u8,

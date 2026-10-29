@@ -2,9 +2,9 @@
 
 use super::ellipse_path;
 use super::{Cb, flatten, origin_shift, polyline_length, ray_css, rotation, sample, start_of};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// `svg_origin` — левый верх опорной коробки (`fill-box`/`stroke-box`) SVG-фигуры
 /// в пользовательских единицах: путь SVG-элемента живёт в системе

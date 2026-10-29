@@ -62,7 +62,7 @@ pub(super) fn mask_nodes(
     parent: &ShadowStyle,
     group: &[Shadow],
     shadow: &Shadow,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     nodes
         .iter()

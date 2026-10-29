@@ -1,7 +1,7 @@
 //! Область композита группы с запасом для blur, формы и изоляции.
 
-use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::Grouped;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]

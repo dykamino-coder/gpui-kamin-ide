@@ -8,12 +8,12 @@
 //! `<li>`; его `content` сворачивает `walk` уже после снятия номера пункта.
 
 use super::initial_pseudos;
-use crate::document::state::ValueCx;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
+use crate::values::ValueCx;
 
 type PseudoLayers = (
     Option<Box<Computed>>,

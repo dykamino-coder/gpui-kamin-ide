@@ -3,10 +3,10 @@
 //! порядка объявлений и от соседних свойств (`textarea-pre-wrap-*`: четыре
 //! `initial` рядом с `white-space: pre-wrap` поверх `font` агента).
 
-use crate::document::state::{DocState, ValueCx};
 use crate::style::computed::Computed;
 use crate::style::css::{LinkMatch, Media, Origin, Rule, Selector, parse_decls_in};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 fn rule(css: &str, origin: Origin, order: usize, vcx: ValueCx<'_>) -> Rule {
     Rule {
@@ -45,7 +45,7 @@ fn author(white_space_first: bool) -> String {
 
 #[test]
 fn textarea_pre_wrap_block_does_not_depend_on_order_or_the_ua_font() {
-    let doc = DocState::new(Media::default());
+    let doc = crate::values::DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let alone = flags(&Computed::resolve(
         &[&rule("white-space: pre-wrap", Origin::Author, 0, vcx)],
@@ -87,7 +87,7 @@ fn textarea_pre_wrap_block_does_not_depend_on_order_or_the_ua_font() {
 
 #[test]
 fn white_space_and_its_longhands_cascade_by_position() {
-    let doc = DocState::new(Media::default());
+    let doc = crate::values::DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let style = |css: &str| {
         Computed::resolve(
@@ -114,7 +114,7 @@ fn white_space_and_its_longhands_cascade_by_position() {
 
 #[test]
 fn text_decoration_shorthand_resets_and_validates_whole() {
-    let doc = DocState::new(Media::default());
+    let doc = crate::values::DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let style = |css: &str| {
         Computed::resolve(

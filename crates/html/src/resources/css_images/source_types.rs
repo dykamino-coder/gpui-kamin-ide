@@ -2,8 +2,8 @@
 
 use super::rasterize_gradient;
 use super::{conic, gradient_raster};
-use crate::document::state::ValueCx;
 use crate::resources::images::viewport::with_viewport;
+use crate::values::ValueCx;
 
 use super::Intrinsic;
 use crate::resources::images::types::CpuRaster;

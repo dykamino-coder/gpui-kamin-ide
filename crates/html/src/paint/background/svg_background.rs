@@ -1,8 +1,8 @@
 //! Фон канвы рисунка-картинки для покраски; размер и вырожденный `viewBox` рисунка —
 //! факты самой картинки (`resources::images::vector`).
 
-use crate::document::state::ValueCx;
 use crate::resources::images::vector::root_tag;
+use crate::values::ValueCx;
 
 /// Фон КАНВЫ рисунка: `style="background: …"` на корневом `<svg>`.
 ///

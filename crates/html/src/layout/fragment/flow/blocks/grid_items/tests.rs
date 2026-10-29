@@ -14,7 +14,7 @@ fn first_div(nodes: &[Node]) -> Option<&Element> {
 #[test]
 fn an_item_belongs_to_the_fragment_where_its_margin_box_starts() {
     // A negative margin lifts the item above its row; the row still decides its fragment.
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div style='display:grid;grid-template-rows:90px 90px'><div></div><div style='margin-top:-10px;height:100px'></div></div>",
         "",
     );

@@ -7,7 +7,7 @@
 //! XHTML точно; `document()` держит этот признак на время разбора);
 //! `content_text` собирает строку из строк, кавычек, `counter()`/`counters()`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// CSS2 sections 6.2.1 and 12.2: explicit inheritance follows the DOM,
 /// including ordinary elements on which `content` does not generate a box.
@@ -45,7 +45,7 @@ pub(super) fn is_xhtml(
     document: &markup5ever_rcdom::Handle,
     budget: &crate::budget::RevisionBudget,
 ) -> Result<bool, crate::dom::outcome::FailureReason> {
-    use crate::{budget::BudgetKind, document::FailureReason};
+    use crate::{budget::BudgetKind, dom::outcome::FailureReason};
     for node in document.children.borrow().iter() {
         budget
             .consume(BudgetKind::TraversalVisits, 1)

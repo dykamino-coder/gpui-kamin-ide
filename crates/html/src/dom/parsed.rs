@@ -1,14 +1,14 @@
-//! Узлы разбора без `Document` вместе с их документом.
+//! Узлы тестового разбора без `Document` вместе с нижними данными их документа.
 
 use super::Node;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::rc::Rc;
 
 /// Узлы разбора без `Document` и их документ: ручки `calc()`/`anchor()` в
 /// стилях узлов читаются в его аренах (`values`).
 pub struct Parsed {
     pub nodes: Vec<Node>,
-    pub doc: Rc<crate::document::state::DocState>,
+    pub doc: Rc<crate::values::DocumentValues>,
 }
 
 impl Parsed {

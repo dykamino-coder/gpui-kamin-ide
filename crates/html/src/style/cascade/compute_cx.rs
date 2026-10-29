@@ -14,12 +14,12 @@
 
 use super::phase::Phase;
 use super::vars::CascadeCx;
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::{
     Len, RootMetrics, root_normal_line_px, set_root_family, set_root_font_view, set_root_metrics,
 };
+use crate::values::ValueCx;
 
 /// Входы поздних фаз вычисления одного элемента.
 #[derive(Clone, Copy)]

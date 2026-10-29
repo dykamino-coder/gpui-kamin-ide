@@ -1,10 +1,10 @@
 //! Стиль узла и его псевдоэлемента при упреждающем подсчёте счётчиков.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
+use crate::values::ValueCx;
 use markup5ever_rcdom::{Handle, NodeData};
 
 /// Resolve counter directives and display with the rendering cascade.

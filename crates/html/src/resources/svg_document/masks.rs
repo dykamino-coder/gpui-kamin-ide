@@ -1,7 +1,7 @@
 //! SVG-ресурсы принадлежат документу; отложенные группы хранят неизменяемые определения.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::values::ValueCx;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -97,10 +97,10 @@ impl MaskResources {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::state::DocState;
     use crate::style::css::Media;
+    use crate::values::DocumentValues;
 
-    fn nodes(alpha: bool, fill: &str, doc: &std::rc::Rc<DocState>) -> Vec<Node> {
+    fn nodes(alpha: bool, fill: &str, doc: &std::rc::Rc<DocumentValues>) -> Vec<Node> {
         let mode = if alpha { "alpha" } else { "luminance" };
         crate::dom::parse_current(
             &format!(
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn delayed_masks_keep_markup_and_alpha_after_other_documents_and_rebuilds() {
-        let doc = DocState::new(Media::default());
+        let doc = DocumentValues::detached(Media::default());
         let vcx = doc.values();
         let a = MaskResources::default();
         a.collect(&nodes(true, "red", &doc), vcx);
@@ -149,7 +149,7 @@ mod tests {
                 }
             }
         }
-        let doc = DocState::new(Media::default());
+        let doc = DocumentValues::detached(Media::default());
         let vcx = doc.values();
         let context = MaskResources::default();
         let mut nodes = nodes(false, "red", &doc);

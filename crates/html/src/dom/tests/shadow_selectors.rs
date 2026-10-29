@@ -9,7 +9,7 @@ use crate::style::values::value::Color;
 
 #[test]
 fn shadow_fast_path_uses_normalized_html_attribute_names() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let green = Color::parse("green", doc.values());
     for attr in ["shadowrootmode", "SHADOWROOTMODE", "ShAdOwRoOtMoDe"] {
         for mode in ["open", "CLOSED"] {
@@ -25,7 +25,7 @@ fn shadow_fast_path_uses_normalized_html_attribute_names() {
 
 #[test]
 fn shadow_fast_path_finds_nested_uppercase_templates() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let colors = child_colors(
         "<!doctype html><main><template SHADOWROOTMODE=open>\
          <div><template SHADOWROOTMODE=open><style>i{color:green}</style>\
@@ -36,7 +36,7 @@ fn shadow_fast_path_finds_nested_uppercase_templates() {
 
 #[test]
 fn slotted_has_matches_the_assigned_elements_own_subtree() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><style>i { color: red }</style><div><template shadowrootmode=open><style>
@@ -64,7 +64,7 @@ fn slotted_has_matches_the_assigned_elements_own_subtree() {
 
 #[test]
 fn slotted_does_not_select_its_own_fallback() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div><template shadowrootmode=open><style>
@@ -77,7 +77,7 @@ fn slotted_does_not_select_its_own_fallback() {
 
 #[test]
 fn host_has_keeps_light_and_shadow_descendants_separate() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div><template shadowrootmode=open>
@@ -95,7 +95,7 @@ fn host_has_keeps_light_and_shadow_descendants_separate() {
 
 #[test]
 fn host_has_registration_precedes_all_tree_passports() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><main><template shadowrootmode=open>
@@ -110,7 +110,7 @@ fn host_has_registration_precedes_all_tree_passports() {
 
 #[test]
 fn featureless_negation_requires_an_eligible_subject() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div id=box><template shadowrootmode=open>

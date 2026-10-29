@@ -1,9 +1,9 @@
 //! Раскладка: display/flex/позиционирование/размеры (apply_layout).
 
-use crate::document::state::ValueCx;
 use crate::paint::apply::*;
 use crate::style::computed::{Align, Computed, Display, FlexDir, Justify, Placement, Position};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Div, Styled, px};
 
 mod alignment;

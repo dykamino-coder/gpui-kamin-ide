@@ -27,7 +27,7 @@ pub(super) fn border_px(
     l: Option<Len>,
     c: &Computed,
     font_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<f32> {
     match l {
         None => Some(0.0),
@@ -56,7 +56,7 @@ pub(super) fn border_px(
 pub fn sided_border(
     c: &Computed,
     font_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Color, [f32; 4])> {
     sided_border_with_colors(
         c,
@@ -71,7 +71,7 @@ pub(crate) fn sided_border_with_colors(
     c: &Computed,
     colors: [Color; 4],
     font_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Color, [f32; 4])> {
     let w = c.borders();
     let px_of = |l: Option<Len>| border_px(l, c, font_px, vcx);
@@ -116,7 +116,7 @@ pub(crate) fn sided_border_with_colors(
 pub fn uniform_border(
     c: &Computed,
     font_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Color, f32)> {
     uniform_border_with_colors(
         c,
@@ -131,7 +131,7 @@ pub(crate) fn uniform_border_with_colors(
     c: &Computed,
     colors: [Color; 4],
     font_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Color, f32)> {
     let w = c.borders();
     // Здесь незаданная грань — НЕ ноль: ровной рамке нужны все четыре, и

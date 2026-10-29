@@ -1,7 +1,7 @@
 //! Дескрипторы шрифта и списки источников используют общие токенизаторы CSS-правил и значений.
 
-use crate::document::state::ValueCx;
 use crate::style::css;
+use crate::values::ValueCx;
 
 pub(super) fn faces(css: &str, vcx: ValueCx<'_>) -> Vec<String> {
     // `@font-face` под `@media` решает носитель текущего документа.

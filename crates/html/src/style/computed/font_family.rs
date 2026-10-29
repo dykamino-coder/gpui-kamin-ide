@@ -7,7 +7,7 @@
 
 use super::{Computed, family_name_ok, generic_family, is_generic, is_quote};
 
-pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::ValueCx<'_>) {
+pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'_>) {
     if v.eq_ignore_ascii_case("inherit") {
         style.font_family = None;
         style.font_families = None;
@@ -142,7 +142,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
         .or_else(|| generic.map(str::to_string));
 }
 
-fn families(value: &str, vcx: crate::document::state::ValueCx<'_>) -> Vec<String> {
+fn families(value: &str, vcx: crate::values::ValueCx<'_>) -> Vec<String> {
     value
         .split(',')
         .map(str::trim)

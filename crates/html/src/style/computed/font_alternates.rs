@@ -4,7 +4,7 @@
 //! Разрешение идёт по наследованию и предшествует `font-feature-settings` (§7.2); запрос несёт
 //! снимок определений своего документа, чтобы разбор `<iframe>` не менял внешний документ.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 use crate::font_facts::FeatureDefinitions;
@@ -203,13 +203,13 @@ mod tests {
     use super::*;
     #[test]
     fn definitions_are_document_owned_and_style_snapshots_are_stable() {
-        let a = crate::document::state::DocState::new(Default::default());
-        let b = crate::document::state::DocState::new(Default::default());
+        let a = crate::values::DocumentValues::detached(Default::default());
+        let b = crate::values::DocumentValues::detached(Default::default());
         register("Example", "@styleset { named: 1; }", vec![], a.values());
         register("Example", "@styleset { named: 2; }", vec![], b.values());
         let first = parse("styleset(named)", false, a.values()).unwrap();
         let other = parse("styleset(named)", false, b.values()).unwrap();
-        a.values.reset_font_alternates();
+        a.reset_font_alternates();
         register("Example", "@styleset { named: 3; }", vec![], a.values());
         let later = parse("styleset(named)", false, a.values()).unwrap();
         assert_eq!(resolve("Example", Some(&first)), vec![("ss01".into(), 1)]);
