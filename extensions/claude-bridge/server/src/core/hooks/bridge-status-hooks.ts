@@ -2,8 +2,8 @@
 // lifecycle events instead of scraping OSC spinner glyphs off the PTY stream.
 //
 // We inject a no-op `command` hook (host:'local' so proxy-rewriter turns it
-// into an http webhook — a 'server' host would run in-container and never call
-// back) for each of the five events that map 1:1 onto session status. The
+// into a command relay over HTTP — a 'server' host would run in-container and
+// never call back) for each lifecycle event below. The
 // FIRING of the webhook is the signal: routes.ts emits an authoritative
 // `session:activity` and skips the no-op dispatch. This runs ALONGSIDE any
 // user/project/plugin hooks for the same event — the CLI runs every matcher.
@@ -41,7 +41,7 @@ export function isBridgeStatusEvent(event: string): boolean {
 
 /** The matchers to splice into the merged hook settings (with their source so
  *  rewriteHooksForCli tags the registered hook `bridge`). host:'local' forces
- *  the http-webhook rewrite even for SERVER_PREFERRED events. */
+ *  the command relay rewrite even for SERVER_PREFERRED events. */
 export function bridgeStatusHookMatchers(): Array<{ event: string; matcher: HookMatcher; source: HookSource }> {
   return BRIDGE_STATUS_EVENTS.map((event) => ({
     event,
