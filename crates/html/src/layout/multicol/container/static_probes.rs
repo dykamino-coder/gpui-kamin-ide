@@ -95,6 +95,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             replay: false,
             effects: false,
             paginate: None,
+            clone_deco: None,
             clone_frags: None,
             copier: None,
             nest: None,

@@ -131,6 +131,23 @@ pub(super) fn multicol_stack_child(
         empty_floats,
     );
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
+    // Украшения фрагментов корня clone, рисуемого записью: копия корня без содержимого.
+    let deco = (dec.is_some() && replay::clone_record(&copy)).then(|| {
+        let mut bare = copy.clone();
+        bare.children.clear();
+        let watch = crate::layout::fragment::paginate::watch::Watched::new(&[]);
+        let (geom, inner, report) = (frag_geom.clone(), inner.clone(), report.clone());
+        let args = (h, over, nest_row, nest_phase_k);
+        let build = factory::new(
+            opts, col_vert, col_rl, kid_w, geom, merged, &bare, args.0, args.1, args.2, args.3,
+            inner, whole, watch, report,
+        );
+        crate::layout::fragment::types::CloneDeco {
+            node: copy.node_id,
+            build: std::rc::Rc::new(move |part| build(false, part, false)),
+            decos: Vec::new(),
+        }
+    });
     let build = factory::new(
         opts,
         col_vert,
@@ -176,6 +193,7 @@ pub(super) fn multicol_stack_child(
         opts.cx.frame(),
     );
     child.clone_frags = dec.map(|_| frag_geom);
+    child.clone_deco = deco;
     child.line_trim = line_trim;
     let source = copy.clone();
     // `band` — полоса повтора шапки/подвала таблицы (`Repeat::head_els`/`foot_els`).

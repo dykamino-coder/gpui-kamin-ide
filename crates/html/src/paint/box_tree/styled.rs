@@ -138,6 +138,13 @@ pub(crate) fn styled_div_with_dimensions(
             c.self_node,
         ));
         d = d.child(crate::paint::decorations::fragment_layer(c, empty, cx));
+    } else if c.bdb_clone {
+        // Фрагменты clone рисуют свои украшения сами (`decorations::clone_hidden`).
+        use crate::paint::decorations::clone_hidden;
+        d = d.paint_box_with(clone_hidden::box_painter(e.node_id));
+        for extra in decorations(c, empty, frame, Some(cx)) {
+            d = d.child(clone_hidden::layer(e.node_id, extra));
+        }
     } else {
         for extra in decorations(c, empty, frame, Some(cx)) {
             d = d.child(extra);
