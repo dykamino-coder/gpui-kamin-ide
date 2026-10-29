@@ -86,7 +86,7 @@ describe('session settings skills integration', () => {
   it('keeps the Bridge team contract once and before synced instructions', () => {
     const settingsDir = path.join(tempDir(), 'session')
     fs.mkdirSync(settingsDir, { recursive: true })
-    writeSessionClaudeMd(settingsDir, 'C:\\repo')
+    writeSessionClaudeMd(settingsDir)
     write(syncRoots.user, 'CLAUDE.md', 'USER RULE')
     write(syncRoots.project, 'CLAUDE.md', 'PROJECT RULE')
 
@@ -94,13 +94,11 @@ describe('session settings skills integration', () => {
     applySyncData(settingsDir, '0123456789abcdef', 'C:\\repo')
 
     const result = fs.readFileSync(path.join(settingsDir, 'CLAUDE.md'), 'utf-8')
-    expect(result.split('## Agent Teams delivery contract')).toHaveLength(2)
+    expect(result.split('## Delegation')).toHaveLength(2)
     expect(result).toContain(AGENT_TEAMS_REPORTING_CONTRACT)
-    expect(result.indexOf('## Agent Teams delivery contract')).toBeLessThan(
-      result.indexOf('# User Instructions (synced)'),
-    )
-    expect(result.indexOf('# User Instructions (synced)')).toBeLessThan(
-      result.indexOf('# Project Instructions (synced)'),
+    expect(result.indexOf('## Delegation')).toBeLessThan(result.indexOf('\n# User Instructions (synced)'))
+    expect(result.indexOf('\n# User Instructions (synced)')).toBeLessThan(
+      result.indexOf('\n# Project Instructions (synced)'),
     )
   })
 

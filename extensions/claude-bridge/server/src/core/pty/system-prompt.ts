@@ -4,7 +4,6 @@
 // proxy layers (and through them a TLS/cert stack), which made this pure string
 // builder impossible to unit-test — and it went untested long enough to ship a
 // parameter that was accepted and never read.
-import { RUNTIME_SETTINGS_CONTEXT } from './runtime-settings-context'
 
 export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcriptMirrorDir?: string): string {
   const lines: string[] = []
@@ -13,37 +12,13 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
   lines.push('')
 
   if (userCwd) {
-    lines.push(`## Working Directory: ${userCwd}`)
-    lines.push('')
-    lines.push(`You are working on files located on the USER's machine at: ${userCwd}`)
-    lines.push(`When the user asks about "current directory" or "project", they mean ${userCwd}.`)
-    lines.push(`Treat ${userCwd} as your primary working directory for all operations.`)
-    lines.push(`Always use absolute paths based on ${userCwd} as the project root.`)
+    lines.push('## Working Directory')
+    lines.push(userCwd)
+    lines.push('Use this as the project root when resolving relative paths.')
   } else {
     lines.push('No working directory was specified by the user.')
-    lines.push('Ask the user which directory they want to work in before performing file operations.')
+    lines.push('Ask which directory to use before operations that require a project root.')
   }
-
-  lines.push('')
-  lines.push('## MCP Tool Routing')
-  lines.push('')
-  lines.push(
-    "All file and shell operations execute on the USER's local machine via MCP tools (user-tools server), not on this server.",
-  )
-  lines.push(
-    'Use the mcp__user-tools__ prefixed file and shell tools exposed in this session: for example Read, Write, Edit, Glob, Grep, Bash and PowerShell. With MCP Tasks support, run_in_background:true returns an MCP task immediately; use tasks/get for output and tasks/cancel to stop it. Without Tasks support, client background shells use BashOutput and KillShell with the returned bash_id; native TaskOutput does not track these processes. Other native CLI tools, such as Agent and SendMessage, retain their own routing.',
-  )
-  lines.push(
-    "The current server-side directory is a Bridge-managed session directory, not the user's project directory — do NOT access files directly on the server filesystem.",
-  )
-  lines.push('')
-  lines.push(RUNTIME_SETTINGS_CONTEXT)
-  lines.push('')
-  lines.push('## Interactive Questions')
-  lines.push('')
-  lines.push(
-    'ALWAYS use AskUserQuestion (mcp__user-tools__AskUserQuestion) when asking the user ANY question — quizzes, polls, confirmations, choices, clarifications, or anything that expects a user response. NEVER print questions as plain text. The tool shows an interactive widget with clickable option buttons, which is much better UX than text.',
-  )
 
   // Point Claude at its own full transcript. Your file tools run on the USER's
   // machine (user-tools MCP), and that same machine mirrors the complete
@@ -65,9 +40,7 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
     lines.push(`It is append-only history: read it, never write to or delete it.`)
   }
 
-  // The user's own standing instructions, LAST so they read as the final word
-  // without being able to delete the routing rules above (which are what make a
-  // remote session work at all).
+  // The user's own standing instructions follow the dynamic session context.
   //
   // This parameter was accepted and then never read: the setting was stored per
   // token, sent on both create and resume, and threaded all the way down here —
