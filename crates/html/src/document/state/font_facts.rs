@@ -1,15 +1,16 @@
 //! Владение provider и identity шрифтов одного документа; backend держит только Weak.
 
-use super::DocState;
+use super::DocumentValues;
 use crate::font_facts::{FontEnvironmentId, FontFactsProvider, FontRegistrySnapshot};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-#[derive(Default)]
 pub(crate) struct DocumentFonts {
     environment: FontEnvironmentId,
     provider: RefCell<Option<Rc<dyn FontFactsProvider>>>,
+    /// Провайдер по умолчанию, выбранный верхним документом при создании.
+    default_provider: Rc<dyn FontFactsProvider>,
     registry_generation: Cell<u64>,
     snapshot: RefCell<Option<FontRegistrySnapshot>>,
     /// Семейство документа: шрифт пустого `font-family` в замерах.
@@ -22,7 +23,22 @@ pub(crate) struct DocumentFonts {
     inputs_generation: Cell<u64>,
 }
 
-impl DocState {
+impl DocumentFonts {
+    pub(super) fn new(default_provider: Rc<dyn FontFactsProvider>) -> Self {
+        Self {
+            environment: Default::default(),
+            provider: Default::default(),
+            default_provider,
+            registry_generation: Default::default(),
+            snapshot: Default::default(),
+            family: Default::default(),
+            installed: Default::default(),
+            inputs_generation: Default::default(),
+        }
+    }
+}
+
+impl DocumentValues {
     /// Снимок переиспользуется до смены платформы, реестра или входов метрик.
     pub(crate) fn font_snapshot(&self) -> FontRegistrySnapshot {
         let generation = self.font_generation() + self.font_facts.registry_generation.get();
@@ -59,15 +75,9 @@ impl DocState {
 
     /// Настройка применяется только к этому документу, включая повторный bootstrap.
     pub(crate) fn install_font_facts(&self, provider: Option<Rc<dyn FontFactsProvider>>) {
-        let previous = self
-            .font_facts
-            .provider
-            .replace(Some(provider.unwrap_or_else(|| {
-                Rc::new(crate::text::font_facts::Backend::new(
-                    self.this.clone(),
-                    self.text.clone(),
-                ))
-            })));
+        let previous = self.font_facts.provider.replace(Some(
+            provider.unwrap_or_else(|| self.font_facts.default_provider.clone()),
+        ));
         if previous.is_some() {
             self.font_inputs_changed();
         }
@@ -108,12 +118,7 @@ impl DocState {
             .borrow()
             .as_ref()
             .cloned()
-            .unwrap_or_else(|| {
-                Rc::new(crate::text::font_facts::Backend::new(
-                    self.this.clone(),
-                    self.text.clone(),
-                ))
-            })
+            .unwrap_or_else(|| self.font_facts.default_provider.clone())
     }
 }
 

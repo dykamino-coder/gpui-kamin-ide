@@ -7,20 +7,20 @@
 //! у `LayoutCx`. Ручка `ArenaKey` читается только в документе, который её
 //! выдал: чужая или устаревшая ручка — ошибка связи, а не чужое значение.
 
-use super::DocState;
+use super::DocumentValues;
 use std::rc::Rc;
 
 /// Документ значения и область записи его арен: разбор и каскад пишут в
 /// область документа, сборка кадра — в область кадра.
 #[derive(Clone, Copy)]
 pub struct ValueCx<'a> {
-    pub(crate) doc: &'a DocState,
+    pub(crate) doc: &'a DocumentValues,
     pub(crate) frame: bool,
     pub(crate) viewport: (f32, f32),
     pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
-impl DocState {
+impl DocumentValues {
     /// Контекст значений разбора и каскада документа.
     pub fn values(&self) -> ValueCx<'_> {
         ValueCx {
@@ -54,7 +54,7 @@ impl std::fmt::Debug for ValueCx<'_> {
 /// и обёртки фаз GPUI (подготовка, краска) держат документ сами.
 #[derive(Clone)]
 pub struct ValueDoc {
-    doc: Rc<DocState>,
+    doc: Rc<DocumentValues>,
     frame: bool,
     viewport: (f32, f32),
     scheme: crate::style::values::value::Scheme,
@@ -94,11 +94,11 @@ impl<'a> ValueCx<'a> {
     /// значение.
     pub fn keep(self) -> ValueDoc {
         ValueDoc {
-            doc: self
-                .doc
-                .this
-                .upgrade()
-                .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
+            doc: self.doc.this.upgrade().unwrap_or_else(|| {
+                super::DocState::new(crate::style::css::Media::default())
+                    .values
+                    .clone()
+            }),
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,

@@ -2,14 +2,14 @@
 //! Флаг читается хостом только после завершения GPU-кадра. Шрифты загружаются
 //! синхронно при разборе; ImageStore учитывает загрузку и декодирование картинок.
 
-use super::DocState;
+use super::DocumentValues;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Default)]
 pub(super) struct FrameState {
     deferred: Cell<bool>,
-    children: RefCell<Vec<Rc<DocState>>>,
+    children: RefCell<Vec<Rc<DocumentValues>>>,
 }
 
 impl FrameState {
@@ -19,7 +19,7 @@ impl FrameState {
     }
 }
 
-impl DocState {
+impl DocumentValues {
     /// Существующий проход потребовал следующую раскладку. Только наблюдение:
     /// вызов не планирует кадры и не меняет результат layout/paint.
     pub(crate) fn defer_frame(&self) {
@@ -27,12 +27,12 @@ impl DocState {
     }
 
     /// Вложенный документ должен закончить работу вместе с внешним.
-    pub(crate) fn observe_child(&self, child: Rc<DocState>) {
+    pub(crate) fn observe_child(&self, child: Rc<DocumentValues>) {
         self.readiness.children.borrow_mut().push(child);
     }
 
     /// Вложенные документы текущего кадра (копия списка, без удержания borrow).
-    pub(super) fn observed_children(&self) -> Vec<Rc<DocState>> {
+    pub(super) fn observed_children(&self) -> Vec<Rc<DocumentValues>> {
         self.readiness.children.borrow().clone()
     }
 

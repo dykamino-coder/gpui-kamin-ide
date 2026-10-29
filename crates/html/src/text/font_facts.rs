@@ -2,7 +2,7 @@
 //! Сохраняет порядок замеров, overrides и округление normal; не объявляет
 //! разрешённые backend-значения сырыми метриками или результатом face matching.
 
-use crate::document::state::DocState;
+use crate::document::state::DocumentValues;
 use crate::font_facts::{
     FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontMetricQuery,
     FontRegistrySnapshot, FontRequest, NormalLineFacts,
@@ -12,19 +12,22 @@ use std::rc::{Rc, Weak};
 mod selection;
 
 pub(crate) struct Backend {
-    document: Weak<DocState>,
+    document: Weak<DocumentValues>,
     fonts: Rc<crate::text::text_fonts::TextFonts>,
 }
 
 impl Backend {
     pub(crate) fn new(
-        document: Weak<DocState>,
+        document: Weak<DocumentValues>,
         fonts: Rc<crate::text::text_fonts::TextFonts>,
     ) -> Self {
         Self { document, fonts }
     }
 
-    fn document(&self, snapshot: &FontRegistrySnapshot) -> Result<Rc<DocState>, FontFactsError> {
+    fn document(
+        &self,
+        snapshot: &FontRegistrySnapshot,
+    ) -> Result<Rc<DocumentValues>, FontFactsError> {
         let doc = self.document.upgrade().ok_or(FontFactsError::Unavailable)?;
         let current = doc.font_snapshot();
         if current.environment != snapshot.environment {
