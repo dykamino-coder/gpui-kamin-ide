@@ -77,7 +77,7 @@ vi.mock('./session-settings', () => ({
     return h.root
   },
   sanitizeDirName: () => 'fixture',
-  writeSessionSettings: vi.fn(),
+  writeSessionSettings: vi.fn(() => '{}'),
   writeSessionClaudeMd: vi.fn(),
   applySyncData: vi.fn(),
 }))

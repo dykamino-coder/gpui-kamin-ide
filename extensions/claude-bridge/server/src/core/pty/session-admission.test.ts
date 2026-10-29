@@ -76,7 +76,7 @@ beforeEach(async () => {
       ),
     }
   })
-  h.settings.mockReset()
+  h.settings.mockReset().mockReturnValue('{}')
   h.sync.mockReset()
   h.watcher.mockReset()
   h.env.mockReset().mockReturnValue({})
