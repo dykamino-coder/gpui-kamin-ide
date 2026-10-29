@@ -1,36 +1,19 @@
-//! Распорки перед перенесённым и рост перенесённой коробки; поля абзаца.
+//! Распорка перед перенесённой коробкой по разложенной копии; монолит под avoid.
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::layout::cx::FrameCx;
-use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod grow;
 pub(crate) use grow::avoid_only_monolith;
-pub(crate) use grow::grow_pushed;
-
-/// Распорка-КОРОБКА перед коробкой `id`: пустой блок высотой `grow`.
-/// Нужна принудительному разрыву. Точка `forced` в мере стоит ПЕРЕД
-/// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
-/// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
-/// новый поточный сосед.
-pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>) -> bool {
-    insert_spacer(c, id, grow, vcx, true)
-}
 
 /// Распорка по РАЗЛОЖЕННОЙ копии (`push::Regrow`): заданная высота хозяина не
 /// растёт — прирост от фрагментации засчитывается в неё (css-break-3
 /// §box-splitting, примечание), содержимое за ней — его переполнение.
-pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>) -> bool {
-    insert_spacer(c, id, grow, vcx, false)
-}
-
-fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>, fixed_grows: bool) -> bool {
-    // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
-    // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
-    // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
+pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
+    // Сетка-стопка: между рядами стоит `row-gap`, и вставка ряда добавляет
+    // ЛИШНИЙ зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
     // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
     // случая забирает подъём разрыва, а не рост.
     let is_flex = matches!(
@@ -58,12 +41,8 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>, fixed_gr
             .position(|n| matches!(n, Node::Element(k) if k.node_id == id))
     };
     if let Some(i) = at {
-        // Оценка формы видит распорку отдельным соседом и сохраняет break-after
-        // перед ней. Измеренная стопка хранит исходных соседей и переносит
-        // границу под распорку по STRUT_ID, поэтому принимает оба края.
-        if fixed_grows && !matches!(&c.children[i], Node::Element(k) if edge_break(k, false, vcx)) {
-            return false;
-        }
+        // Измеренная стопка хранит исходных соседей и переносит границу под
+        // распорку по STRUT_ID, поэтому принимает оба края.
         // Нижнее поле предыдущего соседа переносится на распорку. Иначе
         // `lead` схлопывается ДВАЖДЫ — перед распоркой (`prev_mb.max(0)`) и
         // перед коробкой (`0.max(kmt)`), — и точка разрыва уезжает на
@@ -119,20 +98,11 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>, fixed_gr
                 inline: false,
             }),
         );
-        // Заданная высота хозяина СТАРШЕ содержимого (`shape_full`: ветка
-        // `c.style.height` возвращает `v + top + bot`), и распорка внутри неё
-        // меры не меняет — `changed` не взводится, цикл `grow_pushed` встаёт
-        // на первом заходе. Проба `p2-single-line-column-flex-fragmentation-
-        // 037` осталась красной именно поэтому, а `p3-…` с высотой 100 → 150
-        // сняла 4/5 площади (3906 → 756 точек).
-        if fixed_grows && let Some(Len::Px(h)) = c.style.used().height {
-            c.style.used_mut().height = Some(Len::Px(h + grow));
-        }
         return true;
     }
     for n in c.children.iter_mut() {
         if let Node::Element(k) = n
-            && insert_spacer(k, id, grow, vcx, fixed_grows)
+            && spacer_before_laid(k, id, grow)
         {
             return true;
         }
@@ -168,12 +138,7 @@ mod tests {
             crate::layout::cx::FrameCx::new(tree.values()),
         );
         let (first, next) = (blocks.kids[0].id, blocks.kids[1].id);
-        assert!(spacer_before_laid(
-            &mut root,
-            next,
-            80.0,
-            crate::layout::cx::FrameCx::new(tree.values())
-        ));
+        assert!(spacer_before_laid(&mut root, next, 80.0));
         let strut = root
             .children
             .iter()

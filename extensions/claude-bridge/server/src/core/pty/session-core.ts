@@ -1,3 +1,4 @@
+import { createProxyUsageRecorder } from '../stats/proxy-usage'
 // ============================================================================
 // PTY Session Manager core — spawns and manages Claude CLI sessions
 // ============================================================================
@@ -238,7 +239,7 @@ async function createAdmittedSession(
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
   const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
+  const cliSettings = writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd
@@ -265,7 +266,6 @@ async function createAdmittedSession(
   // Hook relay credential travels in the process environment, never in the
   // rewritten hook command — see HOOK_RELAY_TOKEN_ENV.
   env[HOOK_RELAY_TOKEN_ENV] = mcpToken
-  const args = buildSessionClaudeArgs(config, settingsDir)
 
   let streamThrottle: Map<string, { timer: NodeJS.Timeout; latest: any }> | null = null
   // ── Live streaming MITM proxy (per-token toggle).
@@ -275,6 +275,10 @@ async function createAdmittedSession(
   // messages. JsonlViewer renders the live entry until JSONL watcher
   // delivers the final one with the same message.id.
   let streamingProxy: { port: number; caCertPath: string; stop: () => Promise<void>; interrupt: () => void } | undefined
+  const usageRecorder = createProxyUsageRecorder({ tokenId, userName }, (err) =>
+    warnLog('Proxy usage accounting failed', { error: String(err) }),
+  )
+  if (config.resumeConversationId) usageRecorder.bind(config.resumeConversationId)
   try {
     const settings = await getStreamingSettings(tokenId)
     if (settings.enabled && !developmentCli) {
@@ -308,6 +312,7 @@ async function createAdmittedSession(
       }
       const proxy = await startNativeMitm({
         ptySessionId: sessionId,
+        onUsage: usageRecorder.record,
         cliConversationId: config.resumeConversationId ?? undefined,
         upstreamProxyUrl: upstream && !upstream.startsWith('http://127.0.0.1') ? upstream : undefined,
         // Without the user's chosen model, the side-quest heuristic classifies
@@ -436,8 +441,21 @@ async function createAdmittedSession(
   // On Windows, node-pty needs .cmd extension for npm global binaries
   const claudeCmd = developmentCli?.command ?? (process.platform === 'win32' ? 'claude.cmd' : 'claude')
 
+  // У каждого CLI свой неизменяемый файл: общий settingsDir может получить
+  // другой resume, пока этот процесс ещё читает настройки. Файл вместо JSON
+  // в argv также позволяет передавать большие пользовательские hooks.
+  const cliSettingsFile = path.join(settingsDir, `.bridge-hooks-${sessionId}.json`)
+  const removeCliSettings = () => {
+    try {
+      fs.unlinkSync(cliSettingsFile)
+    } catch {
+      // Каталог уже мог быть удалён при cleanup сессии.
+    }
+  }
   let pty: ReturnType<typeof import('node-pty').spawn>
   try {
+    fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
+    const args = buildSessionClaudeArgs(config, settingsDir, cliSettingsFile)
     pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
@@ -445,7 +463,9 @@ async function createAdmittedSession(
       cwd,
       env,
     })
+    pty.onExit(removeCliSettings)
   } catch (err) {
+    removeCliSettings()
     // Spawn failed (claude binary missing, cwd gone, EAGAIN). The streaming
     // proxy was started above and would otherwise leak its listening socket +
     // dispatcher; a freshly-created settingsDir would leak too. Clean both up
@@ -548,6 +568,7 @@ async function createAdmittedSession(
         recordCompactLink(prev, conversationId)
       }
       session.cliConversationId = conversationId
+      usageRecorder.bind(conversationId)
       // INC-2026-0070: every identity the client is told to adopt, old→new.
       // `discovered` with previousRef equal to conversationRef confirms the
       // resumed id; a fresh session's first discovery has no previousRef.

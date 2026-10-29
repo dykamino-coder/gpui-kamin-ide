@@ -8,6 +8,7 @@
 
 mod anonymous;
 mod children;
+pub(crate) mod traversal;
 pub use children::Children;
 mod direction;
 pub(crate) mod early_admission;

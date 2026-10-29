@@ -20,7 +20,7 @@ impl ColumnStack {
         };
         let (inline, block) = self.axis_sizes(bounds);
         let lines = self.lines_plan.borrow();
-        let wrap = self.rows.is_some_and(|r| r.wrap);
+        let wrap = self.wraps();
         let mut used = vec![0; lines.len()];
         for f in plan.iter().filter(|f| f.h > COORD_EPS) {
             let line = if wrap { f.col / self.count } else { 0 };

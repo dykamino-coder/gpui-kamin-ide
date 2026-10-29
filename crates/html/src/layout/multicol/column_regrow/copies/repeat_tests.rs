@@ -1,5 +1,5 @@
 //! Пересборка полос таблицы после распорки использует обновлённое дерево.
-use super::rebuild;
+use super::{rebuild, reserve};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::types::{Repeat, StackAxis};
 use crate::layout::multicol::deferred::Recipe;
@@ -42,7 +42,6 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
                 &BoxStyle::default(),
                 &opts,
                 4,
-                0.0,
                 Some(100.0),
                 StackAxis::Horizontal,
                 None,
@@ -82,6 +81,55 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
                     .collect::<Vec<_>>(),
                 [1, 2, 3, 0, 1, 2, 3]
             );
+            gpui::div()
+        },
+    );
+}
+
+#[gpui::test]
+fn reserved_copies_get_their_own_repeated_bands(cx: &mut gpui::TestAppContext) {
+    cx.add_empty_window().draw(
+        gpui::point(gpui::px(0.), gpui::px(0.)),
+        gpui::size(gpui::px(400.), gpui::px(400.)),
+        |window, app| {
+            let tree = crate::dom::parse(
+                "<section><table><tr><td style='height:130px;break-after:column'></td></tr><tfoot style='break-inside:avoid'><tr><td style='height:20px'></td></tr></tfoot></table></section>",
+                "",
+            );
+            let opts = RenderOpts {
+                text: Default::default(),
+                viewport: (800.0, 600.0),
+                normal_line_height: 1.2,
+                cx: Default::default(),
+                frag: Default::default(),
+            };
+            let recipe = Recipe::new(
+                section(&tree),
+                &BoxStyle::default(),
+                &opts,
+                4,
+                Some(100.0),
+                StackAxis::Horizontal,
+                None,
+            )
+            .expect("table recipe");
+            let mut children = recipe.children(100.0, window, app);
+            let child = &mut children[0];
+            child.repeat = Some(Repeat {
+                head: Some((0.0, 10.0)),
+                foot: Some((150.0, 20.0)),
+                geom: Default::default(),
+                row_ends: Vec::new(),
+                head_els: (0..3).map(|_| gpui::div().into_any_element()).collect(),
+                foot_els: (0..4).map(|_| gpui::div().into_any_element()).collect(),
+            });
+            // Copies reserved after layout (nested rows) carry their bands too:
+            // a header for every continuation, a footer for every copy.
+            let regrow = child.regrow.as_mut().expect("measured table growth");
+            regrow.build = Rc::new(|_, _, _, _| gpui::div().into_any_element());
+            reserve(child, 6);
+            let r = child.repeat.as_ref().expect("repeat");
+            assert_eq!((r.head_els.len(), r.foot_els.len()), (5, 6));
             gpui::div()
         },
     );

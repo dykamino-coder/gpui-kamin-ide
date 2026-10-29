@@ -8,12 +8,11 @@
 //! описаны в `counter_style::builtin`; без правил документа путь
 //! предопределённых стилей не меняется вовсе.
 
-use crate::style::generated::counter_style::{
-    Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
-};
+use crate::style::generated::counter_style::{Context, builtin, builtin_initial, normalize_name};
 use std::collections::HashMap;
 
 mod generate;
+mod initial;
 mod math;
 mod parse;
 mod resolve;
@@ -118,3 +117,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod graph_tests;

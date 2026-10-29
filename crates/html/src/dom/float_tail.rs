@@ -11,8 +11,12 @@ use crate::dom::Node;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
-pub(super) fn mark(nodes: &mut [Node]) {
+pub(super) fn mark(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
     for node in nodes.iter_mut() {
+        admission.work(1)?;
         let Node::Element(root) = node else { continue };
         let b = root.style.cascaded().borders();
         let bare = [b.top, b.right, b.bottom, b.left]
@@ -21,43 +25,54 @@ pub(super) fn mark(nodes: &mut [Node]) {
         if bare && block_like(root) {
             root.style.cascaded_mut().float_tail = true;
             let vertical = root.style.cascaded().wm().vertical();
-            descend(root, vertical);
+            descend(admission, root, vertical)?;
         }
     }
+    Ok(())
 }
 
-fn descend(parent: &mut crate::dom::Element, vertical: bool) {
-    let item_parent = matches!(
-        parent.style.cascaded().display,
-        Some(
-            Display::Flex
-                | Display::InlineFlex
-                | Display::Grid
-                | Display::InlineGrid
-                | Display::GridLanes
-        )
-    );
-    let last = parent.children.iter().rposition(|n| match n {
-        Node::Text(t) => !t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')),
-        Node::Element(_) => true,
-    });
-    let Some(last) = last else { return };
-    let Node::Element(child) = &mut parent.children[last] else {
-        return;
-    };
-    let child_vertical = child.style.cascaded().vertical_decl().unwrap_or(vertical);
-    // Writing Modes 3 §3.2: a box orthogonal to its parent establishes an
-    // independent formatting context, as do flex and grid items.
-    if item_parent
-        || child_vertical != vertical
-        || !block_like(child)
-        || crate::style::computed::formatting_context::own_context_style(child.style.cascaded())
-        || child.style.cascaded().float.is_some_and(|f| f != 0)
-    {
-        return;
+fn descend(
+    admission: &crate::budget::admission::Admission,
+    parent: &mut crate::dom::Element,
+    vertical: bool,
+) -> Result<(), crate::budget::admission::Error> {
+    let mut parent = parent;
+    let mut vertical = vertical;
+    loop {
+        admission.work(parent.children.len())?;
+        let item_parent = matches!(
+            parent.style.cascaded().display,
+            Some(
+                Display::Flex
+                    | Display::InlineFlex
+                    | Display::Grid
+                    | Display::InlineGrid
+                    | Display::GridLanes
+            )
+        );
+        let last = parent.children.iter().rposition(|n| match n {
+            Node::Text(t) => !t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')),
+            Node::Element(_) => true,
+        });
+        let Some(last) = last else { return Ok(()) };
+        let Node::Element(child) = &mut parent.children[last] else {
+            return Ok(());
+        };
+        let child_vertical = child.style.cascaded().vertical_decl().unwrap_or(vertical);
+        // Writing Modes 3 §3.2: a box orthogonal to its parent establishes an
+        // independent formatting context, as do flex and grid items.
+        if item_parent
+            || child_vertical != vertical
+            || !block_like(child)
+            || crate::style::computed::formatting_context::own_context_style(child.style.cascaded())
+            || child.style.cascaded().float.is_some_and(|f| f != 0)
+        {
+            return Ok(());
+        }
+        child.style.cascaded_mut().float_tail = true;
+        parent = child;
+        vertical = child_vertical;
     }
-    child.style.cascaded_mut().float_tail = true;
-    descend(child, child_vertical);
 }
 
 fn block_like(e: &crate::dom::Element) -> bool {

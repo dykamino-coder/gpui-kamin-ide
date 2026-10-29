@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod admission;
 mod axis;
 mod construct;
 mod hook;
@@ -77,6 +78,15 @@ pub(crate) struct Watched {
     /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
     flex_ids: std::cell::OnceCell<HashSet<u64>>,
     monolithic_ids: std::cell::OnceCell<HashSet<u64>>,
+    /// Абсолютные коробки, чей содержащий блок внутри копии: их протяжённость —
+    /// продолжение потока ребёнка (`positioned_end`).
+    positioned: std::cell::OnceCell<Vec<u64>>,
+    /// Ведущая неделимая протяжённость вложенных многоколоночников копии по id
+    /// их коробки (`ColumnStack::report_lead`).
+    leads: Rc<RefCell<HashMap<u64, f32>>>,
+    /// Собственный допуск узлов в записи главной копии, воспроизводимой по кускам
+    /// (`ColumnStack::replay_routes`): монолит — только в фрагментаинере начала.
+    admission: Rc<admission::Admission>,
 }
 
 impl Watched {
@@ -104,13 +114,34 @@ impl Watched {
         window: &mut Window,
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
-        let blocks = self.blocks.as_ref().map_or_else(BlockBreaks::default, |b| {
-            b.breaks(
-                end,
-                &self.laid_axis(origin, size, axis, window).with_flow(&lines),
-            )
-        });
+        let laid = self.laid_axis(origin, size, axis, window).with_flow(&lines);
+        let mut blocks = self
+            .blocks
+            .as_ref()
+            .map_or_else(BlockBreaks::default, |b| b.breaks(end, &laid));
+        self.hold_leads(&mut blocks, &laid);
         blocks.finish(lines, end)
+    }
+
+    /// Вложенный многоколоночник не рвётся внутри своего ведущего неделимого
+    /// содержимого: оно открывает его первую колонку (css-break-3 §4.4; Blink:
+    /// ряд колонок без места под первую строку уводит разрыв перед контейнером).
+    pub(crate) fn hold_leads(
+        &self,
+        blocks: &mut BlockBreaks,
+        laid: &crate::layout::fragment::flow::blocks::Laid,
+    ) {
+        for (&id, &lead) in self.leads.borrow().iter() {
+            if let Some((top, _)) = laid.at(id) {
+                blocks.hold((top, top + lead));
+            }
+        }
+    }
+
+    /// Ведущая неделимая протяжённость `lead` вложенного многоколоночника `id`
+    /// (первый ряд стопки: ряды между спаннерами — того же хоста).
+    pub(crate) fn report_lead(&self, id: u64, lead: f32) {
+        self.leads.borrow_mut().entry(id).or_insert(lead);
     }
 
     /// Block stack watched by the recorder (`for_blocks`).
@@ -147,6 +178,9 @@ impl Watched {
             flex_ids: self.flex_ids_of().clone().into(),
             axis: self.axis,
             monolithic_ids: self.monolithic_ids_of().clone().into(),
+            positioned: self.positioned.clone(),
+            leads: self.leads.clone(),
+            admission: self.admission.clone(),
         })
     }
 
@@ -160,6 +194,7 @@ impl Watched {
         self.seen.borrow_mut().clear();
         self.table_nodes.borrow_mut().clear();
         self.flow.reset();
+        self.leads.borrow_mut().clear();
         for flow in self.item_flows.values() {
             flow.reset();
         }
@@ -168,6 +203,23 @@ impl Watched {
     pub(crate) fn space(&self, window: &Window) -> Option<gpui::LayoutSpace> {
         let root = self.blocks.as_ref()?;
         Some(self.seen.borrow().get(&root.id)?.read(window)?.space)
+    }
+
+    /// Конец по блочной оси копии, разложенной от начала координат, её
+    /// абсолютных коробок (`with_positioned`).
+    pub(crate) fn positioned_end(&self, vertical: bool, window: &Window) -> Option<f32> {
+        self.positioned
+            .get()
+            .into_iter()
+            .flatten()
+            .filter_map(|&id| self.normal(id, window))
+            .map(|b| f32::from(if vertical { b.right() } else { b.bottom() }))
+            .reduce(f32::max)
+    }
+
+    /// Наблюдает ли рекордер коробку `id`: стопку или абсолютную коробку копии.
+    pub(crate) fn watches(&self, id: u64) -> bool {
+        self.ids.contains(&id) || self.positioned.get().is_some_and(|p| p.contains(&id))
     }
 
     pub(crate) fn normal(&self, id: u64, window: &Window) -> Option<gpui::Bounds<Pixels>> {

@@ -65,15 +65,21 @@ pub(super) fn link_matches(
 /// Упоминает ли селектор состояние ссылки (`:link`, `:visited`, в том
 /// числе внутри `:is()`/`:not()`): иначе оба прохода совпадают.
 fn mentions_link_state(sel: &Selector) -> bool {
-    let named = |p: &str| {
-        let p = p.to_ascii_lowercase();
-        p.contains("link") || p.contains("visited")
-    };
-    sel.pseudo.as_deref().is_some_and(named)
-        || sel.also.iter().any(|p| named(p))
-        || sel
-            .ancestor
-            .as_ref()
-            .is_some_and(|a| mentions_link_state(&a.0))
-        || sel.prev.as_ref().is_some_and(|p| mentions_link_state(&p.0))
+    let mut pending = vec![sel];
+    while let Some(sel) = pending.pop() {
+        let named = |p: &str| {
+            let p = p.to_ascii_lowercase();
+            p.contains("link") || p.contains("visited")
+        };
+        if sel.pseudo.as_deref().is_some_and(named) || sel.also.iter().any(|p| named(p)) {
+            return true;
+        }
+        if let Some(prev) = &sel.prev {
+            pending.push(&prev.0);
+        }
+        if let Some(ancestor) = &sel.ancestor {
+            pending.push(&ancestor.0);
+        }
+    }
+    false
 }

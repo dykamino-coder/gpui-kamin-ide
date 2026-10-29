@@ -153,3 +153,28 @@ fn missing_built_copy_marks_plan_without_dropping_fragments() {
     plan.check_copies(|_| 3);
     assert_eq!(plan.completion, super::Completion::Incomplete);
 }
+
+#[test]
+fn cloned_decorations_share_a_fixed_border_box_but_grow_a_content_box() {
+    // css-break-4 §break-decoration with box-sizing: border-box 200px and 10px
+    // borders: two 100px fragments (Blink multiplies the cloned edges inside the
+    // fixed border box). A content-box 180px grows by the repeated edges.
+    let fixed = Kid {
+        clone_dec: Some((10.0, 10.0)),
+        clone_fixed: true,
+        ..slice(200.0)
+    };
+    let (_, _, plan) = fill_at(&[fixed], &|_| 100.0, Space::columns(4));
+    let frags: Vec<_> = plan.iter().map(|f| (f.col, f.from, f.h)).collect();
+    assert_eq!(frags, vec![(0, 0.0, 100.0), (1, 80.0, 100.0)]);
+    let grows = Kid {
+        clone_dec: Some((10.0, 10.0)),
+        ..slice(200.0)
+    };
+    let (_, _, plan) = fill_at(&[grows], &|_| 100.0, Space::columns(4));
+    let frags: Vec<_> = plan.iter().map(|f| (f.col, f.from, f.h)).collect();
+    assert_eq!(
+        frags,
+        vec![(0, 0.0, 100.0), (1, 80.0, 100.0), (2, 160.0, 40.0)]
+    );
+}

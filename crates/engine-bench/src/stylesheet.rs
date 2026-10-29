@@ -64,8 +64,10 @@ fn url_end(text: &str, start: usize) -> Result<usize> {
     Err("unterminated CSS url() in local stylesheet".into())
 }
 
-fn bare(text: &str) -> String {
-    kamin_html::css::unescape(text.trim().trim_matches(['\'', '"']))
+fn bare(text: &str) -> Result<String> {
+    Ok(kamin_html::css::try_unescape(
+        text.trim().trim_matches(['\'', '"']),
+    )?)
 }
 
 pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<String> {
@@ -88,13 +90,13 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
             let start = text.len() - rest.len();
             let (href, end) = if rest.starts_with(['\'', '"']) {
                 let end = quoted_end(text, start)?;
-                (bare(&text[start..end]), end)
+                (bare(&text[start..end])?, end)
             } else if rest
                 .get(..4)
                 .is_some_and(|s| s.eq_ignore_ascii_case("url("))
             {
                 let end = url_end(text, start + 4)?;
-                (bare(&text[start + 4..end]), end + 1)
+                (bare(&text[start + 4..end])?, end + 1)
             } else {
                 return Err("unsupported CSS @import syntax".into());
             };
@@ -123,7 +125,7 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
                 || !matches!(text.as_bytes()[i - 1], b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'))
         {
             let end = url_end(text, i + 4)?;
-            let href = bare(&text[i + 4..end]);
+            let href = bare(&text[i + 4..end])?;
             if !href.is_empty() && !href.starts_with('#') && !href.starts_with("data:") {
                 let url = base.join(&href)?;
                 file(&url)?;

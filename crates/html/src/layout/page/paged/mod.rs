@@ -116,9 +116,7 @@ pub fn render_paged_select(
     let shape_cx = ShapeCx {
         paged: true,
         viewport: Some(opts.viewport),
-        ..ShapeCx::COLUMNS
-    }
-    .observed(opts);
+    };
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
     let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();

@@ -124,20 +124,18 @@ describe('project session tools over MCP', () => {
     const list = await rpc('s-mine', 'tools/call', { name: 'project_sessions_list', arguments: {} })
     const out = JSON.parse(list.result.content![0]!.text)
     expect(out.project).toBe(CWD)
-    expect(out.conversations.map((c: { conversation_id: string }) => c.conversation_id).sort()).toEqual(
-      [MINE, NEIGHBOUR].sort(),
-    )
-    expect(out.conversations.find((c: { self: boolean }) => c.self).conversation_id).toBe(MINE)
+    expect(out.conversations.map((c: { session_id: string }) => c.session_id).sort()).toEqual([MINE, NEIGHBOUR].sort())
+    expect(out.conversations.find((c: { self: boolean }) => c.self).session_id).toBe(MINE)
 
     const read = await rpc('s-mine', 'tools/call', {
       name: 'project_session_read',
-      arguments: { conversation_id: NEIGHBOUR },
+      arguments: { session_id: NEIGHBOUR },
     })
     expect(read.result.content![0]!.text).toContain('neighbour history to restore')
 
     const foreign = await rpc('s-mine', 'tools/call', {
       name: 'project_session_read',
-      arguments: { conversation_id: FOREIGN },
+      arguments: { session_id: FOREIGN },
     })
     expect(foreign.result.isError).toBe(true)
     expect(JSON.stringify(foreign)).not.toContain('other user private text')
@@ -162,6 +160,21 @@ describe('project session tools over MCP', () => {
     expect(journal).not.toContain('neighbour history')
     expect(journal).not.toContain(NEIGHBOUR)
     expect(journal).not.toContain(TOKEN)
+  })
+
+  it('names a misspelled or missing argument instead of reporting not found', async () => {
+    const misspelled = await rpc('s-mine', 'tools/call', {
+      name: 'project_session_read',
+      arguments: { conversation_id: NEIGHBOUR, from: 1 },
+    })
+    expect(misspelled.result.isError).toBe(true)
+    const text = misspelled.result.content![0]!.text
+    expect(text).toContain('unknown argument conversation_id, from')
+    expect(text).toContain('session_id')
+    expect(text).not.toContain('not found')
+
+    const missing = await rpc('s-mine', 'tools/call', { name: 'project_session_read', arguments: {} })
+    expect(missing.result.content![0]!.text).toContain('session_id is required')
   })
 
   it('can be switched off', async () => {

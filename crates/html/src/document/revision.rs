@@ -33,6 +33,10 @@ impl Document {
         })?;
         let key = base_url::key(html, theme_css, self.base_url.as_ref());
         if key == self.key {
+            if let Some(mut failure) = self.revision_budget().failure() {
+                failure.report.revision = Some(self.key);
+                return Err(failure);
+            }
             self.last_failure = None;
             return Ok(BuildReport {
                 revision: Some(key),
@@ -63,7 +67,7 @@ impl Document {
 
     /// Последний исход; при отказе nodes/state/salt остаются прошлой revision.
     pub fn report(&self) -> BuildReport {
-        self.last_failure.map_or(
+        self.last_failure().map_or(
             BuildReport {
                 revision: Some(self.key),
                 retained_revision: Some(self.key),
@@ -81,7 +85,12 @@ impl Document {
 
     /// Постоянный статус для хоста до следующего успешного обновления.
     pub fn last_failure(&self) -> Option<DocumentFailure> {
-        self.last_failure
+        self.last_failure.or_else(|| {
+            self.revision_budget().failure().map(|mut failure| {
+                failure.report.revision = Some(self.key);
+                failure
+            })
+        })
     }
 
     /// Полное исходное дерево этой revision, независимо от глубины представления.

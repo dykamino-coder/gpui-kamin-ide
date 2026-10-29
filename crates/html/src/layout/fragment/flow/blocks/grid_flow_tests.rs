@@ -72,7 +72,7 @@ fn only_the_first_line_of_an_item_holds_its_row() {
 fn a_line_crossing_the_edge_grows_its_own_item_only() {
     let (b, ids, mut laid) = row_of_two(180.0);
     item_lines(&mut laid, ids[1], [(0.0, 80.0), (80.0, 180.0)]);
-    let grows = growths(&b, &laid, 0.0, 100.0, 100.0);
+    let grows = growths(&b, &laid, 0.0, 100.0, 100.0, false);
     assert_eq!(grows.len(), 1, "{grows:?}");
     let Pushed::Line(line) = &grows[0].target else {
         panic!("line growth expected: {grows:?}");
@@ -105,7 +105,7 @@ fn orphans_and_widows_of_an_item_do_not_move_its_row() {
     );
     let m = b.breaks(90.0, &laid).finish(FlowGeometry::default(), 90.0);
     assert!(m.keep.is_empty(), "{:?}", m.keep);
-    let grows = growths(&b, &laid, 0.0, 70.0, 70.0);
+    let grows = growths(&b, &laid, 0.0, 70.0, 70.0, false);
     assert_eq!(grows.len(), 1, "{grows:?}");
     assert_eq!((grows[0].at, grows[0].amount), (60.0, 10.0));
 }

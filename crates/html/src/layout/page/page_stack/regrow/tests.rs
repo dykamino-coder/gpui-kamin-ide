@@ -85,8 +85,6 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         watched: watched.clone(),
     };
     let kid = super::super::PageKid {
-        #[cfg(feature = "wpt-harness")]
-        probe: Default::default(),
         el: gpui::div().into_any_element(),
         regrow: Some(regrow.clone()),
         percentages: None,
@@ -101,7 +99,6 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         force_before: false,
         renamed: false,
         force_after: false,
-        shape: None,
         page: String::new(),
         mt: 0.,
         mb: 0.,

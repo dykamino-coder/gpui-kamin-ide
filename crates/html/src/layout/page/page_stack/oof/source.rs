@@ -120,6 +120,7 @@ impl PageStack {
             }),
             repeat_fixed,
             fixed_content: source.fixed || source.inside_fixed,
+            unfragmented: false,
         })
     }
 

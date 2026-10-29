@@ -78,23 +78,36 @@ pub(super) fn build_text_columns(
     used: usize,
     width: gpui::Pixels,
     rows: &[super::rows::Row],
+    discard: bool,
 ) -> AnyElement {
     // Куски текста по местам разрезов: каждый — своя колонка.
     let mut parts: Vec<Vec<Node>> = vec![];
     let mut rest = nodes.to_vec();
     let mut base = 0usize;
+    let admission = crate::budget::admission::Admission::new(opts_owned.cx.doc().revision_budget());
     for cut in cuts {
         let full = cut + lead;
         let raw_cut = match norm_to_raw.binary_search_by_key(&full, |p| p.0) {
             Ok(i) => norm_to_raw[i].1,
             Err(i) => norm_to_raw.get(i).map(|p| p.1).unwrap_or(raw_len),
         };
-        let (head, tail) = split_nodes(&rest, raw_cut.saturating_sub(base));
+        let (head, tail) = match split_nodes(&admission, &rest, raw_cut.saturating_sub(base)) {
+            Ok(parts) => parts,
+            Err(error) => {
+                return crate::layout::replaced::iframe::rejected(error.into(), opts_owned);
+            }
+        };
         parts.push(head);
         base = raw_cut;
         rest = tail;
     }
     parts.push(rest);
+    // `continue: discard` (css-overflow-4 §discarding-content): «any overflow
+    // columns are also not rendered» — куски сверх `used` колонок единственной
+    // линии отбрасываются.
+    if discard && rows.is_empty() {
+        parts.truncate(used.max(1));
+    }
     // Разрез по жёсткому разрыву оставляет сам <br> в начале хвоста
     // (нулевая длина ставит его после разреза) — новая колонка
     // начиналась бы с пустой строки.

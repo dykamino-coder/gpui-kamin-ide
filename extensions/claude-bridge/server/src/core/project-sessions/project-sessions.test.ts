@@ -101,11 +101,11 @@ describe('project_sessions_list', () => {
     const { body, isError } = await call(ctx, 'project_sessions_list')
     expect(isError).toBe(false)
     const out = JSON.parse(body)
-    const ids = out.conversations.map((c: any) => c.conversation_id)
+    const ids = out.conversations.map((c: any) => c.session_id)
     expect(ids.sort()).toEqual([A, B].sort())
     expect(body).not.toContain(FOREIGN)
     expect(body).not.toContain(OTHER_PROJECT)
-    const a = out.conversations.find((c: any) => c.conversation_id === A)
+    const a = out.conversations.find((c: any) => c.session_id === A)
     expect(a).toMatchObject({
       title: 'Fix the parser',
       live: true,
@@ -115,7 +115,7 @@ describe('project_sessions_list', () => {
       lines: 10,
     })
     expect(a.started_at).toBe(at(0))
-    const b = out.conversations.find((c: any) => c.conversation_id === B)
+    const b = out.conversations.find((c: any) => c.session_id === B)
     expect(b).toMatchObject({ title: 'Neighbour chat about deployment', self: true, live: false })
   })
 
@@ -127,7 +127,7 @@ describe('project_sessions_list', () => {
     expect(first.next_offset).toBe(1)
     const second = JSON.parse((await call(ctx, 'project_sessions_list', { limit: 1, offset: 1 })).body)
     expect(second.next_offset).toBeNull()
-    expect(second.conversations[0].conversation_id).not.toBe(first.conversations[0].conversation_id)
+    expect(second.conversations[0].session_id).not.toBe(first.conversations[0].session_id)
   })
 
   it('does not match token directories that merely share a prefix', async () => {
@@ -138,9 +138,9 @@ describe('project_sessions_list', () => {
     addConversation(l, 'tok-w', '/app', B, [user('separator spoof', at(0))])
     addConversation(l, 'tok', '', 'dddddddd-0000-4000-8000-00000000000d', [user('no project', at(0))])
     const out = JSON.parse((await call(ctxFor(l, 'tok', '/w/app'), 'project_sessions_list')).body)
-    expect(out.conversations.map((c: any) => c.conversation_id)).toEqual([A])
+    expect(out.conversations.map((c: any) => c.session_id)).toEqual([A])
     const none = JSON.parse((await call(ctxFor(l, 'tok', ''), 'project_sessions_list')).body)
-    expect(none.conversations.map((c: any) => c.conversation_id)).toEqual(['dddddddd-0000-4000-8000-00000000000d'])
+    expect(none.conversations.map((c: any) => c.session_id)).toEqual(['dddddddd-0000-4000-8000-00000000000d'])
   })
 
   it('includes archive-only transcripts of the project and never foreign archive entries', async () => {
@@ -158,9 +158,9 @@ describe('project_sessions_list', () => {
     const ctx = ctxFor(l, TOKEN, CWD)
     const out = JSON.parse((await call(ctx, 'project_sessions_list')).body)
     expect(out.conversations).toHaveLength(1)
-    expect(out.conversations[0]).toMatchObject({ conversation_id: A, source: 'archive', title: 'archived chat' })
-    expect((await call(ctx, 'project_session_read', { conversation_id: A })).body).toContain('archived chat')
-    const foreignRead = await call(ctx, 'project_session_read', { conversation_id: FOREIGN })
+    expect(out.conversations[0]).toMatchObject({ session_id: A, source: 'archive', title: 'archived chat' })
+    expect((await call(ctx, 'project_session_read', { session_id: A })).body).toContain('archived chat')
+    const foreignRead = await call(ctx, 'project_session_read', { session_id: FOREIGN })
     expect(foreignRead.isError).toBe(true)
     const excluded = JSON.parse((await call(ctx, 'project_sessions_list', { include_archived: false })).body)
     expect(excluded.conversations).toHaveLength(0)
@@ -170,21 +170,21 @@ describe('project_sessions_list', () => {
 describe('project_session_read', () => {
   it('renders text mode with summarised tools and hides thinking', async () => {
     seedProject()
-    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { conversation_id: B })
+    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { session_id: B })
     expect(body).toContain('Neighbour chat about deployment')
-    const a = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { conversation_id: A })
+    const a = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { session_id: A })
     expect(a.body).toMatch(/#1 2026-10-20T10:00:00.000Z user\nPlease fix the parser bug/)
     expect(a.body).toContain('→ Read {"file_path":"/w/app/parser.ts"}')
     expect(a.body).toContain('--- compact boundary trigger=auto preTokens=150000')
     expect(a.body).toContain('Summary: parser fixed')
     expect(a.body).not.toContain('Need to read parser.ts')
     expect(a.body).not.toContain('return 42')
-    expect(a.page).toMatchObject({ conversation_id: A, done: true, next_cursor: null, first_index: 1, last_index: 9 })
+    expect(a.page).toMatchObject({ session_id: A, done: true, next_cursor: null, first_index: 1, last_index: 9 })
   })
 
   it('full mode shows thinking, tool arguments, results, usage and other rows', async () => {
     seedProject()
-    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { conversation_id: A, detail: 'full' })
+    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', { session_id: A, detail: 'full' })
     expect(body).toContain('[thinking]\nNeed to read parser.ts')
     expect(body).toContain('"new_string": "43"')
     expect(body).toContain('← result [t1]\nexport function parse() { return 42 }')
@@ -195,20 +195,20 @@ describe('project_session_read', () => {
   it('filters by kinds, time range, index range and tail', async () => {
     seedProject()
     const ctx = ctxFor(l, TOKEN, CWD)
-    const users = await call(ctx, 'project_session_read', { conversation_id: A, kinds: ['user'] })
+    const users = await call(ctx, 'project_session_read', { session_id: A, kinds: ['user'] })
     expect(users.page.entries).toBe(2)
-    const since = await call(ctx, 'project_session_read', { conversation_id: A, since: at(6) })
+    const since = await call(ctx, 'project_session_read', { session_id: A, since: at(6) })
     expect(since.page.first_index).toBe(8)
     const range = await call(ctx, 'project_session_read', {
-      conversation_id: A,
+      session_id: A,
       detail: 'full',
       from_index: 3,
       to_index: 5,
     })
     expect([range.page.first_index, range.page.last_index]).toEqual([3, 4])
-    const tail = await call(ctx, 'project_session_read', { conversation_id: A, tail: 2 })
+    const tail = await call(ctx, 'project_session_read', { session_id: A, tail: 2 })
     expect([tail.page.first_index, tail.page.last_index, tail.page.entries]).toEqual([8, 9, 2])
-    const bad = await call(ctx, 'project_session_read', { conversation_id: A, kinds: ['nope'] })
+    const bad = await call(ctx, 'project_session_read', { session_id: A, kinds: ['nope'] })
     expect(bad.isError).toBe(true)
   })
 
@@ -218,13 +218,13 @@ describe('project_session_read', () => {
     lines.push(user('BIG ' + 'y'.repeat(5000) + ' END', at(61)))
     addConversation(l, TOKEN, CWD, A, lines)
     const ctx = ctxFor(l, TOKEN, CWD)
-    const whole = (await call(ctx, 'project_session_read', { conversation_id: A, max_chars: 200_000 })).body
+    const whole = (await call(ctx, 'project_session_read', { session_id: A, max_chars: 200_000 })).body
     let cursor: string | null = null
     let joined = ''
     let pages = 0
     let sawPartial = false
     do {
-      const r = await call(ctx, 'project_session_read', { conversation_id: A, max_chars: 1000, cursor })
+      const r = await call(ctx, 'project_session_read', { session_id: A, max_chars: 1000, cursor })
       expect(r.body.length).toBeLessThanOrEqual(1000)
       joined += r.body
       sawPartial ||= r.page.partial_entry === true
@@ -246,14 +246,14 @@ describe('project_session_read', () => {
       JSON.stringify({ agentType: 'general-purpose', description: 'Digest' }),
     )
     const ctx = ctxFor(l, TOKEN, CWD)
-    expect((await call(ctx, 'project_session_read', { conversation_id: A, agent_id: 'agent-a1b2' })).body).toContain(
+    expect((await call(ctx, 'project_session_read', { session_id: A, agent_id: 'agent-a1b2' })).body).toContain(
       'teammate task',
     )
     for (const agent_id of ['../a1b2', 'a1b2/../../x', '..', 'a b']) {
-      const r = await call(ctx, 'project_session_read', { conversation_id: A, agent_id })
+      const r = await call(ctx, 'project_session_read', { session_id: A, agent_id })
       expect(r.isError).toBe(true)
     }
-    const list = JSON.parse((await call(ctx, 'project_session_subagents', { conversation_id: A })).body)
+    const list = JSON.parse((await call(ctx, 'project_session_subagents', { session_id: A })).body)
     expect(list.agents).toEqual([
       expect.objectContaining({
         agent_id: 'a1b2',
@@ -275,7 +275,7 @@ describe('project_session_raw', () => {
     let joined = ''
     let n = 0
     do {
-      const r = await call(ctx, 'project_session_raw', { conversation_id: A, max_chars: 200_000, cursor })
+      const r = await call(ctx, 'project_session_raw', { session_id: A, max_chars: 200_000, cursor })
       expect(r.body.length).toBeLessThanOrEqual(200_000)
       joined += r.body
       cursor = r.page.next_cursor
@@ -284,7 +284,7 @@ describe('project_session_raw', () => {
     // short line; the long line split in two; the rest of it plus the last line
     expect(n).toBe(3)
     expect(joined).toBe(fs.readFileSync(file, 'utf8'))
-    const tail = await call(ctx, 'project_session_raw', { conversation_id: A, tail: 1 })
+    const tail = await call(ctx, 'project_session_raw', { session_id: A, tail: 1 })
     expect(tail.body).toBe(JSON.stringify(lines[2]) + '\n')
     expect(tail.page.first_index).toBe(2)
   })
@@ -298,7 +298,7 @@ describe('project_session_raw', () => {
     const parts: string[] = []
     let n = 0
     do {
-      const r = await call(ctx, 'project_session_raw', { conversation_id: A, max_chars: 200_000, cursor })
+      const r = await call(ctx, 'project_session_raw', { session_id: A, max_chars: 200_000, cursor })
       expect(r.body).not.toContain('\uFFFD')
       parts.push(r.body)
       cursor = r.page.next_cursor
@@ -306,7 +306,7 @@ describe('project_session_raw', () => {
     } while (cursor && n < 400)
     expect(parts.join('')).toBe(fs.readFileSync(file, 'utf8'))
     expect(readerStats.peakBufferedBytes).toBeLessThanOrEqual(16 * 1024 * 1024)
-    const read = await call(ctx, 'project_session_read', { conversation_id: A })
+    const read = await call(ctx, 'project_session_read', { session_id: A })
     expect(read.body).toContain('#0 oversized entry')
     expect(read.body).toContain('after')
   }, 60_000)
@@ -371,7 +371,7 @@ describe('project_session_search', () => {
 describe('project_session_outline and project_session_brief', () => {
   it('outlines counts, compact segments, tools, files, models and usage', async () => {
     seedProject()
-    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_outline', { conversation_id: A })
+    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_outline', { session_id: A })
     const o = JSON.parse(body)
     expect(o.title).toBe('Fix the parser')
     expect(o.kinds).toMatchObject({
@@ -393,7 +393,7 @@ describe('project_session_outline and project_session_brief', () => {
 
   it('builds a continuation brief with the compact summary and last turns', async () => {
     seedProject()
-    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_brief', { conversation_id: A, turns: 1 })
+    const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_brief', { session_id: A, turns: 1 })
     expect(body).toContain('# Continuation brief: Fix the parser')
     expect(body).toContain('full detail.\n\n## ')
     expect(body).toContain('## Latest compact summary (entry #7)\nSummary: parser fixed, tests pending')
@@ -417,20 +417,20 @@ describe('isolation and hardening', () => {
     ]
     for (const tool of tools) {
       for (const id of [FOREIGN, OTHER_PROJECT, '99999999-0000-4000-8000-000000000000']) {
-        const r = await call(ctx, tool, { conversation_id: id })
+        const r = await call(ctx, tool, { session_id: id })
         expect(r.isError).toBe(true)
         expect(r.body).toBe(`Error: ${NOT_FOUND}`)
       }
       for (const id of ['../' + FOREIGN, '..\\x', 'a/b', '', '.', `${A}.jsonl`, 'x'.repeat(200), 42]) {
-        const r = await call(ctx, tool, { conversation_id: id })
+        const r = await call(ctx, tool, { session_id: id })
         expect(r.isError).toBe(true)
         expect(r.body).toBe(`Error: ${NOT_FOUND}`)
       }
     }
     // The other token sees its own conversation and nothing of ours.
     const theirs = JSON.parse((await call(ctxFor(l, OTHER_TOKEN, CWD), 'project_sessions_list')).body)
-    expect(theirs.conversations.map((c: any) => c.conversation_id)).toEqual([FOREIGN])
-    expect((await call(ctxFor(l, OTHER_TOKEN, CWD), 'project_session_read', { conversation_id: A })).isError).toBe(true)
+    expect(theirs.conversations.map((c: any) => c.session_id)).toEqual([FOREIGN])
+    expect((await call(ctxFor(l, OTHER_TOKEN, CWD), 'project_session_read', { session_id: A })).isError).toBe(true)
     // A traversal-shaped token id never resolves.
     expect((await call(ctxFor(l, '../' + OTHER_TOKEN, CWD), 'project_sessions_list')).isError).toBe(true)
   })
@@ -443,7 +443,7 @@ describe('isolation and hardening', () => {
     fs.rmSync(mine.slugDir, { recursive: true })
     if (!trySymlink(foreign.slugDir, mine.slugDir, 'dir')) return t.skip()
     expect(JSON.parse((await call(ctx, 'project_sessions_list')).body).conversations).toHaveLength(0)
-    expect((await call(ctx, 'project_session_read', { conversation_id: FOREIGN })).isError).toBe(true)
+    expect((await call(ctx, 'project_session_read', { session_id: FOREIGN })).isError).toBe(true)
     fs.rmSync(mine.slugDir, { recursive: true, force: true })
     try {
       fs.unlinkSync(mine.slugDir)
@@ -458,7 +458,7 @@ describe('isolation and hardening', () => {
     fs.mkdirSync(mine.slugDir, { recursive: true })
     if (trySymlink(foreign.file, path.join(mine.slugDir, `${B}.jsonl`), 'file')) {
       expect(JSON.parse((await call(ctx, 'project_sessions_list')).body).conversations).toHaveLength(0)
-      expect((await call(ctx, 'project_session_raw', { conversation_id: B })).isError).toBe(true)
+      expect((await call(ctx, 'project_session_raw', { session_id: B })).isError).toBe(true)
       expect((await call(ctx, 'project_session_search', { query: 'foreign' })).page.results).toBe(0)
     }
   })
@@ -475,8 +475,8 @@ describe('isolation and hardening', () => {
     if (!trySymlink(path.join(foreign.slugDir, FOREIGN, 'subagents'), path.join(mine.slugDir, A, 'subagents'), 'dir'))
       return t.skip()
     const ctx = ctxFor(l, TOKEN, CWD)
-    expect((await call(ctx, 'project_session_read', { conversation_id: A, agent_id: 's1' })).isError).toBe(true)
-    expect(JSON.parse((await call(ctx, 'project_session_subagents', { conversation_id: A })).body).agents).toEqual([])
+    expect((await call(ctx, 'project_session_read', { session_id: A, agent_id: 's1' })).isError).toBe(true)
+    expect(JSON.parse((await call(ctx, 'project_session_subagents', { session_id: A })).body).agents).toEqual([])
   })
 
   it('never writes: the whole tree is unchanged after every tool runs', async () => {
@@ -484,12 +484,12 @@ describe('isolation and hardening', () => {
     const before = snapshotTree(l.root)
     const ctx = ctxFor(l, TOKEN, CWD)
     await call(ctx, 'project_sessions_list')
-    await call(ctx, 'project_session_read', { conversation_id: A, detail: 'full' })
-    await call(ctx, 'project_session_raw', { conversation_id: A })
+    await call(ctx, 'project_session_read', { session_id: A, detail: 'full' })
+    await call(ctx, 'project_session_raw', { session_id: A })
     await call(ctx, 'project_session_search', { query: 'parser', include_subagents: true })
-    await call(ctx, 'project_session_outline', { conversation_id: A })
-    await call(ctx, 'project_session_subagents', { conversation_id: A })
-    await call(ctx, 'project_session_brief', { conversation_id: A })
+    await call(ctx, 'project_session_outline', { session_id: A })
+    await call(ctx, 'project_session_subagents', { session_id: A })
+    await call(ctx, 'project_session_brief', { session_id: A })
     expect(snapshotTree(l.root)).toBe(before)
   })
 
@@ -501,11 +501,11 @@ describe('isolation and hardening', () => {
     ])
     const ctx = ctxFor(l, TOKEN, CWD)
     for (const [tool, args] of [
-      ['project_session_read', { conversation_id: A }],
-      ['project_session_raw', { conversation_id: A }],
+      ['project_session_read', { session_id: A }],
+      ['project_session_raw', { session_id: A }],
       ['project_session_search', { query: 'my key' }],
-      ['project_session_brief', { conversation_id: A }],
-      ['project_session_outline', { conversation_id: A }],
+      ['project_session_brief', { session_id: A }],
+      ['project_session_outline', { session_id: A }],
       ['project_sessions_list', {}],
     ] as const) {
       const r = await call(ctx, tool, args)
@@ -513,7 +513,7 @@ describe('isolation and hardening', () => {
       expect(all, tool).not.toContain(secret)
       expect(all, tool).not.toContain('t'.repeat(30))
     }
-    const raw = await call(ctx, 'project_session_raw', { conversation_id: A })
+    const raw = await call(ctx, 'project_session_raw', { session_id: A })
     expect(raw.body).toContain('[REDACTED:anthropic-key]')
     for (const line of raw.body.trim().split('\n')) expect(() => JSON.parse(line)).not.toThrow()
     expect(raw.page.redactions).toBe(2)
@@ -522,8 +522,8 @@ describe('isolation and hardening', () => {
   it('logs metadata only: tool, outcome, target and size, never content', async () => {
     seedProject()
     const ctx = ctxFor(l, TOKEN, CWD)
-    await call(ctx, 'project_session_read', { conversation_id: A })
-    await call(ctx, 'project_session_read', { conversation_id: FOREIGN })
+    await call(ctx, 'project_session_read', { session_id: A })
+    await call(ctx, 'project_session_read', { session_id: FOREIGN })
     await call(ctx, 'project_session_search', { query: 'parser' })
     expect(logs[0]).toMatchObject({ tool: 'project_session_read', outcome: 'ok', conversationId: A, self: false })
     expect(logs[0]!.bytes).toBeGreaterThan(100)
@@ -543,14 +543,14 @@ describe('bounded memory', () => {
     fs.closeSync(fd)
     const ctx = ctxFor(l, TOKEN, CWD)
     readerStats.peakBufferedBytes = 0
-    const tail = await call(ctx, 'project_session_read', { conversation_id: A, tail: 1 })
+    const tail = await call(ctx, 'project_session_read', { session_id: A, tail: 1 })
     expect(tail.body).toContain('the very end')
     expect(tail.page.first_index).toBe(40_000)
     const search = await call(ctx, 'project_session_search', { query: 'very end' })
     expect(search.page.results).toBe(1)
-    const outline = JSON.parse((await call(ctx, 'project_session_outline', { conversation_id: A })).body)
+    const outline = JSON.parse((await call(ctx, 'project_session_outline', { session_id: A })).body)
     expect(outline.lines).toBe(40_001)
-    const brief = await call(ctx, 'project_session_brief', { conversation_id: A, turns: 2 })
+    const brief = await call(ctx, 'project_session_brief', { session_id: A, turns: 2 })
     expect(brief.body).toContain('the very end')
     expect(readerStats.peakBufferedBytes).toBeLessThan(4 * 1024)
   }, 60_000)

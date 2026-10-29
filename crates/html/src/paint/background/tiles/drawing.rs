@@ -168,9 +168,12 @@ pub(crate) fn draw_tiles(
     // (`attachment-local-clipping-image-*`).
     let clips_self = matches!(c.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
         || matches!(c.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible);
+    // Без собственной обрезки маска предка остаётся как есть: её не пересобирать из
+    // `content_mask()` — в записи сегментов это маска захвата, а не цепочка clip
+    // предков (маски ячеек полосы ряда, `table-row-paint-*` в колонках).
     let outer = if clips_self {
         let cur = window.content_mask().bounds;
-        Bounds {
+        Some(Bounds {
             origin: gpui::point(
                 cur.origin.x - px(px_of(border.left)),
                 cur.origin.y - px(px_of(border.top)),
@@ -179,11 +182,12 @@ pub(crate) fn draw_tiles(
                 cur.size.width + px(px_of(border.left) + px_of(border.right)),
                 cur.size.height + px(px_of(border.top) + px_of(border.bottom)),
             ),
-        }
+        })
     } else {
-        window.content_mask().bounds
+        None
     };
-    window.with_content_mask_replaced(gpui::ContentMask { bounds: outer }, |window| {
+    let replaced = outer.map(|bounds| gpui::ContentMask { bounds });
+    with_outer(window, replaced, |window| {
         window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
             for y in &ys {
                 for x in &xs {
@@ -210,4 +214,16 @@ pub(crate) fn draw_tiles(
             }
         });
     });
+}
+
+/// Маска предка, раздвинутая собственной обрезкой коробки, или прежняя цепочка.
+fn with_outer(
+    window: &mut gpui::Window,
+    outer: Option<gpui::ContentMask<Pixels>>,
+    f: impl FnOnce(&mut gpui::Window),
+) {
+    match outer {
+        Some(mask) => window.with_content_mask_replaced(mask, f),
+        None => f(window),
+    }
 }

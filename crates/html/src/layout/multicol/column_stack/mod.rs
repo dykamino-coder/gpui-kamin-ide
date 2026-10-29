@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+mod lead;
 pub(crate) mod oof;
 mod paginate;
 
@@ -29,6 +30,10 @@ pub struct ColumnStack {
     /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
     /// `with_row_phase`; ноль — ряды от верха.
     pub(crate) row_phase: f32,
+    /// Блочный размер содержимого вложенного многоколоночника (`height`/
+    /// `max-height` в точках): ряды во внешних фрагментаинерах не идут за него
+    /// (Blink `ConstrainColumnBlockSize`). Ставится `with_row_limit`.
+    pub(crate) row_limit: Option<f32>,
     pub(crate) row_extent: super::measure::RowExtent,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
@@ -65,6 +70,16 @@ pub struct ColumnStack {
     pub(crate) lines_plan: std::cell::RefCell<Vec<(f32, f32)>>,
     /// Спаннеры после укладки: `(ребёнок, y)`.
     pub(crate) spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
+    /// Отчёт рядов внешней стопке, когда эта стопка — вложенный ряд (`Nested`).
+    pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    /// Рекордер копии, в которой лежит эта стопка, и id её коробки (`lead`).
+    pub(crate) lead_report: Option<lead::LeadReport>,
+    /// `continue: discard` (css-overflow-4 §discarding-content): переполняющие
+    /// колонки и всё после них не выводятся; линии стоят рядами `col / count`.
+    pub(crate) discard: bool,
+    /// Куски детей можно рисовать записью главной копии (`element::replay`): стопка не
+    /// в листах печати — их копии представлены матрицей листа.
+    pub(crate) replay: bool,
 }
 
 impl ColumnStack {
@@ -117,6 +132,7 @@ impl ColumnStack {
             rows,
             axis: StackAxis::Horizontal,
             row_phase: 0.0,
+            row_limit: None,
             row_extent: Default::default(),
             copies,
             gap_items,
@@ -127,6 +143,10 @@ impl ColumnStack {
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
+            nest_report: None,
+            lead_report: None,
+            discard: false,
+            replay: false,
         }
     }
 
@@ -136,6 +156,33 @@ impl ColumnStack {
     ) -> Self {
         self.deferred = recipe;
         self
+    }
+
+    /// Отчёт первого ряда внешней стопке (`Nested::first_row`).
+    pub(crate) fn with_nest_report(
+        mut self,
+        report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    ) -> Self {
+        self.nest_report = report;
+        self
+    }
+
+    /// Отбрасывание переполнения (см. `discard`).
+    pub(crate) fn with_discard(mut self, on: bool) -> Self {
+        self.discard = on;
+        self
+    }
+
+    /// Допуск записи главной копии (см. `replay`).
+    pub(crate) fn with_replay(mut self, on: bool) -> Self {
+        self.replay = on;
+        self
+    }
+
+    /// Колонка `col` стоит в линии `col / count`: ряды с переносом либо линии
+    /// между спаннерами без переполняющих колонок (`discard`).
+    pub(crate) fn wraps(&self) -> bool {
+        self.rows.is_some_and(|r| r.wrap) || self.discard
     }
 
     /// Коробка по самой высокой занятой колонке (см. `fill_shrink`).
@@ -152,6 +199,11 @@ impl ColumnStack {
 
     pub(crate) fn with_row_extent(mut self, extent: super::measure::RowExtent) -> Self {
         self.row_extent = extent;
+        self
+    }
+
+    pub(crate) fn with_row_limit(mut self, limit: Option<f32>) -> Self {
+        self.row_limit = limit;
         self
     }
 
@@ -184,15 +236,14 @@ impl ColumnStack {
     /// Где стоит колонка `col`: номер в линии и смещение линии. Без рядов и
     /// при `nowrap` колонки идут вбок сплошь (переполняющие — за край).
     pub(crate) fn place(&self, col: usize) -> (usize, f32) {
-        match self.rows {
-            Some(r) if r.wrap => {
-                let lines = self.lines_plan.borrow();
-                (
-                    col % self.count,
-                    lines.get(col / self.count).map_or(0.0, |l| l.0),
-                )
-            }
-            _ => (col, 0.0),
+        if self.wraps() {
+            let lines = self.lines_plan.borrow();
+            (
+                col % self.count,
+                lines.get(col / self.count).map_or(0.0, |l| l.0),
+            )
+        } else {
+            (col, 0.0)
         }
     }
 }

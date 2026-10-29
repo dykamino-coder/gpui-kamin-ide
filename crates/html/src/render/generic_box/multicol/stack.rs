@@ -32,6 +32,7 @@ pub(super) fn stack_box(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
+    nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
     scope: Option<&super::ClampScope>,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let StackPlan {
@@ -39,7 +40,6 @@ pub(super) fn stack_box(
         layout_col_w,
         direct_oof,
         oof_static,
-        nested_auto,
         nested_whole,
         measured_kids,
         stackable,
@@ -79,9 +79,9 @@ pub(super) fn stack_box(
             rows,
             nest_rows,
             nest_phase,
+            nest_report,
             direct_oof,
             oof_static,
-            nested_auto,
             nested_whole,
             measured_kids,
         ));

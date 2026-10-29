@@ -123,6 +123,9 @@ pub(crate) struct BlockKid {
     pub(crate) avoid_after: bool,
     /// Монолит (css-break-3 §4.1): разрыв внутри недопустим.
     pub(crate) monolith: bool,
+    /// Монолит физически неделим (не только `break-inside: avoid`): выше
+    /// фрагментаинера он его переполняет, а не режется.
+    pub(crate) unbreakable: bool,
     /// Своя блочная стопка, если ребёнок — блочный контейнер.
     pub(crate) inner: Option<BlockBox>,
     /// Начальное и конечное имя страницы коробки класса A у страниц

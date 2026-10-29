@@ -58,8 +58,9 @@ impl Regrow {
         end: f32,
         edge: f32,
         height: f32,
+        open: bool,
     ) -> Vec<Growth> {
-        let mut grows = super::flex_flow::growths(blocks, &self.laid, from, end, edge);
+        let mut grows = super::flex_flow::growths(blocks, &self.laid, from, end, edge, open);
         grows.extend(self.float_growths(from, edge, height));
         grows
     }

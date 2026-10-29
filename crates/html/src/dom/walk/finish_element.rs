@@ -25,12 +25,13 @@ pub(super) fn finish_element(
     first_line: Option<Box<Computed>>,
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
-    _vcx: ValueCx<'_>,
-) {
+    vcx: ValueCx<'_>,
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     let ruby_parent = ruby_box_role(&tag, &style);
     if ruby_parent.is_some() {
         style.ruby_suppress_breaks = true;
-        crate::dom::fixup_tree::ruby_normalize::inlinify(&mut children);
+        crate::dom::fixup_tree::ruby_normalize::inlinify(&admission, &mut children)?;
     }
     // `dir="auto"` — сторону задаёт ПЕРВЫЙ СИЛЬНЫЙ знак содержимого
     // (HTML §3.2.6.4). Раньше здесь не ставилось ничего в расчёте на
@@ -54,7 +55,7 @@ pub(super) fn finish_element(
         // для элемента целиком (`text-align-end-016`).
         style.bidi_plaintext = Some(true);
         if style.rtl.is_none()
-            && let Some(rtl) = first_strong(&children)
+            && let Some(rtl) = first_strong(&admission, &children)?
         {
             style.rtl = Some(rtl);
         }
@@ -140,4 +141,5 @@ pub(super) fn finish_element(
     if let Some(g) = sp.group_after {
         out.push(Node::Element(g));
     }
+    Ok(())
 }

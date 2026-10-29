@@ -3,7 +3,7 @@
 use super::*;
 use crate::document::state::DocState;
 use crate::style::css::Media;
-use crate::style::values::value::{px_lossy_zero, px_missing_zero, px_strict};
+use crate::style::values::value::{px_lossy_zero, px_strict};
 
 /// Окно без оси письма и контейнера.
 fn window(size: (f32, f32)) -> ViewportCx {
@@ -49,7 +49,6 @@ fn empty_context_matches_the_context_free_contracts() {
         Some(Len::Vw(0.1)),
     ] {
         assert_eq!(cx.px_strict(l, vcx), px_strict(l));
-        assert_eq!(cx.px_missing_zero(l, vcx), px_missing_zero(l));
         assert_eq!(cx.px_lossy_zero(l, vcx), px_lossy_zero(l));
     }
 }

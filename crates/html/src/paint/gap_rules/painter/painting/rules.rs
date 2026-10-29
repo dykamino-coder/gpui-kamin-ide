@@ -1,11 +1,13 @@
 //! Окраска одного сегмента линейки промежутка на сетке устройства.
 
+use crate::layout::fragment::effect_fragment::pieces;
+use crate::layout::fragment::gap_fragment::Scope;
 use crate::layout::multicol::gap_rules::GapRuleSpec;
 use crate::layout::multicol::gap_rules::{GapAxisRule, GapLayout};
 use crate::paint::gap_rules::gap_fragment_runs;
 use crate::paint::gap_rules::gap_segments::segments;
 use crate::paint::gap_rules::geometry::GapRun;
-use gpui::{Bounds, Pixels, TransformationMatrix, Window};
+use gpui::{Bounds, ContentMask, Pixels, TransformationMatrix, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_rule(
@@ -18,13 +20,35 @@ pub(crate) fn draw_rule(
     bounds: Bounds<Pixels>,
     owner: &crate::layout::cx::deferred::Deferred,
 ) {
+    let fragmented = !spec.vertical
+        && spec.kind != GapLayout::Multicol
+        && spec.lines_extent != 2
+        && window.current_transformation() == TransformationMatrix::unit();
+    if let Some(all) = pieces::active(Some(owner)).filter(|_| fragmented) {
+        // Recorded main copy of a split child: one local run per piece.
+        for p in all.current().iter() {
+            let (start, cut) = (p.fragment.top(), p.fragment.bottom());
+            let scope = Scope {
+                parent: ContentMask { bounds: p.slice },
+                mask: ContentMask { bounds: p.slice },
+                start: f32::from(start),
+                cut: f32::from(cut),
+                end: f32::from(if spec.kind == GapLayout::Grid {
+                    cut + p.tail
+                } else {
+                    cut
+                }),
+            };
+            if let Some(local) = gap_fragment_runs::local_run(run, gap_on_x, &scope) {
+                pieces::paint_unclipped(&all, p, window, |window| {
+                    paint_rule(window, gap_on_x, &local, rule, main_like, spec, bounds)
+                });
+            }
+        }
+        return;
+    }
     let scope = crate::layout::fragment::gap_fragment::current(owner)
-        .filter(|_| {
-            !spec.vertical
-                && spec.kind != GapLayout::Multicol
-                && spec.lines_extent != 2
-                && window.current_transformation() == TransformationMatrix::unit()
-        })
+        .filter(|_| fragmented)
         .map(|mut scope| {
             // Grid tracks stretch through the suppressed gutter's unused
             // tail; flex line decorations end with the line's item edges.

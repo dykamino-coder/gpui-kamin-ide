@@ -11,7 +11,7 @@ use std::rc::Rc;
 /// Wrap `el` when the build's recorder watches `id` (identity otherwise).
 pub(crate) fn wrap(id: u64, el: AnyElement, opts: &RenderOpts) -> AnyElement {
     match &opts.frag.watch {
-        Some(rec) if rec.ids.contains(&id) => Watch {
+        Some(rec) if rec.watches(id) => Watch {
             slot: Slot::Box(id),
             inner: el,
             rec: rec.clone(),
@@ -87,6 +87,18 @@ impl Hooks for Watch {
             Slot::Box(id) => Some(id),
             Slot::Table(..) => None,
         };
+        // Допущенный узел записи главной копии: окна копий и израсходованную часть
+        // переносят его собственные размещения и срезы.
+        if let Some(slices) = id.and_then(|id| self.rec.admitted(id)) {
+            admitted_prepaint(
+                &mut self.inner,
+                (None, gpui::Point::default()),
+                slices,
+                window,
+                cx,
+            );
+            return None;
+        }
         let consumed = id.and_then(|id| self.rec.flex_consumed.borrow().get(&id).copied());
         let item = id.and_then(|id| self.rec.item_window(id));
         let mask = consumed
@@ -129,6 +141,15 @@ impl Hooks for Watch {
             Slot::Box(id) => self.rec.access(id, window.content_mask()),
             Slot::Table(..) => super::owner::Access::Normal,
         };
+        if let Slot::Box(id) = self.slot
+            && let Some(slices) = self.rec.admitted(id)
+        {
+            let inner = &mut self.inner;
+            self.rec.with_admitted(slices.clone(), || {
+                admitted_paint(inner, *prepaint, slices, window, cx)
+            });
+            return;
+        }
         match access {
             super::owner::Access::Hidden => {}
             super::owner::Access::Escape(mask) => window
@@ -140,4 +161,35 @@ impl Hooks for Watch {
             }
         }
     }
+}
+
+/// Prepaint узла со своим допуском в записи главной копии (`Watched::admitted`):
+/// отдельный кадр, вне пути каждого наблюдаемого узла.
+#[inline(never)]
+fn admitted_prepaint(
+    inner: &mut AnyElement,
+    (mask, shift): (Option<ContentMask<Pixels>>, gpui::Point<Pixels>),
+    slices: Rc<[gpui::PaintSegmentSlice]>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    window.with_content_mask(mask, |window| {
+        window.with_element_offset(shift, |window| {
+            let _ = window.with_paint_segment_slices(slices, |window| inner.prepaint(window, cx));
+        })
+    });
+}
+
+/// Краска узла со своим допуском в записи главной копии.
+#[inline(never)]
+fn admitted_paint(
+    inner: &mut AnyElement,
+    mask: Option<ContentMask<Pixels>>,
+    slices: Rc<[gpui::PaintSegmentSlice]>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let _ = window.with_paint_segment_slices(slices, |window| {
+        window.with_content_mask(mask, |window| inner.paint(window, cx))
+    });
 }

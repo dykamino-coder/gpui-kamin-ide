@@ -1,113 +1,9 @@
-//! Предикаты поддерева для фрагментации: поддерево из одних обычных блоков, чью меру
-//! `shape_full` ведёт точно (`plain_block_tree`), то же с flex-рядом «строка = элемент»
-//! (`stacked_flex_tree`), монолит `contain: size` (`size_monolith`; Blink
+//! Предикаты поддерева для фрагментации: монолит `contain: size` (`size_monolith`; Blink
 //! `LayoutBox::IsMonolithic`) и коробки, внутри которых принудительные разрывы фрагментации
-//! не видны (`forced_inside`, `forced_opaque`; css-break-4 §possible-breaks).
+//! не видны (`forced_opaque`; css-break-4 §possible-breaks).
 
-use crate::dom::{Element, Node};
-use crate::layout::box_kind::out_of_flow;
-use crate::layout::fragment::flex_lines::flex_gap_rules;
+use crate::dom::Element;
 use crate::style::computed::Display;
-use crate::style::values::value::Len;
-
-/// Коробка и всё её поддерево — ОБЫЧНЫЕ блоки: ни гибкого контейнера, ни
-/// сетки, ни таблицы, ни вложенного многоколоночника. Только у такого
-/// поддерева мера `shape_full` совпадает с тем, что рисует движок: у гибкого
-/// контейнера с переносом она складывает элементы стопкой (`shape_full`,
-/// ветка без `row_nowrap`), у вложенного многоколоночника — не знает про его
-/// собственные колонки. Протяжённость параллельного потока, снятая с такого
-/// приближения, была бы выдуманной, и зелёные `multicol-nested-026`,
-/// `single-line-row-flex-fragmentation-039`,
-/// `multi-line-row-flex-fragmentation-093`,
-/// `single-line-column-flex-fragmentation-043/058` разъехались бы.
-/// `display: flow-root` сюда входит: он
-/// сводится к `Block` с признаком `Computed::flow_root`.
-pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
-    if c.style.used().column_count.is_some() || c.style.used().column_width.is_some() {
-        return false;
-    }
-    if c.style.used().webkit_box == Some(true) {
-        return false;
-    }
-    if !matches!(
-        c.style.used().display,
-        None | Some(Display::Block) | Some(Display::ListItem)
-    ) {
-        return false;
-    }
-    if depth == 0 {
-        return true;
-    }
-    c.children.iter().all(|n| match n {
-        Node::Element(k) => k.inline || plain_block_tree(k, depth - 1),
-        _ => true,
-    })
-}
-
-/// Поддерево обычных блоков (`plain_block_tree`), где допустим и flex-ряд с
-/// переносом, каждый элемент которого занимает всю строку (`flex-basis` или
-/// `width` 100%, без роста и боковых полей): строка = элемент, и элементы идут
-/// блочной стопкой (css-flexbox-1 §9.3 шаг 5: следующий элемент в строку не
-/// помещается). Такую стопку мера `shape_full` ведёт так же точно, как блок
-/// (ветка «строка = элемент»), и её переполнение заданной высоты продолжается
-/// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
-pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
-    use crate::style::computed::FlexDir;
-    if c.style.used().column_count.is_some()
-        || c.style.used().column_width.is_some()
-        || c.style.used().webkit_box == Some(true)
-    {
-        return false;
-    }
-    let s = &*c.style.used();
-    let flex_stack = s.display == Some(Display::Flex)
-        && matches!(s.flex_dir, None | Some(FlexDir::Row))
-        && s.flex_wrap == Some(true)
-        && s.flex_wrap_reverse != Some(true)
-        && !s.wm().vertical()
-        && s.gap.is_none()
-        && !flex_gap_rules(s);
-    if !flex_stack
-        && !matches!(
-            s.display,
-            None | Some(Display::Block) | Some(Display::ListItem)
-        )
-    {
-        return false;
-    }
-    if depth == 0 {
-        return !flex_stack;
-    }
-    c.children.iter().all(|n| match n {
-        Node::Element(k) if flex_stack => {
-            let ks = &k.style.used();
-            let full = |l: &Option<Len>| matches!(l, Some(Len::Pct(p)) if (*p - 1.0).abs() < 1e-4);
-            let zero = |l: &Option<Len>| match l {
-                None => true,
-                Some(Len::Px(v)) => v.abs() < 0.01,
-                _ => false,
-            };
-            !k.inline
-                && !out_of_flow(ks)
-                && ks.position.is_none()
-                && ks.flex_grow.is_none_or(|g| g == 0.0)
-                && ks.basis_content != Some(true)
-                && match ks.flex_basis {
-                    None | Some(Len::Auto) => full(&ks.width),
-                    _ => full(&ks.flex_basis),
-                }
-                && zero(&ks.margin.left)
-                && zero(&ks.margin.right)
-                && zero(&ks.padding.left)
-                && zero(&ks.padding.right)
-                && zero(&ks.borders().left)
-                && zero(&ks.borders().right)
-                && stacked_flex_tree(k, depth - 1)
-        }
-        Node::Element(k) => k.inline || stacked_flex_tree(k, depth - 1),
-        _ => true,
-    })
-}
 
 /// `contain: size` — монолит везде, где есть фрагментация (Blink
 /// `LayoutBox::IsMonolithic`, `layout_box.cc`: `ShouldApplySizeContainment()`
@@ -126,39 +22,6 @@ pub(crate) fn size_monolith(k: &Element) -> bool {
             k.tag.as_str(),
             "td" | "th" | "tr" | "thead" | "tbody" | "tfoot"
         )
-}
-
-/// Коробка, принудительные разрывы ВНУТРИ которой фрагментации не видны:
-/// `contain: size` (`size_monolith`) и прокручиваемая коробка — css-break-4
-/// §possible-breaks: «Any forced breaks within such boxes therefore cannot split
-/// the box, and must therefore also be ignored by the box’s own fragmentation
-/// context». `break-inside: avoid` сюда НЕ входит: там принудительный разрыв
-/// сильнее запрета (§forced-breaks). Ряд и группа рядов `overflow` не берут
-/// (css-overflow-3, «Applies to»), ячейка — берёт.
-/// Есть ли в поддереве принудительный разрыв (`break-before/after` любого
-/// потомка, кроме уходящих внутрь монолита, `forced_opaque`).
-pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
-    if depth == 0 {
-        return false;
-    }
-    e.children.iter().any(|n| match n {
-        // Вне потока — свой поток (`edge_break`).
-        Node::Element(k)
-            if matches!(
-                k.style.used().position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            ) =>
-        {
-            false
-        }
-        Node::Element(k) => {
-            k.style.used().break_before_force
-                || k.style.used().break_after_force
-                || (!forced_opaque(k) && forced_inside(k, depth - 1))
-        }
-        _ => false,
-    })
 }
 
 pub(crate) fn forced_opaque(k: &Element) -> bool {

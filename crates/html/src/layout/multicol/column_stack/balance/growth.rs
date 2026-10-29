@@ -1,58 +1,19 @@
 //! Рост высоты колонок при балансировке: приросты, фрагменты, оценка прогонов.
 
-use crate::layout::fragment::types::{Kid, Rows};
+use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 
 impl ColumnStack {
-    fn growth_probe(
-        count: usize,
-        fixed_height: Option<f32>,
-        rows: Option<Rows>,
-        copies: usize,
-    ) -> Self {
-        let mut probe = Self::new(
-            Vec::new(),
-            count,
-            0.0,
-            fixed_height,
-            rows,
-            None,
-            None,
-            Default::default(),
-        );
-        probe.copies = copies.max(1);
-        probe
-    }
-
     /// Точки роста от вытолкнутых монолитов (Blink `FinishFragmentation`,
     /// `fragmentation_utils.cc:641-656`: непоследний фрагмент коробки =
     /// `space_left`; css-flexbox-1 §fragmentation: «A forced break inside a
-    /// flex item effectively increases the size of its contents»). Для
-    /// каждого куска плана, у которого есть продолжение и который кончается
-    /// ровно в НАЧАЛЕ монолитного диапазона (`fill_at`: `holds` → `at(a)`),
-    /// а не на принудительном разрыве, — `(ребёнок, смещение разреза,
-    /// недобор до низа колонки)`. Только меры, без ширины: `render::generic_box::multicol`
-    /// ставит по ним распорки в копии ДО сборки (`grow_pushed`), после чего
-    /// монолит стоит ровно на краю и рост здесь выходит нулевым.
-    /// Четвёртое поле — «разрыв принудительный»: там распорка обязана быть
-    /// ОТДЕЛЬНОЙ КОРОБКОЙ, а не полем. Точка `forced` в мере стоит ПЕРЕД
-    /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, следом
-    /// `forced.push(y)`), и рост поля её не двигает — проба
-    /// `single-line-column-flex-fragmentation-022` с распоркой-полем осталась
-    /// красной тем же прямоугольником, а с коробкой-распоркой дала 0.00.
-    pub(crate) fn growths(
-        kids: &[Kid],
-        count: usize,
-        fixed_height: Option<f32>,
-        rows: Option<Rows>,
-        copies: usize,
-    ) -> Vec<(usize, f32, f32, bool)> {
-        Self::growth_probe(count, fixed_height, rows, copies).grow_points(kids)
-    }
-
-    /// Точки роста `growths` по плану ЭТОЙ стопки: при раскладке — тот же
-    /// план, что кладёт копии (`push::Regrow`).
+    /// flex item effectively increases the size of its contents») по плану ЭТОЙ
+    /// стопки — тому же, что кладёт копии (`push::Regrow`). Для каждого куска
+    /// с продолжением, который кончается ровно в НАЧАЛЕ монолитного диапазона
+    /// или на принудительном разрыве: `(ребёнок, смещение разреза, недобор до
+    /// низа колонки, разрыв принудительный)`; у принудительного распорка —
+    /// отдельная коробка, а не поле.
     pub(crate) fn grow_points(&self, kids: &[Kid]) -> Vec<(usize, f32, f32, bool)> {
         let (_, lines, plan, _) = self.balance(kids);
         let count = self.count;
@@ -112,9 +73,9 @@ impl ColumnStack {
                 // разрыв стоит ПЕРЕД полем следующей коробки, и распорку надо
                 // ставить перед самой коробкой — её верх это `nf` из `cuts`
                 // (то же продолжение, что берёт `fill_at`). Парная запись
-                // `cuts` у такой точки есть всегда: `shape_full` кладёт
-                // `cuts.push((y, y + lead))` и `forced.push(y)` в одном
-                // блоке `if !first`.
+                // `cuts` у такой точки есть всегда: рекордер блочной стопки
+                // ставит точку класса A и принудительный разрыв на одной
+                // границе соседей.
                 let at = if at_solid {
                     end
                 } else {
@@ -126,30 +87,6 @@ impl ColumnStack {
                 };
                 out.push((f.kid, at, grow, at_forced && !at_solid));
             }
-        }
-        out
-    }
-
-    /// `box-decoration-break: clone`: геометрия фрагментов КАЖДОГО ребёнка —
-    /// по копиям `(съеденное содержимое, высота фрагмента)`. Нужна
-    /// `render::generic_box::multicol` ДО сборки копий: фрагмент `clone` строится отдельной
-    /// коробкой своей высоты. Щуп тот же, что у `growths`.
-    pub(crate) fn frags_of(
-        kids: &[Kid],
-        count: usize,
-        fixed_height: Option<f32>,
-        rows: Option<Rows>,
-        copies: usize,
-    ) -> Vec<Vec<(f32, f32)>> {
-        let probe = Self::growth_probe(count, fixed_height, rows, copies);
-        let (_, _, plan, _) = probe.balance(kids);
-        let mut out: Vec<Vec<(f32, f32)>> = vec![Vec::new(); kids.len()];
-        for f in &plan {
-            let v = &mut out[f.kid];
-            if v.len() <= f.copy {
-                v.resize(f.copy + 1, (0.0, 0.0));
-            }
-            v[f.copy] = (f.from, f.h);
         }
         out
     }

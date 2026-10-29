@@ -68,6 +68,7 @@ pub(super) fn paginate_of(
                             first,
                             part,
                             false,
+                            &Default::default(),
                         ),
                         &c2,
                         col_vert,

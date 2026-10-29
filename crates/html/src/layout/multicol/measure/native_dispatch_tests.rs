@@ -38,7 +38,6 @@ pub(super) fn two_columns(
         &BoxStyle::default(),
         opts,
         2,
-        0.0,
         Some(100.0),
         crate::layout::fragment::types::StackAxis::Horizontal,
         None,
@@ -108,6 +107,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                                 gap: 10.0,
                                 wrap: true,
                                 cap: false,
+                                outer: None,
                             }),
                         ] {
                             let mut opts = opts();
@@ -130,22 +130,13 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             let kids = plan.stackable.unwrap_or_else(|| panic!("{mode}: {body}"));
                             assert!(!kids.is_empty(), "{mode}: {body}");
                             assert!(
-                                kids.iter().all(|(_, shape)| shape.height == 0.0),
+                                kids.iter().all(|(_, m)| m.margin_top.is_finite()),
                                 "{mode}, auto={auto}, width={width:?}, rows={}: {body}",
                                 rows.is_some()
                             );
                             assert_eq!(
                                 plan.measured_kids.borrow().len(),
                                 if width.is_some() { kids.len() } else { 0 }
-                            );
-                            #[cfg(feature = "wpt-harness")]
-                            assert!(
-                                opts.frag
-                                    .probe
-                                    .take()
-                                    .values()
-                                    .all(|p| p.estimate_calls == 0),
-                                "{mode}: {body}"
                             );
                         }
                     }
@@ -157,7 +148,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 
 #[cfg(feature = "wpt-harness")]
 #[test]
-fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations() {
+fn clone_and_fixed_height_overflow_children_are_measured_by_their_copies() {
     // Заданный normal extent не ограничивает отдельный overflow-поток.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
@@ -196,25 +187,8 @@ fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations(
                 )
                 .is_some()
             );
-            let kids = plan.stackable.expect("native overflow children");
-            assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
-            assert_eq!(plan.measured_kids.borrow().len(), kids.len());
-            assert!(
-                opts.frag
-                    .probe
-                    .take()
-                    .values()
-                    .all(|p| p.estimate_calls == 0)
-            );
-        } else {
-            assert!(
-                opts.frag
-                    .probe
-                    .take()
-                    .values()
-                    .any(|p| p.estimate_calls > 0),
-                "{body}"
-            );
         }
+        let kids = plan.stackable.expect("measured children");
+        assert_eq!(plan.measured_kids.borrow().len(), kids.len(), "{body}");
     }
 }

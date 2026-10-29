@@ -8,7 +8,7 @@
 
 mod collect;
 mod walk;
-pub(crate) use collect::collect_has_args;
+pub(crate) use collect::retain_valid_rules;
 
 use crate::budget::admission::Error;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
@@ -38,12 +38,15 @@ pub(crate) struct HasArg {
 const HAS_SENTINEL: &str = "\u{0}scope";
 
 /// Пришить якорь-стража к самому левому компаунду цепочки.
-fn attach_anchor(sel: &mut Selector, lead: char) {
-    if let Some(p) = sel.prev.as_mut() {
-        return attach_anchor(&mut p.0, lead);
-    }
-    if let Some(a) = sel.ancestor.as_mut() {
-        return attach_anchor(&mut a.0, lead);
+fn attach_anchor(mut sel: &mut Selector, lead: char) {
+    loop {
+        if sel.prev.is_some() {
+            sel = &mut sel.prev.as_mut().expect("previous compound").0;
+        } else if sel.ancestor.is_some() {
+            sel = &mut sel.ancestor.as_mut().expect("ancestor compound").0;
+        } else {
+            break;
+        }
     }
     let sentinel = Selector {
         tag: None,
