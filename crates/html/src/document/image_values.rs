@@ -119,11 +119,11 @@ mod tests {
         own.apply_one("background-image", &format!("url('{raw}')"), vcx);
         own.apply_one("background-clip", "text", vcx);
         let pending = vcx.background_images();
-        let revision = doc.images.borrow().snapshot().revision();
+        let revision = doc.values.images.borrow().snapshot().revision();
         let before = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
         assert_eq!(before.bg_image.as_ref(), Some(&image));
-        assert_eq!(doc.images.borrow().snapshot().revision(), revision);
-        assert!(doc.images.borrow_mut().take_jobs().is_empty());
+        assert_eq!(doc.values.images.borrow().snapshot().revision(), revision);
+        assert!(doc.values.images.borrow_mut().take_jobs().is_empty());
 
         let node = crate::dom::Element::synthetic("div", own.clone(), Default::default(), vec![]);
         prepare(&[Node::Element(node)], vcx);
@@ -136,7 +136,7 @@ mod tests {
             pending.image_available(&image, true),
             ImageAvailability::Pending
         );
-        let revision = doc.images.borrow().snapshot().revision();
+        let revision = doc.values.images.borrow().snapshot().revision();
         let after = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
         assert!(after.paint_background().top.image.is_none());
         assert_eq!(after.bg_image.as_ref(), Some(&image));
@@ -144,7 +144,7 @@ mod tests {
             after.paint_background().flat.map(|v| v[1]),
             ready.uniform_image_color(&image)
         );
-        assert_eq!(doc.images.borrow().snapshot().revision(), revision);
+        assert_eq!(doc.values.images.borrow().snapshot().revision(), revision);
         assert_eq!(own.bg_image.as_ref(), Some(&image));
     }
 
@@ -204,7 +204,7 @@ mod tests {
                 "operand {n}"
             );
         }
-        assert!(doc.images.borrow_mut().take_jobs().is_empty());
+        assert!(doc.values.images.borrow_mut().take_jobs().is_empty());
     }
 
     #[test]

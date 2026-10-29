@@ -11,6 +11,7 @@ impl Document {
     /// Work текущей committed revision; subjobs используют тот же scope.
     pub fn revision_budget(&self) -> crate::budget::RevisionBudget {
         self.state
+            .values
             .budget
             .borrow()
             .as_ref()
@@ -96,18 +97,20 @@ impl Document {
     /// Полное исходное дерево этой revision, независимо от глубины представления.
     pub fn source_dom(&self) -> markup5ever_rcdom::Handle {
         self.state
+            .values
             .source_dom()
             .expect("Document retains its source DOM")
     }
 
     pub fn traversal_limit(&self) -> Option<super::TraversalLimit> {
         self.state
+            .values
             .traversal_limit()
-            .or_else(|| self.state.child_traversal_limit())
+            .or_else(|| self.state.values.child_traversal_limit())
     }
 
     /// Терминальный исход вложенного документа, обнаруженный при построении кадра.
     pub fn embedded_failure(&self) -> Option<DocumentFailure> {
-        self.state.embedded_failure()
+        self.state.values.embedded_failure()
     }
 }

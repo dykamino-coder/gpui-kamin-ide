@@ -104,7 +104,7 @@ impl CustomMedia<'_> {
 pub(crate) struct SheetCx<'a> {
     /// The document whose at-rules (`@page`, `@position-try`, `@property`,
     /// `@counter-style`) the sheet registers.
-    pub(super) doc: &'a crate::document::state::DocState,
+    pub(super) doc: &'a crate::document::state::DocumentValues,
     pub(super) layers: &'a mut LayerRegistry,
     /// Layer of the current parse position: full name and path.
     pub(super) layer_now: (String, Vec<u32>),
