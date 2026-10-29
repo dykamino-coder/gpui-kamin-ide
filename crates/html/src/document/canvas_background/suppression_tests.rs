@@ -57,7 +57,7 @@ fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
 fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
     use gpui::Styled;
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = crate::layout::cx::FrameCx::new(doc.values());
+    let vcx = crate::layout::cx::FrameCx::new(&doc);
     for background in [
         "blue",
         "blue padding-box",

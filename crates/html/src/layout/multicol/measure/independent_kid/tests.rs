@@ -46,7 +46,7 @@ fn percent_margins_use_the_copy_inline_size() {
     let (_, shape) = measured(
         c,
         &BoxStyle::default(),
-        crate::layout::cx::FrameCx::new(tree.values()),
+        crate::layout::cx::FrameCx::new(&tree.doc),
         120.0,
         &registry,
     )

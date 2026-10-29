@@ -21,7 +21,7 @@ fn typed_attribute_chain_exceeds_the_old_pass_limit() {
                 resolve_attrs("width", "attr(a0 px)", cx, doc.values()).trim(),
                 "12px"
             );
-            assert!(doc.revision_budget().failure().is_none());
+            assert!(doc.values.revision_budget().failure().is_none());
         })
         .unwrap()
         .join()
@@ -54,5 +54,5 @@ fn only_cycle_members_fail_and_outer_fallback_is_selected() {
         .trim(),
         "green"
     );
-    assert!(doc.revision_budget().failure().is_none());
+    assert!(doc.values.revision_budget().failure().is_none());
 }

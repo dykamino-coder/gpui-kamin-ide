@@ -15,7 +15,15 @@ fn census_preserves_local_name_keys_and_non_element_slots() {
     .unwrap();
     let root = dom.document.children.borrow()[0].clone();
     let children = root.children.borrow();
-    let (spots, all) = census_of(&children, &TreeIndex::default());
+    let (spots, all) = census_of(
+        &children,
+        &TreeIndex::new(
+            crate::document::state::DocState::new(Default::default())
+                .values
+                .clone(),
+            false,
+        ),
+    );
     let actual: Vec<_> = spots.iter().map(values).collect();
     assert_eq!(
         actual,
@@ -40,7 +48,15 @@ fn census_large_sibling_group_has_forward_and_reverse_positions() {
     let dom =
         crate::dom::xml::xml_dom(&format!("<root>{}</root>", "<a/><b/>".repeat(4096))).unwrap();
     let root = dom.document.children.borrow()[0].clone();
-    let (spots, all) = census_of(&root.children.borrow(), &TreeIndex::default());
+    let (spots, all) = census_of(
+        &root.children.borrow(),
+        &TreeIndex::new(
+            crate::document::state::DocState::new(Default::default())
+                .values
+                .clone(),
+            false,
+        ),
+    );
     assert_eq!(all.len(), 8192);
     for (i, spot) in spots.iter().enumerate() {
         assert_eq!(values(spot), (i + 1, 8192, i / 2 + 1, 4096));
@@ -53,7 +69,15 @@ fn census_empty_and_non_element_groups_have_no_elements() {
     let dom = crate::dom::xml::xml_dom("<root>text<!--comment--></root>").unwrap();
     let root = dom.document.children.borrow()[0].clone();
     for children in [&[][..], &root.children.borrow()[..]] {
-        let (spots, all) = census_of(children, &TreeIndex::default());
+        let (spots, all) = census_of(
+            children,
+            &TreeIndex::new(
+                crate::document::state::DocState::new(Default::default())
+                    .values
+                    .clone(),
+                false,
+            ),
+        );
         assert!(all.is_empty());
         assert!(spots.iter().all(|s| values(s) == (0, 0, 0, 0)));
     }

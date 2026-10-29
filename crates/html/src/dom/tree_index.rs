@@ -40,7 +40,6 @@ impl Hash for NodeKey {
 }
 
 /// Everything the style walk reads about a node besides the node itself.
-#[derive(Default)]
 pub(crate) struct TreeIndex {
     /// `:has()` marks: hashes of the arguments this node anchors a match for.
     pub(crate) has_marks: HashMap<NodeKey, Vec<u64>>,
@@ -52,7 +51,7 @@ pub(crate) struct TreeIndex {
     pub(crate) slotted: HashMap<NodeKey, Rc<Vec<Rule>>>,
     /// The document being parsed: its quirks mode, `@property` registry and
     /// root metrics, which the walk reads and writes.
-    pub(crate) doc: Rc<crate::document::state::DocState>,
+    pub(crate) doc: Rc<crate::document::state::DocumentValues>,
     /// XHTML host-language rules for attribute matching in this parse.
     pub(crate) xhtml: bool,
 }
@@ -67,11 +66,14 @@ impl TreeIndex {
             .unwrap_or_default()
     }
 
-    pub(crate) fn new(doc: Rc<crate::document::state::DocState>, xhtml: bool) -> Self {
+    pub(crate) fn new(doc: Rc<crate::document::state::DocumentValues>, xhtml: bool) -> Self {
         TreeIndex {
+            has_marks: Default::default(),
+            shadows: Default::default(),
+            slots: Default::default(),
+            slotted: Default::default(),
             doc,
             xhtml,
-            ..Default::default()
         }
     }
 

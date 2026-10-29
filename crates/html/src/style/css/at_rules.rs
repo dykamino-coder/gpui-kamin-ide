@@ -51,7 +51,7 @@ pub const MARGIN_BOXES: [&str; 16] = [
 /// Дописать правило `@page` в реестр текущего документа: правила хранятся
 /// в порядке появления, с псевдоклассами и именами; хост забирает их
 /// `Document::page_rules` и собирает объявления листа `page_decls_in`.
-pub(crate) fn push_page_rule(doc: &crate::document::state::DocState, rule: PageRule) {
+pub(crate) fn push_page_rule(doc: &crate::document::state::DocumentValues, rule: PageRule) {
     doc.page_rules.borrow_mut().push(rule);
 }
 
@@ -202,7 +202,7 @@ fn matching_rules<'r>(
 /// имя → объявления, читается на сборке кадра (`anchor::place`). Повтор
 /// имени перекрывает — «the last one in document order wins».
 pub(crate) fn insert_try_rule(
-    doc: &crate::document::state::DocState,
+    doc: &crate::document::state::DocumentValues,
     name: &str,
     decls: DeclBlock,
 ) {
@@ -221,7 +221,7 @@ pub struct Registered {
 /// Зарегистрировать `@property` в текущем документе; первая действительная
 /// регистрация имени остаётся.
 pub(crate) fn register_property(
-    doc: &crate::document::state::DocState,
+    doc: &crate::document::state::DocumentValues,
     name: &str,
     reg: Registered,
 ) {

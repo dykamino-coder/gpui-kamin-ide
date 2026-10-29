@@ -41,10 +41,10 @@ fn html_data_cannot_change_quirks_or_attribute_case_rules() {
     ] {
         let html = format!("{data}<p data-x='pass'></p>");
         let parsed = parse(&html, ATTR_CSS);
-        assert!(parsed.doc.quirks(), "{data}");
+        assert!(parsed.doc.values.quirks(), "{data}");
         assert_eq!(pseudo_text(&parsed), ["pass"], "{data}");
         let standards = parse(&format!("<!doctype html>{html}"), ATTR_CSS);
-        assert!(!standards.doc.quirks(), "{data}");
+        assert!(!standards.doc.values.quirks(), "{data}");
         assert_eq!(pseudo_text(&standards), ["pass"], "{data}");
     }
 }
@@ -56,7 +56,7 @@ fn html_xhtml_adapter_uses_parsed_root_beyond_the_old_prefix_window() {
         "prolog ".repeat(400),
     );
     let parsed = parse(&html, ATTR_CSS);
-    assert!(!parsed.doc.quirks());
+    assert!(!parsed.doc.values.quirks());
     // Самозакрытые p — соседи: текст каждого ::before присутствует.
     assert_eq!(pseudo_text(&parsed), ["fallback", "fallback"]);
     let html = first_element(&parsed);
@@ -74,7 +74,7 @@ fn html_xhtml_adapter_accepts_a_parsed_namespace_character_reference() {
         "<html xmlns='http://www.w3.org/1999/xht&#109;l'><p data-x='pass'/></html>",
         ATTR_CSS,
     );
-    assert!(!parsed.doc.quirks());
+    assert!(!parsed.doc.values.quirks());
     assert_eq!(pseudo_text(&parsed), ["fallback"]);
 }
 
@@ -83,7 +83,7 @@ fn real_xml_gets_case_rules_from_the_host_language() {
     for namespace in ["", " xmlns='http://www.w3.org/1999/xht&#109;l'"] {
         let xml = format!("<root{namespace}><p data-x='lower'/><p DATA-X='upper'/></root>");
         let parsed = parse_xml(&xml, ATTR_CSS);
-        assert!(!parsed.doc.quirks());
+        assert!(!parsed.doc.values.quirks());
         assert_eq!(pseudo_text(&parsed), ["fallback", "upper"]);
     }
 }
@@ -97,7 +97,7 @@ fn xml_shadow_attributes_do_not_acquire_html_normalization() {
         !super::super::shadow::has_declarative_shadow(&dom.document, &Default::default()).unwrap()
     );
     let parsed = parse_xml(&xml, "");
-    assert!(!parsed.doc.quirks());
+    assert!(!parsed.doc.values.quirks());
 }
 
 #[test]

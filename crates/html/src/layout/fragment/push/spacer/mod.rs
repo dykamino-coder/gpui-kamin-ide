@@ -135,7 +135,7 @@ mod tests {
         let blocks = BlockBox::collect(
             &root,
             ShapeCx::COLUMNS,
-            crate::layout::cx::FrameCx::new(tree.values()),
+            crate::layout::cx::FrameCx::new(&tree.doc),
         );
         let (first, next) = (blocks.kids[0].id, blocks.kids[1].id);
         assert!(spacer_before_laid(&mut root, next, 80.0));

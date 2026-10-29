@@ -209,7 +209,7 @@ mod tests {
         register("Example", "@styleset { named: 2; }", vec![], b.values());
         let first = parse("styleset(named)", false, a.values()).unwrap();
         let other = parse("styleset(named)", false, b.values()).unwrap();
-        a.reset_font_alternates();
+        a.values.reset_font_alternates();
         register("Example", "@styleset { named: 3; }", vec![], a.values());
         let later = parse("styleset(named)", false, a.values()).unwrap();
         assert_eq!(resolve("Example", Some(&first)), vec![("ss01".into(), 1)]);

@@ -17,7 +17,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
         120.0,
         0.0,
         (false, false),
-        FrameCx::new(tree.values()),
+        FrameCx::new(&tree.doc),
     )
     .unwrap();
     assert!(p.blocks);
@@ -27,7 +27,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
     let blocks = crate::layout::fragment::flow::blocks::BlockBox::collect(
         e,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        FrameCx::new(tree.values()),
+        FrameCx::new(&tree.doc),
     );
     assert!(!blocks.is_empty());
     assert!(blocks.grid.as_ref().unwrap().items.is_empty());
@@ -57,7 +57,7 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
         120.0,
         15.0,
         (false, false),
-        FrameCx::new(tree.values()),
+        FrameCx::new(&tree.doc),
     )
     .expect("native monolithic float");
     assert!(!p.blocks);
@@ -80,7 +80,7 @@ fn flowing_page_float_records_its_own_children_and_inline_continuation() {
         120.0,
         0.0,
         (false, false),
-        FrameCx::new(tree.values()),
+        FrameCx::new(&tree.doc),
     )
     .unwrap();
     assert!(p.blocks);
@@ -104,7 +104,7 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
         120.0,
         0.0,
         (false, false),
-        FrameCx::new(tree.values()),
+        FrameCx::new(&tree.doc),
     )
     .unwrap();
     assert!(p.blocks && p.float_extent);
@@ -130,7 +130,7 @@ fn nonempty_float_extent_stops_at_an_inner_bfc() {
             120.,
             0.,
             (false, false),
-            FrameCx::new(tree.values()),
+            FrameCx::new(&tree.doc),
         )
         .unwrap();
         assert_eq!(p.float_extent, expected);

@@ -16,7 +16,7 @@ fn deep_aliases_use_heap_frames() {
             let values = resolve_custom_media(raw, Media::default(), doc.values()).unwrap();
             assert_eq!(values.len(), 4097);
             assert!(values.values().all(|v| *v == SupTri::True));
-            assert!(doc.revision_budget().failure().is_none());
+            assert!(doc.values.revision_budget().failure().is_none());
         })
         .unwrap()
         .join()

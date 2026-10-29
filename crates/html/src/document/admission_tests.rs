@@ -47,8 +47,11 @@ fn build_and_direct_entries_report_all_three_boundaries_without_dom_loss() {
             }
             .unwrap();
             assert_eq!(source_text(&doc.source_dom()), "text");
-            assert_eq!(source_text(&parsed.doc.source_dom().unwrap()), "text");
-            assert_eq!(doc.traversal_limit(), parsed.doc.traversal_limit());
+            assert_eq!(
+                source_text(&parsed.doc.values.source_dom().unwrap()),
+                "text"
+            );
+            assert_eq!(doc.traversal_limit(), parsed.doc.values.traversal_limit());
             if depth == 2053 {
                 let limit = doc.report().degradation.unwrap();
                 assert_eq!((limit.limit, limit.attempted), (2052, 2053));
@@ -138,10 +141,13 @@ fn embedded_degradation_is_typed_scoped_and_retains_the_whole_dom() {
         None,
     )
     .unwrap();
-    let limit = embedded.state.traversal_limit().unwrap();
+    let limit = embedded.state.values.traversal_limit().unwrap();
     assert_eq!(limit.scope, FailureScope::EmbeddedDocument);
     assert_eq!(limit.code(), "KAMINIDE_LIMIT_TRAVERSAL_DEPTH");
-    assert_eq!(source_text(&embedded.state.source_dom().unwrap()), "text");
+    assert_eq!(
+        source_text(&embedded.state.values.source_dom().unwrap()),
+        "text"
+    );
     assert_eq!(view_text(&embedded.nodes), "");
 }
 
