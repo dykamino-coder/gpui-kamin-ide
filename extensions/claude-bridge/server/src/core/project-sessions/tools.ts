@@ -12,7 +12,7 @@ import { ScopeError, type CallerContext } from './scope'
 import { searchSessions } from './search'
 import type { ToolOutput } from './types'
 
-const ID = { type: 'string', description: 'conversationId from project_sessions_list.' }
+const ID = { type: 'string', description: 'session_id from project_sessions_list.' }
 const AGENT = {
   type: 'string',
   description: 'Optional subagent/teammate id from project_session_subagents; reads that transcript instead.',
@@ -49,7 +49,7 @@ const SCOPE_NOTE =
 export const PROJECT_SESSION_TOOLS = [
   {
     name: 'project_sessions_list',
-    description: `Lists the Claude conversations of this project on the Bridge server, newest activity first: conversation_id, title (custom title or first prompt), started_at, last_activity_at, size_bytes, lines, subagents count, source (live or archive for expired transcripts), live (a CLI session is running it), attached (a client is connected) and self (it is THIS conversation). Use it to find a neighbouring chat or an earlier conversation whose history you need to recover, then read it with project_session_brief / project_session_read. ${SCOPE_NOTE}`,
+    description: `Lists the Claude conversations of this project on the Bridge server, newest activity first: session_id, title (custom title or first prompt), started_at, last_activity_at, size_bytes, lines, subagents count, source (live or archive for expired transcripts), live (a CLI session is running it), attached (a client is connected) and self (it is THIS conversation). Use it to find a neighbouring chat or an earlier conversation whose history you need to recover, then read it with project_session_brief / project_session_read. ${SCOPE_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -68,7 +68,7 @@ export const PROJECT_SESSION_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        conversation_id: ID,
+        session_id: ID,
         agent_id: AGENT,
         detail: { type: 'string', enum: ['text', 'full'], description: 'text (default) or full.' },
         include_tools: {
@@ -88,7 +88,7 @@ export const PROJECT_SESSION_TOOLS = [
         cursor: CURSOR,
         max_chars: MAX_CHARS,
       },
-      required: ['conversation_id'],
+      required: ['session_id'],
     },
   },
   {
@@ -97,7 +97,7 @@ export const PROJECT_SESSION_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        conversation_id: ID,
+        session_id: ID,
         agent_id: AGENT,
         from_index: { type: 'number', description: 'First line index (inclusive).' },
         to_index: { type: 'number', description: 'Stop before this line index (exclusive).' },
@@ -105,12 +105,12 @@ export const PROJECT_SESSION_TOOLS = [
         cursor: CURSOR,
         max_chars: MAX_CHARS,
       },
-      required: ['conversation_id'],
+      required: ['session_id'],
     },
   },
   {
     name: 'project_session_search',
-    description: `Full-text search across ALL conversations of this project (optionally their subagents): returns conversation_id, entry index, timestamp, kind, match count and snippets, newest conversations first, paged with next_cursor. Searches prompts, assistant text, thinking, tool arguments and tool results. Literal by default (case-insensitive); regex: true for JavaScript regex (no backreferences or nested repeats). Narrow with kinds (role), since/until and conversation_ids. Then open a hit with project_session_read from_index=<index>. ${SCOPE_NOTE}`,
+    description: `Full-text search across ALL conversations of this project (optionally their subagents): returns session_id, entry index, timestamp, kind, match count and snippets, newest conversations first, paged with next_cursor. Searches prompts, assistant text, thinking, tool arguments and tool results. Literal by default (case-insensitive); regex: true for JavaScript regex (no backreferences or nested repeats). Narrow with kinds (role), since/until and session_ids. Then open a hit with project_session_read from_index=<index>. ${SCOPE_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -120,7 +120,7 @@ export const PROJECT_SESSION_TOOLS = [
         kinds: KINDS_SCHEMA,
         since: SINCE,
         until: UNTIL,
-        conversation_ids: { type: 'array', items: { type: 'string' }, description: 'Restrict to these conversations.' },
+        session_ids: { type: 'array', items: { type: 'string' }, description: 'Restrict to these conversations.' },
         include_subagents: {
           type: 'boolean',
           description: 'Also search subagent/teammate transcripts (default false).',
@@ -138,8 +138,8 @@ export const PROJECT_SESSION_TOOLS = [
     description: `Statistics and outline of one conversation of this project: entry counts by kind and row type, compact segments (boundary indices, trigger, pre-compact tokens, summaries), tools used with counts, tool errors, files touched by tool calls, models, token usage, git branches, time range and the first/last prompts with their indices. Use it to decide which index range to read. ${SCOPE_NOTE}`,
     inputSchema: {
       type: 'object',
-      properties: { conversation_id: ID, agent_id: AGENT },
-      required: ['conversation_id'],
+      properties: { session_id: ID, agent_id: AGENT },
+      required: ['session_id'],
     },
   },
   {
@@ -148,11 +148,11 @@ export const PROJECT_SESSION_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        conversation_id: ID,
+        session_id: ID,
         limit: { type: 'number', description: 'Agents per page (default 100, max 500).' },
         offset: { type: 'number', description: 'next_offset from the previous page.' },
       },
-      required: ['conversation_id'],
+      required: ['session_id'],
     },
   },
   {
@@ -161,12 +161,12 @@ export const PROJECT_SESSION_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        conversation_id: ID,
+        session_id: ID,
         agent_id: AGENT,
         turns: { type: 'number', description: 'Recent turns to include (default 10, max 50).' },
         max_chars: { type: 'number', description: 'Brief size cap (default 40000, max 200000).' },
       },
-      required: ['conversation_id'],
+      required: ['session_id'],
     },
   },
 ] as const
@@ -234,7 +234,7 @@ export async function runProjectSessionTool(
   ctx: CallerContext,
   log: (record: AccessRecord) => void,
 ): Promise<McpToolResult> {
-  const requested = typeof args.conversation_id === 'string' ? args.conversation_id : undefined
+  const requested = typeof args.session_id === 'string' ? args.session_id : undefined
   try {
     checkArgumentNames(name, args ?? {})
     const out = await HANDLERS[name](ctx, args ?? {})

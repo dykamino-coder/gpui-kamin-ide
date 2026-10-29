@@ -4,6 +4,7 @@ import {
   AGENT_TEAMS_REPORTING_CONTRACT,
   BRIDGE_DEFAULT_CLAUDE_MD,
   SUBAGENT_PROGRESS_GUIDANCE,
+  TOOL_PARAMETERS_GUIDANCE,
 } from './bridge-default-claude-md'
 
 describe('Agent Teams reporting contract', () => {
@@ -46,5 +47,13 @@ describe('subagent progress guidance', () => {
     expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('project_session_read')
     expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('do not start a duplicate')
     expect(BRIDGE_DEFAULT_CLAUDE_MD).toContain(SUBAGENT_PROGRESS_GUIDANCE)
+  })
+})
+
+describe('tool parameters guidance', () => {
+  it('tells agents to load a tool definition instead of guessing and is part of the default prompt', () => {
+    expect(TOOL_PARAMETERS_GUIDANCE).toContain('select:<tool name>')
+    expect(TOOL_PARAMETERS_GUIDANCE).toContain('instead of guessing argument names')
+    expect(BRIDGE_DEFAULT_CLAUDE_MD).toContain(TOOL_PARAMETERS_GUIDANCE)
   })
 })
