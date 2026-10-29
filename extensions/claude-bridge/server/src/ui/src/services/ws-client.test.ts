@@ -16,6 +16,7 @@ vi.mock('../signals/server', () => ({
   cachedUsage: { value: null },
 }))
 vi.mock('../signals/auth', () => ({ getSessionToken: () => 'synthetic-token' }))
+vi.mock('../signals/commands', () => ({ commandSnapshots: { value: [] }, commandOutput: { value: null } }))
 vi.mock('../signals/requests', () => ({
   addRequest: vi.fn(),
   updateRequest: vi.fn(),
