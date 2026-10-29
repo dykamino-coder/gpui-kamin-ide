@@ -66,3 +66,20 @@ fn monolith_overflows_only_its_own_column_and_the_cell_resumes_at_the_next_top()
     );
     assert_eq!(top(&found, 125., 50.), None, "no overflow column");
 }
+
+#[test]
+fn replayed_flex_items_paint_from_their_own_fragments() {
+    let html = "<style>body{margin:0}</style><div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'><div style='display:flex;flex-direction:column'><div style='height:70px;background:#00ff00'></div><div style='height:70px;background:#0000ff'></div></div></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 35.), 0x00ff00), "first item");
+    assert!(is(top(&found, 25., 85.), 0x0000ff), "second item, column 1");
+    assert!(is(top(&found, 75., 20.), 0x0000ff), "second item, column 2");
+    assert!(
+        !is(top(&found, 75., 60.), 0x0000ff),
+        "below the second item"
+    );
+    assert!(
+        !is(top(&found, 75., 20.), 0x00ff00),
+        "first item stays in column 1"
+    );
+}
