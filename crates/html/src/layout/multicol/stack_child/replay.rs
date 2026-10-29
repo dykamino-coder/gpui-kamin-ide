@@ -10,8 +10,8 @@ use crate::style::computed::{Display, Position};
 /// опорная коробка плоского преобразования во фрагменте (§5.5), фильтр, линейки
 /// промежутков (CSS Gaps 1 §fragmentation). Остаются на копиях: объёмные преобразования и
 /// перспектива (их плоскости решаются на отрисовке по накопленной матрице), фильтры по
-/// ссылке и фона, вложенная фрагментация (многоколоночник рисует свои куски сам); отложенная краска
-/// позиционированных и контекстов наложения идёт вне записи; сросшиеся кромки таблицы
+/// ссылке и фона, вложенная фрагментация (многоколоночник рисует свои куски сам),
+/// внепоточные коробки (продолжаются своими слотами); сросшиеся кромки таблицы
 /// решают стыки по маске своего куска (`EdgePainter`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
 /// Обход — итеративный.
@@ -23,11 +23,11 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
         // (`element::admission::items`).
         let per_copy = table_part(e) && s.border_collapse == Some(true);
-        // Позиционированные коробки и контексты наложения рисуются отложенно, в фазе
-        // своего контекста (CSS 2.1 Appendix E, `PaintLast`), а не внутри записи копии.
-        let deferred = !matches!(s.position, None | Some(Position::Static))
-            || s.z_index.is_some()
-            || s.opacity.is_some_and(|o| o < 1.0);
+        // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
+        // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
+        // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
+        // коробки продолжаются своими слотами и местами по сегментам (P08).
+        let deferred = matches!(s.position, Some(Position::Absolute | Position::Fixed));
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
@@ -153,6 +153,10 @@ mod tests {
         assert_eq!(
             of("<section><div style='position:absolute'>a</div></section>"),
             (false, false)
+        );
+        assert_eq!(
+            of("<section><div style='position:relative;opacity:0.5'>a</div></section>"),
+            (true, false)
         );
         assert_eq!(
             of("<section><div style='display:grid'>a</div></section>"),

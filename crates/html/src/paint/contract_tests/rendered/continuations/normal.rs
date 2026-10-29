@@ -159,3 +159,15 @@ fn replayed_row_rules_are_cut_per_fragment() {
         "no rule in the gutter at the break"
     );
 }
+
+#[test]
+fn replayed_relative_box_paints_in_its_own_columns() {
+    let html = "<style>body{margin:0}</style><div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'><div style='position:relative;left:10px'><div style='height:100px;background:#00ff00'></div><div style='height:60px;background:#0000ff'></div></div></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 30., 50.), 0x00ff00), "first piece");
+    assert!(is(top(&found, 80., 30.), 0x0000ff), "second piece");
+    assert!(
+        top(&found, 30., 130.).is_none(),
+        "nothing at the source below the column"
+    );
+}
