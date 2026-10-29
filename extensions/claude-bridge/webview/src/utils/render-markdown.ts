@@ -1,5 +1,6 @@
 import hljs from 'highlight.js/lib/common'
 import '../theme/components/markdown.css'
+import { extractBlockquotes } from './render-markdown-quotes'
 
 // Bounded LRU cache so repeatedly re-rendering the same message text
 // (Preact re-renders the JSONL viewer on every scroll/reflow) doesn't keep
@@ -134,7 +135,8 @@ export function renderMarkdown(md: string): string {
 
   // Normalize line endings — mixed CRLF/CR causes the paragraph splitter to
   // miss blank lines, which in turn produced orphan <br> tags between headers.
-  let text = md.replace(/\r\n?/g, '\n')
+  // NUL is reserved for internal block placeholders, never for input text.
+  let text = md.replace(/\r\n?/g, '\n').replace(/\0/g, '\uFFFD')
 
   // Collapse runs of 3+ blank lines to exactly one blank line so section
   // separators don't compound into giant gaps.
@@ -143,10 +145,24 @@ export function renderMarkdown(md: string): string {
   // Strip YAML frontmatter
   text = text.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '')
 
-  // Extract fenced code blocks FIRST (so we can highlight them before any
-  // HTML escaping mangles the code). Replace with tokens we re-inject after
-  // the rest of the rewrite passes.
+  const rendered = renderBlocks(text, 0)
+  cacheSet(md, rendered)
+  return rendered
+}
+
+function renderBlocks(text: string, quoteDepth: number): string {
+  // Цитаты разбираются до inline-разметки и хранятся так же, как блоки кода:
+  // последующие замены не должны менять уже отрендеренное содержимое контейнера.
   const codeBlocks: string[] = []
+  if (quoteDepth < 64) {
+    text = extractBlockquotes(text, (body) => {
+      codeBlocks.push(`<blockquote>${renderBlocks(body, quoteDepth + 1)}</blockquote>`)
+      return `\x00CODEBLOCK${codeBlocks.length - 1}\x00`
+    })
+  }
+
+  // Extract fenced code before inline rewrites and HTML escaping, so the
+  // highlighter receives the original text. Re-inject tokens after the rewrites.
   text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang: string, code: string) => {
     const highlighted = highlightCode(code, (lang || '').toLowerCase())
     // Header row: language label on the left, copy button on the right —
@@ -337,9 +353,8 @@ export function renderMarkdown(md: string): string {
   text = text.replace(/(<\/(?:h[1-6]|ul|ol|li|pre|table|p|hr)>)\s*(?:<br\s*\/?>\s*)+/gi, '$1')
   text = text.replace(/(?:<br\s*\/?>\s*)+(<(?:h[1-6]|ul|ol|li|pre|table|p|hr)\b)/gi, '$1')
 
-  // Restore code blocks
+  // Восстановить контейнеры одним проходом, не разбирая их содержимое повторно.
   text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_m, idx) => codeBlocks[Number(idx)] ?? '')
 
-  cacheSet(md, text)
   return text
 }
