@@ -212,6 +212,21 @@ export interface McpToolResult {
   isError?: boolean
 }
 
+/** Unknown or missing argument names are errors: silently ignoring a misspelled
+ *  `session_id` turned a read into a misleading "not found". */
+function checkArgumentNames(name: ProjectSessionToolName, args: Record<string, unknown>): void {
+  const schema = PROJECT_SESSION_TOOLS.find((tool) => tool.name === name)!.inputSchema as {
+    properties: Record<string, unknown>
+    required?: readonly string[]
+  }
+  const accepted = Object.keys(schema.properties)
+  const unknown = Object.keys(args).filter((key) => !accepted.includes(key))
+  if (unknown.length > 0)
+    throw new ArgError(`unknown argument ${unknown.join(', ')}; ${name} accepts ${accepted.join(', ')}`)
+  const missing = (schema.required ?? []).filter((key) => args[key] === undefined)
+  if (missing.length > 0) throw new ArgError(`${missing.join(', ')} is required`)
+}
+
 /** Run one tool; never throws. `log` receives metadata only — no content. */
 export async function runProjectSessionTool(
   name: ProjectSessionToolName,
@@ -221,6 +236,7 @@ export async function runProjectSessionTool(
 ): Promise<McpToolResult> {
   const requested = typeof args.conversation_id === 'string' ? args.conversation_id : undefined
   try {
+    checkArgumentNames(name, args ?? {})
     const out = await HANDLERS[name](ctx, args ?? {})
     const content = out.blocks.map((text) => ({ type: 'text' as const, text }))
     log({
