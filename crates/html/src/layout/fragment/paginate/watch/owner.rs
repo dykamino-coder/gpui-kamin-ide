@@ -36,6 +36,18 @@ impl Watched {
         *self.paint_owners.borrow_mut() = owners;
     }
 
+    /// Первый фрагмент каждого элемента по плану стопки (`set_flex_owners`).
+    pub(crate) fn owners(&self) -> HashMap<u64, usize> {
+        self.paint_owners.borrow().clone()
+    }
+
+    /// Копии рисуют элементы по-разному не только владением: окна элементов сеток
+    /// (сдвиг и обрезка по копии) или израсходованная часть элементов flex (маска по
+    /// маске куска, `axis::consumed_mask`).
+    pub(crate) fn windows_per_copy(&self) -> bool {
+        !self.item_windows.borrow().is_empty() || !self.flex_consumed.borrow().is_empty()
+    }
+
     /// Окна элементов сеток по копиям (`flow::blocks::grid_items`).
     pub(crate) fn set_item_windows(
         &self,

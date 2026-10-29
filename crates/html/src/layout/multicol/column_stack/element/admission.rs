@@ -2,7 +2,8 @@
 //! кусок своего начала, рисуется целиком в этом фрагментаинере и ни в каком другом
 //! (css-break-3 §4.1; Blink кладёт монолит в фрагмент его начала, переполнение — его
 //! ink overflow, `BoxFragmentPainter` рисует его там). Остальные узлы наследуют срез
-//! своего куска.
+//! своего куска. Элемент flex рисуется с куска своего первого фрагмента, как его копия
+//! (`paginate::watch::owner`).
 
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
@@ -66,6 +67,38 @@ impl ColumnStack {
                     source_clip,
                 }]),
             );
+        }
+        // Элемент flex рисует кусок своего первого фрагмента (начало margin box) и
+        // следующие; в первом его переполнение над срезом видно до маски предка
+        // (`paginate::watch::owner`).
+        for (id, owner) in w.owners() {
+            if out.slices.contains_key(&id) {
+                continue;
+            }
+            let own: Vec<_> = pieces
+                .iter()
+                .filter(|(f, _, _)| f.copy >= owner)
+                .map(|&(f, placement, clip)| PaintSegmentSlice {
+                    placement,
+                    source_clip: if f.copy == owner {
+                        Bounds::from_corners(
+                            point(clip.left(), clip.top() - spill),
+                            clip.bottom_right(),
+                        )
+                    } else {
+                        clip
+                    },
+                })
+                .collect();
+            if let Some(first) = own.first() {
+                let delta = first.placement.destination - first.placement.source;
+                let placed = Bounds::new(first.source_clip.origin + delta, first.source_clip.size);
+                out.masks
+                    .entry(owner)
+                    .and_modify(|m| *m = m.union(&placed))
+                    .or_insert(placed);
+            }
+            out.slices.insert(id, own.into());
         }
         out
     }
