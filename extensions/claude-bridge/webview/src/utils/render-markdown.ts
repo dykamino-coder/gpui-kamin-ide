@@ -219,7 +219,7 @@ export function renderMarkdown(md: string): string {
   // blank line that FOLLOWS the list inside the wrapper, which split `</ul>` into
   // a block of its own and left it orphaned inside an empty <p>.
   text = text.replace(/((?:<li[^>]*>.*<\/li>\s*)+)/g,
-    (m) => `<ul style="margin:6px 0;padding-left:20px;color:var(--text-secondary);">${m.trim()}</ul>`)
+    (m) => `<ul style="margin:6px 0;padding-left:20px;">${m.trim()}</ul>`)
   // Belt-and-suspenders: merge any adjacent <ul> blocks that slipped through.
   text = text.replace(/<\/ul>\s*<ul[^>]*>/g, '')
   // Put every list in a block of its OWN. The paragraph pass below leaves a
@@ -266,7 +266,7 @@ export function renderMarkdown(md: string): string {
     }
     html += '<tbody>' + dataRows.map((row, i) =>
       `<tr style="background:${i % 2 ? 'color-mix(in srgb, var(--bg-surface) 35%, transparent)' : 'transparent'}">` + parseRow(row).map(c =>
-        `<td style="padding:8px 14px;color:var(--text-secondary);border-top:1px solid color-mix(in srgb, var(--bg-surface) 50%, transparent);">${c}</td>`
+        `<td style="padding:8px 14px;border-top:1px solid color-mix(in srgb, var(--bg-surface) 50%, transparent);">${c}</td>`
       ).join('') + '</tr>'
     ).join('') + '</tbody></table>'
     return html

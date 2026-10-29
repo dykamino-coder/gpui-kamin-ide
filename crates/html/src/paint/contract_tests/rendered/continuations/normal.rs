@@ -196,3 +196,22 @@ fn nested_multicol_records_its_pieces_inside_the_outer_native_source() {
         assert!(is(top(&found, x, 50.), 0x00ff00), "column at {x}");
     }
 }
+
+#[test]
+fn replayed_table_rows_resume_under_the_repeated_header() {
+    let html = "<style>body{margin:0}td{padding:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<table style='width:100%;border-spacing:0'>\
+<thead><tr><td style='height:20px;background:#0000ff'></td></tr></thead>\
+<tr><td style='height:70px;background:#00ff00'></td></tr>\
+<tr><td style='height:70px;background:#ff00ff'></td></tr></table></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 10.), 0x0000ff), "header, column 1");
+    assert!(is(top(&found, 25., 50.), 0x00ff00), "row 1, column 1");
+    assert!(is(top(&found, 75., 10.), 0x0000ff), "repeated header");
+    assert!(
+        is(top(&found, 75., 50.), 0xff00ff),
+        "row 2 under the header"
+    );
+    assert!(!is(top(&found, 75., 95.), 0xff00ff), "row 2 ends at 90");
+}
