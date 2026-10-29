@@ -9,8 +9,21 @@ impl ColumnStack {
         Space::columns(limit).with_inline_size(self.col_w.get())
     }
 
+    /// Высота линии `l` пробега: первая — `first`, остальные — `cap`, но не за
+    /// остаток коробки `room` от начала пробега (Blink `ConstrainColumnBlockSize`).
+    pub(crate) fn run_line(l: usize, first: f32, cap: f32, room: Option<f32>) -> f32 {
+        let base = if l == 0 { first } else { cap };
+        let at = if l == 0 {
+            0.0
+        } else {
+            first + (l - 1) as f32 * cap
+        };
+        room.map_or(base, |r| base.min(r - at)).max(1.0)
+    }
+
     /// Пробег линий колонок между спаннерами: первая линия высотой `first`
-    /// (остаток текущего ряда), остальные — `cap`; последняя при
+    /// (остаток текущего ряда), остальные — `cap`, не дальше остатка коробки
+    /// `room`; последняя при
     /// `balance_last` балансируется (Blink балансирует КАЖДУЮ линию и режет
     /// её остатком ряда, так что полные ряды выходят ровно в `column-height`,
     /// а последняя — по содержимому: `column-height-003` — 80px остатка в
@@ -20,8 +33,7 @@ impl ColumnStack {
     pub(crate) fn balance_run(
         &self,
         kids: &[Kid],
-        first: f32,
-        cap: f32,
+        (first, cap, room): (f32, f32, Option<f32>),
         balance_last: bool,
         not_at_start: usize,
     ) -> (usize, Plan, f32) {
@@ -29,7 +41,7 @@ impl ColumnStack {
         let space = self
             .column_space(usize::MAX)
             .with_not_at_start(not_at_start);
-        let line_h = |l: usize| if l == 0 { first } else { cap };
+        let line_h = |l: usize| Self::run_line(l, first, cap, room);
         let (cols, _, plan) = plan::fill_at(kids, &|c| line_h(c / count), space);
         let n = cols.div_ceil(count).max(1);
         let last = line_h(n - 1);
@@ -60,5 +72,22 @@ impl ColumnStack {
             Ok((height, plan)) => (n, plan, height),
             Err(error) => (n, failed(error), t),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ColumnStack;
+
+    /// Rows of a nested multicol stop at its used block size (Blink
+    /// `ConstrainColumnBlockSize`; `balanced-inner-multicol`: `max-height:
+    /// 260px` in 100px outer columns gives rows 100, 100 and 60).
+    #[test]
+    fn nested_rows_stop_at_the_box_block_size() {
+        let line = |l| ColumnStack::run_line(l, 100., 100., Some(260.));
+        assert_eq!((line(0), line(1), line(2)), (100., 100., 60.));
+        assert_eq!(ColumnStack::run_line(2, 100., 100., None), 100.);
+        // A box already used up still keeps a 1px fragmentainer.
+        assert_eq!(line(3), 1.);
     }
 }

@@ -51,6 +51,7 @@ impl ColumnStack {
         let copies = self.copies;
         let axis = self.axis;
         let row_phase = self.row_phase;
+        let row_limit = self.row_limit;
         let row_extent = self.row_extent;
         let forced_h = self.forced_h;
         let balance_failure = self.balance_failure;
@@ -160,6 +161,7 @@ impl ColumnStack {
                     gap,
                     axis,
                     row_phase,
+                    row_limit,
                     row_extent,
                     fixed_height: fixed,
                     forced_h,

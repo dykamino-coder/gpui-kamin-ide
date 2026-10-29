@@ -177,8 +177,13 @@ pub(super) fn multicol_stack_child(
     child.clone_frags = dec.map(|_| frag_geom);
     child.line_trim = line_trim;
     let source = copy.clone();
-    child.copier = Some(std::rc::Rc::new(move |part| {
-        factory::copy(build.clone(), &source, col_vert, part)
+    // `band` — полоса повтора шапки/подвала таблицы (`Repeat::head_els`/`foot_els`).
+    child.copier = Some(std::rc::Rc::new(move |part, band| {
+        if band {
+            build(false, part, true)
+        } else {
+            factory::copy(build.clone(), &source, col_vert, part)
+        }
     }));
     let measured = regrow::Measured {
         paginate,

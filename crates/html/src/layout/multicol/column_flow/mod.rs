@@ -146,6 +146,9 @@ fn column_flow_in(
     let nodes = e.children.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
+    // `continue: discard` (css-overflow-4 §discarding-content): переполняющие
+    // колонки многоколоночника не рисуются.
+    let discard = e.style.used().clamp_discard == Some(true);
     let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels, &[rows::Row]) -> AnyElement> =
         std::rc::Rc::new(
             move |cuts: &[usize], used: usize, width: gpui::Pixels, rows: &[rows::Row]| {
@@ -163,6 +166,7 @@ fn column_flow_in(
                     used,
                     width,
                     rows,
+                    discard,
                 )
             },
         );
@@ -197,6 +201,7 @@ fn column_flow_in(
             },
             whole,
         )
+        .capped(stretch)
         .in_outer(outer)
         // `orphans`/`widows` наследуются (css-break-3 §4.4), начальное — 2.
         .line_breaks(

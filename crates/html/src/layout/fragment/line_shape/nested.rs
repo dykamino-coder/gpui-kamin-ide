@@ -14,7 +14,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let s = &c.style.used();
     let sizes = BoxDimensions::for_element(c, s);
     multicol_container(s)
-        && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
+        && (s.column_count.is_some() || s.column_width.is_some())
         // Свои ряды (`column-height`, `column-wrap`) — без спаннеров: линии
         // между спаннерами идут сеткой рядов самой коробки (`Rows::outer`
         // спаннеров не несёт).
@@ -26,7 +26,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
             || (matches!(s.height, None | Some(Len::Auto))
                 && sizes.minimum[1].is_none()
-                && sizes.maximum[1].is_none()))
+                && matches!(sizes.maximum[1], None | Some(Len::Px(_)))))
         && matches!(s.display, None | Some(Display::Block))
         && !s.wm().vertical()
         && s.float.unwrap_or(0) == 0
@@ -68,4 +68,29 @@ pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
         }
         .max(0.0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::nested_rows_box;
+    use crate::dom::{Element, Node};
+
+    fn multicol(css: &str) -> Element {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let mut style = crate::style::computed::Computed::default();
+        style.apply_decls(&crate::style::css::parse_decls(css), doc.values());
+        let kid = Element::synthetic("div", Default::default(), Default::default(), vec![]);
+        Element::synthetic("div", style, Default::default(), vec![Node::Element(kid)])
+    }
+
+    /// A nested multicol is its own fragmentation context with
+    /// `column-count: 1` and with a `max-height` in pixels
+    /// (`variable-fragmentainer-size-001`, `balanced-inner-multicol`).
+    #[test]
+    fn single_column_and_max_height_multicols_nest_in_rows() {
+        assert!(nested_rows_box(&multicol("columns:1;height:250px")));
+        assert!(nested_rows_box(&multicol("columns:2;max-height:260px")));
+        assert!(!nested_rows_box(&multicol("columns:2;max-height:50%")));
+        assert!(!nested_rows_box(&multicol("height:250px")));
+    }
 }

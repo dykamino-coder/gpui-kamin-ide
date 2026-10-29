@@ -160,7 +160,7 @@ pub struct StackChild {
     pub(crate) clone_frags: Option<CloneGeom>,
     /// Построитель копии `part` (0 — главная): число копий решает план по
     /// измеренной протяжённости ребёнка, а не предварительная оценка.
-    pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize) -> AnyElement>>,
+    pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize, bool) -> AnyElement>>,
     /// Ряды вложенного многоколоночника во внешних колонках: `(высота ряда,
     /// начало ребёнка во внешнем фрагментаинере)`.
     pub(crate) nest: Option<(f32, f32)>,

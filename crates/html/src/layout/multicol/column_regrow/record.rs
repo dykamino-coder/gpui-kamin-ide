@@ -15,6 +15,14 @@ impl ColumnStack {
         window: &mut Window,
     ) {
         let (axis, fixed) = (self.axis, self.fixed_height);
+        // Повтор секций таблицы решается во фрагментаинере, где она начата
+        // (css-tables-3 §repeated-headers; Blink `table_layout_algorithm.cc`):
+        // у вложенных рядов это остаток первого ряда под фазой.
+        let per = self
+            .rows
+            .and_then(|r| r.outer.or(r.h))
+            .map(|h| (h - self.row_phase).max(0.0))
+            .or(fixed);
         // Колонки переполнения (css-multicol-1 §8.2) есть только у стопки без
         // балансировки: заданная высота колонок или ряды внешнего фрагментаинера.
         let fills = fixed.is_some() || self.rows.is_some_and(|r| !r.cap);
@@ -36,7 +44,7 @@ impl ColumnStack {
                 c.line_keep.clear();
             }
             let sections = c.measure_breaks(sz, axis, window);
-            c.refresh_repeat(sections, fixed);
+            c.refresh_repeat(sections, per);
             // Целый вложенный многоколоночник выше колонки — не монолит:
             // его режет край внешней колонки (`StackChild::fit_whole`).
             if c.fit_whole {
@@ -115,7 +123,7 @@ impl ColumnStack {
                 c.h = h;
             }
             let sections = c.replace_breaks(sz, axis, window);
-            c.refresh_repeat(sections, fixed);
+            c.refresh_repeat(sections, per);
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
             let origin = point(px(0.0), px(0.0));
