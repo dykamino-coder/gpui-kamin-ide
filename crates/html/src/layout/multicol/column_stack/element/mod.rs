@@ -11,6 +11,7 @@ mod admission;
 mod copies;
 mod native;
 mod paint;
+mod piece;
 mod prepaint;
 mod replay;
 
