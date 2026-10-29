@@ -114,6 +114,8 @@ describe('session settings skills integration', () => {
     expect(localSettings.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h')
     expect(localSettings.env.CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL).toBe('1h')
     expect(localSettings.env.CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS).toBe('350000')
+    expect(localSettings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('380k')
+    expect(localSettings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE).toBe('92')
 
     const settings = JSON.parse(fs.readFileSync(path.join(settingsDir, '.claude', 'settings.json'), 'utf-8'))
     expect(settings.permissions.deny).not.toContain('SendMessage')

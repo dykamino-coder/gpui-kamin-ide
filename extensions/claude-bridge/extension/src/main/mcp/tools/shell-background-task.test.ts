@@ -5,6 +5,7 @@ import {
   bashExecute,
   powerShellExecute,
   backgroundShellSnapshot,
+  localBackgroundShellSnapshot,
   readBackgroundOutput,
   stopBackgroundShellForOwner,
 } from './shell'
@@ -43,7 +44,9 @@ describe('background task execution policy', () => {
         '-NoLogo',
         '-NonInteractive',
         '-Command',
-        'Start-Sleep -Seconds 180',
+        expect.stringContaining(
+          '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\nStart-Sleep -Seconds 180',
+        ),
       ])
       expect(mock.spawn.mock.lastCall?.[2]).toMatchObject({ detached: false, windowsHide: true })
     } finally {
@@ -65,6 +68,10 @@ describe('background task execution policy', () => {
       )
       expect(mock.foreground.mock.lastCall?.[2]).toBeGreaterThan(22 * 3600_000)
       expect(mock.foreground.mock.lastCall?.slice(5)).toEqual([signal, onOutput, '/session project'])
+      if (execute === powerShellExecute) {
+        expect(mock.foreground.mock.lastCall?.[0]).toContain('[Console]::OutputEncoding = $OutputEncoding =')
+        expect(mock.foreground.mock.lastCall?.[0]).toMatch(/\nsynthetic$/)
+      }
       expect(result.content[0]?.text).toBe('complete output')
       await execute({ command: 'foreground', timeout: 99_000_000 })
       expect(mock.foreground.mock.lastCall?.[2]).toBe(1_800_000)
@@ -91,15 +98,19 @@ describe('background task execution policy', () => {
       expect(result.content[0]?.text).toContain('BashOutput')
       expect(mock.spawn.mock.lastCall?.[2].cwd).toBe('/session project')
       proc.stdout.write('still unread')
-      const entry = backgroundShellSnapshot('tab', 'owner').find((shell) => shell.running)!
+      const entry = backgroundShellSnapshot('tab', 'owner').at(-1)!
       expect(entry.output).toBe('still unread')
       expect(backgroundShellSnapshot('other-tab', 'owner')).toEqual([])
+      expect(backgroundShellSnapshot('tab', 'replacement-owner')).toEqual([])
+      expect(localBackgroundShellSnapshot('tab').some((s) => s.id === entry.id)).toBe(true)
+      expect(localBackgroundShellSnapshot('other-tab')).toEqual([])
       await stopBackgroundShellForOwner('tab', 'other-owner', entry.id)
       expect(process.kill).not.toHaveBeenCalled()
       expect((await readBackgroundOutput({ bash_id: entry.id.slice(6) })).content[0]?.text).toContain('still unread')
       expect((await readBackgroundOutput({ bash_id: entry.id.slice(6) })).content[0]?.text).toContain('no new output')
       await stopBackgroundShellForOwner('tab', 'owner', entry.id)
-      expect(process.kill).toHaveBeenCalledWith(-7654321, 'SIGTERM')
+      if (process.platform === 'win32') expect(proc.kill).toHaveBeenCalled()
+      else expect(process.kill).toHaveBeenCalledWith(-7654321, 'SIGTERM')
       proc.emit('exit', 0)
       vi.restoreAllMocks()
     },

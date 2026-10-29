@@ -11976,10 +11976,20 @@ async function powerShellExecute(input, context) {
   }
   const flags = ["-NoLogo", "-NonInteractive", "-Command"];
   const env4 = await shellEnv();
+  const wrapped = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n" + command;
   if (input.run_in_background === true && context?.taskDeadlineMs === void 0) {
-    return runBackgroundCommand(command, pwshPath, String(input.description ?? ""), flags, env4, context, "PowerShell");
+    return runBackgroundCommand(
+      wrapped,
+      pwshPath,
+      String(input.description ?? ""),
+      flags,
+      env4,
+      context,
+      "PowerShell",
+      command
+    );
   }
-  return runForegroundCommand(command, pwshPath, timeout, flags, env4, context?.signal, context?.onOutput, context?.cwd);
+  return runForegroundCommand(wrapped, pwshPath, timeout, flags, env4, context?.signal, context?.onOutput, context?.cwd);
 }
 async function bashExecute(input, context) {
   const command = input.command;
@@ -12151,7 +12161,13 @@ async function resolvePowerShell() {
   return pwshLookupInFlight;
 }
 function backgroundShellSnapshot(tabId, owner) {
-  return [...backgroundOutput].filter(([, out]) => out.tabId === tabId && out.owner === owner).slice(-100).map(([id, out]) => ({
+  return snapshotBackgroundOutput([...backgroundOutput].filter(([, out]) => out.tabId === tabId && out.owner === owner));
+}
+function localBackgroundShellSnapshot(tabId) {
+  return snapshotBackgroundOutput([...backgroundOutput].filter(([, out]) => out.tabId === tabId));
+}
+function snapshotBackgroundOutput(entries2) {
+  return entries2.slice(-100).map(([id, out]) => ({
     id: `shell:${id}`,
     tool: out.tool,
     command: out.command.slice(0, 512),
@@ -12160,11 +12176,17 @@ function backgroundShellSnapshot(tabId, owner) {
     output: (out.stdout + (out.stderr ? "\n--- stderr ---\n" + out.stderr : "")).slice(-16384)
   }));
 }
+async function stopLocalBackgroundShell(tabId, id) {
+  if (!/^shell:[0-9]+$/.test(id)) return;
+  const out = backgroundOutput.get(Number(id.slice(6)));
+  if (out?.tabId !== tabId) return;
+  await killBackgroundShell({ bash_id: Number(id.slice(6)) });
+}
 async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (!/^shell:[0-9]+$/.test(id)) return;
   const out = backgroundOutput.get(Number(id.slice(6)));
   if (out?.tabId !== tabId || out.owner !== owner) return;
-  await killBackgroundShell({ bash_id: Number(id.slice(6)) });
+  await stopLocalBackgroundShell(tabId, id);
 }
 var import_node_child_process3, import_node_path3, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
@@ -41352,6 +41374,51 @@ var McpResultOutbox = class {
   }
 };
 
+// src/main/ws/client-commands.ts
+init_shell();
+var ClientCommands = class {
+  constructor(tabId, publish) {
+    this.tabId = tabId;
+    this.publish = publish;
+  }
+  tabId;
+  publish;
+  remote;
+  receive(snapshot2) {
+    this.remote = { snapshot: snapshot2, at: Date.now() };
+    this.list(snapshot2.sessionId);
+  }
+  reset() {
+    this.remote = void 0;
+  }
+  list(sessionId) {
+    const shells = localBackgroundShellSnapshot(this.tabId);
+    const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5e3;
+    const commands6 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
+    for (const shell2 of shells) {
+      if (shell2.running) {
+        commands6.push({
+          id: shell2.id,
+          tool: shell2.tool,
+          command: shell2.command,
+          startedAt: shell2.startedAt,
+          background: true,
+          status: "running"
+        });
+      }
+    }
+    commands6.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
+    this.publish("commands:snapshot", { sessionId, commands: commands6, serverAvailable });
+  }
+  localAction(action, id) {
+    const shell2 = localBackgroundShellSnapshot(this.tabId).find((s) => s.id === id);
+    if (!shell2) return false;
+    if (action === "stop") void stopLocalBackgroundShell(this.tabId, id);
+    else this.publish("commands:output", { id, output: shell2.output });
+    return true;
+  }
+};
+
 // src/main/ws/transcript-mirror.ts
 var import_fs4 = require("fs");
 var import_promises6 = __toESM(require("fs/promises"), 1);
@@ -42493,6 +42560,7 @@ var ConnectionManager = class _ConnectionManager {
   recentMcpCalls = /* @__PURE__ */ new Map();
   mcpSessionId = null;
   mcpTaskOwner;
+  commands;
   mcpResults = new McpResultOutbox((frame) => {
     if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024)
       return false;
@@ -42553,6 +42621,7 @@ var ConnectionManager = class _ConnectionManager {
     this.config = config;
     this.window = window9;
     this.tabId = tabId;
+    this.commands = new ClientCommands(tabId, (event, value) => window9.webContents.send(event, tabId, value));
     if (conversationId) this.conversationId = conversationId;
     this.logIdentity("bind", { reason: conversationId ? "restored" : "none" });
     this.batcher = new JsonlBatcher(window9, tabId);
@@ -43247,12 +43316,21 @@ var ConnectionManager = class _ConnectionManager {
    *  The server owns byte positions; the disk mirror is a fallback while offline. */
   async loadOlderPage(beforePos, count) {
     if (this.ws?.readyState === wrapper_default.OPEN) {
-      this.sendRaw({ type: "jsonl:segment-request", ...this.requestedSegment ?? { fromTs: "", toTs: "" }, beforePos, paged: true });
+      this.sendRaw({
+        type: "jsonl:segment-request",
+        ...this.requestedSegment ?? { fromTs: "", toTs: "" },
+        beforePos,
+        paged: true
+      });
       return;
     }
     this.ensureMirror();
     const records = await this.mirror?.readRange(beforePos, count) ?? [];
-    this.window.webContents.send("jsonl:older-page", this.tabId, { beforePos, records, ...this.requestedSegment ?? {} });
+    this.window.webContents.send("jsonl:older-page", this.tabId, {
+      beforePos,
+      records,
+      ...this.requestedSegment ?? {}
+    });
   }
   /** The FULL compact-segment index — every segment with visible-message counts,
    *  not just the ones in the renderer's resident window. Computed server-side
@@ -43303,8 +43381,10 @@ var ConnectionManager = class _ConnectionManager {
   }
   // ─── Private ────────────────────────────────────────────
   commandAction(action, id = "") {
-    if (action === "list") this.send({ type: "commands:list" });
-    else
+    if (action === "list") {
+      this.commands.list(this.state.sessionId ?? "");
+      this.send({ type: "commands:list" });
+    } else if (!this.commands.localAction(action, id))
       this.send({
         type: action === "stop" ? "commands:stop" : "commands:output",
         id
@@ -43334,12 +43414,12 @@ var ConnectionManager = class _ConnectionManager {
       if (msg.owner === this.mcpTaskOwner) void stopBackgroundShellForOwner(this.tabId, this.mcpTaskOwner, msg.id);
       return;
     }
-    if (msg.type === "commands:snapshot" || msg.type === "commands:output") {
-      this.window.webContents.send(
-        msg.type,
-        this.tabId,
-        msg.type === "commands:snapshot" ? msg.snapshot : { id: msg.id, output: msg.output }
-      );
+    if (msg.type === "commands:snapshot") {
+      if (msg.snapshot.sessionId === this.state.sessionId) this.commands.receive(msg.snapshot);
+      return;
+    }
+    if (msg.type === "commands:output") {
+      this.window.webContents.send(msg.type, this.tabId, { id: msg.id, output: msg.output });
       return;
     }
     if (msg.type === "mcp:cancel") {
@@ -43444,18 +43524,22 @@ var ConnectionManager = class _ConnectionManager {
         }
       },
       pushJsonlCache: (entries2, replay) => {
-        const known = new Set(this.cachedJsonlEntries.map((entry) => {
-          const row = entry;
-          return row._pos ?? row.uuid;
-        }));
-        this.cachedJsonlEntries.push(...entries2.filter((entry) => {
-          const row = entry;
-          const key2 = row._pos ?? row.uuid;
-          if (key2 === void 0) return true;
-          if (known.has(key2)) return false;
-          known.add(key2);
-          return true;
-        }));
+        const known = new Set(
+          this.cachedJsonlEntries.map((entry) => {
+            const row = entry;
+            return row._pos ?? row.uuid;
+          })
+        );
+        this.cachedJsonlEntries.push(
+          ...entries2.filter((entry) => {
+            const row = entry;
+            const key2 = row._pos ?? row.uuid;
+            if (key2 === void 0) return true;
+            if (known.has(key2)) return false;
+            known.add(key2);
+            return true;
+          })
+        );
         if (!replay && this.mirrorHead)
           void this.mirror?.append(entries2, this.mirrorHead);
       },
@@ -43565,7 +43649,10 @@ var ConnectionManager = class _ConnectionManager {
         this.mcpSessionId = state.sessionId;
         this.mcpResults.attach(state.sessionId, this.mcpTaskOwner);
       }
-    } else this.mcpResults.detach();
+    } else {
+      this.mcpResults.detach();
+      this.commands.reset();
+    }
     const rendererState = this.getState();
     this.window.webContents.send("connection-state-changed", this.tabId, rendererState);
     _ConnectionManager.onStatus?.(this.tabId, rendererState.status);
