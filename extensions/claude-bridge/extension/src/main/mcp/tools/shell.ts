@@ -136,10 +136,25 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   }
   const flags = ['-NoLogo', '-NonInteractive', '-Command']
   const env = await shellEnv()
+  // Both Windows PowerShell 5.1 and pwsh must write UTF-8 to our pipes.
+  // Console encoding also controls native programs (cmd/git); $OutputEncoding
+  // controls PowerShell pipelines into them. Keep the user's command last and
+  // in the same scope so exit, $LASTEXITCODE and error handling retain their meaning.
+  const wrapped =
+    '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n' + command
   if (input.run_in_background === true && context?.taskDeadlineMs === undefined) {
-    return runBackgroundCommand(command, pwshPath, String(input.description ?? ''), flags, env, context, 'PowerShell')
+    return runBackgroundCommand(
+      wrapped,
+      pwshPath,
+      String(input.description ?? ''),
+      flags,
+      env,
+      context,
+      'PowerShell',
+      command,
+    )
   }
-  return runForegroundCommand(command, pwshPath, timeout, flags, env, context?.signal, context?.onOutput, context?.cwd)
+  return runForegroundCommand(wrapped, pwshPath, timeout, flags, env, context?.signal, context?.onOutput, context?.cwd)
 }
 
 export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
@@ -365,21 +380,35 @@ export function backgroundShellSnapshot(
   tabId: string,
   owner?: string,
 ): import('../../../shared/commands').ShellSnapshot[] {
-  return [...backgroundOutput]
-    .filter(([, out]) => out.tabId === tabId && out.owner === owner)
-    .slice(-100)
-    .map(([id, out]) => ({
-      id: `shell:${id}`,
-      tool: out.tool,
-      command: out.command.slice(0, 512),
-      startedAt: out.startedAt,
-      running: out.running,
-      output: (out.stdout + (out.stderr ? '\n--- stderr ---\n' + out.stderr : '')).slice(-16384),
-    }))
+  return snapshotBackgroundOutput([...backgroundOutput].filter(([, out]) => out.tabId === tabId && out.owner === owner))
+}
+
+/** The local UI owns all shells in its tab, including ones from an older server session. */
+export function localBackgroundShellSnapshot(tabId: string): import('../../../shared/commands').ShellSnapshot[] {
+  return snapshotBackgroundOutput([...backgroundOutput].filter(([, out]) => out.tabId === tabId))
+}
+
+function snapshotBackgroundOutput(
+  entries: Array<[number, BackgroundOutput]>,
+): import('../../../shared/commands').ShellSnapshot[] {
+  return entries.slice(-100).map(([id, out]) => ({
+    id: `shell:${id}`,
+    tool: out.tool,
+    command: out.command.slice(0, 512),
+    startedAt: out.startedAt,
+    running: out.running,
+    output: (out.stdout + (out.stderr ? '\n--- stderr ---\n' + out.stderr : '')).slice(-16384),
+  }))
+}
+export async function stopLocalBackgroundShell(tabId: string, id: string): Promise<void> {
+  if (!/^shell:[0-9]+$/.test(id)) return
+  const out = backgroundOutput.get(Number(id.slice(6)))
+  if (out?.tabId !== tabId) return
+  await killBackgroundShell({ bash_id: Number(id.slice(6)) })
 }
 export async function stopBackgroundShellForOwner(tabId: string, owner: string | undefined, id: string): Promise<void> {
   if (!/^shell:[0-9]+$/.test(id)) return
   const out = backgroundOutput.get(Number(id.slice(6)))
   if (out?.tabId !== tabId || out.owner !== owner) return
-  await killBackgroundShell({ bash_id: Number(id.slice(6)) })
+  await stopLocalBackgroundShell(tabId, id)
 }

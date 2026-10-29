@@ -4,10 +4,14 @@ import fs from 'node:fs'
 import { CliModTransport, createCliModTransport } from './cli-mod-transport'
 
 const transports: CliModTransport[] = []
+const versionProbe = vi.hoisted(() => vi.fn())
+vi.mock('node:child_process', () => ({ execFile: versionProbe }))
 afterEach(() => {
   transports.splice(0).forEach((t) => t.dispose())
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+  versionProbe.mockReset()
 })
 async function setup() {
   const transport = new CliModTransport('session-a')
@@ -41,9 +45,56 @@ async function setup() {
 const socketIt = it.skipIf(process.platform === 'win32')
 
 describe('private mod transport', () => {
-  it('is off by default', async () => {
-    vi.stubEnv('BRIDGE_CLI_MOD', '')
+  it('allows an explicit opt-out without probing the CLI', async () => {
+    vi.stubEnv('BRIDGE_CLI_MOD', '0')
     expect(await createCliModTransport('unused')).toBeUndefined()
+    expect(versionProbe).not.toHaveBeenCalled()
+  })
+  it.each(['win32', 'darwin', 'freebsd'])('falls back without probing or opening a socket on %s', async (platform) => {
+    vi.stubEnv('BRIDGE_CLI_MOD', undefined)
+    vi.stubGlobal('process', { ...process, platform })
+    expect(await createCliModTransport('unused')).toBeUndefined()
+    expect(versionProbe).not.toHaveBeenCalled()
+  })
+  socketIt('enables the pinned CLI by default, using the session invocation and environment', async () => {
+    vi.stubEnv('BRIDGE_CLI_MOD', undefined)
+    vi.stubGlobal('process', { ...process, platform: 'linux' })
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.312 (Claude Code)\n'))
+    const cli = { command: '/cli/claude', prefix: ['--custom'], env: { PATH: '/cli' } }
+    const transport = await createCliModTransport('default', cli)
+    expect(transport).toBeDefined()
+    transports.push(transport!)
+    expect(versionProbe).toHaveBeenCalledWith(
+      cli.command,
+      ['--custom', '--version'],
+      expect.objectContaining({ env: cli.env, timeout: 5000 }),
+      expect.any(Function),
+    )
+  })
+  it.each(['2.1.311 (Claude Code)', '2.1.313 (Claude Code)', 'unknown', ''])(
+    'falls back cleanly for CLI %j',
+    async (version) => {
+      vi.stubEnv('BRIDGE_CLI_MOD', undefined)
+      vi.stubGlobal('process', { ...process, platform: 'linux' })
+      versionProbe.mockImplementation((_cmd, _args, _options, callback) =>
+        callback(version ? null : new Error('unavailable'), version),
+      )
+      expect(await createCliModTransport('unused')).toBeUndefined()
+    },
+  )
+  it('falls back when the version probe throws synchronously', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'linux' })
+    versionProbe.mockImplementation(() => {
+      throw new Error('invalid invocation')
+    })
+    expect(await createCliModTransport('unused')).toBeUndefined()
+  })
+  socketIt('disposes a transport whose socket cannot listen', async () => {
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.312 (Claude Code)'))
+    vi.spyOn(CliModTransport.prototype, 'listen').mockRejectedValue(new Error('socket unavailable'))
+    const dispose = vi.spyOn(CliModTransport.prototype, 'dispose')
+    expect(await createCliModTransport('unused')).toBeUndefined()
+    expect(dispose).toHaveBeenCalledOnce()
   })
   socketIt('requires a session/version handshake and protects socket permissions', async () => {
     const { transport, call } = await setup()

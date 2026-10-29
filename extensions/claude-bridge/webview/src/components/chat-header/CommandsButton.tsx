@@ -15,13 +15,17 @@ export function CommandsButton({ tabId }: { tabId: string }): JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
   const [output, setOutput] = useState<{ id: string; output: string } | null>(null)
   const [updated, setUpdated] = useState(0)
+  const [serverAvailable, setServerAvailable] = useState(false)
   useEffect(() => {
     setCommands([])
     setOpen(false)
     setSelected(null)
+    setOutput(null)
+    setServerAvailable(false)
     const off = bridge.onCommandsSnapshot((id, snapshot) => {
       if (id !== tabId) return
       setCommands(snapshot.commands)
+      setServerAvailable(snapshot.serverAvailable !== false)
       setUpdated(Date.now())
     })
     const offOutput = bridge.onCommandOutput((id, result) => {
@@ -30,9 +34,13 @@ export function CommandsButton({ tabId }: { tabId: string }): JSX.Element {
       }
     })
     bridge.commandAction(tabId, 'list')
+    // Older servers never request client shell reports or publish snapshots.
+    // Poll the local registry too, including while the popover is closed (badge).
+    const timer = setInterval(() => bridge.commandAction(tabId, 'list'), 1000)
     return () => {
       off()
       offOutput()
+      clearInterval(timer)
     }
   }, [bridge, tabId])
   useEffect(() => {
@@ -101,7 +109,10 @@ export function CommandsButton({ tabId }: { tabId: string }): JSX.Element {
                 ×
               </button>
             </div>
-            {commands.length === 0 && <p class="commands-empty">No running commands</p>}
+            {!serverAvailable && (
+              <p class="commands-empty">Server command list unavailable. Showing local background commands.</p>
+            )}
+            {serverAvailable && commands.length === 0 && <p class="commands-empty">No running commands</p>}
             {commands.map((c) => (
               <div key={c.id} class="commands-row">
                 <div class="commands-meta">

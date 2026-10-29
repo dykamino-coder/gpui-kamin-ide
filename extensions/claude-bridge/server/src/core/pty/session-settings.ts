@@ -218,6 +218,10 @@ export function writeSessionSettings(
   const localSettings = {
     skipDangerousModePermissionPrompt: true,
     env: {
+      // CLI 2.1.312 clamps to the real model window, then reserves up to 20k
+      // output tokens before min(92% of the remainder, remainder - 13k).
+      // Thus 380k compacts around 331k–350k; a 200k model never gains context.
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '380k',
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       // One-hour prompt cache for the main loop and for subagents/teammates.

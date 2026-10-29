@@ -453,7 +453,11 @@ async function createAdmittedSession(
     }
   }
   let pty: ReturnType<typeof import('node-pty').spawn>
-  const cliMod = await createCliModTransport(sessionId)
+  const cliMod = await createCliModTransport(sessionId, {
+    command: claudeCmd,
+    prefix: developmentCli?.prefix ?? [],
+    env,
+  })
   if (cliMod) {
     env.BRIDGE_CLI_MOD_SOCKET = cliMod.socketPath
     env.BRIDGE_CLI_MOD_SESSION = sessionId
