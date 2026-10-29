@@ -1,7 +1,7 @@
 // Runs inside Claude Code's mod sandbox: all effects go through the engine.
 /** @typedef {{id: number, rejected?: boolean}} Ack */
 /** @typedef {{turnId: string | null}} Turn */
-/** @typedef {{turnId: string | null, active: boolean, polling: boolean, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], native: (string | null)[], direct: (string | null)[], armed: string | null}} State */
+/** @typedef {{turnId: string | null, active: boolean, polling: boolean, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], composer: {submissionId: string | null}[], armed: string | null}} State */
 
 /** @param {import('claude-code').EngineInterface} $ @param {State} state @param {string} route */
 async function exchange($, state, route) {
@@ -91,23 +91,27 @@ export const register = (on) => {
     turns: [],
     reads: [],
     submitting: [],
-    native: [],
-    direct: [],
+    composer: [],
     armed: null,
   }
   on('prompt.submit', async ($, e, next) => {
     if (!state.active) return next(e)
-    let queue
+    let pending
     if (e.origin.kind === 'composer') {
       // The server arms exactly one serialized PTY transaction; never compare text.
       const id = state.armed
       state.armed = null
-      queue = e.turnId ? state.native : state.direct
-      queue.push(id)
+      // Native queued prompts survive abort and become door:prompt user rows,
+      // without another prompt.submit. Both delivery forms consume this FIFO.
+      pending = { submissionId: id }
+      state.composer.push(pending)
     }
     const result = await next(e)
     // A gate may refuse a composer prompt. It has no later delivery receipt.
-    if (queue && result.drop !== undefined) queue.pop()
+    if (pending && result.drop !== undefined) {
+      const index = state.composer.indexOf(pending)
+      if (index >= 0) state.composer.splice(index, 1)
+    }
     return result
   })
   on('session.append', async ($, e, next) => {
@@ -115,14 +119,14 @@ export const register = (on) => {
     let id = null
     if (!e.agentId && e.door === 'prompt') {
       if (e.origin.kind === 'plugin' && e.origin.name === 'kamin-bridge') id = state.submitting.shift() ?? null
-      else if (e.origin.kind === 'composer') id = state.direct.shift() ?? null
+      else if (e.origin.kind === 'composer') id = state.composer.shift()?.submissionId ?? null
     } else if (
       !e.agentId &&
       e.door === 'delivery' &&
       e.message.name === 'queued_command' &&
       e.origin.kind === 'composer'
     ) {
-      id = state.native.shift() ?? null
+      id = state.composer.shift()?.submissionId ?? null
     }
     const result = await next(e)
     if (id) state.reads.push({ submissionId: id, uuid: result.uuid })

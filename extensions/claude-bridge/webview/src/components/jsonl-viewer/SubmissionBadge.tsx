@@ -3,6 +3,8 @@ import type { JsonlEntryData } from '../../types/jsonl'
 import { submissions, dismissUncertain } from '../../signals/submissions'
 import { activeTabId } from '../../signals/tabs'
 import { useBridge } from '../../hooks/useBridge'
+import { Button } from '../ui/Button'
+import styles from './SubmissionBadge.module.css'
 
 export function SubmissionBadge({ entry }: { entry: JsonlEntryData }): JSX.Element | null {
   const bridge = useBridge()
@@ -11,16 +13,15 @@ export function SubmissionBadge({ entry }: { entry: JsonlEntryData }): JSX.Eleme
   if (!item || !tabId) return null
   const read = item.state === 'read'
   const uncertain = item.state === 'uncertain'
-  const label = read ? 'Read' : uncertain ? 'Delivery unconfirmed' : 'Queued'
+  const label = read ? 'Read' : uncertain ? 'Unconfirmed' : item.state === 'sending' ? 'Sending' : item.state === 'fallback' ? 'Sent' : 'Queued'
+  const explanation = item.warning || (read ? 'CLI has received this message in its conversation.' : item.state === 'native' ? 'Queued in CLI for its next step.' : item.state === 'sending' ? 'Delivering this message to CLI.' : 'Waiting for delivery to CLI.')
   const action = (name: 'cancel' | 'push' | 'interrupt') => bridge.submissionAction(tabId, item.id, name)
-  return <span class="submission-status" data-submission-id={item.id} data-state={item.state}
-    title={item.warning} style="margin-left:8px;display:inline-flex;gap:8px;align-items:center;font-size:11px;color:var(--text-secondary)">
-    <span>{label}</span>
-    {item.warning && <span role="status">{item.warning}</span>}
-    {uncertain && <button title="Hide the unconfirmed row; this does not cancel CLI delivery" onClick={() => dismissUncertain(tabId, item.id)}>Dismiss</button>}
-    {item.cancelable && <button onClick={() => action('cancel')}>Cancel</button>}
-    {item.state === 'queued' && <button onClick={() => action('push')}>Send now</button>}
+  return <span class={`submission-status ${styles.status}`} data-submission-id={item.id} data-state={item.state}>
+    <span role="status" title={explanation}>{label}</span>
+    {uncertain && <Button class={styles.action} title="Hide the unconfirmed row; this does not cancel CLI delivery" onClick={() => dismissUncertain(tabId, item.id)}>Dismiss</Button>}
+    {item.cancelable && <Button class={styles.action} title="Cancel this message before CLI delivery" onClick={() => action('cancel')}>Cancel</Button>}
+    {item.state === 'queued' && <Button class={styles.action} title="Deliver this message when the terminal composer is clear" onClick={() => action('push')}>Send now</Button>}
     {(item.state === 'queued' || item.state === 'native') &&
-      <button title="Interrupt the current turn and process the queued message" onClick={() => action('interrupt')}>Interrupt and send</button>}
+      <Button class={styles.action} title="Interrupt the current turn and process the queued message" onClick={() => action('interrupt')}>Interrupt and send</Button>}
   </span>
 }
