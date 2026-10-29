@@ -144,6 +144,7 @@ describe('console clipboard and context menu', () => {
     expect(e.stopImmediatePropagation).toHaveBeenCalledOnce()
     const menu = f.document.body.children[0]
     expect(menu.className).toBe('terminal-context-menu')
+    expect(f.emit(menu, 'mousedown').preventDefault).toHaveBeenCalledOnce()
     expect(menu.children).toHaveLength(3)
     expect(menu.children[0].disabled).toBe(true)
     expect(menu.children[2].disabled).toBe(false)

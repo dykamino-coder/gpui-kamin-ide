@@ -114,6 +114,9 @@ export function configureTerminalClipboard(
     let closed = false
     menu.className = 'terminal-context-menu'
     menu.setAttribute('role', 'menu')
+    // Keep xterm focused: DEC 1004 blur/focus can make the CLI repaint and
+    // clear Select All after the action has already created its selection.
+    menu.addEventListener('mousedown', (event) => event.preventDefault())
     const close = (): void => {
       closed = true
       menu.remove()
