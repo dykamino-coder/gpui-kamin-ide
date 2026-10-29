@@ -20,6 +20,7 @@ pub(crate) fn handle_input(cmd: &str, req: &Value) -> Option<Value> {
             | "wvjs"
             | "weburl"
             | "webkey"
+            | "webmouse"
             | "opendialog"
             | "webfocus"
             | "maximize"
@@ -29,6 +30,7 @@ pub(crate) fn handle_input(cmd: &str, req: &Value) -> Option<Value> {
     // Тела веток перенесены дословно: ранние `return json!(…)`
     // внутри них должны выходить из ВЕТКИ, а не из этой функции.
     Some(match cmd {
+        "webmouse" => super::web_pointer::handle(req),
         // {"cmd":"click","x":..,"y":..} — лог. px client-области;
         // "target":"overlay" — клик в overlay-окно (меню/модалки)
         "click" => {

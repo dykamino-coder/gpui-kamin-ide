@@ -34,6 +34,11 @@ mod frames;
 mod gpu_mode;
 mod gpu_texture;
 mod input;
+#[cfg(feature = "probe")]
+pub(crate) use input::{
+    click as probe_mouse_click, modifiers as probe_mouse_modifiers, mouse_move as probe_mouse_move,
+    wheel as probe_mouse_wheel,
+};
 mod keyed_access;
 mod keyed_mutex;
 mod motion_css;
