@@ -45,6 +45,15 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn(attributes, source)
             self.assertEqual(source.count('#![forbid(unsafe_code)]'), 1)
 
+    def test_facade_lint_levels_stay_on_the_facade_item(self):
+        from migration_plan import module_attributes
+        self.assertEqual(module_attributes('#[cfg(test)]\n#[expect(unused_imports, reason = "x")]\n'),
+                         '#[cfg(test)]')
+        self.assertEqual(module_attributes('#[cfg_attr(\n    not(test),\n    expect(unused_imports)\n)]\n'
+                                           '#[path = "a.rs"]'), '#[path = "a.rs"]')
+        self.assertEqual(module_attributes('#[cfg_attr(feature = "x", path = "b.rs")]'),
+                         '#[cfg_attr(feature = "x", path = "b.rs")]')
+
     def test_inner_module_attributes_do_not_become_crate_attributes(self):
         from migration_plan import crate_attributes
         source = ('#![forbid(unsafe_code)]\n'
@@ -70,6 +79,37 @@ class MigrationPlanTests(unittest.TestCase):
         repeated = plan(sources, set(physical.values()), physical, root_sources)
         self.assertEqual(repeated.changes, [])
         self.assertFalse(repeated.blockers)
+
+    def test_staged_plan_extracts_only_the_lower_stage_and_keeps_facade_paths(self):
+        from migration_plan import stage, RANK, ROOT_OWNERS
+        before = dict(ROOT_OWNERS), dict(RANK)
+        sources = self.sources()
+        with stage('kamin-style'):
+            result = plan(sources, {'crates/html/src/' + p for p in sources})
+        self.assertEqual((dict(ROOT_OWNERS), dict(RANK)), before)
+        self.assertFalse(result.blockers)
+        moved = {c.new: c for c in result.changes}
+        self.assertIn('crates/html-style/src/dom/mod.rs', moved)
+        self.assertNotIn('crates/html-layout/src/lib.rs', moved)
+        self.assertNotIn('crates/html-paint/src/lib.rs', moved)
+        self.assertFalse(any(c.old in ('crates/html/src/layout/mod.rs', 'crates/html/src/paint/mod.rs')
+                             for c in result.changes))
+        lib = moved['crates/html/src/lib.rs'].after
+        self.assertIn('pub use kamin_style::dom;', lib)
+        self.assertIn('pub(crate) mod layout;', lib)
+        self.assertEqual(set(result.edges), {('kamin-html', 'kamin-style')})
+        with self.assertRaisesRegex(ValueError, 'Unknown extraction stage'):
+            with stage('kamin-html'):
+                pass
+
+    def test_staged_plan_still_blocks_a_lower_reference_to_the_facade(self):
+        from migration_plan import stage
+        sources = self.sources()
+        sources['style/mod.rs'] += 'pub fn backwards(n: crate::dom::Node) { crate::paint::paint(n); }\n'
+        with stage('kamin-style'):
+            result = plan(sources, {'crates/html/src/' + p for p in sources})
+        self.assertEqual(result.blockers, [dict(source='kamin-style', target='kamin-html',
+                                               sites=[('style/mod.rs', 2)])])
 
     def test_cycle_is_a_blocker_with_exact_source_site(self):
         sources = self.sources()

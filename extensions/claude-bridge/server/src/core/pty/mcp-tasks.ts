@@ -124,6 +124,21 @@ export async function createMcpTask(
   return { ...taskView(task), resultType: 'task' }
 }
 
+/** Waits up to `graceMs` for a task to leave `working`; returns the latest record. */
+export async function awaitMcpTask(
+  owner: string,
+  taskId: string,
+  graceMs: number,
+  signal?: AbortSignal,
+): Promise<TaskRecord | undefined> {
+  const deadline = Date.now() + graceMs
+  for (;;) {
+    const task = await mcpTasks.get(owner, taskId)
+    if (!task || task.status !== 'working' || Date.now() >= deadline || signal?.aborted) return task
+    await new Promise((resolve) => setTimeout(resolve, Math.min(200, Math.max(0, deadline - Date.now()))))
+  }
+}
+
 export async function settleMcpTask(
   session: PtySession,
   outcome: { requestId: string; taskOwner?: string; type: string; result?: unknown; reason?: string },

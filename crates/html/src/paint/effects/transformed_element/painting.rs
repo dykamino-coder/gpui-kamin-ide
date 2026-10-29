@@ -1,12 +1,14 @@
 //! Окраска плоского и объёмного преобразования поддерева.
 
+mod pieces;
+mod plane;
 mod plane_spec;
+use pieces::pieces;
 mod projection;
 pub(super) use projection::paint_3d;
 
-use crate::paint::effects::transform_geometry::quarter_turn;
 use crate::paint::effects::transformed_element::Transformed;
-use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_body(
@@ -33,7 +35,6 @@ pub(super) fn paint_body(
     // CSS transform origins precede device-pixel snapping (Transforms 1 §3).
     let raw_origin = group.exact_origin.unwrap_or(bounds.origin);
     let scaled_origin = group.scaled_origin(bounds.origin);
-    let dev = |v: f32| px(v).scale(scale_factor);
     // Точка отсчёта — в устройстве, от неё и разворачиваем. Записанная
     // длиной, она сильнее доли: `transform-origin: 0 0` — левый верх, а
     // не центр (доля из длины считается только здесь, где размер известен).
@@ -48,44 +49,16 @@ pub(super) fn paint_body(
     // Reference box of a table row/row group spread over its cells
     // (`ref_box`): origin and percentages resolve against it, offset
     // from this cell's own box.
-    let (rw, rh, rdx, rdy) = match group.ref_box.as_ref().and_then(|r| r.get()) {
-        Some(r) => (
-            f32::from(r.size.width),
-            f32::from(r.size.height),
-            f32::from(r.origin.x - raw_origin.x),
-            f32::from(r.origin.y - raw_origin.y),
-        ),
-        None => crate::layout::fragment::effect_fragment::reference_box(
-            paint.as_deref(),
-            Bounds {
-                origin: raw_origin,
-                size: exact,
-            },
-        )
-        .map_or((w, h, 0.0, 0.0), |r| {
-            (
-                f32::from(r.size.width),
-                f32::from(r.size.height),
-                f32::from(r.origin.x - raw_origin.x),
-                f32::from(r.origin.y - raw_origin.y),
-            )
-        }),
-    };
-    let ox = rdx + rw * group.origin.0 + group.origin_px.0.unwrap_or(0.0);
-    let oy = rdy + rh * group.origin.1 + group.origin_px.1.unwrap_or(0.0);
-    let origin = gpui::point(
-        dev(f32::from(scaled_origin.x) + ox),
-        dev(f32::from(scaled_origin.y) + oy),
+    let fragment = crate::layout::fragment::effect_fragment::reference_box(
+        paint.as_deref(),
+        Bounds {
+            origin: raw_origin,
+            size: exact,
+        },
     );
-    let back = gpui::point(
-        dev(-(f32::from(scaled_origin.x) + ox)),
-        dev(-(f32::from(scaled_origin.y) + oy)),
-    );
-    // Матрица функций в порядке записи (css-transforms-1
-    // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
-    // возвращается. Проценты сдвига считаются от собственного размера —
-    // он известен только здесь, на отрисовке.
-    let shift = |row: [f32; 3]| (row[0] + rw * row[1] + rh * row[2]) * scale_factor;
+    let r = plane::reference(group, raw_origin, exact, fragment);
+    let (rw, rh) = (r.0, r.1);
+    let (ox, oy) = plane::origin(group, r);
     // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
     // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
     // у плоских функций он равен 1, так что 2D-путь сюда не попадает.
@@ -145,50 +118,20 @@ pub(super) fn paint_body(
         // (`Window::with_transformation_masked`): прежде обрезка стояла
         // на месте коробки до `transform` (`transform-clip-001`,
         // `transform-background-001/002`, `transform-fixed-bg-001/003`).
-        let quarter = quarter_turn(group.lin)
-            .filter(|_| window.current_transformation() == gpui::TransformationMatrix::unit());
-        let mut matrix = gpui::TransformationMatrix::unit()
-            .translate(origin)
-            .compose(gpui::TransformationMatrix {
-                rotation_scale: quarter.unwrap_or(group.lin),
-                translation: [shift(group.tr[0]), shift(group.tr[1])],
-            })
-            .translate(back);
-        let fill_matrix = quarter
-            .map(|_| group.exact_fill_matrix(matrix, bounds.origin, raw_origin, scale_factor));
-        if quarter.is_some() {
-            // Поворот на кратное четверти (и отражение) оставляет коробку
-            // осевой: её края обязаны округляться к точке устройства так
-            // же, как у той же коробки, разложенной на месте (чистый сдвиг
-            // выше идёт через раскладку — round half up). Растеризатор
-            // по правилу «верх-лево» относит ровную половину вниз, а
-            // ошибка `f32` у `rotate(-90deg)` (cos ≈ −4e-8) решает
-            // ничью случайно — `offset-path-ray-011/013/014` против
-            // эталона `translate(...)`. Skia так же кладёт осевой
-            // прямоугольник по round(x) (`SkScan::FillRect`), а
-            // `gfx::SinCosDegrees` даёт точные 0/±1 у кратных 90°.
-            let sf = scale_factor;
-            let corner_min = |o: gpui::Point<Pixels>, w: f32, h: f32| {
-                let mut m = (f32::INFINITY, f32::INFINITY);
-                for (dx, dy) in [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)] {
-                    let p = matrix.apply(gpui::point(
-                        px((f32::from(o.x) + dx) * sf),
-                        px((f32::from(o.y) + dy) * sf),
-                    ));
-                    m = (m.0.min(f32::from(p.x)), m.1.min(f32::from(p.y)));
-                }
-                m
-            };
-            let exact_origin = group.exact_origin.unwrap_or(bounds.origin);
-            let exact = corner_min(exact_origin, w, h);
-            let cur = corner_min(
-                bounds.origin,
-                f32::from(bounds.size.width),
-                f32::from(bounds.size.height),
+        let unit = window.current_transformation() == gpui::TransformationMatrix::unit();
+        let geometry = (bounds, raw_origin, scaled_origin);
+        let (matrix, fill_matrix) = plane::matrix(group, geometry, exact, r, (scale_factor, unit));
+        if let Some(all) =
+            crate::layout::fragment::effect_fragment::pieces::active(paint.as_deref())
+        {
+            return pieces(
+                group,
+                &all,
+                (geometry, exact, matrix),
+                (scale_factor, unit),
+                window,
+                cx,
             );
-            let snap = |v: f32| ((v * 64.0).round() / 64.0 + 0.5).floor();
-            matrix.translation[0] += snap(exact.0) - cur.0;
-            matrix.translation[1] += snap(exact.1) - cur.1;
         }
         let child = &mut group.child;
         crate::layout::fragment::effect_fragment::paint(

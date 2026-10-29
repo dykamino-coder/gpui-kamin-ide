@@ -30,6 +30,9 @@ pub(crate) type Outline = (gpui::AnyElement, gpui::ContentMask<gpui::Pixels>);
 pub struct Deferred {
     pub(crate) effect: RefCell<Option<crate::layout::fragment::effect_fragment::Scope>>,
     pub(crate) gap: RefCell<Option<crate::layout::fragment::gap_fragment::Scope>>,
+    /// Куски разрезанного ребёнка во время записи его главной копии.
+    pub(crate) pieces:
+        RefCell<Option<Rc<crate::layout::fragment::effect_fragment::pieces::Pieces>>>,
     pub(crate) coordinates: RefCell<Vec<crate::layout::fragment::static_coordinates::Mapping>>,
     pub(crate) outlines: RefCell<Vec<Option<Vec<Outline>>>>,
 }

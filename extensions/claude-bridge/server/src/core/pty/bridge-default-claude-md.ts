@@ -14,6 +14,21 @@ If you choose to use Agent Teams for a task:
 Agent Teams are optional. Do not create a team merely because the feature is available; use it only when parallel, independent work materially helps the user's task.
 `
 
+export const SUBAGENT_PROGRESS_GUIDANCE = `## Checking on slow subagents and teammates
+
+If a subagent or teammate you started has not returned for a long time, do not wait blindly and do not start a duplicate. Inspect its progress with the project session tools:
+
+- \`project_session_subagents\` lists the subagents and teammates of a conversation (pass its \`session_id\` from \`project_sessions_list\`) with their status and last activity.
+- \`project_session_read\` with that \`session_id\` and \`agent_id\` set to the subagent or teammate id reads its own transcript; read the latest entries to see what it is doing or where it is stuck.
+
+Then decide from what you read: keep waiting, send it a follow-up, or tell the user what is blocking it. Do not cancel or replace work only because time has passed.
+`
+
+export const TOOL_PARAMETERS_GUIDANCE = `## Tool parameters
+
+If you do not know a tool's exact parameter names and types, load its full definition before the first call (for a deferred tool, \`ToolSearch\` with \`select:<tool name>\`) instead of guessing argument names. If a call fails with an unknown or missing argument, read the accepted names in the error and call again with them.
+`
+
 /** Tenant-agnostic preamble describing Open Claude Bridge's split architecture
  * (Linux container holds CLI; user's machine holds files + tools). Used both as
  * the per-session CLAUDE.md header and the global ~/.claude/CLAUDE.md default. */
@@ -60,4 +75,6 @@ Treat that block as the **implicit subject** of the user's question:
 - If the JSON block is absent, the user is asking a general question — do NOT
   assume any particular file is in focus.
 
-${AGENT_TEAMS_REPORTING_CONTRACT}`
+${AGENT_TEAMS_REPORTING_CONTRACT}
+${SUBAGENT_PROGRESS_GUIDANCE}
+${TOOL_PARAMETERS_GUIDANCE}`

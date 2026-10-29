@@ -92,6 +92,27 @@ class SupportTests(unittest.TestCase):
         after = self.widen(sources)
         self.assertIn(SUPPORT + ' impl Fixture', after['layout/mod.rs'])
 
+    def test_trait_impl_gate_follows_its_module_contract(self):
+        sources = self.sources()
+        sources['layout/body.rs'] += ('pub struct Walk;\n'
+            '#[cfg(test)] impl Iterator for Walk { type Item = u8;\n'
+            '    fn next(&mut self) -> Option<u8> { None } }\n')
+        sources['layout/mod.rs'] += 'mod other;\n'
+        sources['layout/other.rs'] = ('pub struct Quiet;\n'
+            '#[cfg(test)] impl core::fmt::Debug for Quiet {\n'
+            '    fn fmt(&self, _: &mut core::fmt::Formatter) -> core::fmt::Result { Ok(()) } }\n')
+        after = self.widen(sources)
+        self.assertIn(SUPPORT + ' impl Iterator for Walk', after['layout/body.rs'])
+        self.assertEqual(after['layout/other.rs'], sources['layout/other.rs'])
+        self.assertEqual(self.widen(after), after)
+
+    def test_generic_trait_impl_contract_rejects(self):
+        for header in ('impl<T> From<T> for Fixture {}', 'impl From<u8> for Fixture {}'):
+            sources = self.sources()
+            sources['layout/mod.rs'] += f'#[cfg(test)] {header}\n'
+            with self.assertRaisesRegex(ValueError, r'layout/mod.rs:\d+: Unsupported test-contract impl header'):
+                self.widen(sources)
+
     def test_unknown_impl_contract_rejects(self):
         sources = self.sources()
         sources['layout/mod.rs'] += '#[cfg(test)] impl<T> Fixture<T> {}\n'
