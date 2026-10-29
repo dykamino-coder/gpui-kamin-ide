@@ -62,4 +62,19 @@ impl ColumnStack {
         };
         (clip, continued)
     }
+
+    /// Пустой хвост фрагментаинера за разрезом куска `f`, кончающегося разрывом без
+    /// подвала: дорожки сетки тянутся через него (`gap_fragment::Scope::end`).
+    pub(super) fn gap_tail(&self, f: &Frag, plan_all: &[Frag]) -> f32 {
+        let line = if self.wraps() { f.col / self.count } else { 0 };
+        let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
+        let continued = plan_all
+            .iter()
+            .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
+        if continued && f.foot <= COORD_EPS {
+            (line_h - f.y - f.h).max(0.0)
+        } else {
+            0.0
+        }
+    }
 }
