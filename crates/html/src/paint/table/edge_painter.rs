@@ -2,6 +2,7 @@
 
 use super::LayerPaint;
 use super::edge_segments::{Seg, collect_cands, draw_cands};
+use crate::layout::fragment::effect_fragment::pieces;
 use crate::layout::table::probes::{CellEdges, GRID_BOX};
 use crate::tolerance::PAINT_EDGE_EPS;
 use gpui::{Bounds, Pixels, Window};
@@ -12,6 +13,7 @@ use gpui::{Bounds, Pixels, Window};
 /// «шире побеждает».
 pub struct EdgePainter {
     pub(crate) edges: CellEdges,
+    owner: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
 }
 
 // Проверено: маска «do-not-fill» для ячейки с охватом (ячейка отдаёт
@@ -24,25 +26,53 @@ pub struct EdgePainter {
 // шести источникам. Смысл появится, когда обе модели сведут в одну, как
 // `TableBorders` у Blink; порознь маска — мёртвый код.
 impl EdgePainter {
-    pub fn new(edges: CellEdges) -> Self {
-        EdgePainter { edges }
+    pub(crate) fn new(
+        edges: CellEdges,
+        owner: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
+    ) -> Self {
+        EdgePainter { edges, owner }
     }
 }
 
 impl LayerPaint for EdgePainter {
     fn paint(&mut self, window: &mut Window) {
         let cells = self.edges.take();
+        // Запись главной копии разрезанного ребёнка: стыки решаются по фрагменту каждого
+        // куска, кромки рисуются его срезом — как копией этого куска под её маской.
+        if let Some(all) = pieces::active(Some(&self.owner)) {
+            for p in all.current().iter() {
+                let slice = gpui::PaintSegmentSlice {
+                    placement: p.placement,
+                    source_clip: p.slice,
+                };
+                let _ = window.with_paint_segment_slices(std::rc::Rc::from([slice]), |window| {
+                    paint_edges(&cells, p.slice, window)
+                });
+            }
+            return;
+        }
+        let mask = window.content_mask().bounds;
+        paint_edges(&cells, mask, window);
+    }
+}
+
+/// Кромки `cells` во фрагменте `mask` (маска копии или срез куска записи).
+fn paint_edges(
+    cells: &[crate::layout::table::probes::EdgeCell],
+    mask: Bounds<Pixels>,
+    window: &mut Window,
+) {
+    {
         // Начало сетки по каждой оси — отдельно от того, кто эту линию красит.
         let grid_lo = cells
             .iter()
             .find(|c| c.source == GRID_BOX)
             .map(|c| (f32::from(c.bounds.origin.x), f32::from(c.bounds.origin.y)));
-        let (mut vert, mut horiz) = collect_cands(&cells);
+        let (mut vert, mut horiz) = collect_cands(cells);
         // Фрагмент таблицы в колонке/на странице рисуется копией под маской
         // фрагмента: кромки за его краем принадлежат другому фрагменту и в
         // стыках этого не участвуют (Blink `ComputeEdgeJoints`: за границей
         // фрагментации соседняя кромка пуста).
-        let mask = window.content_mask().bounds;
         let fragment = Fragment::of(mask);
         // Верх фрагмента — граница фрагментации, если таблица продолжается
         // сверху: какая-то вертикаль целиком выше маски.
