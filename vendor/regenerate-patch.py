@@ -67,6 +67,7 @@ FIXES = {
         "Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).",
         "Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.",
         "Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.",
+        "LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.",
     ],
     "gpui-windows": [
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
