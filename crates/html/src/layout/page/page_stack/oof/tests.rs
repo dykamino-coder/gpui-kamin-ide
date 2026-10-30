@@ -19,6 +19,7 @@ fn kid(source: PageSource) -> super::super::PageKid {
         watched: None,
         float_id: None,
         float_extent: false,
+        replay: false,
         repeat: None,
         frags: Vec::new(),
         monolith: false,

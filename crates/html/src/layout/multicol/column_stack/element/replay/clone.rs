@@ -11,7 +11,7 @@ use gpui::{Bounds, Pixels, Point, point, px};
 impl ColumnStack {
     /// Срез содержимого куска `f` в координатах источника (`source` — место коробки в
     /// главной копии); `None` — ребёнок не clone записи.
-    pub(super) fn clone_slice(
+    pub(in super::super) fn clone_slice(
         &self,
         f: &Frag,
         plan: &[Frag],
