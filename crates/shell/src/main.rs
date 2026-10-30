@@ -123,8 +123,7 @@ fn main() {
         let _ = tx.try_send(host_link::ShellEvent::Ed(EdEvent::OpenFile(path)));
     }
 
-    let app = startup::application();
-    app.run(move |cx| {
+    startup::run(move |cx| {
         startup::configure(cx);
 
         // Насос CEF: очередь событий и перерисовка по приходу кадра.

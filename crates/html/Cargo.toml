@@ -86,12 +86,15 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Storage_Xps",
+  "Win32_Storage_FileSystem",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }
 encoding_rs = "0.8"
 serde_json.workspace = true
+# SHA контекста и снимков; та же версия уже используется в workspace lockfile.
+sha2 = "0.10.9"
 # Платформа gpui (окно, рендерер) — отдельный крейт с 0.3.8.
 gpui-platform.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
@@ -103,3 +106,6 @@ version = "1"
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+gpui-windows = { package = "gpui-pre-windows", version = "=0.3.8", default-features = false }

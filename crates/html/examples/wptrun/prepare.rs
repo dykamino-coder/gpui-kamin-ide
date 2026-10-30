@@ -105,7 +105,7 @@ impl Stage {
         if !equal && let Some(source) = source {
             self.frame_errors.borrow_mut().push(source.to_owned());
             let stem = format!("{}--first-frame", super::capture_name::stem(0, source));
-            super::capture_dump::pair(&stem, &[Some(first.clone()), settled], None);
+            super::capture_dump::pair(&self.audit, &stem, &[Some(first.clone()), settled], None);
         }
         Some(first)
     }
