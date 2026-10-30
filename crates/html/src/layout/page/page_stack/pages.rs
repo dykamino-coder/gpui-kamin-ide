@@ -80,6 +80,8 @@ impl PageStack {
             let sheet = self.sheet_matrix(bounds, f.col);
             let segment = gpui::PaintSegmentId(f.col as u64);
             let scopes = self.oof.slot_scopes.clone();
+            // A child replayed from its main copy lays out and prepaints only that copy.
+            let replay = self.page_routes(f.kid, plan, bounds, window);
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
                 r.place_bands(f, |el, at| {
@@ -101,6 +103,9 @@ impl PageStack {
                     );
                 });
             }
+            if replay.is_some() && f.copy != 0 {
+                continue;
+            }
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {
@@ -116,11 +121,17 @@ impl PageStack {
             );
             window.with_hitbox_transform(sheet, |window| {
                 crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
-                    el.prepaint_at(
-                        point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
-                        window,
-                        cx,
-                    )
+                    let at = point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y));
+                    match &replay {
+                        Some(routes) => {
+                            let _ = routes.prepaint(window, cx, |window, cx| {
+                                el.prepaint_at(at, window, cx);
+                            });
+                        }
+                        None => {
+                            el.prepaint_at(at, window, cx);
+                        }
+                    }
                 })
             });
         }

@@ -163,6 +163,7 @@ pub(super) fn page_kids_from_groups(
             },
             float_extent: prepared.as_ref().is_some_and(|p| p.float_extent)
                 || group.iter().any(&floated),
+            replay: crate::layout::multicol::stack_child::replay::page_replayable(group),
             // The measured flow of a regrown copy sets it (`measure`).
             reach: None,
             end: Default::default(),

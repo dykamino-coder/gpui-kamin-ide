@@ -134,6 +134,8 @@ impl Hooks for PageStack {
         //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
         //    100px — 50, на листах 320px — 160).
         plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
+        // Pieces replayed from a main copy place it through the final sheet geometry.
+        *self.geoms.borrow_mut() = geoms.clone();
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
         *self.geoms.borrow_mut() = geoms.clone();
@@ -193,7 +195,10 @@ impl Hooks for PageStack {
             origin: point(bounds.origin.x + px(x), bounds.origin.y + px(y)),
             size: size(px(w), px(h)),
         };
+        // Main copies record before the sheet matrix, in unscaled stack points.
+        let replayed = self.record_replays(bounds, &plan, window, cx);
         window.with_transformation(matrix, |window| {
+            let masks = (masks, &replayed);
             self.paint_sheets(bounds, cx, s, pages, &plan, masks, rect, window);
         });
         // Повёрнутые листы (`page-orientation`): тот же порядок слоёв, но под
