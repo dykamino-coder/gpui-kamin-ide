@@ -67,7 +67,38 @@ merge/release, не новая runtime-пачка; прежние snapshot и ga
 заменяют и не отменяют принятую task-specific приёмку. Следующий owner при
 новой регрессии — maintainer с evidence на версии, содержащей fix.
 
-## Текущая пачка `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
+## Текущая пачка `RC-2026-10-30-INC82-83` — сверка доставленного результата
+
+**Status:** in progress. **Snapshot:** public `origin/main`
+`22b2b00b9f8b57ee441cbe8d6e2ba971dfac3c65`.
+**Поручение 2026-10-30:** владелец поручил самому сверить и привести в порядок
+INC-0082/0083 после параллельной работы, выполнить доступные серверные проверки,
+закрыть только доказанный результат и оставить конкретный handoff, если нужен.
+Роль: maintainer в этом ограниченном scope. Windows runtime и deployment в этом
+запуске недоступны; существующий принятый evidence проверяется по источнику,
+новый Windows pass не заявляется. Открытые #549/#552/#437 ведёт другой lead и
+в snapshot не входят; его ветки и release не изменяются.
+
+**Completion target:** оба INC и private packets согласованы с #536/#537/#539 и
+их публикацией; исходные acceptance пункты имеют outcome/evidence либо точный
+остаток/owner, без повторной реализации уже доставленного. Связанные старые
+BR/INC сохраняют собственные ID и gates. Недоказанные предложения по развитию
+не объявляются новыми подтверждёнными багами. Итоговый реестр обновляется после
+merge/fetch результатов; documentation/verification сами release не требуют.
+
+| Deliverable | State / artifact | Gate и следующий результат |
+| --- | --- | --- |
+| INC-0082 / #537/#539 reconciliation | in progress / verify | Current-source store + HTTP/WS suites; synthetic sequence above old retained/owner thresholds, restart, owner isolation and bounded overload; matrix maps original requirements without claiming production throughput |
+| INC-0083 / #536 reconciliation | in progress / verify | Current-source paging/cursor/lazy-child/scanner suites and isolated mixed workload where available; inspect accepted native evidence and preserve uncovered Windows/deployment scenarios with an exact owner |
+| Related-task routing and concurrent delivery handoff | ready / change | Existing-task routing plus a read-only CI guard for explicitly tracked implementation branches: merged PR links must appear in the card; it neither closes incidents nor changes Windows gates |
+| Batch close-out | waiting / coordination | Depends on merged public/private results and fresh-main verification; do not treat a local test, opened PR or release notes as blanket closure |
+
+Допустим новый bounded server fix только после воспроизводимого gap, регистрации
+и явного добавления child к этому snapshot. Бесконечный аудит всего backlog,
+production operations, чужие PR и новые native изменения не поручены. Блокер
+Windows не задерживает независимый source/metadata результат.
+
+## История `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
 
 **Status:** complete — both bounded source fixes accepted, one publication verified; field observation is not run and belongs to the deployment owner. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
 **Поручение 2026-10-20:** владелец поручил самому завершить fixes со скриншотов,
