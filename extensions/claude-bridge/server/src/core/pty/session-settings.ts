@@ -237,6 +237,10 @@ export function writeSessionSettings(
       CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: '350000',
       // Default CLI value is ~27.8h; pin explicitly so future CLI updates don't shrink it.
       MCP_TOOL_TIMEOUT: '100000000',
+      // The image pins the CLI (the queued-delivery mod needs 2.1.312), and the
+      // non-root `bridge` user cannot write the npm prefix, so the auto-updater
+      // could only fail with "no write permission to npm prefix".
+      DISABLE_AUTOUPDATER: '1',
     },
   }
   fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(localSettings, null, 2))
