@@ -5,13 +5,18 @@ vi.mock('./session-mcp-call', () => ({ pendingMcpCalls: mock.pending }))
 vi.mock('./mcp-tasks', () => ({
   mcpTasks: {
     working: async () => mock.tasks,
+    commands: async (owner: string) => mock.tasks.filter((t) => t.owner === owner && !t.hiddenFromCommands),
+    clearCommands: async (owner: string) => {
+      for (const task of mock.tasks)
+        if (task.owner === owner && task.status !== 'working') task.hiddenFromCommands = true
+    },
     get: async (owner: string, id: string) => mock.tasks.find((t) => t.owner === owner && t.taskId === id),
     update: async (owner: string, id: string, fn: (t: any) => void) =>
       fn(mock.tasks.find((t) => t.owner === owner && t.taskId === id)),
   },
 }))
 vi.mock('./session-io', () => ({ sendToClient: mock.send }))
-import { acceptCommandReport, commandSnapshot, commandOutput, stopCommand } from './commands'
+import { acceptCommandReport, commandSnapshot, commandOutput, stopCommand, clearCompletedCommands } from './commands'
 const session = { id: 'pty-a', mcpEndpoint: { id: 'owner-a' }, ws: {} } as PtySession
 const other = { id: 'pty-b', mcpEndpoint: { id: 'owner-b' }, ws: {} } as PtySession
 beforeEach(() => {
@@ -28,6 +33,7 @@ describe('session commands projection', () => {
       taskId: 'task',
       toolName: 'Bash',
       command: 'bg',
+      input: {},
       background: true,
       status: 'working',
       createdAt: new Date(2).toISOString(),
@@ -37,8 +43,8 @@ describe('session commands projection', () => {
       shells: [{ id: 'shell:1', tool: 'Bash', command: 'legacy', startedAt: 3, running: true, output: 'tail' }],
     })
     expect((await commandSnapshot(session)).commands.map((c) => c.id)).toEqual(['task', 'shell:1', 'foreground'])
-    expect(await commandOutput(session, 'foreign')).toBe('No output yet.')
-    expect(await commandOutput(other, 'shell:1')).toBe('No output yet.')
+    expect(await commandOutput(session, 'foreign')).toBe('')
+    expect(await commandOutput(other, 'shell:1')).toBe('')
     expect(await commandOutput(session, 'shell:1')).toBe('tail')
   })
   it('cancels through the matching execution owner only', async () => {
@@ -53,4 +59,53 @@ describe('session commands projection', () => {
       taskOwner: 'owner-a',
     })
   })
+})
+
+it('retains finished tasks and legacy shells with metadata, final output and owner-scoped clearing', async () => {
+  mock.tasks.push({
+    owner: 'owner-a',
+    taskId: 'done',
+    toolName: 'Bash',
+    command: 'full command',
+    input: {},
+    description: 'Build app',
+    background: true,
+    status: 'completed',
+    createdAt: new Date(1000).toISOString(),
+    lastUpdatedAt: new Date(6000).toISOString(),
+    result: { exitCode: 7, isError: true, content: [{ type: 'text', text: 'failed output' }] },
+  })
+  mock.tasks.push({ ...mock.tasks[0], owner: 'owner-b', taskId: 'private' })
+  await acceptCommandReport(session, {
+    calls: [],
+    shells: [
+      {
+        id: 'shell:2',
+        tool: 'PowerShell',
+        command: 'echo legacy',
+        description: 'Legacy task',
+        startedAt: 2000,
+        finishedAt: 8000,
+        exitCode: 0,
+        running: false,
+        output: 'done',
+      },
+    ],
+  })
+  expect((await commandSnapshot(session)).commands).toEqual([
+    expect.objectContaining({ id: 'done', description: 'Build app', finishedAt: 6000, status: 'failed', exitCode: 7 }),
+    expect.objectContaining({
+      id: 'shell:2',
+      description: 'Legacy task',
+      finishedAt: 8000,
+      status: 'completed',
+      exitCode: 0,
+    }),
+  ])
+  expect(await commandOutput(session, 'done')).toBe('failed output')
+  await clearCompletedCommands(other)
+  expect((await commandSnapshot(session)).commands).toHaveLength(2)
+  await clearCompletedCommands(session)
+  expect((await commandSnapshot(session)).commands).toHaveLength(0)
+  expect(await commandOutput(session, 'done')).toBe('failed output')
 })

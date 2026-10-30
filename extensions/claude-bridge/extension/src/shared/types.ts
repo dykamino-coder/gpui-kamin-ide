@@ -385,7 +385,7 @@ export interface KaminBridgeApi {
   requestJsonlReplay(tabId?: string): void
 
   // ─── JSONL Download ───────────────────────────────────
-  commandAction(tabId: string, action: 'list' | 'stop' | 'output', id?: string): void
+  commandAction(tabId: string, action: 'list' | 'stop' | 'output' | 'clear', id?: string): void
   onCommandsSnapshot(callback: (tabId: string, snapshot: import('./commands').CommandSnapshot) => void): () => void
   onCommandOutput(callback: (tabId: string, result: { id: string; output: string }) => void): () => void
   downloadJsonl(tabId: string, agentId?: string): Promise<{ success: boolean; filePath?: string; error?: string }>

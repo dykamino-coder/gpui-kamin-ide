@@ -1,6 +1,6 @@
 // Merge server tasks with the tab's authoritative local legacy shell registry.
 import type { CommandSnapshot } from '../../shared/commands'
-import { localBackgroundShellSnapshot, stopLocalBackgroundShell } from '../mcp/tools/shell'
+import { localBackgroundShellSnapshot, stopLocalBackgroundShell, clearLocalCompletedShells } from '../mcp/tools/shell'
 
 export class ClientCommands {
   private remote?: { snapshot: CommandSnapshot; at: number }
@@ -26,19 +26,45 @@ export class ClientCommands {
       ? this.remote!.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id))
       : []
     for (const shell of shells) {
-      if (shell.running) {
+      if (!shell.hiddenFromCommands) {
         commands.push({
           id: shell.id,
           tool: shell.tool,
           command: shell.command,
+          description: shell.description,
+          finishedAt: shell.finishedAt,
+          exitCode: shell.exitCode,
           startedAt: shell.startedAt,
           background: true,
-          status: 'running',
+          status: shell.running
+            ? shell.stopped
+              ? 'stopping'
+              : 'running'
+            : shell.stopped
+              ? 'stopped'
+              : shell.exitCode === 0
+                ? 'completed'
+                : 'failed',
         })
       }
     }
     commands.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt)
-    this.publish('commands:snapshot', { sessionId, commands, serverAvailable } satisfies CommandSnapshot)
+    this.publish('commands:snapshot', {
+      sessionId,
+      commands,
+      serverAvailable,
+    } satisfies CommandSnapshot)
+  }
+
+  clear(): void {
+    clearLocalCompletedShells(this.tabId)
+    if (this.remote)
+      this.remote.snapshot = {
+        ...this.remote.snapshot,
+        commands: this.remote.snapshot.commands.filter((c) =>
+          ['running', 'stopping', 'disconnected'].includes(c.status),
+        ),
+      }
   }
 
   localAction(action: 'stop' | 'output', id: string): boolean {

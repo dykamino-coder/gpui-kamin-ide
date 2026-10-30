@@ -156,3 +156,21 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
     expect(await store.get('owner-b', second.taskId)).toMatchObject({ status: 'completed' })
   })
 })
+
+it('preserves descriptions and full commands, and persists clearing without destroying agent results', async () => {
+  const command = 'echo ' + 'x'.repeat(12000)
+  const done = await store.create('owner', 'Bash', { command, description: 'Long build', run_in_background: true })
+  const active = await store.create('owner', 'Bash', { command: 'sleep 90' })
+  await store.settle('owner', done.taskId, { exitCode: 0, content: [{ type: 'text', text: 'output' }] })
+  const projection = (await store.commands('owner')).find((t) => t.taskId === done.taskId)!
+  expect(projection).toMatchObject({ command, description: 'Long build', result: { exitCode: 0 } })
+  expect(projection.result).not.toHaveProperty('content')
+  expect(await store.commands('other')).toEqual([])
+  await store.clearCommands('other')
+  expect(await store.commands('owner')).toHaveLength(2)
+  await store.clearCommands('owner')
+  store = new McpTaskStore(directory, () => clock)
+  expect((await store.commands('owner')).map((t) => t.taskId)).toEqual([active.taskId])
+  expect((await store.get('owner', done.taskId))?.result?.content).toEqual([{ type: 'text', text: 'output' }])
+  expect(taskView((await store.get('owner', done.taskId))!)).not.toHaveProperty('hiddenFromCommands')
+})
