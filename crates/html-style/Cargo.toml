@@ -1,0 +1,48 @@
+[package]
+name = "kamin-style"
+version.workspace = true
+edition.workspace = true
+
+# Нижняя фаза движка HTML/CSS: DOM и разбор разметки, разбор CSS, селекторы,
+# каскад и вычисленный стиль, ресурсы документа (картинки, SVG-документы) и
+# нижние данные документа (`values`: арены значений, at-правила, готовность
+# кадра, шрифтовые факты ADR3). Раскладку, текст и краску держит `kamin-html`;
+# бэкенд шрифтов передаётся провайдером фактов.
+
+[features]
+# Тестовые помощники нижних модулей для тестов `kamin-html`; включает только
+# его dev-dependency, обычный граф зависимостей его не выбирает.
+engine-test-support = []
+
+[dependencies]
+# Нижний контракт шрифтов.
+kamin-font-facts = { path = "../font-facts" }
+url = "2"
+encoding_rs = "0.8.35"
+# XML source ranges preserve SVG markup when resolving URL fragments.
+roxmltree = "0.21.1"
+# Потоковый XML-вход: вложенность хранится в куче, а не в стеке вызовов.
+xml-rs = "0.8.29"
+# SVG fragment parameters use the same grammar as the rasterizer.
+svgtypes = "0.16.1"
+gpui.workspace = true
+# KaminIDE patch: своя копия — добавлены инструкции обработки (`<?…>`),
+# которых в разборе не было (см. vendor/html5ever).
+html5ever = { path = "../../vendor/html5ever" }
+# KaminIDE patch: своя копия — в реестровой пуст крючок переноса
+# `<option>` в `<selectedcontent>` (см. vendor/markup5ever_rcdom).
+markup5ever_rcdom = { path = "../../vendor/markup5ever_rcdom" }
+# Направление текста по UBA для `dir=auto` и первой сильной буквы.
+unicode-bidi = "0.3.18"
+# Typographic units for text-combine-upright include combining marks.
+unicode-segmentation = "1.13.3"
+# Кодеки картинок ресурсов (`resources::images`): тот же крейт и набор форматов, что у
+# GPUI, без второго комплекта кодеков и без растеризатора.
+image = { version = "0.25", default-features = false, features = [
+  "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp",
+] }
+# Тот же CPU-растеризатор, что у GPUI; шрифты передаёт документ.
+resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
+
+[lints]
+workspace = true

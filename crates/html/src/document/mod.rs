@@ -214,7 +214,6 @@ impl Document {
 }
 
 #[cfg(test)]
-mod style;
-
-#[cfg(test)]
 mod image_values;
+
+pub mod dom;

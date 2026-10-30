@@ -14,6 +14,7 @@ from canonical_exports import CanonicalExports
 from module_sources import modules, code_mask, DECL
 from source_relocation import source_locations, relocate_includes, PACKAGE_DIRS
 from migration_test_support import widen
+from migration_facade import recover
 
 
 ROOT_OWNERS = {
@@ -135,7 +136,7 @@ def virtual_root(source, roots):
     return source
 
 
-def facade(source, declarations):
+def facade(source, declarations, aliases=None):
     changes = []
     mask = code_mask(source)
     for path, module in declarations.items():
@@ -151,7 +152,12 @@ def facade(source, declarations):
         if start == -1:
             start = mask.index('mod', match.end('attrs'), match.end())
         visible = match['vis'] or ''
-        changes.append((start, end, f'{visible}use {target.replace("-", "_")}::{name};'))
+        forward = (aliases or {}).get(name, f'use {target.replace("-", "_")}::{name};')
+        if name in getattr(aliases, 'declarations', ()):
+            start, replacement = match.start('attrs'), forward
+        else:
+            replacement = visible + forward
+        changes.append((start, end, replacement))
     for start, end, text in sorted(changes, reverse=True):
         source = source[:start] + text + source[end:]
     return source
@@ -233,8 +239,8 @@ def plan(sources, existing_files, physical=None, crate_roots=None):
         raise ValueError(f'Unassigned roots: {sorted(unknown)}')
     originals = dict(sources)
     sources = {name: source.replace('\r\n', '\n') for name, source in sources.items()}
-    original_root = originals['lib.rs']
-    sources['lib.rs'] = virtual_root(sources['lib.rs'], roots)
+    recovered, aliases = recover(sources['lib.rs'], sources, ROOT_OWNERS)
+    sources['lib.rs'] = virtual_root(recovered, roots)
     declarations, file_modules = modules(sources)
     if set(file_modules) != set(sources):
         raise ValueError(f'Undeclared implementation files: {sorted(set(sources) - file_modules.keys())}')
@@ -261,7 +267,7 @@ def plan(sources, existing_files, physical=None, crate_roots=None):
     for filename, source in sorted(sources.items()):
         package = owner(filename)
         if filename == 'lib.rs':
-            after = facade(source, declarations)
+            after = facade(source, declarations, aliases)
         elif package == 'kamin-html' and FACADE_PATHS[0]:
             after = source
         else:
@@ -277,6 +283,7 @@ def plan(sources, existing_files, physical=None, crate_roots=None):
                 target = package_tokens[word]
                 if package != target:
                     edges[(package, target)].append((filename, line))
+        after = aliases.restore(filename, after)
         before = originals[filename]
         new = locations[physical[filename]]
         if physical[filename] != new or before != after:
