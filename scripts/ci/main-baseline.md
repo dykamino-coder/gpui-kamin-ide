@@ -6,7 +6,7 @@ and manual runs do not publish baselines. Main pushes always run this Windows jo
 even when changed-file scope would otherwise skip Rust, so every main SHA gets a
 baseline. No release or version change is involved.
 
-From a checkout with Git, Python 3.8+ and authenticated GitHub CLI:
+From a Windows checkout with Git, Python 3.8+ and authenticated GitHub CLI:
 
 ```powershell
 git fetch origin
@@ -23,6 +23,22 @@ The script creates `OUTPUT/<full-SHA>` containing:
 | `html-tests.exe` | `cargo html-test --locked --no-run`, no additional features |
 | `html-tests-wpt.exe` | `cargo html-test --locked --no-run --features wpt-harness` |
 | `manifest.json` | Commit, source tree, rustc, target, configuration input hashes, executable sizes/hashes and build timings |
+| `shaders.hlsl`, `color_text_raster.hlsl`, `alpha_correction.hlsl` | Exact runtime GPUI shader sources, with sizes and SHA-256 in the manifest |
+
+Dev GPUI compiles HLSL at runtime, using an absolute `CARGO_MANIFEST_DIR` path
+embedded in the executable (`vendor/gpui-windows/src/directx_renderer.rs`). An
+executable copied out of the default CI checkout cannot find those sources on an
+agent machine. The builder's `--ci-layout` option makes a shallow local clone of
+the exact detached commit into
+`C:/Users/Public/Documents/KaminIDE/main-baseline/<SHA>` before compilation.
+The downloader installs the three verified HLSL files into that same per-SHA
+`vendor/gpui-windows/src` directory. This small runtime cache is required in
+addition to the requested output directory. It needs ordinary write access to
+Public Documents; an existing shader is checked and never overwritten. The
+manifest cannot choose an arbitrary installation path. Each SHA has its own path,
+so refreshing another baseline cannot change an older runner's shaders. Keep this
+runtime cache while using the corresponding executable. No renderer code,
+compiler flags, binary patching or release-profile substitution is involved.
 
 The runner command, target directory and effective dev profile match the local
 gate's `build_shared.sh`. The measured gate machine sets
@@ -46,13 +62,15 @@ inputs; the differing profiles require separate compilation. `target/fast` isola
 quality cache is saved before baseline compilation so gate output, incremental state
 and agent output do not enlarge it. Exact baseline compilation therefore has a
 cold cost on each main push; manifest timings make that cost visible. Only
-the three executables and manifest are uploaded, without PDBs, logs or targets.
+the three executables, three HLSL files and manifest are uploaded, without PDBs,
+logs or targets. The per-SHA source clone and its target are ephemeral runner
+storage and are not added to the shared cache.
 Build durations in the manifest expose the additional cost on the actual runner.
 
 The downloader checks a successful main **push**, workflow path, source repository,
 run SHA and artifact SHA before checking the downloaded archive against GitHub's
 SHA-256 digest. It then checks the manifest commit/target/configurations and every
-executable's SHA-256 and size. Unexpected archive members are rejected; files are
+executable's and shader's SHA-256 and size. Unexpected archive members are rejected; files are
 written only after all checks pass. An existing output directory is never replaced.
 The SHA-256 field comes from the [GitHub artifact API](https://docs.github.com/en/rest/actions/artifacts).
 

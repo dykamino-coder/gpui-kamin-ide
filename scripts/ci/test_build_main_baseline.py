@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import subprocess
 from contextlib import redirect_stderr
 from pathlib import Path
 import tempfile
@@ -73,6 +74,25 @@ class SourceChecksTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Windows-only builder")
     def test_dirty_sources_rejected_before_build(self):
         self.rejects({}, ["a" * 40, " M Cargo.toml"], "Tracked sources must be clean")
+
+
+class LayoutTests(unittest.TestCase):
+    def test_local_shallow_copy_preserves_detached_commit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "source"
+            subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+            (source / "tracked.txt").write_text("exact source\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(source), "add", "tracked.txt"], check=True)
+            subprocess.run(["git", "-C", str(source), "-c", "user.name=Fixture",
+                            "-c", "user.email=fixture@example.invalid", "commit", "-m", "fixture"],
+                           check=True, capture_output=True)
+            sha = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+            subprocess.run(["git", "-C", str(source), "checkout", "--detach", sha],
+                           check=True, capture_output=True)
+            dest = build.ci_checkout(source, sha, Path(folder) / "runtime")
+            self.assertEqual((dest / "tracked.txt").read_text(encoding="utf-8"), "exact source\n")
+            self.assertEqual(subprocess.check_output(["git", "-C", str(dest), "rev-parse",
+                                                      "--is-shallow-repository"], text=True).strip(), "true")
 
 
 if __name__ == "__main__":

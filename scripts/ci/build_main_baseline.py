@@ -11,6 +11,21 @@ import time
 
 
 REPOSITORY = "dykamino-coder/gpui-kamin-ide"
+CI_ROOT = Path("C:/Users/Public/Documents/KaminIDE/main-baseline")
+SHADERS = ("shaders.hlsl", "color_text_raster.hlsl", "alpha_correction.hlsl")
+
+
+def ci_checkout(source, sha, root=CI_ROOT):
+    """Keep debug GPUI's compiled absolute shader path reproducible on consumers."""
+    dest = root / sha
+    subprocess.run(["git", "clone", "--config", "core.longpaths=true",
+                    "--no-local", "--depth", "1", "--no-checkout",
+                    str(source), str(dest)], check=True)
+    subprocess.run(["git", "-C", str(dest), "checkout", "--detach", sha], check=True)
+    if subprocess.check_output(["git", "-C", str(dest), "rev-parse", "HEAD"],
+                               text=True).strip() != sha:
+        raise ValueError("CI source copy SHA mismatch")
+    return dest
 
 
 def output(*args):
@@ -51,6 +66,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wptrun", type=Path, help="Already built by build_shared.sh")
+    parser.add_argument("--ci-layout", action="store_true", help="Use the per-SHA runtime shader path")
     args = parser.parse_args()
     if os.name != "nt":
         parser.error("Windows x64 MSVC is required")
@@ -71,6 +87,15 @@ def main():
     if "host: x86_64-pc-windows-msvc" not in rustc:
         parser.error("Expected x86_64-pc-windows-msvc host")
     dest = args.output.resolve()
+    prebuilt = args.wptrun.resolve() if args.wptrun else None
+    if args.ci_layout:
+        if prebuilt:
+            parser.error("--ci-layout requires compiling wptrun in the CI source layout")
+        started = time.monotonic()
+        os.chdir(ci_checkout(Path.cwd(), sha))
+        layout_seconds = round(time.monotonic() - started, 3)
+    else:
+        layout_seconds = None
     dest.mkdir(parents=True, exist_ok=False)
     entries, builds = [], []
 
@@ -83,7 +108,7 @@ def main():
         builds.append({"command": command, "seconds": seconds})
 
     if args.wptrun:
-        binary, seconds = args.wptrun.resolve(), None
+        binary, seconds = prebuilt, None
         command = ["build_shared.sh", "<worktree>", "<output>"]
     else:
         # Same command/profile/features and implicit host target as build_shared.sh.
@@ -108,11 +133,19 @@ def main():
     if output("git", "rev-parse", "HEAD") != sha or output(
             "git", "status", "--porcelain", "--untracked-files=no"):
         parser.error("Tracked sources changed during the build")
+    shader_root = Path("vendor/gpui-windows/src").resolve()
+    resources = []
+    for name in SHADERS:
+        shutil.copy2(shader_root / name, dest / name)
+        resources.append({"name": name, "sha256": digest(dest / name),
+                          "size": (dest / name).stat().st_size})
     manifest = {
-        "schema": 1, "repository": REPOSITORY, "commit": sha,
+        "schema": 2, "repository": REPOSITORY, "commit": sha,
         "tree": output("git", "rev-parse", "HEAD^{tree}"),
         "target": "x86_64-pc-windows-msvc", "rustc": rustc,
         "gate_debug": "line-tables-only",
+        "shader_root": shader_root.as_posix(), "resources": resources,
+        "layout_seconds": layout_seconds,
         "files": entries, "builds": builds,
         "inputs": {name: digest(Path(name)) for name in (
             "Cargo.toml", "Cargo.lock", ".cargo/config.toml", "rust-toolchain.toml")},

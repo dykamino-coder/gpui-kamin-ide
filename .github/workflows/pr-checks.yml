@@ -495,10 +495,11 @@ jobs:
           Remove-Item Env:CARGO_PROFILE_DEV_DEBUG
           Remove-Item Env:CARGO_PROFILE_TEST_DEBUG
           Remove-Item Env:CARGO_INCREMENTAL
-          python scripts/ci/build_main_baseline.py --output "$env:RUNNER_TEMP/main-baseline"
+          python scripts/ci/build_main_baseline.py --ci-layout --output "$env:RUNNER_TEMP/main-baseline"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $manifest = Get-Content -Raw "$env:RUNNER_TEMP/main-baseline/manifest.json" | ConvertFrom-Json
           "### Exact main baseline build cost" >> $env:GITHUB_STEP_SUMMARY
+          "- Per-SHA source layout: $($manifest.layout_seconds) seconds; shaders: $($manifest.shader_root)" >> $env:GITHUB_STEP_SUMMARY
           foreach ($build in $manifest.builds) {
             "- $($build.command -join ' '): $($build.seconds) seconds" >> $env:GITHUB_STEP_SUMMARY
           }
@@ -515,6 +516,9 @@ jobs:
             ${{ runner.temp }}/main-baseline/html-tests.exe
             ${{ runner.temp }}/main-baseline/html-tests-wpt.exe
             ${{ runner.temp }}/main-baseline/manifest.json
+            ${{ runner.temp }}/main-baseline/shaders.hlsl
+            ${{ runner.temp }}/main-baseline/color_text_raster.hlsl
+            ${{ runner.temp }}/main-baseline/alpha_correction.hlsl
           if-no-files-found: error
           retention-days: 3
           compression-level: 6
