@@ -12,7 +12,7 @@ struct Sink {
     since: Instant,
 }
 
-pub(super) fn emit_line(line: String) {
+pub(crate) fn emit_line(line: String) {
     static SINK: LazyLock<Mutex<Sink>> = LazyLock::new(|| {
         Mutex::new(Sink {
             log: Log::new(

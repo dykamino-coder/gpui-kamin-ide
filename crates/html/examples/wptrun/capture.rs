@@ -15,7 +15,10 @@ pub(super) fn setup() -> (
     Capture,
     Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
 ) {
-    let offscreen = std::env::var("WPT_OFFSCREEN").as_deref() == Ok("1");
+    let offscreen = std::env::var("WPT_OFFSCREEN").as_deref() != Ok("0");
+    if !offscreen {
+        super::audit::fatal("exact runner requires GPU readback (WPT_OFFSCREEN=1)");
+    }
     let first = std::env::var("WPT_FIRST_FRAME").as_deref() == Ok("1");
     let ready = std::env::var("WPT_READY").as_deref() != Ok("0");
     let (session, sink) = if offscreen || first {

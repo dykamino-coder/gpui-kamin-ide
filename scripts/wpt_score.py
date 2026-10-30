@@ -15,6 +15,9 @@
 import re
 import sys
 from pathlib import Path
+# Поддерживается и embedded Python, который не добавляет каталог скрипта в sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from wpt_context import InfrastructureError, compare
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -71,6 +74,7 @@ def report(path: Path) -> None:
 
 
 def diff(old: Path, new: Path) -> None:
+    compare(old, new)
     a, b = load(old), load(new)
     keys = [k for k in b if k in a]
     fixed = [(a[k], b[k], k) for k in keys if a[k] > THRESHOLD >= b[k]]
@@ -103,4 +107,9 @@ def main() -> None:
         report(path)
 
 
-main()
+if __name__ == "__main__":
+    try:
+        main()
+    except InfrastructureError as error:
+        print(error, file=sys.stderr)
+        sys.exit(2)
