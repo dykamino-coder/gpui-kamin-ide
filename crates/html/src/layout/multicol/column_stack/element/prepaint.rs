@@ -46,14 +46,20 @@ impl ColumnStack {
                 };
                 (dec, geom, end)
             });
-            if *clone.borrow() == split {
-                continue;
-            }
-            *clone.borrow_mut() = split;
             let count = c.frags.len() + 1;
-            c.el = copier(0, false);
-            c.frags = (1..count).map(|part| copier(part, false)).collect();
-            c.fragment_builders.clear();
+            if *clone.borrow() != split {
+                *clone.borrow_mut() = split;
+                c.el = copier(0, false);
+                c.frags = (1..count).map(|part| copier(part, false)).collect();
+                c.fragment_builders.clear();
+                if let Some(d) = c.clone_deco.as_mut() {
+                    d.decos.clear();
+                }
+            }
+            // Украшения фрагментов корня, рисуемого записью, — по одной копии без содержимого.
+            if let Some(d) = c.clone_deco.as_mut().filter(|d| d.decos.len() != count) {
+                d.decos = (0..count).map(|part| (d.build)(part)).collect();
+            }
         }
     }
 
@@ -161,7 +167,9 @@ impl ColumnStack {
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
             // на полную высоту коробки и поднимать на срез нельзя.
-            let clone = self.children[f.kid].clone_dec.is_some();
+            // Корень clone в записи раскладывается непрерывной коробкой; украшения его
+            // фрагментов — свои копии без содержимого на месте каждого куска.
+            let clone = self.children[f.kid].clone_dec.is_some() && replay.is_none();
             let full_h = if clone { f.h } else { self.children[f.kid].h };
             // Колонка в своём ряду: `x` по номеру в ряду, `y` от верха ряда.
             let (c, ry) = self.place(f.col);
@@ -178,6 +186,13 @@ impl ColumnStack {
             // совпадает с местом во фрагменте; видимой полосу делает маска.
             if let Some(r) = kid.repeat.as_mut() {
                 prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx);
+            }
+            let decos = kid.clone_deco.as_mut().map(|d| &mut d.decos[..]);
+            let deco = decos.and_then(|d| d.iter_mut().nth(f.copy));
+            if let Some(deco) = deco.filter(|_| replay.is_some()) {
+                let rtl = kid.par.rtl_root_in_ltr;
+                layout_frag(deco, point(x, y), (col_w, f.h), rtl, window, cx);
+                deco.prepaint(window, cx);
             }
             if replay.is_some() && f.copy != 0 {
                 continue;

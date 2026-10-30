@@ -14,6 +14,14 @@ pub(crate) enum BreaksAt {
     Column,
 }
 
+/// Корень clone, рисуемый записью (`stack_child::replay::clone_record`): его узел,
+/// построитель копии фрагмента `part` без содержимого и такие копии по кускам плана.
+pub(crate) struct CloneDeco {
+    pub(crate) node: u64,
+    pub(crate) build: std::rc::Rc<dyn Fn(usize) -> AnyElement>,
+    pub(crate) decos: Vec<AnyElement>,
+}
+
 /// Ребёнок колонок: элемент, геометрия и схлопывающиеся поля.
 pub struct StackChild {
     pub el: AnyElement,
@@ -163,6 +171,8 @@ pub struct StackChild {
     /// Геометрия копий `box-decoration-break: clone` по итоговому плану
     /// (`CloneGeom`).
     pub(crate) clone_frags: Option<CloneGeom>,
+    /// Украшения фрагментов корня clone, рисуемого записью.
+    pub(crate) clone_deco: Option<CloneDeco>,
     /// Построитель копии `part` (0 — главная): число копий решает план по
     /// измеренной протяжённости ребёнка, а не предварительная оценка.
     pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize, bool) -> AnyElement>>,
