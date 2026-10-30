@@ -23,8 +23,12 @@ pub(crate) enum Layer<'a> {
     },
     /// The cell backgrounds of a collapsed-border table, below its edges.
     CellBackgrounds(CellBgs),
-    /// The collapsed edges of a table (CSS 2.1 §17.6.2.1).
-    CollapsedEdges(CellEdges),
+    /// The collapsed edges of a table (CSS 2.1 §17.6.2.1); `owner` holds the pieces of a
+    /// recorded main copy, whose joints are decided per fragment.
+    CollapsedEdges {
+        edges: CellEdges,
+        owner: Rc<Deferred>,
+    },
     /// Линейки промежутков над геометрией детей и колонок, под содержимым.
     GapRules {
         items: GapItems,
@@ -34,6 +38,13 @@ pub(crate) enum Layer<'a> {
 }
 
 impl<'a> Layer<'a> {
+    pub(crate) fn collapsed_edges(edges: CellEdges, cx: &LayoutCx) -> Self {
+        Layer::CollapsedEdges {
+            edges,
+            owner: cx.deferred.paint.clone(),
+        }
+    }
+
     pub(crate) fn gap_rules(items: GapItems, spec: GapRuleSpec, cx: &LayoutCx) -> Self {
         Layer::GapRules {
             items,

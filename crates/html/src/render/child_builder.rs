@@ -111,7 +111,7 @@ fn layer(layer: Layer<'_>) -> AnyElement {
             table::layer(CellsClipped::new(rects, *style, vcx))
         }
         Layer::CellBackgrounds(bgs) => table::layer(CellBgPainter::new(bgs)),
-        Layer::CollapsedEdges(edges) => table::layer(EdgePainter::new(edges)),
+        Layer::CollapsedEdges { edges, owner } => table::layer(EdgePainter::new(edges, owner)),
         Layer::GapRules { items, spec, owner } => {
             crate::hooks::PaintOnly(GapRulePainter::new(items, *spec, owner)).hooked()
         }

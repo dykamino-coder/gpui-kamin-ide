@@ -12,8 +12,8 @@ use crate::style::computed::{Display, Position};
 /// записью: его ряды разложены в главной копии по внешним фрагментаинерам
 /// (`column_regrow::nest`), и срез внешнего куска отделяет ряд своего фрагментаинера.
 /// Остаются на копиях: объёмные преобразования и перспектива (их плоскости решаются на
-/// отрисовке по накопленной матрице), фильтры по ссылке и фона; сросшиеся кромки таблицы
-/// решают стыки по маске своего куска (`EdgePainter`). Внепоточные коробки
+/// отрисовке по накопленной матрице), фильтры по ссылке и фона. Сросшиеся кромки таблицы
+/// решают стыки по фрагменту каждого куска записи (`EdgePainter`). Внепоточные коробки
 /// продолжаются своими слотами и в записи (`continuation::replayed`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
 /// Обход — итеративный.
@@ -24,7 +24,9 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         let s = e.style.used();
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
         // (`element::admission::items`).
-        let per_copy = table_part(e) && s.border_collapse == Some(true);
+        // Сросшиеся кромки таблицы решают стыки по фрагменту каждого куска записи
+        // (`EdgePainter`), как копия — по маске своего куска.
+        let collapsed = table_part(e) && s.border_collapse == Some(true);
         // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
         // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
@@ -37,10 +39,11 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
-        if per_copy || (oof && planed) || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
+        if (oof && planed) || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
             return (false, false);
         }
-        effects |= !s.shadows.is_empty()
+        effects |= collapsed
+            || !s.shadows.is_empty()
             || s.transform.is_some()
             || s.rotate_prop.is_some()
             || s.scale_prop.is_some()
