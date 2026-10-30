@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { implementationBranches, mergedBranchPulls, verifyImplementationLinks } from "./runtime-implementation-links.mjs";
 
 const format = /^- \*\*Published fix:\*\* `(kaminide-v\d+\.\d+\.\d+)`; commit `([a-f0-9]{40})`; \[#(\d+)\]\(https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/\3\)\.$/;
 
@@ -34,10 +35,17 @@ export function verifyDelivery(record, { repo = ".", release }) {
 export function checkRuntimeDeliveries({ repo = "." } = {}) {
   const directory = resolve(repo, "extensions/claude-bridge/runtime-issues");
   const releases = new Map();
+  const branches = new Map();
   let count = 0;
   for (const file of readdirSync(directory).filter((name) => /^INC-\d+-\d+\.md$/.test(name)).sort()) {
     try {
-      for (const record of deliveryRecords(readFileSync(resolve(directory, file), "utf8"))) {
+      const card = readFileSync(resolve(directory, file), "utf8");
+      for (const tracked of implementationBranches(card)) {
+        const key = `${tracked.repository}:${tracked.branch}`;
+        if (!branches.has(key)) branches.set(key, mergedBranchPulls(tracked));
+        verifyImplementationLinks(card, tracked, branches.get(key));
+      }
+      for (const record of deliveryRecords(card)) {
         // Historical delivery in an upstream repo stays upstream even in a fork.
         const key = `${record.repository}/${record.tag}`;
         if (!releases.has(key)) {
@@ -55,7 +63,7 @@ export function checkRuntimeDeliveries({ repo = "." } = {}) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    console.log(`Verified ${checkRuntimeDeliveries()} recorded runtime deliveries (publication + Git ancestry; not runtime acceptance).`);
+    console.log(`Verified ${checkRuntimeDeliveries()} recorded runtime deliveries and explicit implementation links (not runtime acceptance).`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
