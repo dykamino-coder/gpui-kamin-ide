@@ -60,7 +60,7 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
             let b = BlockBox::collect(
                 &logical,
                 ShapeCx::COLUMNS,
-                crate::layout::cx::FrameCx::new(tree.values()),
+                crate::layout::cx::FrameCx::new(&tree.doc),
             );
             let ids = b.ids();
             assert!(!ids.contains(&contents.node_id));

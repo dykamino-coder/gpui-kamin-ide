@@ -84,7 +84,8 @@ pub(super) fn build_text_columns(
     let mut parts: Vec<Vec<Node>> = vec![];
     let mut rest = nodes.to_vec();
     let mut base = 0usize;
-    let admission = crate::budget::admission::Admission::new(opts_owned.cx.doc().revision_budget());
+    let admission =
+        crate::budget::admission::Admission::new(opts_owned.cx.doc().values.revision_budget());
     for cut in cuts {
         let full = cut + lead;
         let raw_cut = match norm_to_raw.binary_search_by_key(&full, |p| p.0) {

@@ -47,7 +47,7 @@ fn document(scale: f32) -> Rc<DocState> {
         &doc.text,
         doc.values(),
     );
-    doc.install_font_facts(Some(Rc::new(Facts(scale))));
+    doc.values.install_font_facts(Some(Rc::new(Facts(scale))));
     doc
 }
 
@@ -72,8 +72,8 @@ fn css_font_lengths_and_roots_follow_each_document_provider() {
             c.computed_font_px(FontCx::new("", 20.0), vcx),
             Some(10.0 * factor)
         );
-        set_root_family(doc, "root");
-        set_root_metrics(doc, 20.0, normal_height("root", 20.0, vcx));
+        set_root_family(&doc.values, "root");
+        set_root_metrics(&doc.values, 20.0, normal_height("root", 20.0, vcx));
         for (unit, px) in [
             ("rex", 8.0),
             ("rch", 5.0),
@@ -144,7 +144,7 @@ fn absent_metrics_and_real_zero_have_distinct_css_fallbacks() {
         }
     }
     let doc = document(1.0);
-    doc.install_font_facts(Some(Rc::new(Missing)));
+    doc.values.install_font_facts(Some(Rc::new(Missing)));
     assert_eq!(horizontal("", 20.0, doc.values()), (0.0, 10.0));
     assert_eq!(ideographic("", 20.0, doc.values()), 20.0);
     assert_eq!(normal_height("", 20.0, doc.values()), 24.0);

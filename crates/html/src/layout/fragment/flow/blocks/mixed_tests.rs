@@ -26,7 +26,7 @@ fn table_cell_grid_uses_laid_tracks_for_breaks_and_growth() {
     );
     let root = authored(&doc);
     assert!(independent_copy(root));
-    let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+    let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(&doc.doc));
     let mut grids = Vec::new();
     b.grids(&mut grids);
     assert_eq!(grids.len(), 1);
@@ -93,7 +93,7 @@ fn flex_in_table_cells_and_captions_has_frames_and_flows() {
         // Обычный flex в ячейке/подписи использует записанную геометрию.
         assert!(crate::layout::fragment::push::measured_tree(root));
         assert!(independent_copy(root));
-        let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+        let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(&doc.doc));
         let mut flexes = Vec::new();
         b.flexes(&mut flexes);
         assert_eq!(flexes.len(), 1);
@@ -140,7 +140,7 @@ fn breaks_next_to_anonymous_line_blocks_are_class_a_points() {
         "",
     );
     let root = authored(&doc);
-    let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+    let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(&doc.doc));
     let ids: Vec<u64> = b.kids.iter().map(|k| k.id).collect();
     assert_eq!(ids.len(), 2);
     let laid = Laid::of_boxes(&[
@@ -159,7 +159,7 @@ fn atomic_inline_level_boxes_are_line_content() {
         "<div><div style='display:inline-block;width:10px;height:10px'></div><div style='height:20px'></div></div>",
         "",
     );
-    let b = BlockBox::collect(authored(&doc), ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+    let b = BlockBox::collect(authored(&doc), ShapeCx::COLUMNS, FrameCx::new(&doc.doc));
     assert_eq!(b.kids.len(), 1);
     assert_eq!(b.kids[0].lines_around, (true, false));
 }

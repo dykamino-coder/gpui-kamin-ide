@@ -170,7 +170,7 @@ mod tests {
                 let blocks = BlockBox::collect(
                     &logical,
                     ShapeCx::COLUMNS,
-                    crate::layout::cx::FrameCx::new(tree.values()),
+                    crate::layout::cx::FrameCx::new(&tree.doc),
                 );
                 if body.starts_with("<table") {
                     assert_eq!(blocks.table_keys().len(), 1);

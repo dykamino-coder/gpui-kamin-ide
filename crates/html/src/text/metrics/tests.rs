@@ -12,7 +12,7 @@ fn platform_metrics_are_isolated_between_interleaved_documents() {
     for (doc, name, advance) in [(&a, "First", 3.0), (&b, "Second", 7.0)] {
         let fonts = FontContext::default().with_loader(move |_| Some(name.to_owned()));
         fonts.install(&doc.text, doc.values());
-        doc.set_installed_fonts(std::rc::Rc::new(
+        doc.values.set_installed_fonts(std::rc::Rc::new(
             [name.to_ascii_lowercase()].into_iter().collect(),
         ));
         install_space_probe(move |_, _| advance, &doc.text, doc.values());

@@ -154,7 +154,7 @@ mod tests {
                 .image_available(&ImageSource::Url(raw), true),
             ImageAvailability::Ready
         );
-        assert!(doc.images.borrow_mut().take_jobs().is_empty());
+        assert!(doc.values.images.borrow_mut().take_jobs().is_empty());
         let mut li = item("list-style-type:none", vcx);
         let merged = inherit(
             &BoxStyle::shared(parent.style.used()),

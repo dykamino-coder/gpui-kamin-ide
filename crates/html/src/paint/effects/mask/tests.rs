@@ -14,8 +14,8 @@ fn matching_ids_and_retained_definitions_stay_document_local() {
     );
     collect_mask_defs(&first.nodes, first.doc.values());
     collect_mask_defs(&second.nodes, second.doc.values());
-    let first_defs = first.doc.masks.definitions();
-    let second_defs = second.doc.masks.definitions();
+    let first_defs = first.doc.values.masks.definitions();
+    let second_defs = second.doc.values.masks.definitions();
     assert!(first_defs.get("same").unwrap().markup.contains("<rect"));
     assert!(second_defs.get("same").unwrap().markup.contains("<circle"));
     drop(first);
@@ -33,14 +33,14 @@ fn alpha_and_clip_definitions_share_the_document_owner() {
     );
     let vcx = parsed.doc.values();
     collect_mask_defs(&parsed.nodes, vcx);
-    let retained = parsed.doc.masks.definitions();
+    let retained = parsed.doc.values.masks.definitions();
     assert!(retained.get("a").unwrap().alpha);
     assert!(retained.get("c").unwrap().markup.contains("<circle"));
     assert!(retained.get("absent").is_none());
     collect_mask_defs(&parsed.nodes, vcx);
     assert!(std::sync::Arc::ptr_eq(
         &retained,
-        &parsed.doc.masks.definitions()
+        &parsed.doc.values.masks.definitions()
     ));
 }
 

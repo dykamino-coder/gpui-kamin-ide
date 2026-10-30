@@ -9,6 +9,8 @@ export interface RunningCommand {
 export interface CommandSnapshot {
   sessionId: string
   commands: RunningCommand[]
+  /** False when only local shells are known (older or disconnected server). */
+  serverAvailable?: boolean
 }
 export interface ShellSnapshot {
   id: string

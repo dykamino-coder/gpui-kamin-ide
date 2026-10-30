@@ -80,8 +80,8 @@ fn every_embedded_admission_reason_is_one_record_with_its_scope_and_phase() {
         };
         assert_eq!(failure.code(), code.as_str());
         let owner = state::DocState::new(Default::default());
-        owner.record_diagnostic((&failure).into());
-        let (records, suppressed) = owner.take_diagnostics();
+        owner.values.record_diagnostic((&failure).into());
+        let (records, suppressed) = owner.values.take_diagnostics();
         let [record] = records.as_slice() else {
             panic!("{records:?}")
         };

@@ -27,13 +27,10 @@ export class SessionCliControl {
       },
       () => session.pty.write('\x1b]7501;?\x1b\\'),
     )
-    if (process.env.BRIDGE_CLI_MOD === '1') {
-      const timeout = setTimeout(
-        () => {
-          if (session.state === 'running' && !mod?.healthy()) this.warnFallback()
-        },
-        mod ? 15_000 : 0,
-      )
+    if (mod) {
+      const timeout = setTimeout(() => {
+        if (session.state === 'running' && !mod?.healthy()) this.warnFallback()
+      }, 15_000)
       timeout.unref()
     }
     if (mod) {

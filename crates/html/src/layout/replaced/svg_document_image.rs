@@ -55,7 +55,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
         &opts.cx.text_fonts().metrics.font_context(),
-        opts.cx.doc().input_context(),
+        opts.cx.doc().values.input_context(),
     ) {
         Ok(embedded) => embedded,
         Err(failure) => {
