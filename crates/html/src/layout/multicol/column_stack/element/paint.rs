@@ -213,6 +213,6 @@ impl ColumnStack {
                 );
             }
         }
-        Self::paint_late(&replayed, window);
+        crate::layout::fragment::replay::paint_late(&replayed, window);
     }
 }

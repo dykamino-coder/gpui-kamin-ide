@@ -19,6 +19,7 @@ mod oof;
 mod pages;
 mod planning;
 mod regrow;
+mod replay;
 mod resume;
 mod sheet;
 mod sheets;

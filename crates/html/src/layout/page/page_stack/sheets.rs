@@ -12,7 +12,7 @@ impl PageStack {
     /// полей его рисует (`margin-boxes/content-004..013`). Слой `fixed` Blink
     /// режет по page area (`position-fixed-overflow-print`) — ему эта маска не
     /// нужна. По оси блока режет срез фрагмента.
-    fn sheet_wide(
+    pub(super) fn sheet_wide(
         &self,
         bounds: Bounds<Pixels>,
         i: usize,
@@ -41,7 +41,7 @@ impl PageStack {
         s: f32,
         pages: usize,
         plan: &[Frag],
-        masks: Vec<gpui::ContentMask<Pixels>>,
+        (masks, replayed): (Vec<gpui::ContentMask<Pixels>>, &super::replay::Played),
         rect: impl Fn(f32, f32, f32, f32) -> Bounds<Pixels>,
         window: &mut Window,
     ) {
@@ -123,34 +123,13 @@ impl PageStack {
             let (sx, sy) = self.sheet_origin(f.col);
             let g = self.geom(f.col);
             let (ax, ay) = g.area_origin();
-            // The fragment that ends its box shows the box's block-end
-            // overflow up to the page area's end (overflow is visible,
-            // css-overflow-3 §2; `block-001-wm-vrl`: a negative block-end
-            // margin shrinks the margin box under the border box).
-            // The fragment that starts its box likewise shows the box's
-            // block-start ink overflow up to the page area's start (a glyph
-            // rising above its line box; `page-size-012-print`).
-            let (top, ext) = super::axis::mask_span(&f, self.mask_extent(&g, &f));
-            let (x, y, w, h) = if self.axis.is_vertical() {
-                self.area_slice(&g, top, ext)
-            } else {
-                (ax, ay + top, g.area.0, ext)
-            };
-            let mask = gpui::ContentMask {
-                bounds: Bounds {
-                    origin: point(
-                        bounds.origin.x + px((sx + x) * s),
-                        bounds.origin.y + px((sy + y) * s),
-                    ),
-                    size: size(px(w * s), px(h * s)),
+            let mask = self.piece_mask(bounds, &f, page, window.scale_factor());
+            if let Some(played) = replayed.get(&f.kid) {
+                if let Some((records, extra)) = played {
+                    self.play_piece(bounds, &f, mask, (records, extra), window);
                 }
-                .intersect(&page.bounds),
-            };
-            // По оси строки — весь лист (`PageStack::sheet_wide`).
-            let mask = self.sheet_wide(bounds, f.col, mask);
-            // Clip and painted box edges share the device-pixel grid.
-            let mask =
-                crate::layout::fragment::fragment_mask::snap(mask.bounds, window.scale_factor());
+                continue;
+            }
             let kid = &mut self.kids[f.kid];
             window.with_mask_scale(bounds.origin, s, |window| {
                 kid.paint_sections(
@@ -177,6 +156,7 @@ impl PageStack {
             // пройти то же подобие (`Window::with_mask_scale`).
             super::contents::paint_copy(copy, f.col, mask, el, window, cx);
         }
+        self.play_late(bounds, plan, replayed, window);
         for p in 0..pages.min(self.icb.len()) {
             if self.geom(p).turn % 2 == 1 {
                 continue;

@@ -25,7 +25,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
     while let Some((e, planed)) = stack.pop() {
         let s = e.style.used();
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
-        // (`element::admission::items`).
+        // (`fragment::replay::admission::items`).
         // Сросшиеся кромки таблицы решают стыки по фрагменту каждого куска записи
         // (`EdgePainter`), как копия — по маске своего куска.
         let collapsed = table_part(e) && s.border_collapse == Some(true);
@@ -74,6 +74,35 @@ pub(crate) fn clone_record(root: &Element) -> bool {
             .any(|n| matches!(n, Node::Element(c) if clone_dec(c).is_some() || nested(c)))
     }
     clone_dec(root).is_some() && replayable(root).0 && !nested(root)
+}
+
+/// Группа узлов листа печати, чьи куски рисует запись главной копии: допуск колонок без
+/// художников фрагмента (у листа нет хозяина кусков `effect_fragment`), без внепоточных
+/// коробок (их слои ICB и `fixed` идут по копии на лист) и без многоколоночников (их стопка
+/// в листах рисует копии под матрицей листа).
+pub(crate) fn page_replayable(group: &[Node]) -> bool {
+    group.iter().all(|n| match n {
+        Node::Element(e) => replayable(e) == (true, false) && page_free(e),
+        _ => true,
+    })
+}
+
+fn page_free(root: &Element) -> bool {
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        let s = e.style.used();
+        if matches!(s.position, Some(Position::Absolute | Position::Fixed))
+            || s.column_count.is_some()
+            || s.column_width.is_some()
+        {
+            return false;
+        }
+        stack.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    true
 }
 
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
@@ -200,5 +229,18 @@ mod tests {
             of("<section><div style='backdrop-filter:blur(2px)'>a</div></section>"),
             (false, false)
         );
+    }
+
+    #[test]
+    fn sheet_groups_without_fragment_painters_or_layers_replay() {
+        let of = |html: &str| super::page_replayable(&[crate::dom::Node::Element(first(html))]);
+        assert!(of("<section><p style='background:green'>a</p></section>"));
+        assert!(!of(
+            "<section><p style='box-shadow:0 0 4px red'>a</p></section>"
+        ));
+        assert!(!of(
+            "<section><div style='position:absolute'>a</div></section>"
+        ));
+        assert!(!of("<section><div style='columns:2'>a</div></section>"));
     }
 }
