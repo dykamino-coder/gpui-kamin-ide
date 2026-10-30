@@ -12,7 +12,9 @@ use crate::style::computed::{Display, Position};
 /// записью: его ряды разложены в главной копии по внешним фрагментаинерам
 /// (`column_regrow::nest`), и срез внешнего куска отделяет ряд своего фрагментаинера.
 /// Остаются на копиях: объёмные преобразования и перспектива (их плоскости решаются на
-/// отрисовке по накопленной матрице), фильтры по ссылке и фона. Сросшиеся кромки таблицы
+/// отрисовке по накопленной матрице) и фильтр фона (`backdrop-filter` читает уже нарисованное
+/// под коробкой, а в записи его нет). Фильтр по ссылке рисуется слоем по границам самой
+/// коробки (`effects::filter::FilterLayer`) — от фрагмента он не зависит. Сросшиеся кромки таблицы
 /// решают стыки по фрагменту каждого куска записи (`EdgePainter`). Внепоточные коробки
 /// продолжаются своими слотами и в записи (`continuation::replayed`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
@@ -39,7 +41,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
-        if (oof && planed) || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
+        if (oof && planed) || solid || s.backdrop_filter_set {
             return (false, false);
         }
         effects |= collapsed
@@ -169,6 +171,20 @@ mod tests {
         assert_eq!(
             of("<section><div style='display:grid'>a</div></section>"),
             (true, false)
+        );
+        assert_eq!(
+            of(
+                "<section><table style='border-collapse:collapse'><tr><td>a</td></tr></table></section>"
+            ),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='filter:url(#f)'></div></section>"),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='backdrop-filter:blur(2px)'>a</div></section>"),
+            (false, false)
         );
     }
 }
