@@ -188,6 +188,12 @@ pub fn css_vars(p: &Palette, light: bool) -> String {
             p.accent_rosewater
         }),
     );
+    // Поверхность нативных меню shell (`ui/context_menu.rs`, оверлей-меню):
+    // bg_surface + рамка text_primary@0.06. Отдельные имена вне `--vscode-*`,
+    // чтобы raw-проброс contributed-темы (`menu.*`) не развёл поповеры вебвью
+    // с нативным меню, и чтобы не менять `--bg-surface` прочих потребителей.
+    vars.push(("--kamin-menu-background".into(), hx(p.bg_surface)));
+    vars.push(("--kamin-menu-border".into(), ra(p.text_primary, 0.06)));
     // Токены xterm/Monaco моста — читаются страницами как есть
     vars.push(("--editor-bg".into(), hx(p.editor_bg)));
     vars.push(("--editor-fg".into(), hx(p.editor_fg)));
@@ -274,30 +280,4 @@ pub fn push_live() {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dark_vars_match_palette() {
-        let vars = css_vars(&kamin_theme::DARK, false);
-        // Ключевые токены тёмной палитры (сгенерированный блок 1:1 со старым
-        // статическим THEME_BLOCK_DARK)
-        assert!(vars.contains("--vscode-foreground:#cfd4e2;"));
-        assert!(vars.contains("--vscode-editor-background:#313240;"));
-        assert!(vars.contains("--vscode-selection-background:rgba(137,180,250,0.3);"));
-        assert!(vars.contains("--editor-bg:#1d1c25;"));
-        // color-scheme страница дописывает сама — в vars его нет
-        assert!(!vars.contains("color-scheme"));
-    }
-
-    #[test]
-    fn block_carries_kind_and_listener() {
-        let dark = theme_block(&kamin_theme::DARK, false);
-        assert!(dark.contains("var __k='vscode-dark'"));
-        assert!(dark.contains("color-scheme:dark"));
-        assert!(dark.contains("__kaminTheme"));
-        let light = theme_block(&kamin_theme::LIGHT, true);
-        assert!(light.contains("var __k='vscode-light'"));
-        assert!(light.contains("color-scheme:light"));
-    }
-}
+mod tests;
