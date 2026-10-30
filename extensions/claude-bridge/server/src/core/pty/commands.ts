@@ -22,7 +22,16 @@ function retain(session: PtySession, id: string, text: string): void {
   while (output.size > MAX_RETAINED) output.delete(output.keys().next().value!)
 }
 export function rememberCommandResult(session: PtySession, id: string, result: unknown): void {
-  retain(session, id, typeof result === 'string' ? result : (JSON.stringify(result) ?? ''))
+  const content = result && typeof result === 'object' ? (result as { content?: unknown }).content : undefined
+  const text = Array.isArray(content)
+    ? content
+        .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text)
+        .join('\n')
+    : typeof result === 'string'
+      ? result
+      : (JSON.stringify(result) ?? '')
+  retain(session, id, text)
 }
 export async function acceptCommandReport(session: PtySession, report: CommandReport): Promise<void> {
   if (!report || !Array.isArray(report.calls) || !Array.isArray(report.shells)) return
@@ -48,7 +57,8 @@ export async function acceptCommandReport(session: PtySession, report: CommandRe
     )
     .map((s) => ({
       ...s,
-      command: s.command.slice(0, 512),
+      command: s.command.slice(0, 65536),
+      description: typeof s.description === 'string' ? s.description.slice(0, 1024) : undefined,
       tool: s.tool.slice(0, 64),
       output: s.output.slice(-OUTPUT_CAP),
     }))
@@ -65,32 +75,58 @@ export async function commandSnapshot(session: PtySession): Promise<CommandSnaps
     commands.push({
       id,
       tool: call.toolName,
-      command: String(call.input.command ?? call.toolName).slice(0, 512),
+      command: String(call.input.command ?? call.toolName).slice(0, 65536),
+      description: typeof call.input.description === 'string' ? call.input.description.slice(0, 1024) : undefined,
       background: false,
       status: 'running',
       startedAt: call.createdAt,
     })
   }
-  for (const task of await mcpTasks.working()) {
+  for (const task of await mcpTasks.commands(owner(session))) {
     if (task.owner !== owner(session)) continue
     commands.push({
       id: task.taskId,
       tool: task.toolName,
-      command: task.command ?? task.toolName,
+      command: String(task.input.command ?? task.command ?? task.toolName),
+      description: task.description,
+      finishedAt: task.status === 'working' ? undefined : Date.parse(task.lastUpdatedAt),
+      exitCode: typeof task.result?.exitCode === 'number' ? task.result.exitCode : undefined,
       background: !!task.background,
-      status: task.cancelRequested ? 'stopping' : 'running',
+      status:
+        task.status === 'working'
+          ? task.cancelRequested
+            ? 'stopping'
+            : 'running'
+          : task.status === 'cancelled'
+            ? 'stopped'
+            : task.status === 'failed' ||
+                task.result?.isError ||
+                (typeof task.result?.exitCode === 'number' && task.result.exitCode !== 0)
+              ? 'failed'
+              : 'completed',
       startedAt: Date.parse(task.createdAt),
     })
   }
   const latest = reports.get(owner(session))
   for (const shell of latest?.report.shells ?? []) {
-    if (!shell.running) continue
+    if (shell.hiddenFromCommands) continue
     commands.push({
       id: shell.id,
       tool: shell.tool,
       command: shell.command,
+      description: shell.description,
+      finishedAt: shell.finishedAt,
+      exitCode: shell.exitCode,
       background: true,
-      status: Date.now() - latest!.at > 5000 ? 'disconnected' : 'running',
+      status: shell.running
+        ? Date.now() - latest!.at > 5000
+          ? 'disconnected'
+          : 'running'
+        : shell.stopped
+          ? 'stopped'
+          : shell.exitCode === 0
+            ? 'completed'
+            : 'failed',
       startedAt: shell.startedAt,
     })
   }
@@ -99,9 +135,16 @@ export async function commandSnapshot(session: PtySession): Promise<CommandSnaps
 }
 export async function commandOutput(session: PtySession, id: string): Promise<string> {
   const task = await mcpTasks.get(owner(session), id)
-  if (task?.result) return JSON.stringify(task.result)
+  if (task?.result) {
+    const content = task.result.content as Array<{ type?: string; text?: string }> | undefined
+    return (content ?? [])
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n')
+      .slice(-OUTPUT_CAP)
+  }
   if (task?.error) return task.error.message
-  return output.get(outputKey(session, id)) ?? 'No output yet.'
+  return output.get(outputKey(session, id)) ?? ''
 }
 export async function stopCommand(session: PtySession, id: string): Promise<void> {
   const task = await mcpTasks.get(owner(session), id)
@@ -114,5 +157,12 @@ export async function stopCommand(session: PtySession, id: string): Promise<void
     sendToClient(session.ws, { type: 'mcp:cancel', requestId: id })
   } else if (reports.get(owner(session))?.report.shells.some((s) => s.id === id && s.running)) {
     sendToClient(session.ws, { type: 'commands:stop-shell', id, owner: owner(session) })
+  }
+}
+
+export async function clearCompletedCommands(session: PtySession): Promise<void> {
+  await mcpTasks.clearCommands(owner(session))
+  for (const shell of reports.get(owner(session))?.report.shells ?? []) {
+    if (!shell.running) shell.hiddenFromCommands = true
   }
 }

@@ -48,6 +48,7 @@ pub(super) fn stack_child_of(
         probe: Default::default(),
         source: Some(copy.node_id),
         static_of: None,
+        clone_deco: None,
         watched: None,
         breaks_w: None,
         regrow: None,

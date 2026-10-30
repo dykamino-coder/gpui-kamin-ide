@@ -36,6 +36,8 @@ export interface TaskRecord {
   executionDeadlineMs?: number
   background?: boolean
   command?: string
+  description?: string
+  hiddenFromCommands?: boolean
   cancelRequested?: boolean
   delivered?: boolean
   result?: Record<string, unknown>
@@ -51,6 +53,8 @@ export function taskView(task: TaskRecord): Record<string, unknown> {
     executionDeadlineMs: _deadline,
     background: _background,
     command: _command,
+    description: _description,
+    hiddenFromCommands: _hidden,
     ...view
   } = task
   return view
@@ -226,6 +230,7 @@ export class McpTaskStore {
         pollIntervalMs: 2000,
         background: input.run_in_background === true,
         command: typeof input.command === 'string' ? input.command.slice(0, 512) : toolName,
+        description: typeof input.description === 'string' ? input.description.slice(0, 1024) : undefined,
         executionDeadlineMs:
           this.now() + (input.run_in_background === true ? TASK_LIMITS.backgroundExecutionMs : TASK_LIMITS.executionMs),
       }
@@ -249,6 +254,25 @@ export class McpTaskStore {
       [...this.records.values()].filter((task) => task.status === 'working').map((task) => structuredClone(task)),
     )
   }
+  // Project metadata without copying retained result bodies on every UI poll.
+  commands(owner: string): Promise<TaskRecord[]> {
+    return this.run(async () =>
+      [...this.records.values()]
+        .filter((task) => task.owner === owner && !task.hiddenFromCommands)
+        .map(({ result, ...task }) => ({
+          ...structuredClone(task),
+          result: result ? { isError: result.isError, exitCode: result.exitCode } : undefined,
+        })),
+    )
+  }
+  clearCommands(owner: string): Promise<void> {
+    return this.run(async () => {
+      for (const task of this.records.values()) {
+        if (task.owner !== owner || task.status === 'working' || task.hiddenFromCommands) continue
+        await this.save({ ...task, hiddenFromCommands: true })
+      }
+    })
+  }
   update(owner: string, id: string, change: (task: TaskRecord) => void): Promise<TaskRecord | undefined> {
     return this.run(async () => {
       const previous = this.records.get(id)
@@ -256,6 +280,8 @@ export class McpTaskStore {
       if (previous.status !== 'working') return structuredClone(previous)
       const task = structuredClone(previous)
       change(task)
+      // Every terminal path releases input, including execution deadlines.
+      if (task.status !== 'working' && typeof previous.input.command === 'string') task.command = previous.input.command
       task.lastUpdatedAt = new Date(this.now()).toISOString()
       await this.save(task)
       return structuredClone(task)

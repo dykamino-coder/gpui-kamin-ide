@@ -45,6 +45,7 @@ fn page_margin_regression_keeps_wrapper_margin_out_of_overflow(cx: &mut gpui::Te
                         watched: Some(watched),
                         float_id: None,
                         float_extent: false,
+                        replay: false,
                         repeat: None,
                         frags: Vec::new(),
                         monolith: false,

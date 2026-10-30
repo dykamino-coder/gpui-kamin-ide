@@ -18,6 +18,7 @@ async function shellEnv(): Promise<NodeJS.ProcessEnv> {
 
 export type McpResult = {
   isError?: boolean
+  exitCode?: number | null
   content: Array<{ type: string; text: string }>
 }
 
@@ -60,6 +61,10 @@ interface BackgroundOutput {
   stdoutCursor: number
   stderrCursor: number
   command: string
+  description?: string
+  finishedAt?: number
+  stopped?: boolean
+  hiddenFromCommands?: boolean
   owner?: string
   tabId?: string | null
   startedAt: number
@@ -263,6 +268,7 @@ function runBackgroundCommand(
       stdoutCursor: 0,
       stderrCursor: 0,
       command: displayCommand,
+      description: description.slice(0, 1024),
       owner: context?.shellOwner,
       tabId: context?.tabId,
       startedAt: Date.now(),
@@ -283,6 +289,7 @@ function runBackgroundCommand(
     child.on('exit', (code) => {
       output.exitCode = code
       output.running = false
+      output.finishedAt = Date.now()
       backgroundProcesses.delete(bgId)
     })
 
@@ -359,6 +366,7 @@ export async function killBackgroundShell(input: Record<string, unknown>): Promi
   } catch (e) {
     return errorResult(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`)
   }
+  if (out) out.stopped = true
   return textResult(`Killed background shell ${bgId}.`)
 }
 
@@ -394,12 +402,23 @@ function snapshotBackgroundOutput(
   return entries.slice(-100).map(([id, out]) => ({
     id: `shell:${id}`,
     tool: out.tool,
-    command: out.command.slice(0, 512),
+    command: out.command,
+    description: out.description,
+    finishedAt: out.finishedAt,
+    exitCode: out.exitCode,
+    stopped: out.stopped,
+    hiddenFromCommands: out.hiddenFromCommands,
     startedAt: out.startedAt,
     running: out.running,
     output: (out.stdout + (out.stderr ? '\n--- stderr ---\n' + out.stderr : '')).slice(-16384),
   }))
 }
+export function clearLocalCompletedShells(tabId: string): void {
+  for (const out of backgroundOutput.values()) {
+    if (out.tabId === tabId && !out.running) out.hiddenFromCommands = true
+  }
+}
+
 export async function stopLocalBackgroundShell(tabId: string, id: string): Promise<void> {
   if (!/^shell:[0-9]+$/.test(id)) return
   const out = backgroundOutput.get(Number(id.slice(6)))

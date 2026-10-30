@@ -7,7 +7,10 @@ const TERMINATION_GRACE_MS = 1000
 const textResult = (text: string): McpResult => ({
   content: [{ type: 'text', text }],
 })
-const errorResult = (message: string): McpResult => textResult(`Error: ${message}`)
+const errorResult = (message: string): McpResult => ({
+  ...textResult(`Error: ${message}`),
+  isError: true,
+})
 
 export function runForegroundCommand(
   command: string,
@@ -61,7 +64,8 @@ export function runForegroundCommand(
         )
       if (code !== null && code !== 0) parts.push(`\n[Exit code: ${code}]`)
       const result = textResult(parts.join('') || `Command completed with exit code ${code ?? 0}`)
-      if (timedOut || cancelled) result.isError = true
+      result.exitCode = code
+      if (timedOut || cancelled || code !== 0) result.isError = true
       resolve(result)
     }
 

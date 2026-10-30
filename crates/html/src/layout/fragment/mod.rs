@@ -13,6 +13,7 @@ pub(crate) mod paginate;
 pub(crate) mod plan;
 pub mod probe;
 pub mod push;
+pub(crate) mod replay;
 pub(crate) mod replay_pieces;
 pub(crate) mod static_coordinates;
 pub mod table_bands;

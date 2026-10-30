@@ -1,44 +1,67 @@
-//! Нативная краска обычного потока ребёнка стопки: главная копия раскладывается и
-//! prepaint-ится один раз, её краска пишется одной записью по сегментам кусков плана
-//! (`record_paint_segments`, сегмент — номер копии куска) и воспроизводится в каждом куске
-//! под его срезом; hitboxes ставятся по тем же размещениям и срезам (как OOF-продолжения
-//! P08). Запасные копии такого ребёнка не раскладываются и не рисуются. Геометрия куска
-//! (место копии и срез `slice`) — общая для этого пути и для копий.
+//! Нативная краска обычного потока ребёнка колонок: запись главной копии
+//! (`layout::fragment::replay`) с геометрией куска колонки — место копии и срез `slice`,
+//! общие для этого пути и для копий. Запасные копии такого ребёнка не раскладываются и
+//! не рисуются.
 
-use crate::layout::fragment::effect_fragment::pieces::{self, Piece, Pieces};
-use crate::layout::fragment::replay_pieces::ReplayPiece;
+use crate::layout::fragment::fragment_mask;
+use crate::layout::fragment::replay::{self, PieceGeometry, Replayed, Routes, Source};
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{
-    App, Bounds, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentRecords,
-    PaintSegmentSlice, Pixels, Window, point, px,
-};
-use std::rc::Rc;
-mod play;
-mod scopes;
-mod slots;
+use gpui::{App, Bounds, Pixels, Point, Window};
+mod clone;
 
-/// Размещения кусков одного ребёнка и их срезы в координатах главной копии.
-pub(super) struct Routes {
-    routes: Rc<[PaintSegment]>,
-    slices: Rc<[PaintSegmentSlice]>,
-    extent: Bounds<Pixels>,
-    nodes: Box<super::admission::Nodes>,
-    watched: Option<Rc<crate::layout::fragment::paginate::watch::Watched>>,
-    /// Куски для художников, читающих границы фрагмента (`StackChild::effects`).
-    pieces: Option<Rc<[Piece]>>,
-    /// Куски для слотов внепоточных корней (`continuation::replayed`).
-    slots: Rc<[ReplayPiece]>,
-    /// Фрагмент каждого куска по блочной оси в координатах источника (`line_admission`).
-    frags: Vec<(f32, f32)>,
+/// Геометрия кусков колонок одного кадра стопки.
+struct Columns<'a> {
+    stack: &'a ColumnStack,
+    plan: &'a [Frag],
+    bounds: Bounds<Pixels>,
+    col_w: f32,
+    step: f32,
     spill: Pixels,
+    scale: f32,
 }
 
-/// Запись главной копии и расширенные маски её кусков.
-pub(super) type Replayed = (
-    PaintSegmentRecords,
-    std::collections::HashMap<usize, Bounds<Pixels>>,
-);
+impl PieceGeometry for Columns<'_> {
+    fn piece_at(&self, f: &Frag) -> Point<Pixels> {
+        self.stack.piece_at(f, self.bounds, self.step)
+    }
+
+    fn piece_clip(&self, f: &Frag, at: Point<Pixels>) -> (Bounds<Pixels>, Bounds<Pixels>) {
+        let geometry = (self.col_w, self.spill);
+        let (clip, _) = self.stack.piece_clip(f, at, geometry, self.plan, false);
+        (clip, fragment_mask::snap(clip, self.scale).bounds)
+    }
+
+    fn fragment_width(&self, _f: &Frag) -> f32 {
+        self.col_w
+    }
+
+    fn slot_area(&self, f: &Frag, clip: Bounds<Pixels>, mask: Bounds<Pixels>) -> Bounds<Pixels> {
+        (self
+            .stack
+            .fragmentainer_band(f.col, self.bounds, self.spill))
+        .map_or(mask, |b| {
+            fragment_mask::snap(b.union(&clip), self.scale).bounds
+        })
+    }
+
+    fn exact_shift(&self, delta: Point<Pixels>) -> bool {
+        crate::layout::fragment::axis_slice::snapped(delta, self.scale) == delta
+    }
+
+    fn content_slice(
+        &self,
+        f: &Frag,
+        source: Point<Pixels>,
+        across: (Pixels, Pixels),
+    ) -> Option<Bounds<Pixels>> {
+        self.stack.clone_slice(f, self.plan, source, across)
+    }
+
+    fn gap_tail(&self, f: &Frag) -> f32 {
+        self.stack.gap_tail(f, self.plan)
+    }
+}
 
 impl ColumnStack {
     /// Ребёнок, чьи куски рисует запись главной копии: без собственной геометрии копий
@@ -50,132 +73,38 @@ impl ColumnStack {
         let c = &self.children[kid];
         self.replay
             && c.replay
-            && c.clone_dec.is_none()
+            && (c.clone_dec.is_none() || c.clone_deco.is_some())
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1
     }
 
-    /// Размещения всех кусков ребёнка `kid`: источник — место главной копии, срез —
-    /// снятая на пиксели маска куска, перенесённая в координаты источника.
+    /// Размещения всех кусков ребёнка `kid` в колонках.
     pub(super) fn replay_routes(
         &self,
         kid: usize,
-        plan_all: &[Frag],
+        plan: &[Frag],
         bounds: Bounds<Pixels>,
         (col_w, step, spill): (f32, f32, Pixels),
         scale: f32,
     ) -> Option<Routes> {
-        let main = plan_all.iter().find(|f| f.kid == kid && f.copy == 0)?;
-        let source = self.piece_at(main, bounds, step) - point(px(0.0), px(main.from));
-        let mut routes = Vec::new();
-        let mut slices = Vec::new();
-        let mut extent: Option<Bounds<Pixels>> = None;
-        let mut pieces = Vec::new();
-        let mut effects = Vec::new();
-        let mut slots = Vec::new();
-        let mut frags = Vec::new();
-        for f in plan_all.iter().filter(|f| f.kid == kid) {
-            let at = self.piece_at(f, bounds, step);
-            // Копия снимает края своих декораций на сетку устройства на своём месте;
-            // запись переносит уже снятые края. Равны они только при переносе на целые
-            // пиксели устройства — иначе куски рисуют свои копии.
-            let destination = at - point(px(0.0), px(f.from));
-            let delta = destination - source;
-            if crate::layout::fragment::axis_slice::snapped(delta, scale) != delta {
-                return None;
-            }
-            let (clip, _) = self.piece_clip(f, at, (col_w, spill), plan_all, false);
-            let mask = crate::layout::fragment::fragment_mask::snap(clip, scale).bounds;
-            let placement = PaintSegment {
-                id: PaintSegmentId(f.copy as u64),
-                ordinal: 0,
-                source,
-                destination,
-            };
-            slots.push(self.slot_piece(f, placement, (clip, mask), (bounds, spill, scale)));
-            let source_clip = Bounds::new(mask.origin - (destination - source), mask.size);
-            extent = Some(extent.map_or(source_clip, |e| e.union(&source_clip)));
-            pieces.push((f, placement, source_clip));
-            let fragment = Bounds::new(at, gpui::size(px(col_w), px(f.h)));
-            let top = f32::from(fragment.origin.y - delta.y);
-            frags.push((top, top + f.h));
-            effects.push(Piece {
-                placement,
-                fragment: Bounds::new(fragment.origin - delta, fragment.size),
-                clip: Bounds::new(clip.origin - delta, clip.size),
-                slice: source_clip,
-                tail: px(self.gap_tail(f, plan_all)),
-                admitted: false,
-            });
-            // Возвращённые записи художников фрагмента стоят уже на месте куска.
-            if self.children[kid].effects {
-                let reach = px(f32::from(spill));
-                let placed = Bounds::from_corners(
-                    point(mask.left(), mask.top() - reach),
-                    point(mask.right(), mask.bottom() + reach),
-                );
-                extent = extent.map(|e| e.union(&placed));
-            }
-            routes.push(placement);
-            slices.push(PaintSegmentSlice {
-                placement,
-                source_clip,
-            });
-        }
-        let extent = Self::slot_routes(&slots, &mut routes, extent);
-        let nodes = self.node_admission(kid, &pieces, spill);
-        let fx = self.children[kid].effects;
-        routes.extend(nodes.routes.iter().copied());
-        let extent = nodes
-            .slices
-            .values()
-            .flat_map(|s| s.iter())
-            .fold(extent?, |e, s| e.union(&s.source_clip));
-        Some(Routes {
-            routes: routes.into(),
-            slices: slices.into(),
-            extent,
-            nodes: Box::new(nodes),
-            watched: self.children[kid].watched.clone(),
-            pieces: fx.then(|| effects.into()),
-            slots: slots.into(),
-            frags,
+        let geometry = Columns {
+            stack: self,
+            plan,
+            bounds,
+            col_w,
+            step,
             spill,
-        })
-    }
-
-    /// Запись краски главной копии по сегментам кусков.
-    pub(super) fn record_replayed(
-        routes: &Routes,
-        (el, owner, records): (
-            &mut gpui::AnyElement,
-            &crate::layout::cx::deferred::Deferred,
-            Option<crate::hooks::BareRecords>,
-        ),
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Result<Replayed, PaintRecordError> {
-        let slices = routes.slices.clone();
-        let fx = (routes.pieces.clone()).map(|p| Rc::new(Pieces::new(p, routes.watched.clone())));
-        routes.admit(true);
-        let natives = records.as_ref().is_some_and(|r| !r.is_empty());
-        let recorded = pieces::with(owner, fx.clone(), || {
-            routes.record_scopes(records, window, |window| {
-                window.record_paint_segments(
-                    routes.extent,
-                    routes.routes.clone(),
-                    cx,
-                    |window, cx| {
-                        window.with_paint_segment_slices(slices, |window| el.paint(window, cx))
-                    },
-                )
-            })
-        });
-        routes.admit(false);
-        let ((painted, records), lines) = (recorded.0?, recorded.1);
-        painted?;
-        let masks = routes.masks(natives, fx.iter().flat_map(|p| p.extra.take()), &lines);
-        Ok((records, masks))
+            scale,
+        };
+        let c = &self.children[kid];
+        let source = Source {
+            monoliths: true,
+            regrow: c.regrow.as_ref(),
+            watched: c.watched.as_ref(),
+            effects: c.effects,
+            clone_root: c.clone_deco.as_ref().map(|d| d.node),
+        };
+        Routes::new(kid, plan, &geometry, source, spill)
     }
 
     /// Кусок `f` ребёнка, рисуемого записью главной копии: запись — при первом его
@@ -195,8 +124,8 @@ impl ColumnStack {
         if let std::collections::hash_map::Entry::Vacant(slot) = replayed.entry(f.kid) {
             let routes = self.replay_routes(f.kid, plan_all, bounds, (col_w, step, spill), scale);
             let records = self.copy_records();
-            let el = (&mut self.children[f.kid].el, &*self.paint, records);
-            slot.insert(routes.map(|r| Self::record_replayed(&r, el, window, cx).ok()));
+            let el = (&mut self.children[f.kid].el, Some(&*self.paint), records);
+            slot.insert(routes.map(|r| r.record(el, window, cx).ok()));
         }
         // Без размещений ребёнок рисуется копиями; неудавшаяся запись — ничем.
         let (records, masks) = match replayed.get(&f.kid) {
@@ -210,28 +139,19 @@ impl ColumnStack {
         if let Some(w) = &self.children[f.kid].watched {
             w.set_paint_outer(Some(parent));
         }
-        let mut mask = crate::layout::fragment::fragment_mask::snap(clip, scale);
+        let mut mask = fragment_mask::snap(clip, scale);
         if let Some(extra) = masks.get(&f.copy) {
             mask.bounds = mask.bounds.union(extra);
         }
+        // Фрагмент clone самодостаточен: украшения — копией без содержимого, маски нет.
+        let decos = self.children[f.kid].clone_deco.as_mut();
+        if let Some(deco) = decos.and_then(|d| d.decos.iter_mut().nth(f.copy)) {
+            deco.paint(window, cx);
+            mask = parent;
+        }
         window.with_content_mask(Some(mask), |window| {
-            let _ = Self::paint_replayed(records, f.copy, window);
+            let _ = replay::paint_segment(records, f.copy, window);
         });
         true
-    }
-}
-
-impl Routes {
-    /// Допуск узлов главной копии на время её prepaint или записи.
-    fn admit(&self, on: bool) {
-        if let Some(w) = &self.watched
-            && !self.nodes.slices.is_empty()
-        {
-            w.set_admission(if on {
-                self.nodes.slices.clone()
-            } else {
-                Default::default()
-            });
-        }
     }
 }

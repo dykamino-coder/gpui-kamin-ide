@@ -8,7 +8,7 @@
 //! потоку (ячейке ряда), чей разрез задают соседние потоки: свой разрез у конца
 //! монолита одиночный поток и так получает (`fill_at`, `overflow_to`). Сам монолит
 //! рисуется только в фрагментаинере своего начала (допуск узла,
-//! `ColumnStack::replay_routes`).
+//! `fragment::replay::Routes`).
 
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed};
 use crate::layout::fragment::push::Growth;

@@ -12,8 +12,10 @@ use crate::style::computed::{Display, Position};
 /// записью: его ряды разложены в главной копии по внешним фрагментаинерам
 /// (`column_regrow::nest`), и срез внешнего куска отделяет ряд своего фрагментаинера.
 /// Остаются на копиях: объёмные преобразования и перспектива (их плоскости решаются на
-/// отрисовке по накопленной матрице), фильтры по ссылке и фона; сросшиеся кромки таблицы
-/// решают стыки по маске своего куска (`EdgePainter`). Внепоточные коробки
+/// отрисовке по накопленной матрице) и фильтр фона (`backdrop-filter` читает уже нарисованное
+/// под коробкой, а в записи его нет). Фильтр по ссылке рисуется слоем по границам самой
+/// коробки (`effects::filter::FilterLayer`) — от фрагмента он не зависит. Сросшиеся кромки таблицы
+/// решают стыки по фрагменту каждого куска записи (`EdgePainter`). Внепоточные коробки
 /// продолжаются своими слотами и в записи (`continuation::replayed`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
 /// Обход — итеративный.
@@ -23,8 +25,10 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
     while let Some((e, planed)) = stack.pop() {
         let s = e.style.used();
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
-        // (`element::admission::items`).
-        let per_copy = table_part(e) && s.border_collapse == Some(true);
+        // (`fragment::replay::admission::items`).
+        // Сросшиеся кромки таблицы решают стыки по фрагменту каждого куска записи
+        // (`EdgePainter`), как копия — по маске своего куска.
+        let collapsed = table_part(e) && s.border_collapse == Some(true);
         // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
         // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
@@ -37,10 +41,11 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
-        if per_copy || (oof && planed) || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
+        if (oof && planed) || solid || s.backdrop_filter_set {
             return (false, false);
         }
-        effects |= !s.shadows.is_empty()
+        effects |= collapsed
+            || !s.shadows.is_empty()
             || s.transform.is_some()
             || s.rotate_prop.is_some()
             || s.scale_prop.is_some()
@@ -55,6 +60,49 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         }));
     }
     (true, effects)
+}
+
+/// Корень `box-decoration-break: clone`, чьи куски рисует запись главной копии: главная
+/// копия раскладывается непрерывной коробкой, украшения каждого фрагмента рисует стопка
+/// (`StackChild::clone_deco`). Вложенная clone-коробка в поддереве оставляет ребёнка на
+/// копиях: её фрагменты тоже свои.
+pub(crate) fn clone_record(root: &Element) -> bool {
+    use crate::layout::fragment::clone::clone_dec;
+    fn nested(e: &Element) -> bool {
+        e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(c) if clone_dec(c).is_some() || nested(c)))
+    }
+    clone_dec(root).is_some() && replayable(root).0 && !nested(root)
+}
+
+/// Группа узлов листа печати, чьи куски рисует запись главной копии: допуск колонок без
+/// художников фрагмента (у листа нет хозяина кусков `effect_fragment`), без внепоточных
+/// коробок (их слои ICB и `fixed` идут по копии на лист) и без многоколоночников (их стопка
+/// в листах рисует копии под матрицей листа).
+pub(crate) fn page_replayable(group: &[Node]) -> bool {
+    group.iter().all(|n| match n {
+        Node::Element(e) => replayable(e) == (true, false) && page_free(e),
+        _ => true,
+    })
+}
+
+fn page_free(root: &Element) -> bool {
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        let s = e.style.used();
+        if matches!(s.position, Some(Position::Absolute | Position::Fixed))
+            || s.column_count.is_some()
+            || s.column_width.is_some()
+        {
+            return false;
+        }
+        stack.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    true
 }
 
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
@@ -167,5 +215,32 @@ mod tests {
             of("<section><div style='display:grid'>a</div></section>"),
             (true, false)
         );
+        assert_eq!(
+            of(
+                "<section><table style='border-collapse:collapse'><tr><td>a</td></tr></table></section>"
+            ),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='filter:url(#f)'></div></section>"),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='backdrop-filter:blur(2px)'>a</div></section>"),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn sheet_groups_without_fragment_painters_or_layers_replay() {
+        let of = |html: &str| super::page_replayable(&[crate::dom::Node::Element(first(html))]);
+        assert!(of("<section><p style='background:green'>a</p></section>"));
+        assert!(!of(
+            "<section><p style='box-shadow:0 0 4px red'>a</p></section>"
+        ));
+        assert!(!of(
+            "<section><div style='position:absolute'>a</div></section>"
+        ));
+        assert!(!of("<section><div style='columns:2'>a</div></section>"));
     }
 }

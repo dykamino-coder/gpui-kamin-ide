@@ -21,8 +21,8 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
 
   ipcMain.on(
     'commands:action',
-    (_event: IpcMainEvent, tabId: string, action: 'list' | 'stop' | 'output', id?: string) => {
-      if (['list', 'stop', 'output'].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id)
+    (_event: IpcMainEvent, tabId: string, action: 'list' | 'stop' | 'output' | 'clear', id?: string) => {
+      if (['list', 'stop', 'output', 'clear'].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id)
     },
   )
 
@@ -146,9 +146,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     tm()?.submitText(tabId, text, submissionId)
   })
 
-  ipcMain.on('submission-action', (_event: IpcMainEvent, tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt') => {
-    tm()?.submissionAction(tabId, id, action)
-  })
+  ipcMain.on(
+    'submission-action',
+    (_event: IpcMainEvent, tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt') => {
+      tm()?.submissionAction(tabId, id, action)
+    },
+  )
 
   ipcMain.on('pty-resize', (_event: IpcMainEvent, tabId: string, cols: number, rows: number) => {
     tm()?.resize(tabId, cols, rows)
