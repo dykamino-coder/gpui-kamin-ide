@@ -33,9 +33,9 @@ fn instrumentation() -> gpui::InstrumentationConfig {
 
 #[allow(clippy::print_stdout, reason = "startup reports loaded icon fonts")]
 pub fn configure(cx: &mut gpui::App) {
-    // Серые глифы, как до gpui-pre 0.3.8 (ClearType меняет вид всего текста
-    // и не пишет альфу — в прозрачных слоях текст бы пропадал).
-    cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+    // ClearType шелла не зависит от системной настройки сглаживания.
+    // GPUI локально оставляет grayscale для прозрачных поверхностей и точных глифов.
+    cx.set_text_rendering_mode(gpui::TextRenderingMode::Subpixel);
     // Шрифты вложены в бинарь (plan/22: Bricolage задаёт всю метрику).
     // Сабсеты ТЕ ЖЕ, что шипит kamin-ide; name-таблица починена
     // (апстрим: family «96pt ExtraBold», STAT-синтез — см. память).
