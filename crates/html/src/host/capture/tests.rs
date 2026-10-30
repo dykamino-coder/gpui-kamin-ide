@@ -14,6 +14,7 @@ fn store(sink: &mut dyn FrameCaptureSink, byte: u8) {
             width: 1,
             height: 1,
             bgra: vec![byte; 4],
+            context: None,
         },
         Duration::from_micros(7),
     );

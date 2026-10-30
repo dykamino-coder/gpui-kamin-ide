@@ -113,6 +113,7 @@ impl Recorder {
                     width: frame.width,
                     height: frame.height,
                     bgra: frame.bgra.clone(),
+                    context: frame.context.clone(),
                 };
                 for (a, b) in image
                     .bgra
@@ -153,6 +154,7 @@ mod tests {
             width: 2,
             height: 2,
             bgra,
+            context: None,
         }
     }
 

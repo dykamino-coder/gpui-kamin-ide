@@ -4901,12 +4901,17 @@ index 110b0fe27ba2710468697c83f07e35db9afd7144..00000000000000000000000000000000
 - "zune-core",
 -]
 diff --git a/vendor/gpui-windows/Cargo.toml b/vendor/gpui-windows/Cargo.toml
-index 52a60ac53fb7aaa1662e92f83fb830b154e5cdf7..900199b521f5b9236db39622589bc41b75d52816
+index 52a60ac53fb7aaa1662e92f83fb830b154e5cdf7..8ef3e5b95b367e09dc3a45729de76a5ebdde77a3
 --- a/vendor/gpui-windows/Cargo.toml
 +++ b/vendor/gpui-windows/Cargo.toml
 @@ -163,0 +164,2 @@
 +    "Win32_Graphics_Direct3D11on12",
 +    "Win32_Graphics_Direct3D12",
+@@ -243,0 +246,4 @@
++
++# KaminIDE patch: SHA-256 executable DXBC chunks for capture provenance.
++[target.'cfg(target_os = "windows")'.dependencies.sha2]
++version = "0.10.9"
 diff --git a/vendor/gpui-windows/build.rs b/vendor/gpui-windows/build.rs
 index 1db95715e26daf9ab0ca5097183a763cf3aa8340..77507ea5cf7d26f4f0847a3c80426113781f2868
 --- a/vendor/gpui-windows/build.rs
@@ -6325,31 +6330,174 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..ee06ad2beb5f170f49977b8144e76b63
 +    // текстура вью снята unregister_external, а кадр с её спрайтом ещё в
 +    // полёте (CEF-насос реентерабелен) — тогда спрайт просто не рисуем.
 diff --git a/vendor/gpui-windows/src/directx_devices.rs b/vendor/gpui-windows/src/directx_devices.rs
-index 8e65e6e626aa9bca9bdf60d268d2309ec4b4c1e1..5a01716319241eac4afa84e8e1380dd8021b6fdd
+index 8e65e6e626aa9bca9bdf60d268d2309ec4b4c1e1..dd5d8ccddee14a17c07df2bb46aff22c479cd9d2
 --- a/vendor/gpui-windows/src/directx_devices.rs
 +++ b/vendor/gpui-windows/src/directx_devices.rs
-@@ -39,0 +40 @@
+@@ -0,0 +1,4 @@
++//! KaminIDE patch: D3D устройства и их generation для recovery и readback.
++
++mod adapter;
++use adapter::get_adapter;
+@@ -39,0 +44,3 @@
++    // KaminIDE patch: owned generation snapshot survives in previously captured frames.
++    pub(crate) context: gpui::frame_capture::GpuDeviceContext,
 +    pub(crate) adapter_preference: crate::GpuAdapterPreference,
-@@ -43,0 +45 @@
+@@ -43,0 +51 @@
 +    pub(crate) instrumentation: gpui::Instrumentation,
-@@ -46,0 +49 @@
+@@ -46,0 +55 @@
 +    #[cfg(test)]
-@@ -47,0 +51,4 @@
+@@ -47,0 +57,4 @@
 +        Self::with_instrumentation(crate::GpuAdapterPreference::Default, gpui::Instrumentation::default())
 +    }
 +
 +    pub(crate) fn with_instrumentation(adapter_preference: crate::GpuAdapterPreference, instrumentation: gpui::Instrumentation) -> Result<Self> {
-@@ -52 +59 @@
+@@ -48,0 +62 @@
++        crate::gpu_context::validate_mode(&adapter_preference, instrumentation.config().debug_device)?;
+@@ -52 +66 @@
 -            get_adapter(&dxgi_factory, debug_layer_available).context("Getting DXGI adapter")?;
 +            get_adapter(&dxgi_factory, debug_layer_available, &adapter_preference, instrumentation.config().debug_device).context("Getting DXGI adapter")?;
-@@ -66,0 +74 @@
+@@ -65,0 +80,3 @@
++        let mode = if cfg!(debug_assertions) { instrumentation.config().debug_device } else { gpui::DebugDevice::Default };
++        let context = crate::gpu_context::read(&device, 1, debug_layer_available, mode)?;
++        let adapter_preference = crate::gpu_context::pin(&adapter_preference, &context)?;
+@@ -66,0 +84,2 @@
++            context,
 +            adapter_preference,
-@@ -70,0 +79 @@
+@@ -70,0 +90 @@
 +            instrumentation,
-@@ -108,0 +118,2 @@
+@@ -105,3 +125,5 @@
+-#[inline]
+-fn get_adapter(
+-    dxgi_factory: &IDXGIFactory6,
++/// Debug acceptance only (`InstrumentationConfig`): an application-owned D3D11On12
++/// device, so the shell can call `ID3D12Device5::RemoveDevice` on it and GPUI
++/// takes its real device-lost path without any system-wide D3D setting.
++fn get_d3d11on12_device(
++    adapter: &IDXGIAdapter1,
+@@ -109,13 +131,31 @@
+-) -> Result<(
+-    IDXGIAdapter1,
+-    ID3D11Device,
+-    ID3D11DeviceContext,
+-    D3D_FEATURE_LEVEL,
+-)> {
+-    for adapter_index in 0.. {
+-        let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(adapter_index)?.cast()? };
+-        if let Ok(desc) = unsafe { adapter.GetDesc1() } {
+-            let gpu_name = String::from_utf16_lossy(&desc.Description)
+-                .trim_matches(char::from(0))
+-                .to_string();
+-            log::info!("Using GPU: {}", gpu_name);
++) -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
++    use windows::Win32::Graphics::{
++        Direct3D11on12::D3D11On12CreateDevice,
++        Direct3D12::{
++            CLSID_D3D12DeviceFactory, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
++            D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON, D3D12CreateDevice,
++            D3D12GetInterface, ID3D12CommandQueue, ID3D12Device, ID3D12DeviceFactory,
++        },
++    };
++    // D3D12 devices are per-adapter singletons: after RemoveDevice the old
++    // generation still holds the removed singleton, so a plain
++    // D3D12CreateDevice during recovery would hand it back. A device factory
++    // that never stores its device as the singleton yields a fresh device for
++    // every generation; fall back to the singleton API where unavailable.
++    let independent = || -> Result<ID3D12Device> {
++        let mut factory: Option<ID3D12DeviceFactory> = None;
++        unsafe { D3D12GetInterface(&CLSID_D3D12DeviceFactory, &mut factory)? };
++        let factory = factory.context("D3D12GetInterface returned no device factory")?;
++        unsafe {
++            factory.SetFlags(D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON)?
++        };
++        let mut device: Option<ID3D12Device> = None;
++        unsafe { factory.CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
++        device.context("ID3D12DeviceFactory::CreateDevice returned no device")
++    };
++    let d3d12 = match independent().log_err() {
++        Some(device) => device,
++        None => {
++            let mut device: Option<ID3D12Device> = None;
++            unsafe { D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
++            device.context("D3D12CreateDevice returned no device")?
+@@ -123,2 +163,15 @@
+-        // Check to see whether the adapter supports Direct3D 11 and create
+-        // the device if it does.
++    };
++    let queue: ID3D12CommandQueue = unsafe {
++        d3d12.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
++            Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
++            ..Default::default()
++        })?
++    };
++    let queues = [Some(queue.cast()?)];
++    let levels = [
++        D3D_FEATURE_LEVEL_11_1,
++        D3D_FEATURE_LEVEL_11_0,
++        D3D_FEATURE_LEVEL_10_1,
++    ];
++    let create = |flags: u32| -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
++        let mut device: Option<ID3D11Device> = None;
+@@ -127,13 +180,25 @@
+-        if let Some(device) = get_device(
+-            &adapter,
+-            Some(&mut context),
+-            Some(&mut feature_level),
+-            debug_layer_available,
+-        )
+-        .log_err()
+-        {
+-            return Ok((adapter, device, context.unwrap(), feature_level));
+-        }
+-    }
+-
+-    unreachable!()
++        unsafe {
++            D3D11On12CreateDevice(
++                &d3d12,
++                flags,
++                Some(&levels),
++                Some(&queues),
++                0,
++                Some(&mut device),
++                Some(&mut context),
++                Some(&mut feature_level),
++            )?
++        };
++        Ok((
++            device.context("D3D11On12CreateDevice returned no device")?,
++            context.context("D3D11On12CreateDevice returned no context")?,
++            feature_level,
++        ))
++    };
++    let bgra = D3D11_CREATE_DEVICE_BGRA_SUPPORT.0 as u32;
++    if debug_layer_available
++        && let Some(created) = create(bgra | D3D11_CREATE_DEVICE_DEBUG.0 as u32).log_err()
++    {
++        return Ok(created);
++    }
++    create(bgra)
+diff --git a/vendor/gpui-windows/src/directx_devices/adapter.rs b/vendor/gpui-windows/src/directx_devices/adapter.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1e68ad9b7
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_devices/adapter.rs
+@@ -0,0 +1,80 @@
++//! KaminIDE patch: создание device на выбранном адаптере без скрытого fallback.
++
++use super::*;
++
++#[inline]
++pub(super) fn get_adapter(
++    dxgi_factory: &IDXGIFactory6,
++    debug_layer_available: bool,
 +    preference: &crate::GpuAdapterPreference,
 +    debug_device: gpui::DebugDevice,
-@@ -114,0 +126,38 @@
++) -> Result<(
++    IDXGIAdapter1,
++    ID3D11Device,
++    ID3D11DeviceContext,
++    D3D_FEATURE_LEVEL,
++)> {
 +    // KaminIDE patch: leave the entire default creation path unchanged.
 +    if *preference != crate::GpuAdapterPreference::Default {
 +        let adapter = crate::gpu_adapter::selected_adapter(dxgi_factory, preference)?;
@@ -6388,91 +6536,34 @@ index 8e65e6e626aa9bca9bdf60d268d2309ec4b4c1e1..5a01716319241eac4afa84e8e1380dd8
 +            return Ok((adapter, device, context, feature_level));
 +        }
 +    }
-@@ -139,0 +189,82 @@
-+}
-+
-+/// Debug acceptance only (`InstrumentationConfig`): an application-owned D3D11On12
-+/// device, so the shell can call `ID3D12Device5::RemoveDevice` on it and GPUI
-+/// takes its real device-lost path without any system-wide D3D setting.
-+fn get_d3d11on12_device(
-+    adapter: &IDXGIAdapter1,
-+    debug_layer_available: bool,
-+) -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
-+    use windows::Win32::Graphics::{
-+        Direct3D11on12::D3D11On12CreateDevice,
-+        Direct3D12::{
-+            CLSID_D3D12DeviceFactory, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
-+            D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON, D3D12CreateDevice,
-+            D3D12GetInterface, ID3D12CommandQueue, ID3D12Device, ID3D12DeviceFactory,
-+        },
-+    };
-+    // D3D12 devices are per-adapter singletons: after RemoveDevice the old
-+    // generation still holds the removed singleton, so a plain
-+    // D3D12CreateDevice during recovery would hand it back. A device factory
-+    // that never stores its device as the singleton yields a fresh device for
-+    // every generation; fall back to the singleton API where unavailable.
-+    let independent = || -> Result<ID3D12Device> {
-+        let mut factory: Option<ID3D12DeviceFactory> = None;
-+        unsafe { D3D12GetInterface(&CLSID_D3D12DeviceFactory, &mut factory)? };
-+        let factory = factory.context("D3D12GetInterface returned no device factory")?;
-+        unsafe {
-+            factory.SetFlags(D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON)?
-+        };
-+        let mut device: Option<ID3D12Device> = None;
-+        unsafe { factory.CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
-+        device.context("ID3D12DeviceFactory::CreateDevice returned no device")
-+    };
-+    let d3d12 = match independent().log_err() {
-+        Some(device) => device,
-+        None => {
-+            let mut device: Option<ID3D12Device> = None;
-+            unsafe { D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
-+            device.context("D3D12CreateDevice returned no device")?
++    for adapter_index in 0.. {
++        let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(adapter_index)?.cast()? };
++        if let Ok(desc) = unsafe { adapter.GetDesc1() } {
++            let gpu_name = String::from_utf16_lossy(&desc.Description)
++                .trim_matches(char::from(0))
++                .to_string();
++            log::info!("Using GPU: {}", gpu_name);
 +        }
-+    };
-+    let queue: ID3D12CommandQueue = unsafe {
-+        d3d12.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
-+            Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
-+            ..Default::default()
-+        })?
-+    };
-+    let queues = [Some(queue.cast()?)];
-+    let levels = [
-+        D3D_FEATURE_LEVEL_11_1,
-+        D3D_FEATURE_LEVEL_11_0,
-+        D3D_FEATURE_LEVEL_10_1,
-+    ];
-+    let create = |flags: u32| -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
-+        let mut device: Option<ID3D11Device> = None;
++        // Check to see whether the adapter supports Direct3D 11 and create
++        // the device if it does.
 +        let mut context: Option<ID3D11DeviceContext> = None;
 +        let mut feature_level = D3D_FEATURE_LEVEL::default();
-+        unsafe {
-+            D3D11On12CreateDevice(
-+                &d3d12,
-+                flags,
-+                Some(&levels),
-+                Some(&queues),
-+                0,
-+                Some(&mut device),
-+                Some(&mut context),
-+                Some(&mut feature_level),
-+            )?
-+        };
-+        Ok((
-+            device.context("D3D11On12CreateDevice returned no device")?,
-+            context.context("D3D11On12CreateDevice returned no context")?,
-+            feature_level,
-+        ))
-+    };
-+    let bgra = D3D11_CREATE_DEVICE_BGRA_SUPPORT.0 as u32;
-+    if debug_layer_available
-+        && let Some(created) = create(bgra | D3D11_CREATE_DEVICE_DEBUG.0 as u32).log_err()
-+    {
-+        return Ok(created);
++        if let Some(device) = get_device(
++            &adapter,
++            Some(&mut context),
++            Some(&mut feature_level),
++            debug_layer_available,
++        )
++        .log_err()
++        {
++            return Ok((adapter, device, context.unwrap(), feature_level));
++        }
 +    }
-+    create(bgra)
++
++    unreachable!()
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146d4b4e1b5
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..18b49fa14a2062b274025926b50db5a7d888b6e2
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6480,12 +6571,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,2 @@
+@@ -38,0 +42,4 @@
 +mod scene_capture;
++mod frame_capture;
++mod shader_identity;
 +
-@@ -46,0 +52 @@
+@@ -46,0 +54 @@
 +    disable_direct_composition: bool,
-@@ -47,0 +54,19 @@
+@@ -47,0 +56,19 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -6505,11 +6598,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +    /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
 +    /// смешивание с кадром посчитано в шейдере.
 +    blend_replace: Option<ID3D11BlendState>,
-@@ -50,0 +76,3 @@
+@@ -50,0 +78,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +85,255 @@
+@@ -56,0 +87,255 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -6765,7 +6858,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        dc.OMSetRenderTargets(Some(&dest.rtv), None);
 +    }
 +    pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
-@@ -69,0 +353,11 @@
+@@ -61,0 +347,2 @@
++    // KaminIDE patch: immutable snapshot belongs to these device resources.
++    context: gpui::frame_capture::GpuDeviceContext,
+@@ -69,0 +357,11 @@
 +/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
 +/// закрывается при пересоздании ресурсов (device lost).
 +struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
@@ -6777,24 +6873,26 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +    }
 +}
 +
-@@ -72,0 +367,2 @@
+@@ -72,0 +371,2 @@
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +391,2 @@
+@@ -94,0 +395,2 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
-@@ -121,0 +420 @@
+@@ -121,0 +424 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +433 @@
+@@ -133,0 +437 @@
 +            ..
-@@ -153,0 +454,4 @@
+@@ -142,0 +447 @@
++            context: directx_devices.context.clone(),
+@@ -153,0 +459,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -192,0 +497 @@
+@@ -192,0 +502 @@
 +            disable_direct_composition,
-@@ -193,0 +499,8 @@
+@@ -193,0 +504,8 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -6803,9 +6901,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
-@@ -195,0 +509 @@
+@@ -195,0 +514 @@
 +            backdrop: None,
-@@ -199,0 +514,34 @@
+@@ -199,0 +519,34 @@
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
 +    /// общий handle текстуры от CEF.
 +    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -6840,9 +6938,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        self.atlas.unregister_external(id);
 +    }
 +
-@@ -204,0 +553 @@
+@@ -204,0 +558 @@
 +        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -245,0 +595,7 @@
+@@ -245,0 +600,7 @@
 +        // KaminIDE patch (#76): БЕЗ dcomp-Commit и без ожиданий. dcomp-дерево
 +        // статично после set_swap_chain (underlay-эпоха WebView2 удалена как
 +        // мёртвая), а прежний пер-кадровый commit() делал
@@ -6850,7 +6948,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
 +        // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
 +        // ввода ~1.5с на слабой машине.
-@@ -263,65 +619,33 @@
+@@ -263,65 +624,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -6949,7 +7047,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -339,0 +664,25 @@
+@@ -339,0 +669,25 @@
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
 +        // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -6975,74 +7073,16 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +                return Ok(());
 +            }
 +        }
-@@ -340,0 +690,5 @@
+@@ -340,0 +695,5 @@
 +        if self.capture.is_some() {
 +            if let Err(e) = self.capture_frame() {
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -341,0 +696,57 @@
-+    }
-+
-+    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
-+    fn capture_frame(&mut self) -> Result<()> {
-+        let started = std::time::Instant::now();
-+        let (w, h) = (self.width, self.height);
-+        let desc = D3D11_TEXTURE2D_DESC {
-+            Width: w,
-+            Height: h,
-+            MipLevels: 1,
-+            ArraySize: 1,
-+            Format: RENDER_TARGET_FORMAT,
-+            SampleDesc: DXGI_SAMPLE_DESC {
-+                Count: 1,
-+                Quality: 0,
-+            },
-+            Usage: D3D11_USAGE_STAGING,
-+            BindFlags: 0,
-+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-+            MiscFlags: 0,
-+        };
-+        let devices = self.dev();
-+        let render_target = self
-+            .res()
-+            .render_target
-+            .as_ref()
-+            .context("render target missing")?;
-+        let mut staging: Option<ID3D11Texture2D> = None;
-+        unsafe {
-+            devices
-+                .device
-+                .CreateTexture2D(&desc, None, Some(&mut staging))?
-+        };
-+        let staging = staging.context("staging texture")?;
-+        let ctx = &devices.device_context;
-+        unsafe { ctx.CopyResource(&staging, render_target) };
-+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-+        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-+        let row = (w * 4) as usize;
-+        let mut bgra = vec![0u8; row * h as usize];
-+        for y in 0..h as usize {
-+            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
-+            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
-+            // bytes until Unmap below.
-+            let src = unsafe {
-+                std::slice::from_raw_parts(
-+                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
-+                    row,
-+                )
-+            };
-+            bgra[y * row..(y + 1) * row].copy_from_slice(src);
-+        }
-+        unsafe { ctx.Unmap(&staging, 0) };
-+        if let Some(sink) = &mut self.capture {
-+            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra }, started.elapsed());
-+        }
-+        Ok(())
-@@ -353,0 +765,2 @@
+@@ -353,0 +713,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +771,33 @@
+@@ -357,0 +719,33 @@
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7076,9 +7116,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +812 @@
+@@ -365,0 +760 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +850,352 @@
+@@ -402,0 +798,352 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7431,13 +7471,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1210,0 @@
+@@ -412 +1158,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1286,2 @@
+@@ -488 +1234,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1293,21 @@
+@@ -494 +1241,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7460,7 +7500,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1319 @@
+@@ -500,19 +1267 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7481,7 +7521,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1401,7 @@
+@@ -599,0 +1349,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7489,18 +7529,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        } else {
 +            (start, len)
 +        };
-@@ -643,0 +1452,2 @@
+@@ -643,0 +1400,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1482 @@
+@@ -672 +1430 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
-@@ -815,0 +1626,4 @@
+@@ -815,0 +1574,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1634,23 @@
+@@ -819,0 +1582,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7524,7 +7564,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1658,394 @@
+@@ -820,0 +1606,394 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7919,10 +7959,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2071 @@
+@@ -840 +2019 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2122,12 @@
+@@ -890,0 +2070,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7935,9 +7975,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2148 @@
+@@ -904,0 +2096 @@
 +            frame_gate,
-@@ -999,0 +2244,7 @@
+@@ -999,0 +2192,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -7945,22 +7985,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2261 @@
+@@ -1009,0 +2209 @@
 +            blur_pipeline,
-@@ -1018,0 +2271,4 @@
+@@ -1018,0 +2219,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2280 @@
+@@ -1023,0 +2228 @@
 +            comp_root,
-@@ -1030 +2287,2 @@
+@@ -1030 +2235,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1076,0 +2335,13 @@
-+}
-+
+@@ -1078,0 +2285,13 @@
 +/// KaminIDE patch: параметры кадра для вьюпорта `viewport_size` — общие у
 +/// кадра и у проходов размытия (их вьюпорты меньше кадра).
 +fn global_params(font_info: &FontInfo, viewport_size: [f32; 2]) -> GlobalParams {
@@ -7972,7 +8010,43 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        is_bgr: font_info.is_bgr as u32,
 +        _pad: [0; 3],
 +    }
-@@ -1190,0 +2462,45 @@
++}
++
+@@ -1089,0 +2309,2 @@
++    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
++    shader_executables: [String; 2],
+@@ -1100,30 +2320,0 @@
+-    fn new(
+-        device: &ID3D11Device,
+-        label: &'static str,
+-        shader_module: ShaderModule,
+-        buffer_size: usize,
+-        blend_state: ID3D11BlendState,
+-    ) -> Result<Self> {
+-        let vertex = {
+-            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
+-            create_vertex_shader(device, raw_shader.as_bytes())?
+-        };
+-        let fragment = {
+-            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Fragment)?;
+-            create_fragment_shader(device, raw_shader.as_bytes())?
+-        };
+-        let buffer = create_buffer(device, std::mem::size_of::<T>(), buffer_size)?;
+-        let view = create_buffer_view(device, &buffer)?;
+-
+-        Ok(PipelineState {
+-            label,
+-            vertex,
+-            fragment,
+-            buffer,
+-            buffer_size,
+-            view,
+-            blend_state,
+-            _marker: std::marker::PhantomData,
+-        })
+-    }
+-
+@@ -1190,0 +2382,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8018,21 +8092,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2513 @@
+@@ -1197 +2433 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2592,2 @@
+@@ -1275,0 +2512,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2637,2 @@
+@@ -1319 +2557,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2666,2 @@
+@@ -1347 +2586,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2813,33 @@
+@@ -1492,0 +2733,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8066,17 +8140,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146
 +    }
 +}
 +
-@@ -1719,0 +3073,2 @@
+@@ -1719,0 +2993,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3152,4 @@
+@@ -1796,0 +3072,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3243 @@
+@@ -1883,0 +3163 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3414,33 @@
+@@ -2054,17 +3334,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -8531,6 +8605,97 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +        )
 +    };
 +    hr == windows::Win32::Foundation::S_OK
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5de355d6005d778face12c81c32e9e25d174f901
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
+@@ -0,0 +1,85 @@
++//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
++
++use super::*;
++
++impl DirectXRenderer {
++    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
++    pub(super) fn capture_frame(&mut self) -> Result<()> {
++        let started = std::time::Instant::now();
++        let (w, h) = (self.width, self.height);
++        let desc = D3D11_TEXTURE2D_DESC {
++            Width: w,
++            Height: h,
++            MipLevels: 1,
++            ArraySize: 1,
++            Format: RENDER_TARGET_FORMAT,
++            SampleDesc: DXGI_SAMPLE_DESC {
++                Count: 1,
++                Quality: 0,
++            },
++            Usage: D3D11_USAGE_STAGING,
++            BindFlags: 0,
++            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
++            MiscFlags: 0,
++        };
++        let devices = self.dev();
++        let render_target = self
++            .res()
++            .render_target
++            .as_ref()
++            .context("render target missing")?;
++        let mut staging: Option<ID3D11Texture2D> = None;
++        unsafe {
++            devices
++                .device
++                .CreateTexture2D(&desc, None, Some(&mut staging))?
++        };
++        let staging = staging.context("staging texture")?;
++        let ctx = &devices.device_context;
++        unsafe { ctx.CopyResource(&staging, render_target) };
++        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
++        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
++        let row = (w * 4) as usize;
++        let mut bgra = vec![0u8; row * h as usize];
++        for y in 0..h as usize {
++            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
++            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
++            // bytes until Unmap below.
++            let src = unsafe {
++                std::slice::from_raw_parts(
++                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
++                    row,
++                )
++            };
++            bgra[y * row..(y + 1) * row].copy_from_slice(src);
++        }
++        unsafe { ctx.Unmap(&staging, 0) };
++        // KaminIDE patch: capture retains the device generation used by this target.
++        let mut target_desc = D3D11_TEXTURE2D_DESC::default();
++        unsafe { render_target.GetDesc(&mut target_desc) };
++        let mut shader_executables: Vec<_> = [
++            &self.pipelines.shadow_pipeline.shader_executables,
++            &self.pipelines.quad_pipeline.shader_executables,
++            &self.pipelines.path_rasterization_pipeline.shader_executables,
++            &self.pipelines.path_sprite_pipeline.shader_executables,
++            &self.pipelines.underline_pipeline.shader_executables,
++            &self.pipelines.mono_sprites.shader_executables,
++            &self.pipelines.subpixel_sprites.shader_executables,
++            &self.pipelines.poly_sprites.shader_executables,
++            &self.pipelines.blur_pipeline.shader_executables,
++        ].into_iter().flatten().cloned().collect();
++        shader_executables.sort();
++        shader_executables.dedup();
++        let context = Some(gpui::frame_capture::FrameContext {
++            device: devices.context.clone(), shader_executables, target_format: target_desc.Format.0,
++            sample_count: target_desc.SampleDesc.Count, sample_quality: target_desc.SampleDesc.Quality,
++            gamma_ratios: self.font_info.gamma_ratios,
++            grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
++        });
++        if let Some(sink) = &mut self.capture {
++            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra, context }, started.elapsed());
++        }
++        Ok(())
++    }
++
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery.rs b/vendor/gpui-windows/src/directx_renderer/recovery.rs
 new file mode 100644
@@ -9034,6 +9199,73 @@ index 0000000000000000000000000000000000000000..df52ae90a966bdbec6383a2aec716ca9
 +        result
 +    }
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/shader_identity.rs b/vendor/gpui-windows/src/directx_renderer/shader_identity.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d54819b1af8b85e736bea680f8520b819cc8c7d
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/shader_identity.rs
+@@ -0,0 +1,61 @@
++//! KaminIDE patch: исполняемые DXBC chunks отделены от нестабильных debug paths.
++
++use super::*;
++use sha2::{Digest, Sha256};
++
++fn executable(bytes: &[u8]) -> Result<String> {
++    anyhow::ensure!(bytes.starts_with(b"DXBC") && bytes.len() >= 32, "Invalid DXBC container");
++    let word = |offset: usize| -> Result<usize> {
++        Ok(u32::from_le_bytes(bytes.get(offset..offset + 4).context("Truncated DXBC word")?.try_into()?) as usize)
++    };
++    let mut digest = Sha256::new();
++    let mut found = false;
++    for index in 0..word(28)? {
++        let offset = word(32 + index * 4)?;
++        let tag = bytes.get(offset..offset + 4).context("Truncated DXBC chunk")?;
++        if tag == b"SHDR" || tag == b"SHEX" {
++            let size = word(offset + 4)?;
++            digest.update(bytes.get(offset..offset + 8 + size).context("Truncated shader executable")?);
++            found = true;
++        }
++    }
++    anyhow::ensure!(found, "DXBC contains no executable chunk");
++    Ok(format!("{:x}", digest.finalize()))
++}
++
++impl<T> PipelineState<T> {
++    pub(super) fn new(
++        device: &ID3D11Device,
++        label: &'static str,
++        shader_module: ShaderModule,
++        buffer_size: usize,
++        blend_state: ID3D11BlendState,
++    ) -> Result<Self> {
++        let mut shader_executables = [String::new(), String::new()];
++        let vertex = {
++            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
++            shader_executables[0] = executable(raw_shader.as_bytes())?;
++            create_vertex_shader(device, raw_shader.as_bytes())?
++        };
++        let fragment = {
++            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Fragment)?;
++            shader_executables[1] = executable(raw_shader.as_bytes())?;
++            create_fragment_shader(device, raw_shader.as_bytes())?
++        };
++        let buffer = create_buffer(device, std::mem::size_of::<T>(), buffer_size)?;
++        let view = create_buffer_view(device, &buffer)?;
++
++        Ok(PipelineState {
++            label,
++            shader_executables,
++            vertex,
++            fragment,
++            buffer,
++            buffer_size,
++            view,
++            blend_state,
++            _marker: std::marker::PhantomData,
++        })
++    }
++
++}
 diff --git a/vendor/gpui-windows/src/display.rs b/vendor/gpui-windows/src/display.rs
 index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf1601533f1b049
 --- a/vendor/gpui-windows/src/display.rs
@@ -9117,10 +9349,10 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..9875ecee36d586e77f47004fe63ddb30
 +
 diff --git a/vendor/gpui-windows/src/gpu_adapter.rs b/vendor/gpui-windows/src/gpu_adapter.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..da6c0a4b99391a1831668a559dbc8663e3981240
+index 0000000000000000000000000000000000000000..3af5a5dc3bfb1802b10db2d12062ebfe52da7328
 --- /dev/null
 +++ b/vendor/gpui-windows/src/gpu_adapter.rs
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,181 @@
 +//! KaminIDE patch: явный выбор DXGI-адаптера и сведения о реальном устройстве.
 +
 +use anyhow::{Context, Result, bail};
@@ -9151,6 +9383,13 @@ index 0000000000000000000000000000000000000000..da6c0a4b99391a1831668a559dbc8663
 +            "default" => Self::Default,
 +            "high-performance" => Self::HighPerformance,
 +            "minimum-power" => Self::MinimumPower,
++            value if value.starts_with("luid:") => {
++                let (high, low) = value[5..].split_once(':').context("Expected luid:HHHHHHHH:LLLLLLLL")?;
++                Self::ByLuid {
++                    high_part: u32::from_str_radix(high, 16).context("Invalid LUID high part")? as i32,
++                    low_part: u32::from_str_radix(low, 16).context("Invalid LUID low part")?,
++                }
++            }
 +            value if !value.trim().is_empty() => Self::ByName(value.to_lowercase()),
 +            _ => bail!("GPU name substring must not be empty"),
 +        })
@@ -9187,9 +9426,7 @@ index 0000000000000000000000000000000000000000..da6c0a4b99391a1831668a559dbc8663
 +/// Enumerates hardware identities without creating an application or D3D device.
 +pub fn gpu_adapters(preference: &GpuAdapterPreference) -> Result<Vec<GpuAdapterInfo>> {
 +    let factory: IDXGIFactory6 = unsafe { CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS::default())? };
-+    adapters(&factory, preference)?.iter()
-+        .filter(|adapter| unsafe { adapter.GetDesc1().is_ok_and(|desc| desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0) })
-+        .map(GpuAdapterInfo::read).collect()
++    adapters(&factory, preference)?.iter().map(GpuAdapterInfo::read).collect()
 +}
 +
 +pub(crate) fn adapters(
@@ -9201,42 +9438,41 @@ index 0000000000000000000000000000000000000000..da6c0a4b99391a1831668a559dbc8663
 +        GpuAdapterPreference::MinimumPower => Some(DXGI_GPU_PREFERENCE_MINIMUM_POWER),
 +        _ => None,
 +    };
-+    let mut found = Vec::new();
-+    for index in 0.. {
-+        let adapter = if let Some(power) = power {
++    let enumerated = enumerate(|index| {
++        if let Some(power) = power {
 +            unsafe { factory.EnumAdapterByGpuPreference::<IDXGIAdapter1>(index, power) }
 +        } else {
 +            unsafe { factory.EnumAdapters(index).and_then(|adapter| adapter.cast()) }
-+        };
-+        match adapter {
-+            Ok(adapter) => found.push(adapter),
-+            Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-+            Err(error) if power.is_some() => {
-+                log::warn!("DXGI GPU preference enumeration failed ({error}); using EnumAdapters");
-+                return adapters(factory, &GpuAdapterPreference::Default);
-+            }
-+            Err(error) => return Err(error.into()),
 +        }
++    })?;
++    let mut found = Vec::new();
++    for adapter in enumerated {
++        let desc = unsafe { adapter.GetDesc1()? };
++        if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0 { found.push(adapter); }
 +    }
 +    if matches!(preference, GpuAdapterPreference::ByName(_) | GpuAdapterPreference::ByLuid { .. }) {
 +        let mut matching = Vec::new();
 +        for adapter in found {
-+            let desc = unsafe { adapter.GetDesc1()? };
-+            let matches = match preference {
-+                GpuAdapterPreference::ByName(name) => String::from_utf16_lossy(&desc.Description)
-+                    .to_lowercase().contains(&name.to_lowercase()),
-+                GpuAdapterPreference::ByLuid { high_part, low_part } =>
-+                    desc.AdapterLuid.HighPart == *high_part && desc.AdapterLuid.LowPart == *low_part,
-+                _ => unreachable!(),
-+            };
++            let matches = matches_identity(preference, &GpuAdapterInfo::read(&adapter)?);
 +            if matches { matching.push(adapter); }
 +        }
-+        if matching.len() != 1 {
-+            bail!("GPU selector {preference:?} matched {} adapters; expected exactly one", matching.len());
-+        }
++        require_unique(preference, matching.len())?;
 +        return Ok(matching);
 +    }
 +    Ok(found)
++}
++
++// KaminIDE patch: только NOT_FOUND завершает список; ошибка power enumeration не включает fallback.
++fn enumerate<T>(mut next: impl FnMut(u32) -> windows::core::Result<T>) -> Result<Vec<T>> {
++    let mut found = Vec::new();
++    for index in 0.. {
++        match next(index) {
++            Ok(adapter) => found.push(adapter),
++            Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => return Ok(found),
++            Err(error) => return Err(error.into()),
++        }
++    }
++    unreachable!("DXGI adapter index exhausted")
 +}
 +
 +pub(crate) fn selected_adapter(
@@ -9258,17 +9494,143 @@ index 0000000000000000000000000000000000000000..da6c0a4b99391a1831668a559dbc8663
 +        number & 0xFFFF
 +    ))
 +}
++
++fn matches_identity(preference: &GpuAdapterPreference, info: &GpuAdapterInfo) -> bool {
++    match preference {
++        GpuAdapterPreference::ByName(name) => info.device_name.to_lowercase().contains(&name.to_lowercase()),
++        GpuAdapterPreference::ByLuid { high_part, low_part } => info.luid_high_part == *high_part && info.luid_low_part == *low_part,
++        _ => false,
++    }
++}
++
++fn require_unique(preference: &GpuAdapterPreference, count: usize) -> Result<()> {
++    if count != 1 { bail!("GPU selector {preference:?} matched {count} adapters; expected exactly one"); }
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn enumeration_errors_do_not_become_partial_success_or_fallback() {
++        let mut calls = 0;
++        let result = enumerate(|index| {
++            calls += 1;
++            if index == 0 { Ok(42) } else { Err(windows::core::Error::from_hresult(windows::Win32::Foundation::E_FAIL)) }
++        });
++        assert!(result.is_err());
++        assert_eq!(calls, 2);
++        let result = enumerate::<u32>(|_| Err(windows::core::Error::from_hresult(DXGI_ERROR_NOT_FOUND)));
++        assert!(result.unwrap().is_empty());
++    }
++    #[test]
++    fn selectors_are_exact_and_ambiguous_names_fail() {
++        let info = GpuAdapterInfo { device_name: "Intel GPU".into(), luid_high_part: -1,
++            luid_low_part: 42, driver_version: "1".into(), vendor_id: 1, device_id: 2 };
++        assert!(matches_identity(&GpuAdapterPreference::ByName("INTEL".into()), &info));
++        assert!(matches_identity(&GpuAdapterPreference::ByLuid { high_part: -1, low_part: 42 }, &info));
++        assert!(!matches_identity(&GpuAdapterPreference::ByLuid { high_part: 0, low_part: 42 }, &info));
++        for count in [0, 2] { assert!(require_unique(&GpuAdapterPreference::ByName("GPU".into()), count).is_err()); }
++        assert!(require_unique(&GpuAdapterPreference::MinimumPower, 1).is_ok());
++    }
++}
+diff --git a/vendor/gpui-windows/src/gpu_context.rs b/vendor/gpui-windows/src/gpu_context.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a227477d1c916cdd02c6f97d80118faba82b9b70
+--- /dev/null
++++ b/vendor/gpui-windows/src/gpu_context.rs
+@@ -0,0 +1,79 @@
++//! KaminIDE patch: фактический D3D device context и проверка строгого выбора.
++
++use anyhow::{Result, bail};
++use gpui::frame_capture::GpuDeviceContext;
++use windows::{Win32::Graphics::{Direct3D11::ID3D11Device, Dxgi::{IDXGIAdapter1, IDXGIDevice}}, core::Interface};
++use crate::{GpuAdapterInfo, GpuAdapterPreference};
++
++pub(crate) fn validate_mode(preference: &GpuAdapterPreference, mode: gpui::DebugDevice) -> Result<()> {
++    if *preference != GpuAdapterPreference::Default && mode != gpui::DebugDevice::Default {
++        bail!("Explicit hardware GPU selection conflicts with {mode:?}; select default for this backend");
++    }
++    Ok(())
++}
++
++pub(crate) fn read(device: &ID3D11Device, generation: u64, factory_debug: bool, mode: gpui::DebugDevice) -> Result<GpuDeviceContext> {
++    let dxgi: IDXGIDevice = device.cast()?;
++    let adapter: IDXGIAdapter1 = unsafe { dxgi.GetAdapter()?.cast()? };
++    let info = GpuAdapterInfo::read(&adapter)?;
++    let desc = unsafe { adapter.GetDesc1()? };
++    Ok(GpuDeviceContext {
++        luid_high_part: info.luid_high_part, luid_low_part: info.luid_low_part,
++        device_name: info.device_name, vendor_id: info.vendor_id, device_id: info.device_id,
++        subsystem_id: desc.SubSysId, revision: desc.Revision, adapter_flags: desc.Flags,
++        driver_version: info.driver_version, feature_level: unsafe { device.GetFeatureLevel().0 as u32 },
++        creation_flags: unsafe { device.GetCreationFlags() }, factory_debug,
++        backend: match mode { gpui::DebugDevice::Default => "d3d11", gpui::DebugDevice::Warp => "warp", gpui::DebugDevice::D3D11On12 => "d3d11on12" }.into(),
++        generation, queried_from_device: true,
++    })
++}
++
++pub(crate) fn pin(preference: &GpuAdapterPreference, context: &GpuDeviceContext) -> Result<GpuAdapterPreference> {
++    if *preference == GpuAdapterPreference::Default { return Ok(preference.clone()); }
++    if context.adapter_flags & 2 != 0 { bail!("Explicit GPU selection produced a software device"); }
++    let actual = GpuAdapterPreference::ByLuid { high_part: context.luid_high_part, low_part: context.luid_low_part };
++    if matches!(preference, GpuAdapterPreference::ByLuid { .. }) && *preference != actual {
++        bail!("Requested GPU {preference:?} differs from actual device {actual:?}");
++    }
++    Ok(actual)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn rejects_conflicting_backend_before_device_creation() {
++        for mode in [gpui::DebugDevice::Warp, gpui::DebugDevice::D3D11On12] {
++            assert!(validate_mode(&GpuAdapterPreference::MinimumPower, mode).is_err());
++            assert!(validate_mode(&GpuAdapterPreference::Default, mode).is_ok());
++        }
++    }
++    #[test]
++    fn parses_luid_without_losing_signed_high_part() {
++        assert_eq!(GpuAdapterPreference::parse("luid:FFFFFFFF:000150BD").unwrap(), GpuAdapterPreference::ByLuid { high_part: -1, low_part: 86205 });
++        for bad in ["luid:", "luid:x:0", "luid:0:100000000", ""] { assert!(GpuAdapterPreference::parse(bad).is_err()); }
++    }
++    fn hardware() -> GpuDeviceContext {
++        GpuDeviceContext { luid_high_part: 0, luid_low_part: 17, device_name: "GPU".into(),
++            vendor_id: 0x8086, device_id: 1, subsystem_id: 0, revision: 0, adapter_flags: 0,
++            driver_version: "1.2.3.4".into(), feature_level: 0xb100, creation_flags: 0x22,
++            factory_debug: true, backend: "d3d11".into(), generation: 1, queried_from_device: true }
++    }
++    #[test]
++    fn power_selection_pins_actual_hardware_for_recovery() {
++        let mut context = hardware();
++        let luid = GpuAdapterPreference::ByLuid { high_part: 0, low_part: 17 };
++        assert_eq!(pin(&GpuAdapterPreference::MinimumPower, &context).unwrap(), luid);
++        assert!(pin(&luid, &context).is_ok());
++        let captured = context.clone();
++        context.generation += 1;
++        context.luid_low_part += 1;
++        assert!(pin(&luid, &context).is_err());
++        assert_eq!(captured.generation, 1);
++        assert_eq!(captured.luid_low_part, 17);
++        context.adapter_flags = 2;
++        assert!(pin(&GpuAdapterPreference::MinimumPower, &context).is_err());
++        assert_eq!(pin(&GpuAdapterPreference::Default, &context).unwrap(), GpuAdapterPreference::Default);
++    }
++
++}
 diff --git a/vendor/gpui-windows/src/gpui_windows.rs b/vendor/gpui-windows/src/gpui_windows.rs
-index e7a45a034dc235dab7bc49cad209f9cdef143802..142da34873d5f054798b89c1c76b1c9fcc1584bc
+index e7a45a034dc235dab7bc49cad209f9cdef143802..7d66fefb43e07d433cf846ad63286674758ca92c
 --- a/vendor/gpui-windows/src/gpui_windows.rs
 +++ b/vendor/gpui-windows/src/gpui_windows.rs
-@@ -13,0 +14,2 @@
+@@ -13,0 +14,3 @@
 +// KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 +mod gpu_adapter;
-@@ -14,0 +17,2 @@
++mod gpu_context;
+@@ -14,0 +18,2 @@
 +#[cfg(test)]
 +mod ligature_tests;
-@@ -41,0 +46 @@
+@@ -41,0 +47 @@
 +pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 diff --git a/vendor/gpui-windows/src/ligature_tests.rs b/vendor/gpui-windows/src/ligature_tests.rs
 new file mode 100644
@@ -9464,59 +9826,54 @@ index 0000000000000000000000000000000000000000..8a8b152eaf796fb87479f85c87f7860c
 +        .collect()
 +}
 diff --git a/vendor/gpui-windows/src/platform.rs b/vendor/gpui-windows/src/platform.rs
-index 995017faedb322d4051084e9ab38edf0071edeca..a4a19e945af8efb5c424a52184db1fdbedd4815c
+index 995017faedb322d4051084e9ab38edf0071edeca..628d5934ad7c365edae25e84d5f1c6bfe5da6a3c
 --- a/vendor/gpui-windows/src/platform.rs
 +++ b/vendor/gpui-windows/src/platform.rs
-@@ -38,0 +39,3 @@
+@@ -0,0 +1 @@
++mod gpu;
+@@ -38,0 +40,3 @@
 +mod shutdown;
 +pub(crate) use shutdown::WindowLifetime;
 +
-@@ -59,0 +63,2 @@
+@@ -59,0 +64,2 @@
 +    vsync_threads: RefCell<Vec<std::thread::JoinHandle<()>>>,
 +    live_windows: Rc<Cell<usize>>,
-@@ -62,0 +68,2 @@
+@@ -62,0 +69,2 @@
 +    // KaminIDE patch: instance-owned device creation policy, never environment state.
 +    gpu_adapter_preference: GpuAdapterPreference,
-@@ -100,0 +108 @@
+@@ -100,0 +109 @@
 +    instrumentation: RefCell<Instrumentation>,
-@@ -128,0 +137 @@
+@@ -128,0 +138 @@
 +            instrumentation: RefCell::new(Instrumentation::default()),
-@@ -180,0 +190,5 @@
+@@ -180,0 +191,5 @@
 +        Self::with_gpu_adapter(headless, GpuAdapterPreference::Default)
 +    }
 +
 +    /// KaminIDE patch: choose a GPU for this platform and subsequent device recovery.
 +    pub fn with_gpu_adapter(headless: bool, preference: GpuAdapterPreference) -> Result<Self> {
-@@ -269,0 +284,2 @@
+@@ -269,0 +285,2 @@
 +            vsync_threads: RefCell::new(Vec::new()),
 +            live_windows: Rc::new(Cell::new(0)),
-@@ -270,0 +287 @@
+@@ -270,0 +288 @@
 +            gpu_adapter_preference: preference,
-@@ -285,0 +303,6 @@
-+    /// KaminIDE patch: identity of the live renderer adapter; unavailable until the platform attaches its GPU.
-+    pub fn gpu_adapter_info(&self) -> Result<GpuAdapterInfo> {
-+        let devices = self.inner.state.directx_devices.borrow();
-+        GpuAdapterInfo::read(&devices.as_ref().context("GPU has not been attached")?.adapter)
-+    }
-+
-@@ -307,0 +331 @@
+@@ -307,0 +326 @@
 +            live_windows: self.live_windows.clone(),
-@@ -411 +435 @@
+@@ -411 +430 @@
 -        let devices = DirectXDevices::new().context("Creating DirectX devices")?;
 +        let devices = DirectXDevices::with_instrumentation(self.gpu_adapter_preference.clone(), self.inner.state.instrumentation.borrow().clone()).context("Creating DirectX devices")?;
-@@ -449 +473 @@
+@@ -449 +468 @@
 -        std::thread::Builder::new()
 +        let thread = std::thread::Builder::new()
-@@ -494,0 +519,3 @@
+@@ -494,0 +514,3 @@
 +        let mut threads = self.vsync_threads.borrow_mut();
 +        threads.retain(|thread| !shutdown::thread_has_exited(thread));
 +        threads.push(thread);
-@@ -547,0 +575,4 @@
+@@ -547,0 +570,4 @@
 +    fn set_instrumentation(&self, instrumentation: Instrumentation) {
 +        *self.inner.state.instrumentation.borrow_mut() = instrumentation;
 +    }
 +
-@@ -602,7 +633,5 @@
+@@ -602,7 +628,5 @@
 -                if translate_accelerator(&msg).is_none() {
 -                    _ = TranslateMessage(&msg);
 -                    DispatchMessageW(&msg);
@@ -9529,27 +9886,55 @@ index 995017faedb322d4051084e9ab38edf0071edeca..a4a19e945af8efb5c424a52184db1fdb
 +        }
 +
 +        let mut did_shutdown = false;
-@@ -612 +641 @@
+@@ -612 +636 @@
 -                callback();
 +                did_shutdown = callback();
-@@ -614,0 +644,3 @@
+@@ -614,0 +639,3 @@
 +        if did_shutdown {
 +            self.finish_shutdown().log_err();
 +        }
-@@ -727 +759 @@
+@@ -727 +754 @@
 -        WindowsDisplay::displays()
 +        WindowsDisplay::displays(self.inner.state.instrumentation.borrow().config().scale_factor)
-@@ -731 +763 @@
+@@ -731 +758 @@
 -        WindowsDisplay::primary_monitor().map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
 +        WindowsDisplay::primary_monitor(self.inner.state.instrumentation.borrow().config().scale_factor).map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
-@@ -1386,0 +1419 @@
+@@ -1386,0 +1414 @@
 +    pub(crate) live_windows: Rc<Cell<usize>>,
-@@ -1681,0 +1715,2 @@
+@@ -1681,0 +1710,3 @@
 +    let preference = directx_devices.adapter_preference.clone();
++    let generation = directx_devices.context.generation.checked_add(1).context("GPU generation overflow")?;
 +    let instrumentation = directx_devices.instrumentation.clone();
-@@ -1683 +1718 @@
+@@ -1683 +1714 @@
 -        DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
 +        DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone()).context("Failed to recreate new DirectX devices after device lost")
+@@ -1684,0 +1716 @@
++    directx_devices.context.generation = generation;
+diff --git a/vendor/gpui-windows/src/platform/gpu.rs b/vendor/gpui-windows/src/platform/gpu.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..da07c73f67b93e6ae2e3a477420715ec9420096e
+--- /dev/null
++++ b/vendor/gpui-windows/src/platform/gpu.rs
+@@ -0,0 +1,19 @@
++//! KaminIDE patch: публичные снимки фактического GPU платформы.
++
++use super::*;
++
++impl WindowsPlatform {
++    /// KaminIDE patch: identity of the live renderer adapter; unavailable until the platform attaches its GPU.
++    pub fn gpu_adapter_info(&self) -> Result<GpuAdapterInfo> {
++        let devices = self.inner.state.directx_devices.borrow();
++        let device = &devices.as_ref().context("GPU has not been attached")?.device;
++        let dxgi: windows::Win32::Graphics::Dxgi::IDXGIDevice = device.cast()?;
++        GpuAdapterInfo::read(&unsafe { dxgi.GetAdapter()?.cast()? })
++    }
++
++    /// KaminIDE patch: generation snapshot queried from the renderer device at creation.
++    pub fn gpu_device_context(&self) -> Result<gpui::frame_capture::GpuDeviceContext> {
++        Ok(self.inner.state.directx_devices.borrow().as_ref().context("GPU has not been attached")?.context.clone())
++    }
++
++}
 diff --git a/vendor/gpui-windows/src/platform/shutdown.rs b/vendor/gpui-windows/src/platform/shutdown.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de8c0de8b9

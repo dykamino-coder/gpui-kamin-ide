@@ -2,8 +2,7 @@
 //!
 //! На машине без GPU (облачная виртуалка, RDP-сессия) DXGI отдаёт единственный
 //! адаптер — «Microsoft Basic Render Driver», то есть WARP, программный D3D11.
-//! gpui берёт первый адаптер, который умеет D3D11, и молча садится на него
-//! (`vendor/gpui/src/platform/windows/directx_devices.rs`). Дальше КАЖДЫЙ кадр
+//! При программном устройстве КАЖДЫЙ кадр
 //! окна растеризуется процессором на всех ядрах, причём мимо счётчиков gpui:
 //! `Present` только ставит команды в очередь и возвращается за пару
 //! миллисекунд, а работа идёт после него.
@@ -97,8 +96,8 @@ pub(crate) fn reduced_motion_block() -> &'static str {
 ///
 /// Спрашиваем DXGI, а не устройство окна: ответ нужен ДО первого кадра (первая
 /// же отдача страницы должна прийти уже с погашенными анимациями), а устройство
-/// gpui появляется только на нём. Выбор у gpui тот же — первый адаптер из
-/// этого же перечисления, который умеет D3D11.
+/// gpui появляется отдельно. Это предварительная оценка доступности hardware;
+/// фактический выбранный адаптер записывается startup-кодом в `[boot] adapter selected`.
 #[cfg(windows)]
 fn detect() -> bool {
     use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
@@ -124,7 +123,7 @@ fn detect() -> bool {
             let software =
                 desc.VendorId == VENDOR_MICROSOFT || name.starts_with("Microsoft Basic Render");
             super::diag_sink::emit_line(format!(
-                "[boot] adapter index={index} name={name:?} vendor={} software={software}",
+                "[boot] adapter available index={index} name={name:?} vendor={} software={software}",
                 desc.VendorId
             ));
             if !software {
