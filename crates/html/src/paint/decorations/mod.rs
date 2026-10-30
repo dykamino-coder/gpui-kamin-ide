@@ -3,6 +3,7 @@
 use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 mod borders;
+pub(crate) mod clone_hidden;
 mod fragments;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;

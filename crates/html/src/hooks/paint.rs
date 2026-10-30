@@ -44,6 +44,15 @@ pub(crate) fn with_replay_pieces<R>(
     crate::paint::continuation::replayed::with_pieces(pieces, window, f)
 }
 
+/// Record of a split child's main copy in which the own paint of clone roots `ids` is hidden.
+pub(crate) fn with_clone_hidden<R>(
+    ids: std::rc::Rc<std::collections::HashSet<u64>>,
+    window: &mut Window,
+    record: impl FnOnce(&mut Window) -> R,
+) -> R {
+    crate::paint::decorations::clone_hidden::with_hidden(ids, window, record)
+}
+
 /// Record of a split child's main copy whose own positioned jobs paint into `late`.
 pub(crate) fn with_late_jobs<R>(
     late: std::rc::Rc<[gpui::PaintSegmentSlice]>,
