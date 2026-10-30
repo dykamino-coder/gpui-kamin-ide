@@ -1,15 +1,36 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Выборочная сверка доставки INC-0082 — 2026-10-30
+
+Проверены merged [#537](https://github.com/dykamino-coder/gpui-kamin-ide/pull/537)
+(`9ebc9989e8616a5ed1a6580fb31adf976d42f0f8`) и
+[#539](https://github.com/dykamino-coder/gpui-kamin-ide/pull/539)
+(`2498ffe877b72f99ac0e1b52d68db6fe244ad6aa`), их ancestry в опубликованном
+`kaminide-v1.0.82` / server 6.3.159 и сохранение в опубликованном 1.0.83 / 6.3.160.
+Это выборочная актуализация доставки; исторические базы, численности и статусы
+остальных задач ниже не пересчитаны. Новый release и execution-пачка не нужны.
+
+| INC | Текущее состояние | Следующий owner / artifact |
+| --- | --- | --- |
+| [INC-0082](runtime-issues/INC-2026-0082.md) | open / verify; блокировка приёма новых команд из-за terminal history исправлена и доставлена в .159; старые settled outcomes вытесняются по count/bytes | maintainer: сверить исходную acceptance matrix с имеющимися tests, оформить только непокрытые проверки; deployment owner: versioned count-only observation после обычного обновления, без нового fix или удаления task files |
+
+Текущие лимиты: 400 working на сервер / 8 на MCP owner; хранение — 2048 записей,
+256 на owner, 128 MiB. Это не суточная квота выполненных команд. Owner — durable
+endpoint, не обязательно одна сессия или человек. Вытеснение может удалить ещё
+не прочитанный завершённый результат до TTL; риск явно сохранён в карточке.
+Приёмка fairness, полного multi-owner workload и deployment outcome не объявлена
+пройденной фактом merge/release. Повторная реализация #537/#539 не требуется.
+
 ## Выборочная системная сверка — 2026-10-29
 
 Это связанный маршрут для длинных бесед, compact, субагентов и команд;
 не полный пересчёт очереди и не расширение текущей execution-пачки. Исторические
 численности и базы ниже сохраняют свои даты.
 
-- [INC-0082](runtime-issues/INC-2026-0082.md): отдельный P1 — terminal MCP Tasks
-  занимают retained admission. Есть actual-source reproducer и private evidence;
-  обычный restart с тем же volume не освобождает лимит. Следующий owner: maintainer,
-  bounded capacity/result-retention fix и автоматическая приёмка.
+- [INC-0082](runtime-issues/INC-2026-0082.md): первоначальный отдельный P1 — terminal
+  MCP Tasks занимали retained admission в .158. На 2026-10-30 #537/#539 уже доставлены
+  в .159; текущий следующий шаг — verification/observation из сверки выше,
+  а не повтор capacity fix. Исходный reproducer и private evidence сохранены.
 - [INC-0083](runtime-issues/INC-2026-0083.md): оставшаяся обязательная полная история
   при open/reattach и множество historical children. В карточке — карта связей
   со старыми BR/INC, предложенные независимые deliverables, workload и gates.
