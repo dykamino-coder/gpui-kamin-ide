@@ -85,7 +85,7 @@ pub(crate) struct Watched {
     /// их коробки (`ColumnStack::report_lead`).
     leads: Rc<RefCell<HashMap<u64, f32>>>,
     /// Собственный допуск узлов в записи главной копии, воспроизводимой по кускам
-    /// (`ColumnStack::replay_routes`): монолит — только в фрагментаинере начала.
+    /// (`fragment::replay::Routes`): монолит — только в фрагментаинере начала.
     admission: Rc<admission::Admission>,
 }
 
