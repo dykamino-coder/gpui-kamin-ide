@@ -1,10 +1,10 @@
 //! Обход содержащих коробок и геометрия motion path.
 
 use super::{Cb, apply_offset_transform};
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 
 /// `parent` — геометрия родителя и признак «родитель сам устанавливает
 /// содержащий блок для абсолютов» (нужен, чтобы не приписать абсолюту чужую

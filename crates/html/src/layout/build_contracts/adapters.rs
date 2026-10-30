@@ -1,10 +1,10 @@
 //! Дополнительные запросы построителя: SVG-содержимое, sizing, native-значения и outline-фаза.
 
 use super::{ChildBuild, GridPlacement};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::{Align, BoxStyle};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::AnyElement;
 
 impl ChildBuild {

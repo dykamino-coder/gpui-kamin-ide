@@ -25,10 +25,7 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 /// Обе упаковки — это тот же sfnt: в `woff` таблицы просто сжаты, в `woff2`
 /// вдобавок перестроены таблицы глифов. Разбор второй руками не пишут, он
 /// взят крейтом.
-pub(super) fn read_font(
-    path: &str,
-    doc: &crate::document::state::DocumentValues,
-) -> Option<Vec<u8>> {
+pub(super) fn read_font(path: &str, doc: &crate::values::DocumentValues) -> Option<Vec<u8>> {
     // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
     // покажет подпись (ветки ниже без расширения).
     let bytes = crate::resources::url_loader::read(path, &doc.revision_budget())

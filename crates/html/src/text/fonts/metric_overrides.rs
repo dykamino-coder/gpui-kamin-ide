@@ -3,12 +3,10 @@
 //! возможностей (`kasc`, `kdsc`, `kgap`) проносят метрики выбранного лица через алиасы шрифтов
 //! gpui; они не меняют ни шейпинг глифов, ни метрики системного шрифта.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 const TAGS: [&str; 3] = ["kasc", "kdsc", "kgap"];
 type Overrides = [Option<f32>; 3];
-
-pub(crate) use crate::font_facts::MetricFaces;
 
 pub(crate) fn clear(vcx: ValueCx<'_>) {
     vcx.doc.font_metric_faces.borrow_mut().clear();

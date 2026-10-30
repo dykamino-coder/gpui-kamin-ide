@@ -1,8 +1,8 @@
 //! Использованные края и процентные размеры каркаса из исходного CB.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 pub(super) fn resolved_style(c: &BoxStyle, used: gpui::MeasuredBox, vcx: ValueCx<'_>) -> BoxStyle {
     let mut frame = c.clone();

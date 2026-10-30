@@ -18,12 +18,12 @@ pub(crate) use layers::Layer;
 mod effects;
 pub(crate) use effects::{Effect, EffectBuild, RefBox};
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::text::clamp::ClampSpan;
+use crate::values::ValueCx;
 use gpui::AnyElement;
 
 type BuildElement = fn(&Element, &BoxStyle, &RenderOpts) -> AnyElement;

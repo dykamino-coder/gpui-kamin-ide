@@ -8,9 +8,9 @@
 //! касательную пути). Отсчёт — по часовой от самой правой точки.
 
 use super::{origin_shift, rotation};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use std::f64::consts::FRAC_PI_2;
 
 pub(super) fn css(

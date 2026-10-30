@@ -2,7 +2,7 @@
 
 use super::construction_tests::{default_host, find};
 use super::*;
-use crate::dom::parse;
+use crate::document::parsed::parse;
 use crate::style::values::value::Len;
 
 #[test]

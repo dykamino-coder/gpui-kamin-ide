@@ -191,7 +191,8 @@ fn anonymous_column_edge_does_not_propagate_the_next_element() {
 
 #[test]
 fn css_order_precedes_reverse_for_forced_and_avoid_propagation() {
-    use crate::dom::{Node, parse};
+    use crate::document::parsed::parse;
+    use crate::dom::Node;
     let tree = parse(
         "<div><div style='order:2'></div><div style='order:-1'></div><div style='order:1'></div><div style='order:-1'></div></div>",
         "",

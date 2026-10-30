@@ -1,10 +1,10 @@
 //! Индикаторы формы и ползунок, отдельно от текстовых полей.
 
 use super::{SystemColor, native_color};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::apply::apply;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Ползунок: дорожка и заполненная часть по значению.

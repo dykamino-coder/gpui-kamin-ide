@@ -16,7 +16,7 @@ pub fn rasterize(
     markup: &str,
     w: f32,
     h: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     let cpu = vcx.doc.images.borrow().rasterize_svg(
         markup,
@@ -31,7 +31,7 @@ pub(crate) fn rasterize_image(
     markup: &str,
     w: f32,
     h: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     let cpu = vcx.doc.images.borrow().rasterize_svg(
         markup,
@@ -83,7 +83,7 @@ pub(super) fn rasterize_padded(
     w: f32,
     h: f32,
     pad: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     let cpu = vcx.doc.images.borrow().rasterize_svg(
         markup,

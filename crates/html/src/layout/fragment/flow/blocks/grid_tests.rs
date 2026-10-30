@@ -9,7 +9,7 @@ use crate::layout::fragment::flow::blocks::MeasuredBreaks;
 
 /// Сетка — первый `div` документа; номера её элементов по порядку.
 pub(super) fn grid(html: &str) -> (BlockBox, Vec<u64>) {
-    let doc = crate::dom::parse(html, "");
+    let doc = crate::document::parsed::parse(html, "");
     fn div(n: &Node) -> Option<&crate::dom::Element> {
         let Node::Element(e) = n else { return None };
         if e.tag == "div" {

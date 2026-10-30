@@ -14,7 +14,7 @@ pub(super) struct Edges<'a> {
     cols: usize,
     font: f32,
     family: &'a str,
-    vcx: crate::document::state::ValueCx<'a>,
+    vcx: crate::values::ValueCx<'a>,
 }
 
 impl<'a> Edges<'a> {
@@ -25,7 +25,7 @@ impl<'a> Edges<'a> {
         cols: usize,
         font: f32,
         family: &'a str,
-        vcx: crate::document::state::ValueCx<'a>,
+        vcx: crate::values::ValueCx<'a>,
     ) -> Self {
         Self {
             axes: super::super::axes::Axes::new(&table.style.used()),

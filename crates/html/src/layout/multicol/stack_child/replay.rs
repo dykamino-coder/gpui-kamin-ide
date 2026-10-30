@@ -163,7 +163,7 @@ mod tests {
     use super::replayable;
 
     fn first(html: &str) -> crate::dom::Element {
-        let tree = crate::dom::parse(html, "");
+        let tree = crate::document::parsed::parse(html, "");
         fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|n| match n {
                 crate::dom::Node::Element(e) if e.tag == "section" => Some(e),

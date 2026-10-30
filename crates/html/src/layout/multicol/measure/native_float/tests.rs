@@ -10,7 +10,7 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
     cx: &mut gpui::TestAppContext,
 ) {
     let cx = cx.add_empty_window();
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='margin:calc(10% + 3px) 0 0'><div style='float:left;width:20px;overflow:scroll'>float</div>text</div><div>ordinary</div></div>",
         "",
     );
@@ -41,7 +41,7 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
 #[gpui::test]
 fn empty_float_host_is_measured_without_a_height_estimate(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div></div>",
         "",
     );
@@ -72,7 +72,7 @@ fn parallel_float_continuations_are_not_silently_replaced() {
     // P05 сохраняет normal box заданной высоты и отдельные child tokens
     // переполнения. Пустой монолитный float теперь принадлежит native-копии,
     // поэтому прежний отказ по высоте родителя здесь больше не нужен.
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div><div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div></div></div>",
         "",
     );
@@ -86,7 +86,7 @@ fn parallel_float_continuations_are_not_silently_replaced() {
         "<div style='float:left'><div>A</div><div>B</div></div>",
         "<div style='float:left;break-inside:avoid'><div>A</div><div>B</div></div>",
     ] {
-        let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
+        let tree = crate::document::parsed::parse(&format!("<div><div>{special}</div></div>"), "");
         assert!(
             pending(host(&tree), &BoxStyle::default(), FrameCx::new(&tree.doc)).is_some(),
             "{special}"
@@ -98,7 +98,7 @@ fn parallel_float_continuations_are_not_silently_replaced() {
         "<div style='float:left'>float</div><div style='position:absolute'>x</div>",
         "<div style='float:left'>float</div><div style='columns:2'>x</div>",
     ] {
-        let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
+        let tree = crate::document::parsed::parse(&format!("<div><div>{special}</div></div>"), "");
         assert!(
             pending(host(&tree), &BoxStyle::default(), FrameCx::new(&tree.doc)).is_none(),
             "{special}"

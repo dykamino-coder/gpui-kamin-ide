@@ -22,7 +22,7 @@ pub(super) fn wrap_float_run(
     nodes: &[Node],
     out: &mut Vec<Node>,
     i: &mut usize,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     // `floats_alone` normalizes every margin the plan cannot express, so a
     // run of floats always has a host; the guard only keeps the loop going.
@@ -55,7 +55,7 @@ fn floats_alone(
     cb: FloatCb,
     nodes: &[Node],
     i: usize,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
     let run: Vec<Node> = nodes[i..]
         .iter()

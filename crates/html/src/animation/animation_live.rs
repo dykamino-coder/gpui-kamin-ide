@@ -9,11 +9,11 @@
 
 use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::paint::effects::transform::transformed_node;
 use crate::style::computed::{AnimSpec, BoxStyle, Computed};
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement};
 
 fn animation(spec: &AnimSpec) -> gpui::Animation {

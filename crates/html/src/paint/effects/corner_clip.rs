@@ -4,10 +4,10 @@
 //! `overflow-clip-margin`, как внутренний контур в Blink. Так декорации остаются видимыми
 //! снаружи вдвинутой обрезки переполнения.
 
-use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
 use crate::style::computed::{BoxStyle, Overflow};
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div, px};
 
 pub(crate) struct CornerClip {

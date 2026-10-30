@@ -13,7 +13,7 @@ const GRID: u64 = 10;
 
 /// Сетка `GRID` с элементами `1..=3`, как её собирает стопка копии.
 fn recorder(axis: StackAxis) -> std::rc::Rc<Watched> {
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div style='display:grid'><div></div><div></div><div></div></div>",
         "",
     );

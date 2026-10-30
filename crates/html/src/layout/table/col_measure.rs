@@ -16,7 +16,7 @@ pub(super) fn measure_col_widths(
     table_family: String,
     mut busy: Vec<u16>,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     for (ri, row) in row_elements.iter().enumerate() {
         let mut ix = 0usize;

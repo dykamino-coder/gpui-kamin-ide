@@ -3,8 +3,8 @@
 //! передаёт дочернему дереву неокруглённое смещение прокрутки (CSSOM View §6), после
 //! измерения переполнения просит перерисовку, красит полосы и их области попадания.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
 use std::rc::Rc;
@@ -25,7 +25,7 @@ pub struct ScrollArea {
     sticky: Option<crate::interactive::scroll_extent::StickyShift>,
     pub(crate) build: ScrollBuilder,
     /// Values of the document the area's style lengths come from.
-    values: crate::document::state::ValueDoc,
+    values: crate::values::ValueDoc,
     freeze_scrollbars: bool,
 }
 

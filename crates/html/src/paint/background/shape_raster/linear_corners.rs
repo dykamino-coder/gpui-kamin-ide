@@ -6,9 +6,9 @@
 //! маски цветом рамки в straight BGRA.
 
 use super::{CORNER_K_FLAT, Rrect};
-use crate::document::state::ValueCx;
 use crate::paint::background::{MaskLayer, compose_mask_layers};
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 use gpui::RenderImage;
 use std::sync::Arc;
 

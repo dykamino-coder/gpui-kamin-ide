@@ -1,13 +1,13 @@
 //! Адаптер LayoutId → исходная геометрия CB/OOF; prepaint и visual offset не читаются.
 
 use super::{Dependencies, PositionedMetrics, Snapshot};
-use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::fragment::geometry::Node;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::containing_block::SpotCell;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::px_lossy_zero;
+use crate::values::ValueCx;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 mod static_position;

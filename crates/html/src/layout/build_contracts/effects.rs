@@ -4,12 +4,12 @@
 //! under which style; paint's wrappers (`paint::effects`, `paint::decorations`,
 //! `paint::stacking`) apply it.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::FrameCx;
 use crate::layout::cx::deferred::Deferred;
 use crate::style::box_input::BoxStyleInput;
 use crate::style::computed::{BoxStyle, Computed};
+use crate::values::ValueCx;
 use gpui::{AnyElement, App, Bounds, Pixels, Window};
 use std::cell::Cell;
 use std::rc::Rc;

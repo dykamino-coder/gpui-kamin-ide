@@ -81,7 +81,7 @@ pub(super) fn any_containment(e: &crate::dom::Element) -> bool {
 /// а без его фона — `body`. `contain: paint` глушит распространение.
 pub(super) fn mark_canvas_background(
     mut nodes: Vec<Node>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     fn has_bg(style: &Computed) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`

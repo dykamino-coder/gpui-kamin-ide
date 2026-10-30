@@ -8,7 +8,7 @@ pub(super) fn vertical_block_floor(
     style: &mut Computed,
     font: f32,
     family: &str,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     if style.width_from_inline {
         return;

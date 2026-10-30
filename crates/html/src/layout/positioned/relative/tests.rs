@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 #[test]
 fn hoisted_absolute_box_keeps_its_element_and_css_parent_values() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<div id="block" style="color: red; font-size: 10px"><span style="color: green; font-size: 20px">a<b id="abs" style="position: absolute; left: 0; top: 0">x</b>c</span></div>"#,
         "",
     );
@@ -48,7 +48,7 @@ fn hoisted_absolute_box_keeps_its_element_and_css_parent_values() {
 
 #[test]
 fn hoisted_absolute_box_recomputes_position_try_under_its_css_parent() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<style>@position-try --f { top: inherit }</style><div id="block" style="position: relative; top: 0px"><span style="top: 10px">a<b id="abs" style="position: absolute; left: 0; top: 300px; position-try-fallbacks: --f">x</b></span></div>"#,
         "",
     );

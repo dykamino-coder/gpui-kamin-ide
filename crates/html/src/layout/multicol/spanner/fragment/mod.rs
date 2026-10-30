@@ -91,7 +91,7 @@ mod tests {
             })
         }
         for clone in [false, true] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='margin:10px; padding:20px; border:3px solid; box-decoration-break:{}'></div>",
                     if clone { "clone" } else { "slice" }

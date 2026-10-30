@@ -193,7 +193,7 @@ mod tests {
         for mode in ["horizontal-tb", "vertical-rl", "vertical-lr"] {
             for (style, kind) in [("solid", 0), ("dashed", 1), ("dotted", 2), ("double", 3)] {
                 for brk in ["", "column-rule-break:intersection"] {
-                    let nodes = crate::dom::parse(
+                    let nodes = crate::document::parsed::parse(
                         &format!(
                             "<div style='writing-mode:{mode};columns:3;column-rule:6px {style} red;{brk}'></div>"
                         ),

@@ -5,10 +5,10 @@
 //! наследует вычисленные значения блока (CSS Pseudo 4 §2.1.3); у `::first-letter`
 //! разрешается только процентный кегль, em остаётся для `inline::max_font_size`.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// CSS 2 sections 5.12.1-5.12.2 apply to block containers, including
 /// inline-blocks and table cells. These specialized render paths must seed

@@ -4,9 +4,9 @@
 //! `border-box`. Внутренняя измеряемая картинка одна не передаёт границы держателя
 //! по противоположной оси.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Div, Styled};
 
 pub(crate) fn apply(

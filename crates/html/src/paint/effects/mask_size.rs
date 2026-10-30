@@ -3,10 +3,10 @@
 //! соотношения по авто-оси, `space` с распределением зазоров и привязка обоих краёв плитки к
 //! сетке устройства, как Blink `background_image_geometry.cc:115-122`.
 
-use crate::document::state::ValueCx;
 use crate::paint::background::{Intrinsic, tile_size};
 use crate::style::computed::BgSize;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Point, point, px, size};
 
 pub(super) fn snap_tile(at: Point<Pixels>, tile: (f32, f32), scale: f32) -> Bounds<Pixels> {

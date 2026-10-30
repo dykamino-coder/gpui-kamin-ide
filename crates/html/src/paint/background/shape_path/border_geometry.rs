@@ -1,13 +1,13 @@
 //! Геометрия контура рамки и motion path из CSS-форм.
 
 use super::shape_is_linear;
-use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use crate::style::computed::Computed;
 use crate::style::values::basic_shape::commands::{Command, Sink};
 use crate::style::values::basic_shape::{
     ShapeBox, path_commands, rrect_of, shape_params, svg_path_of,
 };
+use crate::values::ValueCx;
 
 /// Предел митры обводки `border-shape`: у прямолинейного контура 1000 (эталоны
 /// WPT ставят ровно столько; Blink — 1e10), у кривых — 4 по умолчанию SVG.

@@ -19,7 +19,7 @@ pub(crate) fn record(
     area: Measurement,
     style: &Computed,
     base_size: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> AnyElement {
     let em = match style.font_size {
         Some(Len::Px(v)) => v,

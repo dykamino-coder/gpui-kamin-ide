@@ -1,11 +1,11 @@
 //! Стопка стоячих глифов с продвижением в один кегль.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::paragraph;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// CSS Writing Modes 4 §5.1: orientation belongs to each text run, including

@@ -4,12 +4,12 @@
 //! code that reads these facts takes the frame context; calls into style, text and the value
 //! arenas receive its `values` projection.
 
-use crate::document::state::{ValueCx, ValueDoc};
 use crate::layout::cx::deferred::Deferred;
 use crate::layout::cx::subtree::SubtreeFacts;
 use crate::layout::fragment::LineCx;
 use crate::layout::fragment::line_shape::LengthFacts;
 use crate::layout::layout_state::LayoutState;
+use crate::values::{ValueCx, ValueDoc};
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone, Copy)]

@@ -3,7 +3,7 @@
 use crate::layout::cx::FrameCx;
 
 /// The frame of a parsed fixture: its values, no fragmented ancestor.
-fn frame(tree: &crate::dom::Parsed) -> FrameCx<'_> {
+fn frame(tree: &crate::document::parsed::Parsed) -> FrameCx<'_> {
     FrameCx::new(&tree.doc)
 }
 use super::*;
@@ -21,7 +21,7 @@ fn root(nodes: &[Node]) -> &Element {
 
 #[test]
 fn copies_export_collapsed_margins_before_root_layout() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='margin-top:3px'><div style='height:20px;margin-top:7px'>x</div></div></div>",
         "",
     );
@@ -54,7 +54,8 @@ fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
         "<div><div style='position:absolute'>parallel</div></div>",
         "<div style='position:absolute'>parallel sibling</div>",
     ] {
-        let tree = crate::dom::parse(&format!("<div><div>ordinary</div>{special}</div>"), "");
+        let tree =
+            crate::document::parsed::parse(&format!("<div><div>ordinary</div>{special}</div>"), "");
         let measured = RefCell::default();
         assert!(
             children(
@@ -73,7 +74,7 @@ fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
 
 #[test]
 fn pending_tree_waits_for_width_without_resolving_percentages() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='margin-top:10%;height:20px'>x</div></div>",
         "",
     );
@@ -97,7 +98,7 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
         } else {
             "vertical-lr"
         };
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<div><div style='writing-mode:{mode};width:20px;margin-left:3px;margin-right:7px'>x</div></div>"
             ),
@@ -122,7 +123,7 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
 
 #[test]
 fn full_width_float_converted_to_block_uses_a_measured_copy() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='float:left;width:100%;height:20px'>float</div></div>",
         "",
     );
@@ -142,7 +143,7 @@ fn float_wider_than_the_column_is_a_stack_block_but_a_narrower_one_is_not() {
         let html = format!(
             "<div><div style='height:5px'></div><div style='float:left;width:{width};height:20px'></div><div style='height:5px'></div></div>"
         );
-        let tree = crate::dom::parse(&html, "");
+        let tree = crate::document::parsed::parse(&html, "");
         let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), frame(&tree));
         assert_eq!(host.is_some(), lifted, "{width}");
     }
@@ -150,7 +151,7 @@ fn float_wider_than_the_column_is_a_stack_block_but_a_narrower_one_is_not() {
 
 #[test]
 fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='margin:calc(10% + 3px) 0 0'><div style='height:20px;margin:calc(20% + 7px) 0 0'>x</div></div></div>",
         "",
     );
@@ -178,7 +179,7 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
 #[test]
 fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
     for (mode, reverse) in [("vertical-lr", false), ("vertical-rl", true)] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<div><div style='writing-mode:{mode};width:20px;margin-left:calc(10% + 3px);margin-right:calc(20% + 7px)'>x</div></div>"
             ),
@@ -208,7 +209,7 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
 
 #[test]
 fn cross_copy_clearance_shares_the_float_exclusion_context() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div><div style='float:left;width:15px;height:250px'></div></div><div style='clear:left;margin-top:-20px'></div></div>",
         "",
     );

@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn nested_empty_floats_and_clearance_keep_native_geometry() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><div><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div><div style='clear:both;height:20px'></div></div>",
             "",
         );
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn fixed_height_parent_keeps_an_independent_empty_float_overflow() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div style='height:10px'><div style='float:left;height:80px'></div></div>",
             "",
         );
@@ -90,7 +90,7 @@ mod tests {
             "<div style='position:absolute'></div><div style='float:left'></div>",
             "<div style='box-decoration-break:clone'><div style='float:left'></div></div>",
         ] {
-            let tree = crate::dom::parse(&format!("<div>{body}</div>"), "");
+            let tree = crate::document::parsed::parse(&format!("<div>{body}</div>"), "");
             assert!(!empty_floats(authored(&tree)), "{body}");
         }
     }

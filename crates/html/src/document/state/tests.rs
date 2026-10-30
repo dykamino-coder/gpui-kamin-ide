@@ -47,7 +47,7 @@ fn nested_document_does_not_touch_the_outer_one() {
 #[test]
 fn parse_without_document_gets_its_own() {
     let a = Document::builder(A, "").build().unwrap();
-    let parsed = crate::dom::parse(B, "");
+    let parsed = crate::document::parsed::parse(B, "");
     assert!(parsed.doc.values.try_rule("--b").is_some());
     assert!(a.values().doc.try_rule("--a").is_some());
     assert!(a.values().doc.try_rule("--b").is_none());
@@ -106,7 +106,7 @@ fn foreign_handle_is_a_link_error() {
 fn frame_region_is_reset_after_paint() {
     let a = super::DocState::new(Default::default());
     let h = calc_store(Sum::default(), a.frame_values());
-    a.values.painted.set(true);
+    a.values.mark_painted();
     a.begin_frame();
     calc_get(h, a.frame_values());
 }

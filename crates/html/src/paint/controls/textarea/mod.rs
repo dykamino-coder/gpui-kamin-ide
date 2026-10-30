@@ -5,7 +5,7 @@
 
 use super::{Muted, field_box};
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod content;
 use crate::style::computed::{BoxStyle, FontCx};
 use crate::{dom::Element, style::computed::Computed, style::values::value::Len};

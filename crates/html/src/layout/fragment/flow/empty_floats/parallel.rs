@@ -12,7 +12,7 @@ mod tests {
 
     #[test]
     fn float_constraint_does_not_move_its_fixed_height_parent() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div style='height:100px'><div style='float:left;height:100px;break-inside:avoid'></div></div>",
             "",
         );

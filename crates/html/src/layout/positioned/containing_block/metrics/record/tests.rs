@@ -3,7 +3,7 @@ use super::*;
 use gpui::{AvailableSpace, Style};
 
 fn sample(html: &str, width: f32, window: &mut Window, app: &mut App) -> (Rc<Snapshot>, u64) {
-    let tree = crate::dom::parse(html, "");
+    let tree = crate::document::parsed::parse(html, "");
     let mut opts = RenderOpts {
         viewport: (400., 400.),
         normal_line_height: 1.2,

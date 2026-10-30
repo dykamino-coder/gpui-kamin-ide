@@ -165,7 +165,10 @@ mod tests {
             ("-2px", px(-2.).into(), -2.),
             ("0", px(0.).into(), 0.),
         ] {
-            let tree = crate::dom::parse(&format!("<p style='margin:0 {value};width:0'></p>"), "");
+            let tree = crate::document::parsed::parse(
+                &format!("<p style='margin:0 {value};width:0'></p>"),
+                "",
+            );
             fn find(nodes: &[Node]) -> Option<&Element> {
                 nodes.iter().find_map(|n| match n {
                     Node::Element(e) if e.tag == "p" => Some(e),

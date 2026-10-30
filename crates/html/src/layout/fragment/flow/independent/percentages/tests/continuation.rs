@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn descendants_use_the_content_remainder_as_the_percentage_basis() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<section style='height:80px;min-height:150px;max-height:180px;box-sizing:border-box;padding:10px'><article style='height:50%'></article></section>",
         "",
     );
