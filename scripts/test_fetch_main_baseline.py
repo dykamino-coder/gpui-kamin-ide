@@ -99,7 +99,7 @@ class ProvenanceTests(unittest.TestCase):
     def setUp(self):
         self.run = {"id": 1, "head_sha": SHA, "event": "push", "head_branch": "main",
                     "conclusion": "success", "head_repository": {"full_name": fetch.REPOSITORY},
-                    "path": ".github/workflows/pr-checks.yml"}
+                    "path": ".github/workflows/main-baseline.yml"}
         self.artifact = {"name": f"kamin-main-baseline-{SHA}", "expired": False,
                          "workflow_run": {"head_sha": SHA}}
 
@@ -112,10 +112,19 @@ class ProvenanceTests(unittest.TestCase):
     def test_main_push(self):
         self.assertEqual(self.find(), self.artifact)
 
+    def test_queries_independent_baseline_workflow(self):
+        with patch.object(fetch, "gh_json", return_value={"workflow_runs": []}) as api:
+            with self.assertRaisesRegex(ValueError, "No successful"):
+                fetch.find_artifact(SHA)
+        api.assert_called_once_with(
+            f"repos/{fetch.REPOSITORY}/actions/workflows/main-baseline.yml/runs"
+            f"?head_sha={SHA}&event=push&branch=main&status=success&per_page=100")
+
     def test_pr_fork_wrong_workflow_and_wrong_sha_rejected(self):
         for key, value in [("event", "pull_request"), ("head_sha", "b" * 40),
                            ("head_repository", {"full_name": "other/fork"}),
                            ("path", ".github/workflows/other.yml"),
+                           ("path", ".github/workflows/pr-checks.yml"),
                            ("head_branch", "topic"), ("conclusion", "failure")]:
             run = copy.deepcopy(self.run)
             run[key] = value

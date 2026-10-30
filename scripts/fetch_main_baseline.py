@@ -28,13 +28,13 @@ def gh_json(path):
 
 
 def find_artifact(sha):
-    path = (f"repos/{REPOSITORY}/actions/workflows/pr-checks.yml/runs"
+    path = (f"repos/{REPOSITORY}/actions/workflows/main-baseline.yml/runs"
             f"?head_sha={sha}&event=push&branch=main&status=success&per_page=100")
     for run in gh_json(path)["workflow_runs"]:
         if not (run["head_sha"] == sha and run["event"] == "push"
                 and run["head_branch"] == "main" and run["conclusion"] == "success"
                 and run["head_repository"]["full_name"] == REPOSITORY
-                and run["path"] == ".github/workflows/pr-checks.yml"):
+                and run["path"] == ".github/workflows/main-baseline.yml"):
             continue
         artifacts = gh_json(f"repos/{REPOSITORY}/actions/runs/{run['id']}/artifacts?per_page=100")
         for artifact in artifacts["artifacts"]:

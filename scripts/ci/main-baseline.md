@@ -1,10 +1,12 @@
 # Exact main baselines on Windows
 
-After a successful `pull request checks` push run on `main`, the Windows Rust
-job publishes `kamin-main-baseline-<full commit SHA>` for three days. Pull request
-and manual runs do not publish baselines. Main pushes always run this Windows job,
-even when changed-file scope would otherwise skip Rust, so every main SHA gets a
-baseline. No release or version change is involved.
+The separate `main baseline artifacts` workflow (`main-baseline.yml`) runs on
+every push to `main` and publishes `kamin-main-baseline-<full commit SHA>` for
+three days after a successful build. It has no PR or manual trigger. It is
+independent of `pull request checks` and its quality gate; `docker.yml` listens
+only to `pull request checks`. A slow or failed baseline build cannot delay or
+block release publication. Docs-only quality runs keep their existing Rust scope.
+No release or version change is involved.
 
 From a Windows checkout with Git, Python 3.8+ and authenticated GitHub CLI:
 
@@ -48,8 +50,8 @@ for the runner, reproducing that effective value without a `--config` profile
 override. Other profile settings come from the same tracked Cargo.toml. Local
 sccache changes caching, not the rustc rendering configuration.
 
-`--message-format=json` only identifies Cargo's emitted executable. The workflow
-clears the quality job's debug/incremental overrides first; the builder rejects
+`--message-format=json` only identifies Cargo's emitted executable. The separate
+workflow has no quality-job debug/incremental overrides; the builder rejects
 incoming compiler/profile overrides before applying the measured gate debug
 value. The manifest and downloader pin `gate_debug` to `line-tables-only`.
 Both test binaries use the repository's
@@ -57,17 +59,18 @@ Both test binaries use the repository's
 for the dev runner in pixel comparisons. Every build uses four Cargo jobs.
 
 The existing quality binaries cannot be reused: their debug/incremental settings
-and test profile differ. Cargo restores the existing quality cache and registry
-inputs; the differing profiles require separate compilation. `target/fast` isolates gate output. The
-quality cache is saved before baseline compilation so gate output, incremental state
-and agent output do not enlarge it. Exact baseline compilation therefore has a
-cold cost on each main push; manifest timings make that cost visible. Only
+and test profile differ. The workflow restores the quality cache and registry
+inputs using only `actions/cache/restore` for `windows-cargo-v2`; it never saves
+into the shared quality cache. The differing profiles and per-SHA source layout
+require separate compilation. `target/fast` isolates gate output. Exact baseline
+compilation has a cold cost on each main push; manifest timings make that cost visible. Only
 the three executables, three HLSL files and manifest are uploaded, without PDBs,
 logs or targets. The per-SHA source clone and its target are ephemeral runner
 storage and are not added to the shared cache.
 Build durations in the manifest expose the additional cost on the actual runner.
 
-The downloader checks a successful main **push**, workflow path, source repository,
+The downloader queries `actions/workflows/main-baseline.yml/runs` for the exact
+SHA and checks a successful main **push**, workflow path, source repository,
 run SHA and artifact SHA before checking the downloaded archive against GitHub's
 SHA-256 digest. It then checks the manifest commit/target/configurations and every
 executable's and shader's SHA-256 and size. Unexpected archive members are rejected; files are
