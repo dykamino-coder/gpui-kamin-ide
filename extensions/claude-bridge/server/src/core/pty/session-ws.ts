@@ -2,7 +2,14 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
-import { acceptCommandReport, commandSnapshot, commandOutput, stopCommand, rememberCommandResult } from './commands'
+import {
+  acceptCommandReport,
+  commandSnapshot,
+  commandOutput,
+  stopCommand,
+  clearCompletedCommands,
+  rememberCommandResult,
+} from './commands'
 import { settleMcpTask } from './mcp-tasks'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -344,6 +351,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        case 'commands:clear':
         case 'commands:list':
         case 'commands:report':
         case 'commands:stop':
@@ -351,6 +359,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
           const session = getSession(authenticatedSessionId)
           if (!session) return
+          if (msg.type === 'commands:clear') await clearCompletedCommands(session)
           if (msg.type === 'commands:report') await acceptCommandReport(session, msg.report)
           if (msg.type === 'commands:stop' && typeof msg.id === 'string') await stopCommand(session, msg.id)
           if (msg.type === 'commands:output') {

@@ -1211,7 +1211,12 @@ export class ConnectionManager {
 
   /** What our local copy can prove it holds — the resume point handed to the
    *  server. `null` means "send me everything". */
-  async getMirrorCursor(): Promise<{ head: string; pos: number; lastPos?: number; lastUuid?: string } | null> {
+  async getMirrorCursor(): Promise<{
+    head: string
+    pos: number
+    lastPos?: number
+    lastUuid?: string
+  } | null> {
     this.ensureMirror()
     const cursor = await this.mirror?.readCursor()
     return cursor ?? null
@@ -1314,10 +1319,14 @@ export class ConnectionManager {
 
   // ─── Private ────────────────────────────────────────────
 
-  commandAction(action: 'list' | 'stop' | 'output', id = ''): void {
+  commandAction(action: 'list' | 'stop' | 'output' | 'clear', id = ''): void {
     if (action === 'list') {
       this.commands.list(this.state.sessionId ?? '')
       this.send({ type: 'commands:list' })
+    } else if (action === 'clear') {
+      this.commands.clear()
+      this.commands.list(this.state.sessionId ?? '')
+      this.send({ type: 'commands:clear' })
     } else if (!this.commands.localAction(action, id))
       this.send({
         type: action === 'stop' ? 'commands:stop' : 'commands:output',
@@ -1360,7 +1369,10 @@ export class ConnectionManager {
       return
     }
     if (msg.type === 'commands:output') {
-      this.window.webContents.send(msg.type, this.tabId, { id: msg.id, output: msg.output })
+      this.window.webContents.send(msg.type, this.tabId, {
+        id: msg.id,
+        output: msg.output,
+      })
       return
     }
     if (msg.type === 'mcp:cancel') {

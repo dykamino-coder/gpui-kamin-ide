@@ -215,3 +215,35 @@ fn replayed_table_rows_resume_under_the_repeated_header() {
     );
     assert!(!is(top(&found, 75., 95.), 0xff00ff), "row 2 ends at 90");
 }
+
+#[test]
+fn replayed_collapsed_table_edges_end_at_the_fragmentation_cut() {
+    let html = "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:200px;height:100px;column-fill:auto'>\
+<table style='width:100%;border-collapse:collapse'>\
+<tr><td style='height:180px;padding:0;border:10px solid #0000ff'></td></tr></table></div>";
+    let found = quads(html, 400., 300.);
+    let wide = |(b, c): &&(gpui::Bounds<gpui::Pixels>, gpui::Hsla)| {
+        is(Some(*c), 0x0000ff) && f32::from(b.size.width) > 50.
+    };
+    let edges: Vec<_> = found.iter().filter(wide).collect();
+    // Верхняя кромка — в колонке 1, нижняя — в колонке 2; на разрезе кромки нет.
+    assert!(
+        edges
+            .iter()
+            .any(|(b, _)| f32::from(b.origin.x) < 50. && f32::from(b.top()) < 10.),
+        "top edge in column 1: {found:?}"
+    );
+    assert!(
+        edges
+            .iter()
+            .any(|(b, _)| f32::from(b.origin.x) >= 99. && f32::from(b.top()) > 50.),
+        "bottom edge in column 2: {found:?}"
+    );
+    assert!(
+        !edges
+            .iter()
+            .any(|(b, _)| f32::from(b.origin.x) >= 99. && f32::from(b.top()) < 10.),
+        "no edge at the top of column 2: {found:?}"
+    );
+}

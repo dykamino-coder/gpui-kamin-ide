@@ -199,6 +199,7 @@ export interface WsMsgHookResponse {
 
 export type CommandClientMessage =
   | { type: 'commands:list' }
+  | { type: 'commands:clear' }
   | { type: 'commands:stop'; id: string }
   | { type: 'commands:output'; id: string }
   | { type: 'commands:report'; report: import('../../shared/commands').CommandReport }
