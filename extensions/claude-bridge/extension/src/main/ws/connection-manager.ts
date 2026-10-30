@@ -9,6 +9,7 @@ import { JsonlBatcher } from './jsonl-batcher'
 import { backgroundShellSnapshot, stopBackgroundShellForOwner } from '../mcp/tools/shell'
 import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
+import { ClientCommands } from './client-commands'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
 import { recordConversationIdentity, type IdentityAction } from '../../incident-diagnostics'
@@ -231,6 +232,7 @@ export class ConnectionManager {
   private readonly recentMcpCalls = new Map<string, number>()
   private mcpSessionId: string | null = null
   private mcpTaskOwner: string | undefined
+  private readonly commands: ClientCommands
   private readonly mcpResults = new McpResultOutbox((frame) => {
     if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024)
       return false
@@ -304,6 +306,7 @@ export class ConnectionManager {
     this.config = config
     this.window = window
     this.tabId = tabId
+    this.commands = new ClientCommands(tabId, (event, value) => window.webContents.send(event, tabId, value))
     if (conversationId) this.conversationId = conversationId
     this.logIdentity('bind', { reason: conversationId ? 'restored' : 'none' })
     this.batcher = new JsonlBatcher(window, tabId)
@@ -496,7 +499,11 @@ export class ConnectionManager {
    *  so the CLI builds its context with the complete tool set (no mid-turn
    *  deferred-tools churn). Bounded wait — instant on warm start / reconnect. */
   private async startSession(sock: WebSocket): Promise<void> {
-    try { await ConnectionManager.whenExternalToolsReady?.() } catch { /* proceed with whatever connected */ }
+    try {
+      await ConnectionManager.whenExternalToolsReady?.()
+    } catch {
+      /* proceed with whatever connected */
+    }
     const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
@@ -1225,12 +1232,21 @@ export class ConnectionManager {
    *  The server owns byte positions; the disk mirror is a fallback while offline. */
   async loadOlderPage(beforePos: number, count: number): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.sendRaw({ type: 'jsonl:segment-request', ...(this.requestedSegment ?? { fromTs: '', toTs: '' }), beforePos, paged: true })
+      this.sendRaw({
+        type: 'jsonl:segment-request',
+        ...(this.requestedSegment ?? { fromTs: '', toTs: '' }),
+        beforePos,
+        paged: true,
+      })
       return
     }
     this.ensureMirror()
     const records = (await this.mirror?.readRange(beforePos, count)) ?? []
-    this.window.webContents.send('jsonl:older-page', this.tabId, { beforePos, records, ...(this.requestedSegment ?? {}) })
+    this.window.webContents.send('jsonl:older-page', this.tabId, {
+      beforePos,
+      records,
+      ...(this.requestedSegment ?? {}),
+    })
   }
 
   /** The FULL compact-segment index — every segment with visible-message counts,
@@ -1299,8 +1315,10 @@ export class ConnectionManager {
   // ─── Private ────────────────────────────────────────────
 
   commandAction(action: 'list' | 'stop' | 'output', id = ''): void {
-    if (action === 'list') this.send({ type: 'commands:list' })
-    else
+    if (action === 'list') {
+      this.commands.list(this.state.sessionId ?? '')
+      this.send({ type: 'commands:list' })
+    } else if (!this.commands.localAction(action, id))
       this.send({
         type: action === 'stop' ? 'commands:stop' : 'commands:output',
         id,
@@ -1337,12 +1355,12 @@ export class ConnectionManager {
       if (msg.owner === this.mcpTaskOwner) void stopBackgroundShellForOwner(this.tabId, this.mcpTaskOwner, msg.id)
       return
     }
-    if (msg.type === 'commands:snapshot' || msg.type === 'commands:output') {
-      this.window.webContents.send(
-        msg.type,
-        this.tabId,
-        msg.type === 'commands:snapshot' ? msg.snapshot : { id: msg.id, output: msg.output },
-      )
+    if (msg.type === 'commands:snapshot') {
+      if (msg.snapshot.sessionId === this.state.sessionId) this.commands.receive(msg.snapshot)
+      return
+    }
+    if (msg.type === 'commands:output') {
+      this.window.webContents.send(msg.type, this.tabId, { id: msg.id, output: msg.output })
       return
     }
     if (msg.type === 'mcp:cancel') {
@@ -1463,18 +1481,22 @@ export class ConnectionManager {
         }
       },
       pushJsonlCache: (entries, replay) => {
-        const known = new Set(this.cachedJsonlEntries.map((entry) => {
-          const row = entry as { _pos?: number; uuid?: string }
-          return row._pos ?? row.uuid
-        }))
-        this.cachedJsonlEntries.push(...entries.filter((entry) => {
-          const row = entry as { _pos?: number; uuid?: string }
-          const key = row._pos ?? row.uuid
-          if (key === undefined) return true
-          if (known.has(key)) return false
-          known.add(key)
-          return true
-        }))
+        const known = new Set(
+          this.cachedJsonlEntries.map((entry) => {
+            const row = entry as { _pos?: number; uuid?: string }
+            return row._pos ?? row.uuid
+          }),
+        )
+        this.cachedJsonlEntries.push(
+          ...entries.filter((entry) => {
+            const row = entry as { _pos?: number; uuid?: string }
+            const key = row._pos ?? row.uuid
+            if (key === undefined) return true
+            if (known.has(key)) return false
+            known.add(key)
+            return true
+          }),
+        )
         // Persist as they arrive. Never a bulk dump: an append-only mirror can
         // be resumed after a crash, and writing the whole transcript at once is
         // exactly the stall this is meant to remove.
@@ -1609,7 +1631,10 @@ export class ConnectionManager {
         this.mcpSessionId = state.sessionId
         this.mcpResults.attach(state.sessionId, this.mcpTaskOwner)
       }
-    } else this.mcpResults.detach()
+    } else {
+      this.mcpResults.detach()
+      this.commands.reset()
+    }
     const rendererState = this.getState()
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)
     ConnectionManager.onStatus?.(this.tabId, rendererState.status)

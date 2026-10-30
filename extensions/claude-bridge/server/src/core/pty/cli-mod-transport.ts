@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
 
 type Command =
   | { id: number; kind: 'submit'; text: string; submissionId?: string }
@@ -182,10 +183,26 @@ export class CliModTransport {
   }
 }
 
-export async function createCliModTransport(sessionId: string): Promise<CliModTransport | undefined> {
-  if (process.env.BRIDGE_CLI_MOD !== '1' || process.platform !== 'linux') return undefined
+export async function createCliModTransport(
+  sessionId: string,
+  cli = { command: 'claude', prefix: [] as string[], env: process.env },
+): Promise<CliModTransport | undefined> {
+  if (process.env.BRIDGE_CLI_MOD === '0' || process.platform !== 'linux') return undefined
+  // Do not load version-specific hooks into an unknown CLI. The handshake also
+  // checks the version in case the executable changes between probe and spawn.
   let transport: CliModTransport | undefined
   try {
+    const version = await new Promise<string>((resolve) => {
+      execFile(
+        cli.command,
+        [...cli.prefix, '--version'],
+        { env: cli.env, timeout: 5000, maxBuffer: 65536 },
+        (error, stdout) => {
+          resolve(error ? '' : stdout.trim())
+        },
+      )
+    })
+    if (version !== `${CLI_MOD_VERSION} (Claude Code)`) return undefined
     transport = new CliModTransport(sessionId)
     await transport.listen()
     return transport

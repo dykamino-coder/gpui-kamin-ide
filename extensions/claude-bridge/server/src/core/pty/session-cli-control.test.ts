@@ -25,6 +25,23 @@ function fixture() {
   return { frames, write, session, mod, control: new SessionCliControl(session, mod) }
 }
 describe('interactive CLI control', () => {
+  it('silently retains native delivery and OSC when the mod is unavailable', () => {
+    vi.useFakeTimers()
+    vi.stubEnv('BRIDGE_CLI_MOD', '1')
+    try {
+      const f = fixture()
+      const control = new SessionCliControl(f.session)
+      expect(control.submit('Привет')).toBe(false)
+      control.parser.feed('\x1b]7501;state=idle:app=claude-code\x07')
+      expect(f.frames.at(-1)).toMatchObject({ cliMod: false, promptReady: true })
+      vi.advanceTimersByTime(16_000)
+      expect(f.frames.some((frame) => frame.type === 'session:output')).toBe(false)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+      vi.unstubAllEnvs()
+    }
+  })
   it('submits text including editor context without PTY input and aborts by turn ID', () => {
     const f = fixture()
     const text = 'hello\n```json editor-context\n{"openedFile":"/a.ts","textInSelectedRange":"世界"}\n```'

@@ -51,12 +51,16 @@ function nodes(value: unknown): VNode<any>[] {
   return [node, ...nodes(node.props?.children)]
 }
 beforeEach(() => {
+  vi.useFakeTimers()
   fixture.states = []
   fixture.action.mockClear()
   fixture.off.mockClear()
   vi.stubGlobal('document', { body: {} })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
 it('counts only background commands and isolates snapshots by tab', () => {
   render()
   const cleanup = fixture.effects[0]() as () => void
@@ -92,4 +96,26 @@ it('counts only background commands and isolates snapshots by tab', () => {
   expect(fixture.action).toHaveBeenLastCalledWith('current', 'output', 'task')
   cleanup()
   expect(fixture.off).toHaveBeenCalledTimes(2)
+})
+
+it('polls legacy shells and never claims an empty server list before a supported snapshot', () => {
+  const tree = nodes(render())
+  const cleanup = fixture.effects[0]() as () => void
+  tree.find((n) => n.props['aria-label'] === 'Running commands')!.props.onClick()
+  const emptyText = () =>
+    nodes(render())
+      .filter((n) => n.props.class === 'commands-empty')
+      .map((n) => n.props.children)
+      .join(' ')
+  expect(emptyText()).toContain('Server command list unavailable')
+  expect(emptyText()).not.toContain('No running commands')
+  fixture.snapshot!('current', { sessionId: 's', commands: [], serverAvailable: false })
+  expect(emptyText()).not.toContain('No running commands')
+  vi.advanceTimersByTime(2000)
+  expect(fixture.action).toHaveBeenCalledTimes(3)
+  fixture.snapshot!('current', { sessionId: 's', commands: [] })
+  expect(emptyText()).toBe('No running commands')
+  cleanup()
+  vi.advanceTimersByTime(2000)
+  expect(fixture.action).toHaveBeenCalledTimes(3)
 })
