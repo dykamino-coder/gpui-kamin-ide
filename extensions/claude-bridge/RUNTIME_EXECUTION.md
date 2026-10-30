@@ -90,7 +90,7 @@ merge/fetch результатов; documentation/verification сами release 
 | --- | --- | --- |
 | INC-0082 / #537/#539 reconciliation | in progress / verify | Current-source store + HTTP/WS suites; synthetic sequence above old retained/owner thresholds, restart, owner isolation and bounded overload; matrix maps original requirements without claiming production throughput |
 | INC-0083 / #536 reconciliation | in progress / verify | Current-source paging/cursor/lazy-child/scanner suites and isolated mixed workload where available; inspect accepted native evidence and preserve uncovered Windows/deployment scenarios with an exact owner |
-| Related-task routing and concurrent delivery handoff | ready / docs | Bound remaining work using existing BR/INC before creating a duplicate; record actual implementation linkage and completion checkpoint in repo process/card metadata |
+| Related-task routing and concurrent delivery handoff | ready / change | Existing-task routing plus a read-only CI guard for explicitly tracked implementation branches: merged PR links must appear in the card; it neither closes incidents nor changes Windows gates |
 | Batch close-out | waiting / coordination | Depends on merged public/private results and fresh-main verification; do not treat a local test, opened PR or release notes as blanket closure |
 
 Допустим новый bounded server fix только после воспроизводимого gap, регистрации
