@@ -3891,7 +3891,8 @@ ${stderr}`);
       if (code !== null && code !== 0) parts.push(`
 [Exit code: ${code}]`);
       const result = textResult(parts.join("") || `Command completed with exit code ${code ?? 0}`);
-      if (timedOut || cancelled) result.isError = true;
+      result.exitCode = code;
+      if (timedOut || cancelled || code !== 0) result.isError = true;
       resolve(result);
     };
     const child = (0, import_node_child_process.spawn)(shell2, [...shellFlags, command], {
@@ -3981,7 +3982,10 @@ var init_shell_foreground = __esm({
     textResult = (text) => ({
       content: [{ type: "text", text }]
     });
-    errorResult = (message) => textResult(`Error: ${message}`);
+    errorResult = (message) => ({
+      ...textResult(`Error: ${message}`),
+      isError: true
+    });
   }
 });
 
@@ -12068,6 +12072,7 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
       stdoutCursor: 0,
       stderrCursor: 0,
       command: displayCommand,
+      description: description.slice(0, 1024),
       owner: context?.shellOwner,
       tabId: context?.tabId,
       startedAt: Date.now(),
@@ -12085,6 +12090,7 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
     child.on("exit", (code) => {
       output.exitCode = code;
       output.running = false;
+      output.finishedAt = Date.now();
       backgroundProcesses.delete(bgId);
     });
     child.unref();
@@ -12149,6 +12155,7 @@ async function killBackgroundShell(input) {
   } catch (e) {
     return errorResult2(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  if (out) out.stopped = true;
   return textResult2(`Killed background shell ${bgId}.`);
 }
 async function resolvePowerShell() {
@@ -12170,11 +12177,21 @@ function snapshotBackgroundOutput(entries2) {
   return entries2.slice(-100).map(([id, out]) => ({
     id: `shell:${id}`,
     tool: out.tool,
-    command: out.command.slice(0, 512),
+    command: out.command,
+    description: out.description,
+    finishedAt: out.finishedAt,
+    exitCode: out.exitCode,
+    stopped: out.stopped,
+    hiddenFromCommands: out.hiddenFromCommands,
     startedAt: out.startedAt,
     running: out.running,
     output: (out.stdout + (out.stderr ? "\n--- stderr ---\n" + out.stderr : "")).slice(-16384)
   }));
+}
+function clearLocalCompletedShells(tabId) {
+  for (const out of backgroundOutput.values()) {
+    if (out.tabId === tabId && !out.running) out.hiddenFromCommands = true;
+  }
 }
 async function stopLocalBackgroundShell(tabId, id) {
   if (!/^shell:[0-9]+$/.test(id)) return;
@@ -41396,19 +41413,36 @@ var ClientCommands = class {
     const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5e3;
     const commands6 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
     for (const shell2 of shells) {
-      if (shell2.running) {
+      if (!shell2.hiddenFromCommands) {
         commands6.push({
           id: shell2.id,
           tool: shell2.tool,
           command: shell2.command,
+          description: shell2.description,
+          finishedAt: shell2.finishedAt,
+          exitCode: shell2.exitCode,
           startedAt: shell2.startedAt,
           background: true,
-          status: "running"
+          status: shell2.running ? shell2.stopped ? "stopping" : "running" : shell2.stopped ? "stopped" : shell2.exitCode === 0 ? "completed" : "failed"
         });
       }
     }
     commands6.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
-    this.publish("commands:snapshot", { sessionId, commands: commands6, serverAvailable });
+    this.publish("commands:snapshot", {
+      sessionId,
+      commands: commands6,
+      serverAvailable
+    });
+  }
+  clear() {
+    clearLocalCompletedShells(this.tabId);
+    if (this.remote)
+      this.remote.snapshot = {
+        ...this.remote.snapshot,
+        commands: this.remote.snapshot.commands.filter(
+          (c) => ["running", "stopping", "disconnected"].includes(c.status)
+        )
+      };
   }
   localAction(action, id) {
     const shell2 = localBackgroundShellSnapshot(this.tabId).find((s) => s.id === id);
@@ -43384,6 +43418,10 @@ var ConnectionManager = class _ConnectionManager {
     if (action === "list") {
       this.commands.list(this.state.sessionId ?? "");
       this.send({ type: "commands:list" });
+    } else if (action === "clear") {
+      this.commands.clear();
+      this.commands.list(this.state.sessionId ?? "");
+      this.send({ type: "commands:clear" });
     } else if (!this.commands.localAction(action, id))
       this.send({
         type: action === "stop" ? "commands:stop" : "commands:output",
@@ -43419,7 +43457,10 @@ var ConnectionManager = class _ConnectionManager {
       return;
     }
     if (msg.type === "commands:output") {
-      this.window.webContents.send(msg.type, this.tabId, { id: msg.id, output: msg.output });
+      this.window.webContents.send(msg.type, this.tabId, {
+        id: msg.id,
+        output: msg.output
+      });
       return;
     }
     if (msg.type === "mcp:cancel") {
@@ -44876,7 +44917,7 @@ function registerSessionsIPC(ctx) {
   ipcMain.on(
     "commands:action",
     (_event, tabId, action, id) => {
-      if (["list", "stop", "output"].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id);
+      if (["list", "stop", "output", "clear"].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id);
     }
   );
   ipcMain.handle("tab:create", (_event, config) => {
@@ -44967,9 +45008,12 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("pty-submit-text", (_event, tabId, text, submissionId) => {
     tm()?.submitText(tabId, text, submissionId);
   });
-  ipcMain.on("submission-action", (_event, tabId, id, action) => {
-    tm()?.submissionAction(tabId, id, action);
-  });
+  ipcMain.on(
+    "submission-action",
+    (_event, tabId, id, action) => {
+      tm()?.submissionAction(tabId, id, action);
+    }
+  );
   ipcMain.on("pty-resize", (_event, tabId, cols, rows) => {
     tm()?.resize(tabId, cols, rows);
   });
