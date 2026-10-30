@@ -3908,7 +3908,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-style"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "encoding_rs",
  "gpui-pre",
