@@ -84,6 +84,7 @@ pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
 pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
 pub use raster_frame::RasterFrame;
 mod line_baselines;
+mod text_rendering;
 mod plane3d;
 mod render_context;
 mod box_edges;
@@ -5345,7 +5346,7 @@ impl Window {
                 },
             )
         };
-        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size);
+        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
         let dilation = self.text_system().glyph_dilation_for_color(color);
         let params = RenderGlyphParams {
             font_id,
@@ -5401,25 +5402,6 @@ impl Window {
             }
         }
         Ok(())
-    }
-
-    fn should_use_subpixel_rendering(&self, font_id: FontId, font_size: Pixels) -> bool {
-        if self.platform_window.background_appearance() != WindowBackgroundAppearance::Opaque {
-            return false;
-        }
-
-        if !self.platform_window.is_subpixel_rendering_supported() {
-            return false;
-        }
-
-        let mode = match self.text_rendering_mode.get() {
-            TextRenderingMode::PlatformDefault => self
-                .text_system()
-                .recommended_rendering_mode(font_id, font_size),
-            mode => mode,
-        };
-
-        mode == TextRenderingMode::Subpixel
     }
 
     /// Paints an emoji glyph into the scene for the next frame at the current z-index.
