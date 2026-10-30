@@ -1769,7 +1769,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine-bench"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "encoding_rs",
  "futures",
@@ -3832,18 +3832,18 @@ dependencies = [
 
 [[package]]
 name = "kamin-crash"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-font-facts"
-version = "1.0.83"
+version = "1.0.84"
 
 [[package]]
 name = "kamin-html"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "encoding_rs",
  "futures",
@@ -3879,11 +3879,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-metrics"
-version = "1.0.83"
+version = "1.0.84"
 
 [[package]]
 name = "kamin-model"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "serde",
  "serde_json",
@@ -3891,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-probe"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "serde",
  "serde_json",
@@ -3899,7 +3899,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-sidecar"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "serde",
  "serde_json",
@@ -3927,11 +3927,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-theme"
-version = "1.0.83"
+version = "1.0.84"
 
 [[package]]
 name = "kamin-ws"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "serde",
  "serde_json",
@@ -3940,7 +3940,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-gpui"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3980,7 +3980,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-setup"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "anyhow",
  "gpui-pre",
@@ -3993,7 +3993,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-web-helper"
-version = "1.0.83"
+version = "1.0.84"
 dependencies = [
  "cef",
  "kamin-crash",
