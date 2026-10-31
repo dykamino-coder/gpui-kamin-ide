@@ -123,6 +123,7 @@ impl ComputedSlot {
 /// и их потомков. Годный стиль не пересчитывается: на неизменном документе проход только
 /// сверяет входы.
 pub fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) {
+    crate::work::add!(FullTreeWalks, 1);
     // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
     let generation = inputs(vcx);

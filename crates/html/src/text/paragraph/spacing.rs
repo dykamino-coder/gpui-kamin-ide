@@ -52,6 +52,7 @@ impl Paragraph {
     }
 
     fn unit_spacing(&self, start: usize, unit: &str) -> Pixels {
+        crate::work::add!(TextPositionSteps, 1);
         let Some((last, _)) = unit
             .char_indices()
             .rev()

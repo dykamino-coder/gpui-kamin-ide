@@ -20,6 +20,7 @@ edition.workspace = true
 wpt-harness = []
 # Observational document timers for the standalone phase benchmark.
 engine-bench = []
+work-counters = ["kamin-style/work-counters"]
 
 [[example]]
 name = "wptrun"
