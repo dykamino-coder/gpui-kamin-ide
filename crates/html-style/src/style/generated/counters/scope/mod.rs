@@ -3,11 +3,12 @@
 //! после собственных директив корня; Blink `counters_attachment_context.cc`),
 //! внешние счётчики остаются читаемыми. Страничные контексты скрывают всю
 //! цепочку имени (CSS Paged Media 3 §page-based-counters). Здесь же `quotes`
-//! по узлам, язык для `auto` и выбор кавычки по глубине.
+//! по узлам, язык для `auto` и выбор кавычки по глубине. Записи `quotes` и
+//! языка — стек по глубине коробки: вход кладёт, выход из коробки снимает.
 
 mod quote_language;
 
-use super::{Counters, Entry, covers};
+use super::{Counters, Entry};
 use std::collections::HashMap;
 
 /// Saved outer counters remain readable inside the subtree (counter() is unscoped).
@@ -42,17 +43,39 @@ impl Counters {
 
     /// CSS Content 3 §quotes-property resolves auto using the parent's language.
     pub fn set_quote_language(&mut self, language: &str) {
-        let cur = self.path.clone();
-        self.quote_languages
-            .retain(|(o, _)| covers(o, &cur) && o != &cur);
-        self.quote_languages.push((cur, language.to_string()));
+        let depth = self.path.len();
+        if self
+            .quote_languages
+            .last()
+            .is_some_and(|(d, _)| *d == depth)
+        {
+            self.quote_languages.pop();
+        }
+        self.quote_languages.push((depth, language.to_string()));
     }
 
     /// Узел задал `quotes`: действует на него и его потомков.
     pub fn set_quotes(&mut self, value: Option<Vec<(String, String)>>) {
-        let cur = self.path.clone();
-        self.quotes.retain(|(o, _)| covers(o, &cur) && o != &cur);
-        self.quotes.push((cur, value));
+        let depth = self.path.len();
+        if self.quotes.last().is_some_and(|(d, _)| *d == depth) {
+            self.quotes.pop();
+        }
+        self.quotes.push((depth, value));
+    }
+
+    /// Выход из коробки на глубине `depth`: её `quotes` и язык кончаются
+    /// вместе с её поддеревом (стек синхронен обходу, как в Blink).
+    pub(super) fn leave_quote_scope(&mut self, depth: usize) {
+        while self.quotes.last().is_some_and(|(d, _)| *d >= depth) {
+            self.quotes.pop();
+        }
+        while self
+            .quote_languages
+            .last()
+            .is_some_and(|(d, _)| *d >= depth)
+        {
+            self.quote_languages.pop();
+        }
     }
 
     /// Кавычка для `open-quote`/`close-quote` с учётом глубины; `own` —
@@ -63,9 +86,6 @@ impl Counters {
         emit: bool,
         own: Option<&Option<Vec<(String, String)>>>,
     ) -> String {
-        let cur = self.path.clone();
-        self.quotes.retain(|(o, _)| covers(o, &cur));
-        self.quote_languages.retain(|(o, _)| covers(o, &cur));
         let depth = if open {
             self.quote_depth += 1;
             self.quote_depth - 1

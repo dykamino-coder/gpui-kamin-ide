@@ -15,6 +15,7 @@ use crate::tolerance::COORD_EPS;
 #[allow(clippy::type_complexity)]
 pub(in crate::layout::multicol) fn column_kids(
     kids: Vec<(Element, crate::layout::fragment::FlowMargins)>,
+    clearance_possible: bool,
 ) -> (
     Vec<Option<BoxStyle>>,
     Vec<usize>,
@@ -35,7 +36,7 @@ pub(in crate::layout::multicol) fn column_kids(
         if p.group == 0 {
             p.avoid_only = c.style.used().break_inside_avoid && avoid_only_monolith(c);
             p.float = c.marks.float_block;
-            p.clears = c.style.used().clear.is_some();
+            p.clears = clearance_possible && c.style.used().clear.is_some();
         }
     }
     (kid_parent, kid_starts, kid_par, kids)

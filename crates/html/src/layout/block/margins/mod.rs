@@ -9,7 +9,6 @@ use crate::dom::Node;
 use crate::layout::block::margin_inline_boxes;
 use crate::layout::block::struts::{Strut, solve, through_strut_no_clear};
 use crate::style::values::value::Len;
-pub(crate) mod facts;
 mod inputs;
 pub(crate) use inputs::{CollapseInputs, MarginCx};
 mod flow;
@@ -105,8 +104,22 @@ pub(crate) fn collapse_margins(
     cb: Option<f32>,
     vcx: MarginCx<'_>,
 ) -> Vec<Node> {
+    collapse_margins_prepared(nodes, abs_parent, cb, vcx, true)
+}
+
+/// Отсутствие block-in-inline доказано общими фактами снимка, независимо от
+/// величины полей. Сложное дерево сохраняет исходную подготовку CSS2 §9.2.1.1.
+pub(crate) fn collapse_margins_prepared(
+    nodes: &[Node],
+    abs_parent: bool,
+    cb: Option<f32>,
+    vcx: MarginCx<'_>,
+    inline_preparation: bool,
+) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
-    margin_inline_boxes::prepare(&mut out);
+    if inline_preparation {
+        margin_inline_boxes::prepare(&mut out, vcx.values.clearance_possible);
+    }
     // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
     // Margin collapse proves zero in-flow height for an open empty block;
     // The contextual proof also handles borders, padding and white-space.

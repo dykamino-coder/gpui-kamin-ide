@@ -44,7 +44,7 @@ impl Recipe {
         let measured = plan.measured_kids;
         let kids = plan.stackable.unwrap_or_default();
         let copies = self.count.max(1) as usize;
-        let (parents, _, parallel, kids) = column_kids(kids);
+        let (parents, _, parallel, kids) = column_kids(kids, opts.cx.vcx().clearance_possible);
         let prepared = kids
             .iter()
             .map(|(c, _)| {

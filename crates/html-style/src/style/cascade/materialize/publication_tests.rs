@@ -124,3 +124,31 @@ fn container_input_is_published_before_handle_and_legacy_are_shared() {
     materialize(&parsed.nodes, &root, vcx);
     assert!(updated.ptr_eq(&p.style.published().unwrap()));
 }
+
+#[test]
+fn changed_signal_tracks_publication_not_parent_pointer_rebinding() {
+    let parsed = crate::dom::parse("<p>x</p>", "");
+    let vcx = parsed.values();
+    let root = Rc::new(Computed::default());
+    assert!(materialize_changed(&parsed.nodes, &root, vcx));
+    assert!(!materialize_changed(
+        &parsed.nodes,
+        &Rc::new((*root).clone()),
+        vcx
+    ));
+    assert!(materialize_changed(
+        &parsed.nodes,
+        &root,
+        vcx.with_viewport((800., 600.))
+    ));
+    let viewport = vcx.with_viewport((800., 600.));
+    assert!(!materialize_changed(&parsed.nodes, &root, viewport));
+    assert!(
+        element(&parsed.nodes, "p")
+            .style
+            .slot()
+            .set_container_size((Some(240.), None))
+    );
+    assert!(materialize_changed(&parsed.nodes, &root, viewport));
+    assert!(!materialize_changed(&parsed.nodes, &root, viewport));
+}

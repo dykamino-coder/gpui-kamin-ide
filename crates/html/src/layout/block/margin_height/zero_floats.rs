@@ -65,7 +65,7 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         && e.list_item.is_none()
         && !own_context(e)
         && !replaced_inline(&e.tag)
-        && st.clear.is_none()
+        && crate::layout::float::clear::effective_clear(&st, vcx).is_none()
         && matches!(
             sizes.preferred[1],
             None | Some(Len::Auto) | Some(Len::Px(0.0))

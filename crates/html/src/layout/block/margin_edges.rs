@@ -101,7 +101,7 @@ fn bottom_chain(
             }
             // Clearance adjoining a self-collapsing child's end margin keeps
             // the entire strut inside its parent (CSS 2.1 section 8.3.1).
-            if child.style.used().clear.is_some() && cache.get(child, true, vcx).is_some() {
+            if vcx.clear(&child.style.used()).is_some() && cache.get(child, true, vcx).is_some() {
                 return None;
             }
             // A self-collapsing wrapper holding only floats places them at its

@@ -216,9 +216,10 @@ pub(crate) async fn blocks_stack_with_dimensions(
 
 pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
     let opts = &*opts.inner(|cx| {
-        cx.contracts.margins = Default::default();
         cx.contracts.lengths = Default::default();
-        cx.contracts.subtrees = Default::default();
+        if !cx.contracts.in_render {
+            cx.contracts.subtrees = Default::default();
+        }
     });
     reblessive::Stack::new()
         .enter(|stk| blocks_stack(stk, nodes, inherited, opts))

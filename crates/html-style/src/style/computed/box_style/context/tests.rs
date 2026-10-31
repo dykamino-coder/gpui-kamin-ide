@@ -6,6 +6,27 @@ use crate::style::computed::Computed;
 use std::rc::Rc;
 
 #[test]
+fn shared_constructor_keeps_computed_identity_and_height_hints() {
+    let computed = Rc::new(Computed {
+        cb_height_def_hint: true,
+        quirk_pct_base_hint: Some(123.0),
+        ..Computed::default()
+    });
+    let boxed = BoxStyle::shared(computed.clone());
+    assert!(Rc::ptr_eq(boxed.style_rc(), &computed));
+    assert_eq!(Rc::strong_count(&computed), 2);
+    assert!(boxed.cb_height_def);
+    assert_eq!(boxed.quirk_pct_base, Some(123.0));
+    assert_eq!(boxed.cb_node, 0);
+    assert_eq!(boxed.fixed_cb_node, 0);
+    assert_eq!(boxed.cb_scroll_insets, ([0.0; 4], [0.0; 4]));
+    assert!(!boxed.cb_ancestor);
+    assert!(!boxed.sc_ancestor);
+    assert!(boxed.element_style.is_none());
+    assert!(boxed.inline_format.is_none());
+}
+
+#[test]
 fn context_uses_the_box_parent_and_keeps_computed_inheritance() {
     for (display, grid, flex_grid) in [("grid", 3, true), ("flex", 0, true), ("block", 0, false)] {
         let parsed = crate::dom::parse(

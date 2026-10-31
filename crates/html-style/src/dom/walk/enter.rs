@@ -45,6 +45,7 @@ pub(super) fn enter<'a>(
         spot,
         sibs,
         tree,
+        path,
     );
     me.ancestor_bloom = Some(
         path.last()
@@ -131,7 +132,7 @@ pub(super) fn enter<'a>(
     if box_level {
         counters.enter();
         if !hidden {
-            counters.set_quote_language(language::parent(&me, path).unwrap_or(""));
+            counters.set_quote_language(&language::parent(&me, path));
             if let Some(q) = &style.quotes {
                 counters.set_quotes(q.clone());
             }

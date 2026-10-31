@@ -60,7 +60,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
         let cs = child.style.used();
         let child_sizes = BoxDimensions::for_element(child, &cs);
         if inline_level_box(child)
-            || cs.clear.is_some()
+            || vcx.clear(&cs).is_some()
             || child_sizes.minimum[1].is_some()
             || child_sizes.maximum[1].is_some()
         {

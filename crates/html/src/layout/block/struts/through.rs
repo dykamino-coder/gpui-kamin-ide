@@ -74,12 +74,9 @@ fn own_strut(
     // `<div class="clear-left">` между флоатом и соседом иначе пропускал бы
     // поле соседа наружу (`floats-clear/margin-collapse-033…035`).
     //
-    // Проверено: делать вето инертным, когда в документе нет ни одного флоата
-    // (§9.5.2 вводит клиренс только при флоате выше), ничего не меняет —
-    // `margin-collapse-135` и `margin-collapse-clear-016` держит не вето, а
-    // что-то ниже по цепи. Признак документа пришлось бы нести отдельным
-    // thread-local, а рамка рисует вложенный документ тем же `render()`.
-    if e.style.used().clear.is_some() && !ignore_clear {
+    // Без флоатов clear остаётся свойством CSS, но не разделяет поля.
+    // Признак идёт с контекстом документа, включая вложенные iframe.
+    if vcx.clear(&e.style.used()).is_some() && !ignore_clear {
         return None;
     }
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));

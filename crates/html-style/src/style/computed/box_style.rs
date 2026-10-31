@@ -144,7 +144,21 @@ impl BoxStyle {
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
-            ..Self::default()
+            // `Self::default()` выделяет Rc<Computed>, который здесь сразу
+            // отбрасывался. Конструктор коробки сохраняет переданный стиль.
+            inline_format: None,
+            element_style: None,
+            self_node: 0,
+            cb_node: 0,
+            fixed_cb_node: 0,
+            cb_scroll_insets: Default::default(),
+            anchor_seq: 0,
+            anchor_key: 0,
+            stretched: false,
+            cb_ancestor: false,
+            cb_depth: 0,
+            sc_ancestor: false,
+            inline_definite: None,
         }
     }
 

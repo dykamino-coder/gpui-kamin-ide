@@ -10,4 +10,6 @@ pub(crate) struct ValueContext {
     pub(crate) doc: BuildDoc,
     /// CSS viewport retained by deferred effects and nested document trees.
     pub(crate) viewport: (f32, f32),
+    /// Невозможность clearance без изменения исходного дерева и свойств CSS.
+    pub(crate) inert_clear: bool,
 }
