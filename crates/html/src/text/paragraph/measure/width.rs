@@ -177,7 +177,7 @@ mod tests {
             let mut segs = Vec::new();
             for (end, ch) in text
                 .char_indices()
-                .filter(|(_, c)| matches!(c, '\t' | '\n' | SOFT_HYPHEN))
+                .filter(|(_, c)| matches!(*c, '\t' | '\n' | SOFT_HYPHEN))
                 .chain([(text.len(), '\0')])
             {
                 segs.push(Seg {
