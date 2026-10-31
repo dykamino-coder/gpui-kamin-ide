@@ -41,8 +41,10 @@ impl Hash for NodeKey {
 
 /// Everything the style walk reads about a node besides the node itself.
 pub struct TreeIndex {
+    pub matching: Rc<crate::style::select::cache::MatchCaches>,
     /// `:has()` marks: hashes of the arguments this node anchors a match for.
     pub has_marks: HashMap<NodeKey, Vec<u64>>,
+    has_leases: crate::budget::admission::Buffer<Option<crate::budget::LiveReservation>>,
     /// Shadow tree of a host.
     pub shadows: HashMap<NodeKey, Rc<Shadow>>,
     /// Assignment of a `<slot>`.
@@ -68,13 +70,33 @@ impl TreeIndex {
 
     pub fn new(doc: Rc<crate::values::DocumentValues>, xhtml: bool) -> Self {
         TreeIndex {
+            matching: Rc::new(crate::style::select::cache::MatchCaches::new(doc.clone())),
             has_marks: Default::default(),
+            has_leases: Default::default(),
             shadows: Default::default(),
             slots: Default::default(),
             slotted: Default::default(),
             doc,
             xhtml,
         }
+    }
+
+    pub fn insert_has_mark(
+        &mut self,
+        handle: &Handle,
+        id: u64,
+    ) -> Result<(), crate::budget::admission::Error> {
+        use crate::budget::admission::Error;
+        let admission = self.admission();
+        let lease = admission.storage(128)?;
+        self.has_marks
+            .try_reserve(1)
+            .map_err(|_| Error::Allocation)?;
+        let marks = self.has_marks.entry(NodeKey::of(handle)).or_default();
+        marks.try_reserve(1).map_err(|_| Error::Allocation)?;
+        self.has_leases.push(lease, &admission)?;
+        marks.push(id);
+        Ok(())
     }
 
     pub fn has_marks_of(&self, handle: &Handle) -> Vec<u64> {

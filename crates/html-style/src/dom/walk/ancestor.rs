@@ -53,6 +53,9 @@ pub(super) fn element_ancestor(
         .map(|(_, v)| v.split_whitespace().map(str::to_string).collect())
         .unwrap_or_default();
     let me = Ancestor {
+        key: crate::dom::tree_index::NodeKey::of(handle),
+        matching: tree.matching.clone(),
+        ancestor_bloom: None,
         counter_style: Default::default(),
         counter_context: Default::default(),
         content_style: None,
