@@ -18,6 +18,7 @@ use std::rc::Rc;
 
 /// Таблицы одной области дерева — документа или тени: правила и кадры.
 pub struct Scope {
+    pub index: crate::style::select::rule_index::RuleIndex,
     pub rules: Vec<Rule>,
     pub frames: HashMap<String, Keyframes>,
     pub clone_cost: crate::css_syntax::admission::Counts,

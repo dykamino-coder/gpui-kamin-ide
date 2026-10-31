@@ -40,7 +40,8 @@ pub(super) struct ScrollPseudos {
 /// (`style_adjuster.cc` 827, 1219–1230; `scroll-marker-007/008`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn scroll_marker_pass(
-    rules: &[Rule],
+    scope: &crate::dom::shadow::Scope,
+    indices: &[usize],
     vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
@@ -52,6 +53,7 @@ pub(super) fn scroll_marker_pass(
     children: &mut Vec<Node>,
     vcx: ValueCx<'_>,
 ) -> Result<ScrollPseudos, crate::budget::admission::Error> {
+    let rules = || indices.iter().map(|&i| &scope.rules[i]);
     let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     use crate::style::computed::Overflow;
     let mut out = ScrollPseudos {
@@ -63,7 +65,7 @@ pub(super) fn scroll_marker_pass(
     // `CanGeneratePseudoElement`; `scroll-buttons-001` — `div` без overflow).
     // Физическая сторона переводится в логическую по письму элемента
     // (`scroll_button_pseudo_element.cc` PhysicalToLogical).
-    if rules.iter().any(|r| {
+    if rules().any(|r| {
         r.sel
             .pseudo
             .as_deref()
@@ -122,7 +124,8 @@ pub(super) fn scroll_marker_pass(
             let l = format!("scroll-button({logical})");
             let p = format!("scroll-button({physical})");
             if let Some(el) = pseudo_box_named(
-                rules,
+                scope,
+                indices,
                 vars,
                 counters,
                 me,
@@ -162,8 +165,7 @@ pub(super) fn scroll_marker_pass(
             || style.contain_paint == Some(true);
         collect_scroll_markers(&admission, children, abs_ok, fixed_ok, &mut markers)?;
     }
-    let matched: Vec<&Rule> = rules
-        .iter()
+    let matched: Vec<&Rule> = rules()
         .filter(|r| r.sel.pseudo.as_deref() == Some("scroll-marker-group"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();

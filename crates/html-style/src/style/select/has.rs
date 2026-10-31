@@ -2,16 +2,101 @@
 //! разбирается в `HasArg` с якорем-стражем у самого левого компаунда; отдельный
 //! проход до обхода (`mark_has`) решает для каждого элемента и аргумента, есть
 //! ли предмет в поддереве или среди последующих братьев, и складывает отметки
-//! в потоко-локальный склад — сопоставление потом лишь читает их по хешу.
+//! в индекс дерева — сопоставление потом лишь читает их по хешу.
 //! Вложенный `:has()` запрещён, поэтому циклов нет; `shadow_marks` — то же для
 //! хоста по его дереву теней.
 
+mod candidates;
 mod collect;
+mod index;
+mod marks;
+mod scope;
+mod storage;
 mod walk;
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn marked(xml: &str, raw: &str) -> Vec<String> {
+        let dom = crate::dom::xml::xml_dom(xml).unwrap();
+        let mut tree = TreeIndex::new(
+            crate::values::DocumentValues::detached(Default::default()),
+            true,
+        );
+        let arg = parse_has_arg(raw).unwrap();
+        mark_has(&dom.document, &[arg], &mut vec![], &mut tree).unwrap();
+        assert!(!tree.matching.has_anchor());
+        let scope = scope::Scope::new(&dom.document, &[], &tree).unwrap();
+        scope
+            .records
+            .iter()
+            .filter_map(|r| {
+                let node = &r.all[r.pos];
+                (!tree.has_marks_of(&r.handle).is_empty())
+                    .then(|| node.id.clone())
+                    .flatten()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn relative_relations_keep_their_bounds_and_sibling_identity() {
+        let xml = "<root id='r'><a id='a'><x/></a><b id='b'><x/></b><c id='c'/></root>";
+        for (arg, expected) in [
+            ("x", vec!["r", "a", "b"]),
+            ("> x", vec!["a", "b"]),
+            ("+ b", vec!["a"]),
+            ("~ c", vec!["a", "b"]),
+            ("+ b > x", vec!["a"]),
+            ("> a + b > x", vec!["r"]),
+            ("> x + b", vec![]),
+            ("+ c", vec!["b"]),
+        ] {
+            assert_eq!(marked(xml, arg), expected, "{arg}");
+        }
+    }
+
+    #[test]
+    fn alternative_results_do_not_stop_another_relatives_propagation() {
+        assert_eq!(
+            marked(
+                "<r id='r'><a id='a'><z/><b id='b'><x/></b></a></r>",
+                "> z, x"
+            ),
+            ["r", "a", "b"]
+        );
+    }
+
+    #[test]
+    fn filtered_sibling_positions_use_original_siblings_under_overlay() {
+        let xml = "<r id='r'><a id='a'/><b class='keep'/><b class='keep'><x/></b><c/></r>";
+        assert_eq!(marked(xml, "+ b:nth-child(1 of .keep) + b > x"), ["a"]);
+        assert!(marked(xml, "+ b:nth-child(2 of .keep) + b > x").is_empty());
+    }
+
+    #[test]
+    fn shadow_host_overlay_is_scoped_and_cannot_claim_siblings() {
+        let dom = crate::dom::xml::xml_dom("<host><x/></host>").unwrap();
+        let tree = TreeIndex::new(
+            crate::values::DocumentValues::detached(Default::default()),
+            true,
+        );
+        let host = dom.document.children.borrow()[0].clone();
+        let passport = super::super::ancestor_of(&host, Default::default(), &tree).unwrap();
+        let yes = parse_has_arg("> x").unwrap();
+        let no = parse_has_arg("+ x").unwrap();
+        assert_eq!(
+            shadow_marks(&host, &[yes, no], &passport, &tree).unwrap(),
+            [has_id("> x")]
+        );
+        assert!(!tree.matching.has_anchor());
+    }
+}
 pub use collect::retain_valid_rules;
 
 use crate::budget::admission::Error;
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::TreeIndex;
 use crate::style::css::Selector;
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs};
@@ -35,7 +120,7 @@ pub struct HasArg {
 }
 
 /// Имя атрибута-стража: NUL из html5ever не приходит, коллизий нет.
-const HAS_SENTINEL: &str = "\u{0}scope";
+pub(super) const HAS_SENTINEL: &str = "\u{0}scope";
 
 /// Пришить якорь-стража к самому левому компаунду цепочки.
 fn attach_anchor(mut sel: &mut Selector, lead: char) {
@@ -49,6 +134,7 @@ fn attach_anchor(mut sel: &mut Selector, lead: char) {
         }
     }
     let sentinel = Selector {
+        arguments: vec![],
         tag: None,
         tag_namespace: Default::default(),
         argument_namespace: Default::default(),
@@ -93,108 +179,63 @@ pub fn parse_has_arg(arg: &str) -> Option<HasArg> {
     })
 }
 
-/// Паспорт якоря с пришитым атрибутом-стражем.
-fn with_sentinel(a: &Ancestor) -> Ancestor {
-    let mut out = a.clone();
-    out.attrs.push((HAS_SENTINEL.to_string(), String::new()));
-    out
-}
-
-/// Есть ли в СТРОГОМ поддереве узла предмет селектора с якорем в `path`.
-fn has_in_subtree(
-    handle: &Handle,
-    sel: &Selector,
-    path: &mut Vec<Ancestor>,
-    tree: &TreeIndex,
-) -> Result<bool, Error> {
-    let mut walk = Walk::new(handle, path, tree)?;
-    while let Some((_, all, pos)) = walk.next(tree)? {
-        let sibs = Sibs {
-            all: &all,
-            pos,
-            is_elem: true,
-            rc: Some(&all),
-        };
-        tree.admission().work(1)?;
-        if matches(sel, &all[pos], &walk.path, sibs) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// Аргументы выполняются с тем же revision ledger; первый отказ прекращает проход.
+/// Один индекс области используется всеми якорями; ledger оплачивает реальные кандидаты.
 pub fn mark_has(
     handle: &Handle,
     args: &[HasArg],
     path: &mut Vec<Ancestor>,
     tree: &mut TreeIndex,
 ) -> Result<(), Error> {
+    if args.is_empty() {
+        return Ok(());
+    }
+    let scope = scope::Scope::new(handle, path, tree)?;
     let admission = tree.admission();
-    let mut walk = Walk::new(handle, path, tree)?;
-    while let Some((child, all, pos)) = walk.next(tree)? {
-        let path = &mut walk.path;
-        let mut marks = Vec::new();
-        for arg in args {
-            let mut hit = false;
-            for (sibling, sel) in &arg.parts {
-                admission.work(1)?;
-                hit = if *sibling {
-                    admission.work(all.len())?;
-                    let mut peers = all.as_ref().clone();
-                    peers[pos] = with_sentinel(&all[pos]);
-                    let mut found = false;
-                    for i in pos + 1..peers.len() {
-                        admission.work(1)?;
-                        let sibs = Sibs {
-                            all: &peers,
-                            pos: i,
-                            is_elem: true,
-                            rc: None,
-                        };
-                        if matches(sel, &peers[i], path, sibs) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    found
-                } else {
-                    admission.work(path.len() + 1)?;
-                    path.push(with_sentinel(&all[pos]));
-                    let result = has_in_subtree(&child, sel, path, tree);
-                    path.pop();
-                    result?
-                };
-                if hit {
-                    break;
-                }
-            }
-            if hit {
-                marks.push(arg.id);
+    let mut found = marks::Marks::new(scope.records.len(), &admission)?;
+    for arg in args {
+        found.argument();
+        for (sibling, sel) in &arg.parts {
+            found.alternative()?;
+            let candidates = candidates::candidates(&scope, sel, tree)?;
+            if let Some((relation, subject)) = candidates::simple(sel) {
+                candidates::mark_simple(&scope, relation, &subject, &candidates, &mut found, tree)?;
+            } else {
+                candidates::mark_complex(&scope, *sibling, sel, &candidates, &mut found, tree)?;
             }
         }
-        if !marks.is_empty() {
-            tree.has_marks.insert(NodeKey::of(&child), marks);
+        for &i in found.touched.iter() {
+            admission.work(1)?;
+            let record = &scope.records[i];
+            tree.insert_has_mark(&record.handle, arg.id)?;
         }
     }
     Ok(())
 }
 
-/// Relational matches anchored on the host but searching its shadow tree.
+/// Хост — единственный внешний якорь; братья корня тени ему не принадлежат.
 pub fn shadow_marks(
     root: &Handle,
     args: &[HasArg],
     host: &Ancestor,
     tree: &TreeIndex,
 ) -> Result<Vec<u64>, Error> {
-    let admission = tree.admission();
-    admission.work(1)?;
-    let mut path = vec![with_sentinel(host)];
+    let scope = scope::Scope::new(root, std::slice::from_ref(host), tree)?;
+    let _overlay = tree.matching.anchor(host.key.clone());
     let mut marks = Vec::new();
     for arg in args {
         for (sibling, sel) in &arg.parts {
-            admission.work(1)?;
-            if !sibling && has_in_subtree(root, sel, &mut path, tree)? {
+            if *sibling {
+                continue;
+            }
+            let candidates = candidates::candidates(&scope, sel, tree)?;
+            let mut hit = false;
+            for &i in candidates.iter() {
+                if scope.match_at(sel, i, tree)? {
+                    hit = true;
+                    break;
+                }
+            }
+            if hit {
                 marks.push(arg.id);
                 break;
             }
