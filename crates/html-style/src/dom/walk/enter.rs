@@ -45,6 +45,7 @@ pub(super) fn enter<'a>(
         spot,
         sibs,
         tree,
+        path,
     );
     me.ancestor_bloom = Some(
         path.last()
@@ -57,7 +58,6 @@ pub(super) fn enter<'a>(
             })
             .with_node(&me),
     );
-    me.lang = Some(language::inherited(&me, path));
     let candidates = visit.scope.index.candidates(&me, path);
     let (mut style, own_vars, scheme, shadow, important) = cascade_element(
         &mut me,

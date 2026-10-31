@@ -10,7 +10,11 @@
 use crate::style::select::Ancestor;
 
 fn own(node: &Ancestor) -> Option<&str> {
-    node.attrs
+    own_attr(&node.attrs)
+}
+
+fn own_attr(attrs: &[(String, String)]) -> Option<&str> {
+    attrs
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("lang") || k.eq_ignore_ascii_case("xml:lang"))
         .map(|(_, value)| value.as_str())
@@ -23,8 +27,8 @@ pub fn effective<'a>(node: &'a Ancestor, path: &'a [Ancestor]) -> Option<&'a str
 /// Язык узла для обхода коробок — наследуемое значение: свой атрибут, иначе
 /// переданный вниз язык родителя; поиск по цепочке — только у паспорта,
 /// собранного вне обхода (граница тени или слота).
-pub(super) fn inherited(node: &Ancestor, path: &[Ancestor]) -> std::rc::Rc<str> {
-    match own(node) {
+pub(super) fn inherited(attrs: &[(String, String)], path: &[Ancestor]) -> std::rc::Rc<str> {
+    match own_attr(attrs) {
         Some(lang) => lang.into(),
         None => match path.split_last() {
             Some((parent, ancestors)) => of(parent, ancestors),
