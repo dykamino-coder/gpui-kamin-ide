@@ -1,5 +1,6 @@
 //! color-mix(): смешение в прямоугольных и полярных пространствах, интерполяция оттенка.
 
+#[cfg(test)]
 use super::*;
 use crate::values::ValueCx;
 
@@ -38,6 +39,19 @@ pub(super) fn mix_in(
 }
 
 pub(super) fn mix_in_impl(
+    space: crate::style::computed::GradSpace,
+    hue: u8,
+    a: crate::style::values::value::Color,
+    b: crate::style::values::value::Color,
+    k: f32,
+    mapped: bool,
+) -> (f32, f32, f32) {
+    super::prepared_mix::PreparedMix::new(space, hue, a, b).at(k, mapped)
+}
+
+// Независимый прежний вычислитель для проверки порядка float-операций.
+#[cfg(test)]
+pub(super) fn reference_mix_in(
     space: crate::style::computed::GradSpace,
     hue: u8,
     a: crate::style::values::value::Color,
@@ -100,6 +114,7 @@ pub(super) fn mix_in_impl(
 /// Смешение в ПОЛЯРНОЙ форме прямоугольного пространства: светлота и
 /// цветность линейны, тон идёт по дуге (css-color-4 §12.4). Возврат — снова
 /// прямоугольные оси, чтобы обратное преобразование было одно.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn polar_mix(
     al: f32,

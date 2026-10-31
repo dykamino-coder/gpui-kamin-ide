@@ -70,6 +70,7 @@ FIXES = {
         "LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.",
     ],
     "gpui-windows": [
+        "DirectX groups: integer crop domains with blur margins, bounded reusable texture pool and rectangle-only blend backdrop copies; preserve frame-space masks and paths.",
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
         "DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.",

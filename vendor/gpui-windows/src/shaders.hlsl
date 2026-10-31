@@ -6,7 +6,8 @@ cbuffer GlobalParams: register(b0) {
     float grayscale_enhanced_contrast;
     float subpixel_enhanced_contrast;
     uint is_bgr;
-    uint3 global_pad;
+    float2 global_origin; // KaminIDE patch: начало локальной цели в координатах кадра
+    uint global_pad;
 };
 
 cbuffer BatchParams: register(b1) {
@@ -655,6 +656,7 @@ float2 untransform(float2 position, TransformationMatrix t) {
 }
 
 float4 quad_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
     Quad quad = quads[input.quad_id];
     // KaminIDE patch: дальше работаем в координатах самого квада.
     float2 local_position = untransform(input.position.xy, quad.transformation);
@@ -1032,6 +1034,7 @@ ShadowVertexOutput shadow_vertex(uint vertex_id: SV_VertexID, uint instance_id: 
 }
 
 float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
+    input.position.xy += global_origin;
     Shadow shadow = shadows[input.shadow_id];
 
     float2 half_size = shadow.bounds.size / 2.;
@@ -1190,6 +1193,7 @@ PathSpriteVertexOutput path_sprite_vertex(uint vertex_id: SV_VertexID, uint spri
 }
 
 float4 path_sprite_fragment(PathSpriteVertexOutput input): SV_Target {
+    input.position.xy += global_origin;
     return t_sprite.Sample(s_sprite, input.texture_coords);
 }
 
@@ -1242,6 +1246,7 @@ UnderlineVertexOutput underline_vertex(uint vertex_id: SV_VertexID, uint instanc
 }
 
 float4 underline_fragment(UnderlineFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
     const float WAVE_FREQUENCY = 2.0;
     const float WAVE_HEIGHT_RATIO = 0.8;
 
@@ -1326,6 +1331,7 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
 }
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
     float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
     return float4(input.color.rgb, input.color.a * alpha_corrected);
@@ -1336,6 +1342,7 @@ MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID,
 }
 
 SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentInput input) {
+    input.position.xy += global_origin;
     float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
     if (is_bgr) {
         sample = sample.bgr;
@@ -1403,6 +1410,7 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
 }
 
 float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
@@ -1464,6 +1472,8 @@ struct BlurQuad {
     float4 mask_rect;     // плитка маски: угол x, y + размер w, h (device px)
     float4 mask_clip;     // коробка окраски маски; нулевой размер — нет клипа
     float4 proj[3];       // KaminIDE: обратная гомография плоскости; proj[2].w > 0.5 — вкл.
+    float4 source_rect;   // KaminIDE: целочисленная область текстуры группы
+    float4 backdrop_rect; // KaminIDE: область копии подложки
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
@@ -1626,10 +1636,21 @@ float4 blur_tap(BlurQuad q, float2 uv, float2 off) {
         float2 h = min(0.5 * q.texel, 0.5 * (hi - lo));
         u = clamp(u, lo + h, hi - h);
     }
+    if (q.source_rect.z > 0.0) {
+        // KaminIDE patch: выбираем период WRAP, ближайший к области группы.
+        // У шва кадра оставляем полупиксель за границей: BORDER должен
+        // смешать прозрачный край с первым/последним пикселем группы.
+        float2 center = (q.source_rect.xy + 0.5 * q.source_rect.zw) * q.texel;
+        float2 period = floor(u - center + 0.5);
+        float2 local = ((u - period) / q.texel - q.source_rect.xy) / q.source_rect.zw;
+        u = float2(q.source_rect.z == round(1.0 / q.texel.x) ? u.x : local.x,
+                   q.source_rect.w == round(1.0 / q.texel.y) ? u.y : local.y);
+    }
     return t_sprite.Sample(s_sprite, u);
 }
 
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
     // KaminIDE patch: подложка без размытия (blur_pass 4) — копия кадра
@@ -1668,10 +1689,10 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             // texels stay ~1:1 with frame pixels; a bilinear tap would blur
             // every edge already antialiased in the buffer a second time.
             src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
-                ? t_sprite.Load(int3(int2(floor(rp)), 0))
+                ? t_sprite.Load(int3(int2(floor(rp) - q.source_rect.xy), 0))
                 : float4(0.0, 0.0, 0.0, 0.0);
         } else {
-            src = t_sprite.Sample(s_sprite, input.uv);
+            src = t_sprite.Load(int3(int2(floor(input.position.xy) - q.source_rect.xy), 0));
         }
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float corner = saturate(0.5 - distance);
@@ -1736,7 +1757,7 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         // Цвет назначения — копия кадра под группой. Формулы CSS работают с
         // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
         // прозрачность, а результат умножается обратно уже целиком.
-        float4 dst = t_backdrop.Sample(s_sprite, input.uv);
+        float4 dst = t_backdrop.Load(int3(int2(floor(input.position.xy) - q.backdrop_rect.xy), 0));
         // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
         // This Porter-Duff operator does not use the source-over blend formula.
         if (q.blend_mode == 16u) {

@@ -19,7 +19,7 @@ fn numeric_images_hit_across_documents_and_keep_uncached_pixels() {
         let cached = tile(&first, 13, 7, (12.75, 7.25), a.values()).unwrap();
         let hit = tile(&second, 13, 7, (12.75, 7.25), b.values()).unwrap();
         assert!(Arc::ptr_eq(&cached, &hit), "{css}");
-        let direct = raster(&second, 13, 7, (12.75, 7.25), true, b.values()).unwrap();
+        let direct = uncached(&second, 13, 7, (12.75, 7.25), true, b.values()).unwrap();
         assert_eq!(cached.bytes, direct.bytes, "{css}");
     }
 }
@@ -51,11 +51,27 @@ fn nan_payloads_and_signed_zero_have_repeatable_rasters_and_hits() {
                 panic!("gradient")
             };
             value.angle_deg = angle;
-            let direct = raster(&source, 8, 6, (8.0, 6.0), true, vcx).unwrap();
+            let direct = uncached(&source, 8, 6, (8.0, 6.0), true, vcx).unwrap();
             let cached = tile(&source, 8, 6, (8.0, 6.0), vcx).unwrap();
             assert_eq!(direct.bytes, cached.bytes);
             rasters.push(cached);
         }
         assert!(Arc::ptr_eq(&rasters[0], &rasters[1]));
     }
+}
+
+#[test]
+fn legacy_edge_and_device_center_sampling_have_separate_cache_entries() {
+    let doc = crate::values::DocumentValues::detached(Default::default());
+    let src = ImageSource::parse("linear-gradient(90deg, red, blue)", doc.values()).unwrap();
+    let edges = raster(&src, 11, 7, (11.0, 7.0), false, doc.values()).unwrap();
+    let centers = raster(&src, 11, 7, (11.0, 7.0), true, doc.values()).unwrap();
+    assert!(!Arc::ptr_eq(&edges, &centers));
+    assert_ne!(edges.bytes, centers.bytes);
+    assert_eq!(
+        edges.bytes,
+        uncached(&src, 11, 7, (11.0, 7.0), false, doc.values())
+            .unwrap()
+            .bytes
+    );
 }

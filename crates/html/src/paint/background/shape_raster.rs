@@ -6,6 +6,7 @@ pub use ellipse::rasterize_ellipse_px;
 
 pub mod contour;
 mod linear_corners;
+mod mask_cache;
 mod shaped;
 pub use linear_corners::{rasterize_ring_at, rasterize_shape_at};
 pub use shaped::{Ring, contour_offset, contour_outline, contour_ring};
@@ -189,15 +190,7 @@ fn contour_coverage(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> f32 {
 fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
     let (fw, fh) = (w as f32, h as f32);
     let r = parse_rrect(args, fw, fh, scale)?;
-    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let a = contour_coverage(x as f32 + 0.5, y as f32 + 0.5, fw, fh, &r);
-            let v = (a * 255.0).round() as u8;
-            bytes.extend_from_slice(&[v, v, v, v]);
-        }
-    }
-    gpui::bgra_bytes_to_image(w, h, bytes)
+    mask_cache::raster(&r, w, h)
 }
 
 /// Кольцо рамки по контуру в цвете (`corner-shape`): запись `rrect(... / t r
