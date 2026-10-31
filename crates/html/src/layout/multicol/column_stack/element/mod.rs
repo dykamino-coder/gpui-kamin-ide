@@ -10,8 +10,11 @@ use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px};
 mod copies;
 mod native;
 mod paint;
+mod paint_piece;
+mod paint_slice;
 mod piece;
 mod prepaint;
+mod prepaint_piece;
 mod replay;
 
 impl ColumnStack {
