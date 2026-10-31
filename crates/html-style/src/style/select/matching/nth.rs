@@ -36,9 +36,13 @@ pub(super) fn nth_of_holds(
     // Состояния ссылок/маркеров и overlay меняются в пределах прохода.
     let stable = !me.matching.has_anchor() && prepared.nth_cacheable;
     if stable {
-        let ranks = me
+        let Some(ranks) = me
             .matching
-            .nth_ranks(sel.argument_namespace as u8, pseudo, sibs, hit)?;
+            .nth_ranks(sel.argument_namespace as u8, pseudo, sibs, hit)
+        else {
+            // Отказ бюджета не превращает распознанную of-форму в обычную nth.
+            return Some(false);
+        };
         let rank = ranks[sibs.pos];
         let index = if backwards {
             ranks[sibs.all.len()] + 1 - rank
@@ -124,5 +128,37 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn rejected_filtered_ranks_never_fall_through_to_unfiltered_formula() {
+        use crate::budget::{BudgetKind, DocumentBudget, DocumentLimits, ResourceGovernor};
+        let dom = crate::dom::xml::xml_dom("<r><x/></r>").unwrap();
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let owner =
+            DocumentBudget::new(DocumentLimits::default(), ResourceGovernor::default()).unwrap();
+        let revision = owner.revision();
+        doc.admit_revision(revision.clone(), None);
+        let tree = crate::dom::tree_index::TreeIndex::new(doc, true);
+        let root = dom.document.children.borrow()[0].clone();
+        let (_, all) = crate::style::select::census_of(&root.children.borrow(), &tree);
+        let sibs = Sibs {
+            all: &all,
+            pos: 0,
+            is_elem: true,
+            rc: None,
+        };
+        let remaining = owner.limits().limit(BudgetKind::TraversalVisits)
+            - revision.used(BudgetKind::TraversalVisits);
+        revision
+            .consume(BudgetKind::TraversalVisits, remaining)
+            .unwrap();
+        for text in [":nth-child(1 of x)", ":nth-last-child(1 of x)"] {
+            let sel = Selector::parse(text).unwrap();
+            let pseudo = sel.pseudo.as_deref().unwrap();
+            assert_eq!(nth_of_holds(&sel, pseudo, &all[0], &[], sibs), Some(false));
+            assert!(!pseudo_holds(&sel, pseudo, &all[0], &[], sibs));
+        }
+        assert!(revision.failure().is_some());
     }
 }
