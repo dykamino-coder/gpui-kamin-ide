@@ -129,6 +129,8 @@ pub fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) {
 /// Был ли опубликован новый computed style: сигнал для кэшей последующих фаз.
 /// Сверка включает viewport, шрифты, наследование и размеры query containers.
 pub fn materialize_changed(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) -> bool {
+    crate::work::add!(FullTreeWalks, 1);
+    // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
     walk(nodes, parent, inputs(vcx), &mut Vec::new(), vcx)
 }

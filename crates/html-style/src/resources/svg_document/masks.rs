@@ -44,8 +44,10 @@ impl MaskResources {
     /// Rebuild before tree construction, including updates at the same node address.
     /// Old groups keep their own Arc until their deferred paint has finished.
     pub fn collect(&self, nodes: &[Node], vcx: ValueCx<'_>) {
+        crate::work::add!(FullTreeWalks, 1);
         fn walk(nodes: &[Node], out: &mut MaskDefinitions, vcx: ValueCx<'_>) {
             for n in nodes {
+                crate::work::add!(TreeNodesVisited, 1);
                 let Node::Element(e) = n else { continue };
                 let tag = e.tag.to_ascii_lowercase();
                 if (tag == "mask" || tag == "clippath")

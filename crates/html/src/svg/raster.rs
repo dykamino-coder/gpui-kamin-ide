@@ -8,7 +8,7 @@ use std::sync::Arc;
 /// Типизированные геометрические сцены не зависят от ресурсов документа.
 /// SVG-разметка идёт в отдельный кэш `ImageStore` с полной идентичностью.
 static CACHE: BoundedCache<(u64, u32, u32), Option<Arc<RenderImage>>> =
-    BoundedCache::new(128 * MIB, optional_image_bytes);
+    BoundedCache::new(128 * MIB, optional_image_bytes).for_paint();
 
 /// Растрировать рисунок. `None`, если разметка не разбирается — тогда
 /// вызывающий покажет запасной текст, а не пустое место.

@@ -37,6 +37,7 @@ impl PreparationCache {
 
 impl Preparation {
     fn new(nodes: &[Node]) -> Self {
+        crate::work::add!(FullTreeWalks, 1);
         let mut facts = SubtreeFacts::default();
         let mut map = std::collections::HashMap::new();
         let mut at = 0;
@@ -62,6 +63,7 @@ impl Preparation {
                 // более позднего позиционированного (CSS2 Appendix E, шаг 8).
                 map.insert(e.node_id, at);
             } else {
+                crate::work::add!(TreeNodesVisited, 1);
                 if unkeyed_positioned(e) {
                     last = Some(at);
                 }

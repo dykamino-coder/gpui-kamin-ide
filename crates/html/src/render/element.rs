@@ -31,6 +31,7 @@ pub(crate) async fn element_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
+    crate::work::add!(RebuiltNodes, 1);
     let entered = opts.inner(|cx| cx.contracts.reflow_depth += 1);
     let opts = &*entered;
     let own = crate::layout::positioned::containing_block::metrics::fragmentation::options(e, opts);

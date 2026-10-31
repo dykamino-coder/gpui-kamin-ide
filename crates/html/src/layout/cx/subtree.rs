@@ -22,6 +22,7 @@ const CLEARABLE: u8 = 16;
 const SPLIT: u8 = 32;
 
 fn own(e: &Element, descendants: u8) -> u8 {
+    crate::work::add!(SubtreeNodesVisited, 1);
     let style = e.style.used();
     let breaks = style.break_before_force
         || style.break_after_force
@@ -117,6 +118,7 @@ impl SubtreeFacts {
     }
 
     fn collect(&mut self, nodes: &[Node]) {
+        crate::work::add!(SubtreeQueries, 1);
         let mut pending = Vec::new();
         for node in nodes {
             if let Node::Element(e) = node {
