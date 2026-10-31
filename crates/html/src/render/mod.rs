@@ -36,7 +36,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
-    crate::document::image_values::prepare(nodes, vcx);
+    crate::values::image_values::prepare(nodes, vcx);
     crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
     // Вычисленные стили элементов — до сборки коробок: семейство документа
@@ -91,7 +91,7 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
-    crate::document::image_values::prepare(std::slice::from_ref(node), vcx);
+    crate::values::image_values::prepare(std::slice::from_ref(node), vcx);
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();

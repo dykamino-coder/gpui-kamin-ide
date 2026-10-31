@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn float_after_break_belongs_to_end_of_inline_group() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><br><div style='float:left;break-after:page'>one</div></div>",
             "",
         );

@@ -12,6 +12,7 @@ use std::time::Duration;
 /// Окно стенда и след опроса кадров.
 pub(super) struct Stage {
     pub(super) capture: Capture,
+    pub(super) audit: super::audit::Audit,
     pub(super) window: AnyWindowHandle,
     /// Указатель окна нужен снимку: рисует его система, а не мы.
     pub(super) hwnd: isize,

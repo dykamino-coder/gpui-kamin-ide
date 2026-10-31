@@ -1,10 +1,10 @@
 //! Условия сброса последнего успешного варианта (css-anchor-position-1 §fallback).
 
 use super::owned::Owned;
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Display, Position};
 use crate::style::css::DeclBlock;
 use crate::style::values::position_area::TryFallback;
+use crate::values::ValueCx;
 
 #[derive(Clone, PartialEq)]
 pub(super) struct Signature {

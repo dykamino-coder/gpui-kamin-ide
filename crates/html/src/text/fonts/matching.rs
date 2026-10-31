@@ -1,8 +1,8 @@
 //! Адаптер вычисленного запроса к нейтральному matching; формулы живут в font_facts.
 
-use crate::document::state::ValueCx;
 pub(crate) use crate::font_facts::matching::{Face, range, slope};
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 
 #[cfg(test)]
 fn select(family: &str, request: &Computed, vcx: ValueCx<'_>) -> Option<Face> {

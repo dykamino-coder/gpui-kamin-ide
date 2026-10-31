@@ -2,12 +2,12 @@
 //! письма, подсказки переносчику только для чужого набора, сборка кусков разного кегля в один
 //! блок, наследование текстовых свойств без коробочных.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::inline::hyphenate::*;
 use crate::text::inline::runs::*;
 use crate::text::inline::whitespace::*;
+use crate::values::ValueCx;
 
 use super::*;
 use crate::style::cascade::inherit::inherit;

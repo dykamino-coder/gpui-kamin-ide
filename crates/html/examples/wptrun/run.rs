@@ -19,6 +19,7 @@ pub(super) struct RunConfig {
     pub(super) dumping: bool,
     /// `WPT_DUMP=all`: снимки всех пар подряд.
     pub(super) dump_all: bool,
+    pub(super) audit: super::audit::Audit,
 }
 
 /// Указатель окна (HWND) или ноль.
@@ -40,6 +41,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         exact,
         dumping,
         dump_all,
+        audit,
     } = cfg;
     let frames = animation_frames::configured();
     let passed = move |v: &str| pixel_compare::passed(exact, v);
@@ -63,6 +65,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     let trace = Rc::new(std::cell::RefCell::new(String::new()));
     let stage = Stage {
         capture,
+        audit: audit.clone(),
         window,
         hwnd,
         trace: trace.clone(),
@@ -135,7 +138,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
                 if let Some(time) = time {
                     stem.push_str(&format!("--frame-{}ms", time.as_millis()));
                 }
-                capture_dump::pair(&stem, &shots, matched_alternate.as_ref());
+                capture_dump::pair(&audit, &stem, &shots, matched_alternate.as_ref());
             }
             if let Some(time) = time
                 && verdict != "0.00"
@@ -210,5 +213,6 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     }
     let _ = std::fs::write("target/wpt-slow.txt", lines);
     eprintln!("медленных пар: {}", slow.len());
+    audit.finish(&report_path);
     cx.update(|cx| cx.quit());
 }

@@ -4,11 +4,11 @@
 //! отдаётся как `MeasuredReplaced`; перенос осей и выравнивания с держателя —
 //! `layout::replaced::image::inherit_item_metadata`.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::resources::css_images::Source as CpuSource;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
 
 use crate::layout::replaced::measured::MeasuredReplaced;

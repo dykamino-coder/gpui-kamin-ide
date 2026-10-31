@@ -1,8 +1,8 @@
 //! Форма выреза флоата (shape-outside): коробки, отступ формы, многоугольник.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::tolerance::COORD_EPS;
+use crate::values::ValueCx;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn float_shape_of(

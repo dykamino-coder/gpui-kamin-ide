@@ -94,7 +94,7 @@ pub(super) fn band_host_m(
     em: f32,
     lead: &[Node],
     cb: FloatCb,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;

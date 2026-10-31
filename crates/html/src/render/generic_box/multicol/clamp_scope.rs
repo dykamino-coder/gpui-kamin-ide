@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn multicol_after_the_clamp_point_is_hidden_and_before_it_is_painted() {
-        let tree = crate::dom::parse("<div style='columns:2'>a<br>b</div>", "");
+        let tree = crate::document::parsed::parse("<div style='columns:2'>a<br>b</div>", "");
         let Node::Element(e) = &tree[0] else {
             panic!("multicol")
         };

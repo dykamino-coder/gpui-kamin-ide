@@ -1,10 +1,10 @@
 //! Элементы выбора формы: select, checkbox и radio.
 
 use super::{SystemColor, field_box, native_color};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::apply::apply;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 /// Список выбора: показываем выбранный вариант либо первый.

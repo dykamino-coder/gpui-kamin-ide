@@ -1,10 +1,10 @@
 //! Наложение объявлений правила `@position-try` на стиль кандидата.
 
-use crate::document::state::ValueCx;
 use crate::style::cascade::map::CascadeMap;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Origin, VarMap};
+use crate::values::ValueCx;
 
 /// «Accepted @position-try properties» (css-anchor-position-1
 /// §fallback-rule): вставки, поля, размеры, самовыравнивание,

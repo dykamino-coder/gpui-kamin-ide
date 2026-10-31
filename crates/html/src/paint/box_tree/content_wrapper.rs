@@ -5,8 +5,8 @@
 //! боковые поля, прижим авто-полями, `align-self` и размещение в сетке родителя.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::layout::writing_mode::native_intrinsic;
+use crate::values::ValueCx;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
 use crate::dom::Element;
@@ -61,7 +61,7 @@ pub(crate) fn content_sized(
     c: &Computed,
     item_style: &BoxStyle,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> AnyElement {
     let track = |l: Option<Len>| match l {
         Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),

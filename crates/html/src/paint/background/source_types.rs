@@ -1,6 +1,6 @@
 //! Варианты источника фоновой картинки; общий контракт растеризации.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 use super::Intrinsic;
 use gpui::RenderImage;

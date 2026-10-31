@@ -1,6 +1,6 @@
 //! Растр фигур: скруглённые прямоугольники, кольца, эллипсы, параметры фигуры.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod ellipse;
 pub use ellipse::rasterize_ellipse_px;
 

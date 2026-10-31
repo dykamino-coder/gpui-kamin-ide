@@ -1,0 +1,55 @@
+//! Инлайнизация потоковых детей руби-коробки до построения уровней руби.
+//!
+//! css-ruby-1 §2.2 и css-display-4 §2.7: строчная коробка распространяет
+//! инлайнизацию вглубь, flow root сохраняет свой блочный контекст. Блок →
+//! `inline-block`, flex/grid/table → строчные аналоги, у руби-ролей снимается
+//! блочный `display`; флоаты сбрасываются (Blink `style_adjuster.cc`), абсолютные
+//! не трогаются. Зовётся из `finish_element` для детей руби-родителя.
+
+use crate::dom::{BLOCK_TAGS, Node};
+use crate::style::computed::{Display, Position};
+
+/// CSS Ruby 1 §2.2 and CSS Display 4 §2.7: an inline propagates
+/// inlinification, while a flow root keeps its own block formatting context.
+/// Blink style_adjuster.cc:804 also clears floats in this context.
+pub fn inlinify(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
+        if matches!(
+            e.style.cascaded().position,
+            Some(Position::Absolute | Position::Fixed)
+        ) {
+            return None;
+        }
+        e.style.cascaded_mut().float = None;
+        let role = super::ruby_boxes::ruby_box_role(&e.tag, e.style.cascaded());
+        if role.is_some() {
+            if e.style.cascaded().display == Some(Display::Block) {
+                e.style.cascaded_mut().display = None;
+                e.style.cascaded_mut().inline_display = Some(true);
+            }
+            return Some(());
+        }
+        let block = e.style.cascaded().display == Some(Display::Block)
+            || (e.style.cascaded().display.is_none()
+                && e.style.cascaded().inline_display != Some(true)
+                && BLOCK_TAGS.contains(&e.tag.as_str()));
+        e.style.cascaded_mut().display = match e.style.cascaded().display {
+            _ if block => Some(Display::InlineBlock),
+            Some(Display::Flex) => Some(Display::InlineFlex),
+            Some(Display::Grid) => Some(Display::InlineGrid),
+            Some(Display::Table) => Some(Display::InlineTable),
+            other => other,
+        };
+        if matches!(
+            e.style.cascaded().display,
+            None | Some(Display::Contents | Display::ListItem)
+        ) {
+            e.style.cascaded_mut().inline_display = Some(true);
+            return Some(());
+        }
+        None
+    })
+}

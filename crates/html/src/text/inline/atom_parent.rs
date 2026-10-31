@@ -10,9 +10,9 @@
 //! style="display:inline-block">b</span></b>` терял полужирный у «b»
 //! (`run-in-contains-inline-block-001`).
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 /// What the piece collection tells the builder of an atom: the style of its
 /// nearest open inline ancestor (`None` — the paragraph block is the parent)

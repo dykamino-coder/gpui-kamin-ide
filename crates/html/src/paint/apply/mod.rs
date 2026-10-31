@@ -6,9 +6,9 @@
 //! поддержка и стоит дороже честного пропуска: расхождение всплывает у
 //! пользователя, а не в тесте.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Align, BoxStyle, Computed, Gradient};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Div, InteractiveElement, ParentElement, Styled, px, relative};
 mod contained_intrinsic;
 pub(crate) mod intrinsic_size;

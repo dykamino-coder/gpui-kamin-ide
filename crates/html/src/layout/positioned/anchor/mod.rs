@@ -108,7 +108,7 @@ struct SidePlan {
 
 pub struct AnchorPlan {
     key: u64,
-    values: crate::document::state::ValueDoc,
+    values: crate::values::ValueDoc,
     /// Layout state of the same document: anchor registries read at prepaint.
     layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     /// По часовой: top, right, bottom, left — как `Sides`.
@@ -149,7 +149,7 @@ pub(crate) struct PlacementPlans {
     key: u64,
     visibility: u8,
     /// Values of the document the plans' `anchor()` lengths come from.
-    values: crate::document::state::ValueDoc,
+    values: crate::values::ValueDoc,
     /// Layout state of the same document: remembered choices and presence.
     layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
 }

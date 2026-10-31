@@ -11,4 +11,4 @@ disallowed-methods = [
 
 # `NodeKey` hashes and compares a DOM node by identity (pointer), never by its
 # mutable content: its interior mutability cannot change a key.
-ignore-interior-mutability = ["kamin_html::dom::tree_index::NodeKey"]
+ignore-interior-mutability = ["kamin_style::dom::tree_index::NodeKey"]

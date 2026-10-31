@@ -41,9 +41,9 @@ fn build_and_direct_entries_report_all_three_boundaries_without_dom_loss() {
             }
             let doc = builder.build().unwrap();
             let parsed = if xml {
-                crate::dom::try_parse_xml(&source, "")
+                crate::document::parsed::try_parse_xml(&source, "")
             } else {
-                crate::dom::try_parse(&source, "")
+                crate::document::parsed::try_parse(&source, "")
             }
             .unwrap();
             assert_eq!(source_text(&doc.source_dom()), "text");

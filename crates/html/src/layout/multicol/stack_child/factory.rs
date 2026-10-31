@@ -109,7 +109,7 @@ mod tests {
     fn lazy_fragment_keeps_fixed_containing_block_after_layer_closes(
         cx: &mut gpui::TestAppContext,
     ) {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<section style='transform:translateX(0)'><article style='position:relative;width:50px;height:20px'><aside style='position:absolute'><footer style='position:fixed;top:0;left:0;width:100%;height:100%'></footer></aside></article></section>",
             "",
         );

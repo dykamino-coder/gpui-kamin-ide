@@ -1,9 +1,9 @@
 //! Разрешённые контуры границ и их упорядоченные luminance-пути покрытия.
 
 use super::border_geometry::{border_commands, miter_limit};
-use crate::document::state::ValueCx;
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 #[derive(Clone)]

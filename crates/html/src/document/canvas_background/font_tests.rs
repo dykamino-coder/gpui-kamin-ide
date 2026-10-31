@@ -41,7 +41,7 @@ impl FontFactsProvider for Facts {
 fn donor_font_lengths_use_body_computed_font_and_document_facts() {
     for x_height in [0.8, 0.4] {
         for image in ["url(a)", "url(a), url(b)"] {
-            let parsed = crate::dom::parse(
+            let parsed = crate::document::parsed::parse(
                 &format!(
                     "<style>html {{ font:20px/1 Ahem }} body {{ font-size:2.5ex; background-image:{image}; background-position:1em 6.25ex, 2ch 50%; background-size:2em 3ch, 4ex 50% }}</style>"
                 ),

@@ -4,9 +4,9 @@ use super::super::area::physical_area;
 use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
-use crate::document::state::ValueCx;
 use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
+use crate::values::ValueCx;
 
 impl AnchorPlan {
     /// План есть у абсолюта хотя бы с одной `anchor()`-вставкой, с

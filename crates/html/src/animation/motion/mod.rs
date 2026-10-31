@@ -33,7 +33,7 @@
 //! вызов из обхода `dom::walk`, либо порядок `settle` после
 //! `anchor::settle_static`. Разобрать отдельно.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod path;
 use path::flatten;
 use path::polyline_length;

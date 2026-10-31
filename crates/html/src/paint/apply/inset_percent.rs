@@ -3,9 +3,9 @@
 //! Доля внутри `calc()` сохраняет свою базу до раскладки (CSS Values 4 §10.9),
 //! поэтому предикат смотрит и на процентную часть смешанной длины.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Position};
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 pub(super) fn is_auto(style: &BoxStyle, value: Len, side: u8, vcx: ValueCx<'_>) -> bool {
     let percentage = match value {

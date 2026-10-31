@@ -3,10 +3,10 @@
 //! сэмплируется из источника под его размер и красится с радиусами края содержимого
 //! и маской коробки, если переполнение не `visible`.
 
-use crate::document::state::ValueCx;
 use crate::paint::background::Source;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{
     App, Bounds, Element, ElementId, GlobalElementId, Img, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window, px,
@@ -16,7 +16,7 @@ pub(super) struct FilteredImage {
     image: Img,
     source: Source,
     style: Computed,
-    values: crate::document::state::ValueDoc,
+    values: crate::values::ValueDoc,
 }
 impl FilteredImage {
     pub(super) fn new(image: Img, source: Source, style: Computed, vcx: ValueCx<'_>) -> Self {

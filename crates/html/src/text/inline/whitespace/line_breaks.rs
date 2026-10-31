@@ -34,10 +34,7 @@ pub(super) fn opening_punct(c: char) -> bool {
 /// текста и без разрыва), её высоту даёт strut — `line-height` блока
 /// (§10.8.1). Распорка `h_0` роняла строку `отступ + <br>` в ноль, и квадрат
 /// вставал наверх вместо низа (`text-indent-on-blank-line-rtl-left-align`).
-pub(crate) fn blank_line_break(
-    style: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
-) -> AnyElement {
+pub(crate) fn blank_line_break(style: &Computed, vcx: crate::values::ValueCx<'_>) -> AnyElement {
     let size = style.used_font(MEDIUM_FONT_SIZE_PX, vcx).size_px;
     let lh = style
         .numeric_line_px(MEDIUM_FONT_SIZE_PX)

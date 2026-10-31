@@ -2,7 +2,6 @@
 //! флоаты в высоту содержимого обычного блока не входят); `used_style` отдаёт её только нативной
 //! коробке, вычисленная остаётся `auto` ради неопределённой базы долей (§10.5).
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
@@ -13,6 +12,7 @@ use crate::layout::box_kind::{
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// CSS 2.1 §10.6.3 ignores floats in ordinary blocks' auto content height.
 /// Borders and padding stop margin collapse but do not make floats in-flow.

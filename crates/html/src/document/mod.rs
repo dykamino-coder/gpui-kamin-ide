@@ -31,6 +31,7 @@ mod timing;
 mod work_budget_tests;
 #[cfg(feature = "engine-bench")]
 pub use timing::BuildTimings;
+pub mod parsed;
 mod revision;
 pub use crate::dom::outcome::{
     BuildReport, DocumentFailure, FailureReason, FailureScope, RevisionStatus, TraversalKind,
@@ -39,7 +40,6 @@ pub use crate::dom::outcome::{
 pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
-pub(crate) mod image_values;
 mod logical_properties;
 mod prepare;
 #[cfg(test)]
@@ -212,3 +212,8 @@ impl Document {
         self.nodes.len()
     }
 }
+
+#[cfg(test)]
+mod image_values;
+
+pub mod dom;

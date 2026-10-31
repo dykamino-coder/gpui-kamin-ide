@@ -4,10 +4,10 @@
 //! при ненулевой рамке или отбивке (CSS 2.1 §10.3.4), чтобы фон и рамка рисовались.
 
 use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still

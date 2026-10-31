@@ -12,7 +12,7 @@ pub(super) fn sample(
     e: &Element,
     frame: &Computed,
     transforms: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Element {
     let mut inner = e.clone();
     // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
@@ -74,7 +74,7 @@ mod tests {
     use super::*;
     use crate::style::values::value::{Color, Len};
 
-    fn test_vcx() -> crate::document::state::ValueCx<'static> {
+    fn test_vcx() -> crate::values::ValueCx<'static> {
         let doc = Box::leak(Box::new(crate::document::state::DocState::new(
             crate::style::css::Media::default(),
         )));

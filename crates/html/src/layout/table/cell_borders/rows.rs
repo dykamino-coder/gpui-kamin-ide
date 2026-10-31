@@ -3,11 +3,11 @@
 //! кромок. CSS 2.1 §17.6.2.1; Blink `TableBorders::ComputeTableBorders` помечает каждый
 //! ряд отдельно.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::ParentElement;
 
 #[allow(clippy::too_many_arguments)]

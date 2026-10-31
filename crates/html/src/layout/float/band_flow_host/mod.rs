@@ -71,7 +71,7 @@ pub(super) fn fit_own_layout(
     inherited: &BoxStyle,
     avail: f32,
     cb: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     if !own_layout_mode(c) || avail <= 0.0 || !matches!(c.width, None | Some(Len::Auto)) {
         return;
@@ -134,7 +134,7 @@ pub(super) fn band_flow_rest(
     em: f32,
     wm: WritingMode,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     band_flow_rest_lift(rest, em, None, wm, cb, vcx)
 }

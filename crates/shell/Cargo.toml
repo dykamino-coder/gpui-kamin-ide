@@ -55,6 +55,7 @@ arboard = "3.6.1"
 open = "5.4.0"
 
 [target.'cfg(windows)'.dependencies]
+gpui-windows = { package = "gpui-pre-windows", version = "=0.3.8", default-features = false }
 # Visual hosting (plan/97): CompositionController поверх dcomp-underlay
 windows = { version = "0.62", features = [
   "Win32_Foundation",

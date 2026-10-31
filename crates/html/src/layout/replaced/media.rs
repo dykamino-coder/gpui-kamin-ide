@@ -4,12 +4,12 @@
 //! с пределами CSS 2.1 §10.4 и исчезновением под `contain: size`.
 
 use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::{image, limits::css2_replaced_limits, replaced_used_style};
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
+use crate::values::ValueCx;
 use gpui::AnyElement;
 
 pub(crate) fn empty(e: &Element) -> bool {

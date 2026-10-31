@@ -2,9 +2,9 @@
 
 use super::super::AnchorPlan;
 use super::super::area::{Al, Tracks};
-use crate::document::state::ValueCx;
 use crate::style::computed::Align;
 use crate::tolerance::COORD_EPS;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels};
 
 impl AnchorPlan {

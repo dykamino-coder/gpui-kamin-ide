@@ -17,7 +17,7 @@ pub(super) fn inline_sides(
     merged: &Computed,
     flow: &Computed,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> ((f32, f32), (f32, f32)) {
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,

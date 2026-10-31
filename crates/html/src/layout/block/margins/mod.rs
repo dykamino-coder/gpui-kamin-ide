@@ -22,7 +22,7 @@ use kids::{collapse_kid_margins, emit_margin_struts};
 pub(crate) fn fragment_box(
     element: crate::dom::Element,
     width: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> crate::dom::Element {
     // A fragment box is laid out outside its parent's collapse descent: the level starts
     // from the default inputs with the fragmentainer's width.
@@ -54,7 +54,7 @@ pub(crate) fn vertical_fragment_box(
     mut element: crate::dom::Element,
     width: f32,
     reverse: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> crate::dom::Element {
     let mcx = MarginCx::new(vcx).with_collapse(CollapseInputs {
         width: Some(width),

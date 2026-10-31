@@ -5,12 +5,12 @@
 //! `BoxStyle` с отдельным `InlineDecoration` и признак «фон рисуется».
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Color, Len, px_lossy_zero};
 use crate::text::inline::*;
+use crate::values::ValueCx;
 
 pub(super) fn atomic_marker(style: BoxStyle) -> Piece {
     Piece::Text {

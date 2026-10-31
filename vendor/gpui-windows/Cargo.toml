@@ -243,3 +243,7 @@ priority = -1
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
+
+# KaminIDE patch: SHA-256 executable DXBC chunks for capture provenance.
+[target.'cfg(target_os = "windows")'.dependencies.sha2]
+version = "0.10.9"

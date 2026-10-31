@@ -3,11 +3,11 @@
 //! плитки по `background-position` от свободного места (§3.6) и подгонка размера под целое
 //! число копий для `background-repeat: round` (§3.4).
 
-use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use crate::resources::css_images::len_px;
 use crate::style::computed::{BgPos, BgSize, Tiling};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Размер одной плитки в точках по правилам `background-size`.
 pub(crate) fn tile_size(

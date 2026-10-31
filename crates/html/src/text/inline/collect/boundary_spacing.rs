@@ -17,7 +17,7 @@ use crate::text::inline::*;
 pub(super) fn boundary_gap_after_box(
     e: &Element,
     inherited: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<f32> {
     let inline_level =
         e.style.used().display.is_none() || e.style.used().inline_display == Some(true);

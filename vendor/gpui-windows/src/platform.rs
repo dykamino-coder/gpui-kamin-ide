@@ -1,3 +1,4 @@
+mod gpu;
 use std::{
     cell::{Cell, RefCell},
     ffi::{OsStr, OsString},
@@ -298,12 +299,6 @@ impl WindowsPlatform {
             app_identity: RefCell::new(None),
             system_notifications: RefCell::new(SystemNotificationState::new()),
         })
-    }
-
-    /// KaminIDE patch: identity of the live renderer adapter; unavailable until the platform attaches its GPU.
-    pub fn gpu_adapter_info(&self) -> Result<GpuAdapterInfo> {
-        let devices = self.inner.state.directx_devices.borrow();
-        GpuAdapterInfo::read(&devices.as_ref().context("GPU has not been attached")?.adapter)
     }
 
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
@@ -1713,10 +1708,12 @@ fn handle_gpu_device_lost(
     std::thread::sleep(std::time::Duration::from_millis(350));
 
     let preference = directx_devices.adapter_preference.clone();
+    let generation = directx_devices.context.generation.checked_add(1).context("GPU generation overflow")?;
     let instrumentation = directx_devices.instrumentation.clone();
     *directx_devices = try_to_recover_from_device_lost(|| {
         DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone()).context("Failed to recreate new DirectX devices after device lost")
     })?;
+    directx_devices.context.generation = generation;
     log::info!("DirectX devices successfully recreated.");
 
     let lparam = LPARAM(directx_devices as *const _ as _);

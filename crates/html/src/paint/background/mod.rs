@@ -10,7 +10,7 @@
 //! Готовые CPU-источники приходят из resources; здесь только геометрия заливки
 //! и загрузка точек в GPUI, без URL-кэша и декодера.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;

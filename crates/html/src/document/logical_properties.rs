@@ -6,8 +6,8 @@
 //! картинок масок, статические позиции якорей (`anchor::settle_static`) и
 //! offset-трансформ (`motion::settle`) — всем нужны уже физические стороны.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::values::ValueCx;
 
 /// Разложить логические стороны и размеры по физическим — по всему дереву.
 ///

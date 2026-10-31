@@ -4,7 +4,7 @@ use super::*;
 #[test]
 fn row_item_strut_moves_its_margin_and_keeps_the_gap() {
     for by in [-6.0, 0.0, 20.0] {
-        let mut tree = crate::dom::parse(
+        let mut tree = crate::document::parsed::parse(
             "<div style='display:flex;flex-wrap:wrap;row-gap:10px'><div style='margin-top:3px;height:50px'></div></div>",
             "",
         );

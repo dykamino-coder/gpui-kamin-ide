@@ -1,0 +1,38 @@
+//! Разбор неотрицательной длины для размеров и радиусов: ограничение диапазона
+//! действует на математическое выражение целиком, а не на его слагаемые.
+//! CSS Values 4 §10.12: `calc()`/`min()`/`max()`/`clamp()` вне диапазона годны
+//! и зажимаются по результату, а голое отрицательное значение негодно.
+
+use crate::style::values::value::Len;
+use crate::values::ValueCx;
+
+pub(super) fn parse_nonnegative_size(value: &str, vcx: ValueCx<'_>) -> Option<Len> {
+    let parsed = Len::parse_mixed(value, vcx)?;
+    let lower = value.trim_start().to_ascii_lowercase();
+    let math = ["calc(", "min(", "max(", "clamp("]
+        .iter()
+        .any(|function| lower.starts_with(function));
+    match parsed {
+        Len::Px(n) => scalar(n, math).map(Len::Px),
+        Len::Pct(n) => scalar(n, math).map(Len::Pct),
+        Len::Em(n) => scalar(n, math).map(Len::Em),
+        Len::Vh(n) => scalar(n, math).map(Len::Vh),
+        Len::Vw(n) => scalar(n, math).map(Len::Vw),
+        Len::Ch(n) => scalar(n, math).map(Len::Ch),
+        Len::Ex(n) => scalar(n, math).map(Len::Ex),
+        Len::Ic(n) => scalar(n, math).map(Len::Ic),
+        Len::Lh(n) => scalar(n, math).map(Len::Lh),
+        // These terms have different bases. Their signs say nothing about the
+        // combined size; resolve the font metrics before clamping at layout.
+        Len::EmPx(_, _) | Len::LhPx(_, _) => math.then_some(parsed),
+        _ => Some(parsed),
+    }
+}
+
+fn scalar(value: f32, math: bool) -> Option<f32> {
+    if math {
+        Some(value.max(0.0))
+    } else {
+        (value >= 0.0).then_some(value)
+    }
+}

@@ -1,7 +1,7 @@
 //! Адаптер CPU-конусного градиента для канваса GPUI.
 use super::Source;
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 use std::sync::Arc;
 pub(super) fn tile(
     source: &Source,

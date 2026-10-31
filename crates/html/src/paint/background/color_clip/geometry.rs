@@ -1,8 +1,8 @@
 //! Геометрия внутреннего фона: сначала нормализация внешних радиусов,
 //! затем вычитание рамки и padding отдельно по каждой оси (§5.3, §5.5).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BgClip, Computed};
+use crate::values::ValueCx;
 use gpui::{Bounds, PathBuilder, Pixels, Window, point, px};
 
 pub(super) type Radii = [(f32, f32); 4];

@@ -2,11 +2,11 @@
 //! Сохраняет порядок замеров, overrides и округление normal; не объявляет
 //! разрешённые backend-значения сырыми метриками или результатом face matching.
 
-use crate::document::state::DocumentValues;
 use crate::font_facts::{
     FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontMetricQuery,
     FontRegistrySnapshot, FontRequest, NormalLineFacts,
 };
+use crate::values::DocumentValues;
 use std::rc::{Rc, Weak};
 
 mod selection;

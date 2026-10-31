@@ -3,9 +3,9 @@
 use super::super::AnchorPlan;
 use super::super::area::{Al, Tracks, default_al};
 use super::axis::Edge;
-use crate::document::state::ValueCx;
 use crate::style::computed::Align;
 use crate::style::values::value::{Len, anchor_get};
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Window, px};
 
 impl AnchorPlan {

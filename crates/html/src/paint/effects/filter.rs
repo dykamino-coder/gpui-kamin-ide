@@ -15,7 +15,7 @@ pub struct FilterLayer {
     pub def: String,
     pub id: String,
     pub fill: String,
-    pub values: crate::document::state::ValueDoc,
+    pub values: crate::values::ValueDoc,
 }
 
 impl Painter for FilterLayer {
