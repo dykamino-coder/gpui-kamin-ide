@@ -18,6 +18,9 @@ pub struct ValueCx<'a> {
     pub frame: bool,
     pub viewport: (f32, f32),
     pub scheme: crate::style::values::value::Scheme,
+    /// Вход геометрии: в документе возможны флоаты или буквицы для clearance.
+    /// Значения CSS сохраняются; нижний слой только переносит этот флаг.
+    pub clearance_possible: bool,
 }
 
 impl DocumentValues {
@@ -27,6 +30,7 @@ impl DocumentValues {
             doc: self,
             viewport: (0.0, 0.0),
             frame: false,
+            clearance_possible: true,
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -37,6 +41,7 @@ impl DocumentValues {
             doc: self,
             viewport: (0.0, 0.0),
             frame: true,
+            clearance_possible: true,
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -58,6 +63,7 @@ pub struct ValueDoc {
     frame: bool,
     viewport: (f32, f32),
     scheme: crate::style::values::value::Scheme,
+    clearance_possible: bool,
 }
 
 impl ValueDoc {
@@ -67,6 +73,7 @@ impl ValueDoc {
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,
+            clearance_possible: self.clearance_possible,
         }
     }
 }
@@ -102,6 +109,7 @@ impl<'a> ValueCx<'a> {
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,
+            clearance_possible: self.clearance_possible,
         }
     }
 }

@@ -16,7 +16,8 @@ pub(super) fn walk(
     generation: Inputs,
     lent: &mut Vec<(u64, Rc<Computed>)>,
     vcx: ValueCx<'_>,
-) {
+) -> bool {
+    let mut changed = false;
     let mut pending = vec![(nodes.iter(), parent.clone())];
     while let Some((nodes, inherited)) = pending.last_mut() {
         let Some(node) = nodes.next() else {
@@ -37,10 +38,12 @@ pub(super) fn walk(
             .unwrap_or_else(|| slot.compute(&parent, e.style.cascaded(), vcx));
         // Равные входы позволяют разделить значение, но ссылка наследования
         // должна указывать на текущего родителя, включая новый кадр каскада.
-        if !e
+        let republished = !e
             .style
             .published()
-            .is_some_and(|old| old.ptr_eq(&computed.handle))
+            .is_some_and(|old| old.ptr_eq(&computed.handle));
+        changed |= republished;
+        if republished
             || !slot
                 .0
                 .borrow()
@@ -63,4 +66,5 @@ pub(super) fn walk(
         };
         pending.push((e.children.iter(), inside));
     }
+    changed
 }

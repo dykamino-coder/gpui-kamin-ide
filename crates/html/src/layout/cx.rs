@@ -109,11 +109,14 @@ impl LayoutCx {
     /// Values of the build: `calc()`/`anchor()` bodies parsed while building
     /// the frame go to the document's frame arena.
     pub(crate) fn vcx(&self) -> ValueCx<'_> {
-        self.values
+        let mut values = self
+            .values
             .doc
             .0
             .frame_values()
-            .with_viewport(self.values.viewport)
+            .with_viewport(self.values.viewport);
+        values.clearance_possible = !self.values.inert_clear;
+        values
     }
 
     /// Values of the build with its frame facts: the nearest fragmented ancestor's line

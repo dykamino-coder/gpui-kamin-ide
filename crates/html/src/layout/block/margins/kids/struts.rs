@@ -79,7 +79,7 @@ pub(crate) fn emit_margin_struts(
         // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
         // только остаток.
         if through.is_none()
-            && e.style.used().clear.is_some()
+            && vcx.clear(&e.style.used()).is_some()
             && through_strut_no_clear(e, vcx).is_some()
         {
             *emitted = top;

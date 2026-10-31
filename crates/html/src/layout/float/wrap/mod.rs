@@ -39,6 +39,10 @@ pub(crate) fn wrap_floats(
     cb_height: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
+    // Без возможного флоата не нужны ни подготовка копий, ни полосы обтекания.
+    if !vcx.clearance_possible {
+        return nodes;
+    }
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
