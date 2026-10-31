@@ -13,24 +13,21 @@ pub(crate) struct Preparation {
 
 #[derive(Default)]
 pub(crate) struct PreparationCache {
-    snapshot: Option<((usize, usize), Rc<Preparation>)>,
+    snapshot: std::cell::Cell<Option<((usize, usize), Rc<Preparation>)>>,
 }
 
 impl PreparationCache {
     /// Только Document гарантирует неизменность корневого списка. Для raw
     /// render адрес не доказывает неизменность элементов и кэш не применяется.
-    pub(crate) fn get(&mut self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
+    pub(crate) fn get(&self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
         let key = (nodes.as_ptr() as usize, nodes.len());
-        if stable
-            && !changed
-            && let Some((old, prepared)) = &self.snapshot
-            && *old == key
-        {
-            return prepared.clone();
-        }
-        let prepared = Rc::new(Preparation::new(nodes));
+        let snapshot = self.snapshot.take();
+        let prepared = match snapshot {
+            Some((old, prepared)) if stable && !changed && old == key => prepared,
+            _ => Rc::new(Preparation::new(nodes)),
+        };
         if stable {
-            self.snapshot = Some((key, prepared.clone()));
+            self.snapshot.set(Some((key, prepared.clone())));
         }
         prepared
     }
@@ -93,7 +90,7 @@ mod tests {
     #[test]
     fn stable_snapshot_reuses_preparation_until_computed_publication_changes() {
         let nodes = vec![Node::Element(anon_element("div", vec![]))];
-        let mut cache = PreparationCache::default();
+        let cache = PreparationCache::default();
         let first = cache.get(&nodes, true, true);
         assert!(Rc::ptr_eq(&first, &cache.get(&nodes, true, false)));
         let changed = cache.get(&nodes, true, true);
@@ -104,7 +101,7 @@ mod tests {
     #[test]
     fn raw_tree_is_recomputed_even_if_its_address_does_not_change() {
         let mut nodes = vec![Node::Element(anon_element("div", vec![]))];
-        let mut cache = PreparationCache::default();
+        let cache = PreparationCache::default();
         let first = cache.get(&nodes, false, false);
         assert!(!first.clearance_possible);
         let Node::Element(e) = &mut nodes[0] else {

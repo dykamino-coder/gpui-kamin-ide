@@ -45,9 +45,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // проход только сверяет входы.
     let changed =
         crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
-    let cache: &std::cell::RefCell<crate::layout::cx::subtree::PreparationCache> =
-        &opts.cx.layout().preparation;
-    let prepared = cache.borrow_mut().get(nodes, stable, changed);
+    let prepared = opts.cx.layout().preparation.get(nodes, stable, changed);
     let opts = &*opts.inner(|cx| {
         cx.values.inert_clear = !prepared.clearance_possible;
         cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
