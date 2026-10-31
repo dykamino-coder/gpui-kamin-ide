@@ -67,36 +67,67 @@ merge/release, не новая runtime-пачка; прежние snapshot и ga
 заменяют и не отменяют принятую task-specific приёмку. Следующий owner при
 новой регрессии — maintainer с evidence на версии, содержащей fix.
 
-## Текущая пачка `RC-2026-10-30-INC82-83` — сверка доставленного результата
+## Текущая пачка `RC-2026-10-30-INC82-83` — сверка завершена 2026-10-31
 
-**Status:** in progress. **Snapshot:** public `origin/main`
-`22b2b00b9f8b57ee441cbe8d6e2ba971dfac3c65`.
-**Поручение 2026-10-30:** владелец поручил самому сверить и привести в порядок
-INC-0082/0083 после параллельной работы, выполнить доступные серверные проверки,
-закрыть только доказанный результат и оставить конкретный handoff, если нужен.
-Роль: maintainer в этом ограниченном scope. Windows runtime и deployment в этом
-запуске недоступны; существующий принятый evidence проверяется по источнику,
-новый Windows pass не заявляется. Открытые #549/#552/#437 ведёт другой lead и
-в snapshot не входят; его ветки и release не изменяются.
+**Status:** complete — bounded source verification, public/private reconciliation
+and handoff delivered; no new product fix or release required.
+**Original snapshot:** public `origin/main`
+`22b2b00b9f8b57ee441cbe8d6e2ba971dfac3c65`, coordination
+[#553](https://github.com/dykamino-coder/gpui-kamin-ide/pull/553).
+**Close-out source:** fresh public `origin/main`
+`4867b416b43fc3e214eed075b2942ab7bb88ccb0`;
+private `origin/main` `0975d4553b268353cbbd8c62f1562e21bbfc7dea`.
 
-**Completion target:** оба INC и private packets согласованы с #536/#537/#539 и
-их публикацией; исходные acceptance пункты имеют outcome/evidence либо точный
-остаток/owner, без повторной реализации уже доставленного. Связанные старые
-BR/INC сохраняют собственные ID и gates. Недоказанные предложения по развитию
-не объявляются новыми подтверждёнными багами. Итоговый реестр обновляется после
-merge/fetch результатов; documentation/verification сами release не требуют.
+**Поручение 2026-10-30, продолжено 2026-10-31:** самому сверить INC-0082/0083
+после параллельной работы, выполнить доступные серверные проверки, закрыть
+только доказанный результат и оставить конкретный остаток/owner. Роль: maintainer
+в этом scope. Windows и deployment не запускались. Отчёт о прежней native
+приёмке #536 прочитан; author-local screenshot files независимо не проверены и
+новым Windows pass не объявлены. Чужие ветки, PR и release не изменялись.
 
-| Deliverable | State / artifact | Gate и следующий результат |
+| Deliverable / merged PR | State / artifact | Принятый результат и оставшийся owner |
 | --- | --- | --- |
-| INC-0082 / #537/#539 reconciliation | in progress / verify | Current-source store + HTTP/WS suites; synthetic sequence above old retained/owner thresholds, restart, owner isolation and bounded overload; matrix maps original requirements without claiming production throughput |
-| INC-0083 / #536 reconciliation | in progress / verify | Current-source paging/cursor/lazy-child/scanner suites and isolated mixed workload where available; inspect accepted native evidence and preserve uncovered Windows/deployment scenarios with an exact owner |
-| Related-task routing and concurrent delivery handoff | ready / change | Existing-task routing plus a read-only CI guard for explicitly tracked implementation branches: merged PR links must appear in the card; it neither closes incidents nor changes Windows gates |
-| Batch close-out | waiting / coordination | Depends on merged public/private results and fresh-main verification; do not treat a local test, opened PR or release notes as blanket closure |
+| INC-0082 / #556; private #138 | done / none для terminal-count admission | #537/#539 доставлены в 1.0.82 / .159; 73 server tests, actual-limit 4,100 / 20 owners + 700 / owner, published .83 store repeat, restart/isolation/overload. Нет нового admission fix; INC-0080 ready decision по unread-result/TTL, deployment observation отдельно |
+| INC-0083 / #564; private #139 | done / none для eager-history source contract | #536 опубликован в 1.0.82 / .159; paging/cursor/lazy/scanner tests, isolated 20-reader / 300-child workload. Exact Windows memory/response/queue research остаётся BR-02, BR-03 deferred; authenticated CLI compact observation у deployment owner |
+| Concurrent delivery handoff / #555 | done / none | Read-only CI guard проверяет merged PR из явно заданной implementation branch против текущего Fix PR; 7 contract tests. Документация требует fresh-main reconciliation. Guard не определяет semantic ownership, не закрывает карточки и не подтверждает Windows |
+| Batch close-out | done / coordination | Public/private PR merged; fetched main содержит проверенные карточки и пакеты, SHA-256/private backlinks сверены. Исходные evidence и старые snapshot/gates сохранены |
 
-Допустим новый bounded server fix только после воспроизводимого gap, регистрации
-и явного добавления child к этому snapshot. Бесконечный аудит всего backlog,
-production operations, чужие PR и новые native изменения не поручены. Блокер
-Windows не задерживает независимый source/metadata результат.
+### Остаток: можно начинать без новых полевых логов
+
+- **INC-0080 — ready / research-decision**, maintainer: определить peer-visible
+  retention/overload contract по готовому pressure probe. При 257 terminal tasks
+  одного owner непрочитанный результат может исчезнуть раньше advertised TTL.
+  Это не прежняя блокировка admission. Первый artifact — server/CLI contract
+  decision и матрица HTTP/store; fix только при обоснованном gap, без повторного
+  исполнения side effects. В [карточке](runtime-issues/INC-2026-0080.md#task-result-retention-follow-up--2026-10-30)
+  есть исходник, результат, варианты и acceptance; Windows для начала не нужен.
+- **BR-02 — ready / research**, maintainer с Windows стендом: portable synthetic
+  generator, compacted prefixes, large view + small control tab, 1/50/150/300
+  children, pointer idle, switch/scroll/Console/reconnect; measured native/CEF/
+  host memory, queue bytes/age и latency. Методика/thresholds до прогона;
+  рабочий диапазон или лучший predictor вместо произвольного лимита MB.
+  [Точный handoff](runtime-issues/INC-2026-0083.md#exact-remaining-artifact-not-another-field-log-request).
+  **BR-03 deferred** до этих измерений, остальные native gates не сняты.
+- **Deployment observations — not run**, deployment owner: обычная работа выше
+  прежнего count threshold на .159+ и natural authenticated CLI compact с
+  переходом index/current tail. Только versioned count/byte/stage metadata;
+  без forced restart, удаления task files или обрезки canonical history.
+
+Ни один остаток не требует снова реализовать #536/#537/#539 или ждать нового
+исторического зависания для source/synthetic work. Исходная причина field crashes
+и production capacity не установлены. Полный rewrite системы и шесть исходных
+proposed slices не приняты как шесть обязательных багов. Related-task routing
+не закрывает соседние incidents и не расширяет будущий snapshot автоматически.
+
+### Доставка и свежесть
+
+Первый опубликованный исправленный pair: **1.0.82 / server 6.3.159**;
+последний проверенный immutable release на 2026-10-31: **1.0.84 / 6.3.161**.
+Все восемь audited server modules совпадают по hash с tested source после новых
+HTML/GPU/CI merge. Это source continuity, не Windows или production pass.
+Пять собственных Docker test containers завершились exit 0 без OOM и удалены
+по точным именам, без force/prune; owner resources не затронуты.
+Diagnostic/process/CI changes этой пачки не требуют нового app/server release.
 
 ## История `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
 
