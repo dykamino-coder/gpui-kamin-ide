@@ -12,14 +12,15 @@
 
 | INC | Текущее состояние | Следующий owner / artifact |
 | --- | --- | --- |
-| [INC-0082](runtime-issues/INC-2026-0082.md) | open / verify; блокировка приёма новых команд из-за terminal history исправлена и доставлена в .159; старые settled outcomes вытесняются по count/bytes | maintainer: сверить исходную acceptance matrix с имеющимися tests, оформить только непокрытые проверки; deployment owner: versioned count-only observation после обычного обновления, без нового fix или удаления task files |
+| [INC-0082](runtime-issues/INC-2026-0082.md) | resolved для terminal-count admission; #537/#539 доставлены в .159; source matrix принята после 73 server tests и actual-limit sequence 4,100 / 20 owners + 700 / owner | admission fix повторять не нужно. Maintainer: ready retention/overload decision в [INC-0080](runtime-issues/INC-2026-0080.md#task-result-retention-follow-up--2026-10-30); deployment owner: count-only observation, не проведено |
 
 Текущие лимиты: 400 working на сервер / 8 на MCP owner; хранение — 2048 записей,
 256 на owner, 128 MiB. Это не суточная квота выполненных команд. Owner — durable
 endpoint, не обязательно одна сессия или человек. Вытеснение может удалить ещё
 не прочитанный завершённый результат до TTL; риск явно сохранён в карточке.
-Приёмка fairness, полного multi-owner workload и deployment outcome не объявлена
-пройденной фактом merge/release. Повторная реализация #537/#539 не требуется.
+Bounded owner isolation/overload и multi-owner sequence проверены отдельно от
+merge/release; это не гарантия scheduler fairness или production throughput.
+Deployment observation не проведено. Повторная реализация #537/#539 не требуется.
 
 ## Выборочная системная сверка — 2026-10-29
 
@@ -29,7 +30,7 @@ endpoint, не обязательно одна сессия или челове�
 
 - [INC-0082](runtime-issues/INC-2026-0082.md): первоначальный отдельный P1 — terminal
   MCP Tasks занимали retained admission в .158. На 2026-10-30 #537/#539 уже доставлены
-  в .159; текущий следующий шаг — verification/observation из сверки выше,
+  в .159; на 2026-10-30 source verification принята, остаток — observation и INC-0080,
   а не повтор capacity fix. Исходный reproducer и private evidence сохранены.
 - [INC-0083](runtime-issues/INC-2026-0083.md): оставшаяся обязательная полная история
   при open/reattach и множество historical children. В карточке — карта связей
