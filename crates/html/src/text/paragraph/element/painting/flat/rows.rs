@@ -4,6 +4,7 @@
 //! при обратном порядке строк (`vertical-lr`) одним сложением от верха
 //! коробки, как у `point_of`.
 
+use crate::text::paragraph::prepared::paint_runs::PaintRuns;
 use crate::text::paragraph::*;
 use gpui::{Pixels, point, px};
 
@@ -12,7 +13,7 @@ impl Paragraph {
         &self,
         id: Option<&gpui::GlobalElementId>,
         window: &mut gpui::Window,
-    ) -> Vec<gpui::TextRun> {
+    ) -> PaintRuns {
         let selection = id
             .map(|global| {
                 window.with_element_state::<Selection, _>(global, |state, _| {
@@ -28,7 +29,7 @@ impl Paragraph {
                 r.strikethrough = None;
             }
         }
-        runs
+        PaintRuns::new(runs)
     }
 }
 

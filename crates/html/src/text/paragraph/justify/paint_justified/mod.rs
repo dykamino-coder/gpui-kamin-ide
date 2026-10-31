@@ -4,8 +4,10 @@
 //! `JustifiedPaint`: логическое смещение байта с раздачей, видимые куски
 //! строки (UAX #9 L2), ось зеркала rtl-строки и места ltr-прогонов в ней.
 
+mod correction;
 mod gaps;
 mod logical_placement;
+mod placement_index;
 mod visual_placement;
 mod word_paint;
 mod word_preparation;
@@ -20,6 +22,7 @@ pub(crate) struct JustifiedPaint<'a> {
     pub(crate) segs: &'a [Seg],
     pub(crate) words: &'a [Word],
     pub(crate) ltr_place: &'a [(usize, usize, bool, Pixels)],
+    pub(crate) place_index: &'a placement_index::PlacementIndex,
     pub(crate) logical_run: &'a [(usize, Pixels)],
     pub(crate) step: Pixels,
     pub(crate) from: Pixels,
@@ -94,8 +97,9 @@ impl Paragraph {
         let ltr_place = self.place_visual(&ltr_runs, &logical_at);
         // Visual offset (from the line start) of the logical piece `a..b`: a
         // right-to-left piece mirrors its contents within its own extent.
+        let place_index = placement_index::PlacementIndex::new(&ltr_place);
         let placed = |a: usize, b: usize| -> Option<(Pixels, bool)> {
-            let &(s, e, rtl, start) = ltr_place.iter().find(|p| p.0 <= a && a < p.1)?;
+            let &(s, e, rtl, start) = &ltr_place[place_index.at(a)?];
             Some(if rtl {
                 (start + (logical_at(e) - logical_at(b.min(e))), true)
             } else {
@@ -110,6 +114,7 @@ impl Paragraph {
                 segs,
                 words: &words,
                 ltr_place: &ltr_place,
+                place_index: &place_index,
                 logical_run: &logical_run,
                 step,
                 from,

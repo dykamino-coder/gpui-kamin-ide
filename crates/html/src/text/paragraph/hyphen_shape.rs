@@ -1,4 +1,4 @@
-//! Набор куска строки с суффиксом (`shape`): знак переноса набирается
+//! Набор куска строки с суффиксом (`shape_piece`): знак переноса набирается
 //! ВМЕСТЕ со строкой стилем своего мягкого переноса (css-text-3 §5.4), знак
 //! обрыва — своим прогоном в стиле блока; незримые управляющие знаки
 //! выбрасываются; rtl идёт через `shape_line_rtl`. Здесь же ширины знака
@@ -37,16 +37,14 @@ impl Paragraph {
             .map_or(px(0.), |(_, width)| *width)
     }
 
-    /// Набрать кусок текста; правый прогон — со знаком стороны письма.
-    pub(super) fn shape(
+    pub(super) fn shape_piece(
         &self,
         range: &std::ops::Range<usize>,
-        runs: &[TextRun],
+        mut piece: Vec<TextRun>,
         rtl: bool,
         suffix: &str,
         window: &mut Window,
     ) -> Option<gpui::ShapedLine> {
-        let mut piece = slice_runs(runs, range);
         if piece.is_empty() {
             return None;
         }
@@ -54,7 +52,7 @@ impl Paragraph {
         // style even when that otherwise invisible run has no painted glyphs.
         let hyphen_run = (suffix == self.hyphen.as_ref()
             && self.text[..range.end].ends_with(SOFT_HYPHEN))
-        .then(|| slice_runs(runs, &(range.end - SOFT_HYPHEN.len_utf8()..range.end)))
+        .then(|| slice_runs(&piece, &(range.len() - SOFT_HYPHEN.len_utf8()..range.len())))
         .and_then(|runs| runs.into_iter().next());
         // Управляющие знаки не рисуются: своей ширины у них нет, но подмена
         // шрифта может подставить вместо них пустой квадрат и раздвинуть

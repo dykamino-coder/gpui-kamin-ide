@@ -15,6 +15,7 @@ impl Paragraph {
         window: &mut Window,
         _cx: &mut App,
     ) -> Option<Hitbox> {
+        self.invalidate_prepared();
         self.vertical_layout_origin =
             window.layout_origin_unrounded(*state) - window.element_offset();
         self.width_nudge = {

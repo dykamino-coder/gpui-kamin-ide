@@ -7,7 +7,7 @@
 
 use super::is_cjk;
 use super::*;
-use gpui::{Pixels, TextRun, Window, px};
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     /// Inline size of the decorated text `a..b` over all lines (logical px):
@@ -16,7 +16,11 @@ impl Paragraph {
         const NL: char = 10 as char;
         const TAB: char = 9 as char;
         let mut w = 0.0;
-        for line in &self.lines {
+        let first = self.lines.partition_point(|line| line.range.end <= a);
+        for line in self.lines[first..]
+            .iter()
+            .take_while(|line| line.range.start < b)
+        {
             let body = &self.text[line.range.clone()];
             let end = if self.wrap.keep_spaces {
                 line.range.start + body.trim_end_matches(NL).len()
@@ -58,15 +62,9 @@ impl Paragraph {
         let scale = window.scale_factor();
         let ts = window.text_system().clone();
         let mut out = Vec::new();
-        let mut bounds: Vec<(std::ops::Range<usize>, &TextRun)> = Vec::new();
-        let mut acc = 0usize;
-        for r in &self.runs {
-            bounds.push((acc..acc + r.len, r));
-            acc += r.len;
-        }
         for (i, ch) in self.text[s..e].char_indices() {
             let at = s + i;
-            let Some((_, run)) = bounds.iter().find(|(r, _)| r.contains(&at)) else {
+            let Some(run) = self.run_at(at).map(|i| &self.runs[i]) else {
                 continue;
             };
             if ch.is_whitespace() || is_cjk(ch) {

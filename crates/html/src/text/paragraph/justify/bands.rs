@@ -17,7 +17,7 @@ impl Paragraph {
     /// попадают.
     pub(crate) fn word_width(&self, word: &Word, window: &mut Window) -> Pixels {
         let slice: SharedString = self.text[word.range.clone()].to_string().into();
-        let runs = slice_runs(&self.runs, &word.range);
+        let runs = self.own_runs(&word.range);
         window
             .text_system()
             .with_ligature_breaking(false)
@@ -26,11 +26,10 @@ impl Paragraph {
                 self.font_size,
                 &runs,
                 None,
-                self.letter_spans
-                    .iter()
-                    .find(|(r, _)| r.contains(&word.range.start))
-                    .map(|(_, v)| *v)
-                    .unwrap_or(self.letter_spacing),
+                self.prepared()
+                    .letters
+                    .first(word.range.start)
+                    .map_or(self.letter_spacing, |i| self.letter_spans[i].1),
             )
             .width
     }
@@ -40,19 +39,9 @@ impl Paragraph {
     /// Подложка промежутка между словами — только если оба соседа и сам
     /// промежуток лежат в ОДНОМ прогоне, и у него есть фон.
     pub(crate) fn gap_background(&self, left: &Word, right: &Word) -> Option<gpui::Hsla> {
-        let run_at = |at: usize| -> Option<usize> {
-            let mut start = 0usize;
-            for (i, run) in self.runs.iter().enumerate() {
-                if at < start + run.len {
-                    return Some(i);
-                }
-                start += run.len;
-            }
-            None
-        };
-        let a = run_at(left.range.end.saturating_sub(1))?;
-        let b = run_at(right.range.start)?;
-        let gap = run_at(left.range.end)?;
+        let a = self.run_at(left.range.end.saturating_sub(1))?;
+        let b = self.run_at(right.range.start)?;
+        let gap = self.run_at(left.range.end)?;
         if a != b || a != gap {
             return None;
         }
@@ -65,14 +54,10 @@ impl Paragraph {
     // A decoration band independently supplies background and border colors/widths.
     #[allow(clippy::type_complexity)]
     pub(crate) fn band_at(&self, at: usize) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
-        let mut start = 0usize;
-        for run in self.runs.iter() {
-            if at < start + run.len {
-                return Some((run.background_color, run.background_border));
-            }
-            start += run.len;
-        }
-        None
+        self.run_at(at).map(|i| {
+            let run = &self.runs[i];
+            (run.background_color, run.background_border)
+        })
     }
 }
 
@@ -86,7 +71,7 @@ impl Paragraph {
     pub(crate) fn mirrored_band_runs(&self, word: &std::ops::Range<usize>) -> Vec<TextRun> {
         let left = self.band_at(word.end);
         let right = word.start.checked_sub(1).and_then(|a| self.band_at(a));
-        let mut out = slice_runs(&self.runs, word);
+        let mut out = self.own_runs(word);
         for run in out.iter_mut() {
             if run.background_color.is_none() {
                 continue;
@@ -110,13 +95,13 @@ impl Paragraph {
     pub(crate) fn visual_band_runs(
         &self,
         place: &[(usize, usize, bool, Pixels)],
+        order: &prepared::visual_order::VisualOrder,
         k: usize,
         word: &std::ops::Range<usize>,
     ) -> Vec<TextRun> {
         let rtl = place[k].2;
-        let vis = self.visual_chars(place.iter().map(|p| (p.0, p.1, p.2)));
-        let (left, right) = visual_neighbours(&self.text, &vis, word);
-        let mut out = slice_runs(&self.runs, word);
+        let (left, right) = order.neighbours(word);
+        let mut out = self.own_runs(word);
         self.cut_piece_sides(&mut out, word, rtl, left, right);
         out
     }

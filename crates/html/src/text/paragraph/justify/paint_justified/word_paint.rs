@@ -2,8 +2,7 @@
 //! сдвиги `vertical-align`/`position: relative`, подложка, оформление, знаки акцента;
 //! вертикальная поправка отдельно набранного куска (CSS 2.1 §10.8.1).
 
-use super::Edge;
-use super::JustifiedPaint;
+use super::{Edge, JustifiedPaint};
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, SharedString, Window, point, px};
 
@@ -20,6 +19,7 @@ impl Paragraph {
             words,
             ltr_place,
             logical_run,
+            place_index,
             step,
             from,
             mirror,
@@ -31,6 +31,14 @@ impl Paragraph {
             placed,
         } = context;
         let line_base = self.shared_base(range);
+        let order = prepared::visual_order::VisualOrder::new(
+            self,
+            ltr_place.iter().map(|p| (p.0, p.1, p.2)),
+        );
+        let mut fixed = vec![None; words.len()];
+        for &(i, x) in logical_run {
+            fixed[i].get_or_insert(x);
+        }
         let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
         let mut boxes: Vec<(Pixels, Pixels, Pixels)> = Vec::with_capacity(words.len());
         for (wi, word) in words.iter().enumerate() {
@@ -38,13 +46,10 @@ impl Paragraph {
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.
-            let mut runs = match ltr_place
-                .iter()
-                .position(|p| p.0 <= word.range.start && word.range.start < p.1)
-            {
-                Some(k) => self.visual_band_runs(&ltr_place, k, &word.range),
+            let mut runs = match place_index.at(word.range.start) {
+                Some(k) => self.visual_band_runs(ltr_place, &order, k, &word.range),
                 None if self.wrap.rtl => self.mirrored_band_runs(&word.range),
-                None => slice_runs_banded(&self.runs, &word.range),
+                None => self.own_banded_runs(&word.range),
             };
             let decor = self.decor_on();
             if decor {
@@ -54,11 +59,10 @@ impl Paragraph {
                 }
             }
             let spacing = self
-                .letter_spans
-                .iter()
-                .find(|(r, _)| r.contains(&word.range.start))
-                .map(|(_, v)| *v)
-                .unwrap_or(self.letter_spacing);
+                .prepared()
+                .letters
+                .first(word.range.start)
+                .map_or(self.letter_spacing, |i| self.letter_spans[i].1);
             let visual = placed(word.range.start, word.range.end);
             let overridden = runs
                 .iter()
@@ -83,8 +87,8 @@ impl Paragraph {
             // При письме справа налево строка раздаётся от ПРАВОГО края:
             // первое слово встаёт справа, последнее — слева. Раздача слева
             // направо переворачивала порядок слов на выключенной строке.
-            let x = match logical_run.iter().find(|(i, _)| *i == wi) {
-                Some((_, fixed)) => *fixed,
+            let x = match fixed[wi] {
+                Some(x) => x,
                 // A right-to-left line starts at its mirror axis: its
                 // logical extent ends at the visual left.
                 None if visual.is_some() => {
@@ -101,18 +105,20 @@ impl Paragraph {
             // Сдвиг куска по вертикали: надстрочный и подстрочный знак стоят
             // выше и ниже базовой линии, оставаясь в той же строке.
             let dy = self
-                .shift_spans
-                .iter()
-                .find(|(r, _)| r.contains(&word.range.start))
-                .map(|(_, v)| *v)
-                .unwrap_or(px(0.));
+                .prepared()
+                .shifts
+                .first(word.range.start)
+                .map_or(px(0.), |i| self.shift_spans[i].1);
             // Относительный сдвиг двигает ТОЛЬКО отрисовку куска: место в
             // потоке за ним сохраняется, соседи не съезжают (§9.4.3).
             let ((rx, ry), (bx, by)) = self
-                .rel_spans
-                .iter()
-                .find(|(r, _, _)| r.contains(&word.range.start))
-                .map(|(_, v, b)| (*v, *b))
+                .prepared()
+                .relatives
+                .first(word.range.start)
+                .map(|i| {
+                    let (_, v, b) = self.rel_spans[i];
+                    (v, b)
+                })
                 .unwrap_or(((0.0, 0.0), (0.0, 0.0)));
             // Слово набирается своим вызовом, и `ShapedLine::paint` ставит
             // его базовую линию по СВОИМ подъёму и спуску. Сплошной набор
@@ -192,58 +198,6 @@ impl Paragraph {
         }
         if self.decor_on() {
             self.flush_decor(window);
-        }
-    }
-
-    /// Vertical correction of a separately shaped piece of the line: its own
-    /// baseline is moved onto the line's, or, inside a top/bottom aligned
-    /// inline box, onto that box's edge (CSS 2.1 section 10.8.1). Words and
-    /// the inter-word gaps of the same box share it, so their backgrounds
-    /// form one band.
-    pub(super) fn piece_fix(
-        &self,
-        range: &std::ops::Range<usize>,
-        line_base: Option<f32>,
-        pad: (f32, f32),
-    ) -> Pixels {
-        self.piece_fix_with(range, self.base_of(range), line_base, pad)
-    }
-
-    /// `piece_fix` with the caller's baseline (font metric overrides).
-    pub(super) fn piece_fix_with(
-        &self,
-        range: &std::ops::Range<usize>,
-        piece_base: Option<f32>,
-        line_base: Option<f32>,
-        pad: (f32, f32),
-    ) -> Pixels {
-        let fix = match (line_base, piece_base) {
-            (Some(l), Some(w)) => px(l - w),
-            _ => px(0.),
-        };
-        // Кусок у края строки: его строчная коробка (высотой своей
-        // `line-height`, глифы по её полулидингу) встаёт верхом на верх
-        // строки или низом на низ (§10.8.1). `shaped.paint` центрирует
-        // глифы в высоте строки абзаца — разница высот делится пополам.
-        match self
-            .edge_spans
-            .iter()
-            .find(|(r, _, _)| r.contains(&range.start))
-        {
-            Some((r, top, h)) => {
-                let lh = f32::from(self.line_height);
-                let line_top = -pad.0;
-                let box_top = if *top { line_top } else { lh + pad.1 - h };
-                // Align the subtree as one box, preserving its common
-                // baseline (CSS 2.1 section 10.8.1). Centering each word
-                // separately misaligns descendants with different fonts.
-                let baseline = match (self.base_of(r), piece_base) {
-                    (Some(group), Some(word)) => group - word,
-                    _ => 0.0,
-                };
-                px(box_top + (h - lh) / 2.0 + baseline)
-            }
-            None => fix,
         }
     }
 }
