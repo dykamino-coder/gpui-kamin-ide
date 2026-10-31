@@ -21,18 +21,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Read the quality cache without ever saving baseline targets back into it.
-      - name: Restore Cargo inputs and build output (read only)
+      # The per-SHA clone builds different profiles in its own target directory.
+      # Download only reusable sources; baseline never builds/saves the quality cache.
+      - name: Restore Cargo sources (read only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: windows-cargo-inputs-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
-            windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-
-            windows-cargo-v2-
+            windows-cargo-inputs-v1-
 
       # Use the measured gate dev profile and the repository's html-test alias.
       - name: Build exact main baseline executables
