@@ -34,6 +34,8 @@ mod image_source;
 pub use image_source::ConicGradient;
 pub use image_source::{ImageFilter, ImageSource};
 mod container_type;
+mod containment;
+pub use containment::{Containment, ContentVisibility};
 mod content_functions;
 mod counters;
 pub use container_type::ContainerType;

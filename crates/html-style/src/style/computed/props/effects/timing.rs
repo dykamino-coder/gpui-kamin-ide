@@ -60,14 +60,6 @@ impl Computed {
                 // «inline-size» и не видел paint внутри `content`
                 // (css-contain-1 §3.1: strict = size layout paint style,
                 // content = layout paint style).
-                css_wide_reset!(
-                    self,
-                    contain_size,
-                    contain_inline_size,
-                    contain_layout,
-                    contain_paint,
-                    contain_style
-                );
                 let words: Vec<_> = v.split_whitespace().collect();
                 if words.is_empty()
                     || !words.iter().all(|w| {
@@ -113,11 +105,14 @@ impl Computed {
                     }
                 }
                 self.accept_declaration();
-                self.contain_size = Some(bits.0);
-                self.contain_inline_size = Some(inline_only);
-                self.contain_layout = Some(bits.1);
-                self.contain_paint = Some(bits.2);
-                self.contain_style = Some(bits.3);
+                self.contain_value = Containment {
+                    size: bits.0,
+                    inline_size: inline_only,
+                    layout: bits.1,
+                    paint: bits.2,
+                    style: bits.3,
+                };
+                self.refresh_containment();
             }
             _ => self.apply_effects_containment(key, v, hit, vcx),
         }

@@ -6,8 +6,9 @@ use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::build_contracts::Layer;
 use crate::layout::cx::LayoutCx;
 use crate::layout::table::anon::html_cell;
+use crate::layout::table::is_cell;
 use crate::layout::table::rows::gather_text;
-use crate::layout::table::{is_cell, row_span_in_group};
+use crate::layout::table::slot_grid::{CellSlot, grid_line};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Overflow};
 use crate::style::values::value::Len;
@@ -21,32 +22,11 @@ pub(super) struct CellSpans {
     pub clipped: bool,
 }
 
-pub(super) fn cell_spans(
-    row_ix: i16,
-    rows_left: &[usize],
-    cols_collapsed: &[bool],
-    col_ix: usize,
-    cell: &Element,
-) -> CellSpans {
+pub(super) fn cell_spans(slot: CellSlot<'_>, cols_collapsed: &[bool], cell: &Element) -> CellSpans {
     let st = cell.style.used();
-    // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
-    // правее неё съезжало на колонку влево.
-    let span_cols: u16 = cell
-        .attr("colspan")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1)
-        .max(1);
-    // Охват по рядам урезан до конца группы, `rowspan=0` — до конца
-    // группы (см. `rows_left`): лишний охват создавал неявный ряд
-    // сетки с зазором (`visibility-collapse-border-spacing-002`).
-    let span_rows: u16 = row_span_in_group(
-        cell,
-        rows_left
-            .get(usize::try_from(row_ix - 1).unwrap_or(0))
-            .copied()
-            .unwrap_or(1),
-    )
-    .min(usize::from(u16::MAX)) as u16;
+    let span_cols = slot.colspan;
+    let span_rows = u16::try_from(slot.rowspan).unwrap_or(u16::MAX);
+    let col_ix = slot.column;
     // Фон и рамка строки переносятся на её ячейки: своей строки как
     // элемента больше нет, а зебра и разделители нужны.
     // Обрезка снимается С САМОЙ ячейки и вешается на её содержимое.
@@ -149,8 +129,8 @@ pub(super) fn row_band_probes(
 }
 
 pub(super) fn push_empty_row_track(
-    row_ix: i16,
-    occupied: &[u16],
+    row_ix: usize,
+    covered: bool,
     e: &Element,
     cols: u16,
     cells: &mut Vec<AnyElement>,
@@ -168,13 +148,13 @@ pub(super) fn push_empty_row_track(
             .children
             .iter()
             .any(|n| matches!(n, Node::Element(c) if is_cell(c)))
-        && occupied.iter().all(|o| *o == 0)
+        && !covered
         && let Some(Len::Px(h)) = row.style.used().height
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
         if !e.style.used().wm().vertical() {
-            ph = ph.col_start(1).row_start(row_ix);
+            ph = ph.col_start(1).row_start(grid_line(row_ix));
         }
         cells.push(ph.into_any_element());
     }

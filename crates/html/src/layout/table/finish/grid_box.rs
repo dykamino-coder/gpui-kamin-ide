@@ -2,6 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::table::is_cell;
+use crate::layout::table::slot_grid::TableGrid;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 use gpui::{ParentElement, Styled, div, px};
@@ -10,6 +11,7 @@ pub(super) fn table_grid_box(
     e: &Element,
     inherited: &Computed,
     row_elements: &[&Element],
+    slots: &TableGrid<'_>,
     tracks: Vec<gpui::GridTrack>,
     table_tall: bool,
 ) -> gpui::Div {
@@ -96,7 +98,7 @@ pub(super) fn table_grid_box(
         }
         g
     };
-    grid.style().table_collapsed_tracks = collapsed_tracks(e);
+    grid.style().table_collapsed_tracks = collapsed_tracks(e, slots);
     grid
 }
 
@@ -164,30 +166,24 @@ pub(super) fn paint_table_border(
     outer
 }
 
-fn collapsed_tracks(e: &Element) -> Option<(bool, Vec<u16>)> {
-    // CSS 2.2 section 17.2.1: anonymous rows precede track indexing.
-    // Keep the same normalization and header/footer order as table().
-    let fixed = crate::layout::table::anon::fixup_table_children(&e.children);
-    let fixed = crate::layout::table::setup::table_rows_fixed(fixed);
-    let mut logical_rows = Vec::new();
-    crate::layout::table::anon::collect_rows(
-        &fixed,
-        Some(e),
-        crate::layout::table::anon::RowCarry::default(),
-        &mut logical_rows,
-    );
+fn collapsed_tracks(e: &Element, slots: &TableGrid<'_>) -> Option<(bool, Vec<u16>)> {
+    let logical_rows = &slots.rows;
     let collapsed: Vec<u16> = logical_rows
         .iter()
         .enumerate()
         .filter_map(|(i, row)| {
-            let collapse = crate::layout::table::anon::row_collapsed(row.element, row.carry.group);
-            collapse.then_some(
+            let collapse = crate::layout::table::anon::row_collapsed(row.element, row.group);
+            if !collapse {
+                return None;
+            }
+            u16::try_from(
                 if e.style.used().wm().vertical() && e.style.used().wm().block_rl() {
-                    (logical_rows.len() - i - 1) as u16
+                    logical_rows.len() - i - 1
                 } else {
-                    i as u16
+                    i
                 },
             )
+            .ok()
         })
         .collect();
     (!collapsed.is_empty()).then_some((e.style.used().wm().vertical(), collapsed))
@@ -198,6 +194,15 @@ mod tests {
     use super::*;
     use crate::layout::table::anon::anon_element;
 
+    fn collapsed(table: &Element) -> Option<(bool, Vec<u16>)> {
+        use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
+        let fixed =
+            crate::layout::table::setup::table_rows_fixed(fixup_table_children(&table.children));
+        let mut rows = vec![];
+        collect_rows(&fixed, Some(table), RowCarry::default(), &mut rows);
+        collapsed_tracks(table, &TableGrid::new(&rows))
+    }
+
     #[test]
     fn collapse_indices_follow_anonymous_rows_and_group_order() {
         let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
@@ -207,15 +212,15 @@ mod tests {
         let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
         header.node_id = 2;
         let mut table = anon_element("table", vec![Node::Element(group)]);
-        assert_eq!(collapsed_tracks(&table), Some((false, vec![0])));
+        assert_eq!(collapsed(&table), Some((false, vec![0])));
         table.children.push(Node::Element(header));
-        assert_eq!(collapsed_tracks(&table), Some((false, vec![1])));
+        assert_eq!(collapsed(&table), Some((false, vec![1])));
         table.style.used_mut().writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 true,
                 table.style.used().wm().sideways(),
             ));
-        assert_eq!(collapsed_tracks(&table), Some((true, vec![0])));
+        assert_eq!(collapsed(&table), Some((true, vec![0])));
     }
 }

@@ -9,7 +9,7 @@ use gpui::ParentElement;
 pub(in crate::layout::table) fn collapsed_col_edges(
     cell_cols: &std::ops::Range<usize>,
     col_els: &[crate::layout::table::context::ColumnLayer<'_>],
-    row_ix: i16,
+    row_ix: usize,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
     table_edges: &crate::layout::table::probes::CellEdges,
@@ -33,7 +33,7 @@ pub(in crate::layout::table) fn collapsed_col_edges(
 pub(in crate::layout::table) fn collapsed_colgroup_edges(
     cell_cols: std::ops::Range<usize>,
     grp_els: &[crate::layout::table::context::ColumnLayer<'_>],
-    row_ix: i16,
+    row_ix: usize,
     row_elements: &[&Element],
     inherited: &Computed,
     table_edges: &crate::layout::table::probes::CellEdges,
@@ -57,7 +57,7 @@ pub(in crate::layout::table) fn collapsed_colgroup_edges(
 fn collapsed_column_edges(
     cell_cols: std::ops::Range<usize>,
     col_els: &[crate::layout::table::context::ColumnLayer<'_>],
-    row_ix: i16,
+    row_ix: usize,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
     table_edges: &crate::layout::table::probes::CellEdges,
@@ -84,7 +84,7 @@ fn collapsed_column_edges(
         };
         let left_edge = !same(i as i64 - 1);
         let right_edge = !same(i as i64 + 1);
-        let last_row = row_ix as usize >= row_elements.len();
+        let last_row = row_ix >= row_elements.len();
         let widths = super::super::axes::Axes::new(inherited)
             .mask(cw, [row_ix == 1, right_edge, last_row, left_edge]);
         if !(widths.iter().any(|w| *w > 0.0) || hidden) {

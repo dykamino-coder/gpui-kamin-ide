@@ -1,7 +1,6 @@
 //! Подготовка таблицы: border-spacing, ряды и число колонок, дети с анонимными объектами; предикаты
 //! ячеек.
 
-use super::is_cell;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level_box;
 use crate::layout::options::RenderOpts;
@@ -17,47 +16,6 @@ pub(super) fn border_spacing_of(
     inherited: &Computed,
 ) -> (f32, f32) {
     table_spacing(e, opts, inherited, e.style.used().border_spacing)
-}
-
-pub(super) fn rows_left_and_cols(
-    rows: &[crate::layout::table::anon::TableRow<'_>],
-) -> (Vec<usize>, u16) {
-    let rows_left: Vec<usize> = {
-        let key = |i: usize| rows[i].carry.group.map(|g| g.node_id);
-        let mut out = vec![1usize; rows.len()];
-        let mut end = rows.len();
-        for i in (0..rows.len()).rev() {
-            if i + 1 < rows.len() && key(i + 1) != key(i) {
-                end = i + 1;
-            }
-            out[i] = end - i;
-        }
-        out
-    };
-    // Ширина таблицы — сумма ОБЪЕДИНЕНИЙ, а не число ячеек: строка из двух
-    // ячеек с `colspan=2` даёт четыре колонки, и без этого содержимое
-    // выталкивалось в неявные ряды.
-    let cols = rows
-        .iter()
-        .map(|r| {
-            r.element
-                .children
-                .iter()
-                .filter_map(|c| match c {
-                    Node::Element(e) if is_cell(e) => Some(
-                        e.attr("colspan")
-                            .and_then(|v| v.parse::<usize>().ok())
-                            .unwrap_or(1)
-                            .max(1),
-                    ),
-                    _ => None,
-                })
-                .sum::<usize>()
-        })
-        .max()
-        .unwrap_or(1)
-        .max(1) as u16;
-    (rows_left, cols)
 }
 
 pub(super) fn table_spacing(
@@ -157,20 +115,4 @@ pub(super) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
             }
             Node::Text(_) => false,
         })
-}
-
-/// Охват ячейки по рядам в пределах её группы: `left` — сколько рядов от
-/// ряда ячейки до конца группы (включая его). HTML table model: охват за
-/// конец группы урезается, `rowspan=0` тянется до конца группы; мусор и
-/// отсутствие атрибута — один ряд.
-pub(super) fn row_span_in_group(cell: &Element, left: usize) -> usize {
-    let left = left.max(1);
-    match cell
-        .attr("rowspan")
-        .and_then(|v| v.trim().parse::<usize>().ok())
-    {
-        Some(0) => left,
-        Some(n) => n.clamp(1, left),
-        None => 1,
-    }
 }

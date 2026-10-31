@@ -130,7 +130,7 @@ pub(super) fn cell_edge_probes(
         // Rowspan is already clipped to its row group by cell_spans.
         let last_row = (span_rows > 1).then(|| {
             geom.row_elements
-                .get(cursor.row_ix as usize + span_rows as usize - 2)
+                .get(cursor.row_ix + span_rows as usize - 2)
                 .copied()
                 .unwrap_or(row_state.row)
         });

@@ -72,33 +72,18 @@ impl Computed {
                 } else {
                     ContainerType::Normal
                 };
-                // Только ВЗВОД: `container-type: normal` не имеет права снять
-                // обособление, объявленное в том же блоке через `contain`, —
-                // это разные свойства, и начальное значение одного ничего не
-                // отменяет у другого.
-                if size {
-                    self.contain_size = Some(true);
-                }
-                if inline {
-                    self.contain_inline_size = Some(true);
-                }
-                if size || inline {
-                    self.contain_style = Some(true);
-                }
+                self.refresh_containment();
             }
             "content-visibility" => {
-                if matches!(v.trim(), "visible" | "hidden" | "auto") {
-                    self.accept_declaration();
-                }
-                // `hidden` = size+layout+paint containment, содержимое
-                // пропускается целиком (css-contain-2 §4). `auto` для
-                // reftest без прокрутки всегда «релевантен» = visible.
-                if v.trim() == "hidden" {
-                    self.contain_size = Some(true);
-                    self.contain_paint = Some(true);
-                    self.contain_layout = Some(true);
-                    self.skip_content = Some(true);
-                }
+                let visibility = match v.trim() {
+                    "visible" => ContentVisibility::Visible,
+                    "auto" => ContentVisibility::Auto,
+                    "hidden" => ContentVisibility::Hidden,
+                    _ => return,
+                };
+                self.accept_declaration();
+                self.content_visibility = visibility;
+                self.refresh_containment();
             }
             "contain-intrinsic-size"
             | "contain-intrinsic-width"

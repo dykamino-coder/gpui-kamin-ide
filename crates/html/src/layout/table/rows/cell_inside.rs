@@ -3,6 +3,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
+use crate::layout::table::slot_grid::grid_line;
 use crate::layout::table::table_clipped_content;
 use crate::style::computed::{Align, BoxStyle};
 use crate::style::values::value::Len;
@@ -10,7 +11,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn place_cell_in_grid(
-    row_ix: i16,
+    row_ix: usize,
     e: &Element,
     cols: u16,
     row_elements: &[&Element],
@@ -36,9 +37,9 @@ pub(super) fn place_cell_in_grid(
     // от ПРАВОГО края, а авто-поток умеет только вперёд — реверс
     // рядов ломал охваты объединённых ячеек.
     if e.style.used().wm().vertical() {
-        let n_rows = row_elements.len() as i16;
+        let n_rows = row_elements.len();
         let gc = if e.style.used().wm().block_rl() {
-            n_rows - row_ix - (span_rows as i16) + 2
+            n_rows.saturating_sub(row_ix - 1 + usize::from(span_rows)) + 1
         } else {
             row_ix
         };
@@ -50,16 +51,16 @@ pub(super) fn place_cell_in_grid(
         let rtl_line = e.style.used().wm().rtl() && !e.style.used().wm().upright();
         let base_up = e.style.used().wm().sideways_lr();
         let gr = if rtl_line != base_up {
-            cols as i16 - col_ix as i16 - span_cols as i16 + 1
+            usize::from(cols).saturating_sub(col_ix + usize::from(span_cols)) + 1
         } else {
-            col_ix as i16 + 1
+            col_ix.saturating_add(1)
         };
-        d = d.col_start(gc.max(1)).row_start(gr.max(1));
+        d = d.col_start(grid_line(gc)).row_start(grid_line(gr));
     } else if e.style.used().wm().rtl() {
         // `dir=rtl` на таблице: колонки идут от ПРАВОГО края
         // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
-        let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
-        d = d.col_start(gc.max(1)).row_start(row_ix);
+        let gc = usize::from(cols).saturating_sub(col_ix + usize::from(span_cols)) + 1;
+        d = d.col_start(grid_line(gc)).row_start(grid_line(row_ix));
     } else {
         // Явная расстановка ВСЕГДА (CSS 2.1 §17.5.1: ячейка стоит в
         // ряду своего `<tr>` и в колонке по счёту с учётом охватов).
@@ -70,7 +71,9 @@ pub(super) fn place_cell_in_grid(
         // body / two foot» (`rules-groups`, снимок s1234 против
         // эталона с явной расстановкой). Заодно порядок детей сетки
         // свободен для слоёв краски (см. `cells_over`).
-        d = d.col_start(col_ix as i16 + 1).row_start(row_ix);
+        d = d
+            .col_start(grid_line(col_ix.saturating_add(1)))
+            .row_start(grid_line(row_ix));
     }
     d
 }
