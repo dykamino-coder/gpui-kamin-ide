@@ -49,6 +49,7 @@ fn unkeyed_positioned(e: &Element) -> bool {
 pub(crate) fn unkeyed_positions(
     nodes: &[Node],
 ) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
+    crate::work::add!(FullTreeWalks, 1);
     fn walk(
         nodes: &[Node],
         at: &mut usize,
@@ -56,6 +57,7 @@ pub(crate) fn unkeyed_positions(
         last: &mut Option<usize>,
     ) {
         for n in nodes {
+            crate::work::add!(TreeNodesVisited, 1);
             let Node::Element(e) = n else { continue };
             if unkeyed_positioned(e) {
                 *last = Some(*at);

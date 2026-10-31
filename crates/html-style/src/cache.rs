@@ -38,6 +38,8 @@ struct Store<K, V> {
 
 /// Кэш с бюджетом в байтах; `const`-конструктор позволяет держать его в `static`.
 pub struct BoundedCache<K, V> {
+    #[cfg(feature = "work-counters")]
+    paint: bool,
     budget: usize,
     weigh: fn(&V) -> usize,
     key_weight: fn(&K) -> usize,
@@ -48,6 +50,8 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
     /// `budget` — потолок суммарного веса; `weigh` — полезные байты значения.
     pub const fn new(budget: usize, weigh: fn(&V) -> usize) -> Self {
         Self {
+            #[cfg(feature = "work-counters")]
+            paint: false,
             budget,
             weigh,
             key_weight: |_| 0,
@@ -59,6 +63,20 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
     pub const fn with_key_weight(mut self, weigh: fn(&K) -> usize) -> Self {
         self.key_weight = weigh;
         self
+    }
+
+    /// Категория диагностического наблюдения, без состояния в обычной сборке.
+    pub const fn for_paint(self) -> Self {
+        #[cfg(feature = "work-counters")]
+        {
+            let mut cache = self;
+            cache.paint = true;
+            cache
+        }
+        #[cfg(not(feature = "work-counters"))]
+        {
+            self
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Store<K, V>>> {
@@ -73,12 +91,20 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let mut guard = self.lock();
-        let store = guard.as_mut()?;
-        store.clock += 1;
-        let slot = store.map.get_mut(key)?;
-        slot.used = store.clock;
-        Some(slot.value.clone())
+        let result = (|| {
+            let mut guard = self.lock();
+            let store = guard.as_mut()?;
+            store.clock += 1;
+            let slot = store.map.get_mut(key)?;
+            slot.used = store.clock;
+            Some(slot.value.clone())
+        })();
+        crate::work::cache!(result, ResourceCacheHits, ResourceCacheMisses);
+        #[cfg(feature = "work-counters")]
+        if self.paint {
+            crate::work::cache!(result, PaintCacheHits, PaintCacheMisses);
+        }
+        result
     }
 
     /// Положить запись; при превышении бюджета вытесняются самые давние записи.
@@ -200,3 +226,21 @@ pub fn hint(part: impl Hash) -> u64 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, feature = "work-counters"))]
+mod work_tests {
+    #[test]
+    fn observes_empty_miss_and_hit_without_repeating_lookup() {
+        use crate::work::{Counter, Phase, Session};
+        let session = Session::begin();
+        let cache = super::BoundedCache::new(1024, |_: &u8| 1).for_paint();
+        assert_eq!(cache.get(&1u8), None);
+        cache.insert(1, 9);
+        assert_eq!(cache.get(&1), Some(9));
+        let counts = session.finish().0[Phase::PipelineOther as usize];
+        assert_eq!(counts[Counter::ResourceCacheMisses as usize], 1);
+        assert_eq!(counts[Counter::ResourceCacheHits as usize], 1);
+        assert_eq!(counts[Counter::PaintCacheMisses as usize], 1);
+        assert_eq!(counts[Counter::PaintCacheHits as usize], 1);
+    }
+}

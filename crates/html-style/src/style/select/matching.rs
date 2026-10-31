@@ -23,6 +23,7 @@ use pseudo::{has_slotted_holds, host_holds, is_holds, is_host_pseudo, lang_match
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
 pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+    crate::work::add!(StyleMatchAttempts, 1);
     if !me.matching.work(1) {
         return false;
     }

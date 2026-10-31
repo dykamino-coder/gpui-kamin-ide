@@ -1,0 +1,941 @@
+{
+  "schema_version": 1,
+  "pages": [
+    {
+      "id": "astra/baseline",
+      "path": "astra/baseline.html",
+      "sha256": "93547b1b8c6a8f6802889cd49f60c9f3877e77e197451220c24ee76a920d59cc"
+    },
+    {
+      "id": "astra/columns-100",
+      "path": "astra/columns-100.html",
+      "sha256": "62b62b66edaef80e6a8917a899c60e63173f029fafd5dc80cafde0f7a8cd7d7e"
+    },
+    {
+      "id": "astra/columns-1600",
+      "path": "astra/columns-1600.html",
+      "sha256": "75ac4ac0cdf0654def5a2ae7700966cc0ae5c67c581332baadbd9148aaaf5367"
+    },
+    {
+      "id": "astra/columns-400",
+      "path": "astra/columns-400.html",
+      "sha256": "3007a10841d859f3b1bb393dffaaa647f360fdea83e2097dca38fccfd37564c1"
+    },
+    {
+      "id": "astra/effects-120",
+      "path": "astra/effects-120.html",
+      "sha256": "33a8f032a25f8d167e9e1818ce1b26ccdfdbd36ef5c9c78e763a1375548e3a96"
+    },
+    {
+      "id": "astra/effects-30",
+      "path": "astra/effects-30.html",
+      "sha256": "fb29959d71216ca325b776ac5f1274591618c0e36211d39f7cad08630b6a7e30"
+    },
+    {
+      "id": "astra/effects-480",
+      "path": "astra/effects-480.html",
+      "sha256": "3ebf5fb3798b7e00cb0fc138846c2e31b86aed46f90ddc7d00ba49602f03780e"
+    },
+    {
+      "id": "astra/has-depth-100",
+      "path": "astra/has-depth-100.html",
+      "sha256": "862456b072ccdc9d518db957edff71c8c14dc67aad8d9d7651bf1b074ed73670"
+    },
+    {
+      "id": "astra/has-depth-300",
+      "path": "astra/has-depth-300.html",
+      "sha256": "58ef71889ac3a15f12ad13f6f6f3567e298e369b7e68b32d7db1767026056e0c"
+    },
+    {
+      "id": "astra/has-depth-900",
+      "path": "astra/has-depth-900.html",
+      "sha256": "0d9a4da8d4e5e10a140f00148465b3e0368a05b3a42d116933d4875aa77b976a"
+    },
+    {
+      "id": "astra/has-siblings-1000",
+      "path": "astra/has-siblings-1000.html",
+      "sha256": "b9831ba6a8e6d1b8db0a2e90731e18ae6f2019ca61633706b2350e886fd02ae5"
+    },
+    {
+      "id": "astra/has-siblings-2000",
+      "path": "astra/has-siblings-2000.html",
+      "sha256": "88451b3680f5080646273fc555c604033546b3f671c3aa8163985220d9061050"
+    },
+    {
+      "id": "astra/has-siblings-4000",
+      "path": "astra/has-siblings-4000.html",
+      "sha256": "ea539f7d1abb0e2a416d98fc7b1305126efaf12258f43369ba5c25387b795872"
+    },
+    {
+      "id": "astra/has-siblings-500",
+      "path": "astra/has-siblings-500.html",
+      "sha256": "20444be143ec5e2951b10be7cb69677043bd0f507b8f06e4a8e741d6da8f9e4f"
+    },
+    {
+      "id": "astra/intrinsic-12",
+      "path": "astra/intrinsic-12.html",
+      "sha256": "4fe1ce858c7e2864ab4bdd5efe3d9ae3f38ea567e670603f21fa6816265efec0"
+    },
+    {
+      "id": "astra/intrinsic-24",
+      "path": "astra/intrinsic-24.html",
+      "sha256": "603026e135dc836b4c5a24cb56ccc8d3ffef7e134d771053f43ea4d81e4ea85d"
+    },
+    {
+      "id": "astra/intrinsic-48",
+      "path": "astra/intrinsic-48.html",
+      "sha256": "6741f480ecb4bc7bf1bce1d6c36a84cb58306a8348d67afaeb2b31e1bdf5f8a1"
+    },
+    {
+      "id": "astra/repro-cell-depth-1",
+      "path": "astra/repro-cell-depth-1.html",
+      "sha256": "dbdac3d440b74162cc8b295bf19a3b5a99bb9ced2b1f5c215ffaaff02f168132"
+    },
+    {
+      "id": "astra/repro-cell-depth-23",
+      "path": "astra/repro-cell-depth-23.html",
+      "sha256": "7f4428ba49b20f48cd1188b3c0e108d67d4e2c9ed086ecd2544d68c08ddfc45b"
+    },
+    {
+      "id": "astra/repro-cell-depth-24",
+      "path": "astra/repro-cell-depth-24.html",
+      "sha256": "3d0cec59ba52a093527d1fbb21951f5b63af44424192115a2f5f53eff6ee6045"
+    },
+    {
+      "id": "astra/repro-cell-depth-25",
+      "path": "astra/repro-cell-depth-25.html",
+      "sha256": "9076cefe13c3558774feb06ae333bedc0dc1aa8f992a88edc8303519fae3a42a"
+    },
+    {
+      "id": "astra/repro-cell-depth-30",
+      "path": "astra/repro-cell-depth-30.html",
+      "sha256": "e053f1f408934057a1e669b99ccc211bca44ab8693d9f7b5328f8da93d632e5d"
+    },
+    {
+      "id": "astra/repro-colspan-1000",
+      "path": "astra/repro-colspan-1000.html",
+      "sha256": "82da97e81871b126f813057d367da23e3fed540331e5c8076478a4fe48bb2bee"
+    },
+    {
+      "id": "astra/repro-colspan-1001",
+      "path": "astra/repro-colspan-1001.html",
+      "sha256": "30c3af1efd40659d17cf3744dc0123cd7a1b9d6bf68970fd0c828f6375b21bd8"
+    },
+    {
+      "id": "astra/repro-colspan-65535",
+      "path": "astra/repro-colspan-65535.html",
+      "sha256": "9f5be03dc251df3bcbb344ba389aaf6f2bd5fbcf88c69ebe893f9123e7631a1e"
+    },
+    {
+      "id": "astra/repro-colspan-65536",
+      "path": "astra/repro-colspan-65536.html",
+      "sha256": "5d839cdca6266b9008b2ac04faffe42e05f13acfe7f4e8321c590ec170377e1e"
+    },
+    {
+      "id": "astra/repro-cv-auto",
+      "path": "astra/repro-cv-auto.html",
+      "sha256": "45dcb7c16c9c585842f983102ce2e23d9ec051e67e438d9460b512228155cca8"
+    },
+    {
+      "id": "astra/repro-cv-reference",
+      "path": "astra/repro-cv-reference.html",
+      "sha256": "c6eff947c4339ab7d2ff0c6ee65d8e86a82dd7f528ddcacb9ce0cdce514c4711"
+    },
+    {
+      "id": "astra/repro-rowspan-grid",
+      "path": "astra/repro-rowspan-grid.html",
+      "sha256": "ab9db39521a3507d6cc3bb964e2c967f21b7637155b34f77741522500d09d433"
+    },
+    {
+      "id": "astra/selectors-200",
+      "path": "astra/selectors-200.html",
+      "sha256": "24ae6d596d83a1f98e8d6c3ab7e0705ab4f3ebefc413fea8dc27fa675580995c"
+    },
+    {
+      "id": "astra/selectors-3200",
+      "path": "astra/selectors-3200.html",
+      "sha256": "470da17d50f8f1d31eacc7a6189849bedbccfa3ad6983a34ff197fe439784621"
+    },
+    {
+      "id": "astra/selectors-800",
+      "path": "astra/selectors-800.html",
+      "sha256": "71563f66eacf456c4bc969ec181df084c4d23e7a41b4acfa8b3e126108d9d13b"
+    },
+    {
+      "id": "astra/svg-120",
+      "path": "astra/svg-120.html",
+      "sha256": "ad4bc4e74fb64e07bff665bd7272dd7818f4c3e59c33e07d83a60c8d6e6d0579"
+    },
+    {
+      "id": "astra/svg-30",
+      "path": "astra/svg-30.html",
+      "sha256": "017fb67c403fc0712f4d818c8cd4a656280dc061144cbd406334e4c85973032a"
+    },
+    {
+      "id": "astra/svg-480",
+      "path": "astra/svg-480.html",
+      "sha256": "c62eab24a9c91dfa5fc11e8fc5e9d7d75d413b806df69c063b44143be67a78e3"
+    },
+    {
+      "id": "astra/table-120",
+      "path": "astra/table-120.html",
+      "sha256": "7cebeb34566fde71b4edc3e303fc4a0474f261d89fd0196cb6612ac7e6274c4a"
+    },
+    {
+      "id": "astra/table-360",
+      "path": "astra/table-360.html",
+      "sha256": "6575a7e942e0feb56df200d7d9a8e626bc1c1dba607e32945d33744448d72ad4"
+    },
+    {
+      "id": "astra/table-40",
+      "path": "astra/table-40.html",
+      "sha256": "7e02bcc31c76f314a5aabba3de64388945f61acfd7954e8cc45b66cf5ba31c96"
+    },
+    {
+      "id": "astra/text-200",
+      "path": "astra/text-200.html",
+      "sha256": "f4fc3b6dc5dcee95850ccd6798ef0cde5f8c81fbc43935e6004310cd1fec0108"
+    },
+    {
+      "id": "astra/text-3200",
+      "path": "astra/text-3200.html",
+      "sha256": "c5bdcd50950167f543bebfd0d6d2fee4b825cb3de936d11858ecfeb61d8447bc"
+    },
+    {
+      "id": "astra/text-800",
+      "path": "astra/text-800.html",
+      "sha256": "d900da60f1dca2dfd7eb4596c9cf8e0c8bca19c50f707a1384c8ef2cfa0ec99d"
+    },
+    {
+      "id": "astra/text-normal-100",
+      "path": "astra/text-normal-100.html",
+      "sha256": "8c1e7e1c1f36ea711eb7f529397764d8cbe2df51a88dbea016e9824932385eb8"
+    },
+    {
+      "id": "astra/text-normal-200",
+      "path": "astra/text-normal-200.html",
+      "sha256": "156823516f5a7cb3b303bb664eac03a2c5d5b99efbe70cdddcf30c21bb7a962b"
+    },
+    {
+      "id": "astra/text-probe-100-tracking",
+      "path": "astra/text-probe-100-tracking.html",
+      "sha256": "02ce1ace813f010b1673ae98ca54d301a52df30a2ef7320ad8c1d6c7783d89ce"
+    },
+    {
+      "id": "astra/text-probe-100-zero",
+      "path": "astra/text-probe-100-zero.html",
+      "sha256": "4c7123a10a8bf07e7b2b0e17f11b95132648fc158cbcfd9b6de9626bc83f8f3d"
+    },
+    {
+      "id": "astra/text-probe-200-zero",
+      "path": "astra/text-probe-200-zero.html",
+      "sha256": "15f510781a94199e07b2eff62b669b959fdaabc7b58e192fc7a6a11c350bc6f6"
+    },
+    {
+      "id": "astra/text-probe-25-tracking",
+      "path": "astra/text-probe-25-tracking.html",
+      "sha256": "636e6af486c65963cc4e0733b18da930f4fdbaec29bd07b6831f8d00e5fa4eb1"
+    },
+    {
+      "id": "astra/text-probe-25-zero",
+      "path": "astra/text-probe-25-zero.html",
+      "sha256": "0819b26c802f2bf1e6664b69747fc291999ccfb0ad8ef13d5b89c67cd733e7af"
+    },
+    {
+      "id": "astra/text-probe-50-tracking",
+      "path": "astra/text-probe-50-tracking.html",
+      "sha256": "ebd7e44e7ff90dc4c133a917f2dc702eb0ce4dccd38a4a945d756b734b82274b"
+    },
+    {
+      "id": "astra/text-probe-50-zero",
+      "path": "astra/text-probe-50-zero.html",
+      "sha256": "9ffc0fbecfbf0c7296bcb27e22db2591d6027211d418eb90ea86ced602c715b3"
+    },
+    {
+      "id": "astra/wide-1000",
+      "path": "astra/wide-1000.html",
+      "sha256": "c7cf5ab52644f9f304797091c853954d83fdd85b1e01efe6f7ed13ec5002e972"
+    },
+    {
+      "id": "astra/wide-16000",
+      "path": "astra/wide-16000.html",
+      "sha256": "f072fb9aae16889005181fec2e0de83e51216450e9683b9f183cb3fe17481134"
+    },
+    {
+      "id": "astra/wide-4000",
+      "path": "astra/wide-4000.html",
+      "sha256": "aa1e53bebe2ee11fdb0e114744bd2ab686379796c5bae40b7fc72a007e8493f5"
+    },
+    {
+      "id": "fable/p01_deep_nesting",
+      "path": "fable/p01_deep_nesting.html",
+      "sha256": "0687db9751c14e23675dcd79064a9ad11cfffd6aadd506059632205b6b9d548a"
+    },
+    {
+      "id": "fable/p01b_deep_nesting_1000",
+      "path": "fable/p01b_deep_nesting_1000.html",
+      "sha256": "8a204f7d1ca056cd37e1455eadf1f27e65d2fe1233ddfe2c2d34d7a061ca2f18"
+    },
+    {
+      "id": "fable/p02_many_paragraphs",
+      "path": "fable/p02_many_paragraphs.html",
+      "sha256": "ddc960ca448b5eea8255a5d688a60b6edd663a66a2469bb8caa9e3c234d3540b"
+    },
+    {
+      "id": "fable/p03_flex_wrap",
+      "path": "fable/p03_flex_wrap.html",
+      "sha256": "32f8634925c62d32c094743251a3569ee87ddc612b93a3d5a4cbd8d120e8789c"
+    },
+    {
+      "id": "fable/p04_grid_auto",
+      "path": "fable/p04_grid_auto.html",
+      "sha256": "28e8ec460b60db6ae0b6038118189037bed76be2d90706f1e2f19d695f1f4b5c"
+    },
+    {
+      "id": "fable/p05_floats",
+      "path": "fable/p05_floats.html",
+      "sha256": "dbbcd08938c4a8951801ea86907b10a88f2bf927948deb355a8004039d8d6822"
+    },
+    {
+      "id": "fable/p06_selectors",
+      "path": "fable/p06_selectors.html",
+      "sha256": "a5ab17f17a0a2b673418b16cde6954fa493c59138d0b0a8d5a3f30e315b532ec"
+    },
+    {
+      "id": "fable/p07_table",
+      "path": "fable/p07_table.html",
+      "sha256": "5e94ab01d498145666483ab23bcfe82312a8b5aa3a116a3c86a979890264c062"
+    },
+    {
+      "id": "fable/p08_multicol",
+      "path": "fable/p08_multicol.html",
+      "sha256": "b200423418183b20deee6440818d628b853af39a48ba6b57d7fb1de3cad67c03"
+    },
+    {
+      "id": "fable/p09_paint_heavy",
+      "path": "fable/p09_paint_heavy.html",
+      "sha256": "454d0088548d8ce9a79cd50d0ff1532cdf5489140198f66b3f56a61350b76981"
+    },
+    {
+      "id": "fable/p10_inline_rich",
+      "path": "fable/p10_inline_rich.html",
+      "sha256": "2745f1bbdde35725bf8cea250e9cca70b18cc62e29fb1cc6100ddac9ac7e0a78"
+    },
+    {
+      "id": "fable/s01_nesting_0125",
+      "path": "fable/scaling/s01_nesting_0125.html",
+      "sha256": "4906a26a31a3716c4dcf6a27dd781963a9736c117db829790f53228c7e6bcd2b"
+    },
+    {
+      "id": "fable/s01_nesting_0250",
+      "path": "fable/scaling/s01_nesting_0250.html",
+      "sha256": "d9dcc716a70ee5d04adfe3829b541bf6d93c7dd31acb3896b70986860a8064b3"
+    },
+    {
+      "id": "fable/s01_nesting_0500",
+      "path": "fable/scaling/s01_nesting_0500.html",
+      "sha256": "3fbbe166545de3e6b028110314016a4f1c83ba02bfa5a46c9e6e093b21005632"
+    },
+    {
+      "id": "fable/s01_nesting_1000",
+      "path": "fable/scaling/s01_nesting_1000.html",
+      "sha256": "c48e5db6d26ca74343a88f3a8494f522973631ec0cc1a8a1089ac507f1e4ff40"
+    },
+    {
+      "id": "fable/s02_paragraphs_0375",
+      "path": "fable/scaling/s02_paragraphs_0375.html",
+      "sha256": "3fddad594b746e7385a69e601fe982344540d10a8a442d4671ad6f6b242a4167"
+    },
+    {
+      "id": "fable/s02_paragraphs_0750",
+      "path": "fable/scaling/s02_paragraphs_0750.html",
+      "sha256": "677d30daaf1a2439881876fbb169246346b4af8cc5f0592935395244e1364f14"
+    },
+    {
+      "id": "fable/s02_paragraphs_1500",
+      "path": "fable/scaling/s02_paragraphs_1500.html",
+      "sha256": "902d33413ffddfbf5a0e0e1ca8a2a55edebda9547ba53861fb1477d9714c7f94"
+    },
+    {
+      "id": "fable/s02_paragraphs_3000",
+      "path": "fable/scaling/s02_paragraphs_3000.html",
+      "sha256": "837e980ff99db084fc36fd31fd442d5c0f50cfacd3698f38eae67dff0fcd8f4f"
+    },
+    {
+      "id": "fable/s03_inline_0188",
+      "path": "fable/scaling_inline/s03_inline_0188.html",
+      "sha256": "2f1bbd1f16a9ebd372a6a53b9f6517df4cc90c972e340780cf835b5cbc38fcec"
+    },
+    {
+      "id": "fable/s03_inline_0375",
+      "path": "fable/scaling_inline/s03_inline_0375.html",
+      "sha256": "4c6309d38640f5c62ad3fb872a764c294926f401823cca65639b0711d97d648b"
+    },
+    {
+      "id": "fable/s03_inline_0750",
+      "path": "fable/scaling_inline/s03_inline_0750.html",
+      "sha256": "732e0e21262e960092f76300e900fa82be99ab4bf60c1a893f9c6a32d5cf8316"
+    },
+    {
+      "id": "fable/s03_inline_0750_nobidi",
+      "path": "fable/scaling_inline/s03_inline_0750_nobidi.html",
+      "sha256": "f0fa4f4366257010fd398a6dd5ac656be5f34c360fadd83d00ffab91b4c7e773"
+    },
+    {
+      "id": "fable/s03_inline_0750_noboxes",
+      "path": "fable/scaling_inline/s03_inline_0750_noboxes.html",
+      "sha256": "56c72dbcd79b1c35de435318dd97b6dc54ede688c006028b17f45a7f2b82b54c"
+    },
+    {
+      "id": "fable/s03_inline_0750_nojustify",
+      "path": "fable/scaling_inline/s03_inline_0750_nojustify.html",
+      "sha256": "6348a7d679afffc8eb0f8b05d4e3e5bd46d301422598564338c1904269b2a06b"
+    },
+    {
+      "id": "fable/s03_inline_0750_nosizes",
+      "path": "fable/scaling_inline/s03_inline_0750_nosizes.html",
+      "sha256": "0b825add871d5a62c527494e73f1464f3b9e430f75b9afb9eb530d6ebfa958aa"
+    },
+    {
+      "id": "fable/s03_inline_0750_novalign",
+      "path": "fable/scaling_inline/s03_inline_0750_novalign.html",
+      "sha256": "feb1752b89898f5e41aee109a85bb7d667079736b9bef3e684d4a33a5e1d41f0"
+    },
+    {
+      "id": "fable/s03_inline_1500",
+      "path": "fable/scaling_inline/s03_inline_1500.html",
+      "sha256": "b38d8862d6ef6d05a6c8bef1af6f1bac23c5bbb38ddc0b60d5b245dec2f8b7f3"
+    }
+  ],
+  "guard_pages": [
+    "astra/columns-100",
+    "astra/columns-400",
+    "astra/has-depth-100",
+    "astra/has-depth-300",
+    "astra/has-depth-900",
+    "astra/has-siblings-1000",
+    "astra/has-siblings-2000",
+    "astra/has-siblings-4000",
+    "astra/has-siblings-500",
+    "astra/text-probe-100-tracking",
+    "astra/text-probe-100-zero",
+    "astra/text-probe-25-tracking",
+    "astra/text-probe-25-zero",
+    "astra/text-probe-50-tracking",
+    "astra/text-probe-50-zero",
+    "astra/wide-1000",
+    "astra/wide-16000",
+    "astra/wide-4000",
+    "fable/s01_nesting_0125",
+    "fable/s01_nesting_0250",
+    "fable/s01_nesting_0500",
+    "fable/s01_nesting_1000",
+    "fable/s02_paragraphs_0375",
+    "fable/s02_paragraphs_0750",
+    "fable/s02_paragraphs_1500",
+    "fable/s02_paragraphs_3000",
+    "fable/s03_inline_0188",
+    "fable/s03_inline_0375",
+    "fable/s03_inline_0750"
+  ],
+  "bounds": [
+    {
+      "id": "text-zero-paint-queries",
+      "counter": "text_position_queries",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/text-probe-25-zero",
+          "size": 25
+        },
+        {
+          "page": "astra/text-probe-50-zero",
+          "size": 50
+        },
+        {
+          "page": "astra/text-probe-100-zero",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "id": "text-zero-paint-steps",
+      "counter": "text_position_steps",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 3,
+      "denominator": 2,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/text-probe-25-zero",
+          "size": 25
+        },
+        {
+          "page": "astra/text-probe-50-zero",
+          "size": 50
+        },
+        {
+          "page": "astra/text-probe-100-zero",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "id": "text-tracking-paint-queries",
+      "counter": "text_position_queries",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/text-probe-25-tracking",
+          "size": 25
+        },
+        {
+          "page": "astra/text-probe-50-tracking",
+          "size": 50
+        },
+        {
+          "page": "astra/text-probe-100-tracking",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "id": "text-tracking-paint-steps",
+      "counter": "text_position_steps",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 3,
+      "denominator": 2,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/text-probe-25-tracking",
+          "size": 25
+        },
+        {
+          "page": "astra/text-probe-50-tracking",
+          "size": 50
+        },
+        {
+          "page": "astra/text-probe-100-tracking",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "id": "nesting-subtree-visits",
+      "counter": "subtree_nodes_visited",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "fable/s01_nesting_0125",
+          "size": 125
+        },
+        {
+          "page": "fable/s01_nesting_0250",
+          "size": 250
+        },
+        {
+          "page": "fable/s01_nesting_0500",
+          "size": 500
+        },
+        {
+          "page": "fable/s01_nesting_1000",
+          "size": 1000
+        }
+      ]
+    },
+    {
+      "id": "nesting-rebuilt-nodes",
+      "counter": "rebuilt_nodes",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "fable/s01_nesting_0125",
+          "size": 125
+        },
+        {
+          "page": "fable/s01_nesting_0250",
+          "size": 250
+        },
+        {
+          "page": "fable/s01_nesting_0500",
+          "size": 500
+        },
+        {
+          "page": "fable/s01_nesting_1000",
+          "size": 1000
+        }
+      ]
+    },
+    {
+      "id": "multicol-child-layouts",
+      "counter": "multicol_child_layouts",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/columns-100",
+          "size": 100
+        },
+        {
+          "page": "astra/columns-400",
+          "size": 400
+        }
+      ]
+    },
+    {
+      "id": "multicol-probes",
+      "counter": "multicol_probes",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/columns-100",
+          "size": 100
+        },
+        {
+          "page": "astra/columns-400",
+          "size": 400
+        }
+      ]
+    },
+    {
+      "id": "multicol-rebuilt-nodes",
+      "counter": "rebuilt_nodes",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/columns-100",
+          "size": 100
+        },
+        {
+          "page": "astra/columns-400",
+          "size": 400
+        }
+      ]
+    },
+    {
+      "id": "has-depth-style-matches",
+      "counter": "style_match_attempts",
+      "phases": [
+        "style"
+      ],
+      "modes": [
+        "cold"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/has-depth-100",
+          "size": 100
+        },
+        {
+          "page": "astra/has-depth-300",
+          "size": 300
+        },
+        {
+          "page": "astra/has-depth-900",
+          "size": 900
+        }
+      ]
+    },
+    {
+      "id": "has-siblings-style-matches",
+      "counter": "style_match_attempts",
+      "phases": [
+        "style"
+      ],
+      "modes": [
+        "cold"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/has-siblings-500",
+          "size": 500
+        },
+        {
+          "page": "astra/has-siblings-1000",
+          "size": 1000
+        },
+        {
+          "page": "astra/has-siblings-2000",
+          "size": 2000
+        },
+        {
+          "page": "astra/has-siblings-4000",
+          "size": 4000
+        }
+      ]
+    },
+    {
+      "id": "wide-root-walk-visits",
+      "counter": "tree_nodes_visited",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/wide-1000",
+          "size": 1000
+        },
+        {
+          "page": "astra/wide-4000",
+          "size": 4000
+        },
+        {
+          "page": "astra/wide-16000",
+          "size": 16000
+        }
+      ]
+    },
+    {
+      "id": "wide-rebuilt-nodes",
+      "counter": "rebuilt_nodes",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/wide-1000",
+          "size": 1000
+        },
+        {
+          "page": "astra/wide-4000",
+          "size": 4000
+        },
+        {
+          "page": "astra/wide-16000",
+          "size": 16000
+        }
+      ]
+    },
+    {
+      "id": "paragraphs-layout-misses",
+      "counter": "layout_cache_misses",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "fable/s02_paragraphs_0375",
+          "size": 375
+        },
+        {
+          "page": "fable/s02_paragraphs_0750",
+          "size": 750
+        },
+        {
+          "page": "fable/s02_paragraphs_1500",
+          "size": 1500
+        },
+        {
+          "page": "fable/s02_paragraphs_3000",
+          "size": 3000
+        }
+      ]
+    },
+    {
+      "id": "inline-paint-queries",
+      "counter": "text_position_queries",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "fable/s03_inline_0188",
+          "size": 188
+        },
+        {
+          "page": "fable/s03_inline_0375",
+          "size": 375
+        },
+        {
+          "page": "fable/s03_inline_0750",
+          "size": 750
+        }
+      ]
+    },
+    {
+      "id": "inline-paint-steps",
+      "counter": "text_position_steps",
+      "phases": [
+        "paint"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 3,
+      "denominator": 2,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "fable/s03_inline_0188",
+          "size": 188
+        },
+        {
+          "page": "fable/s03_inline_0375",
+          "size": 375
+        },
+        {
+          "page": "fable/s03_inline_0750",
+          "size": 750
+        }
+      ]
+    }
+  ]
+}
