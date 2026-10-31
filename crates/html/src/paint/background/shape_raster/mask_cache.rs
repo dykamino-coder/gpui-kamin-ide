@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn equivalent_normalized_radii_share_mask_and_exact_coverage() {
-        let a = parse_rrect("12px 12px 12px 12px 12px 12px 12px 12px", 12.0, 12.0, 1.0).unwrap();
+        let a = parse_rrect("12 12 12 12 12 12 12 12", 12.0, 12.0, 1.0).unwrap();
         let b = parse_rrect("50% 50% 50% 50% 50% 50% 50% 50%", 12.0, 12.0, 2.0).unwrap();
         let first = raster(&a, 12, 12).unwrap();
         let hit = raster(&b, 12, 12).unwrap();
