@@ -32,9 +32,9 @@ mod col_measure;
 pub(crate) mod grid_rows;
 use col_measure::measure_col_widths;
 mod setup;
-use setup::{
-    border_spacing_of, cell_paints_over, row_span_in_group, rows_left_and_cols, table_rows_fixed,
-};
+mod slot_grid;
+mod spans;
+use setup::{border_spacing_of, cell_paints_over, table_rows_fixed};
 
 mod builder;
 pub(crate) use builder::table_stack;

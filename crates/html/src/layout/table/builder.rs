@@ -81,7 +81,8 @@ pub(crate) async fn table_stack(
     // сбора выброшен, а `rowspan=2` тянул ячейку на лишние 100 точек.
     // Группа — непрерывный кусок рядов с одним `<tbody>`; ряды прямо в
     // таблице (анонимная группа) идут одним куском.
-    let (rows_left, cols) = rows_left_and_cols(&rows);
+    let grid = slot_grid::TableGrid::new(&rows);
+    let cols = u16::try_from(grid.columns).unwrap_or(u16::MAX);
     // css-tables-3 §table-grid: a cell-less `<col>` keeps its track only with a
     // definite used width > 0 (Gecko/Blink; `col-definite-*-001`).
     let definite_cols = crate::layout::table::columns::col_elements(&e.children)
@@ -155,13 +156,12 @@ pub(crate) async fn table_stack(
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, constraints.cb_width);
-    let busy: Vec<u16> = vec![0; cols as usize];
+    let zero_cols = zero_width_cols(e, cols, &grid, &from_cols, constraints.cb_width);
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,
         &row_elements,
         &rows.iter().map(|r| r.carry.group).collect::<Vec<_>>(),
-        &rows_left,
+        &grid,
         cols,
         (table_font, &table_family),
         vcx,
@@ -173,12 +173,10 @@ pub(crate) async fn table_stack(
     measure_col_widths(
         e,
         inherited,
-        &rows_left,
-        &row_elements,
+        &grid,
         &mut col_widths,
         table_font,
         table_family,
-        busy,
         &win_edges,
         vcx,
     );
@@ -187,7 +185,7 @@ pub(crate) async fn table_stack(
         e,
         inherited,
         spacing,
-        rows_left,
+        grid,
         cols,
         row_elements,
         col_widths,

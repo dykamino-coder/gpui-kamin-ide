@@ -1,9 +1,8 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
-use crate::dom::Node;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
-use crate::layout::table::{is_cell, table_finish};
+use crate::layout::table::table_finish;
 use gpui::AnyElement;
 mod row_setup;
 use row_setup::{RowBands, push_empty_row_track, row_band_probes};
@@ -38,9 +37,6 @@ pub(super) async fn table_rows(
         let carry = record.carry;
         cursor.row_ix += 1;
         let row_ref: crate::layout::build_contracts::RefBox = Default::default();
-        for slot in cursor.occupied.iter_mut() {
-            *slot = slot.saturating_sub(1);
-        }
         let RowBands {
             row_rects,
             grp_band,
@@ -84,7 +80,7 @@ pub(super) async fn table_rows(
         let row_style = crate::style::cascade::materialize::box_style(inherited, &own, vcx);
         push_empty_row_track(
             cursor.row_ix,
-            &cursor.occupied,
+            geom.grid.rows[cursor.row_ix - 1].covered,
             geom.e,
             geom.cols,
             &mut out.cells,
@@ -100,15 +96,9 @@ pub(super) async fn table_rows(
             inherited,
             row_style,
         };
-        for child in &row.children {
-            let Node::Element(cell) = child else { continue };
-            if !is_cell(cell) {
-                continue;
-            }
-            while cursor.col_ix < cursor.occupied.len() && cursor.occupied[cursor.col_ix] > 0 {
-                cursor.col_ix += 1;
-            }
-            table_cell(stk, geom, layers, cursor, out, opts, &row_state, cell).await;
+        for slot in &geom.grid.rows[cursor.row_ix - 1].cells {
+            cursor.col_ix = slot.column;
+            table_cell(stk, geom, layers, cursor, out, opts, &row_state, *slot).await;
         }
     }
 

@@ -94,6 +94,9 @@ macro_rules! properties {
                         c.radius_ell = None;
                     }
                 }
+                if matches!(self, Self::Contain | Self::ContentVisibility | Self::ContainerType) {
+                    c.refresh_containment();
+                }
                 if self == Self::Perspective {
                     c.perspective_frame = c.perspective.map(|_| Default::default());
                 }
@@ -146,6 +149,9 @@ macro_rules! properties {
 }
 
 properties! {
+    Contain: "contain" => [contain_value];
+    ContentVisibility: "content-visibility" => [content_visibility];
+    ContainerType: "container-type" => [container_type];
     PathLength: "path-length" => [svg_path_length];
     ColumnWidth: "column-width" => [column_width];
     ColumnCount: "column-count" => [column_count];

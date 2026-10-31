@@ -1,8 +1,8 @@
 //! Дорожки колонок таблицы: ширины первого ряда и список дорожек сетки.
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::table::columns::track_list_collapsed;
-use crate::layout::table::is_cell;
+use crate::layout::table::slot_grid::TableGrid;
 use crate::style::values::value::Len;
 
 pub(super) fn table_tracks(
@@ -11,7 +11,7 @@ pub(super) fn table_tracks(
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
     let e = geom.e;
     let inherited = geom.inherited;
-    let row_elements = &geom.row_elements;
+    let grid = &geom.grid;
     let win_edges = &geom.win_edges;
     let table_font = geom.table_font;
     let table_family = geom.table_family.as_str();
@@ -32,7 +32,7 @@ pub(super) fn table_tracks(
     };
     let first_row_widths = first_row_widths_of(
         e,
-        row_elements,
+        grid,
         win_edges,
         (table_font, table_family),
         spacing,
@@ -120,7 +120,7 @@ pub(super) fn table_tracks(
 
 pub(super) fn first_row_widths_of(
     e: &Element,
-    row_elements: &Vec<&Element>,
+    grid: &TableGrid<'_>,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     (table_font, table_family): (f32, &str),
     spacing: (f32, f32),
@@ -129,19 +129,15 @@ pub(super) fn first_row_widths_of(
 ) -> Vec<Option<f32>> {
     let vertical = e.style.used().wm().vertical();
     let axes = super::super::axes::Axes::new(&e.style.used());
-    let first_row_widths: Vec<Option<f32>> = row_elements
+    let first_row_widths: Vec<Option<f32>> = grid
+        .rows
         .first()
         .map(|row| {
             let mut out = vec![];
-            for c in &row.children {
-                if let Node::Element(cell) = c
-                    && is_cell(cell)
+            for slot in &row.cells {
+                let cell = slot.element;
+                let span = usize::from(slot.colspan);
                 {
-                    let span = cell
-                        .attr("colspan")
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(1)
-                        .max(1);
                     // Колонка = width + горизонтальные паддинги и рамки
                     // ячейки (§17.5.2.1, content-box); в сросшейся модели
                     // рамка входит ПОЛОВИНОЙ.
@@ -204,7 +200,7 @@ pub(super) fn first_row_widths_of(
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
                             let size = super::super::col_measure::cell_font_px(
                                 cell.style.used().font_size,
-                                row.style.used().font_size,
+                                row.element.style.used().font_size,
                                 table_font,
                             );
                             let family = cell

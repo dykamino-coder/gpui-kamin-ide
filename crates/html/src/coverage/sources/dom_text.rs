@@ -4,6 +4,7 @@
 //! Тексты включаются `include_str!` и склеиваются в `sources::CONSUMERS`.
 
 pub(super) const SOURCES: &[&str] = &[
+    include_str!("../../../../html-style/src/style/computed/containment.rs"),
     include_str!("../../../../html-style/src/style/computed/image_source.rs"),
     include_str!("../../../../html-style/src/style/computed/flat_background.rs"),
     include_str!("../../../../html-style/src/style/computed/flat_background/stack.rs"),
