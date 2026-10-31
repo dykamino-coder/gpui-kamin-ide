@@ -2,7 +2,7 @@
 
 use super::*;
 /// Паспорт элемента для сопоставления селекторов.
-pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ancestor> {
+pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ancestor> {
     let NodeData::Element { name, attrs, .. } = &child.data else {
         return None;
     };

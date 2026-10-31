@@ -132,8 +132,7 @@ impl<'a> Sibs<'a> {
 }
 
 mod node;
-use node::ancestor_of;
-pub use node::{census_of, is_empty_node, link_visited};
+pub use node::{ancestor_of, census_of, is_empty_node, link_visited};
 
 #[cfg(test)]
 mod tests;
