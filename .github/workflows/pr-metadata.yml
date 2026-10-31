@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   metadata:
@@ -31,6 +32,7 @@ jobs:
 
       - name: Check title and applicable description format
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
@@ -43,3 +45,26 @@ jobs:
           export RELEASE_CANDIDATE="$(jq -r '.release' <<< "$release_change")"
           node --test scripts/ci/pr-metadata.test.mjs
           node scripts/ci/pr-metadata.mjs --event "$GITHUB_EVENT_PATH"
+          node scripts/ci/runtime-acceptance.mjs \
+            --event "$GITHUB_EVENT_PATH" --files "$changed_files"
+
+          release_candidate="$RELEASE_CANDIDATE"
+          if [[ "$release_candidate" == "true" ]]; then
+            jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" \
+              > "$RUNNER_TEMP/release-pr-body.md"
+            node scripts/release/release-notes.mjs \
+              --body-file "$RUNNER_TEMP/release-pr-body.md" \
+              --repository "$GITHUB_REPOSITORY" \
+              --output "$RUNNER_TEMP/release-notes.md" \
+              --pulls-output "$RUNNER_TEMP/release-notes-prs.txt"
+            previous_tag="$(git tag -l 'kaminide-v[0-9]*' \
+              --sort=-version:refname | sed -n '1p')"
+            notes_args=()
+            if [[ -n "$previous_tag" ]]; then
+              notes_args+=(--previous-tag "$previous_tag")
+            fi
+            node scripts/release/verify-release-notes-prs.mjs \
+              --pulls-file "$RUNNER_TEMP/release-notes-prs.txt" \
+              --repository "$GITHUB_REPOSITORY" --head HEAD \
+              "${notes_args[@]}"
+          fi
