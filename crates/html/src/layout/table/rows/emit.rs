@@ -46,9 +46,6 @@ pub(super) async fn emit_cell(
         span_rows,
         d,
     );
-    for c in cursor.col_ix..(cursor.col_ix + span_cols as usize).min(cursor.occupied.len()) {
-        cursor.occupied[c] = span_rows;
-    }
     cursor.col_ix += span_cols as usize;
     let (inside, d) = cell_contents(stk, opts, geom.e, cm, spans_collapsed, clipped, cell, d).await;
     let d = if crate::layout::table::anon::row_collapsed(row_state.row, row_state.carry.group) {

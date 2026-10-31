@@ -1,13 +1,13 @@
 //! Колонки нулевой ширины: дорожки, которые не держат отступы и рамки ячеек.
 
-use super::is_cell;
-use crate::dom::{Element, Node};
+use super::slot_grid::TableGrid;
+use crate::dom::Element;
 use crate::style::values::value::{Len, px_strict};
 
 pub(super) fn zero_width_cols(
     e: &Element,
     cols: u16,
-    row_elements: &Vec<&Element>,
+    grid: &TableGrid<'_>,
     from_cols: &[Option<f32>],
     cb_px: Option<f32>,
 ) -> Vec<bool> {
@@ -51,18 +51,11 @@ pub(super) fn zero_width_cols(
                         *slot = Some(*w);
                     }
                 }
-                if let Some(row) = row_elements.first() {
-                    let mut i = 0usize;
-                    for c in &row.children {
-                        let Node::Element(cell) = c else { continue };
-                        if !is_cell(cell) {
-                            continue;
-                        }
-                        let span = cell
-                            .attr("colspan")
-                            .and_then(|v| v.parse::<usize>().ok())
-                            .unwrap_or(1)
-                            .max(1);
+                if let Some(row) = grid.rows.first() {
+                    for slot in &row.cells {
+                        let cell = slot.element;
+                        let i = slot.column;
+                        let span = slot.colspan;
                         // Доля ячейки первого ряда — тоже ЗАЯВЛЕННАЯ
                         // ширина: `width: 50%` при столе в сто точках это
                         // пятьдесят, и вместе со своим отступом дорожка
@@ -91,7 +84,6 @@ pub(super) fn zero_width_cols(
                             ]);
                             *slot = Some(w + extra[1] + extra[3]);
                         }
-                        i += span;
                     }
                 }
                 let sum: f32 = declared.iter().flatten().sum();

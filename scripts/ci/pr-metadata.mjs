@@ -5,11 +5,12 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseReleaseNotes } from "../release/release-notes.mjs";
 
+// Release intent is derived from the diff (scripts/release/change-cli.mjs),
+// so ordinary PRs no longer declare unchanged versions by hand.
 const requiredSections = [
-  ["Summary", /^(summary|change|what changed|что изменено|что и зачем|что и почему)$/i],
+  ["Summary", /^(summary|change|what changed|что изменено|что и зачем|что и почему|суть|кратко)$/i],
   ["Validation", /^(validation|verification|how it was verified|проверка|проверки|как проверено)$/i],
-  ["Risks and limitations", /^(risks and limitations|risks|limitations|риски|ограничения|границы)$/i],
-  ["Versioning", /^(versioning|versions|версионирование|версии|версионирование и публикация)$/i],
+  ["Risks and limitations", /^(risks and limitations|risks|limitations|риски|ограничения|границы|риски и ограничения)$/i],
 ];
 
 function sections(body) {
@@ -64,10 +65,6 @@ export function validatePrMetadata({ title, body = "", author, release = false, 
     if (!part || !content(part.lines)) {
       throw new Error(`Fill ## ${name}; comments, unchecked boxes and bare N/A are not a result`);
     }
-    if (name === "Versioning" &&
-        !/^(?:[-*]\s+)?Release versions:\s*unchanged\.?\s*$/mi.test(content(part.lines))) {
-      throw new Error("Non-release PRs must declare Release versions: unchanged in ## Versioning");
-    }
   }
 }
 
@@ -77,8 +74,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!process.argv.includes("--event") || !eventPath) throw new Error("Expected --event <JSON file>");
     const payload = JSON.parse(await readFile(eventPath, "utf8"));
     const pr = payload.pull_request ?? payload;
-    const release = process.env.RELEASE_CANDIDATE ?? "false";
-    if (!["true", "false"].includes(release)) throw new Error("Invalid RELEASE_CANDIDATE");
+    // CI must pass the diff-derived release class; only local runs may default.
+    const release = process.env.RELEASE_CANDIDATE ??
+      (process.env.GITHUB_ACTIONS === "true" ? undefined : "false");
+    if (!["true", "false"].includes(release)) {
+      throw new Error("RELEASE_CANDIDATE must be derived from the diff (true or false)");
+    }
     validatePrMetadata({
       title: pr.title,
       body: pr.body ?? "",

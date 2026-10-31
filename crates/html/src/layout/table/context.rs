@@ -13,7 +13,7 @@ pub(super) struct TableGeom<'a> {
     pub inherited: &'a BoxStyle,
     pub cols: u16,
     pub zero_cols: Vec<bool>,
-    pub rows_left: Vec<usize>,
+    pub grid: super::slot_grid::TableGrid<'a>,
     pub cols_collapsed: Vec<bool>,
     pub collapse_cells: bool,
     pub win_edges: HashMap<u64, [f32; 4]>,
@@ -52,9 +52,8 @@ pub(super) struct TableLayers<'a> {
 }
 
 pub(super) struct RowCursor {
-    pub row_ix: i16,
+    pub row_ix: usize,
     pub col_ix: usize,
-    pub occupied: Vec<u16>,
     pub group_refs: HashMap<u64, RefBox>,
     pub group_bands: HashMap<u64, RowRects>,
 }

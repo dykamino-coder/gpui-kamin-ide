@@ -7,19 +7,38 @@
 [#539](https://github.com/dykamino-coder/gpui-kamin-ide/pull/539)
 (`2498ffe877b72f99ac0e1b52d68db6fe244ad6aa`), их ancestry в опубликованном
 `kaminide-v1.0.82` / server 6.3.159 и сохранение в опубликованном 1.0.83 / 6.3.160.
-Это выборочная актуализация доставки; исторические базы, численности и статусы
-остальных задач ниже не пересчитаны. Новый release и execution-пачка не нужны.
+Source acceptance завершена 2026-10-31 в [#556](https://github.com/dykamino-coder/gpui-kamin-ide/pull/556);
+проверки запускались 2026-10-30. Исторические базы, численности и статусы остальных
+задач ниже не пересчитаны. Новый release не нужен; close-out текущей пачки —
+в [execution registry](RUNTIME_EXECUTION.md#текущая-пачка-rc-2026-10-30-inc82-83--сверка-завершена-2026-10-31).
 
 | INC | Текущее состояние | Следующий owner / artifact |
 | --- | --- | --- |
-| [INC-0082](runtime-issues/INC-2026-0082.md) | open / verify; блокировка приёма новых команд из-за terminal history исправлена и доставлена в .159; старые settled outcomes вытесняются по count/bytes | maintainer: сверить исходную acceptance matrix с имеющимися tests, оформить только непокрытые проверки; deployment owner: versioned count-only observation после обычного обновления, без нового fix или удаления task files |
+| [INC-0082](runtime-issues/INC-2026-0082.md) | resolved для terminal-count admission; #537/#539 доставлены в .159; source matrix принята после 73 server tests и actual-limit sequence 4,100 / 20 owners + 700 / owner | admission fix повторять не нужно. Maintainer: ready retention/overload decision в [INC-0080](runtime-issues/INC-2026-0080.md#task-result-retention-follow-up--2026-10-30); deployment owner: count-only observation, не проведено |
 
 Текущие лимиты: 400 working на сервер / 8 на MCP owner; хранение — 2048 записей,
 256 на owner, 128 MiB. Это не суточная квота выполненных команд. Owner — durable
 endpoint, не обязательно одна сессия или человек. Вытеснение может удалить ещё
 не прочитанный завершённый результат до TTL; риск явно сохранён в карточке.
-Приёмка fairness, полного multi-owner workload и deployment outcome не объявлена
-пройденной фактом merge/release. Повторная реализация #537/#539 не требуется.
+Bounded owner isolation/overload и multi-owner sequence проверены отдельно от
+merge/release; это не гарантия scheduler fairness или production throughput.
+Deployment observation не проведено. Повторная реализация #537/#539 не требуется.
+
+## Выборочная сверка INC-0083 — 2026-10-31
+
+Source snapshot: `origin/main` `09275cda8a5e10e12d106b582705537a1af36279`.
+#536 (`a41554a769cbeb6918974362988fd9eb29e48911`) уже опубликован в
+1.0.82 / 6.3.159, сохранён в .83/.84. Старые даты/численности общего обзора ниже
+не пересчитаны. Это ограниченная source verification и routing, не UI pass.
+
+| INC / связанная задача | Принятый результат / остаток | Следующий owner / artifact |
+| --- | --- | --- |
+| [INC-0083](runtime-issues/INC-2026-0083.md) | resolved для eager replay на paged clients; 73 server tests и isolated 20-reader / 300-child fixture прошли; историческая причина зависаний не установлена | loading fix не повторять; [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope): maintainer с Windows стендом, точный synthetic large-view/control-tab research; BR-03 deferred до измерений. Deployment owner: authenticated CLI compact observation, не проведено |
+
+Для paging нужны client/server 1.0.82 / 6.3.159 или новее; старый клиент .75
+сохраняет legacy full replay. Серверный тест не подтверждает Windows memory/input
+и не закрывает соседние native, Agents или hook задачи. Шесть исходных proposed
+slices — исторические варианты исследования, не шесть обязательных новых багов.
 
 ## Выборочная системная сверка — 2026-10-29
 
@@ -29,12 +48,11 @@ endpoint, не обязательно одна сессия или челове�
 
 - [INC-0082](runtime-issues/INC-2026-0082.md): первоначальный отдельный P1 — terminal
   MCP Tasks занимали retained admission в .158. На 2026-10-30 #537/#539 уже доставлены
-  в .159; текущий следующий шаг — verification/observation из сверки выше,
+  в .159; source verification принята 2026-10-31, остаток — observation и INC-0080,
   а не повтор capacity fix. Исходный reproducer и private evidence сохранены.
-- [INC-0083](runtime-issues/INC-2026-0083.md): оставшаяся обязательная полная история
-  при open/reattach и множество historical children. В карточке — карта связей
-  со старыми BR/INC, предложенные независимые deliverables, workload и gates.
-  Наблюдение об улучшении после обрезки до последнего compact не доказывает причину.
+- [INC-0083](runtime-issues/INC-2026-0083.md): исходный eager replay устранён #536
+  для paged clients; актуальная verification и конкретный BR-02/03 остаток выше.
+  Наблюдение об улучшении после обрезки не доказывает историческую причину.
 - [INC-0078](runtime-issues/INC-2026-0078.md): #495/#499/#500 уже merged и доставлены
   в 1.0.81 / 6.3.158. Следующий шаг — сопоставить их evidence исходной приёмке,
   затем выполнять только остаток. Не предлагать заново уже доставленный streaming/DB fix.
