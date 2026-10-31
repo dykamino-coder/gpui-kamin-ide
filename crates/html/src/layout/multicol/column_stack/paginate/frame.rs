@@ -54,6 +54,7 @@ impl ColumnStack {
         c.el = el;
         c.frags = frags;
         p.watched.reset();
+        crate::work::add!(MulticolChildLayouts, 1);
         let (sz, content) = c.el.layout_as_root_with_content(
             size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
             window,

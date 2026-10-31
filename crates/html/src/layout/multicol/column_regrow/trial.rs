@@ -26,6 +26,7 @@ impl Snapshot {
     }
 
     fn restore(&self, child: &mut StackChild, fresh: bool) {
+        crate::work::add!(MulticolTrialRestores, 1);
         let k = &self.geometry;
         child.h = k.h;
         child.over = k.over;

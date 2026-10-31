@@ -5,6 +5,7 @@ use super::{
     args::{Args, Mode},
     host, pixels, report, resources,
     view::{Phases, View},
+    work,
 };
 use gpui::{AsyncApp, WindowHandle, frame_perf};
 use kamin_html::host::capture::CaptureSession;
@@ -59,10 +60,16 @@ async fn sample(
     args: &Args,
     cold: bool,
     capture: &CaptureSession,
-) -> Result<(Measured, kamin_html::host::capture::Frame)> {
-    let (started, before, seq, resources_time, build_time, timings, phases) =
-        window.update(cx, |view, window, cx| -> Result<_> {
+    luid: (i32, u32),
+) -> Result<(
+    Measured,
+    kamin_html::host::capture::Frame,
+    (serde_json::Value, serde_json::Value),
+)> {
+    let (started, before, seq, resources_time, build_time, timings, phases, work) = window
+        .update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
+            let work = work::Capture::begin(luid)?;
             let before = Counters::read(capture);
             let seq = capture.sequence();
             let mut resources_time = None;
@@ -70,9 +77,13 @@ async fn sample(
             let mut timings = None;
             if cold {
                 let t = Instant::now();
-                let html = resources::read(&args.path)?;
+                let html = {
+                    kamin_html::work::phase!(_phase, HostResources);
+                    resources::read(&args.path)?
+                };
                 resources_time = Some(t.elapsed());
                 let t = Instant::now();
+                kamin_html::work::phase!(_document, DocumentOther);
                 let doc = Document::builder(&html, BROWSER_CSS)
                     .path(&args.path)
                     .fonts(fonts)
@@ -96,10 +107,12 @@ async fn sample(
                 build_time,
                 timings,
                 view.phases.clone(),
+                work,
             ))
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
+    let work = work.finish(cold);
     let after = Counters::read(capture);
     let frame = capture
         .take_first()
@@ -139,7 +152,7 @@ async fn sample(
         },
         &phases.borrow(),
     )?;
-    Ok((out, frame))
+    Ok((out, frame, work))
 }
 
 pub(super) async fn run(
@@ -156,6 +169,7 @@ pub(super) async fn run(
     wait(cx, seq, capture).await?;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
+    let luid = (identity.luid_high_part, identity.luid_low_part);
     gpu["requested"] = json!(args.gpu);
     gpu["device_name"] = json!(identity.device_name);
     gpu["driver_version"] = json!(identity.driver_version);
@@ -168,7 +182,7 @@ pub(super) async fn run(
     let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
     let mut snapshot_pending = args.snapshot.as_deref();
     if args.mode == Mode::Warm {
-        sample(cx, window, fonts, args, true, capture).await?;
+        sample(cx, window, fonts, args, true, capture, luid).await?;
     }
     for (name, cold) in [("cold", true), ("warm", false)] {
         if (cold && args.mode == Mode::Warm) || (!cold && args.mode == Mode::Cold) {
@@ -176,8 +190,13 @@ pub(super) async fn run(
         }
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
+        let mut work = Vec::with_capacity(args.runs);
+        let mut usage = Vec::with_capacity(args.runs);
         for index in 1..=args.runs {
-            let (sample, frame) = sample(cx, window, fonts, args, cold, capture).await?;
+            let (sample, frame, (counts, resources)) =
+                sample(cx, window, fonts, args, cold, capture, luid).await?;
+            work.push(counts);
+            usage.push(resources);
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
@@ -187,9 +206,11 @@ pub(super) async fn run(
         }
         let mut mode = report::mode(&samples);
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
+        mode["work_counters"] = serde_json::json!({"samples": work});
+        mode["process_resources"] = serde_json::json!({"samples": usage});
         modes.insert(name.into(), mode);
     }
-    let mut report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
+    let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),

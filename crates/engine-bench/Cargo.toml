@@ -5,12 +5,14 @@ edition.workspace = true
 publish = false
 
 [features]
-engine-bench = ["dep:kamin-html"]
+engine-bench = ["timing-only", "work-counters"]
+timing-only = ["dep:kamin-html"]
+work-counters = ["kamin-html/work-counters"]
 
 [[bin]]
 name = "engine_bench"
 path = "src/main.rs"
-required-features = ["engine-bench"]
+required-features = ["timing-only"]
 
 [dependencies]
 kamin-html = { workspace = true, optional = true, features = ["engine-bench"] }
@@ -30,6 +32,8 @@ gpui-windows = { package = "gpui-pre-windows", version = "=0.3.8", default-featu
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",

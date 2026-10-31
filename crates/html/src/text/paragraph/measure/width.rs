@@ -18,6 +18,7 @@ impl Paragraph {
     pub(crate) fn measure(&self, window: &mut Window) -> Vec<Seg> {
         let key = self.measure_key();
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
+        crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
         if let Some(hit) = hit {
             return hit;
         }
@@ -140,12 +141,19 @@ impl Paragraph {
 
 impl Paragraph {
     pub(crate) fn x_at(&self, segs: &[Seg], i: usize, edge: Edge) -> Pixels {
+        crate::work::add!(TextPositionQueries, 1);
         let i = i.min(self.text.len());
         let after_break = edge == Edge::End && i > 0 && self.text.as_bytes()[i - 1] == b'\n';
         let index = if after_break {
-            segs.partition_point(|s| s.end + 1 < i)
+            segs.partition_point(|s| {
+                crate::work::add!(TextPositionSteps, 1);
+                s.end + 1 < i
+            })
         } else {
-            segs.partition_point(|s| s.end < i)
+            segs.partition_point(|s| {
+                crate::work::add!(TextPositionSteps, 1);
+                s.end < i
+            })
         };
         let Some(seg) = segs.get(index).or_else(|| segs.last()) else {
             return px(0.);
