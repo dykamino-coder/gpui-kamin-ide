@@ -3,7 +3,8 @@
 //!
 //! Вход — узел html5ever, тег, атрибуты, место среди братьев; выход —
 //! `Ancestor` с `id`, классами, `href`, `dir`, отметками `:has()`, слотом,
-//! братьями, признаками пустоты и чужого пространства имён. Счётчики и
+//! братьями, признаками пустоты и чужого пространства имён, языком
+//! содержимого (свой `lang` или переданный от родителя по `path`). Счётчики и
 //! `content` в паспорт пишет позже `content::snapshot_generated`.
 
 use crate::dom::tree_index::TreeIndex;
@@ -34,6 +35,8 @@ pub(super) fn svg_no_css_box(handle: &Handle) -> bool {
     })
 }
 
+// The passport is built once from the node, its sibling census and the walk path.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn element_ancestor(
     handle: &Handle,
     tag: &str,
@@ -42,6 +45,7 @@ pub(super) fn element_ancestor(
     spot: Spot,
     sibs: Sibs,
     tree: &TreeIndex,
+    path: &[Ancestor],
 ) -> Ancestor {
     let id = attrs
         .iter()
@@ -101,6 +105,7 @@ pub(super) fn element_ancestor(
             }
             _ => false,
         },
+        lang: Some(crate::dom::language::inherited(attrs, path)),
     };
 
     me

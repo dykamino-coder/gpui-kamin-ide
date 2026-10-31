@@ -48,6 +48,7 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
         target_current: false,
         empty: is_empty_node(child),
         foreign: &*name.ns != "http://www.w3.org/1999/xhtml",
+        lang: None,
     })
 }
 

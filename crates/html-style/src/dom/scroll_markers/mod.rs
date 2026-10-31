@@ -62,7 +62,8 @@ pub(super) fn scroll_marker_pass(
         buttons: vec![],
     };
     // Кнопки — по `content`, скроллер не обязателен (Blink
-    // `CanGeneratePseudoElement`; `scroll-buttons-001` — `div` без overflow).
+    // `CanGeneratePseudoElement`; `scroll-buttons-001` — `div` без overflow);
+    // без правила, способного задать `content`, кнопок нет вовсе.
     // Физическая сторона переводится в логическую по письму элемента
     // (`scroll_button_pseudo_element.cc` PhysicalToLogical).
     if rules().any(|r| {
@@ -70,6 +71,7 @@ pub(super) fn scroll_marker_pass(
             .pseudo
             .as_deref()
             .is_some_and(|p| p.starts_with("scroll-button("))
+            && crate::dom::pseudo::may_set_content(r)
     }) {
         let vertical = style.wm().vertical();
         let rl = style.wm().block_rl();
