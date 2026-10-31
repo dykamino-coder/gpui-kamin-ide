@@ -29,6 +29,7 @@ pub(super) struct View {
 
 impl Render for View {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        kamin_html::work::phase!(_work, BuildElements);
         let started = Instant::now();
         let mut text = window.text_style();
         text.color = rgb(0).into();
@@ -93,10 +94,12 @@ impl Element for Timed {
         cx: &mut App,
     ) -> (LayoutId, ()) {
         let started = Instant::now();
+        kamin_html::work::switch!(LayoutRequest);
         let id = self.root.request_layout(window, cx);
         let mut phases = self.phases.borrow_mut();
         phases.request_layout += started.elapsed();
         phases.request_finished = Some(Instant::now());
+        kamin_html::work::switch!(Layout);
         (id, ())
     }
 
@@ -119,7 +122,9 @@ impl Element for Timed {
                 .take()
                 .map(|end| started.duration_since(end));
         }
+        kamin_html::work::switch!(Prepaint);
         self.root.prepaint(window, cx);
+        kamin_html::work::switch!(PipelineOther);
         self.phases.borrow_mut().prepaint += started.elapsed();
     }
 
@@ -134,7 +139,9 @@ impl Element for Timed {
         cx: &mut App,
     ) {
         let started = Instant::now();
+        kamin_html::work::switch!(Paint);
         self.root.paint(window, cx);
+        kamin_html::work::switch!(RasterGpuReadback);
         self.phases.borrow_mut().paint += started.elapsed();
     }
 }

@@ -62,6 +62,7 @@ pub(crate) fn search<T>(
         if !seen.insert(at.to_bits()) {
             return Err(Error::NoProgress);
         }
+        crate::work::add!(MulticolProbes, 1);
         let result = trial(at);
         if result.fits {
             high = at;

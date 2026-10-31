@@ -13,8 +13,11 @@ edition.workspace = true
 # Тестовые помощники нижних модулей для тестов `kamin-html`; включает только
 # его dev-dependency, обычный граф зависимостей его не выбирает.
 engine-test-support = []
+work-counters = ["dep:tracing"]
 
 [dependencies]
+# Область диагностической сессии; в обычном движке зависимости нет.
+tracing = { version = "0.1", optional = true }
 # Нижний контракт шрифтов.
 kamin-font-facts = { path = "../font-facts" }
 url = "2"

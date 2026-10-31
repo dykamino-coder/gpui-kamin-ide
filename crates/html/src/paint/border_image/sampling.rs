@@ -20,7 +20,8 @@ static SLICES: crate::paint::cache::BoundedCache<SliceKey, std::sync::Arc<gpui::
     crate::paint::cache::BoundedCache::new(
         64 * crate::paint::cache::MIB,
         crate::paint::cache::arc_image_bytes,
-    );
+    )
+    .for_paint();
 
 /// Нарисовать ОДИН кусок образа в своё место.
 pub(super) fn paint_slice(

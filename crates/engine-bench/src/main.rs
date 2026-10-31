@@ -16,13 +16,19 @@ mod gpu;
 mod host;
 #[cfg(windows)]
 mod pixels;
+#[cfg(all(windows, feature = "work-counters"))]
+mod process;
 mod report;
 mod resources;
 #[cfg(windows)]
 mod run;
 mod stylesheet;
+#[cfg(all(windows, feature = "work-counters"))]
+mod usage;
 #[cfg(windows)]
 mod view;
+#[cfg(windows)]
+mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
 #[global_allocator]
