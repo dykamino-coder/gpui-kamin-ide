@@ -2,8 +2,8 @@
 
 use crate::dom::Element;
 
-/// WHATWG rules for parsing non-negative integers: ASCII space, sign, digit prefix.
-/// Saturation is exact for the subsequent HTML clamp, even for unbounded input.
+/// Неотрицательное целое по WHATWG: пробелы ASCII, знак, префикс цифр.
+/// Насыщение сохраняет результат HTML-ограничения даже при неограниченном вводе.
 fn integer(value: Option<&str>, limit: u16) -> Option<u16> {
     let bytes = value?.as_bytes();
     let mut i = 0;

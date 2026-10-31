@@ -58,7 +58,7 @@ impl<'a> TableGrid<'a> {
                 if !super::is_cell(cell) {
                     continue;
                 }
-                // HTML skips occupied anchors, not an entire free colspan rectangle.
+                // HTML пропускает занятые начала ячеек, не весь прямоугольник colspan.
                 while occupied.get(column).is_some_and(|end| *end > r) {
                     column = column.checked_add(1).expect("allocated table column");
                 }
@@ -74,7 +74,7 @@ impl<'a> TableGrid<'a> {
                     occupied.resize(end, 0);
                 }
                 for slot in &mut occupied[column..end] {
-                    // Malformed overlapping cells cannot shorten an incoming rowspan.
+                    // Перекрытие в ошибочной разметке не сокращает прежний rowspan.
                     *slot = (*slot).max(row_end);
                 }
                 row.cells.push(CellSlot {
@@ -92,7 +92,7 @@ impl<'a> TableGrid<'a> {
     }
 }
 
-/// Narrow only at the GPUI boundary; large positive lines must never wrap negative.
+/// Сужение только на границе GPUI: положительная линия не становится отрицательной.
 pub(super) fn grid_line(line: usize) -> i16 {
     i16::try_from(line.max(1)).unwrap_or(i16::MAX)
 }
