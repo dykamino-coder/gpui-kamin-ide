@@ -35,7 +35,7 @@ macro_rules! lay_inherited {
 }
 
 lay_used! {
-    text_shadow_ink, explicit_inherit, snap, decl_order, side_order, display, flex_dir,
+    contain_value, content_visibility, text_shadow_ink, explicit_inherit, snap, decl_order, side_order, display, flex_dir,
     flex_wrap, flex_wrap_reverse, flex_balance, flex_line_count, flex_grow, flex_shrink,
     attr_width, attr_height, attr_sized, basis_content, align_items, align_self,
     align_self_normal, cross_stretched, flex_basis, justify_content, gap, border_box, grid_cols,

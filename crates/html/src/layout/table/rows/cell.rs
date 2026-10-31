@@ -5,8 +5,8 @@ use super::cell_heights::resolve_cell_heights;
 use super::emit::emit_cell;
 use super::row_setup::hides_empty_cell;
 use super::row_setup::{cell_cascaded_style, cell_spans};
-use crate::dom::Element;
 use crate::layout::options::RenderOpts;
+use crate::layout::table::slot_grid::CellSlot;
 use crate::style::values::value::Len;
 
 use crate::layout::table::context::{
@@ -22,8 +22,9 @@ pub(super) async fn table_cell(
     out: &mut RowsOut,
     opts: &RenderOpts,
     row_state: &RowState<'_>,
-    cell: &Element,
+    slot: CellSlot<'_>,
 ) {
+    let cell = slot.element;
     let vcx = opts.cx.vcx();
     // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
     // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
@@ -60,13 +61,7 @@ pub(super) async fn table_cell(
         cell.clone()
     };
     let mut cm = cell_cascaded_style(geom.e, &row_state.row_style, cell, vcx);
-    let spans = cell_spans(
-        cursor.row_ix,
-        &geom.rows_left,
-        &geom.cols_collapsed,
-        cursor.col_ix,
-        cell,
-    );
+    let spans = cell_spans(slot, &geom.cols_collapsed, cell);
     let mut cell = cell.clone();
     let cell_edge = prepare_cell_box(geom, row_state, cursor, &cm, &spans, &mut cell, opts);
     resolve_cell_heights(

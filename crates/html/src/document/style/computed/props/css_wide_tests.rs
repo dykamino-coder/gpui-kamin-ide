@@ -20,7 +20,6 @@ const KNOWN_GAPS: &[&str] = &[
     "border-style",
     "box-shadow",
     "clip-path",
-    "container-type",
     "content",
     "display",
     "filter",
