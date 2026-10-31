@@ -11,7 +11,10 @@ from unittest.mock import patch
 from computed_access import DEFINITIONS, aggregate, growth
 from check_computed import check, decode, documents, owner_changes, transferred_growth
 from test_check_transitional import commit, git
-from computed_f2_rebaseline import APPROVED, CENSUS_BASE, OVERFLOW_FLOAT_BASE, OVERFLOW_FLOAT_NON_STYLE, approved_base
+from computed_f2_rebaseline import (
+    APPROVED, CENSUS_BASE, OVERFLOW_FLOAT_BASE, OVERFLOW_FLOAT_NON_STYLE, STYLE_SPLIT_BASE,
+    STYLE_SPLIT_CEILINGS, approved_base, approved_ceilings,
+)
 
 FIELDS = 'pub struct Computed {\n    pub width: f32,\n    pub height: f32,\n}\n'
 LAYOUT = 'crates/html/src/layout/block.rs'
@@ -92,6 +95,16 @@ class AggregateTests(unittest.TestCase):
 
 
 class GitRatchetTests(unittest.TestCase):
+    def test_style_split_ceiling_transfer_is_exact_and_expires(self):
+        before = Counter({(f, o, a): old for f, o, a, old, new in STYLE_SPLIT_CEILINGS})
+        after = Counter({(f, o, a): new for f, o, a, old, new in STYLE_SPLIT_CEILINGS})
+        self.assertEqual(approved_ceilings(before, STYLE_SPLIT_BASE), after)
+        self.assertEqual(approved_ceilings(before, 'later-main'), before)
+        for key in after:
+            self.assertTrue(growth(after + Counter({key: 1}), approved_ceilings(before, STYLE_SPLIT_BASE), 'test'))
+        with self.assertRaises(ValueError):
+            approved_ceilings(after, STYLE_SPLIT_BASE)
+
     def test_overflow_float_non_style_review_is_exact_and_expires(self):
         before = Counter({(f, o, a): old for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
         after = Counter({(f, o, a): new for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
