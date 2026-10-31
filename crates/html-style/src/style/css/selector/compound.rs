@@ -13,6 +13,7 @@ impl Selector {
         };
         if s.is_empty() || s == "*" || s == "*|*" {
             return Some(Selector {
+                arguments: vec![],
                 tag: None,
                 tag_namespace: TypeNamespace::Any,
                 argument_namespace: namespace,
@@ -27,6 +28,7 @@ impl Selector {
             });
         }
         let mut sel = Selector {
+            arguments: vec![],
             tag: None,
             tag_namespace: TypeNamespace::Any,
             argument_namespace: namespace,
@@ -188,6 +190,7 @@ impl Selector {
             }
             rest = &body[end..];
         }
+        sel.prepare_arguments();
         Some(sel)
     }
 }

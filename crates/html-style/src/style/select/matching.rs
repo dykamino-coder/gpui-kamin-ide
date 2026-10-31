@@ -6,7 +6,7 @@
 //! `:hover`, `::before` и прочие состояния применяет отдельный слой отрисовки.
 
 use crate::dom::language;
-use crate::style::css::{Selector, TypeNamespace};
+use crate::style::css::Selector;
 use crate::style::select::has::has_id;
 use crate::style::select::{Ancestor, Sibs, Spot};
 
@@ -23,6 +23,9 @@ use pseudo::{has_slotted_holds, host_holds, is_holds, is_host_pseudo, lang_match
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
 pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+    if !me.matching.work(1) {
+        return false;
+    }
     // Безликий хост (изнутри своей тени): предков и братьев у него в этой
     // области нет, совпадает лишь `:host`-компаунд (см. `matches_compound`).
     if me.featureless.is_some() {
@@ -34,7 +37,7 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
             return false;
         }
         if pseudo.starts_with("has-slotted") {
-            if !has_slotted_holds(pseudo, me) {
+            if !has_slotted_holds(sel, pseudo, me) {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
@@ -42,19 +45,23 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
         // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
         // не среди структурных: внутри скобок может стоять тег или класс, а им
         // нужен сам узел, а не только его место среди соседей.
-        if let Some(inner) = pseudo
+        if let Some(_inner) = pseudo
             .strip_prefix("not(")
             .and_then(|rest| rest.strip_suffix(')'))
         {
-            let Some(inner) = Selector::parse(inner) else {
+            let Some(inner) = sel
+                .prepared(pseudo)
+                .filter(|p| p.single)
+                .and_then(|p| p.list.first())
+            else {
                 return false;
             };
-            if matches(&inner, me, path, sibs) {
+            if matches(inner, me, path, sibs) {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        if let Some(ok) = is_holds(pseudo, sel.argument_namespace, me, path, sibs) {
+        if let Some(ok) = is_holds(sel, pseudo, me, path, sibs) {
             if !ok {
                 return false;
             }
@@ -127,7 +134,7 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
+        if let Some(ok) = nth_of_holds(sel, pseudo, me, path, sibs) {
             if !ok {
                 return false;
             }
@@ -158,7 +165,7 @@ pub fn matches_ignoring_pseudo(
     if !sel
         .also
         .iter()
-        .all(|p| pseudo_holds(p, sel.argument_namespace, me, path, sibs))
+        .all(|p| pseudo_holds(sel, p, me, path, sibs))
     {
         return false;
     }

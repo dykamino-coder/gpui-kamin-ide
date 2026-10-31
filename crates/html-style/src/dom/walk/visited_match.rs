@@ -5,26 +5,30 @@
 //! Правило, совпавшее лишь в одном проходе, получает признак
 //! [`LinkMatch`]: каскад берёт из него только свойства своего состояния.
 
-use crate::style::css::{LinkMatch, Rule, Selector};
+use crate::style::css::{LinkMatch, Rule};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs};
 
 /// Совпавшие правила таблицы `rules`: номер и состояние ссылки.
 pub(super) fn link_matches(
     rules: &[Rule],
+    index: &crate::style::select::rule_index::RuleIndex,
+    candidates: &[usize],
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
 ) -> Vec<(usize, LinkMatch)> {
     let plain = |me: &Ancestor, path: &[Ancestor]| -> Vec<(usize, LinkMatch)> {
-        rules
+        candidates
             .iter()
-            .enumerate()
-            .filter(|(_, r)| matches(&r.sel, me, path, sibs))
-            .map(|(i, _)| (i, LinkMatch::Any))
+            .copied()
+            .filter(|&i| matches(&rules[i].sel, me, path, sibs))
+            .map(|i| (i, LinkMatch::Any))
             .collect()
     };
-    if !me.visited && path.iter().all(|a| !a.visited) {
+    if !candidates.iter().any(|&i| index.link_state[i])
+        || !me.visited && path.iter().all(|a| !a.visited)
+    {
         return plain(me, path);
     }
     let unvisit = |a: &Ancestor| Ancestor {
@@ -47,12 +51,13 @@ pub(super) fn link_matches(
     if !relevant_visited {
         return plain(&me_u, &path_u);
     }
-    rules
+    candidates
         .iter()
-        .enumerate()
-        .filter_map(|(i, r)| {
+        .copied()
+        .filter_map(|i| {
+            let r = &rules[i];
             let unvisited = matches(&r.sel, &me_u, &path_u, sibs);
-            let visited = if mentions_link_state(&r.sel) {
+            let visited = if index.link_state[i] {
                 matches(&r.sel, &me_v, &path_v, sibs)
             } else {
                 unvisited
@@ -62,24 +67,42 @@ pub(super) fn link_matches(
         .collect()
 }
 
-/// Упоминает ли селектор состояние ссылки (`:link`, `:visited`, в том
-/// числе внутри `:is()`/`:not()`): иначе оба прохода совпадают.
-fn mentions_link_state(sel: &Selector) -> bool {
-    let mut pending = vec![sel];
-    while let Some(sel) = pending.pop() {
-        let named = |p: &str| {
-            let p = p.to_ascii_lowercase();
-            p.contains("link") || p.contains("visited")
-        };
-        if sel.pseudo.as_deref().is_some_and(named) || sel.also.iter().any(|p| named(p)) {
-            return true;
-        }
-        if let Some(prev) = &sel.prev {
-            pending.push(&prev.0);
-        }
-        if let Some(ancestor) = &sel.ancestor {
-            pending.push(&ancestor.0);
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::budget::{BudgetKind, DocumentBudget, DocumentLimits, ResourceGovernor};
+    use crate::dom::tree_index::TreeIndex;
+    use crate::style::select::{census_of, rule_index::RuleIndex};
+
+    #[test]
+    fn rules_without_link_state_are_matched_once_even_below_visited_ancestors() {
+        let dom = crate::dom::xml::xml_dom("<a href='x'><x/></a>").unwrap();
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let owner =
+            DocumentBudget::new(DocumentLimits::default(), ResourceGovernor::default()).unwrap();
+        let revision = owner.revision();
+        doc.admit_revision(revision.clone(), None);
+        let tree = TreeIndex::new(doc, true);
+        let parent = dom.document.children.borrow()[0].clone();
+        let (_, mut ancestors) = census_of(&dom.document.children.borrow(), &tree);
+        let mut ancestor = ancestors.remove(0);
+        ancestor.visited = true;
+        let (_, mut children) = census_of(&parent.children.borrow(), &tree);
+        let me = children.remove(0);
+        let rules = [Rule {
+            sel: crate::style::css::Selector::parse("x").unwrap(),
+            decls: Default::default(),
+            order: 0,
+            origin: crate::style::css::Origin::Author,
+            layer: vec![u32::MAX],
+            link: LinkMatch::Any,
+        }];
+        let index = RuleIndex::new(&rules, &Default::default()).unwrap();
+        let before = revision.used(BudgetKind::TraversalVisits);
+        assert_eq!(
+            link_matches(&rules, &index, &[0], &me, &[ancestor], Sibs::EMPTY),
+            [(0, LinkMatch::Any)]
+        );
+        assert_eq!(revision.used(BudgetKind::TraversalVisits) - before, 1);
     }
-    false
 }

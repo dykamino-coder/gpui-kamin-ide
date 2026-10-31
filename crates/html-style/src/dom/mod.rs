@@ -14,6 +14,7 @@ mod direction;
 pub mod early_admission;
 mod shared_style;
 pub use shared_style::SharedStyle;
+mod finish_document;
 pub mod input;
 pub mod mathml;
 mod mathml_defaults;

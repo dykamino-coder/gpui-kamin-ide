@@ -16,7 +16,7 @@ use crate::values::ValueCx;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn resolve(
     name: &str,
-    rules: &[Rule],
+    rules: &[&Rule],
     vars: &VarMap,
     me: &Ancestor,
     path: &[Ancestor],
@@ -26,6 +26,7 @@ pub(super) fn resolve(
 ) -> Option<Computed> {
     let found: Vec<&Rule> = rules
         .iter()
+        .copied()
         .filter(|r| r.sel.pseudo.as_deref() == Some(name))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();

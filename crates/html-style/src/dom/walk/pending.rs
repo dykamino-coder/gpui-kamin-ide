@@ -10,6 +10,7 @@ use std::rc::Rc;
 
 pub(super) struct Pending<'a> {
     pub visit: Visit<'a>,
+    pub candidates: crate::budget::admission::Buffer<usize>,
     pub me: Ancestor,
     pub tag: String,
     pub attrs: Vec<(String, String)>,

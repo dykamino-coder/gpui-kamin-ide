@@ -3,35 +3,48 @@
 use super::*;
 
 /// Псевдокласс — of-форма `:nth-child(… of S)`?
-pub(super) fn nth_of_form(pseudo: &str) -> bool {
-    let Some((name, arg)) = pseudo.split_once('(') else {
-        return false;
-    };
-    matches!(name, "nth-child" | "nth-last-child")
-        && arg
-            .strip_suffix(')')
-            .is_some_and(|a| crate::style::css::nth_of_parts(a).is_some())
+pub(super) fn nth_of_form(sel: &Selector, pseudo: &str) -> bool {
+    sel.prepared(pseudo).is_some_and(|p| p.nth.is_some())
 }
 
 /// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
 /// узел обязан сам совпасть с S, а номер считается только среди совпавших
 /// братьев — с начала либо с конца. `None` — псевдокласс не of-формы.
 pub(super) fn nth_of_holds(
+    sel: &Selector,
     pseudo: &str,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
 ) -> Option<bool> {
-    let (name, arg) = pseudo.split_once('(')?;
+    let (name, _arg) = pseudo.split_once('(')?;
     let backwards = match name {
         "nth-child" => false,
         "nth-last-child" => true,
         _ => return None,
     };
-    let arg = arg.strip_suffix(')')?;
-    let (anb, list) = crate::style::css::nth_of_parts(arg)?;
+    let prepared = sel.prepared(pseudo)?;
+    let anb = prepared.nth.as_deref()?;
+    let list = &prepared.list;
     let hit = |a: &Ancestor, s: Sibs| list.iter().any(|sel| matches(sel, a, path, s));
-    if !sibs.is_elem || list.is_empty() || !hit(me, sibs) {
+    if !sibs.is_elem || list.is_empty() {
+        return Some(false);
+    }
+    // Состояния ссылок/маркеров и overlay меняются в пределах прохода.
+    let stable = !me.matching.has_anchor() && prepared.nth_cacheable;
+    if stable {
+        let ranks = me
+            .matching
+            .nth_ranks(sel.argument_namespace as u8, pseudo, sibs, hit)?;
+        let rank = ranks[sibs.pos];
+        let index = if backwards {
+            ranks[sibs.all.len()] + 1 - rank
+        } else {
+            rank
+        };
+        return Some(rank > 0 && nth_matches(anb, index));
+    }
+    if !hit(me, sibs) {
         return Some(false);
     }
     let (peers, base) = if backwards {
@@ -44,7 +57,7 @@ pub(super) fn nth_of_holds(
         .enumerate()
         .filter(|(i, a)| hit(a, sibs.at(base + i)))
         .count();
-    Some(nth_matches(&anb, idx))
+    Some(nth_matches(anb, idx))
 }
 
 /// Структурные псевдоклассы: место узла среди соседей.

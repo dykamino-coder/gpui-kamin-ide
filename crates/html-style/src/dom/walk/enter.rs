@@ -46,8 +46,31 @@ pub(super) fn enter<'a>(
         sibs,
         tree,
     );
+    me.ancestor_bloom = Some(
+        path.last()
+            .and_then(|a| a.ancestor_bloom)
+            .unwrap_or_else(|| {
+                path.iter().fold(
+                    Default::default(),
+                    |b: crate::style::select::bloom::Bloom, a| b.with_node(a),
+                )
+            })
+            .with_node(&me),
+    );
+    let candidates = visit.scope.index.candidates(&me, path);
     let (mut style, own_vars, scheme, shadow, important) = cascade_element(
-        &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs, vcx,
+        &mut me,
+        &attrs,
+        &tag,
+        handle,
+        tree,
+        &visit.scope,
+        &candidates,
+        vars,
+        path,
+        spot,
+        sibs,
+        vcx,
     );
     let vcx = vcx.with_scheme(scheme);
     let vars = &own_vars;
@@ -55,8 +78,17 @@ pub(super) fn enter<'a>(
     content::snapshot_generated(&mut me, &style, path.last());
     // Правила с `:hover` собираются отдельным слоем: в базовый стиль
     // им нельзя, иначе элемент выглядел бы всегда наведённым.
-    let (hover, first_letter, first_line, marker_layer) =
-        pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs, vcx);
+    let (hover, first_letter, first_line, marker_layer) = pseudo_styles(
+        &mut style,
+        &tag,
+        &visit.scope,
+        &candidates,
+        vars,
+        &me,
+        path,
+        sibs,
+        vcx,
+    );
 
     let reversed_start = |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
         crate::style::generated::counters_scan::reversed_initial(
@@ -130,7 +162,16 @@ pub(super) fn enter<'a>(
             vcx,
         );
         if let Some(el) = pseudo_box(
-            rules, vars, counters, &me, path, sibs, "before", &attrs, vcx,
+            &visit.scope,
+            &candidates,
+            vars,
+            counters,
+            &me,
+            path,
+            sibs,
+            "before",
+            &attrs,
+            vcx,
         ) {
             children.push(Node::Element(el));
         }
@@ -139,6 +180,7 @@ pub(super) fn enter<'a>(
     visit.vcx = vcx;
     Some(Box::new(Pending {
         visit,
+        candidates,
         me,
         tag,
         attrs,

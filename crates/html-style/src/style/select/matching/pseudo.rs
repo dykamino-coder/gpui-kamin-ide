@@ -62,19 +62,23 @@ fn extended_lang_filter(range: &str, tag: &str) -> bool {
 /// по имени). Неизвестный или слойный (`:hover`) здесь считается
 /// НЕвыполненным: базовый каскад такое правило не применяет.
 pub(super) fn pseudo_holds(
+    sel: &Selector,
     pseudo: &str,
-    namespace: TypeNamespace,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
 ) -> bool {
-    if let Some(inner) = pseudo
+    if let Some(_inner) = pseudo
         .strip_prefix("not(")
         .and_then(|r| r.strip_suffix(')'))
     {
-        return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
+        return sel
+            .prepared(pseudo)
+            .filter(|p| p.single)
+            .and_then(|p| p.list.first())
+            .is_some_and(|inner| !matches(inner, me, path, sibs));
     }
-    if let Some(ok) = is_holds(pseudo, namespace, me, path, sibs) {
+    if let Some(ok) = is_holds(sel, pseudo, me, path, sibs) {
         return ok;
     }
     if pseudo == "empty" {
@@ -100,7 +104,7 @@ pub(super) fn pseudo_holds(
         return me.tag == "html";
     }
     if pseudo.starts_with("has-slotted") {
-        return has_slotted_holds(pseudo, me);
+        return has_slotted_holds(sel, pseudo, me);
     }
     if let Some(want) = pseudo
         .strip_prefix("lang(")
@@ -114,7 +118,7 @@ pub(super) fn pseudo_holds(
     {
         return me.has_marks.contains(&has_id(arg));
     }
-    if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
+    if let Some(ok) = nth_of_holds(sel, pseudo, me, path, sibs) {
         return ok;
     }
     structural(pseudo, me.spot).unwrap_or(false)
@@ -129,11 +133,11 @@ pub(super) fn is_host_pseudo(pseudo: &str) -> bool {
 /// (css-shadow-1 §3.1 «in its normal context»; Blink `CheckPseudoHost`
 /// сопоставляет в `element->GetTreeScope()`). Светлых братьев здесь нет:
 /// `:first-child` в аргументе решается по `spot`, of-форма и `+`/`~` — нет.
-pub(super) fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
+pub(super) fn host_holds(sel: &Selector, pseudo: &str, node: &Ancestor) -> bool {
     if pseudo == "host" {
         return true;
     }
-    let (Some(arg), Some(light)) = (
+    let (Some(_arg), Some(light)) = (
         pseudo
             .strip_prefix("host(")
             .and_then(|r| r.strip_suffix(')')),
@@ -141,14 +145,18 @@ pub(super) fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
     ) else {
         return false;
     };
-    let Some(arg) = Selector::parse(arg) else {
+    let Some(arg) = sel
+        .prepared(pseudo)
+        .filter(|p| p.single)
+        .and_then(|p| p.list.first())
+    else {
         return false;
     };
     let real = Ancestor {
         featureless: None,
         ..node.clone()
     };
-    matches(&arg, &real, &light[..], Sibs::EMPTY)
+    matches(arg, &real, &light[..], Sibs::EMPTY)
 }
 
 /// `:has-slotted` — у слота непуст список ПЛОСКИХ распределённых, включая
@@ -156,18 +164,18 @@ pub(super) fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
 /// среди них есть ЭЛЕМЕНТ, совпадающий с S в своём светлом контексте
 /// (`functional-007`: `div + div` смотрит на светлых братьев). Не слот или
 /// слот вне тени — не совпадает.
-pub(super) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
+pub(super) fn has_slotted_holds(sel: &Selector, pseudo: &str, me: &Ancestor) -> bool {
     let Some(slot) = &me.slot else { return false };
-    let Some(arg) = pseudo
+    let Some(_arg) = pseudo
         .strip_prefix("has-slotted(")
         .and_then(|r| r.strip_suffix(')'))
     else {
         return !slot.flattened.is_empty();
     };
-    let list: Vec<Selector> = crate::style::css::split_selector_list(arg)
-        .into_iter()
-        .filter_map(Selector::parse)
-        .collect();
+    let Some(prepared) = sel.prepared(pseudo) else {
+        return false;
+    };
+    let list = &prepared.list;
     slot.flattened.iter().flatten().any(|c| {
         let sibs = Sibs {
             all: &c.all[..],
@@ -183,8 +191,8 @@ pub(super) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
 /// хоть с одним ГОДНЫМ селектором списка; негодные части прощаются
 /// (selectors-4 §4.2 «forgiving selector list»). `None` — не этот псевдокласс.
 pub(super) fn is_holds(
+    sel: &Selector,
     pseudo: &str,
-    namespace: TypeNamespace,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -193,10 +201,9 @@ pub(super) fn is_holds(
     if !matches!(name, "is" | "where" | "matches" | "any") {
         return None;
     }
-    let arg = arg.strip_suffix(')')?;
+    let _arg = arg.strip_suffix(')')?;
     Some(
-        crate::style::css::default_ns::is_args(arg, namespace)
-            .into_iter()
-            .any(|inner| matches(&inner, me, path, sibs)),
+        sel.prepared(pseudo)
+            .is_some_and(|p| p.list.iter().any(|inner| matches(inner, me, path, sibs))),
     )
 }

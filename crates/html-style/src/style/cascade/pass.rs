@@ -13,6 +13,9 @@ use crate::style::computed::ParseResult;
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Origin, Specified, VarMap};
 use crate::values::ValueCx;
 mod all_reset;
+mod order;
+mod projection;
+use order::{family, is_side_radius, is_wide};
 mod longhand;
 
 impl Computed {
@@ -198,39 +201,4 @@ impl Computed {
             self.apply_one(k, &resolved, vcx);
         }
     }
-}
-
-fn is_wide(v: &str) -> bool {
-    CssWide::parse(v).is_some()
-}
-
-/// Логические сокращения радиусов стороны (css-borders-4, tentative).
-fn is_side_radius(k: &str) -> bool {
-    matches!(
-        k,
-        "border-block-start-radius"
-            | "border-block-end-radius"
-            | "border-inline-start-radius"
-            | "border-inline-end-radius"
-    )
-}
-
-/// Семья имени внутри блока: НАСТОЯЩЕЕ сокращение со своими длинными
-/// свойствами. По одному лишь общему началу судить нельзя: `overflow-wrap` не
-/// часть `overflow`, и перестановка этой пары ломает `textarea-pre-wrap-*`.
-fn family(k: &str, block: Option<&DeclBlock>) -> String {
-    let Some(d) = block else {
-        return k.into();
-    };
-    const SHORTHANDS: &[&str] = &["border-image"];
-    for root in SHORTHANDS {
-        if k.len() > root.len()
-            && k.starts_with(root)
-            && k.as_bytes().get(root.len()) == Some(&b'-')
-            && d.contains(root)
-        {
-            return (*root).into();
-        }
-    }
-    k.into()
 }

@@ -3,6 +3,8 @@
 use crate::style::css::*;
 
 mod compound;
+mod prepared;
+pub use prepared::Prepared;
 mod pseudo;
 use pseudo::{is_element_backed, is_pseudo_element, known_pseudo, pseudo_specificity};
 pub use pseudo::{nth_of_parts, split_selector_list};
@@ -19,6 +21,7 @@ pub enum TypeNamespace {
 /// Простой селектор — ровно то подмножество, которое встречается на практике.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Selector {
+    pub arguments: Vec<std::rc::Rc<Prepared>>,
     pub tag: Option<String>,
     pub tag_namespace: TypeNamespace,
     /// Контекст пространства для отложенного разбора списков `:is()`/`:where()`.
@@ -43,47 +46,8 @@ pub struct Selector {
     pub universal: bool,
 }
 
-/// Атрибутный селектор одного условия.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AttrSel {
-    pub name: String,
-    /// Операция и значение: `=` 0, `~=` 1, `|=` 2, `^=` 3, `$=` 4, `*=` 5.
-    /// Отсутствует — проверяется само наличие атрибута.
-    pub op: Option<(u8, String)>,
-    /// Регистронезависимое сравнение значений (` i` перед `]`).
-    pub ci: bool,
-}
-
-impl AttrSel {
-    /// Совпадает ли значение атрибута (None = атрибута нет).
-    pub fn matches(&self, value: Option<&str>) -> bool {
-        let Some(value) = value else { return false };
-        let Some((op, want)) = &self.op else {
-            return true;
-        };
-        let (v, w);
-        let (value, want): (&str, &str) = if self.ci {
-            v = value.to_ascii_lowercase();
-            w = want.to_ascii_lowercase();
-            (&v, &w)
-        } else {
-            (value, want)
-        };
-        match op {
-            0 => value == want,
-            1 => !want.is_empty() && value.split_whitespace().any(|t| t == want),
-            2 => {
-                value == want
-                    || (value.len() > want.len()
-                        && value.starts_with(want)
-                        && value.as_bytes()[want.len()] == b'-')
-            }
-            3 => !want.is_empty() && value.starts_with(want),
-            4 => !want.is_empty() && value.ends_with(want),
-            _ => !want.is_empty() && value.contains(want),
-        }
-    }
-}
+mod attribute;
+pub use attribute::AttrSel;
 
 impl Selector {
     /// Специфичность как в CSS: (id, класс+псевдо, тег). Сравнивается лексикографически.
@@ -97,7 +61,10 @@ impl Selector {
         // самого специфичного селектора списка (селекторы-4 §specificity):
         // `:nth-child(even of .foo, #bar)` весит как псевдо + id.
         for p in self.pseudo.iter().chain(self.also.iter()) {
-            let m = pseudo_specificity(p, self.argument_namespace);
+            let m = self.prepared(p).map_or_else(
+                || pseudo_specificity(p, self.argument_namespace),
+                |p| p.specificity,
+            );
             s = (s.0 + m.0, s.1 + m.1, s.2 + m.2);
         }
         if let Some(anc) = &self.ancestor {
