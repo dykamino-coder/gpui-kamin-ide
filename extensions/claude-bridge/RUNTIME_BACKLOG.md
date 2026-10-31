@@ -22,6 +22,22 @@ Bounded owner isolation/overload и multi-owner sequence проверены от
 merge/release; это не гарантия scheduler fairness или production throughput.
 Deployment observation не проведено. Повторная реализация #537/#539 не требуется.
 
+## Выборочная сверка INC-0083 — 2026-10-31
+
+Source snapshot: `origin/main` `09275cda8a5e10e12d106b582705537a1af36279`.
+#536 (`a41554a769cbeb6918974362988fd9eb29e48911`) уже опубликован в
+1.0.82 / 6.3.159, сохранён в .83/.84. Старые даты/численности общего обзора ниже
+не пересчитаны. Это ограниченная source verification и routing, не UI pass.
+
+| INC / связанная задача | Принятый результат / остаток | Следующий owner / artifact |
+| --- | --- | --- |
+| [INC-0083](runtime-issues/INC-2026-0083.md) | resolved для eager replay на paged clients; 73 server tests и isolated 20-reader / 300-child fixture прошли; историческая причина зависаний не установлена | loading fix не повторять; [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope): maintainer с Windows стендом, точный synthetic large-view/control-tab research; BR-03 deferred до измерений. Deployment owner: authenticated CLI compact observation, не проведено |
+
+Для paging нужны client/server 1.0.82 / 6.3.159 или новее; старый клиент .75
+сохраняет legacy full replay. Серверный тест не подтверждает Windows memory/input
+и не закрывает соседние native, Agents или hook задачи. Шесть исходных proposed
+slices — исторические варианты исследования, не шесть обязательных новых багов.
+
 ## Выборочная системная сверка — 2026-10-29
 
 Это связанный маршрут для длинных бесед, compact, субагентов и команд;
@@ -32,10 +48,9 @@ Deployment observation не проведено. Повторная реализ�
   MCP Tasks занимали retained admission в .158. На 2026-10-30 #537/#539 уже доставлены
   в .159; на 2026-10-30 source verification принята, остаток — observation и INC-0080,
   а не повтор capacity fix. Исходный reproducer и private evidence сохранены.
-- [INC-0083](runtime-issues/INC-2026-0083.md): оставшаяся обязательная полная история
-  при open/reattach и множество historical children. В карточке — карта связей
-  со старыми BR/INC, предложенные независимые deliverables, workload и gates.
-  Наблюдение об улучшении после обрезки до последнего compact не доказывает причину.
+- [INC-0083](runtime-issues/INC-2026-0083.md): исходный eager replay устранён #536
+  для paged clients; актуальная verification и конкретный BR-02/03 остаток выше.
+  Наблюдение об улучшении после обрезки не доказывает историческую причину.
 - [INC-0078](runtime-issues/INC-2026-0078.md): #495/#499/#500 уже merged и доставлены
   в 1.0.81 / 6.3.158. Следующий шаг — сопоставить их evidence исходной приёмке,
   затем выполнять только остаток. Не предлагать заново уже доставленный streaming/DB fix.
