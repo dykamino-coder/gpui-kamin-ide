@@ -8,7 +8,7 @@ impl Paragraph {
         self.unbalanced_steps = None;
         if self.clamp_tag.is_some() && self.wrap.balance && self.clamp.is_none() {
             if self.run_metrics.len() != self.runs.len() {
-                self.run_metrics = self.measure_runs(window);
+                self.refresh_run_metrics(window);
             }
             let segs = self.measure(window);
             let unbalanced = self.lay(limit, &segs);

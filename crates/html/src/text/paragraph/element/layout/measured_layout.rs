@@ -10,7 +10,7 @@ use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
 
 pub(crate) fn measured_layout(
-    mut probe: Paragraph,
+    probe: &mut Paragraph,
     atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
     known: gpui::Size<Option<Pixels>>,
     available: gpui::Size<gpui::AvailableSpace>,
@@ -61,7 +61,7 @@ pub(crate) fn measured_layout(
         line_height
     };
     if vertical {
-        probe.run_metrics = probe.measure_runs(window);
+        probe.refresh_run_metrics(window);
     }
     let lines = probe.split(limit, window);
     // Ширина — по самой длинной строке. Вся отведённая ширина
@@ -207,7 +207,7 @@ pub(crate) fn measured_layout(
     let last_baseline = baseline.map(|b| b + last_shift);
     gpui::MeasuredContent {
         static_positions: normal_static.measure(
-            &probe,
+            probe,
             // PerformLayout передаёт решённую ширину через available, а не known.
             // Static rect относится к этой строке, не к intrinsic ширине текста.
             size(limit.unwrap_or(width), known.height.unwrap_or(across)),

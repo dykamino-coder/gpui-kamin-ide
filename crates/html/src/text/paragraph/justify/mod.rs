@@ -30,6 +30,7 @@ pub(crate) enum Edge {
 /// Кусок текста между обязательными разрывами вместе со своим набором.
 #[derive(Clone)]
 pub(crate) struct Seg {
+    pub(crate) positions: std::rc::Rc<std::cell::OnceCell<Vec<Pixels>>>,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) layout: std::sync::Arc<gpui::LineLayout>,

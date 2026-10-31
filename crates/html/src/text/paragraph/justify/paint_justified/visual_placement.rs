@@ -18,14 +18,10 @@ impl Paragraph {
             let mut units: Vec<(usize, usize, bool)> = Vec::new();
             for &(s, e, rtl) in ltr_runs.iter() {
                 let mut pts = vec![s, e];
-                for &p in self.spacers.iter().filter(|p| **p >= s && **p < e) {
-                    pts.push(p);
-                    pts.push((p + crate::text::inline::SPACER.len()).min(e));
-                }
-                // Box content edges: a fragment of a box starts a piece.
-                for b in &self.box_extents {
-                    pts.extend([b.1, b.2].into_iter().filter(|p| *p > s && *p < e));
-                }
+                let edges = &self.prepared().box_edges;
+                pts.extend_from_slice(
+                    &edges[edges.partition_point(|p| *p <= s)..edges.partition_point(|p| *p < e)],
+                );
                 pts.sort_unstable();
                 pts.dedup();
                 let mut run: Vec<(usize, usize, bool)> =
@@ -38,30 +34,12 @@ impl Paragraph {
             // CSS 2.1 §8.6 / Blink `UpdateFragmentEdges`: a box split by
             // reordering keeps its left edge on its leftmost fragment and its
             // right edge on the rightmost one. Inner boxes first.
-            let mut boxes: Vec<(u32, usize, usize)> = Vec::new();
-            for &(p, id, _, _) in &self.spacer_edges {
-                match boxes.iter_mut().find(|b| b.0 == id) {
-                    Some(b) => {
-                        b.1 = b.1.min(p);
-                        b.2 = b.2.max(p);
-                    }
-                    None => boxes.push((id, p, p)),
-                }
-            }
-            for b in boxes.iter_mut() {
-                if let Some(x) = self.box_extents.iter().find(|x| x.0 == b.0) {
-                    b.1 = b.1.min(x.1);
-                    b.2 = b.2.max(x.2);
-                }
-            }
-            boxes.sort_by_key(|b| b.2 - b.1);
-            for &(id, lo, hi) in &boxes {
-                let own = |a: usize| {
-                    self.spacer_edges
-                        .iter()
-                        .find(|e| e.0 == a && e.1 == id)
-                        .map(|e| (e.2, e.3))
-                };
+            let index = &self.prepared().box_index;
+            let start = ltr_runs.iter().map(|r| r.0).min().unwrap();
+            let end = ltr_runs.iter().map(|r| r.1).max().unwrap();
+            for rank in index.line_boxes(self, start..end) {
+                let (id, _, _, from_at, to_at) = index.bounds[rank];
+                let own = |a| index.own(self, a, id);
                 if !units.iter().any(|u| own(u.0).is_some()) {
                     continue;
                 }
@@ -72,11 +50,6 @@ impl Paragraph {
                     .collect();
                 // Content of the box: between its markers when known, else
                 // strictly between its own edge spacers.
-                let (from_at, to_at) = self
-                    .box_extents
-                    .iter()
-                    .find(|b| b.0 == id)
-                    .map_or((lo + 1, hi), |b| (b.1, b.2));
                 let inside: Vec<usize> = rest
                     .iter()
                     .enumerate()

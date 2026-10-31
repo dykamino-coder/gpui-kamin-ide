@@ -27,52 +27,17 @@ impl Paragraph {
             || !self.rel_spans.is_empty()
             || !self.edge_spans.is_empty()
         {
-            let mut cuts: Vec<usize> = Vec::new();
-            let mut cut = |edge: usize| {
-                if edge > range.start && edge < range.end {
-                    cuts.push(edge);
-                }
-            };
-            for (r, _) in self.letter_spans.iter() {
-                // Трекинг знака — это промежуток ПОСЛЕ него, поэтому у
-                // последнего знака отрезка он на набор внутри отрезка не
-                // влияет. Резать по началу нужно только там, где знаков в
-                // диапазоне несколько: одиночный (зазор `text-autospace`)
-                // спокойно доживает в общем отрезке, а свой разрез оставлял
-                // между половинками слова шов в точку — соседние отрезки
-                // округляются независимо (`text-autospace-001`: `XX`
-                // расходились).
-                // A box spacer carries its entire advance in tracking (CSS 2.1
-                // section 8.3). Joining it to a preceding word discards that
-                // advance when the word is shaped with its own spacing.
-                if self.text[r.clone()].chars().nth(1).is_some()
-                    || self.spacers.binary_search(&r.start).is_ok()
-                {
-                    cut(r.start);
-                }
-                cut(r.end);
-            }
-            // Сдвиг по вертикали — свойство самого глифа: он обязан ехать
-            // отдельным вызовом целиком.
-            for (r, _, _) in self.rel_spans.iter() {
-                cut(r.start);
-                cut(r.end);
-            }
-            for (r, _) in self.shift_spans.iter() {
-                cut(r.start);
-                cut(r.end);
-            }
-            for (r, _, _) in self.edge_spans.iter() {
-                cut(r.start);
-                cut(r.end);
-            }
-            cuts.sort_unstable();
-            cuts.dedup();
+            let cuts = &self.prepared().cuts;
             let mut split: Vec<Word> = Vec::with_capacity(words.len());
             for w in words {
                 let mut at = w.range.start;
                 let mut spaces = w.spaces_before;
-                for cut in cuts.iter().copied().filter(|c| w.range.contains(c)) {
+                for cut in cuts[cuts.partition_point(|c| *c < w.range.start)
+                    ..cuts.partition_point(|c| *c < w.range.end)]
+                    .iter()
+                    .copied()
+                    .filter(|c| *c > range.start && *c < range.end)
+                {
                     split.push(Word {
                         range: at..cut,
                         spaces_before: spaces,
@@ -94,23 +59,21 @@ impl Paragraph {
         // Runs come in visual order; a word crossing a run edge is cut there.
         let ltr_runs = self.line_visual_runs(range);
         if !ltr_runs.is_empty() {
+            let all_edges = &self.prepared().box_edges;
+            let mut edges = all_edges[all_edges.partition_point(|s| *s < range.start)
+                ..all_edges.partition_point(|s| *s <= range.end)]
+                .to_vec();
+            edges.extend(ltr_runs.iter().flat_map(|r| [r.0, r.1]));
+            edges.sort_unstable();
+            edges.dedup();
             let mut split: Vec<Word> = Vec::with_capacity(words.len());
             for w in words {
                 let mut at = w.range.start;
-                let mut edges: Vec<usize> = ltr_runs
-                    .iter()
-                    .flat_map(|r| [r.0, r.1])
-                    .chain(
-                        self.spacers
-                            .iter()
-                            .flat_map(|p| [*p, *p + crate::text::inline::SPACER.len()]),
-                    )
-                    .chain(self.box_extents.iter().flat_map(|b| [b.1, b.2]))
-                    .filter(|s| *s > at && *s < w.range.end)
-                    .collect();
-                edges.sort_unstable();
-                edges.dedup();
-                for c in edges {
+                let first = edges.partition_point(|s| *s <= at);
+                // Разрез на начале слова сохраняет пустой кусок. У него нет
+                // внутренних границ, даже если сам байт есть в `edges`.
+                let last = first + edges[first..].partition_point(|s| *s < w.range.end);
+                for &c in &edges[first..last] {
                     split.push(Word {
                         range: at..c,
                         spaces_before: w.spaces_before,
@@ -151,5 +114,31 @@ impl Paragraph {
         };
         let from = self.x_at(segs, range.start, Edge::Start);
         (words, ltr_runs, step, absorbed, from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracking_cut_at_bidi_word_start_preserves_empty_piece() {
+        let mut paragraph = Paragraph::new(
+            "a אב".into(),
+            vec![],
+            px(16.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        paragraph.letter_spans = vec![(2..6, px(1.))];
+        let (words, runs, _, _, _) = paragraph.prepare_words(&(0..6), &[], px(0.));
+        assert!(!runs.is_empty());
+        let pieces: Vec<_> = words
+            .iter()
+            .map(|word| (word.range.clone(), word.spaces_before))
+            .collect();
+        // Пробелы остаются у пустого куска: трекинг-разрез сбрасывает счётчик.
+        assert_eq!(pieces, vec![(0..1, 0), (2..2, 1), (2..6, 0)]);
     }
 }

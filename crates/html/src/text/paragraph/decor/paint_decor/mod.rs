@@ -27,7 +27,8 @@ impl Paragraph {
     ) {
         let scale = window.scale_factor();
         let mut segs: Option<Vec<Seg>> = None;
-        for span in &self.decor_spans {
+        for i in self.prepared().decorations.overlapping(&frag) {
+            let span = &self.decor_spans[i];
             let (s, e) = (
                 span.range.start.max(frag.start),
                 span.range.end.min(frag.end),

@@ -48,15 +48,14 @@ impl Paragraph {
             && next.range.start > word.range.end
         {
             let gap = word.range.end..next.range.start;
-            let gap_runs = slice_runs_banded(&self.runs, &gap);
+            let gap_runs = self.own_banded_runs(&gap);
             if gap_runs.iter().any(|r| r.background_color.is_some()) {
                 let gap_text: SharedString = self.text[gap.clone()].to_string().into();
                 let spacing = self
-                    .letter_spans
-                    .iter()
-                    .find(|(r, _)| r.contains(&gap.start))
-                    .map(|(_, v)| *v)
-                    .unwrap_or(self.letter_spacing);
+                    .prepared()
+                    .letters
+                    .first(gap.start)
+                    .map_or(self.letter_spacing, |i| self.letter_spans[i].1);
                 let mut gap_shaped = window
                     .text_system()
                     .with_ligature_breaking(false)

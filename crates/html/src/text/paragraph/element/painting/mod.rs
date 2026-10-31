@@ -39,6 +39,7 @@ impl Paragraph {
             };
             let mut inner = std::mem::replace(self, Paragraph::empty());
             inner.vertical = false;
+            inner.invalidate_prepared();
             let selection = inner
                 .selection_vertical
                 .replace((bounds, inner.vertical_ccw));
@@ -47,6 +48,7 @@ impl Paragraph {
             });
             inner.selection_vertical = selection;
             inner.vertical = true;
+            inner.invalidate_prepared();
             *self = inner;
             return;
         }

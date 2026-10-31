@@ -14,58 +14,14 @@ impl Paragraph {
     /// through, never past `line_start`: `東&#x2066;京` keeps the opportunity
     /// before `京` (`text-align-justify-bidi-control`).
     pub(crate) fn justify_boundary(&self, line_start: usize, at: usize) -> bool {
-        if self.justify_chars == 0 || self.ruby_justify || self.ruby_unit {
-            return false;
-        }
-        if at <= line_start || at >= self.text.len() || !self.text.is_char_boundary(at) {
-            return false;
-        }
-        let Some(b) = self.text[at..].chars().next() else {
-            return false;
-        };
-        let Some(a) = self.text[line_start..at]
-            .chars()
-            .rev()
-            .find(|c| !invisible(*c))
-        else {
-            return false;
-        };
-        let plain =
-            |c: char| !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}');
-        // CSS Text 3 §1.4: justification units use extended grapheme
-        // clusters. SA-class dependent vowels are not standalone letters.
-        let unit_edge = unicode_segmentation::GraphemeCursor::new(at, self.text.len(), true)
-            .is_boundary(&self.text, 0)
-            .unwrap_or(false);
-        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) || !unit_edge {
-            return false;
-        }
-        if self.justify_chars == 1 {
-            justify_ideograph(a) || justify_ideograph(b)
-        } else {
-            !(cursive_script(a) && cursive_script(b))
-        }
+        self.prepared().opportunities.boundary(line_start, at)
     }
 
     /// Justification opportunities of the line `range` before `pos`: word
     /// separators left of it plus character boundaries up to and including
     /// `pos` (a piece starting at a boundary takes its expansion).
     pub(crate) fn justify_opps(&self, range: &std::ops::Range<usize>, pos: usize) -> usize {
-        let pos = pos.clamp(range.start, range.end);
-        let mut n = 0;
-        for (i, ch) in self.text[range.start..pos].char_indices() {
-            let at = range.start + i;
-            if word_separator(ch) && !self.ruby_justify {
-                n += 1;
-            }
-            if self.justify_boundary(range.start, at) {
-                n += 1;
-            }
-        }
-        if pos < range.end && self.justify_boundary(range.start, pos) {
-            n += 1;
-        }
-        n
+        self.prepared().opportunities.count(range, pos)
     }
 
     /// Подобрать кегль так, чтобы строки заполнили коробку (css-text-5).
@@ -139,13 +95,7 @@ impl Paragraph {
             return;
         }
         let key = self.fit_key();
-        let fitted = self
-            .measures
-            .fitted
-            .borrow()
-            .iter()
-            .find(|(hit, _)| *hit == key)
-            .map(|(_, k)| *k);
+        let fitted = self.measures.fitted.borrow_mut().get(&key).copied();
         if let Some(k) = fitted {
             self.scale_by(k);
         }
@@ -168,6 +118,7 @@ impl Paragraph {
 
     /// Помножить всё, что задаёт размер набора.
     pub(crate) fn scale_by(&mut self, k: f32) {
+        self.invalidate_prepared();
         self.font_size = px(f32::from(self.font_size) * k);
         // Заданная длиной `line-height` от подбора не зависит (css-text-5:
         // «line-height: 1.5em … are not affected by this scaling»); растёт
