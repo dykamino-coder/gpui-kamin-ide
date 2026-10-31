@@ -348,6 +348,9 @@ docs-only PR в этом workflow ограничивается scope, whitespace
 Независимый workflow `.github/workflows/pr-metadata.yml` проверяет заголовок и
 описание каждого PR в `main`, включая docs-only, job-ом
 `PR title and description` по §5. Перед merge оба checks должны быть зелёными.
+Metadata job также проверяет обязательное runtime evidence и release notes,
+включая ссылки на merged PR. Изменение title/body повторяет только этот job;
+code checks запускаются при изменении исходного кандидата, а не описания.
 Workflow использует
 только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
 публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
@@ -365,8 +368,9 @@ GUI acceptance)` параллельно выполняют компиляцию 
 как пользователь** и не проверяют CEF, мышь,
 клавиатуру, focus или восстановление extension-host. Их зелёный статус нельзя
 записывать как прохождение Windows runtime merge gate. `required quality gate`
-подтверждает только применимые автоматические jobs и формат обязательного
-runtime evidence, но не подлинность результата ручного сценария.
+подтверждает применимые автоматические jobs; формат обязательного runtime
+evidence проверяет `PR title and description`. Ни один из них не подтверждает
+подлинность результата ручного сценария.
 
 Проверки независимых компонентов и Docker dry-run выполняются параллельно:
 dry-run собирает image без registry login/push и проверяет `/health`. Для
@@ -382,9 +386,15 @@ installer из точного main commit. Только успешный gate э
 образом локальная сборка и PR artifact используются для приёмки, но никогда не
 подменяют production source.
 
-Тот же workflow запускается после trusted push в `main`, проверяет весь диапазон
-доставленных commit через `github.event.before` и поддерживает общий Cargo/npm
-cache основной ветки. PR-run может читать cache своей base branch, но не
+Тот же workflow запускается после trusted push в `main` и проверяет весь диапазон
+доставленных commit через `github.event.before`. Отдельный main-push workflow
+`cargo-cache.yml` прогревает и сохраняет Cargo cache с теми же профилями и ключами;
+quality gate и release workflow его не ждут. Устаревший cache producer можно
+отменить новым push без отмены exact quality run. Он измеряет bytes registry,
+git и target; incremental и debug symbols отключены как в quality jobs.
+`main-baseline.yml` читает только source cache registry/git: его отдельный
+checkout и профили не используют target quality job и не сохраняют его повторно.
+PR-run может читать cache своей base branch, но не
 публикует многогигабайтный Cargo cache в изолированный
 `refs/pull/*/merge`; это сохраняет ускорение между разными PR и не ослабляет
 полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может

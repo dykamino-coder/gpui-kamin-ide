@@ -54,11 +54,12 @@ impl Paragraph {
             }
             let own = (edge.background_color, edge.background_border);
             let pos = starts[idx];
-            let holders: Vec<u32> = self
-                .box_extents
-                .iter()
-                .filter(|b| b.1 <= pos && pos < b.2)
-                .map(|b| b.0)
+            let index = &self.prepared().box_index;
+            let holders: Vec<u32> = index
+                .extents
+                .overlapping(&(pos..pos + 1))
+                .into_iter()
+                .map(|i| self.box_extents[i].0)
                 .collect();
             let cut = if ghost {
                 true
@@ -66,9 +67,10 @@ impl Paragraph {
                 nb.is_some_and(|a| self.band_at(a) == Some(own))
             } else {
                 !nb.is_some_and(|a| {
-                    self.spacer_edges.iter().any(|&(p, id, _, _)| {
-                        p <= a && a < p + crate::text::inline::SPACER.len() && holders.contains(&id)
-                    })
+                    index
+                        .edges(a.saturating_sub(crate::text::inline::SPACER.len() - 1)..a + 1)
+                        .iter()
+                        .any(|&i| holders.contains(&self.spacer_edges[i].1))
                 })
             };
             if !cut {
@@ -115,9 +117,11 @@ impl Paragraph {
         // Edges of an rtl box sit on its visual sides even in an ltr line
         // (CSS 2.1 §8.6): logical order puts its start edge on the left.
         let edges = self
-            .spacer_edges
+            .prepared()
+            .box_index
+            .edges(range.clone())
             .iter()
-            .any(|e| range.contains(&e.0) && (rtl || e.3));
+            .any(|&i| rtl || self.spacer_edges[i].3);
         let needs = edges
             || self.text[range.clone()].chars().any(|c| {
                 matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
@@ -131,41 +135,12 @@ impl Paragraph {
         if !needs {
             return Vec::new();
         }
-        let mut text: String = self.text.to_string();
-        for &at in &self.spacers {
-            if text.get(at..at + 3) == Some("\u{feff}") {
-                text.replace_range(at..at + 3, "\u{fffc}");
-            }
-        }
-        let forced = if self.plaintext.is_some() && !rtl {
-            None
-        } else if rtl {
-            Some(unicode_bidi::Level::rtl())
-        } else {
-            Some(unicode_bidi::Level::ltr())
-        };
-        let info = unicode_bidi::BidiInfo::new(&text, forced);
-        let Some(para) = info
-            .paragraphs
-            .iter()
-            .find(|p| p.range.start <= range.start && range.start < p.range.end)
-        else {
+        let Some((level, runs)) = self.resolved_visual(range, true) else {
             return Vec::new();
         };
-        if para.level.is_rtl() != rtl {
+        if level.is_rtl() != rtl {
             return Vec::new();
         }
-        let (levels, visual) = info.visual_runs(para, range.clone());
-        let runs: Vec<(usize, usize, bool)> = visual
-            .into_iter()
-            .map(|r| {
-                (
-                    r.start,
-                    r.end,
-                    levels.get(r.start).is_some_and(|l| l.is_rtl()),
-                )
-            })
-            .collect();
         let mixed = if rtl {
             runs.iter().any(|r| !r.2)
         } else {

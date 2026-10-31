@@ -1,0 +1,187 @@
+# Independent of both the required gate and docker.yml's workflow_run trigger.
+name: trusted Cargo cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain*'
+      - '.cargo/**'
+      - 'crates/**'
+      - 'vendor/**'
+      - '*clippy.toml'
+      - '*rustfmt.toml'
+      - 'scripts/check_vendor_gpui.py'
+      - 'scripts/ci/cargo-cache-size.mjs'
+      - '.github/workflows/cargo-cache.yml'
+      - '.github/workflows/pr-checks.yml'
+
+# Obsolete warmers may stop; exact main quality/release runs never share this group.
+concurrency:
+  group: trusted-cargo-cache-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      workspace: ${{ steps.changes.outputs.workspace }}
+      standalone: ${{ steps.changes.outputs.standalone }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: changes
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$PUSH_BEFORE"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then base="$(git rev-parse HEAD^)"; fi
+          files="$RUNNER_TEMP/cache-files.txt"
+          git diff --name-only "$base...HEAD" > "$files"
+          # These cover the corresponding quality job inputs. Docs never warm targets.
+          for name in workspace standalone; do
+            case "$name" in
+              workspace) pattern='^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|(clippy|rustfmt)\.toml$)' ;;
+              standalone) pattern='^(vendor/(gpui|gpui-windows|gpui-base|gpui-component|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)' ;;
+            esac
+            if grep -Eq "$pattern|^\.github/workflows/(cargo-cache|pr-checks)\.yml$|^scripts/ci/cargo-cache-size\.mjs$" "$files"; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+  workspace:
+    name: Warm workspace Cargo cache
+    needs: scope
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.scope.outputs.workspace == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Restore previous trusted build
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-
+            windows-cargo-v2-
+
+      - name: Look up the baseline source cache
+        id: source-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: windows-cargo-inputs-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          lookup-only: true
+
+      - name: Warm the quality job's build products
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          cargo clippy --workspace --all-targets -j 4 -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p kamin-html --all-targets --features wpt-harness -j 4 -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p engine-bench --all-targets --features engine-bench -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --workspace --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Measure uncompressed cache bytes
+        run: node scripts/ci/cargo-cache-size.mjs target
+
+      - name: Save sources for the exact main baseline (no target directory)
+        if: success() && steps.source-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: windows-cargo-inputs-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Save trusted build outside the quality and release critical paths
+        if: success() && steps.build-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
+  standalone:
+    name: Warm standalone GPUI Cargo cache
+    needs: scope
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.scope.outputs.standalone == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Restore previous trusted build
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/vendor-gpui
+          key: windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-
+            windows-vendor-gpui-v1-
+
+      - name: Warm the quality job's build products
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python scripts/check_vendor_gpui.py --jobs 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Measure uncompressed cache bytes
+        run: node scripts/ci/cargo-cache-size.mjs target/vendor-gpui
+
+      - name: Save trusted build outside the quality and release critical paths
+        if: success() && steps.build-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/vendor-gpui
+          key: windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}

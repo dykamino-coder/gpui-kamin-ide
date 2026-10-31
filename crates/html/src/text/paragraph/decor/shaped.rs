@@ -21,15 +21,7 @@ impl Paragraph {
         if self.run_metrics.len() != self.runs.len() {
             return None;
         }
-        let mut acc = 0usize;
-        for (r, m) in self.runs.iter().zip(&self.run_metrics) {
-            let st = acc;
-            acc += r.len;
-            if at >= st && at < acc {
-                return Some(m.0);
-            }
-        }
-        None
+        self.run_at(at).map(|i| self.run_metrics[i].0)
     }
 }
 
@@ -148,7 +140,8 @@ impl Paragraph {
         let total = group.end.saturating_sub(group.start);
         let mut tally: Vec<(Pixels, usize)> = Vec::new();
         let mut shifted = 0usize;
-        for (r, v) in &self.shift_spans {
+        for i in self.prepared().shifts.overlapping(group) {
+            let (r, v) = &self.shift_spans[i];
             let n = r
                 .end
                 .min(group.end)
