@@ -30,19 +30,14 @@ impl Paragraph {
             return self.split_uncached(limit, window);
         }
         let key = self.split_key(limit);
-        if let Some(hit) = self.measures.splits.borrow().get(&key).cloned() {
+        if let Some(hit) = self.measures.splits.borrow_mut().get(&key).cloned() {
             return (*hit).clone();
         }
         let lines = self.split_uncached(limit, window);
-        {
-            let mut m = self.measures.splits.borrow_mut();
-            // Прямолинейный сброс при переполнении: страница с тысячами
-            // абзацев дороже промахов одного сброса.
-            if m.len() >= 2048 {
-                m.clear();
-            }
-            m.insert(key, std::rc::Rc::new(lines.clone()));
-        }
+        self.measures
+            .splits
+            .borrow_mut()
+            .insert(key, std::rc::Rc::new(lines.clone()));
         lines
     }
 }

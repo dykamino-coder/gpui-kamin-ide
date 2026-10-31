@@ -15,6 +15,13 @@ impl Paragraph {
     /// The plain horizontal path can apply all advances to the shaped line.
     /// Positioned pieces, tabs and bidi still use their visual placement path.
     pub(crate) fn joined_spacing(&self) -> bool {
+        *self
+            .prepared()
+            .joined
+            .get_or_init(|| self.joined_spacing_uncached())
+    }
+
+    fn joined_spacing_uncached(&self) -> bool {
         (self.letter_spacing != px(0.)
             || self.word_spacing != px(0.)
             || self
@@ -54,18 +61,31 @@ impl Paragraph {
         };
         let at = start + last;
         let mut extra = self
-            .letter_spans
-            .iter()
-            .find(|(r, _)| r.contains(&at))
-            .map_or(self.letter_spacing, |(_, v)| *v);
+            .prepared()
+            .letters
+            .first(at)
+            .map_or(self.letter_spacing, |i| self.letter_spans[i].1);
         if unit.chars().next().is_some_and(word_separator) {
             extra += self
-                .word_spans
-                .iter()
-                .find(|(r, _)| r.contains(&start))
-                .map_or(self.word_spacing, |(_, v)| *v);
+                .prepared()
+                .words
+                .first(start)
+                .map_or(self.word_spacing, |i| self.word_spans[i].1);
         }
         extra
+    }
+
+    pub(super) fn spacing_prefix(&self, start: usize, end: usize) -> Vec<(usize, Pixels)> {
+        let mut prefix = vec![(start, px(0.))];
+        let mut extra = px(0.);
+        for (off, unit) in self.text[start..]
+            .grapheme_indices(true)
+            .take_while(|(off, unit)| start + off + unit.len() <= end)
+        {
+            extra += self.unit_spacing(start + off, unit);
+            prefix.push((start + off + unit.len(), extra));
+        }
+        prefix
     }
 
     pub(crate) fn spacing_before(&self, start: usize, end: usize) -> Pixels {
@@ -95,14 +115,17 @@ impl Paragraph {
                 byte += ch.len_utf8();
             }
         }
+        let prefix = self.spacing_prefix(range.start, range.end);
         let old: &LineLayout = shaped;
         let mut runs = old.runs.clone();
         for glyph in runs.iter_mut().flat_map(|r| &mut r.glyphs) {
-            if let Some((_, at)) = map.iter().rev().find(|(i, _)| *i <= glyph.index) {
-                glyph.position.x += self.spacing_before(range.start, *at);
+            let k = map.partition_point(|(i, _)| *i <= glyph.index);
+            if let Some((_, at)) = k.checked_sub(1).and_then(|k| map.get(k)) {
+                let k = prefix.partition_point(|(end, _)| *end <= *at) - 1;
+                glyph.position.x += prefix[k].1;
             }
         }
-        let extra = self.spacing_before(range.start, range.end);
+        let extra = prefix.last().map_or(px(0.), |p| p.1);
         **shaped = Arc::new(LineLayout {
             font_size: old.font_size,
             width: old.width + extra,
@@ -156,6 +179,7 @@ mod tests {
         let mut p = paragraph("ab");
         let joined = p.measure_key();
         p.align = Align::Justify;
+        p.invalidate_prepared();
         assert_ne!(joined, p.measure_key());
     }
 }

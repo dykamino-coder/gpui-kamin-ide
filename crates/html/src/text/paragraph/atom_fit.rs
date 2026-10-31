@@ -140,6 +140,7 @@ impl Paragraph {
 
     /// Put fitted atom sizes into the spacer advances and atom boxes.
     pub(super) fn apply_atom_fit(&mut self, fitted: &Fitted) {
+        self.invalidate_prepared();
         let ats: Vec<(usize, usize)> = {
             let fit = self.atom_fit.borrow();
             fit.atoms.iter().map(|a| (a.k, a.at)).collect()

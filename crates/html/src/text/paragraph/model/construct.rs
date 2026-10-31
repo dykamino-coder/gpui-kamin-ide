@@ -18,6 +18,7 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            prepared: Default::default(),
             anchor_values: None,
             paint_context: Default::default(),
             inline_measure: None,

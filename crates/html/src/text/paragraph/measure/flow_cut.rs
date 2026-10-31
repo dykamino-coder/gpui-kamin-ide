@@ -144,6 +144,8 @@ mod tests {
         assert_eq!(p.flow_cut(0), (100., 0.));
         let key = p.split_key(Some(px(250.)));
         p.atom_boxes[0].h = 90.;
+        // Прямая смена метрик начинает новую ревизию, как и `lay_atoms`.
+        p.invalidate_prepared();
         assert_ne!(p.split_key(Some(px(250.))), key);
     }
 }

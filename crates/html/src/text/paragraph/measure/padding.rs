@@ -18,7 +18,6 @@ impl Paragraph {
     pub(crate) fn line_padding(&self) -> Vec<(f32, f32)> {
         self.fragment_padding(self.padding_for(&self.lines))
     }
-
     pub(super) fn padding_for(&self, lines: &[Line]) -> Vec<(f32, f32)> {
         if self.shift_spans.is_empty()
             && self.lh_spans.is_empty()
@@ -56,20 +55,27 @@ impl Paragraph {
                 // Кусок со своей `line-height` растит строку симметрично:
                 // полулидинг его коробки отступа ложится сверху и снизу
                 // (§10.8). Блочное значение уже учтено высотой строки.
-                for (range, lh) in self.lh_spans.iter().filter(|_| !boxes) {
-                    if range.end <= line.range.start || range.start >= line.range.end {
-                        continue;
-                    }
+                let prepared = self.prepared();
+                for i in prepared
+                    .line_heights
+                    .overlapping(&line.range)
+                    .into_iter()
+                    .filter(|_| !boxes)
+                {
+                    let (_, lh) = &self.lh_spans[i];
                     let half = (f32::from(*lh) - f32::from(self.line_height)) / 2.0;
                     if half > 0.0 {
                         above = above.max(half);
                         below = below.max(half);
                     }
                 }
-                for (range, dy) in self.shift_spans.iter().filter(|_| !boxes) {
-                    if range.end <= line.range.start || range.start >= line.range.end {
-                        continue;
-                    }
+                for i in prepared
+                    .shifts
+                    .overlapping(&line.range)
+                    .into_iter()
+                    .filter(|_| !boxes)
+                {
+                    let (_, dy) = &self.shift_spans[i];
                     // Ось сдвига смотрит вниз: отрицательное поднимает знак
                     // над строкой, положительное опускает.
                     let v = f32::from(*dy);
@@ -81,9 +87,9 @@ impl Paragraph {
                 // коробки до низа самой низкой). `top`/`bottom` решаются
                 // ПОСЛЕ остальных: они равняются по уже собранной строке и
                 // растят её, только если сами выше (§10.8.1).
-                let inside = |at: usize| at >= line.range.start && at < line.range.end;
+                let atoms = prepared.atoms.overlapping(&line.range);
                 let a = self.line_base(&line.range);
-                for b in self.atom_boxes.iter().filter(|b| inside(b.at)) {
+                for b in atoms.iter().map(|&i| &self.atom_boxes[i]) {
                     if matches!(b.align, AtomAlign::Top | AtomAlign::Bottom) {
                         continue;
                     }
@@ -111,26 +117,21 @@ impl Paragraph {
                     under,
                     size: h,
                     ..
-                } in &self.emph_spans
+                } in prepared
+                    .emphases
+                    .overlapping(&line.range)
+                    .into_iter()
+                    .map(|i| &self.emph_spans[i])
                 {
                     // Ruby's parent line accounts for the complete annotation
                     // layer; growing the technical base paragraph counts it twice.
                     if ruby.is_some() {
                         continue;
                     }
-                    if range.end <= line.range.start || range.start >= line.range.end {
-                        continue;
-                    }
-                    let mut at = 0usize;
                     let metrics = self
-                        .runs
-                        .iter()
-                        .zip(&self.run_metrics)
-                        .find_map(|(run, m)| {
-                            let s = at;
-                            at += run.len;
-                            (range.start >= s && range.start < at).then_some(*m)
-                        });
+                        .run_at(range.start)
+                        .and_then(|i| self.run_metrics.get(i))
+                        .copied();
                     let Some((ra, rd)) = metrics else { continue };
                     // Срез текстовой коробки знак не растит так же, как
                     // аннотацию (`text-box-trim-ruby-start-002`).
@@ -147,21 +148,20 @@ impl Paragraph {
                 }
                 // Прижатые к краю — атомы и куски текста — после всех
                 // остальных: строка растёт, только если такой кусок выше.
-                let edges = self
-                    .atom_boxes
+                let edges = atoms
                     .iter()
-                    .filter(|b| inside(b.at))
+                    .map(|&i| &self.atom_boxes[i])
                     .filter_map(|b| match b.align {
                         AtomAlign::Top => Some((true, b.h)),
                         AtomAlign::Bottom => Some((false, b.h)),
                         _ => None,
                     })
                     .chain(
-                        self.edge_spans
-                            .iter()
-                            .filter(|(r, _, _)| {
-                                r.start < line.range.end && r.end > line.range.start
-                            })
+                        prepared
+                            .edges
+                            .overlapping(&line.range)
+                            .into_iter()
+                            .map(|i| &self.edge_spans[i])
                             .map(|(_, top, h)| (*top, *h)),
                     );
                 for (top, h) in edges {

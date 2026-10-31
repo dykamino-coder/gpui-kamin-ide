@@ -28,7 +28,7 @@ impl Paragraph {
         };
         let segs = self.measure(window);
         if self.run_metrics.len() != self.runs.len() {
-            self.run_metrics = self.measure_runs(window);
+            self.refresh_run_metrics(window);
         }
         let count = self.lines.len();
         // Надбавки строк от сдвинутых кусков: шаг до следующей строки и

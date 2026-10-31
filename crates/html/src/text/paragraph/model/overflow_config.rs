@@ -54,6 +54,7 @@ impl Paragraph {
 impl Paragraph {
     /// Отступ первой строки (`text-indent`).
     pub fn indent(mut self, indent: Indent) -> Self {
+        self.invalidate_prepared();
         self.indent = indent;
         self
     }
@@ -62,6 +63,7 @@ impl Paragraph {
 impl Paragraph {
     /// `text-justify` mode (see `justify_chars`).
     pub fn justify_chars(mut self, mode: u8) -> Self {
+        self.invalidate_prepared();
         self.justify_chars = mode;
         self
     }
@@ -70,6 +72,7 @@ impl Paragraph {
 impl Paragraph {
     /// `line-clamp`: сколько строк оставить.
     pub fn line_clamp(mut self, lines: Option<usize>) -> Self {
+        self.invalidate_prepared();
         self.clamp = lines;
         self
     }
@@ -79,6 +82,7 @@ impl Paragraph {
     /// Ставить знак обрыва и тогда, когда абзац влез целиком: точка среза
     /// стоит сразу за ним (авто-режим, css-overflow-4 §5.3).
     pub fn clamp_marked(mut self, on: bool) -> Self {
+        self.invalidate_prepared();
         self.clamp_force = on;
         self
     }
@@ -88,6 +92,7 @@ impl Paragraph {
     /// `text-overflow: ellipsis` контейнера: строка, не влезшая в колонку
     /// (nowrap/pre — переносов нет), усекается и получает многоточие.
     pub fn text_ellipsis(mut self, on: bool) -> Self {
+        self.invalidate_prepared();
         self.text_overflow = on;
         self
     }
@@ -102,6 +107,7 @@ impl Paragraph {
         font: Option<gpui::Font>,
         size: Option<Pixels>,
     ) -> Self {
+        self.invalidate_prepared();
         self.overflow_marker = mark;
         self.marker_font = font;
         self.marker_size = size;
@@ -112,6 +118,7 @@ impl Paragraph {
 impl Paragraph {
     /// Метка абзаца в клэмп-контейнере (см. поле `clamp_tag`).
     pub fn clamp_tag(mut self, tag: Option<(u64, u32)>) -> Self {
+        self.invalidate_prepared();
         self.clamp_tag = tag;
         self
     }
@@ -120,6 +127,7 @@ impl Paragraph {
 impl Paragraph {
     /// `block-ellipsis` контейнера: знак строки обрыва `line-clamp`.
     pub fn clamp_mark(mut self, mark: Option<String>) -> Self {
+        self.invalidate_prepared();
         self.clamp_marker = mark;
         self
     }
@@ -128,6 +136,7 @@ impl Paragraph {
 impl Paragraph {
     /// Цвет знака обрыва — цвет блока.
     pub fn marker_color(mut self, color: Option<Hsla>) -> Self {
+        self.invalidate_prepared();
         self.marker_color = color;
         self
     }
@@ -136,12 +145,14 @@ impl Paragraph {
 impl Paragraph {
     /// Maximum consecutive lines ending in hyphenation.
     pub fn hyphen_limit_lines(mut self, limit: Option<usize>) -> Self {
+        self.invalidate_prepared();
         self.hyphen_limit_lines = limit.unwrap_or(usize::MAX);
         self
     }
 
     /// Visible mark used at a hyphenation break.
     pub fn hyphen_char(mut self, mark: Option<String>) -> Self {
+        self.invalidate_prepared();
         if let Some(mark) = mark {
             self.hyphen = SharedString::from(mark);
         }
@@ -152,6 +163,7 @@ impl Paragraph {
 impl Paragraph {
     /// Шаг позиций табуляции.
     pub fn tab_stops(mut self, step: tabs::TabStops) -> Self {
+        self.invalidate_prepared();
         self.tab_stop = step;
         self
     }
@@ -163,6 +175,7 @@ impl Paragraph {
         mut self,
         overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>,
     ) -> Self {
+        self.invalidate_prepared();
         self.overlays = overlays;
         self
     }
@@ -171,6 +184,7 @@ impl Paragraph {
 impl Paragraph {
     /// `text-fit`: подбирать ли кегль под ширину коробки.
     pub fn text_fit(mut self, fit: Option<crate::style::computed::TextFit>) -> Self {
+        self.invalidate_prepared();
         self.fit = fit;
         self
     }
@@ -179,6 +193,7 @@ impl Paragraph {
 impl Paragraph {
     /// Какие части абзаца подбор кегля вправе масштабировать.
     pub fn fit_parts(mut self, spacing_scalable: bool, line_height_fixed: bool) -> Self {
+        self.invalidate_prepared();
         self.fit_spacing_scalable = spacing_scalable;
         self.fit_line_height_fixed = line_height_fixed;
         self

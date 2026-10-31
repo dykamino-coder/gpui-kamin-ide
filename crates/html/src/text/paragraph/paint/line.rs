@@ -6,8 +6,9 @@
 //! после глифов (css-text-decor-3 §2.1), знаки акцента, и знак обрыва у
 //! обрезанного края своим набором в шрифте блока.
 
+use crate::text::paragraph::prepared::paint_runs::PaintRuns;
 use crate::text::paragraph::*;
-use gpui::{App, Pixels, Point, TextRun, Window, point, px};
+use gpui::{App, Pixels, Point, Window, point, px};
 
 impl Paragraph {
     /// Набрать кусок строки и поставить его прогоны в ВИДИМОМ порядке.
@@ -21,7 +22,7 @@ impl Paragraph {
     pub(crate) fn paint_line(
         &self,
         range: &std::ops::Range<usize>,
-        runs: &[TextRun],
+        runs: &PaintRuns,
         at: Point<Pixels>,
         suffix: &str,
         window: &mut Window,
@@ -33,30 +34,9 @@ impl Paragraph {
         if range.start >= range.end || range.end > self.text.len() {
             return self.paint_empty_line(range, at, suffix, window, cx);
         }
-        let base = if self.wrap.rtl {
-            unicode_bidi::Level::rtl()
-        } else {
-            unicode_bidi::Level::ltr()
-        };
-        // `unicode-bidi: plaintext`: базу КАЖДОГО абзаца (между жёсткими
-        // разрывами) выбирает первый сильный знак (UAX9 P2/P3) — разбор без
-        // навязанного уровня делает ровно это. Выключка уже решается так же
-        // построчно (см. own_align выше).
-        let forced = if self.plaintext.is_some() {
-            None
-        } else {
-            Some(base)
-        };
-        let info = unicode_bidi::BidiInfo::new(&self.text, forced);
-        let Some(para) = info
-            .paragraphs
-            .iter()
-            .find(|p| p.range.start <= range.start && range.start < p.range.end)
-            .or_else(|| info.paragraphs.first())
-        else {
+        let Some((base, visual)) = self.resolved_visual(range, false) else {
             return (None, false);
         };
-        let (levels, visual) = info.visual_runs(para, range.clone());
         let mut x = at.x;
         // Базовая линия набранного текста строки (от верха строки): знак
         // обрыва, набранный ОТДЕЛЬНО, садится на неё (css-overflow-4 §5:
@@ -70,26 +50,25 @@ impl Paragraph {
         // sits on the line's baseline instead of moving the run's glyphs to
         // a baseline of its own (`text-wrap-balance-line-clamp-002`: a 4rem
         // ellipsis with `line-height: 1rem` dropped the clamped line out).
-        let common_base = if visual.len() > 1
-            || !suffix.is_empty()
-            || runs
-                .iter()
-                .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font))
-        {
-            self.base_of(range).map(px)
-        } else {
-            None
-        };
+        let common_base =
+            if visual.len() > 1 || !suffix.is_empty() || self.prepared().has_metric_overrides {
+                self.base_of(range).map(px)
+            } else {
+                None
+            };
         let mut line_base: Option<Pixels> = common_base;
         let mut line_exact = false;
         let block_mark = self.is_block_mark(suffix);
-        let marker_prefix = block_mark && para.level.is_rtl();
+        let marker_prefix = block_mark && base.is_rtl();
         if marker_prefix {
             x += self.suffix_width(suffix, range.start, window);
         }
-        let pieces = visual.clone();
-        for run in visual.into_iter() {
-            let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
+        let neighbours = self
+            .prepared()
+            .has_bands
+            .then(|| prepared::visual_order::VisualOrder::new(self, visual.iter().copied()));
+        for (start, end, rtl) in visual {
+            let run = start..end;
             // Знак обрыва — у обрезанного КРАЯ: обычно это логический
             // конец строки; при письме справа налево контейнер режет левый
             // край, то есть логическое НАЧАЛО — знак идёт префиксом
@@ -114,28 +93,14 @@ impl Paragraph {
                 (if run.end == range.end { suffix } else { "" }, false)
             };
             // Band sides at this piece's visual edges (see `cut_piece_sides`).
-            let piece_runs;
-            let runs: &[TextRun] = if self.runs.iter().any(|r| r.background_color.is_some()) {
-                let vis = self.visual_chars(pieces.iter().map(|r| {
-                    (
-                        r.start,
-                        r.end,
-                        levels.get(r.start).is_some_and(|l| l.is_rtl()),
-                    )
-                }));
-                let (left, right) = visual_neighbours(&self.text, &vis, &run);
-                let mut mid = slice_runs(runs, &run);
-                self.cut_piece_sides(&mut mid, &run, rtl, left, right);
-                let total: usize = runs.iter().map(|r| r.len).sum();
-                let mut all = slice_runs(runs, &(0..run.start));
-                all.extend(mid);
-                all.extend(slice_runs(runs, &(run.end..total)));
-                piece_runs = all;
-                &piece_runs
-            } else {
-                runs
-            };
-            let Some(shaped) = self.shape_with_mark(&run, runs, rtl, tail, at_start, window) else {
+            let mut piece = runs.slice(&run);
+            if let Some(neighbours) = &neighbours {
+                let (left, right) = neighbours.neighbours(&run);
+                self.cut_piece_sides(&mut piece, &run, rtl, left, right);
+            }
+            let Some(shaped) =
+                self.shape_piece(&run, piece, rtl, if at_start { "" } else { tail }, window)
+            else {
                 continue;
             };
             let width = shaped.width;
