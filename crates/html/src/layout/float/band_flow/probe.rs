@@ -55,6 +55,7 @@ pub(super) fn probe_of(
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let vert = p.vert;
+    crate::work::add!(FloatChildBuilds, 1);
     let mut el = frame(
         kind,
         avail,
@@ -70,7 +71,8 @@ pub(super) fn probe_of(
     } else {
         size(room, AvailableSpace::MaxContent)
     };
-    el.layout_as_root(space, p.window, p.cx);
+    crate::work::add!(FloatChildLayouts, 1);
+    let root_size = el.layout_as_root_unrounded(space, p.window, p.cx);
     // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
     let (w, h) = unrounded(&tap, p.window);
     p.last_geometry = match (&p.fragment, tap.get()) {
@@ -93,6 +95,9 @@ pub(super) fn probe_of(
         (Some(scope), Some(id)) => scope.finish(id, p.window),
         _ => Default::default(),
     };
+    p.last_prepared = p.engine.as_ref().map_or_else(Default::default, |engine| {
+        super::prepared::Prepared::new(el, engine.clone(), space, root_size)
+    });
     if vert { (h, w) } else { (w, h) }
 }
 
@@ -111,12 +116,16 @@ pub(super) fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
 pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
+    if let Some(size) = kid.intrinsic.get() {
+        return size;
+    }
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
         flow.rewind();
         fragment.probes = flow.clone();
     }
     let size = intrinsic_of(&kid.build, p);
+    kid.intrinsic.set(Some(size));
     if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
         fragment.probes = old;
     }
@@ -131,13 +140,16 @@ pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let measure = p.vert.then(crate::text::vertical::InlineMeasure::default);
+    crate::work::add!(FloatChildBuilds, 1);
     let mut el = Tap {
         inner: build(0.0, 0.0, None, None, measure.clone()),
         id: tap.clone(),
     }
     .hooked();
+    let root = el.request_layout(p.window, p.cx);
     let vert = p.vert;
-    let mut w = |a: AvailableSpace, p: &mut Probe| {
+    let w = |a: AvailableSpace, p: &mut Probe| {
+        crate::work::add!(FloatIntrinsicQueries, 1);
         if vert {
             // Повёрнутый текст свою длину высотой не заявляет (растягивается
             // окном) — берём её у самого текста через сборщик
@@ -145,13 +157,26 @@ pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
             if let Some(measure) = &measure {
                 measure.reset();
             }
-            el.layout_as_root(size(AvailableSpace::MaxContent, a), p.window, p.cx);
+            let size = p.window.measure_layout_size(
+                root,
+                size(AvailableSpace::MaxContent, a),
+                gpui::Axis::Vertical,
+                p.cx,
+            );
             let text = measure.as_ref().map_or(0.0, |measure| measure.extent());
-            let laid = unrounded(&tap, p.window).1;
+            let laid = f32::from(size.height);
             if text > 0.0 { text.min(laid) } else { laid }
         } else {
-            el.layout_as_root(size(a, AvailableSpace::MaxContent), p.window, p.cx);
-            unrounded(&tap, p.window).0
+            f32::from(
+                p.window
+                    .measure_layout_size(
+                        root,
+                        size(a, AvailableSpace::MaxContent),
+                        gpui::Axis::Horizontal,
+                        p.cx,
+                    )
+                    .width,
+            )
         }
     };
     let mn = w(AvailableSpace::MinContent, p);

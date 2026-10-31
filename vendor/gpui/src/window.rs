@@ -90,6 +90,8 @@ mod render_context;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
+mod retained_layout;
+pub use retained_layout::RetainedLayout;
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;
@@ -6109,27 +6111,6 @@ impl Window {
             .as_mut()
             .unwrap()
             .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
-    }
-
-    /// Compute the layout for the given id within the given available space.
-    /// This method is called for its side effect, typically by the framework prior to painting.
-    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
-    ///
-    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
-    /// движок вынут из окна (`compute_layout` ниже держит его `take()`-нутым), и
-    /// `layout_as_root` в нём паникует на `unwrap`. Хосту полос обтекания
-    /// (`crates/html/src/band_flow.rs`) размер детей нужен именно там: высота
-    /// контекста с флоатами зависит от ширины содержащего блока, а её знает
-    /// только замер. Здесь на время `f` в окно кладётся свежий движок, после —
-    /// возвращается прежний (`None` внутри замера, основной вне его). Узлы
-    /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
-    /// в основное дерево не годится — его надо строить заново (так делает и
-    /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
-    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
-        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
-        let r = f(self);
-        self.layout_engine = outer;
-        r
     }
 
     /// KaminIDE patch: размер узла без округления к физической точке (см.

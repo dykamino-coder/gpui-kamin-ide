@@ -41,15 +41,18 @@ pub(super) fn holders(
 }
 
 fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
-    let el = frame(
-        kid.kind,
-        s.avail,
-        (kid.build)(at.cb, s.avail, s.shapes.clone(), s.h, None),
-        Rc::new(Cell::new(None)),
-        at.vert.is_some(),
-        at.paint,
-        at.build,
-    );
+    let el = s.prepared.take().unwrap_or_else(|| {
+        crate::work::add!(FloatChildBuilds, 1);
+        frame(
+            kid.kind,
+            s.avail,
+            (kid.build)(at.cb, s.avail, s.shapes.clone(), s.h, None),
+            Rc::new(Cell::new(None)),
+            at.vert.is_some(),
+            at.paint,
+            at.build,
+        )
+    });
     // Логическое место → физическое (Blink
     // `writing_mode_converter.cc:80-110`): line-left is the bottom
     // edge in sideways-lr, so subtract the measured inline extent.

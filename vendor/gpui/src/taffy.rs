@@ -6,6 +6,7 @@ mod flex_layout;
 pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
 mod alignment_adapter;
 mod measurement;
+mod intrinsic;
 mod line_baselines;
 // KaminIDE patch: read the first actual content baseline from completed layout.
 mod content_line;

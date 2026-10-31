@@ -1322,6 +1322,32 @@ impl<NodeContext> TaffyTree<NodeContext> {
         Ok(())
     }
 
+    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
+    pub fn compute_size_with_measure<MeasureFunction>(
+        &mut self,
+        node_id: NodeId,
+        available_space: Size<AvailableSpace>,
+        axis: crate::RequestedAxis,
+        measure_function: MeasureFunction,
+    ) -> LayoutOutput
+    where
+        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+    {
+        #[cfg(feature = "std")]
+        let _calc = self.calc_scope();
+        let mut view = TaffyView { taffy: self, measure_function };
+        view.compute_child_layout(node_id, LayoutInput {
+            run_mode: crate::RunMode::ComputeSize,
+            sizing_mode: crate::SizingMode::InherentSize,
+            axis,
+            known_dimensions: Size::NONE,
+            known_dimensions_are_definite: Size { width: false, height: false },
+            parent_size: available_space.into_options(),
+            available_space,
+            vertical_margins_are_collapsible: crate::geometry::Line::FALSE,
+        }, #[cfg(feature = "block_layout")] None)
+    }
+
     /// Updates the stored layout of the provided `node` and its children
     pub fn compute_layout(&mut self, node: NodeId, available_space: Size<AvailableSpace>) -> Result<(), TaffyError> {
         self.compute_layout_with_measure(node, available_space, |inputs, _, _, style| {
@@ -1369,6 +1395,34 @@ mod tests {
                 known_dimensions.unwrap_or(node_context.cloned().unwrap_or(Size::ZERO))
             },
         )
+    }
+
+    #[test]
+    fn intrinsic_axis_query_preserves_final_geometry_and_cache_purpose() {
+        let mut tree = TaffyTree::<()>::new();
+        let root = tree.new_leaf(Style::default()).unwrap();
+        let mut measure = |input: LayoutInput, _: NodeId, _: Option<&mut ()>, style: &Style| {
+            compute_leaf_layout(input, style, |_, _| 0.0, |known, available| Size {
+                width: known.width.unwrap_or(match available.width {
+                    AvailableSpace::MinContent => 20.0,
+                    _ => 60.0,
+                }),
+                height: if input.axis == crate::RequestedAxis::Horizontal { 0.0 } else { 10.0 },
+            })
+        };
+        let max = Size { width: AvailableSpace::MaxContent, height: AvailableSpace::MaxContent };
+        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
+        let final_layout = *tree.layout(root).unwrap();
+        let intrinsic = tree.compute_size_with_measure(
+            root,
+            Size { width: AvailableSpace::MinContent, ..max },
+            crate::RequestedAxis::Horizontal,
+            &mut measure,
+        );
+        assert_eq!(intrinsic.size.width, 20.0);
+        assert_eq!(*tree.layout(root).unwrap(), final_layout);
+        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
+        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
     }
 
     #[test]

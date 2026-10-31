@@ -186,6 +186,7 @@ pub(crate) fn band_kids(
                 }) as crate::layout::float::band_flow::ShapeOf
             });
         kids.push(Kid {
+            intrinsic: Default::default(),
             flow: own_flow,
             watched: opts.frag.watch.clone(),
             flow_key: idx + 1,

@@ -34,13 +34,19 @@ pub(super) fn publish(output: &RefCell<MeasuredClamp>, plan: &Plan, vert: Option
     *output.borrow_mut() = out;
 }
 
-pub(super) fn nest(kid: &Kid, cb: f32, avail: f32, h: f32, p: &mut Probe) -> MeasuredClamp {
+pub(super) fn nest(
+    kid: &Kid,
+    cb: f32,
+    avail: f32,
+    h: f32,
+    p: &mut Probe,
+) -> (MeasuredClamp, super::prepared::Prepared) {
     if p.clamp.is_none() {
-        return MeasuredClamp::default();
+        return Default::default();
     }
     let build = kid.build.clone();
     let build: super::Build =
         Rc::new(move |cb, avail, shapes, _, inline| build(cb, avail, shapes, Some(h), inline));
     super::probe_of(kid.kind, &build, cb, avail, None, None, p);
-    p.last_clamp.clone()
+    (p.last_clamp.clone(), p.last_prepared.clone())
 }
