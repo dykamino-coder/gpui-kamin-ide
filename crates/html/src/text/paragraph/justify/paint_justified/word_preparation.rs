@@ -138,6 +138,7 @@ mod tests {
             .iter()
             .map(|word| (word.range.clone(), word.spaces_before))
             .collect();
-        assert_eq!(pieces, vec![(0..1, 0), (2..2, 1), (2..6, 1)]);
+        // Пробелы остаются у пустого куска: трекинг-разрез сбрасывает счётчик.
+        assert_eq!(pieces, vec![(0..1, 0), (2..2, 1), (2..6, 0)]);
     }
 }
