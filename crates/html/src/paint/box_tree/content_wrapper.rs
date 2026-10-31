@@ -52,8 +52,8 @@ pub(crate) fn for_element(
     }
 }
 
-// CSS Sizing 3 §3.2: decide whether an intrinsic axis needs a wrapper
-// before constructing its item box style.
+// CSS Sizing 3 §3.2: сначала проверяем необходимость обёртки по осям,
+// чтобы не строить стиль её элемента для обычного размера.
 fn wrapper_tracks(c: &Computed) -> Option<(Option<gpui::GridTrack>, Option<gpui::GridTrack>)> {
     let track = |l: Option<Len>| match l {
         Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
