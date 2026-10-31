@@ -6,7 +6,9 @@
 //! общий для записи раскладки и её читателя.
 
 use super::anon::{RowCarry, collect_rows, fixup_table_children};
-use super::setup::{row_span_in_group, rows_left_and_cols, table_rows_fixed};
+use super::setup::table_rows_fixed;
+use super::slot_grid::rows_left;
+use super::spans::row_span_in_group;
 use crate::dom::{Element, Node};
 
 /// Ряд таблицы в порядке дорожек сетки.
@@ -40,7 +42,7 @@ pub(crate) fn grid_rows<R>(e: &Element, f: impl FnOnce(&[GridRow<'_>]) -> R) -> 
     let (head, foot) = (first_of(0), first_of(2));
     let mut rows = Vec::new();
     collect_rows(&fixed, Some(e), RowCarry::default(), &mut rows);
-    let (left, _) = rows_left_and_cols(&rows);
+    let left = rows_left(&rows);
     // Секция — группа рядов или ряд прямо в таблице со своей ролью.
     let in_section = |r: &super::anon::TableRow<'_>, s: Option<*const Element>| {
         s.is_some_and(|s| {

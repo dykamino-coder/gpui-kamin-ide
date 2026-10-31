@@ -122,6 +122,9 @@ pub struct Computed {
     /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
     /// 8 и 9 `independent-formatting-context.html`.
     pub container_type: ContainerType,
+    /// Собственные значения CSS до объединения обязательных видов обособления.
+    pub contain_value: super::Containment,
+    pub content_visibility: super::ContentVisibility,
     /// Внутренний SVG использует SVG layout, без главной CSS-коробки.
     /// Только внешний svg может быть size query container (css-contain-2 §2).
     pub svg_no_css_box: bool,

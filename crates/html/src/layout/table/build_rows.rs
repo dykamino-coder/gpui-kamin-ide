@@ -58,13 +58,12 @@ pub(super) async fn table_rows_with_bands(
     // Не подавать ряды в обратном порядке для vertical-rl (ряды-колонки от
     // правого края): без обратных охватов rowspan (сетка умеет спан только
     // вперёд) итог хуже. Возвращаться с ЯВНОЙ расстановкой клеток.
-    let row_ix = 0i16;
+    let row_ix = 0usize;
     // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
     // номер колонки считался по порядку детей ряда и съезжал — рамки,
     // схлопнутые колонки и пробы фона приписывались не тем колонкам.
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
-    let occupied: Vec<u16> = vec![0; geom.cols as usize];
     let group_refs: std::collections::HashMap<u64, crate::layout::build_contracts::RefBox> =
         std::collections::HashMap::new();
     layers.group_of = group_of;
@@ -72,7 +71,6 @@ pub(super) async fn table_rows_with_bands(
     let mut cursor = RowCursor {
         row_ix,
         col_ix: 0,
-        occupied,
         group_refs,
         group_bands: Default::default(),
     };

@@ -1,7 +1,7 @@
 //! Замер ширин колонок по ячейкам (min/max-content, проценты, охваты).
 
-use super::{is_cell, row_span_in_group};
-use crate::dom::{Element, Node};
+use super::slot_grid::TableGrid;
+use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -9,39 +9,18 @@ use crate::style::values::value::Len;
 pub(super) fn measure_col_widths(
     e: &Element,
     inherited: &Computed,
-    rows_left: &[usize],
-    row_elements: &Vec<&Element>,
+    grid: &TableGrid<'_>,
     col_widths: &mut [(Option<f32>, Option<f32>)],
     table_font: f32,
     table_family: String,
-    mut busy: Vec<u16>,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     vcx: crate::values::ValueCx<'_>,
 ) {
-    for (ri, row) in row_elements.iter().enumerate() {
-        let mut ix = 0usize;
-        for slot in busy.iter_mut() {
-            *slot = slot.saturating_sub(1);
-        }
-        for c in &row.children {
-            let Node::Element(cell) = c else { continue };
-            if !is_cell(cell) {
-                continue;
-            }
-            while ix < busy.len() && busy[ix] > 0 {
-                ix += 1;
-            }
-            let span = cell
-                .attr("colspan")
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(1)
-                .max(1);
-            // Занятость колонок — по УРЕЗАННОМУ охвату (см. `rows_left`).
-            let rspan = row_span_in_group(cell, rows_left.get(ri).copied().unwrap_or(1))
-                .min(usize::from(u16::MAX)) as u16;
-            for c2 in ix..(ix + span).min(busy.len()) {
-                busy[c2] = rspan;
-            }
+    for row in &grid.rows {
+        for slot in &row.cells {
+            let cell = slot.element;
+            let ix = slot.column;
+            let span = usize::from(slot.colspan);
             if span == 1 && ix < col_widths.len() {
                 // Дорожку задаёт размер ячейки вдоль ИНЛАЙН-ОСИ ТАБЛИЦЫ.
                 // Вертикальная таблица: ось вертикальна — дорожка из ВЫСОТЫ
@@ -133,7 +112,7 @@ pub(super) fn measure_col_widths(
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
                             cell.style.used().font_size,
-                            row.style.used().font_size.or(inherited.font_size),
+                            row.element.style.used().font_size.or(inherited.font_size),
                             table_font,
                         );
                         let family = cell
@@ -152,7 +131,6 @@ pub(super) fn measure_col_widths(
                     _ => {}
                 }
             }
-            ix += span;
         }
     }
 }
@@ -180,6 +158,8 @@ pub(super) fn cell_font_px(own: Option<Len>, parent: Option<Len>, table_font: f3
 mod tests {
     use super::*;
     use crate::document::state::DocState;
+    use crate::dom::Node;
+    use crate::layout::table::anon::{RowCarry, TableRow};
     use crate::style::css::parse_decls;
 
     #[test]
@@ -225,12 +205,13 @@ mod tests {
             measure_col_widths(
                 &table,
                 &Computed::default(),
-                &[1],
-                &vec![&row],
+                &TableGrid::new(&[TableRow {
+                    element: &row,
+                    carry: RowCarry::default(),
+                }]),
                 &mut widths,
                 16.0,
                 String::new(),
-                vec![0],
                 &edges,
                 vcx,
             );
