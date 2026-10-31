@@ -17,9 +17,9 @@ use crate::style::computed::Display;
 /// generated block boxes, including blocks hoisted out of inline ancestors.
 /// Preparing descendants first lets the parent's leading/trailing chains
 /// see those boxes instead of an inline node that prematurely stops them.
-pub(super) fn prepare(nodes: &mut [Node]) {
+pub(super) fn prepare(nodes: &mut [Node], clearance_possible: bool) {
     if let Some(prepared) = reblessive::Stack::new()
-        .enter(|stk| prepare_stack(stk, nodes))
+        .enter(|stk| prepare_stack(stk, nodes, clearance_possible))
         .finish()
     {
         nodes.clone_from_slice(&prepared);
@@ -28,7 +28,11 @@ pub(super) fn prepare(nodes: &mut [Node]) {
 
 // Проверка неизменяемая: пустой проход не отделяет COW-списки всего поддерева.
 // Изменённые ветви собираются снизу вверх; продолжения живут в heap.
-async fn prepare_stack(stk: &mut reblessive::Stk, nodes: &[Node]) -> Option<Vec<Node>> {
+async fn prepare_stack(
+    stk: &mut reblessive::Stk,
+    nodes: &[Node],
+    clearance_possible: bool,
+) -> Option<Vec<Node>> {
     let mut out = None;
     for (i, node) in nodes.iter().enumerate() {
         let Node::Element(original) = node else {
@@ -48,7 +52,9 @@ async fn prepare_stack(stk: &mut reblessive::Stk, nodes: &[Node]) -> Option<Vec<
         {
             continue;
         }
-        let prepared = stk.run(|stk| prepare_stack(stk, &original.children)).await;
+        let prepared = stk
+            .run(|stk| prepare_stack(stk, &original.children, clearance_possible))
+            .await;
         let mut changed = prepared.map(|children| {
             let mut element = original.clone();
             element.children = children.into();
@@ -64,7 +70,7 @@ async fn prepare_stack(stk: &mut reblessive::Stk, nodes: &[Node]) -> Option<Vec<
                     | Some(Display::InlineGrid)
                     | Some(Display::GridLanes)
             )
-            || !eligible(&element.children))
+            || !eligible(&element.children, clearance_possible))
             && element.children.iter().any(|node| {
                 matches!(node, Node::Element(child) if real_inline(child)
                 && !out_of_flow(&child.style.used()) && contains_block(&child.children))
@@ -80,7 +86,7 @@ async fn prepare_stack(stk: &mut reblessive::Stk, nodes: &[Node]) -> Option<Vec<
     out
 }
 
-fn eligible(nodes: &[Node]) -> bool {
+fn eligible(nodes: &[Node], clearance_possible: bool) -> bool {
     let mut pending = vec![nodes];
     while let Some(nodes) = pending.pop() {
         for node in nodes {
@@ -90,7 +96,7 @@ fn eligible(nodes: &[Node]) -> bool {
                 && contains_block(&child.children)
             {
                 // Оформление и bidi требуют исходного inline-родства до краски.
-                if !inline_floats::transparent(child) {
+                if !inline_floats::transparent_with_clear(child, clearance_possible) {
                     return false;
                 }
                 pending.push(&child.children);

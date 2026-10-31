@@ -200,9 +200,10 @@ async fn element_inner(
 
 pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let opts = &*opts.inner(|cx| {
-        cx.contracts.margins = Default::default();
         cx.contracts.lengths = Default::default();
-        cx.contracts.subtrees = Default::default();
+        if !cx.contracts.in_render {
+            cx.contracts.subtrees = Default::default();
+        }
     });
     reblessive::Stack::new()
         .enter(|stk| element_stack(stk, e, inherited, opts))

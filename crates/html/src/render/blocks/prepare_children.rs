@@ -3,7 +3,7 @@
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Node;
 use crate::layout::block::margin_height;
-use crate::layout::block::margins::{CollapseInputs, collapse_margins};
+use crate::layout::block::margins::{CollapseInputs, collapse_margins_prepared};
 use crate::layout::block::reorder::reorder;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::in_flow;
@@ -198,10 +198,19 @@ pub(crate) fn prepare_children(
             width: cb_w,
             height_def: cb_h_def,
         });
-        let mut out = if opts.cx.contracts.margins.borrow_mut().unchanged(nodes) {
+        let facts: &std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts> =
+            &opts.cx.contracts.subtrees;
+        let (unchanged, inline_preparation) = {
+            let mut facts = facts.borrow_mut();
+            (
+                facts.margins_unchanged(nodes),
+                !facts.inline_preparation_absent(nodes),
+            )
+        };
+        let mut out = if unchanged {
             nodes.to_vec()
         } else {
-            collapse_margins(
+            collapse_margins_prepared(
                 nodes,
                 matches!(
                     inherited.position,
@@ -210,6 +219,7 @@ pub(crate) fn prepare_children(
                 ),
                 opts.cx.constraints.cb_width,
                 mcx,
+                inline_preparation,
             )
         };
         margin_height::zero_float_blocks(&mut out, inherited, vcx);

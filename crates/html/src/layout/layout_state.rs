@@ -11,6 +11,8 @@ use std::cell::Cell;
 pub(crate) struct LayoutState {
     /// Anchor geometry and fallback selection belonging to this document.
     pub(crate) anchors: AnchorState,
+    /// Факты неизменяемого дерева; новая computed-публикация их сбрасывает.
+    pub(crate) preparation: std::cell::RefCell<crate::layout::cx::subtree::PreparationCache>,
     /// Left edge of the root's content-sized box under `vertical-rl`
     /// (CSS 2.2 §14.2: the canvas background is positioned from the root
     /// box). The body writes it at prepaint, the canvas layer reads it at

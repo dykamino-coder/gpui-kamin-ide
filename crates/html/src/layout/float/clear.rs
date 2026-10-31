@@ -1,66 +1,19 @@
 //! Предикаты `clear` для раскладки флоатов (CSS 2.1 §9.5.2): снятие `clear` в дереве без
-//! единого флоата (`without_inert_clear` — клиренса там нет, и поля обязаны схлопнуться),
+//! единого флоата (флаг контекста — клиренса там нет, и поля обязаны схлопнуться),
 //! коробка своего контекста, которой заведомо нет места рядом с флоатами (`bfc_no_fit`,
 //! §9.5 последний абзац).
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::box_kind::{in_flow, inline_marked_block, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
 use crate::tolerance::COORD_EPS;
 
-/// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
-/// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
-/// (`initial-letter`).
-fn has_clearable(nodes: &[Node]) -> bool {
-    let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
-    nodes.iter().any(|n| match n {
-        Node::Element(e) => {
-            floats(&e.style.used())
-                || e.first_letter
-                    .as_ref()
-                    .is_some_and(|l| floats(l.cascaded()))
-                || e.hover.as_ref().is_some_and(|l| floats(l.cascaded()))
-                || has_clearable(&e.children)
-        }
-        Node::Text(_) => false,
-    })
-}
-
-fn has_clear(nodes: &[Node]) -> bool {
-    nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.used().clear.is_some() || has_clear(&e.children),
-        Node::Text(_) => false,
-    })
-}
-
-fn strip_clear(nodes: &mut [Node]) {
-    for n in nodes {
-        if let Node::Element(e) = n {
-            e.style.used_mut().clear = None;
-            e.style.used_mut().clear_inherit = false;
-            if let Some(h) = e.hover.as_mut() {
-                h.used_mut().clear = None;
-            }
-            strip_clear(&mut e.children);
-        }
-    }
-}
-
-/// CSS 2.1 §9.5.2: clearance вводится только ради флоатов выше по потоку
-/// того же контекста. В документе без единого флоата `clear` ничего не
-/// значит — и, в частности, не отделяет поля (§8.3.1 говорит о коробке «with
-/// clearance», а не о коробке с `clear`). Наши цепи схлопывания судят по
-/// самому свойству, поэтому в таком документе оно снимается целиком
-/// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
-/// схлопнуться в ноль). Флоаты есть — дерево не трогается.
-pub(crate) fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
-    if has_clearable(nodes) || !has_clear(nodes) {
-        return None;
-    }
-    let mut copy = nodes.to_vec();
-    strip_clear(&mut copy);
-    Some(copy)
+/// CSS2 §9.5.2: свойство clear не создаёт clearance без флоатов.
+/// Флаг относится к текущему документу, включая отдельный контекст iframe.
+/// Исходный computed style остаётся доступен наследованию и CSSOM.
+pub(crate) fn effective_clear(style: &Computed, values: crate::values::ValueCx<'_>) -> Option<i8> {
+    style.clear.filter(|_| values.clearance_possible)
 }
 
 /// §9.5, последний абзац: коробка своего контекста, которой РЯДОМ с флоатами
@@ -99,4 +52,31 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
         )
         && own_context(n)
         && bw.is_some_and(|bw| bw + float_min_w > cb + COORD_EPS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::block::margins::MarginCx;
+    use crate::layout::block::struts::through_strut;
+    use crate::layout::table::anon::anon_element;
+
+    #[test]
+    fn inert_clear_does_not_split_margin_struts_or_mutate_computed_style() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let mut e = anon_element("div", vec![]);
+        e.style.used_mut().clear = Some(0);
+        e.style.used_mut().clear_inherit = true;
+        e.style.used_mut().margin.top = Some(Len::Px(12.));
+        let active = doc.values();
+        assert_eq!(effective_clear(&e.style.used(), active), Some(0));
+        assert!(through_strut(&e, MarginCx::new(active)).is_none());
+        let mut inert = active;
+        inert.clearance_possible = false;
+        assert_eq!(effective_clear(&e.style.used(), inert), None);
+        assert_eq!(through_strut(&e, MarginCx::new(inert)), Some((12., 0.)));
+        assert!(!inert.keep().vcx().clearance_possible);
+        assert_eq!(e.style.used().clear, Some(0));
+        assert!(e.style.used().clear_inherit);
+    }
 }

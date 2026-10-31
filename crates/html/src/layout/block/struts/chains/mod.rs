@@ -78,7 +78,7 @@ pub(crate) fn leading_chain(
             // Blink HasClearancePastAdjoiningFloats tests the cleared side.
             // Keep definite-height boxes on the existing clearance path: their
             // external float offset cannot be resolved by this margin-only walk.
-            if ch.style.used().clear.is_some_and(|side| {
+            if vcx.clear(&ch.style.used()).is_some_and(|side| {
                 ch.style.used().height.is_some()
                     || (side <= 0 && adjoining_left)
                     || (side >= 0 && adjoining_right)

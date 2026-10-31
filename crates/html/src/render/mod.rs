@@ -4,10 +4,7 @@
 //! собираются в один абзац (`paragraph`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
-use crate::layout::order::unkeyed_positions;
-
 use crate::dom::Node;
-use crate::layout::float::clear::without_inert_clear;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 mod first_letter_descendants;
 mod first_letter_scope;
@@ -36,15 +33,27 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
-    crate::values::image_values::prepare(nodes, vcx);
+    let stable = opts.cx.contracts.document_root == Some((nodes.as_ptr() as usize, nodes.len()));
+    // Document уже собрал операнды при разборе и обновляет готовность в frame_opts.
+    if !stable {
+        crate::values::image_values::prepare(nodes, vcx);
+    }
     crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
     // Вычисленные стили элементов — до сборки коробок: семейство документа
     // (шрифтовые единицы) известно только отсюда; на неизменном документе
     // проход только сверяет входы.
-    crate::style::cascade::materialize::materialize(nodes, root.style_rc(), vcx);
-    let stripped = without_inert_clear(nodes);
-    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
+    let changed =
+        crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
+    let cache: &std::cell::RefCell<crate::layout::cx::subtree::PreparationCache> =
+        &opts.cx.layout().preparation;
+    let prepared = cache.borrow_mut().get(nodes, stable, changed);
+    let opts = &*opts.inner(|cx| {
+        cx.values.inert_clear = !prepared.clearance_possible;
+        cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
+            crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
+        ));
+    });
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
@@ -66,7 +75,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Шаг 8 приложения E: CSS collector принадлежит текущему paint pass,
     // парные метки сохраняют прежние layout-узлы и границы документа.
     let opts = &*opts.inner(|cx| {
-        cx.deferred.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
+        cx.deferred.unkeyed = prepared.unkeyed.clone();
         cx.contracts.in_render = true;
     });
     let mut out = blocks(nodes, &root, opts);

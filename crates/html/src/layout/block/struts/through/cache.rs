@@ -45,7 +45,7 @@ impl ThroughCache {
                     let mut blocked = false;
                     for child in &e.children {
                         let Node::Element(ch) = child else { continue };
-                        if in_flow(&ch.style.used()) && ch.style.used().clear.is_some() {
+                        if in_flow(&ch.style.used()) && vcx.clear(&ch.style.used()).is_some() {
                             blocked = true;
                             break;
                         }

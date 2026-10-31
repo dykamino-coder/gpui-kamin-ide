@@ -31,6 +31,11 @@ pub(crate) struct MarginCx<'a> {
 }
 
 impl<'a> MarginCx<'a> {
+    /// CSS2 §9.5.2: проверять возможность clearance, сохраняя свойство CSS.
+    pub(crate) fn clear(self, style: &crate::style::computed::Computed) -> Option<i8> {
+        crate::layout::float::clear::effective_clear(style, self.values)
+    }
+
     /// Outside any descent: the default level (medium font, no containing-block width,
     /// indefinite height).
     pub(crate) fn new(values: ValueCx<'a>) -> Self {
