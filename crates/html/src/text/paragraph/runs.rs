@@ -56,6 +56,7 @@ pub(super) fn bidi_control(c: char) -> bool {
 
 /// Visual neighbours (byte offsets) of the characters `range` in the line's
 /// visual character order `vis`, skipping zero-width bidi controls.
+#[cfg(test)]
 pub(super) fn visual_neighbours(
     text: &str,
     vis: &[usize],

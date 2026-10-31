@@ -8,7 +8,7 @@
 use gpui::Pixels;
 
 /// Правила переноса, собранные из CSS.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Hash)]
 pub struct Wrap {
     /// `white-space: nowrap`/`pre` — мягких переносов нет вовсе.
     pub nowrap: bool,
