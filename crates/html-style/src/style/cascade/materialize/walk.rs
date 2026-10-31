@@ -23,6 +23,7 @@ pub(super) fn walk(
             pending.pop();
             continue;
         };
+        crate::work::add!(TreeNodesVisited, 1);
         let Node::Element(e) = node else { continue };
         let moved = e.marks.style_parent;
         // Вне прохода по документу (`rematerialize`) родитель дан уже исходный.

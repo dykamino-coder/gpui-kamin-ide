@@ -11,6 +11,7 @@ use super::*;
 /// (`ch-unit-001`: ширина `div + div span` терялась). Без сохранённых братьев
 /// (обход вне `walk`) — честно не совпадает, как раньше.
 pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    crate::work::add!(StyleMatchAttempts, 1);
     if !path[at].matching.work(1) {
         return false;
     }

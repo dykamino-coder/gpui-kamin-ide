@@ -3922,6 +3922,7 @@ dependencies = [
  "resvg 0.48.1",
  "roxmltree 0.21.1",
  "svgtypes 0.16.1",
+ "tracing",
  "unicode-bidi",
  "unicode-segmentation",
  "url",

@@ -10,12 +10,14 @@ type UploadedPixels = (u32, u32, Arc<[u8]>);
 // повторно в каждом кадре; ключ удерживает Arc от повторного адреса.
 static IDENTITIES: BoundedCache<RasterIdentity, Image> =
     BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
-        .with_key_weight(|key: &RasterIdentity| key.0.bytes.len());
+        .with_key_weight(|key: &RasterIdentity| key.0.bytes.len())
+        .for_paint();
 // Только готовые точки: ни URL, ни политика, ни ресурсы документа здесь не
 // переиспользуются. Полное равенство байт исключает коллизии короткого хэша.
 static PIXELS: BoundedCache<UploadedPixels, Image> =
     BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
-        .with_key_weight(|key: &UploadedPixels| key.2.len());
+        .with_key_weight(|key: &UploadedPixels| key.2.len())
+        .for_paint();
 
 pub(crate) fn upload(cpu: &Arc<CpuRaster>) -> Image {
     IDENTITIES.get_or_insert_with(RasterIdentity(cpu.clone()), || {
@@ -27,7 +29,7 @@ pub(crate) fn upload(cpu: &Arc<CpuRaster>) -> Image {
 }
 // ImageId выдаётся GPUI монотонно; переиспользования адреса Arc в ключе нет.
 static DOWNLOADS: BoundedCache<gpui::ImageId, Option<Arc<CpuRaster>>> =
-    BoundedCache::new(128 * MIB, pixels::optional_bytes);
+    BoundedCache::new(128 * MIB, pixels::optional_bytes).for_paint();
 pub(crate) fn download(image: &gpui::RenderImage) -> Option<Arc<CpuRaster>> {
     DOWNLOADS.get_or_insert_with(image.id, || {
         let size = image.size(0);

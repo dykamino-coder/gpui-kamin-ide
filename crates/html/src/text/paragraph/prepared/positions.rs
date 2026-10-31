@@ -50,7 +50,10 @@ impl ExactSum {
         {
             (f64::from(base) + self.sum) as f32
         } else {
-            deltas.iter().fold(base, |x, delta| x + delta)
+            deltas.iter().fold(base, |x, delta| {
+                crate::work::add!(TextPositionSteps, 1);
+                x + delta
+            })
         }
     }
 }
@@ -58,11 +61,13 @@ impl ExactSum {
 impl Paragraph {
     pub(in crate::text::paragraph) fn segment_positions(&self, seg: &Seg) -> Vec<Pixels> {
         let len = seg.end - seg.start;
+        crate::work::add!(TextPositionBuildBytes, len + 1);
         let mut positions = vec![seg.layout.width; len + 1];
         // x_for_index берёт ПЕРВЫЙ глиф с индексом >= байта, даже когда
         // индексы повторяются или убывают в визуальном порядке.
         let mut filled = 0;
         for glyph in seg.layout.runs.iter().flat_map(|r| &r.glyphs) {
+            crate::work::add!(TextPositionSteps, 1);
             let end = glyph.index.min(len);
             if filled <= end {
                 positions[filled..=end].fill(glyph.position.x);
@@ -75,6 +80,7 @@ impl Paragraph {
             let prefix = self.spacing_prefix(seg.start, seg.end);
             let mut unit = 0;
             for (at, value) in positions.iter_mut().enumerate() {
+                crate::work::add!(TextPositionSteps, 1);
                 while unit + 1 < prefix.len() && prefix[unit + 1].0 <= seg.start + at {
                     unit += 1;
                 }
@@ -86,6 +92,7 @@ impl Paragraph {
         let mut sum = ExactSum::default();
         let mut words = px(0.);
         for (off, ch) in self.text[seg.start..seg.end].char_indices() {
+            crate::work::add!(TextPositionSteps, 1);
             let at = seg.start + off;
             let base = f32::from(positions[off] + seg.offset);
             positions[off] = px(sum.apply(base, &deltas)) + words;
