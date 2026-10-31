@@ -121,7 +121,7 @@ pub(super) fn pseudo_holds(
     if let Some(ok) = nth_of_holds(sel, pseudo, me, path, sibs) {
         return ok;
     }
-    structural(pseudo, me.spot).unwrap_or(false)
+    structural(sel, pseudo, me.spot).unwrap_or(false)
 }
 
 pub(super) fn is_host_pseudo(pseudo: &str) -> bool {

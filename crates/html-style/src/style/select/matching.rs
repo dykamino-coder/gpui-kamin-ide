@@ -140,7 +140,7 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        let Some(ok) = structural(pseudo, me.spot) else {
+        let Some(ok) = structural(sel, pseudo, me.spot) else {
             return false;
         };
         if !ok {

@@ -135,7 +135,7 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // путь по списку братьев, а по одному `spot` она не считается.
     if let Some(p) = &sel.pseudo
         && !nth_of_form(sel, p)
-        && let Some(ok) = structural(p, node.spot)
+        && let Some(ok) = structural(sel, p, node.spot)
         && !ok
     {
         return false;

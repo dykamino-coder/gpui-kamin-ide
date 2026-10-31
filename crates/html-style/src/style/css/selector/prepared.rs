@@ -9,6 +9,7 @@ pub struct Prepared {
     pub nth_cacheable: bool,
     pub list: Vec<Selector>,
     pub nth: Option<String>,
+    pub anb: Option<AnB>,
     pub single: bool,
     pub specificity: (u32, u32, u32),
 }
@@ -26,6 +27,7 @@ impl Selector {
             .map(|raw| {
                 let mut list = Vec::new();
                 let mut nth = None;
+                let mut anb = None;
                 if let Some((name, arg)) = raw.split_once('(')
                     && let Some(arg) = arg.strip_suffix(')')
                 {
@@ -57,9 +59,13 @@ impl Selector {
                                 .filter_map(Selector::parse)
                                 .collect()
                         }
-                        "nth-child" | "nth-last-child" => {
-                            if let Some((anb, parsed)) = nth_of_parts(arg) {
-                                nth = Some(anb);
+                        "nth-child" | "nth-last-child" | "nth-of-type" | "nth-last-of-type" => {
+                            anb = AnB::parse(arg);
+                            if matches!(name, "nth-child" | "nth-last-child")
+                                && let Some((formula, parsed)) = nth_of_parts(arg)
+                            {
+                                anb = AnB::parse(&formula);
+                                nth = Some(formula);
                                 list = parsed;
                             }
                         }
@@ -95,6 +101,7 @@ impl Selector {
                     nth_cacheable,
                     list,
                     nth,
+                    anb,
                     single,
                     specificity,
                 })
@@ -115,6 +122,7 @@ mod tests {
         );
         let nth = sel.prepared("nth-child(2n of .keep)").unwrap();
         assert_eq!(nth.nth.as_deref(), Some("2n"));
+        assert!(nth.anb.unwrap().matches(4));
         assert_eq!(nth.list.len(), 1);
     }
 }
