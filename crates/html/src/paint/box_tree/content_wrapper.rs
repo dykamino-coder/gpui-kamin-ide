@@ -36,7 +36,10 @@ pub(crate) fn for_element(
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    if crate::layout::box_kind::replaced_tag(element) || native_intrinsic::eligible(element) {
+    if crate::layout::box_kind::replaced_tag(element)
+        || native_intrinsic::eligible(element)
+        || wrapper_tracks(&element.style.used()).is_none()
+    {
         el
     } else {
         content_sized(
@@ -47,6 +50,37 @@ pub(crate) fn for_element(
             vcx,
         )
     }
+}
+
+// CSS Sizing 3 §3.2: decide whether an intrinsic axis needs a wrapper
+// before constructing its item box style.
+fn wrapper_tracks(c: &Computed) -> Option<(Option<gpui::GridTrack>, Option<gpui::GridTrack>)> {
+    let track = |l: Option<Len>| match l {
+        Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
+        Some(Len::MaxContent) => Some(gpui::GridTrack::MaxContent),
+        // `fit-content` — дорожка `auto`: она и есть «по содержимому, но не
+        // шире доступного».
+        Some(Len::FitContent) => Some(gpui::GridTrack::Auto),
+        _ => None,
+    };
+    let (col, row) = (
+        (!c.contains_width()).then(|| track(c.width)).flatten(),
+        (!c.contains_height()).then(|| track(c.height)).flatten(),
+    );
+    if col.is_none() && row.is_none() {
+        return None;
+    }
+    // Позиционированный элемент заворачивать нельзя: обёртка стала бы его
+    // содержащим блоком, и края отсчитывались бы от неё. Он и так не
+    // растягивается — размер по содержимому получается сам.
+    if matches!(
+        c.position,
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
+    ) {
+        return None;
+    }
+    Some((col, row))
 }
 
 /// Размер по содержимому (`width: min-content`/`max-content`).
@@ -63,31 +97,9 @@ pub(crate) fn content_sized(
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: crate::values::ValueCx<'_>,
 ) -> AnyElement {
-    let track = |l: Option<Len>| match l {
-        Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
-        Some(Len::MaxContent) => Some(gpui::GridTrack::MaxContent),
-        // `fit-content` — дорожка `auto`: она и есть «по содержимому, но не
-        // шире доступного».
-        Some(Len::FitContent) => Some(gpui::GridTrack::Auto),
-        _ => None,
+    let Some((col, row)) = wrapper_tracks(c) else {
+        return el;
     };
-    let (col, row) = (
-        (!c.contains_width()).then(|| track(c.width)).flatten(),
-        (!c.contains_height()).then(|| track(c.height)).flatten(),
-    );
-    if col.is_none() && row.is_none() {
-        return el;
-    }
-    // Позиционированный элемент заворачивать нельзя: обёртка стала бы его
-    // содержащим блоком, и края отсчитывались бы от неё. Он и так не
-    // растягивается — размер по содержимому получается сам.
-    if matches!(
-        c.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    ) {
-        return el;
-    }
     let mut wrap = div().grid();
     if let Some(keyword) = wrapper_width_keyword(c) {
         wrap.style().sizing_keywords = Some([Some(keyword), None]);
@@ -185,38 +197,5 @@ pub(crate) fn content_sized(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn intrinsic_wrapper_preserves_keyword_without_duplicating_fit_argument() {
-        let mut style = Computed {
-            width: Some(Len::FitContent),
-            ..Computed::default()
-        };
-        assert_eq!(
-            wrapper_width_keyword(&style),
-            Some(CssSizingKeyword::FitContent)
-        );
-        for argument in [Len::Px(50.0), Len::Pct(0.5)] {
-            style.fit_arg[0] = Some(argument);
-            assert_eq!(wrapper_width_keyword(&style), None);
-        }
-        style.fit_arg[0] = None;
-        style.width = Some(Len::MinContent);
-        assert_eq!(
-            wrapper_width_keyword(&style),
-            Some(CssSizingKeyword::MinContent)
-        );
-        style.width = Some(Len::MaxContent);
-        assert_eq!(
-            wrapper_width_keyword(&style),
-            Some(CssSizingKeyword::MaxContent)
-        );
-        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true,
-            style.wm().block_rl(),
-            style.wm().sideways(),
-        ));
-        assert_eq!(wrapper_width_keyword(&style), None);
-    }
-}
+#[path = "content_wrapper/tests.rs"]
+mod tests;
