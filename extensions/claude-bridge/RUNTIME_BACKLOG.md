@@ -7,8 +7,10 @@
 [#539](https://github.com/dykamino-coder/gpui-kamin-ide/pull/539)
 (`2498ffe877b72f99ac0e1b52d68db6fe244ad6aa`), их ancestry в опубликованном
 `kaminide-v1.0.82` / server 6.3.159 и сохранение в опубликованном 1.0.83 / 6.3.160.
-Это выборочная актуализация доставки; исторические базы, численности и статусы
-остальных задач ниже не пересчитаны. Новый release и execution-пачка не нужны.
+Source acceptance завершена 2026-10-31 в [#556](https://github.com/dykamino-coder/gpui-kamin-ide/pull/556);
+проверки запускались 2026-10-30. Исторические базы, численности и статусы остальных
+задач ниже не пересчитаны. Новый release не нужен; close-out текущей пачки —
+в [execution registry](RUNTIME_EXECUTION.md#текущая-пачка-rc-2026-10-30-inc82-83--сверка-завершена-2026-10-31).
 
 | INC | Текущее состояние | Следующий owner / artifact |
 | --- | --- | --- |
@@ -46,7 +48,7 @@ slices — исторические варианты исследования, �
 
 - [INC-0082](runtime-issues/INC-2026-0082.md): первоначальный отдельный P1 — terminal
   MCP Tasks занимали retained admission в .158. На 2026-10-30 #537/#539 уже доставлены
-  в .159; на 2026-10-30 source verification принята, остаток — observation и INC-0080,
+  в .159; source verification принята 2026-10-31, остаток — observation и INC-0080,
   а не повтор capacity fix. Исходный reproducer и private evidence сохранены.
 - [INC-0083](runtime-issues/INC-2026-0083.md): исходный eager replay устранён #536
   для paged clients; актуальная verification и конкретный BR-02/03 остаток выше.
