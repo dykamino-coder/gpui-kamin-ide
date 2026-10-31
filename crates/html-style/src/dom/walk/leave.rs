@@ -43,12 +43,22 @@ pub(super) fn leave(
         return Ok(());
     }
     if let Some(el) = pseudo_box(
-        rules, vars, counters, me, path, sibs, "after", &p.attrs, vcx,
+        &p.visit.scope,
+        &p.candidates,
+        vars,
+        counters,
+        me,
+        path,
+        sibs,
+        "after",
+        &p.attrs,
+        vcx,
     ) {
         children.push(Node::Element(el));
     }
     let scroll_pseudos = scroll_marker_pass(
-        rules,
+        &p.visit.scope,
+        &p.candidates,
         vars,
         counters,
         me,
@@ -61,7 +71,8 @@ pub(super) fn leave(
         vcx,
     )?;
     if let Some(el) = pseudo_box(
-        rules,
+        &p.visit.scope,
+        &p.candidates,
         vars,
         counters,
         me,

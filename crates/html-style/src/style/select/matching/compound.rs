@@ -12,6 +12,9 @@ use super::*;
 /// (обход вне `walk`) — честно не совпадает, как раньше.
 pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     crate::work::add!(StyleMatchAttempts, 1);
+    if !path[at].matching.work(1) {
+        return false;
+    }
     if path[at].featureless.is_some() {
         return super::featureless::matches_featureless(sel, &path[at]).unwrap_or(false);
     }
@@ -65,7 +68,7 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         if p == "link" || p == "visited" {
             return node.href.is_some() && (p == "visited") == node.visited;
         }
-        is_holds(p, sel.argument_namespace, node, &path[..at], sibs).unwrap_or(true)
+        is_holds(sel, p, node, &path[..at], sibs).unwrap_or(true)
     })
 }
 
@@ -132,13 +135,16 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // по-прежнему пропускаются, of-форма — тоже: её решает предметный
     // путь по списку братьев, а по одному `spot` она не считается.
     if let Some(p) = &sel.pseudo
-        && !nth_of_form(p)
-        && let Some(ok) = structural(p, node.spot)
+        && !nth_of_form(sel, p)
+        && let Some(ok) = structural(sel, p, node.spot)
         && !ok
     {
         return false;
     }
     if !sel.attrs.iter().all(|a| {
+        if a.name == super::super::has::HAS_SENTINEL {
+            return node.matching.is_anchor(&node.key);
+        }
         a.matches(
             node.attrs
                 .iter()

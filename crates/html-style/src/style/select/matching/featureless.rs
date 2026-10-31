@@ -5,7 +5,6 @@
 //! превращать запрещённый селектор в совпадение.
 
 use super::{Ancestor, Selector, has_id, host_holds};
-use crate::style::css::{TypeNamespace, default_ns, split_selector_list};
 
 /// None means the subject compound is forbidden on a featureless host. In
 /// particular, negation must not turn a forbidden selector into a match.
@@ -24,31 +23,27 @@ pub(super) fn matches_featureless(sel: &Selector, node: &Ancestor) -> Option<boo
         if let Some(arg) = p.strip_prefix("has(").and_then(|a| a.strip_suffix(')')) {
             hit &= node.shadow_has_marks.contains(&has_id(arg));
         } else {
-            hit &= pseudo(p, sel.argument_namespace, node)?;
+            hit &= pseudo(sel, p, node)?;
             eligible = true;
         }
     }
     eligible.then_some(hit && sel.ancestor.is_none() && sel.prev.is_none())
 }
 
-fn pseudo(p: &str, namespace: TypeNamespace, node: &Ancestor) -> Option<bool> {
+fn pseudo(sel: &Selector, p: &str, node: &Ancestor) -> Option<bool> {
     if super::is_host_pseudo(p) {
-        return Some(host_holds(p, node));
+        return Some(host_holds(sel, p, node));
     }
     let (name, arg) = p.split_once('(')?;
-    let arg = arg.strip_suffix(')')?;
-    let list = match name {
-        "is" | "where" | "matches" | "any" => default_ns::is_args(arg, namespace),
-        "not" => split_selector_list(arg)
-            .into_iter()
-            .filter_map(Selector::parse)
-            .collect(),
-        _ => return None,
-    };
+    let _arg = arg.strip_suffix(')')?;
+    if !matches!(name, "is" | "where" | "matches" | "any" | "not") {
+        return None;
+    }
+    let list = &sel.prepared(p)?.list;
     let mut allowed = false;
     let mut hit = false;
     for s in list {
-        if let Some(result) = matches_featureless(&s, node) {
+        if let Some(result) = matches_featureless(s, node) {
             allowed = true;
             hit |= result;
         }

@@ -26,15 +26,18 @@ type PseudoLayers = (
 pub(super) fn pseudo_styles(
     style: &mut Computed,
     tag: &str,
-    rules: &[Rule],
+    scope: &crate::dom::shadow::Scope,
+    indices: &[usize],
     vars: &VarMap,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
     vcx: ValueCx<'_>,
 ) -> PseudoLayers {
+    let rules: Vec<&Rule> = indices.iter().map(|&i| &scope.rules[i]).collect();
     let hovered: Vec<&Rule> = rules
         .iter()
+        .copied()
         .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
         .collect();
@@ -50,7 +53,7 @@ pub(super) fn pseudo_styles(
     // Псевдоэлементы первой буквы и первой строки — тем же слоем
     // поверх базового стиля: они меняют начертание куска, а не блок.
     let layer =
-        |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base, vcx);
+        |name, base| initial_pseudos::resolve(name, &rules, vars, &me, path, sibs, base, vcx);
     let first_letter = layer("first-letter", Some(&style)).map(Box::new);
     let first_line = layer("first-line", Some(&style)).map(Box::new);
     let first_line_own = layer("first-line", None).map(Box::new);
@@ -67,6 +70,7 @@ pub(super) fn pseudo_styles(
     let marker_layer = {
         let found: Vec<&Rule> = rules
             .iter()
+            .copied()
             .filter(|r| r.sel.pseudo.as_deref() == Some("marker"))
             .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
             .collect();

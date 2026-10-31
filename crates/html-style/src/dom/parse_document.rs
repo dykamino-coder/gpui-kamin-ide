@@ -10,10 +10,6 @@
 use super::input::Admitted;
 use super::style_sources::try_collect_style_tags;
 use super::{Node, user_agent_css};
-use super::{float_tail, grid_static_position, subgrid_used};
-use crate::dom::display_inheritance::resolve_display_inherit;
-use crate::dom::fixup_grid::*;
-use crate::dom::fixup_tree::*;
 use crate::dom::outcome::DocumentFailure;
 use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
@@ -135,6 +131,7 @@ pub fn convert(
     let mut frames = parse_keyframes(user_agent_css(), vcx);
     frames.extend(parse_keyframes(extra_css, vcx));
     let agent = Scope {
+        index: crate::style::select::rule_index::RuleIndex::new(&agent_rules, &admission)?,
         rules: agent_rules,
         frames: frames.clone(),
         clone_cost: input.agent_css.get(),
@@ -156,6 +153,7 @@ pub fn convert(
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope {
+        index: crate::style::select::rule_index::RuleIndex::new(&rules, &admission)?,
         rules,
         frames,
         clone_cost: Default::default(),
@@ -200,34 +198,5 @@ pub fn convert(
         &mut out,
         vcx,
     )?;
-    // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
-    resolve_display_inherit(&admission, &mut out, (None, None, None, None, None))?;
-    if tree.doc.quirks() {
-        super::quirks_color::resolve(&admission, &mut out, vcx)?;
-    }
-    // Anonymous inline-table around orphan table boxes inside inline boxes
-    // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
-    crate::dom::table_boxes::inline_anon_tables(&admission, &mut out)?;
-    // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
-    // подсетки: дальше они идут тем же кодом, что и сетка.
-    lanes_as_grid(&admission, &mut out)?;
-    subgrid_used::adjust(&admission, &mut out)?;
-    hoist_grid_abspos(&admission, &mut out)?;
-    grid_static_position::adjust(&admission, &mut out)?;
-    flex_items_lose_float(&admission, &mut out)?;
-    align_self_from_dom_parent(&admission, &mut out, None)?;
-    grid_table_items_keep_stretch(&admission, &mut out)?;
-    subgrid_takes_parent_tracks(&admission, &mut out)?;
-    filter_ref_only_empty(&admission, &mut out)?;
-    fold_run_ins(&admission, &mut out, None)?;
-    orthogonal_inlines_become_flow_roots(&admission, &mut out, (false, false, false), None)?;
-    float_tail::mark(&admission, &mut out)?;
-    if tree.doc.quirks() {
-        quirks_percent_heights(&admission, &mut out, None)?;
-    }
-    super::state_identity::finalize(&admission, &out, vcx)?;
-    if let Some(failure) = tree.doc.revision_budget().failure() {
-        return Err(failure);
-    }
-    Ok(out)
+    super::finish_document::finish(&tree, &admission, out, vcx)
 }
