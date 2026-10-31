@@ -688,6 +688,36 @@
       ]
     },
     {
+      "id": "multicol-rebuilt-nodes",
+      "counter": "rebuilt_nodes",
+      "phases": [
+        "build_elements",
+        "layout_request",
+        "layout",
+        "prepaint",
+        "paint",
+        "raster_gpu_readback",
+        "pipeline_other"
+      ],
+      "modes": [
+        "cold",
+        "warm"
+      ],
+      "numerator": 6,
+      "denominator": 5,
+      "intercept": 16,
+      "steps": [
+        {
+          "page": "astra/columns-100",
+          "size": 100
+        },
+        {
+          "page": "astra/columns-400",
+          "size": 400
+        }
+      ]
+    },
+    {
       "id": "has-depth-style-matches",
       "counter": "style_match_attempts",
       "phases": [
@@ -712,7 +742,17 @@
           "page": "astra/has-depth-900",
           "size": 900
         }
-      ]
+      ],
+      "expected_failures": {
+        "cold:astra/has-depth-100->astra/has-depth-300": {
+          "package": "P6",
+          "reason": "Repeated relational selector candidate matching grows super-linearly on main 09275cda; selector indexing and dependency caching belong to P6."
+        },
+        "cold:astra/has-depth-300->astra/has-depth-900": {
+          "package": "P6",
+          "reason": "Repeated relational selector candidate matching grows super-linearly on main 09275cda; selector indexing and dependency caching belong to P6."
+        }
+      }
     },
     {
       "id": "has-siblings-style-matches",
@@ -743,7 +783,21 @@
           "page": "astra/has-siblings-4000",
           "size": 4000
         }
-      ]
+      ],
+      "expected_failures": {
+        "cold:astra/has-siblings-500->astra/has-siblings-1000": {
+          "package": "P6",
+          "reason": "Repeated relational selector candidate matching grows super-linearly on main 09275cda; selector indexing and dependency caching belong to P6."
+        },
+        "cold:astra/has-siblings-1000->astra/has-siblings-2000": {
+          "package": "P6",
+          "reason": "Repeated relational selector candidate matching grows super-linearly on main 09275cda; selector indexing and dependency caching belong to P6."
+        },
+        "cold:astra/has-siblings-2000->astra/has-siblings-4000": {
+          "package": "P6",
+          "reason": "Repeated relational selector candidate matching grows super-linearly on main 09275cda; selector indexing and dependency caching belong to P6."
+        }
+      }
     },
     {
       "id": "wide-root-walk-visits",

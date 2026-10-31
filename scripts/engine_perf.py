@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from engine_perf_lib import check_bounds, validate, write_table
 
 ROOT = Path(__file__).resolve().parents[1]
