@@ -40,7 +40,7 @@ fn cow_style_change_invalidates_shared_proofs() {
     assert!(facts.breaks_absent(&root));
     assert!(facts.floats_absent(&root));
     assert!(facts.margins_unchanged(&root.children));
-    let entries = facts.children.len();
+    let old = root.clone();
     let Node::Element(child) = &mut root.children[0] else {
         unreachable!()
     };
@@ -50,7 +50,9 @@ fn cow_style_change_invalidates_shared_proofs() {
     assert!(!facts.breaks_absent(&root));
     assert!(!facts.floats_absent(&root));
     assert!(!facts.margins_unchanged(&root.children));
-    assert_eq!(facts.children.len(), entries + 1);
+    assert!(facts.breaks_absent(&old));
+    assert!(facts.floats_absent(&old));
+    assert!(facts.margins_unchanged(&old.children));
 }
 
 #[test]
@@ -80,6 +82,7 @@ fn break_proof_is_shared_and_cow_style_change_invalidates_it() {
     let entries = facts.children.len();
     assert!(facts.breaks_absent(&root));
     assert_eq!(facts.children.len(), entries);
+    let old = root.clone();
     let Node::Element(child) = &mut root.children[0] else {
         unreachable!()
     };
@@ -87,7 +90,8 @@ fn break_proof_is_shared_and_cow_style_change_invalidates_it() {
     child.style.used_mut().float = Some(1);
     assert!(!facts.breaks_absent(&root));
     assert!(!facts.floats_absent(&root));
-    assert_eq!(facts.children.len(), entries + 1);
+    assert!(facts.breaks_absent(&old));
+    assert!(facts.floats_absent(&old));
 }
 
 #[test]

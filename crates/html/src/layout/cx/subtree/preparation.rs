@@ -11,9 +11,11 @@ pub(crate) struct Preparation {
     pub(crate) clearance_possible: bool,
 }
 
+type Snapshot = ((usize, usize), Rc<Preparation>);
+
 #[derive(Default)]
 pub(crate) struct PreparationCache {
-    snapshot: std::cell::Cell<Option<((usize, usize), Rc<Preparation>)>>,
+    snapshot: std::cell::Cell<Option<Snapshot>>,
 }
 
 impl PreparationCache {
