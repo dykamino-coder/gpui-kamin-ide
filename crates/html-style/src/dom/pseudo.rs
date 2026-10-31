@@ -7,57 +7,9 @@ use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 use crate::values::ValueCx;
 
-/// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
-/// §5). Проверяются однозначные типы; значение с `var()` решается позже и
-/// принимается; незнакомый синтаксис — тоже (лучше принять, чем потерять).
-pub(super) fn syntax_accepts(syntax: &str, value: &str, vcx: ValueCx<'_>) -> bool {
-    let v = value.trim();
-    if v.contains("var(") || syntax.trim() == "*" {
-        return true;
-    }
-    let one = |ty: &str| -> bool {
-        match ty.trim() {
-            "<color>" => {
-                crate::style::values::value::Color::parse(v, vcx).is_some()
-                    || v.eq_ignore_ascii_case("currentcolor")
-                    || v.to_ascii_lowercase().starts_with("light-dark(")
-            }
-            "<length>" => {
-                !v.ends_with('%')
-                    && (v == "0"
-                        || matches!(crate::style::values::value::Len::parse_mixed(v, vcx), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
-            }
-            "<length-percentage>" => crate::style::values::value::Len::parse_mixed(v, vcx)
-                .is_some_and(|l| l != crate::style::values::value::Len::Auto),
-            "<percentage>" => v.ends_with('%') && v[..v.len() - 1].trim().parse::<f32>().is_ok(),
-            "<number>" => v.parse::<f32>().is_ok(),
-            "<integer>" => v.parse::<i64>().is_ok(),
-            _ => true,
-        }
-    };
-    syntax.split('|').any(one)
-}
-
-/// Адрес картинки из `content: url()` в форме `src` для `<img>`: загрузчик
-/// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
-/// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
-/// не даёт (Servo `components/layout/replaced.rs:348`).
-pub fn content_image_src(image: &crate::style::computed::ImageSource) -> Option<String> {
-    use crate::style::computed::ImageSource;
-    let src = match image {
-        ImageSource::Url(src) => src,
-        ImageSource::Filter { image, .. } => return content_image_src(image),
-        _ => return None,
-    };
-    if src.starts_with("data:") {
-        return Some(src.to_string());
-    }
-    let path = src.trim_start_matches("file:///");
-    if !std::path::Path::new(path).is_file() {
-        return None;
-    }
-    Some(format!("file:///{path}").replace('\\', "/"))
-}
+mod input;
+pub use input::content_image_src;
+pub(super) use input::syntax_accepts;
 
 /// Коробка псевдоэлемента `::before`/`::after`, если правила её создают.
 ///
@@ -73,7 +25,8 @@ pub fn content_image_src(image: &crate::style::computed::ImageSource) -> Option<
 // Pseudo boxes need the originating cascade, counters and generated-content state.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
-    rules: &[Rule],
+    scope: &crate::dom::shadow::Scope,
+    indices: &[usize],
     vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
@@ -84,7 +37,8 @@ pub(super) fn pseudo_box(
     vcx: ValueCx<'_>,
 ) -> Option<Element> {
     pseudo_box_named(
-        rules,
+        scope,
+        indices,
         vars,
         counters,
         me,
@@ -105,7 +59,8 @@ pub(super) fn pseudo_box(
 /// счётчики как у `::before`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box_named(
-    rules: &[Rule],
+    scope: &crate::dom::shadow::Scope,
+    indices: &[usize],
     vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
@@ -117,8 +72,9 @@ pub(super) fn pseudo_box_named(
     attrs: &[(String, String)],
     vcx: ValueCx<'_>,
 ) -> Option<Element> {
-    let matched: Vec<&Rule> = rules
+    let matched: Vec<&Rule> = indices
         .iter()
+        .map(|&i| &scope.rules[i])
         .filter(|r| r.sel.pseudo.as_deref().is_some_and(|p| names.contains(&p)))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();

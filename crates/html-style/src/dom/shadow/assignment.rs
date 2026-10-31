@@ -85,6 +85,7 @@ pub(super) fn shadow_scope(
     let args = raw.iter().filter_map(|a| parse_has_arg(a)).collect();
     Ok((
         Rc::new(Scope {
+            index: crate::style::select::rule_index::RuleIndex::new(&rules, &admission)?,
             rules,
             frames,
             clone_cost: Default::default(),

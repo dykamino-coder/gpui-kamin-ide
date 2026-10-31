@@ -27,7 +27,8 @@ pub(super) fn cascade_element(
     tag: &str,
     handle: &Handle,
     tree: &TreeIndex,
-    rules: &[Rule],
+    scope: &crate::dom::shadow::Scope,
+    candidates: &[usize],
     inherited_vars: &VarMap,
     path: &[Ancestor],
     spot: Spot,
@@ -54,6 +55,7 @@ pub(super) fn cascade_element(
     {
         me.target_current = true;
     }
+    let rules = &scope.rules;
     let vars = inherited_vars;
     let inline_decls: DeclBlock = attrs
         .iter()
@@ -62,7 +64,7 @@ pub(super) fn cascade_element(
         .unwrap_or_default();
     // Ограничение `:visited`: правило, совпавшее лишь при одном состоянии
     // своей ссылки, входит в каскад копией с этим признаком.
-    let link = super::visited_match::link_matches(rules, me, path, sibs);
+    let link = super::visited_match::link_matches(rules, &scope.index, candidates, me, path, sibs);
     let restricted: Vec<Rule> = link
         .iter()
         .filter(|(_, l)| *l != LinkMatch::Any)
@@ -86,8 +88,10 @@ pub(super) fn cascade_element(
         matched.extend(
             shadow
                 .scope
-                .rules
+                .index
+                .candidates(&shadow.marker, &[])
                 .iter()
+                .map(|&i| &shadow.scope.rules[i])
                 .filter(|r| matches(&r.sel, &shadow.marker, &[], Sibs::EMPTY)),
         );
     }
@@ -100,6 +104,10 @@ pub(super) fn cascade_element(
     let registered = tree.doc.property_rules();
     // Одна карта каскада на пользовательские свойства и `color-scheme`:
     // подсказки и лист форм их не задают.
+    let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
+    matched.extend(hints.iter());
+    let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
+    matched.extend(math_hints.iter());
     let pre = CascadeMap::collect(&matched, &inline_decls);
     let cascaded =
         crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
@@ -116,7 +124,6 @@ pub(super) fn cascade_element(
     );
     work.finish(&tree.doc);
     let vars = &own_vars;
-    drop(pre);
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {
@@ -125,22 +132,23 @@ pub(super) fn cascade_element(
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
         root: path.is_empty(),
     };
-    let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
-    matched.extend(hints.iter());
-    let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
-    matched.extend(math_hints.iter());
-    let mut style = Computed::resolve_in(&matched, &inline_decls, vars, element, vcx);
+    let appearance = matches!(tag, "input" | "textarea" | "button")
+        .then(|| Computed::appearance_from_map(&pre, vars, element, vcx));
+    let basic = appearance
+        .as_ref()
+        .and_then(|style| super::form_appearance::rule(tag, attrs, style));
+    let map = if let Some(basic) = &basic {
+        matched.push(basic);
+        CascadeMap::collect(&matched, &inline_decls)
+    } else {
+        pre
+    };
+    let mut style = Computed::default();
+    style.apply_map(&map, vars, element, vcx);
     // Важные объявления сильнее анимаций (css-cascade-5 §6.2): кадры
     // `@keyframes` кладутся под них. Лист форм
     // (`appearance: base`) важных объявлений не несёт.
-    let important = style
-        .animation
-        .is_some()
-        .then(|| CascadeMap::collect(&matched, &inline_decls).important_block());
-    if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
-        matched.push(&basic);
-        style = Computed::resolve_in(&matched, &inline_decls, vars, element, vcx);
-    }
+    let important = style.animation.is_some().then(|| map.important_block());
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // вычисленное `color-scheme` элемента (каскад уже решил им свои цвета,
     // `ComputeCx`), иначе родительская — свойство наследуемое. При
@@ -167,7 +175,8 @@ pub(super) fn cascade_element(
     if element.root && style.color.is_none() && style.color_function.is_none() {
         style.apply_one("color", "canvastext", vcx);
     }
-    style.custom_scrollbar = rules.iter().any(|rule| {
+    style.custom_scrollbar = candidates.iter().any(|&i| {
+        let rule = &rules[i];
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;
         }

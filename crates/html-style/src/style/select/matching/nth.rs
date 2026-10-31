@@ -3,35 +3,55 @@
 use super::*;
 
 /// Псевдокласс — of-форма `:nth-child(… of S)`?
-pub(super) fn nth_of_form(pseudo: &str) -> bool {
-    let Some((name, arg)) = pseudo.split_once('(') else {
-        return false;
-    };
-    matches!(name, "nth-child" | "nth-last-child")
-        && arg
-            .strip_suffix(')')
-            .is_some_and(|a| crate::style::css::nth_of_parts(a).is_some())
+pub(super) fn nth_of_form(sel: &Selector, pseudo: &str) -> bool {
+    sel.prepared(pseudo).is_some_and(|p| p.nth.is_some())
 }
 
 /// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
 /// узел обязан сам совпасть с S, а номер считается только среди совпавших
 /// братьев — с начала либо с конца. `None` — псевдокласс не of-формы.
 pub(super) fn nth_of_holds(
+    sel: &Selector,
     pseudo: &str,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
 ) -> Option<bool> {
-    let (name, arg) = pseudo.split_once('(')?;
+    let (name, _arg) = pseudo.split_once('(')?;
     let backwards = match name {
         "nth-child" => false,
         "nth-last-child" => true,
         _ => return None,
     };
-    let arg = arg.strip_suffix(')')?;
-    let (anb, list) = crate::style::css::nth_of_parts(arg)?;
+    let prepared = sel.prepared(pseudo)?;
+    prepared.nth.as_ref()?;
+    let Some(anb) = prepared.anb else {
+        return Some(false);
+    };
+    let list = &prepared.list;
     let hit = |a: &Ancestor, s: Sibs| list.iter().any(|sel| matches(sel, a, path, s));
-    if !sibs.is_elem || list.is_empty() || !hit(me, sibs) {
+    if !sibs.is_elem || list.is_empty() {
+        return Some(false);
+    }
+    // Состояния ссылок/маркеров и overlay меняются в пределах прохода.
+    let stable = !me.matching.has_anchor() && prepared.nth_cacheable;
+    if stable {
+        let Some(ranks) = me
+            .matching
+            .nth_ranks(sel.argument_namespace as u8, pseudo, sibs, hit)
+        else {
+            // Отказ бюджета не превращает распознанную of-форму в обычную nth.
+            return Some(false);
+        };
+        let rank = ranks[sibs.pos];
+        let index = if backwards {
+            ranks[sibs.all.len()] + 1 - rank
+        } else {
+            rank
+        };
+        return Some(rank > 0 && anb.matches(index));
+    }
+    if !hit(me, sibs) {
         return Some(false);
     }
     let (peers, base) = if backwards {
@@ -44,16 +64,18 @@ pub(super) fn nth_of_holds(
         .enumerate()
         .filter(|(i, a)| hit(a, sibs.at(base + i)))
         .count();
-    Some(nth_matches(&anb, idx))
+    Some(anb.matches(idx))
 }
 
 /// Структурные псевдоклассы: место узла среди соседей.
 ///
 /// `None` — псевдокласс не структурный, решение принимает вызывающий.
-pub(super) fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
-    let (name, arg) = match pseudo.split_once('(') {
-        Some((n, rest)) => (n, rest.trim_end_matches(')').trim()),
-        None => (pseudo, ""),
+pub(super) fn structural(sel: &Selector, pseudo: &str, spot: Spot) -> Option<bool> {
+    let name = pseudo.split_once('(').map_or(pseudo, |(name, _)| name);
+    let anb_matches = |index| {
+        sel.prepared(pseudo)
+            .and_then(|p| p.anb)
+            .is_some_and(|a| a.matches(index))
     };
     let (index, total) = match name {
         "first-child" | "last-child" | "only-child" | "nth-child" | "nth-last-child" => {
@@ -72,68 +94,71 @@ pub(super) fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
         "first-child" | "first-of-type" => index == 1,
         "last-child" | "last-of-type" => index == total,
         "only-child" | "only-of-type" => total == 1,
-        "nth-child" | "nth-of-type" => nth_matches(arg, index),
-        "nth-last-child" | "nth-last-of-type" => nth_matches(arg, total + 1 - index),
+        "nth-child" | "nth-of-type" => anb_matches(index),
+        "nth-last-child" | "nth-last-of-type" => anb_matches(total + 1 - index),
         _ => false,
     })
 }
 
-/// Запись `an+b` из `:nth-child()`: подходит ли номер.
-fn nth_matches(arg: &str, index: usize) -> bool {
-    let arg = arg.trim().to_ascii_lowercase();
-    let (a, b) = match arg.as_str() {
-        "odd" => (2i64, 1i64),
-        "even" => (2, 0),
-        _ => match arg.split_once('n') {
-            None => match arg.parse::<i64>() {
-                Ok(b) => (0, b),
-                Err(_) => return false,
-            },
-            Some((head, tail)) => {
-                // Пробел между множителем и `n` запрещён (css-syntax
-                // §the-anb-type): `1 n` — не An+B.
-                if head.ends_with(char::is_whitespace) {
-                    return false;
-                }
-                let a = match head {
-                    "" | "+" => 1,
-                    "-" => -1,
-                    other => match other.parse::<i64>() {
-                        Ok(v) => v,
-                        Err(_) => return false,
-                    },
-                };
-                // Сдвиг после `n` обязан нести явный знак: `2n 1` — не An+B,
-                // пробелы допустимы только вокруг самого знака.
-                let tail = tail.trim();
-                let b = if tail.is_empty() {
-                    0
-                } else {
-                    let (sign, num) = match tail.strip_prefix('+') {
-                        Some(rest) => (1i64, rest),
-                        None => match tail.strip_prefix('-') {
-                            Some(rest) => (-1, rest),
-                            None => return false,
-                        },
-                    };
-                    let num = num.trim_start();
-                    // Второй знак у сдвига (`2n--1`) — не число.
-                    if !num.bytes().all(|c| c.is_ascii_digit()) {
-                        return false;
-                    }
-                    match num.parse::<i64>() {
-                        Ok(v) => sign * v,
-                        Err(_) => return false,
-                    }
-                };
-                (a, b)
-            }
-        },
-    };
-    let index = index as i64;
-    if a == 0 {
-        return index == b;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepared_formulas_cover_forward_reverse_and_type_positions() {
+        let spot = Spot {
+            index: 2,
+            total: 5,
+            of_type: 1,
+            of_type_total: 3,
+        };
+        for (text, expected) in [
+            (":nth-child(even)", true),
+            (":nth-last-child(4)", true),
+            (":nth-of-type(-n+1)", true),
+            (":nth-last-of-type(3)", true),
+            (":nth-of-type(2)", false),
+            (":nth-child(2n 1)", false),
+            (":nth-of-type(1 of .x)", false),
+        ] {
+            let sel = Selector::parse(text).unwrap();
+            assert_eq!(
+                structural(&sel, sel.pseudo.as_deref().unwrap(), spot),
+                Some(expected),
+                "{text}"
+            );
+        }
     }
-    let diff = index - b;
-    diff % a == 0 && diff / a >= 0
+
+    #[test]
+    fn rejected_filtered_ranks_never_fall_through_to_unfiltered_formula() {
+        use crate::budget::{BudgetKind, DocumentBudget, DocumentLimits, ResourceGovernor};
+        let dom = crate::dom::xml::xml_dom("<r><x/></r>").unwrap();
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let owner =
+            DocumentBudget::new(DocumentLimits::default(), ResourceGovernor::default()).unwrap();
+        let revision = owner.revision();
+        doc.admit_revision(revision.clone(), None);
+        let tree = crate::dom::tree_index::TreeIndex::new(doc, true);
+        let root = dom.document.children.borrow()[0].clone();
+        let (_, all) = crate::style::select::census_of(&root.children.borrow(), &tree);
+        let sibs = Sibs {
+            all: &all,
+            pos: 0,
+            is_elem: true,
+            rc: None,
+        };
+        let remaining = owner.limits().limit(BudgetKind::TraversalVisits)
+            - revision.used(BudgetKind::TraversalVisits);
+        revision
+            .consume(BudgetKind::TraversalVisits, remaining)
+            .unwrap();
+        for text in [":nth-child(1 of x)", ":nth-last-child(1 of x)"] {
+            let sel = Selector::parse(text).unwrap();
+            let pseudo = sel.pseudo.as_deref().unwrap();
+            assert_eq!(nth_of_holds(&sel, pseudo, &all[0], &[], sibs), Some(false));
+            assert!(!pseudo_holds(&sel, pseudo, &all[0], &[], sibs));
+        }
+        assert!(revision.failure().is_some());
+    }
 }
