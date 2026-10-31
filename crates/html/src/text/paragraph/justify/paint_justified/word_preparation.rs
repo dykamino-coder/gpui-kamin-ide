@@ -70,7 +70,9 @@ impl Paragraph {
             for w in words {
                 let mut at = w.range.start;
                 let first = edges.partition_point(|s| *s <= at);
-                let last = edges.partition_point(|s| *s < w.range.end);
+                // Разрез на начале слова сохраняет пустой кусок. У него нет
+                // внутренних границ, даже если сам байт есть в `edges`.
+                let last = first + edges[first..].partition_point(|s| *s < w.range.end);
                 for &c in &edges[first..last] {
                     split.push(Word {
                         range: at..c,
@@ -112,5 +114,30 @@ impl Paragraph {
         };
         let from = self.x_at(segs, range.start, Edge::Start);
         (words, ltr_runs, step, absorbed, from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracking_cut_at_bidi_word_start_preserves_empty_piece() {
+        let mut paragraph = Paragraph::new(
+            "a אב".into(),
+            vec![],
+            px(16.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        paragraph.letter_spans = vec![(2..6, px(1.))];
+        let (words, runs, _, _, _) = paragraph.prepare_words(&(0..6), &[], px(0.));
+        assert!(!runs.is_empty());
+        let pieces: Vec<_> = words
+            .iter()
+            .map(|word| (word.range.clone(), word.spaces_before))
+            .collect();
+        assert_eq!(pieces, vec![(0..1, 0), (2..2, 1), (2..6, 1)]);
     }
 }
