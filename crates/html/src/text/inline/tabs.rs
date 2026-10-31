@@ -1,7 +1,8 @@
 //! Позиции табуляции абзаца (`tab-size`, css-text-3 §4.2): шаг по умолчанию от шрифта,
 //! `letter-spacing` и `word-spacing` блочного контейнера (ширина пробела струта, не куска),
 //! свой шаг для кусков с табуляцией по их `tab-size`, минимальный зазор `0.5ch`.
-//! На выходе `TabStops` для раскладки строк.
+//! На выходе `TabStops` для раскладки строк. Без знака табуляции в кусках абзаца
+//! позиции не читаются, и метрики шрифта (шейпинг пробела) не запрашиваются вовсе.
 
 use super::Piece;
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
@@ -17,6 +18,14 @@ pub fn tab_stops(
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::values::ValueCx<'_>,
 ) -> TabStops {
+    // Позиции читает только сам знак табуляции (Blink `Font::TabWidth` — лишь
+    // при встрече `\t`); текст абзаца — это его текстовые куски.
+    if !pieces
+        .iter()
+        .any(|p| matches!(p, Piece::Text { text, .. } if text.contains('\t')))
+    {
+        return TabStops::uniform(0.0);
+    }
     let size = block
         .used_font(
             f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX))),
@@ -97,6 +106,20 @@ mod tests {
         let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), &doc.text, vcx);
         assert_eq!(stops.default, 40.0);
         assert_eq!(stops.next(0, 0.0), 40.0);
+    }
+
+    #[test]
+    fn text_without_tabs_does_not_measure_the_font() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
+        metrics::install_space_probe(|_, _| panic!("space shaped without a tab"), &doc.text, vcx);
+        let block = Computed::default();
+        let pieces = vec![Piece::Text {
+            text: "no tabs here".into(),
+            style: BoxStyle::from(block.clone()),
+        }];
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), &doc.text, vcx);
+        assert!(stops.spans.is_empty());
     }
 
     #[test]
