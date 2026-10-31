@@ -1,4 +1,4 @@
-//! Набор куска строки с суффиксом (`shape`): знак переноса набирается
+//! Набор куска строки с суффиксом (`shape_piece`): знак переноса набирается
 //! ВМЕСТЕ со строкой стилем своего мягкого переноса (css-text-3 §5.4), знак
 //! обрыва — своим прогоном в стиле блока; незримые управляющие знаки
 //! выбрасываются; rtl идёт через `shape_line_rtl`. Здесь же ширины знака
@@ -35,23 +35,6 @@ impl Paragraph {
             .iter()
             .find(|(at, _)| *at == end)
             .map_or(px(0.), |(_, width)| *width)
-    }
-
-    /// Набрать кусок текста; правый прогон — со знаком стороны письма.
-    pub(super) fn shape(
-        &self,
-        range: &std::ops::Range<usize>,
-        runs: &[TextRun],
-        rtl: bool,
-        suffix: &str,
-        window: &mut Window,
-    ) -> Option<gpui::ShapedLine> {
-        let piece = if std::ptr::eq(runs, self.runs.as_slice()) {
-            self.own_runs(range)
-        } else {
-            slice_runs(runs, range)
-        };
-        self.shape_piece(range, piece, rtl, suffix, window)
     }
 
     pub(super) fn shape_piece(
