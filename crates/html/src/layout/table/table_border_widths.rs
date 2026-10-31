@@ -3,8 +3,8 @@
 //! таблицы, плюс наружные полуширины таблицы. CSS 2.1 §17.6.2 центрирует победившую
 //! кромку на линии сетки.
 
-use crate::dom::{Element, Node};
-use crate::layout::table::{is_cell, row_span_in_group};
+use super::slot_grid::TableGrid;
+use crate::dom::Element;
 use crate::style::values::value::Len;
 mod structural;
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ pub(super) fn resolve(
     e: &Element,
     row_elements: &[&Element],
     groups: &[Option<&Element>],
-    rows_left: &[usize],
+    grid: &TableGrid<'_>,
     cols: u16,
     (table_font, table_family): (f32, &str),
     vcx: crate::values::ValueCx<'_>,
@@ -55,30 +55,12 @@ pub(super) fn resolve(
             id: u64,
         }
         let mut cels: Vec<Cel> = vec![];
-        let mut occ: Vec<u16> = vec![0; cols as usize];
-        let mut r = 0usize;
-        for row in row_elements {
-            for slot in occ.iter_mut() {
-                *slot = slot.saturating_sub(1);
-            }
-            let mut c = 0usize;
-            for child in &row.children {
-                let Node::Element(cell) = child else { continue };
-                if !is_cell(cell) {
-                    continue;
-                }
-                while c < occ.len() && occ[c] > 0 {
-                    c += 1;
-                }
-                let sc = cell
-                    .attr("colspan")
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(1)
-                    .max(1);
-                // Охват урезан до конца группы — тот же, что ляжет в сетку
-                // (см. `rows_left`), иначе полуширины разбирались бы с
-                // соседом, которого у ячейки нет.
-                let sr = row_span_in_group(cell, rows_left.get(r).copied().unwrap_or(1));
+        for (r, row) in grid.rows.iter().enumerate() {
+            for slot in &row.cells {
+                let cell = slot.element;
+                let c = slot.column;
+                let sc = usize::from(slot.colspan);
+                let sr = slot.rowspan;
                 let b = cell.style.used().borders();
                 let own = axes.logical([
                     px_of_pre(b.top),
@@ -95,14 +77,9 @@ pub(super) fn resolve(
                     w: std::array::from_fn(|i| own[i].max(extra[i])),
                     id: cell.node_id,
                 });
-                for k in c..(c + sc).min(occ.len()) {
-                    occ[k] = occ[k].max(sr as u16);
-                }
-                c += sc;
             }
-            r += 1;
         }
-        let rows_n = r;
+        let rows_n = grid.rows.len();
         for a in cels.iter() {
             let mut w = a.w;
             for b in cels.iter() {
@@ -156,7 +133,9 @@ pub(super) fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dom::Node;
     use crate::layout::table::anon::anon_element;
+    use crate::layout::table::anon::{RowCarry, TableRow};
     use crate::style::computed::Sides;
 
     #[test]
@@ -182,7 +161,11 @@ mod tests {
         second.style.used_mut().border_width.top = Some(Len::Px(100.0));
         second.style.used_mut().border_visible[0] = Some(true);
         let row = anon_element("tr", vec![Node::Element(first), Node::Element(second)]);
-        let (widths, outer) = resolve(&table, &[&row], &[None], &[1], 2, (16.0, ""), vcx);
+        let grid = TableGrid::new(&[TableRow {
+            element: &row,
+            carry: RowCarry::default(),
+        }]);
+        let (widths, outer) = resolve(&table, &[&row], &[None], &grid, 2, (16.0, ""), vcx);
         assert_eq!(widths[&1], [0.0, 20.0, 100.0, 0.0]);
         assert_eq!(widths[&2], [100.0, 20.0, 0.0, 0.0]);
         assert_eq!(outer, [0.0, 20.0, 0.0, 0.0]);
@@ -193,8 +176,50 @@ mod tests {
                 table.style.used().wm().sideways(),
             ));
         table.style.used_mut().border_width = Sides::default();
-        let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, (16.0, ""), vcx);
+        let (widths, _) = resolve(&table, &[&row], &[None], &grid, 2, (16.0, ""), vcx);
         assert_eq!(widths[&1][2], 50.0);
         assert_eq!(widths[&2][0], 100.0);
+    }
+
+    #[test]
+    fn rowspan_neighbors_use_the_shared_slot_anchors() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let mut table = anon_element("table", vec![]);
+        table.style.used_mut().border_collapse = Some(true);
+        let mut spanning = anon_element("td", vec![]);
+        spanning.node_id = 1;
+        spanning.attrs = vec![("rowspan".into(), "2".into())];
+        spanning.style.used_mut().border_width.right = Some(Len::Px(60.0));
+        spanning.style.used_mut().border_visible[1] = Some(true);
+        let mut upper = anon_element("td", vec![]);
+        upper.node_id = 2;
+        let mut lower = anon_element("td", vec![]);
+        lower.node_id = 3;
+        lower.style.used_mut().border_width.left = Some(Len::Px(30.0));
+        lower.style.used_mut().border_visible[3] = Some(true);
+        let first = anon_element("tr", vec![Node::Element(spanning), Node::Element(upper)]);
+        let second = anon_element("tr", vec![Node::Element(lower)]);
+        let rows = [
+            TableRow {
+                element: &first,
+                carry: RowCarry::default(),
+            },
+            TableRow {
+                element: &second,
+                carry: RowCarry::default(),
+            },
+        ];
+        let grid = TableGrid::new(&rows);
+        let (widths, _) = resolve(
+            &table,
+            &[&first, &second],
+            &[None, None],
+            &grid,
+            2,
+            (16.0, ""),
+            metric_doc.values(),
+        );
+        assert_eq!(grid.rows[1].cells[0].column, 1);
+        assert_eq!(widths[&3][3], 60.0);
     }
 }

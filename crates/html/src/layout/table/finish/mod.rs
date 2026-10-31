@@ -82,6 +82,7 @@ pub(super) async fn table_finish(
         geom.e,
         geom.inherited,
         &geom.row_elements,
+        &geom.grid,
         tracks,
         table_tall,
     );
