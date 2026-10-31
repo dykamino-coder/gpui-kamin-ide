@@ -97,3 +97,20 @@ Pixel equivalence must be checked on the same Windows GPU, with both runner file
 named `main.exe`, the same WPT pairs, fonts, environment and exact RGB comparison.
 CI does not attest pixels on a local GPU. A locally built gate runner from the
 same commit is the reference for accepting the first downloaded artifact.
+
+## Using a baseline in exact gates
+
+The exact RGB criterion and the approved test list stay unchanged. Load the
+baseline executable from this artifact for the exact base SHA when possible and
+use it only after the manifest, hashes, profile/features/toolchain and GPU
+context match. A missing or incompatible artifact requires a safe local rebuild
+or an explicit blocker; comparing against an approximate baseline is forbidden.
+
+Iterations may run the approved target and control families. Before a renderer
+change is integrated, the full approved gate runs. Changing the gate scope or
+profile remains the lead's decision. Every run manifest records the test-list
+version and the pair count; a historical pair count is not assumed current.
+
+An incomparable GPU/platform context is neither a pass nor an RGB loss: restore
+compatibility first. A load flake is confirmed only by the current 2/2 repeat.
+Lowering the RGB threshold or silently excluding tests is forbidden.
