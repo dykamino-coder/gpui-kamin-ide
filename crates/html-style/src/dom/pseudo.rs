@@ -72,13 +72,22 @@ pub(super) fn pseudo_box_named(
     attrs: &[(String, String)],
     vcx: ValueCx<'_>,
 ) -> Option<Element> {
-    let matched: Vec<&Rule> = indices
-        .iter()
-        .map(|&i| &scope.rules[i])
-        .filter(|r| r.sel.pseudo.as_deref().is_some_and(|p| names.contains(&p)))
+    let named = || {
+        indices
+            .iter()
+            .map(|&i| &scope.rules[i])
+            .filter(|r| r.sel.pseudo.as_deref().is_some_and(|p| names.contains(&p)))
+    };
+    // Без объявления `content` у псевдоэлемента вычисленное `normal` = `none`
+    // (css-content-3 §content-property), и коробки нет: каскад тогда не нужен
+    // (Stylo — ленивые псевдоэлементы, Blink `CanGeneratePseudoElement`).
+    if !named().any(may_set_content) {
+        return None;
+    }
+    let matched: Vec<&Rule> = named()
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
-    if matched.is_empty() {
+    if !matched.iter().any(|r| may_set_content(r)) {
         return None;
     }
     let mut style = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
@@ -181,6 +190,15 @@ pub(super) fn pseudo_box_named(
         children: children.into(),
         attrs: vec![],
     })
+}
+
+/// Может ли правило задать `content` псевдоэлемента: само свойство или `all`
+/// (css-cascade-5 §all-shorthand — общее слово касается и `content`).
+pub(super) fn may_set_content(rule: &Rule) -> bool {
+    rule.decls
+        .0
+        .iter()
+        .any(|d| d.name == "content" || d.name == "all")
 }
 
 /// Absolutely positioned and placed against an anchor: `position-area`, an `anchor()` inset,

@@ -56,3 +56,40 @@ fn marker_reset_reaches_contents_but_not_next_item() {
     c.enter();
     assert_eq!(c.chain_of("n"), vec![10]);
 }
+
+/// `quotes` и язык кавычек действуют в поддереве владельца и снимаются на
+/// выходе из него — следующий брат видит значения родителя.
+#[test]
+fn quotes_and_language_end_with_their_box() {
+    let pair = |o: &str, c: &str| Some(vec![(o.to_string(), c.to_string())]);
+    let mut c = Counters::default();
+    c.enter();
+    c.set_quote_language("fr");
+    c.set_quotes(pair("<", ">"));
+    c.enter();
+    c.set_quote_language("en");
+    c.set_quotes(pair("[", "]"));
+    c.enter_pseudo(true);
+    assert_eq!(c.quote(true, true, None), "[");
+    c.leave();
+    c.leave();
+    c.enter();
+    c.enter_pseudo(false);
+    assert_eq!(c.quote(false, true, None), ">");
+    c.leave();
+    c.leave();
+    c.enter();
+    c.set_quotes(None);
+    c.enter_pseudo(true);
+    assert_eq!(c.quote(true, true, None), "");
+    c.leave();
+    c.leave();
+    c.enter();
+    c.enter_pseudo(true);
+    c.set_quotes(Some(vec![]));
+    assert_eq!(
+        c.quote(true, true, None),
+        "\u{ab}",
+        "`auto` берёт язык fr корня"
+    );
+}

@@ -49,11 +49,12 @@ pub struct Counters {
     /// Глубина вложенности кавычек (css-content-3 §4.2): одна на документ,
     /// растёт на `open-quote`, падает на `close-quote`.
     quote_depth: usize,
-    /// Content language at each box; automatic quotes use the parent language.
-    quote_languages: Vec<(Vec<u32>, String)>,
-    /// Заданные `quotes` по пути: владелец и значение. Наследование —
-    /// ближайший предок по пути (запись живёт только в своём поддереве).
-    quotes: Vec<(Vec<u32>, Option<Vec<(String, String)>>)>,
+    /// Content language at each box (by box depth); automatic quotes use the
+    /// parent language. Leaving the box pops its entry.
+    quote_languages: Vec<(usize, String)>,
+    /// Заданные `quotes` по глубине коробки-владельца. Наследование —
+    /// ближайший предок по пути: запись снимается на выходе из владельца.
+    quotes: Vec<(usize, Option<Vec<(String, String)>>)>,
     /// Счётчики, созданные `counter-reset` на узлах текущего пути: на выходе
     /// из узла их снимает `drop_shadowed_reset`.
     resets: Vec<(Vec<u32>, String)>,
@@ -109,6 +110,7 @@ impl Counters {
                 i += 1;
             }
         }
+        self.leave_quote_scope(self.path.len());
         self.path.pop();
         self.next.truncate(self.path.len() + 1);
     }
@@ -162,11 +164,11 @@ impl Counters {
     /// c }` продолжал бы счёт у следующих братьев (`counter-001`: `99 13 14`,
     /// а не `99 100 101`).
     fn drop_shadowed_reset(&mut self, name: &str) {
-        let cur = self.path.clone();
+        let cur = &self.path;
         let Some(st) = self.stack.get_mut(name) else {
             return;
         };
-        if st.len() < 2 || st.last().is_none_or(|e| e.owner != cur) {
+        if st.len() < 2 || st.last().is_none_or(|e| e.owner != *cur) {
             return;
         }
         let prev = &st[st.len() - 2].owner;
@@ -176,18 +178,17 @@ impl Counters {
             return;
         }
         let pp = parent(prev);
-        if covers(prev, &cur) || (covers(pp, &cur) && pp != parent(&cur)) {
+        if covers(prev, cur) || (covers(pp, cur) && pp != parent(cur)) {
             st.pop();
         }
     }
 
     /// Считает ли внутренний счётчик этого имени вниз.
     pub fn is_reversed(&mut self, name: &str) -> bool {
-        let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return false;
         };
-        remove_stale(st, &cur);
+        remove_stale(st, &self.path);
         st.last().is_some_and(|e| {
             self.boundaries
                 .last()
@@ -199,9 +200,8 @@ impl Counters {
     /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
     /// при пустом стеке счётчик сперва создаётся со значения 0.
     pub fn update(&mut self, name: &str, delta: i64, is_set: bool) {
-        let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
-        remove_stale(st, &cur);
+        remove_stale(st, &self.path);
         let local = self.boundaries.last().is_none_or(|root| {
             st.last()
                 .is_some_and(|e| e.owner.len() > root.len() && covers(root, &e.owner))
@@ -215,7 +215,7 @@ impl Counters {
                 }
             }
             None => st.push(Entry {
-                owner: cur,
+                owner: self.path.clone(),
                 value: delta,
                 reversed: false,
             }),
@@ -224,21 +224,19 @@ impl Counters {
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
     pub fn value_of(&mut self, name: &str) -> i64 {
-        let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return 0;
         };
-        remove_stale(st, &cur);
+        remove_stale(st, &self.path);
         st.last().map_or(0, |e| e.value)
     }
 
     /// `counters(имя, разделитель)`: вся цепочка от внешнего к внутреннему.
     pub fn chain_of(&mut self, name: &str) -> Vec<i64> {
-        let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return vec![0];
         };
-        remove_stale(st, &cur);
+        remove_stale(st, &self.path);
         if st.is_empty() {
             return vec![0];
         }
