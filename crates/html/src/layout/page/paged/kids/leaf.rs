@@ -90,7 +90,7 @@ mod tests {
                 _ => None,
             })
         }
-        let tree = crate::dom::parse(body, "");
+        let tree = crate::document::parsed::parse(body, "");
         eligible(find(&tree).expect("authored div"))
     }
 

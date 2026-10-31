@@ -1,8 +1,8 @@
 //! Скруглённая коробка обтекания из `shape-outside` (`inset()`/`rect()`/`xywh()` с `round` и
 //! слова-коробки, css-shapes-1 §3.1): непрерывный `RoundedBox` вместо растрового профиля.
 
-use crate::document::state::ValueCx;
 use crate::style::values::basic_shape::{ShapeBox, rrect_of};
+use crate::values::ValueCx;
 
 pub fn rounded_float(
     raw: &str,

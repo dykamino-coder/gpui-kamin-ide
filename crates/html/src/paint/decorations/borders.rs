@@ -4,8 +4,8 @@
 //! при `corner-shape` и полосы сторон разного цвета, в том числе `dotted`/`dashed`. Все слои —
 //! абсолютные дети от padding-box, вынесенные наружу на толщину сторон.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]

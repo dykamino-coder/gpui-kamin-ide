@@ -6,7 +6,7 @@ use crate::style::values::value::Len;
 
 #[test]
 fn empty_page_grid_uses_native_group_without_estimated_shape() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='display:grid;grid-template-rows:20px 30px'></div>",
         "",
     );
@@ -46,7 +46,7 @@ pub(super) fn authored(nodes: &[Node]) -> &Element {
 
 #[test]
 fn monolithic_page_float_keeps_its_measured_margin_box() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='float:left;overflow:scroll;margin-top:20%;margin-bottom:10%;width:40px'>float</div>",
         "",
     );
@@ -72,7 +72,8 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
 
 #[test]
 fn flowing_page_float_records_its_own_children_and_inline_continuation() {
-    let tree = crate::dom::parse("<div style='float:left;width:20px'>flowing text</div>", "");
+    let tree =
+        crate::document::parsed::parse("<div style='float:left;width:20px'>flowing text</div>", "");
     let nodes = [Node::Element(authored(&tree).clone())];
     let p = group(
         &nodes,
@@ -93,7 +94,7 @@ fn flowing_page_float_records_its_own_children_and_inline_continuation() {
 
 #[test]
 fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='width:100px;padding:5px'><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div>",
         "",
     );
@@ -117,7 +118,7 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
 #[test]
 fn nonempty_float_extent_stops_at_an_inner_bfc() {
     for (context, expected) in [("", true), ("overflow:hidden", false)] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<div><div style='{context}'><div style='float:left;width:20px;height:300px'>text</div></div></div>"
             ),

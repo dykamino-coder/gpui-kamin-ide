@@ -4,7 +4,7 @@
 //! Здесь же семейство документа и список установленных семейств системы.
 
 use super::{FALLBACK, PROBE_SIZE};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 // Доли кегля для семейства: замер идёт один раз и запоминается.
 //

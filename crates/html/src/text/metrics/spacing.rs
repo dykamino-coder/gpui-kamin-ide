@@ -13,7 +13,7 @@ pub fn spacing_px(
     len: Option<crate::style::values::value::Len>,
     family: &str,
     size_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> f32 {
     crate::style::font_metrics::spacing_px(len, family, size_px, vcx)
 }

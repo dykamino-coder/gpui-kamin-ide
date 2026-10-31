@@ -2,11 +2,11 @@
 
 use super::super::area::{Tracks, physical_area};
 use super::super::parse::{FLIP_BLOCK, FLIP_INLINE, FLIP_START};
-use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Sides};
 use crate::style::css::LonghandId as L;
 use crate::style::values::position_area::{AreaAxis, AreaKw, AreaSide, PositionArea};
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get, anchor_store};
+use crate::values::ValueCx;
 
 pub(in crate::layout::positioned::anchor) fn apply(
     c: &mut Computed,

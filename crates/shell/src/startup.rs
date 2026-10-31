@@ -2,11 +2,8 @@
 
 use crate::{actions, assets, theme_sync};
 
-pub fn application() -> gpui::Application {
-    gpui_platform::application()
-        .with_instrumentation(instrumentation())
-        .with_assets(assets::Assets)
-}
+mod gpu;
+pub use gpu::run;
 
 // Шелл не зависит от HTML-движка: окружение читает собственный host запуска.
 #[allow(

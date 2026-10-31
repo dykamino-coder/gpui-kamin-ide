@@ -25,6 +25,7 @@ fn width_change_projects_consumed_content_without_replaying_lines_against_floats
         // Одинаковые продвижения исключают зависимость от системного шрифта.
         let segs: Vec<_> = (0..p.text.len())
             .map(|i| Seg {
+                positions: Default::default(),
                 start: i,
                 end: i + 1,
                 offset: px(i as f32 * 10.),

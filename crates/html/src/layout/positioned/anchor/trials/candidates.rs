@@ -1,8 +1,8 @@
 //! Кандидат fallback origin: compute и zoom отдельно от состояния кадра.
 
 use super::{apply_style, tactics};
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use std::rc::Rc;
 
 pub(super) fn build(

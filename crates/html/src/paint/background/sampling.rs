@@ -5,9 +5,9 @@
 //! премультиплицированной альфе. Градиенты с расширенными стопами, радиальные, повторяющиеся и
 //! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
 
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
 use crate::resources::css_images::{gradient_geometry::Geometry, gradient_raster::resolved_stops};
+use crate::values::ValueCx;
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
 

@@ -4,9 +4,9 @@ use super::{
     AnchorPlan,
     parse::{VIS_VALID, VIS_VISIBLE},
 };
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, anchor_get};
+use crate::values::ValueCx;
 
 pub(crate) struct Dependencies(Vec<Inputs>);
 

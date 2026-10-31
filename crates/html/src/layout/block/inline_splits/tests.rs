@@ -1,12 +1,13 @@
 //! Наследование картинки маркера сохраняется при разрыве строчных коробок.
 
 use super::split_block_in_inline;
-use crate::document::state::{DocState, ValueCx};
+use crate::document::state::DocState;
 use crate::dom::{Element, Node};
 use crate::layout::list::list_item::marker;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls;
+use crate::values::ValueCx;
 
 fn element(css: &str, children: Vec<Node>, vcx: ValueCx<'_>) -> Element {
     let mut style = Computed::default();

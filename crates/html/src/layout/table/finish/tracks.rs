@@ -125,7 +125,7 @@ pub(super) fn first_row_widths_of(
     (table_font, table_family): (f32, &str),
     spacing: (f32, f32),
     cols: u16,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Option<f32>> {
     let vertical = e.style.used().wm().vertical();
     let axes = super::super::axes::Axes::new(&e.style.used());

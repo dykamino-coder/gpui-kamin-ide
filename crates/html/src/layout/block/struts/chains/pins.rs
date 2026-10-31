@@ -120,7 +120,7 @@ pub(crate) fn margin_px_in(
 pub(crate) fn margin_px(
     l: Option<Len>,
     style: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<f32> {
     margin_px_in(l, style, crate::layout::block::margins::MarginCx::new(vcx))
 }

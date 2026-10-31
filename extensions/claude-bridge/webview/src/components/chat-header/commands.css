@@ -25,9 +25,11 @@
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
-  background: var(--bg-primary);
+  /* Same surface as the shell's native menus (session-tab context menu):
+     KaminIDE exports it; elsewhere fall back to the elevated surface. */
+  background: var(--kamin-menu-background, var(--bg-surface));
   color: var(--text-primary);
-  border: 1px solid var(--divider-soft);
+  border: 1px solid var(--kamin-menu-border, var(--divider-soft));
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-dropdown);
   font-size: var(--fs-md);

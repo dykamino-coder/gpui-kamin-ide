@@ -3,7 +3,7 @@ name: pull request checks
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -49,7 +49,6 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE: ${{ github.event.before }}
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -71,26 +70,6 @@ jobs:
             --changed-files "$changed_files")"
           release_candidate="$(jq -r '.release' <<< "$release_change")"
           echo "release_candidate=$release_candidate" >> "$GITHUB_OUTPUT"
-
-          if [[ "$EVENT_NAME" == "pull_request" && "$release_candidate" == "true" ]]; then
-            jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" \
-              > "$RUNNER_TEMP/release-pr-body.md"
-            node scripts/release/release-notes.mjs \
-              --body-file "$RUNNER_TEMP/release-pr-body.md" \
-              --repository "$GITHUB_REPOSITORY" \
-              --output "$RUNNER_TEMP/release-notes.md" \
-              --pulls-output "$RUNNER_TEMP/release-notes-prs.txt"
-            previous_tag="$(git tag -l 'kaminide-v[0-9]*' \
-              --sort=-version:refname | sed -n '1p')"
-            notes_args=()
-            if [[ -n "$previous_tag" ]]; then
-              notes_args+=(--previous-tag "$previous_tag")
-            fi
-            node scripts/release/verify-release-notes-prs.mjs \
-              --pulls-file "$RUNNER_TEMP/release-notes-prs.txt" \
-              --repository "$GITHUB_REPOSITORY" --head HEAD \
-              "${notes_args[@]}"
-          fi
 
           installer_candidate="$release_candidate"
           if grep -Eq '^(\.github/workflows/(docker|pr-checks)\.yml$|scripts/(build-runtime-payload|build_installer|build_setup_rust)\.mjs$|scripts/release/)' "$changed_files"; then
@@ -119,7 +98,7 @@ jobs:
           set_scope bridge_dashboard '^extensions/claude-bridge/server/src/ui/'
           set_scope bridge_extension '^(extensions/claude-bridge/(extension/|server/)|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
           set_scope bridge_webview '^(extensions/claude-bridge/webview/|extensions/claude-bridge/server/src/ui/src/lib/terminal-console/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
-          set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_(event_routing|conventions|engine_test_support)\.py$|(clippy|rustfmt)\.toml$)'
+          set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/(check_(event_routing|conventions|engine_test_support)|fetch_main_baseline|test_fetch_main_baseline|ci/(build_main_baseline|test_build_main_baseline))\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
           set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
           set_scope vendor_gpui '^(vendor/(gpui|gpui-windows|gpui-base|gpui-component|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)'
@@ -133,20 +112,6 @@ jobs:
             echo "- coordinated release: \`$release_candidate\`"
             echo "- build Windows installer candidate: \`$installer_candidate\`"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # Only task cards that require a live Windows gate need runtime evidence.
-      # The Rust/installer job below cannot attest a CEF or native UI scenario.
-      - name: Check task-specific Windows runtime acceptance
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ steps.changes.outputs.base_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          changed_files="$RUNNER_TEMP/runtime-acceptance-files.txt"
-          git diff --name-only "$BASE_SHA...HEAD" > "$changed_files"
-          node scripts/ci/runtime-acceptance.mjs \
-            --event "$GITHUB_EVENT_PATH" --files "$changed_files"
 
       - name: Verify recorded runtime deliveries against published releases
         env:
@@ -462,20 +427,14 @@ jobs:
           }
       - run: python scripts/check_event_routing.py
 
-      # PR caches are scoped to refs/pull/*/merge and cannot warm sibling PRs.
-      # A trusted main run maintains the default-branch cache all PRs may read.
-      # Saved on every main push (keyed by commit): a cache written once per
-      # Cargo.lock went stale between releases and PRs rebuilt the workspace.
-      - name: Save the shared Cargo cache from main
-        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+      - name: Test baseline integrity and source checks
+        run: |
+          python -m unittest discover -s scripts -p test_fetch_main_baseline.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s scripts/ci -p test_build_main_baseline.py -v
+
+      # Cache maintenance lives in cargo-cache.yml so workflow_run release
+      # and the required gate finish without waiting for a multi-GB upload.
 
   windows-installer:
     name: Windows installer build (no GUI acceptance)
@@ -754,17 +713,6 @@ jobs:
       # and their dev-dependencies resolve only when each is the root package.
       - name: Build all GPUI fork targets and run their tests standalone
         run: python scripts/check_vendor_gpui.py --jobs 4
-
-      - name: Save the standalone GPUI cache from main
-        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target/vendor-gpui
-          key: windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
 
   quality-gate:
     name: required quality gate

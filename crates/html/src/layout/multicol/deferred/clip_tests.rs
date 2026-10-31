@@ -11,7 +11,7 @@ fn measured_stack(
     window: &mut gpui::Window,
     app: &mut gpui::App,
 ) -> ColumnStack {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         &format!(
             "<section style='column-count:{count};column-gap:0;column-fill:auto;width:{}px;height:{height}px'>{content}</section>",
             count as f32 * 100.

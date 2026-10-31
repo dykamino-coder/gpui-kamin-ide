@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 #[test]
 fn lifted_float_keeps_its_element_inline_values_and_block_facts() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<div id="block" style="color: red; height: 50px"><span style="color: green">a<b id="float" style="float: left; height: 50%">x</b>c</span></div>"#,
         "",
     );
@@ -61,7 +61,7 @@ fn lifted_float_keeps_its_element_inline_values_and_block_facts() {
 
 #[test]
 fn lifted_float_takes_tree_values_from_the_inline_and_box_facts_from_the_block() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<div id="block" style="overflow: hidden; height: 40px"><span id="inline" style="user-select: none">a<b id="float" style="float: left">x</b>c</span></div>"#,
         "",
     );
@@ -92,7 +92,7 @@ fn lifted_float_takes_tree_values_from_the_inline_and_box_facts_from_the_block()
 
 #[test]
 fn lifted_float_colors_pass_the_subtree_filter_once() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<div id="block" style="filter: invert(1); color: rgb(0, 0, 255)"><span>a<b id="float" style="float: left; background: rgb(0, 128, 0); border: 1px solid rgb(255, 0, 0)">x</b>c</span></div>"#,
         "",
     );

@@ -28,7 +28,7 @@ fn deep_native_groups_record_the_innermost_box() {
                 "<div>".repeat(24),
                 "</div>".repeat(24)
             );
-            let tree = crate::dom::parse(&html, "");
+            let tree = crate::document::parsed::parse(&html, "");
             let e = root(&tree);
             let logical = if mode == "horizontal-tb" {
                 assert!(crate::layout::fragment::push::measured_tree(e), "{body}");
@@ -67,7 +67,7 @@ fn deep_separate_fragment_state_is_not_hidden_by_a_depth_limit() {
         "columns:2",
         "text-box-trim:trim-both",
     ] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<div>{}<div style='{style}'>text</div>{}</div>",
                 "<div>".repeat(24),

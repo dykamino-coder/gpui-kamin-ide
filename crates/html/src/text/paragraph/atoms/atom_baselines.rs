@@ -13,6 +13,7 @@ impl Paragraph {
     /// со щупом базовой линии (см. `BaselineProbe`): обёртка обтягивает
     /// коробку полей атома, щуп отдаёт её базовую линию.
     pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents)>) -> Self {
+        self.invalidate_prepared();
         use gpui::{ParentElement, Styled};
         // Распорка атома — не распорка полей: из текста для переноса её не
         // вынимают, а читают знаком-заместителем (см. `linebreaks`).
@@ -81,32 +82,32 @@ impl Paragraph {
         let (lh, (sa, sd)) = self.root_line_box(range.start);
         let a_s = (lh - (sa + sd)) / 2.0 + sa;
         let (mut top, mut bot) = (a_s, lh - a_s);
-        let mut at = 0usize;
-        for (run, &(ra, rd)) in self.runs.iter().zip(&self.run_metrics) {
-            let (s, e) = (at, at + run.len);
-            at = e;
+        for i in self
+            .run_indices(range)
+            .take_while(|&i| i < self.run_metrics.len())
+        {
+            let run = &self.runs[i];
+            let (ra, rd) = self.run_metrics[i];
+            let e = self.prepared().run_ends[i];
+            let s = e - run.len;
             if run.len == 0 || e <= range.start || s >= range.end {
                 continue;
             }
             // Кусок у края строки равняется по готовой строке (`edge_spans`).
-            if self
-                .edge_spans
-                .iter()
-                .any(|(r, _, _)| r.start <= s && e <= r.end)
-            {
+            if self.prepared().run_edges[i].is_some() {
                 continue;
             }
             let own = self
-                .box_spans
-                .iter()
-                .find(|(r, _)| r.contains(&s))
-                .map_or(lh, |(_, v)| *v);
+                .prepared()
+                .boxes
+                .first(s)
+                .map_or(lh, |i| self.box_spans[i].1);
             let a_r = (own - (ra + rd)) / 2.0 + ra;
             let dy = self
-                .shift_spans
-                .iter()
-                .find(|(r, _)| r.contains(&s))
-                .map_or(0.0, |(_, v)| f32::from(*v));
+                .prepared()
+                .shifts
+                .first(s)
+                .map_or(0.0, |i| f32::from(self.shift_spans[i].1));
             top = top.max(a_r - dy);
             bot = bot.max(own - a_r + dy);
         }
@@ -123,6 +124,14 @@ impl Paragraph {
 }
 
 impl Paragraph {
+    pub(crate) fn refresh_run_metrics(&mut self, window: &mut Window) {
+        let metrics = self.measure_runs(window);
+        if metrics != self.run_metrics {
+            self.invalidate_prepared();
+            self.run_metrics = metrics;
+        }
+    }
+
     /// Подъём и спуск основного шрифта каждого прогона.
     pub(crate) fn measure_runs(&self, window: &mut Window) -> Vec<(f32, f32)> {
         self.runs
@@ -152,20 +161,20 @@ impl Paragraph {
         if self.run_metrics.len() != self.runs.len() {
             return None;
         }
-        let mut at = 0usize;
         let mut best: Option<(f32, f32)> = None;
-        for (run, &(a, d)) in self.runs.iter().zip(&self.run_metrics) {
-            let (s, e) = (at, at + run.len);
-            at = e;
+        for i in self.run_indices(range) {
+            let run = &self.runs[i];
+            let (a, d) = self.run_metrics[i];
+            let e = self.prepared().run_ends[i];
+            let s = e - run.len;
             if run.len == 0 || e <= range.start || s >= range.end {
                 continue;
             }
             // Прогон у края строки в базовую линию не входит: его коробка
             // равняется по краю, а не по базовой (§10.8.1). Отрезок самого
             // такого куска своей базовой не меряет — там прогон считается.
-            let edge = self.edge_spans.iter().any(|(r, _, _)| {
-                r.start <= s && e <= r.end && !(r.start <= range.start && range.end <= r.end)
-            });
+            let edge = self.prepared().run_edges[i]
+                .is_some_and(|(start, end)| start > range.start || end < range.end);
             if edge {
                 continue;
             }

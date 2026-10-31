@@ -4,8 +4,8 @@
 //! обрезка группы многоугольником (шейдер `clip-path: polygon()`), прочее —
 //! цветной растр; углы только с выемками по осям — прежний `linear_corners`.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::{Color, px_lossy_zero};
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, Window, px};
 
 /// Рисует кольцо по записи `rrect(... / t r b l)` в border-box `bounds`.

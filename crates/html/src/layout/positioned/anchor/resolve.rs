@@ -1,9 +1,9 @@
 //! Выбранная запасная позиция и `anchor-size()` в стиле коробки.
 
 use super::settle::default_anchor_of;
-use crate::document::state::ValueCx;
 use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
+use crate::values::ValueCx;
 
 mod current;
 mod insets;

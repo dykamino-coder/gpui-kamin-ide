@@ -32,19 +32,19 @@
 #[cfg(test)]
 mod depth_tests;
 
-pub mod budget;
+pub use kamin_style::budget;
 #[cfg(test)]
 pub mod coverage;
-pub(crate) mod defaults;
-pub mod diagnostics;
+pub(crate) use kamin_style::defaults;
+pub use kamin_style::diagnostics;
 pub(crate) mod hooks;
 pub mod host;
-pub mod tolerance;
-pub use style::css;
-pub(crate) mod box_facts;
-pub mod dom;
+pub use crate::document::dom;
 pub use dom::encoding;
 pub use kamin_font_facts::font_facts;
+pub(crate) use kamin_style::box_facts;
+pub use kamin_style::tolerance;
+pub use style::css;
 /// Внешний путь геометрии страниц (`kamin_html::flow::PageGeom`).
 pub mod flow {
     pub use crate::layout::page::page_stack::{PageGeom, PageGeomFn};
@@ -61,16 +61,23 @@ pub use style::values::value;
 // контракт между фазами, а не API крейта. Наружу выходит только объявленное
 // `pub` в этом файле: `dom`, `render`, `svg`, `tolerance`, `flow`, реэкспорты.
 pub(crate) mod animation;
-pub(crate) mod cache;
-pub(crate) mod color;
-pub(crate) mod css_syntax;
+pub(crate) use kamin_style::cache;
+#[expect(unused_imports, reason = "корень нижней фазы без верхних читателей")]
+pub(crate) use kamin_style::color;
+#[cfg_attr(
+    not(test),
+    expect(unused_imports, reason = "корень нижней фазы читают только тесты")
+)]
+pub(crate) use kamin_style::css_syntax;
 pub(crate) mod document;
 pub(crate) mod interactive;
 pub(crate) mod layout;
 pub(crate) mod paint;
-pub(crate) mod resources;
+pub(crate) use kamin_style::resources;
+#[path = "document/style/mod.rs"]
 pub(crate) mod style;
 pub(crate) mod text;
+pub(crate) use kamin_style::values;
 
 pub use style::ua::BROWSER_CSS;
 
@@ -80,9 +87,10 @@ pub use document::BuildTimings;
 #[cfg(feature = "wpt-harness")]
 pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 
+pub use document::parsed::{Parsed, try_parse as parse, try_parse_media, try_parse_xml};
 pub use document::{
     BuildReport, Document, DocumentBuilder, DocumentFailure, FailureReason, FailureScope,
     RevisionStatus, TraversalKind, TraversalLimit,
 };
-pub use dom::{Element, Node, try_parse as parse};
+pub use dom::{Element, Node};
 pub use render::{RenderOpts, render, render_block};

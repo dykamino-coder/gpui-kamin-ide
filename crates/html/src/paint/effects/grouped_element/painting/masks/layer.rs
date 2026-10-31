@@ -1,10 +1,10 @@
 //! Растр и укладка отдельного слоя составной маски.
 
-use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::{Grouped, rasterize_mask_def, svg_fragment};
 use crate::paint::effects::mask_size;
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy)]
 pub(crate) enum MaskInput<'a> {

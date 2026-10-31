@@ -5,10 +5,10 @@
 //! (CSS Text §5.1); ортогональные флоаты и руби остаются в своём строчном.
 //! `transparent` — общий предикат неоформленного строчного для соседних проходов.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     if parent.wm().vertical() {

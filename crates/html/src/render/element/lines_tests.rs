@@ -9,7 +9,7 @@ use gpui::{AvailableSpace, IntoElement, ParentElement, Styled, div, point, px, s
 fn independent_oof_root_records_only_its_own_lines(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse("<section style='position:absolute;width:100px;font-size:10px;line-height:20px'>a<br>b<br>c<div style='position:absolute;top:100px;width:50px'>x<br>y</div></section>", "");
+        let tree = crate::document::parsed::parse("<section style='position:absolute;width:100px;font-size:10px;line-height:20px'>a<br>b<br>c<div style='position:absolute;top:100px;width:50px'>x<br>y</div></section>", "");
         let mut opts = RenderOpts {
             viewport: (400., 400.), normal_line_height: 1.2,
             text: Default::default(), cx: Default::default(), frag: Default::default(),

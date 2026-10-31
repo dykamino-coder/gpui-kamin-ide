@@ -3,11 +3,26 @@
 //! первый сильный знак строки направление не выбирает, видимые прогоны
 //! набираются по отдельности и ставятся подряд на базовую линию строки.
 
-use super::{Paragraph, controlled_shape, slice_runs};
+use super::{Paragraph, controlled_shape};
 use gpui::{App, Pixels, Point, ShapedLine, SharedString, Window, point};
 use unicode_bidi::{BidiInfo, Level};
 
 impl Paragraph {
+    fn suffix_base(&self, at: usize) -> Level {
+        if self.plaintext.is_some() {
+            if at < self.text.len() {
+                self.resolved_visual(&(at..at), false)
+                    .map_or(Level::ltr(), |(level, _)| level)
+            } else {
+                Level::ltr()
+            }
+        } else if self.wrap.rtl {
+            Level::rtl()
+        } else {
+            Level::ltr()
+        }
+    }
+
     pub(super) fn shaped_suffix(
         &self,
         mark: &str,
@@ -17,7 +32,7 @@ impl Paragraph {
         if mark.is_empty() {
             return Vec::new();
         }
-        let mut runs = slice_runs(&self.runs, &(at..at + 1));
+        let mut runs = self.own_runs(&(at..at + 1));
         let Some(run) = runs.first_mut() else {
             return Vec::new();
         };
@@ -40,17 +55,7 @@ impl Paragraph {
         }
         // CSS Overflow 4 text-overflow/block-ellipsis: the isolate inherits the bidi
         // paragraph's direction; its first strong character cannot choose it.
-        let base = if self.plaintext.is_some() {
-            BidiInfo::new(&self.text, None)
-                .paragraphs
-                .iter()
-                .find(|paragraph| paragraph.range.contains(&at))
-                .map_or(Level::ltr(), |paragraph| paragraph.level)
-        } else if self.wrap.rtl {
-            Level::rtl()
-        } else {
-            Level::ltr()
-        };
+        let base = self.suffix_base(at);
         let info = BidiInfo::new(mark, Some(base));
         let Some(paragraph) = info.paragraphs.first() else {
             return Vec::new();
@@ -137,6 +142,35 @@ impl Paragraph {
                 cx,
             );
             origin.x += shaped.width;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::paragraph::{Align, Wrap};
+    use gpui::px;
+
+    #[test]
+    fn marker_base_uses_containing_plaintext_paragraph() {
+        let mut p = Paragraph::new(
+            "אב\nabc\nגד".into(),
+            vec![],
+            px(16.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        p.plaintext = Some(crate::style::computed::TextAlign::Start);
+        let original = BidiInfo::new(&p.text, None);
+        for at in (0..=p.text.len()).filter(|&at| p.text.is_char_boundary(at)) {
+            let expected = original
+                .paragraphs
+                .iter()
+                .find(|para| para.range.contains(&at))
+                .map_or(Level::ltr(), |para| para.level);
+            assert_eq!(p.suffix_base(at), expected, "{at}");
         }
     }
 }

@@ -86,7 +86,7 @@ pub(crate) fn band_flow_rest_lift(
     mut lift: Option<&mut Vec<Node>>,
     wm: WritingMode,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];

@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn measured_forced_break_after_moves_below_its_growth_strut() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<section><div style='height:20px;break-after:page'></div><div style='height:30px'></div></section>",
             "",
         );

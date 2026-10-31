@@ -21,7 +21,7 @@ fn element_opt<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
 
 #[test]
 fn named_try_is_computed_once_and_descendants_see_the_computed_variant() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<body><div style="position:absolute;zoom:2;width:5px;position-try-fallbacks:--fit"><b style="width:inherit">x</b></div></body>"#,
         "",
     );
@@ -62,7 +62,7 @@ fn named_try_is_computed_once_and_descendants_see_the_computed_variant() {
 
 #[test]
 fn remembered_geometry_and_computed_parent_share_only_accepted_values() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<body><div style="position:absolute;font-size:10px;position-try-fallbacks:--fit">x</div></body>"#,
         "",
     );

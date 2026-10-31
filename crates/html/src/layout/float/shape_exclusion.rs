@@ -22,7 +22,7 @@ pub(crate) fn measured_shape(
     cbw: f32,
     em: f32,
     wm: crate::style::computed::writing_mode::WritingMode,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> FloatShape {
     // Physical sizes and margins (css-writing-modes-4 §6.4): in vertical
     // modes the inline axis is the height and block-start is the right

@@ -1,7 +1,7 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

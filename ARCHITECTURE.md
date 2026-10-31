@@ -135,7 +135,28 @@ SVG; `loader` и `images` не импортируют фазы, `render` или 
 шрифтов (`font_facts`), без GPUI, CSS, DOM и без зависимостей. `kamin-html`
 реэкспортирует модуль (`pub use kamin_font_facts::font_facts`), поэтому
 `kamin_html::font_facts` и внутренние пути `crate::font_facts` прежние.
-Загрузка шрифтов и метрики платформы остаются в `text/fonts`. Проверки
+Загрузка шрифтов и метрики платформы остаются в `text/fonts`.
+
+Нижняя фаза `crates/html-style` (`kamin-style`) владеет DOM, CSS, селекторами,
+каскадом, `Computed`, ресурсами и `values::DocumentValues`. Она зависит от
+`kamin-font-facts` и прежних библиотек разбора/ресурсов, но не от `kamin-html`,
+layout, text или paint. Состояния фаз, платформенный провайдер шрифтов и
+конструкторы полного документа остаются в `kamin-html`; нижний разбор получает
+`DocumentValues` параметром. `kamin-html` реэкспортирует нижние корни, а
+`document/dom.rs` сохраняет `kamin_html::dom::{Parsed, try_parse,
+try_parse_media, try_parse_xml}` с прежним полным состоянием документа.
+Граф внутренних крейтов: `kamin-html → kamin-style → kamin-font-facts`;
+`kamin-html → kamin-font-facts` также сохраняется. Layout и paint пока не
+выделены. Циклов и обратных зависимостей нет.
+
+Тесты полного документа принадлежат фасаду. Его `style`-обёртка физически
+лежит в `document/style/` и сохраняет исходные Rust-имена реестровых проверок;
+проверки нижних данных регистрируются под прежними именами через узкие
+assertion-помощники. Фича `engine-test-support` выбирается только
+dev-dependency фасада и отсутствует в обычном графе. Поэтапный генератор
+проверяет канонический нижний glob обёртки и запрещает зависимости снизу вверх.
+
+Проверки
 исходников (`check_layer_imports`, `check_conventions`, `check_transitional`,
 `check_computed`) читают выделенные крейты через
 `scripts/html_source_inventory.py` по логическим путям `crates/html/src/…`,

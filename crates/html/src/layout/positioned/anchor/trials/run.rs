@@ -1,9 +1,9 @@
 //! Layout-only пробы с собственными сборщиками; prepaint выполняет хост победителя.
 
-use crate::document::state::ValueCx;
 use crate::layout::positioned::anchor::trials::{Options, Probe};
 use crate::layout::positioned::containing_block::{Escaped, SpotCell};
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, ParentElement, Pixels, Styled, Window,
     size,

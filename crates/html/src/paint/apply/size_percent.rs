@@ -4,9 +4,9 @@
 //! выражения: циклический процент в минимальном вкладе разрешается в ноль
 //! (CSS Sizing 3 §5.2.1). Нулевой процент разрешается всегда.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Position};
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 pub(super) fn resolve_cyclic_size_percentage(
     style: &BoxStyle,

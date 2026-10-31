@@ -22,5 +22,6 @@ impl ParagraphState {
     /// as the next frame's fallback.
     pub(crate) fn begin_frame(&self) {
         self.vertical.begin_frame();
+        self.paragraphs.begin_frame();
     }
 }

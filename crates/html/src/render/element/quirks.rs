@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn float_exclusion_survives_float_layout_clearing_the_property() {
-        let nodes = crate::dom::parse(
+        let nodes = crate::document::parsed::parse(
             "<!DOCTYPE quirks-mode><style>body { float: left }</style><body></body>",
             "",
         );

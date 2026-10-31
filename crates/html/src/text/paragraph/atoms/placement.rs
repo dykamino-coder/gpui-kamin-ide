@@ -15,6 +15,7 @@ impl Paragraph {
     /// занят). Атом меряется по содержимому — в строку допускаются только
     /// атомы, чей размер от ширины строки не зависит (решает `layout::atom`).
     pub(crate) fn lay_atoms(&mut self, window: &mut Window, cx: &mut App) {
+        self.invalidate_prepared();
         if let Some(run) = self.runs.first() {
             let id = window.text_system().resolve_font(&run.font);
             let size = run.font_size.unwrap_or(self.font_size);
@@ -29,7 +30,7 @@ impl Paragraph {
             );
             self.strut = (ascent, descent, f32::from(ts.x_height(id, size)));
         }
-        self.run_metrics = self.measure_runs(window);
+        self.refresh_run_metrics(window);
         self.atom_boxes.clear();
         let mut nested_layers = (0.0f32, 0.0f32);
         // Ruby atoms whose annotation may overhang neighbours: resolved after
@@ -154,6 +155,7 @@ impl Paragraph {
         if let Some(layers) = &self.ruby_layers {
             layers.set_nested(nested_layers);
         }
+        self.invalidate_prepared();
         for (k, at, len, w, base_w, ann_w, info) in overhangs {
             let (start_oh, end_oh) = self.ruby_overhang(&info, at, len, w, base_w, ann_w, window);
             if start_oh + end_oh <= 0.0 {
@@ -166,6 +168,7 @@ impl Paragraph {
                 .find(|(r, _)| *r == (at..at + len))
             {
                 span.1 = px((w - start_oh - end_oh).max(0.0));
+                self.prepared.take();
             }
         }
         self.prepare_atom_fit(window, cx);
@@ -211,10 +214,9 @@ impl Paragraph {
         {
             return px(0.);
         }
-        self.letter_spans
-            .iter()
-            .find(|(r, _)| r.contains(&at))
-            .map(|(_, v)| *v)
-            .unwrap_or(self.letter_spacing)
+        self.prepared()
+            .letters
+            .first(at)
+            .map_or(self.letter_spacing, |i| self.letter_spans[i].1)
     }
 }

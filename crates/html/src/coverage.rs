@@ -15,7 +15,7 @@
 //! * `Impossible` — примитива в GPUI нет, перенести невозможно. Причина
 //!   обязательна и попадает в документацию.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod field_audit;
 mod properties;
 #[cfg(test)]

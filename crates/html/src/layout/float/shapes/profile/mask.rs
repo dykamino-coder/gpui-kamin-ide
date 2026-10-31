@@ -1,7 +1,7 @@
 //! Растровая маска и интервалы CSS shape-outside.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::ImageSource;
+use crate::values::ValueCx;
 mod dilation;
 pub(super) use dilation::dilate;
 

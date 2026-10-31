@@ -12,7 +12,7 @@ fn table_pieces(cx: &mut gpui::TestAppContext, width: f32) -> Vec<(usize, f32, f
     let mut out = Vec::new();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
         let rows = "<tr><td style='height:40px;padding:0'></td></tr>".repeat(3);
-        let tree = crate::dom::parse(&format!("<section style='columns:2;column-gap:0;column-fill:auto;height:100px'><table style='border-spacing:0'>{rows}</table></section>"), "");
+        let tree = crate::document::parsed::parse(&format!("<section style='columns:2;column-gap:0;column-fill:auto;height:100px'><table style='border-spacing:0'>{rows}</table></section>"), "");
         let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
         opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;

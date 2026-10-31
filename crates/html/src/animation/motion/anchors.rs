@@ -1,9 +1,9 @@
 //! Позиции и точки привязки преобразования motion path.
 
 use super::{Cb, angle_rad};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// `offset-rotate: [ auto | reverse ] || <angle>` (§offset-rotate).
 ///

@@ -73,7 +73,7 @@ mod tests {
                 _ => None,
             })
         }
-        let mut tree = crate::dom::parse("<div style='float:left'></div>", "");
+        let mut tree = crate::document::parsed::parse("<div style='float:left'></div>", "");
         let float = find(&mut tree).unwrap();
         assert!(own_context(float));
         float.style.used_mut().float = None;

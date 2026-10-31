@@ -12,7 +12,7 @@
 //!
 //! Всё в ОДНОМ процессе и одном окне: запуск окна стоит секунды, а пар —
 //! тысячи. Документ подменяется в той же сущности, кадр снимается прямо
-//! отсюда (`PrintWindow`), и следующая пара идёт без перезапуска.
+//! из GPU readback до Present, и следующая пара идёт без перезапуска.
 
 #![allow(
     clippy::print_stdout,
@@ -26,6 +26,8 @@
 
 #[path = "wptrun/animation_frames.rs"]
 mod animation_frames;
+#[path = "wptrun/audit.rs"]
+mod audit;
 #[path = "wptrun/capture.rs"]
 mod capture;
 #[path = "wptrun/capture_dump.rs"]
@@ -36,8 +38,12 @@ mod capture_name;
 mod config;
 #[path = "wptrun/css_scan.rs"]
 mod css_scan;
+#[path = "wptrun/fonts.rs"]
+mod fonts;
 #[path = "wptrun/frame_metrics.rs"]
 mod frame_metrics;
+#[path = "wptrun/gpu.rs"]
+mod gpu;
 #[path = "wptrun/html_attrs.rs"]
 mod html_attrs;
 #[path = "wptrun/links.rs"]
@@ -105,15 +111,18 @@ fn main() {
     if std::env::var_os("KAMIN_FORCE_SCALE").is_none() {
         instrumentation.scale_factor = Some(1.);
     }
-    let (capture, sink) = capture::setup();
     std::panic::set_hook(Box::new(|info| {
         let _ = std::fs::write("target/wpt-panic.txt", format!("{info}"));
         eprintln!("{info}");
     }));
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    let host = gpu::Host::new(&mut args).unwrap_or_else(|e| audit::fatal(e));
     let list = args.get(1).cloned().unwrap_or_default();
     let w: f32 = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(800.);
     let h: f32 = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(600.);
+    let audit = audit::Audit::new(&host, &list, w, h);
+    let (capture, sink) = capture::setup();
+    let sink = Some(audit.sink(sink));
     // `WPT_DUMP=1` — снимки разошедшихся пар, `WPT_DUMP=all` — всех подряд.
     // Второе нужно ручному разбору: там проверяется и то, что стенд счёл
     // сошедшимся (см. `scripts/wpt_review.py`).
@@ -128,7 +137,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    gpui_platform::application()
+    host.application()
         .with_instrumentation(instrumentation)
         .run(move |cx| {
             // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
@@ -137,32 +146,7 @@ fn main() {
                 eprintln!("WPT animation elapsed override: {} ms", elapsed.as_millis());
                 cx.set_global(gpui::AnimationElapsedTime(elapsed));
             }
-            // Ahem — служебный шрифт набора: все его буквы одинаковые чёрные
-            // квадраты в кегль. На нём построены сотни тестов: фигуры сходятся
-            // ровно потому, что метрики предсказуемы. Без него текст набирается
-            // системным шрифтом, и «квадраты» разъезжаются.
-            for name in ["Ahem.ttf", "AHEM____.TTF"] {
-                let path = std::path::Path::new("vendor/wpt-parsing/fonts").join(name);
-                if let Ok(bytes) = std::fs::read(&path) {
-                    let _ = cx.text_system().add_fonts(vec![bytes.into()]);
-                    break;
-                }
-            }
-            // Шрифты CSSTest — второе предусловие набора: тесты css-fonts пишут
-            // «Test fonts must be installed for this test» и зовут их по имени
-            // семейства как УСТАНОВЛЕННЫЕ (`font-family: CSSTest Verify`), без
-            // `@font-face`. Без них обе стороны пары набираются подменой.
-            if let Ok(dir) = std::fs::read_dir("vendor/wpt-parsing/fonts/CSSTest") {
-                let mut paths: Vec<_> = dir.flatten().map(|e| e.path()).collect();
-                paths.sort();
-                let fonts: Vec<_> = paths
-                    .iter()
-                    .filter(|p| p.extension().is_some_and(|e| e == "ttf"))
-                    .filter_map(|p| std::fs::read(p).ok())
-                    .map(Into::into)
-                    .collect();
-                let _ = cx.text_system().add_fonts(fonts);
-            }
+            fonts::register(cx);
             // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
             // и `ch` мерился бы по шрифту-подмене.
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
@@ -191,6 +175,7 @@ fn main() {
                         window_background: WindowBackgroundAppearance::Opaque,
                         is_resizable: false,
                         is_minimizable: false,
+                        focus: false,
                         ..Default::default()
                     },
                     |window, cx| -> Entity<Page> {
@@ -210,8 +195,7 @@ fn main() {
                 .unwrap();
             // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
             // окно висело поверх чужой работы — в паузах между страницами белое.
-            // Снимок делает `PrintWindow` с флагом 3, ему передний план не нужен:
-            // достаточно, чтобы окно не было СВЁРНУТО.
+            // GPU readback снимает кадр до Present и не требует переднего плана.
 
             let cfg = run::RunConfig {
                 capture,
@@ -219,6 +203,7 @@ fn main() {
                 exact,
                 dumping,
                 dump_all,
+                audit,
             };
             cx.spawn(async move |cx| run::run(cx, window.into(), cfg).await)
                 .detach();

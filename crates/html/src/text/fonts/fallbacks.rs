@@ -5,7 +5,7 @@ use crate::style::computed::Computed;
 pub(crate) fn fallbacks(
     style: &Computed,
     base: Option<gpui::FontFallbacks>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<gpui::FontFallbacks> {
     let Some(families) = &style.font_families else {
         return base.or_else(crate::text::fonts::document_fallbacks);

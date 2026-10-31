@@ -19,6 +19,7 @@ fn kid(source: PageSource) -> super::super::PageKid {
         watched: None,
         float_id: None,
         float_extent: false,
+        replay: false,
         repeat: None,
         frags: Vec::new(),
         monolith: false,
@@ -53,7 +54,7 @@ fn geom(index: usize) -> PageGeom {
 fn actual_page_cb_repeats_fixed_through_the_last_absolute_fragment(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse("<section style='position:relative;height:20px'><div style='position:absolute;top:95px;width:80px;height:85px'></div><div style='position:fixed;top:10%;width:10%;height:10%'><div style='position:absolute;top:95px;width:10px;height:150px'></div></div><div style='transform:translateX(0px);height:10px;width:40px'><div style='position:fixed;top:5px;width:10px;height:150px'><div style='position:absolute;top:95px;width:10px;height:150px'></div></div></div></section>", "");
+        let tree = crate::document::parsed::parse("<section style='position:relative;height:20px'><div style='position:absolute;top:95px;width:80px;height:85px'></div><div style='position:fixed;top:10%;width:10%;height:10%'><div style='position:absolute;top:95px;width:10px;height:150px'></div></div><div style='transform:translateX(0px);height:10px;width:40px'><div style='position:fixed;top:5px;width:10px;height:150px'><div style='position:absolute;top:95px;width:10px;height:150px'></div></div></div></section>", "");
         let mut opts = Box::new(RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() });
         opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;

@@ -17,46 +17,20 @@ impl Paragraph {
         s: usize,
         e: usize,
     ) -> (f32, f32) {
-        let base = if self.wrap.rtl {
-            unicode_bidi::Level::rtl()
-        } else {
-            unicode_bidi::Level::ltr()
-        };
-        let info = unicode_bidi::BidiInfo::new(
-            &self.text,
-            if self.plaintext.is_some() {
-                None
-            } else {
-                Some(base)
-            },
-        );
-        let Some(para) = info
-            .paragraphs
-            .iter()
-            .find(|p| p.range.start <= line.start && line.start < p.range.end)
-        else {
+        let Some((_, runs)) = self.resolved_visual(line, false) else {
             return (0.0, 0.0);
         };
-        let (levels, runs) = info.visual_runs(para, line.clone());
         let (mut before, mut after) = (0.0, 0.0);
         let mut found = false;
-        for run in runs {
-            let a = run.start.max(group.start);
-            let b = run.end.min(group.end);
+        for (start, end, rtl) in runs {
+            let a = start.max(group.start);
+            let b = end.min(group.end);
             if a >= b {
                 continue;
             }
             if a <= s && e <= b {
-                let left = if levels[run.start].is_rtl() {
-                    e..b
-                } else {
-                    a..s
-                };
-                let right = if levels[run.start].is_rtl() {
-                    a..s
-                } else {
-                    e..b
-                };
+                let left = if rtl { e..b } else { a..s };
+                let right = if rtl { a..s } else { e..b };
                 before += self.decor_width(segs, left.start, left.end);
                 after += self.decor_width(segs, right.start, right.end);
                 found = true;

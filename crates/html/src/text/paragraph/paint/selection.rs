@@ -31,6 +31,7 @@ impl Paragraph {
         }
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
+            prepared: Default::default(),
             anchor_values: self.anchor_values.clone(),
             paint_context: self.paint_context.clone(),
             inline_measure: self.inline_measure.clone(),

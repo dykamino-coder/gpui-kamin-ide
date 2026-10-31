@@ -40,6 +40,8 @@ pub(crate) struct FontInfo {
 }
 
 mod scene_capture;
+mod frame_capture;
+mod shader_identity;
 
 pub(crate) struct DirectXRenderer {
     hwnd: HWND,
@@ -342,6 +344,8 @@ fn blur_down_pass(
 /// Direct3D objects
 #[derive(Clone)]
 pub(crate) struct DirectXRendererDevices {
+    // KaminIDE patch: immutable snapshot belongs to these device resources.
+    context: gpui::frame_capture::GpuDeviceContext,
     pub(crate) adapter: IDXGIAdapter1,
     pub(crate) dxgi_factory: IDXGIFactory6,
     pub(crate) device: ID3D11Device,
@@ -440,6 +444,7 @@ impl DirectXRendererDevices {
         let annotation = device_context.cast().ok();
 
         Ok(Self {
+            context: directx_devices.context.clone(),
             adapter: adapter.clone(),
             dxgi_factory: dxgi_factory.clone(),
             device: device.clone(),
@@ -693,63 +698,6 @@ impl DirectXRenderer {
             }
         }
         self.present()
-    }
-
-    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
-    fn capture_frame(&mut self) -> Result<()> {
-        let started = std::time::Instant::now();
-        let (w, h) = (self.width, self.height);
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: w,
-            Height: h,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-        };
-        let devices = self.dev();
-        let render_target = self
-            .res()
-            .render_target
-            .as_ref()
-            .context("render target missing")?;
-        let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe {
-            devices
-                .device
-                .CreateTexture2D(&desc, None, Some(&mut staging))?
-        };
-        let staging = staging.context("staging texture")?;
-        let ctx = &devices.device_context;
-        unsafe { ctx.CopyResource(&staging, render_target) };
-        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-        let row = (w * 4) as usize;
-        let mut bgra = vec![0u8; row * h as usize];
-        for y in 0..h as usize {
-            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
-            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
-            // bytes until Unmap below.
-            let src = unsafe {
-                std::slice::from_raw_parts(
-                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
-                    row,
-                )
-            };
-            bgra[y * row..(y + 1) * row].copy_from_slice(src);
-        }
-        unsafe { ctx.Unmap(&staging, 0) };
-        if let Some(sink) = &mut self.capture {
-            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra }, started.elapsed());
-        }
-        Ok(())
     }
 
     /// Clear the render target for `background_appearance` and encode every
@@ -2358,6 +2306,8 @@ const _: () = assert!(std::mem::size_of::<BatchParams>() == 16);
 
 struct PipelineState<T> {
     label: &'static str,
+    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
+    shader_executables: [String; 2],
     vertex: ID3D11VertexShader,
     fragment: ID3D11PixelShader,
     buffer: ID3D11Buffer,
@@ -2368,36 +2318,6 @@ struct PipelineState<T> {
 }
 
 impl<T> PipelineState<T> {
-    fn new(
-        device: &ID3D11Device,
-        label: &'static str,
-        shader_module: ShaderModule,
-        buffer_size: usize,
-        blend_state: ID3D11BlendState,
-    ) -> Result<Self> {
-        let vertex = {
-            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
-            create_vertex_shader(device, raw_shader.as_bytes())?
-        };
-        let fragment = {
-            let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Fragment)?;
-            create_fragment_shader(device, raw_shader.as_bytes())?
-        };
-        let buffer = create_buffer(device, std::mem::size_of::<T>(), buffer_size)?;
-        let view = create_buffer_view(device, &buffer)?;
-
-        Ok(PipelineState {
-            label,
-            vertex,
-            fragment,
-            buffer,
-            buffer_size,
-            view,
-            blend_state,
-            _marker: std::marker::PhantomData,
-        })
-    }
-
     fn update_buffer(
         &mut self,
         device: &ID3D11Device,

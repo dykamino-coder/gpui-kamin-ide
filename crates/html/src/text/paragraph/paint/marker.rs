@@ -5,7 +5,7 @@
 //! пустая строка обрыва, у которой остался только знак.
 
 use crate::text::paragraph::*;
-use gpui::{TextRun, Window, px};
+use gpui::{TextRun, px};
 
 impl Paragraph {
     /// Строковый маркер несёт шрифт контейнера; многоточие и знак переноса
@@ -49,26 +49,6 @@ impl Paragraph {
             // строку резервировалось ~90 точек вместо 20).
             run.font_size = self.marker_size;
         }
-    }
-}
-
-impl Paragraph {
-    /// Набор с знаком обрыва в начале или в конце куска.
-    pub(crate) fn shape_with_mark(
-        &self,
-        range: &std::ops::Range<usize>,
-        runs: &[TextRun],
-        rtl: bool,
-        suffix: &str,
-        at_start: bool,
-        window: &mut Window,
-    ) -> Option<gpui::ShapedLine> {
-        if !at_start || suffix.is_empty() {
-            return self.shape(range, runs, rtl, suffix, window);
-        }
-        // Префикс: знак дорисовывается отдельным вызовом слева, а сам кусок
-        // набирается без него (вплетение в шейп меняло бы кернинг начала).
-        self.shape(range, runs, rtl, "", window)
     }
 }
 

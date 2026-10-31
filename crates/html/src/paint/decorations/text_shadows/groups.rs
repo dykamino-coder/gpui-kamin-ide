@@ -63,7 +63,7 @@ pub(super) fn collect_groups(
     nodes: &[Node],
     current: &ShadowStyle,
     out: &mut Vec<Vec<Shadow>>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     let resolved = current.resolved();
     for node in nodes {

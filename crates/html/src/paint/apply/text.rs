@@ -1,10 +1,10 @@
 //! Текст: шрифт, цвет, выравнивание (apply_text).
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Div, Styled, px, relative};
 
 /// Текстовые свойства коробки: шрифт, кегль, цвет, начертание.

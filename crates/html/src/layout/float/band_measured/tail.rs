@@ -19,7 +19,7 @@ pub(super) fn band_host_m_tail(
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
     cb: FloatCb,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).

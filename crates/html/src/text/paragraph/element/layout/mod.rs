@@ -21,6 +21,7 @@ impl Paragraph {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
+        self.invalidate_prepared();
         // Атомы раскладываются ДО замера: их ширина — продвижение распорки,
         // высота растит строку (см. `lay_atoms`).
         if !self.atoms.is_empty() {
@@ -37,10 +38,10 @@ impl Paragraph {
         if (!self.emph_spans.is_empty() || inline_anchor)
             && self.run_metrics.len() != self.runs.len()
         {
-            self.run_metrics = self.measure_runs(window);
+            self.refresh_run_metrics(window);
         }
         if !self.box_spans.is_empty() && self.run_metrics.len() != self.runs.len() {
-            self.run_metrics = self.measure_runs(window);
+            self.refresh_run_metrics(window);
         }
         // Root inline box metrics: boxed lines and the shared baseline of a
         // turned central line (`shared_base`) both start from them.
@@ -59,6 +60,7 @@ impl Paragraph {
             );
         }
         self.measure_first_strut(window);
+        self.invalidate_prepared();
         let first_strut = self.first_strut.clone();
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
@@ -119,64 +121,72 @@ impl Paragraph {
         let inline_measure = self.inline_measure.clone();
         let normal_static = normal_static::NormalStatic::new(self, window, cx);
         let static_bind = normal_static.clone();
+        let rebuild = fit.is_some() || !atom_fit.borrow().is_empty();
+        let make_probe = move || {
+            let mut probe = Paragraph::new(
+                text.clone(),
+                runs.clone(),
+                font_size,
+                line_height,
+                align,
+                wrap,
+            )
+            .ortho_limit(ortho_limit);
+            probe.clamp_rows = clamp_rows.clone();
+            probe.clamp_tag = clamp_tag;
+            probe.measures = measures.clone();
+            probe.paint_context = paint_context.clone();
+            probe.inline_measure = inline_measure.clone();
+            probe.vertical = vertical;
+            probe.lines_reversed = lines_reversed;
+            probe.vertical_central_baseline = vertical_central_baseline;
+            probe.vertical_ccw = vertical_ccw;
+            probe.vertical_inline = vertical_inline;
+            probe.ruby_base_sink = ruby_base_sink.clone();
+            probe.spans = spans.clone();
+            probe.word_spans = word_spans.clone();
+            probe.letter_spans = letter_spans.clone();
+            probe.shift_spans = shift_spans.clone();
+            probe.lh_spans = lh_spans.clone();
+            probe.clamp = clamp;
+            probe.clamp_force = clamp_force;
+            probe.fit = fit;
+            probe.tab_stop = tab_stop.clone();
+            probe.indent = indent;
+            probe.hanging = hanging;
+            probe.flow = flow.clone();
+            probe.fragment = fragment.clone();
+            probe.atom_boxes = atom_boxes.clone();
+            probe.edge_spans = edge_spans.clone();
+            probe.ruby_trim = ruby_trim;
+            // Ruby's sub-line keeps trailing spaces and suppresses word
+            // justification. Its intrinsic probe must use the same rules
+            // as the paragraph that later places the base/annotation.
+            probe.ruby_unit = ruby_unit;
+            probe.ruby_layers = ruby_layers.clone();
+            probe.ruby_justify = ruby_justify;
+            probe.emph_spans = emph_spans.clone();
+            probe.box_spans = box_spans.clone();
+            probe.strut_box = strut_box;
+            probe.first_strut = first_strut.clone();
+            probe.run_metrics = run_metrics.clone();
+            probe.strut = strut;
+            probe.spacers = spacers.clone();
+            probe.spacer_edges = spacer_edges.clone();
+            probe.box_extents = box_extents.clone();
+            probe
+        };
+        let mut probe = make_probe();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
                 // Заданная ширина сильнее доступной: раскладка уже решила, в
                 // какую коробку абзац ставится, и переносы считаются по ней.
-                let mut probe = Paragraph::new(
-                    text.clone(),
-                    runs.clone(),
-                    font_size,
-                    line_height,
-                    align,
-                    wrap,
-                )
-                .ortho_limit(ortho_limit);
-                probe.clamp_rows = clamp_rows.clone();
-                probe.clamp_tag = clamp_tag;
-                probe.measures = measures.clone();
-                probe.paint_context = paint_context.clone();
-                probe.inline_measure = inline_measure.clone();
-                probe.vertical = vertical;
-                probe.lines_reversed = lines_reversed;
-                probe.vertical_central_baseline = vertical_central_baseline;
-                probe.vertical_ccw = vertical_ccw;
-                probe.vertical_inline = vertical_inline;
-                probe.ruby_base_sink = ruby_base_sink.clone();
-                probe.spans = spans.clone();
-                probe.word_spans = word_spans.clone();
-                probe.letter_spans = letter_spans.clone();
-                probe.shift_spans = shift_spans.clone();
-                probe.lh_spans = lh_spans.clone();
-                probe.clamp = clamp;
-                probe.clamp_force = clamp_force;
-                probe.fit = fit;
-                probe.tab_stop = tab_stop.clone();
-                probe.indent = indent;
-                probe.hanging = hanging;
-                probe.flow = flow.clone();
-                probe.fragment = fragment.clone();
-                probe.atom_boxes = atom_boxes.clone();
-                probe.edge_spans = edge_spans.clone();
-                probe.ruby_trim = ruby_trim;
-                // Ruby's sub-line keeps trailing spaces and suppresses word
-                // justification. Its intrinsic probe must use the same rules
-                // as the paragraph that later places the base/annotation.
-                probe.ruby_unit = ruby_unit;
-                probe.ruby_layers = ruby_layers.clone();
-                probe.ruby_justify = ruby_justify;
-                probe.emph_spans = emph_spans.clone();
-                probe.box_spans = box_spans.clone();
-                probe.strut_box = strut_box;
-                probe.first_strut = first_strut.clone();
-                probe.run_metrics = run_metrics.clone();
-                probe.strut = strut;
-                probe.spacers = spacers.clone();
-                probe.spacer_edges = spacer_edges.clone();
-                probe.box_extents = box_extents.clone();
+                if rebuild {
+                    probe = make_probe();
+                }
                 measured_layout(
-                    probe,
+                    &mut probe,
                     atom_fit.clone(),
                     known,
                     available,

@@ -13,6 +13,7 @@ mod display;
 mod events;
 // KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 mod gpu_adapter;
+mod gpu_context;
 mod keyboard;
 #[cfg(test)]
 mod ligature_tests;

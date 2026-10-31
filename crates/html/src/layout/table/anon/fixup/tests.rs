@@ -5,7 +5,7 @@ use crate::style::values::value::Len;
 
 #[test]
 fn dissolved_contents_hand_down_their_computed_font_size() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<div style="display: table; font-size: 20px"><div style="display: contents; font-size: 150%"><div style="display: table-row"><div style="display: table-cell">a</div></div></div></div>"#,
         "",
     );

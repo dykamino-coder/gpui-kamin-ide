@@ -1,8 +1,8 @@
 //! Полосы контура border-shape из упорядоченных luminance-путей покрытия.
 
 use super::border_scene::Contour;
-use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 
 /// Blink BorderShapePainter::PaintOutline: offset the outer path, then
 /// subtract its inner offset. Double outlines paint both bands in one mask.

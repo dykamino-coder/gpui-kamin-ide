@@ -1,7 +1,7 @@
 //! Краска и опорная коробка изображения до применения background-clip.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BgClip, Computed, Gradient};
+use crate::values::ValueCx;
 use gpui::{Background, Bounds, Pixels};
 
 pub(super) enum Fill<'a> {

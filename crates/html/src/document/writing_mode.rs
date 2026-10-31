@@ -9,8 +9,8 @@
 //! прижим вправо.
 
 use super::any_containment;
-use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::values::ValueCx;
 
 pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
     let [Node::Element(html)] = nodes.as_mut_slice() else {

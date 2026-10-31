@@ -8,7 +8,7 @@ fn find<'a>(nodes: &'a [Node], tag: &str) -> &'a Element {
 }
 
 fn unwrapped(body: &str) -> Vec<Node> {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         &format!(r#"<!DOCTYPE html><html style="filter: opacity(0.5)">{body}</html>"#),
         "",
     );

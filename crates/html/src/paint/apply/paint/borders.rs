@@ -1,8 +1,8 @@
 //! Слои рамки для apply_paint: обычная рамка стороны и двойная (double) двумя полосами.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
+use crate::values::ValueCx;
 
 /// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
 /// рисовать отдельным слоем после плиток фона, а не квадом коробки.

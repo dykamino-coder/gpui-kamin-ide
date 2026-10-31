@@ -3,10 +3,10 @@
 //! огромные вьюпорты не растрируются и не теряют точность координат; Blink
 //! `SVGShapePainter::FillShape` тоже красит геометрию прямоугольника напрямую.
 
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
 #[cfg(test)]
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 use gpui::{Bounds, Corners, Pixels, Window};
 
 pub(super) use crate::resources::css_images::flat_vector::color;

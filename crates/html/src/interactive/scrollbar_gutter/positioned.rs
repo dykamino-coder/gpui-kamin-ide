@@ -1,8 +1,8 @@
 //! Gutter полос уменьшает содержащий блок абсолютных и фиксированных коробок (CSS Overflow 3
 //! §4.2): их inset'ы и размеры в долях пересчитываются от содержащего блока без gutter.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Position};
+use crate::values::ValueCx;
 use gpui::{DefiniteLength, Div, Length, Styled};
 fn adjust(value: &mut Option<Length>, side: f32, total: f32, vcx: ValueCx<'_>) {
     let Some(Length::Definite(v)) = value else {

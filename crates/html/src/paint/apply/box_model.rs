@@ -1,9 +1,9 @@
 //! Коробка: поля, отступы, рамки по сторонам, скругления (apply_box).
 
-use crate::document::state::ValueCx;
 use crate::paint::apply::*;
 use crate::style::computed::{BoxStyle, Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::{Len, px_lossy_zero};
+use crate::values::ValueCx;
 use gpui::{Div, Styled, px};
 
 mod clip_position;

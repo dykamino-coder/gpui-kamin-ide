@@ -1,7 +1,7 @@
 //! Профиль фигуры обтекания (shape-outside, shape-margin): маска, интервалы, расширение.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::ImageSource;
+use crate::values::ValueCx;
 
 mod mask;
 use mask::dilate;

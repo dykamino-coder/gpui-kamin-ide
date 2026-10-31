@@ -90,7 +90,7 @@ mod tests {
             (StackAxis::VerticalRl, true),
             (StackAxis::VerticalLr, false),
         ] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 "<div><div style='margin-left:3px;margin-right:7px;width:20px'></div></div>",
                 "",
             );
@@ -128,7 +128,7 @@ mod tests {
             (StackAxis::VerticalRl, true),
             (StackAxis::VerticalLr, false),
         ] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 "<div style='width:80px'><div style='margin-left:5px;margin-right:9px;width:20px'></div><div style='break-before:column;width:30px'></div></div>",
                 "",
             );

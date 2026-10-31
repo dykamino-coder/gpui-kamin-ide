@@ -136,7 +136,7 @@ pub struct Grouped {
     /// поэтому внутри content-box кольцо ложится поверх картинки.
     pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
     /// Values of the document the group's mask and clip lengths come from.
-    pub(crate) values: crate::document::state::ValueDoc,
+    pub(crate) values: crate::values::ValueDoc,
     /// Deferred paint owner of the render tree that built the group.
     pub(crate) paint: Option<std::rc::Rc<crate::layout::cx::deferred::Deferred>>,
 }

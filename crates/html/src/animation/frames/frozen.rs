@@ -2,8 +2,8 @@
 
 use super::sample_at;
 use crate::animation::animation_frame;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::values::ValueCx;
 
 /// Остановленная анимация (`AnimSpec::frozen`), запечённая в копию элемента:
 /// кадр `(-delay)/duration` подставляется прямо в стиль, и дальше работает

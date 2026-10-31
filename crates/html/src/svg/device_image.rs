@@ -10,7 +10,7 @@ pub(super) fn element(
     markup: String,
     w: f32,
     h: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Div> {
     // One logical pixel of canvas past the viewport keeps the content that
     // reaches beyond its edge, so the clip below can end on the snapped box

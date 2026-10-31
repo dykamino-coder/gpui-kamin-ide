@@ -1,9 +1,9 @@
 //! Статическое сведение `anchor()` до сборки дерева и якорь по умолчанию.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
 use crate::style::values::value::{Len, anchor_get};
+use crate::values::ValueCx;
 use std::collections::HashSet;
 
 /// Статически неразрешимые `anchor()` решаются до отрисовки (§anchor-resolution:

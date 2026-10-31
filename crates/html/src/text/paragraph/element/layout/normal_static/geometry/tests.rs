@@ -19,6 +19,7 @@ fn paragraph(text: &str, align: Align, rtl: bool) -> (Paragraph, Vec<Seg>) {
         .char_indices()
         .enumerate()
         .map(|(i, (start, ch))| Seg {
+            positions: Default::default(),
             start,
             end: start + ch.len_utf8(),
             offset: px(i as f32 * 10.),

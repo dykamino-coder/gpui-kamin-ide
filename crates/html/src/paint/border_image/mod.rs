@@ -12,8 +12,8 @@
 //! всё остальное срезала маска куска.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 mod gradient;
 mod grid;
 mod tiling;
@@ -170,30 +170,6 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
         .size_full()
         .into_any_element(),
     )
-}
-
-/// Ширина куска рамки: число — во столько раз толще самой рамки, длина — как
-/// есть, доля — от стороны коробки (css-backgrounds-3 §6.5).
-impl crate::style::computed::BorderImageWidth {
-    pub fn px(self, border: f32, side: f32) -> f32 {
-        match self {
-            crate::style::computed::BorderImageWidth::Times(k) => k * border,
-            crate::style::computed::BorderImageWidth::Px(v) => v,
-            crate::style::computed::BorderImageWidth::Pct(k) => k * side,
-            // `auto` — своя величина куска образа; её мы приравниваем к рамке.
-            crate::style::computed::BorderImageWidth::Auto => border,
-        }
-    }
-}
-
-/// Срез образа: число — в его собственных точках, доля — от его стороны.
-impl crate::style::computed::BorderImageSlice {
-    pub fn px(self, side: f32) -> f32 {
-        match self {
-            crate::style::computed::BorderImageSlice::Px(v) => v,
-            crate::style::computed::BorderImageSlice::Pct(k) => k * side,
-        }
-    }
 }
 
 #[cfg(test)]

@@ -80,7 +80,7 @@ fn author_marker_bidi_and_numeric_variant_win_over_ua_rules() {
 #[test]
 fn marker_box_colors_pass_the_subtree_filter_once() {
     use crate::style::cascade::materialize::{box_style, materialize};
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<ul id="list" style="filter: invert(1)"><li id="item" style="list-style: square inside; color: rgb(0, 128, 0)">x</li></ul>"#,
         "",
     );

@@ -14,7 +14,7 @@ fn find<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
 
 #[test]
 fn an_atom_takes_its_own_vertical_align_not_the_inline_ancestors() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<body><span style="vertical-align: top">a <b style="display: inline-block">x</b> <i style="display: inline-block; vertical-align: bottom">y</i></span></body>"#,
         "",
     );

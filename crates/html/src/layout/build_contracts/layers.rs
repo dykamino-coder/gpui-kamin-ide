@@ -1,10 +1,10 @@
 //! Слои покраски поверх геометрии, собранной пробами layout в том же кадре.
 
-use crate::document::state::ValueCx;
 use crate::layout::cx::{LayoutCx, deferred::Deferred};
 use crate::layout::multicol::gap_rules::{GapItems, GapRuleSpec};
 use crate::layout::table::probes::{CellBgs, CellEdges, RowRects};
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 use std::rc::Rc;
 
 /// A paint layer over geometry that layout's probes record in prepaint of

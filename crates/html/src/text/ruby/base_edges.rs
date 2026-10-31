@@ -44,7 +44,8 @@ fn seen(edges: &mut (Option<char>, Option<char>), c: char) {
 #[cfg(test)]
 mod tests {
     use super::base_edges;
-    use crate::dom::{Element, Node, parse};
+    use crate::document::parsed::parse;
+    use crate::dom::{Element, Node};
 
     fn ruby(html: &str) -> (Option<char>, Option<char>) {
         fn find(nodes: &[Node]) -> Option<&Element> {

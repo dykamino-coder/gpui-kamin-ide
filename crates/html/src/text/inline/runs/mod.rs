@@ -44,7 +44,7 @@ pub fn max_font_size(
     pieces: &[Piece],
     strut: f32,
     em_base: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> f32 {
     pieces.iter().fold(strut, |acc, p| match p {
         Piece::Text { style, .. } => acc.max(style.used_font(em_base, vcx).size_px),
@@ -66,7 +66,7 @@ pub fn max_line_height(
     em_base: f32,
     fraction: f32,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> f32 {
     pieces.iter().fold(
         crate::text::metrics::normal_px(fraction, strut, fonts),
@@ -92,7 +92,7 @@ pub fn max_line_height(
 pub fn text_and_runs(
     pieces: &[Piece],
     base: &TextStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(String, Vec<TextRun>)> {
     let mut text = String::new();
     let mut runs: Vec<TextRun> = vec![];
@@ -127,7 +127,7 @@ pub fn text_and_runs(
 pub fn strut_font(
     style: &Computed,
     base: &TextStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> gpui::Font {
     run_for("x", style, base, vcx).font
 }
@@ -136,7 +136,7 @@ pub(super) fn run_for(
     text: &str,
     style: &Computed,
     base: &TextStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> TextRun {
     decorated_run(text, style, Default::default(), style.color, base, vcx)
 }
@@ -147,7 +147,7 @@ fn decorated_run(
     inline_decoration: crate::style::inline_decoration::InlineDecoration,
     ink: Option<Color>,
     base: &TextStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> TextRun {
     let mut font = base.font();
     font.fallbacks = crate::text::fonts::fallbacks::fallbacks(style, font.fallbacks, vcx);

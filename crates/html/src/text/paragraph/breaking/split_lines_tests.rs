@@ -26,6 +26,7 @@ fn balancing_preserves_the_float_opportunity_instead_of_clearing_it() {
     // Fixed advances keep this geometry test independent of system fonts.
     let segs: Vec<_> = (0..p.text.len())
         .map(|i| Seg {
+            positions: Default::default(),
             start: i,
             end: i + 1,
             offset: px(i as f32 * 10.),

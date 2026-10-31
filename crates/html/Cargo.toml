@@ -28,6 +28,9 @@ required-features = ["wpt-harness"]
 [dependencies]
 # Нижний контракт шрифтов; реэкспорт `kamin_html::font_facts` сохраняет путь.
 kamin-font-facts = { path = "../font-facts" }
+# Нижняя фаза: DOM, CSS, каскад, ресурсы и нижние данные документа; реэкспорт
+# корней (`kamin_html::dom`, `css`, `value`…) сохраняет внешние пути.
+kamin-style = { path = "../html-style" }
 # Продолжения обхода боксов в куче, без роста нативного стека.
 reblessive = "0.4.3"
 url = "2"
@@ -86,20 +89,31 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Storage_Xps",
+  "Win32_Storage_FileSystem",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }
 encoding_rs = "0.8"
 serde_json.workspace = true
+# SHA контекста и снимков; та же версия уже используется в workspace lockfile.
+sha2 = "0.10.9"
 # Платформа gpui (окно, рендерер) — отдельный крейт с 0.3.8.
 gpui-platform.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
 # расхождения приходится угадывать по одному числу.
 png = "0.18.1"
 
+# Тестовые помощники нижней фазы для тестов этого крейта (`engine-test-support`).
+[dev-dependencies.kamin-style]
+path = "../html-style"
+features = ["engine-test-support"]
+
 [dev-dependencies.smallvec]
 version = "1"
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+gpui-windows = { package = "gpui-pre-windows", version = "=0.3.8", default-features = false }

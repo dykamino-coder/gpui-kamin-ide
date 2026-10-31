@@ -27,24 +27,14 @@ impl Paragraph {
             && range.start < range.end
             && range.end <= self.text.len()
         {
-            let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
-            if let Some(para) = info
-                .paragraphs
-                .iter()
-                .find(|p| p.range.start <= range.start && range.start < p.range.end)
-                .or_else(|| info.paragraphs.first())
-            {
-                let (levels, visual) = info.visual_runs(para, range.clone());
-                for run in visual {
-                    if levels.get(run.start).is_some_and(|l| l.is_rtl()) {
+            if let Some((_, visual)) = self.resolved_rtl_visual(range) {
+                for (start, end, rtl) in visual {
+                    if rtl {
                         continue;
                     }
-                    let idx: Vec<usize> = words
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, w)| w.range.start >= run.start && w.range.start < run.end)
-                        .map(|(i, _)| i)
-                        .collect();
+                    let first = words.partition_point(|w| w.range.start < start);
+                    let last = words.partition_point(|w| w.range.start < end);
+                    let idx: Vec<_> = (first..last).collect();
                     if idx.len() < 2 {
                         continue;
                     }
@@ -60,6 +50,7 @@ impl Paragraph {
                             (i, x, width)
                         })
                         .collect();
+                    let widths: Vec<_> = mirrored.iter().map(|p| p.2).collect();
                     mirrored.sort_by(|a, b| f32::from(a.1).total_cmp(&f32::from(b.1)));
                     // Промежутки между зеркальными соседями: в логическом
                     // порядке те же самые, только в обратную сторону.
@@ -70,11 +61,7 @@ impl Paragraph {
                         .collect();
                     let mut cursor = mirrored[0].1;
                     for (k, &i) in idx.iter().enumerate() {
-                        let width = mirrored
-                            .iter()
-                            .find(|(j, _, _)| *j == i)
-                            .map(|(_, _, w)| *w)
-                            .unwrap_or(px(0.));
+                        let width = widths[k];
                         logical_run.push((i, cursor));
                         cursor += width + gaps.get(k).copied().unwrap_or(px(0.));
                     }

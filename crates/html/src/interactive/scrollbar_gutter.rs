@@ -4,7 +4,7 @@
 //! не совпадает с политикой стороны полосы на Windows (Blink
 //! `ShouldPlaceBlockDirectionScrollbarOnLogicalLeft`), поэтому обе учитываются раздельно.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 pub(crate) mod positioned;
 use crate::style::computed::{Computed, Display, Overflow};
 use gpui::{AbsoluteLength, DefiniteLength, Div, Length, Styled, px};

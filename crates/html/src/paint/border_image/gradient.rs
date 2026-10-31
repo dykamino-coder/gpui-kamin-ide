@@ -4,9 +4,9 @@
 //! куска и обрезается его назначением. Радиальные, повторяющиеся и несовместимые с аффинным
 //! отображением случаи уходят на растровый путь.
 
-use crate::document::state::ValueCx;
 use crate::paint::background::Source;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 use gpui::{Bounds, Corners, Window, point, px, size};
 
 pub(super) fn paint(

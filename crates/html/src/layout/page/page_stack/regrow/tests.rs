@@ -53,7 +53,7 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
     use crate::layout::fragment::types::StackAxis;
     use crate::layout::fragment::{flow::FloatGeometry, paginate::watch::Watched, push::Regrow};
     use gpui::IntoElement;
-    let doc = crate::dom::parse("<div></div>", "");
+    let doc = crate::document::parsed::parse("<div></div>", "");
     let crate::dom::Node::Element(root) = &doc[0] else {
         panic!("document root")
     };
@@ -93,6 +93,7 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         watched: Some(watched),
         float_id: None,
         float_extent: false,
+        replay: false,
         repeat: None,
         frags: Vec::new(),
         monolith: false,

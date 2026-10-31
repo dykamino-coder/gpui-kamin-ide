@@ -6,7 +6,7 @@
 
 use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
 use crate::budget::admission::{Admission, Error};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Покрытие U+0020 объединёнными unicode-range семейства, без проверки глифа.
 /// Имена без зарегистрированного дескриптора покрывают весь набор знаков.
