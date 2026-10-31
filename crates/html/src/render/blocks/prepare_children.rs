@@ -178,26 +178,6 @@ pub(crate) fn prepare_children(
     let collapsed = if ordered_context {
         reorder(nodes.to_vec())
     } else {
-        // Схлопывание идёт ДО наследования стилей, поэтому кегль уровня
-        // передаётся отдельно: `margin: 1em` без своего `font-size` меряется
-        // от родительского.
-        let base = match inherited.font_size {
-            Some(Len::Px(v)) => v,
-            _ => MEDIUM_FONT_SIZE_PX,
-        };
-        // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
-        // считаются от ширины содержащего блока, схлопывание — по уже
-        // разрешённым значениям). Известна только заданная в точках.
-        let cb_w = px_strict(sizes.preferred[0]);
-        // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
-        // предикатом, что у слитого стиля (`style::cascade::inherit`): он зависит
-        // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
-        let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
-        let mcx = crate::layout::block::margins::MarginCx::new(vcx).with_collapse(CollapseInputs {
-            font: base,
-            width: cb_w,
-            height_def: cb_h_def,
-        });
         let facts: &std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts> =
             &opts.cx.contracts.subtrees;
         let (unchanged, inline_preparation) = {
@@ -210,6 +190,21 @@ pub(crate) fn prepare_children(
         let mut out = if unchanged {
             nodes.to_vec()
         } else {
+            // Входы нужны только при схлопывании: полный каскад анонимного
+            // ребёнка не должен вычисляться на каждом уровне нулевой цепочки.
+            // CSS2 §8.3: проценты полей — от ширины содержащего блока;
+            // §10.5: определённость высоты — как у стадии коробки ребёнка.
+            let base = match inherited.font_size {
+                Some(Len::Px(v)) => v,
+                _ => MEDIUM_FONT_SIZE_PX,
+            };
+            let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
+            let mcx =
+                crate::layout::block::margins::MarginCx::new(vcx).with_collapse(CollapseInputs {
+                    font: base,
+                    width: px_strict(sizes.preferred[0]),
+                    height_def: cb_h_def,
+                });
             collapse_margins_prepared(
                 nodes,
                 matches!(
