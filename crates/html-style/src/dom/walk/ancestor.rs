@@ -101,6 +101,7 @@ pub(super) fn element_ancestor(
             }
             _ => false,
         },
+        lang: None,
     };
 
     me
