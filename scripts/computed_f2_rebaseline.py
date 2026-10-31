@@ -42,6 +42,28 @@ OVERFLOW_FLOAT_NON_STYLE = (
 )
 
 
+STYLE_SPLIT_BASE = 'f6bb63188a71df5e2b81de50479948d30066a097'
+# Reviewed: #559 moved DocumentValues escapes from the document owner to the
+# kamin-style values owner without updating the checked-in ceilings. Only the
+# ceilings at that merge base move; sources already show the transfer.
+STYLE_SPLIT_CEILINGS = (
+    ('@borrow_mut', 'values', 'escape', 0, 9),
+    ('@make_mut', 'values', 'escape', 0, 1),
+)
+
+
+def approved_ceilings(counts, revision):
+    """Record the #559 owner transfer in the ceilings at its exact merge base."""
+    result = Counter(counts)
+    if revision == STYLE_SPLIT_BASE:
+        for field, owner, access, old, new in STYLE_SPLIT_CEILINGS:
+            key = field, owner, access
+            if result[key] != old:
+                raise ValueError(f'style split base changed: {key}')
+            result[key] = new
+    return result
+
+
 def approved_base(counts, revision):
     """Replace only the enumerated old counts at the exact census merge base."""
     result = Counter(counts)
