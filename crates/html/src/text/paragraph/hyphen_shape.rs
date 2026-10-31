@@ -46,7 +46,22 @@ impl Paragraph {
         suffix: &str,
         window: &mut Window,
     ) -> Option<gpui::ShapedLine> {
-        let mut piece = slice_runs(runs, range);
+        let piece = if std::ptr::eq(runs, self.runs.as_slice()) {
+            self.own_runs(range)
+        } else {
+            slice_runs(runs, range)
+        };
+        self.shape_piece(range, piece, rtl, suffix, window)
+    }
+
+    pub(super) fn shape_piece(
+        &self,
+        range: &std::ops::Range<usize>,
+        mut piece: Vec<TextRun>,
+        rtl: bool,
+        suffix: &str,
+        window: &mut Window,
+    ) -> Option<gpui::ShapedLine> {
         if piece.is_empty() {
             return None;
         }
@@ -54,7 +69,7 @@ impl Paragraph {
         // style even when that otherwise invisible run has no painted glyphs.
         let hyphen_run = (suffix == self.hyphen.as_ref()
             && self.text[..range.end].ends_with(SOFT_HYPHEN))
-        .then(|| slice_runs(runs, &(range.end - SOFT_HYPHEN.len_utf8()..range.end)))
+        .then(|| slice_runs(&piece, &(range.len() - SOFT_HYPHEN.len_utf8()..range.len())))
         .and_then(|runs| runs.into_iter().next());
         // Управляющие знаки не рисуются: своей ширины у них нет, но подмена
         // шрифта может подставить вместо них пустой квадрат и раздвинуть

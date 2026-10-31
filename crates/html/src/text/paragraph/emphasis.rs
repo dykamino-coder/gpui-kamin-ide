@@ -39,17 +39,13 @@ impl Paragraph {
         }
         let baseline =
             at.y + (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
-        for span in &self.emph_spans {
+        for i in self.prepared().emphases.overlapping(run) {
+            let span = &self.emph_spans[i];
             let (s, e) = (span.range.start.max(run.start), span.range.end.min(run.end));
             if s >= e {
                 continue;
             }
-            let mut acc = 0usize;
-            let found = self.runs.iter().zip(&self.run_metrics).find_map(|(r, m)| {
-                let st = acc;
-                acc += r.len;
-                (s >= st && s < acc).then_some((r, *m))
-            });
+            let found = self.run_at(s).map(|i| (&self.runs[i], self.run_metrics[i]));
             let Some((base_run, (a, d))) = found else {
                 continue;
             };
