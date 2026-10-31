@@ -42,6 +42,7 @@ pub(crate) struct FontInfo {
 mod scene_capture;
 mod frame_capture;
 mod group_region;
+mod group_stage;
 mod texture_pool;
 mod shader_identity;
 use group_region::Region;
@@ -68,8 +69,6 @@ pub(crate) struct DirectXRenderer {
     /// `render_groups` ещё пуст (`pre_draw` очистил его в ноль), и смешиваемый
     /// потомок изолирующего родителя видел прозрачную подложку.
     group_target_tex: Option<ID3D11Texture2D>,
-    /// KaminIDE patch: кадровое начало текущей ограниченной текстуры.
-    group_region: Option<Region>,
     /// KaminIDE patch: блендер для картинок с уже умноженным на прозрачность
     /// цветом (буферы групп). Обычный блендер умножает на неё второй раз —
     /// края группы уходили в чёрный ореол.
@@ -101,6 +100,10 @@ pub(crate) struct DirectXRenderer {
 /// (вьюпорты проходов не равны вьюпорту кадра).
 #[derive(Default)]
 struct BlurScratch {
+    /// KaminIDE patch: общий кадровый домен растеризатора; готовые группы ограничены.
+    stage: Option<BlurTexture>,
+    stage_dirty: Option<Region>,
+    stage_rasterizer: Option<ID3D11RasterizerState>,
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
@@ -352,7 +355,9 @@ fn blur_down_pass(
         }
         dc.OMSetRenderTargets(Some(&dest.rtv), None);
     }
-    pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
+    group_stage::downsample_clip(dc, dest.width, dest.height, || {
+        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
+    })
 }
 
 /// Direct3D objects
@@ -523,7 +528,6 @@ impl DirectXRenderer {
             timing_main: false,
             group_target: None,
             group_target_tex: None,
-            group_region: None,
             blend_premultiplied: None,
             blend_replace: None,
             width: 1,
@@ -826,7 +830,7 @@ impl DirectXRenderer {
     ///
     /// Эффектам вроде размытия поддерева нужна готовая картинка целиком,
     /// поэтому дети группы идут в текстуру её области с полем размытия.
-    /// Целочисленный viewport сохраняет кадровые координаты примитивов.
+    /// Общий staging сохраняет viewport и точность интерполяции исходного кадра.
     fn render_groups(&mut self, scene: &Scene) -> Result<()> {
         if scene.groups.is_empty() {
             self.blur.groups.clear();
@@ -857,28 +861,25 @@ impl DirectXRenderer {
         }
 
         for (i, group) in scene.groups.iter().enumerate() {
-            let raw_rtv = self.blur.groups[i * 2].rtv.clone();
-            self.group_region = Some(self.blur.group_regions[i * 2]);
+            let rasterizer = self.begin_group_stage(Region::for_group(group, self.width, self.height)[0])?;
+            let raw_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
             unsafe {
-                dc.ClearRenderTargetView(raw_rtv[0].as_ref().unwrap(), &[0.0; 4]);
                 dc.OMSetRenderTargets(Some(&raw_rtv), None);
-                dc.RSSetViewports(Some(slice::from_ref(&self.target_viewport())));
+                dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
             }
             self.group_target = Some(raw_rtv);
-            self.group_target_tex = Some(self.blur.groups[i * 2].texture.clone());
+            self.group_target_tex = Some(self.blur.stage.as_ref().unwrap().texture.clone());
             let drawn = self.restore_frame_globals().and_then(|()| self.draw_scene(&group.scene));
+            unsafe { dc.RSSetState(&rasterizer) };
             self.group_target = None;
             self.group_target_tex = None;
-            self.group_region = None;
             drawn?;
 
-            let slot = if group.blur_radius > 0.0 {
+            if group.blur_radius > 0.0 {
                 self.blur_group(i, group)?;
-                i * 2 + 1
-            } else {
-                i * 2
-            };
-            self.blur.group_slots.push(slot);
+            }
+            self.save_group_stage(i);
+            self.blur.group_slots.push(i);
             self.blur.group_blend.push(group.blend);
             let mut poly = [[0.0f32; 4]; 4];
             for (i, point) in group.polygon.iter().take(8).enumerate() {
@@ -963,19 +964,21 @@ impl DirectXRenderer {
             return Ok(());
         }
 
-        let src = self.blur.groups[index * 2].srv.clone();
-        let source_rect = self.blur.group_regions[index * 2].floats();
+        let src = self.blur.stage.as_ref().unwrap().srv.clone();
         self.blur_cascade(
             &src,
             (vw, vh),
             (bx, by, rw, rh),
             strength,
             true,
-            source_rect,
+            [0.0; 4],
         )?;
 
-        // Вернуть размытую область в её ограниченную текстуру для композита.
-        let dest_rtv = self.blur.groups[index * 2 + 1].rtv.clone();
+        // KaminIDE patch: апсемпл тоже использует исходный viewport, затем Copy
+        // переносит точные пиксели в ограниченную сохранённую текстуру.
+        self.clear_group_stage()?;
+        self.blur.stage_dirty = Some(self.blur.group_regions[index]);
+        let dest_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
         let last = self.blur.down[2].srv.clone();
         let (lw, lh) = (
             self.blur.down[2].width as f32,
@@ -1009,14 +1012,13 @@ impl DirectXRenderer {
             .blur_pipeline
             .update_buffer(&device, &dc, &[quad])?;
         unsafe {
-            dc.ClearRenderTargetView(dest_rtv[0].as_ref().unwrap(), &[0.0; 4]);
             dc.OMSetRenderTargets(Some(&dest_rtv), None);
         }
         let blend = self.premultiplied_blend()?;
         self.pipelines.blur_pipeline.draw_with_texture_blended(
             &dc,
             &last,
-            slice::from_ref(&self.blur.group_regions[index * 2 + 1].viewport(self.res().viewport)),
+            slice::from_ref(&self.res().viewport),
             &self.blur.globals,
             slice::from_ref(&self.globals.sampler),
             1,
@@ -1151,11 +1153,11 @@ impl DirectXRenderer {
     /// текстуры) — поэтому здесь не только заливка, но и повторная привязка.
     fn restore_frame_globals(&mut self) -> Result<()> {
         let device_context = &self.dev().device_context;
-        let viewport = self.target_viewport();
+        let viewport = self.res().viewport;
         update_buffer(
             device_context,
             self.globals.global_params_buffer.as_ref().unwrap(),
-            &[self.target_params()],
+            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
         )?;
         unsafe {
             device_context.RSSetViewports(Some(slice::from_ref(&viewport)));
@@ -1454,7 +1456,7 @@ impl DirectXRenderer {
                 .OMSetRenderTargets(Some(self.current_target()), None);
             devices
                 .device_context
-                .RSSetViewports(Some(slice::from_ref(&self.target_viewport())));
+                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
         }
 
         Ok(())
@@ -1938,7 +1940,7 @@ impl DirectXRenderer {
         update_buffer(
             &dc,
             self.blur.globals[0].as_ref().unwrap(),
-            &[self.target_params()],
+            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
         )?;
         let quad = BlurQuad {
             bounds: [
@@ -1994,7 +1996,7 @@ impl DirectXRenderer {
         let drawn = self.pipelines.blur_pipeline.draw_with_texture_blended(
             &dc,
             &srv,
-            slice::from_ref(&self.target_viewport()),
+            slice::from_ref(&self.res().viewport),
             &self.blur.globals,
             slice::from_ref(&self.globals.sampler),
             1,

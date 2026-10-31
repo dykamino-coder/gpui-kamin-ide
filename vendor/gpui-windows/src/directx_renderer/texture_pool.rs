@@ -58,7 +58,7 @@ pub(super) fn samplers(device: &ID3D11Device) -> Result<[Option<ID3D11SamplerSta
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::sampler_index;
 
     #[test]
     fn only_cropped_axes_use_transparent_borders() {

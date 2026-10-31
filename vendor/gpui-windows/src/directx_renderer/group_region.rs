@@ -56,31 +56,25 @@ impl Region {
         ]
     }
 
-    pub(super) fn viewport(self, mut frame: D3D11_VIEWPORT) -> D3D11_VIEWPORT {
-        frame.TopLeftX = -(self.x as f32);
-        frame.TopLeftY = -(self.y as f32);
-        frame
+    pub(super) fn for_group(group: &gpui::PaintGroup, width: u32, height: u32) -> [Self; 2] {
+        let margin = if group.blur_radius > 0.0 {
+            (24.0 * (group.blur_radius / 14.0).clamp(0.2, 6.0)).min(96.0)
+        } else {
+            0.0
+        };
+        // Проекция читает исходные пиксели через H^-1, включая область вне рамки.
+        let raw = if group.projection.is_some() {
+            Self::full(width, height)
+        } else {
+            Self::clipped(group.bounds, margin + 2.0, width, height)
+        };
+        [raw, Self::clipped(group.bounds, margin, width, height)]
     }
 }
 
 impl DirectXRenderer {
-    pub(super) fn target_viewport(&self) -> D3D11_VIEWPORT {
-        self.group_region
-            .map_or(self.res().viewport, |r| r.viewport(self.res().viewport))
-    }
-
-    pub(super) fn target_params(&self) -> GlobalParams {
-        let mut p = global_params(self.font_info, [self.width as f32, self.height as f32]);
-        if let Some(r) = self.group_region {
-            p.origin = [r.x as f32, r.y as f32];
-        }
-        p
-    }
-
     pub(super) fn copy_group_backdrop(&mut self, s: &PaintSurface) -> Result<[f32; 4]> {
-        let target = self
-            .group_region
-            .unwrap_or(Region::full(self.width, self.height));
+        let target = Region::full(self.width, self.height);
         let clipped = s.bounds.intersect(&s.content_mask.bounds);
         let region = Region::clipped(clipped, 0.0, self.width, self.height);
         let x = region.x.max(target.x).min(target.x + target.width - 1);
@@ -135,21 +129,10 @@ impl DirectXRenderer {
         let device = self.dev().device.clone();
         self.blur.group_regions.clear();
         for group in &scene.groups {
-            let strength = (group.blur_radius / 14.0).clamp(0.2, 6.0);
-            let margin = if group.blur_radius > 0.0 {
-                (24.0 * strength).min(96.0)
-            } else {
-                0.0
-            };
-            // Проекция выбирает пиксели через H^-1: её исходная область может
-            // лежать вне проецируемой рамки; сохраняем полный растровый домен.
-            let raw = if group.projection.is_some() {
-                Region::full(self.width, self.height)
-            } else {
-                Region::clipped(group.bounds, margin + 2.0, self.width, self.height)
-            };
-            let blurred = Region::clipped(group.bounds, margin, self.width, self.height);
-            self.blur.group_regions.extend([raw, blurred]);
+            let regions = Region::for_group(group, self.width, self.height);
+            self.blur
+                .group_regions
+                .push(regions[usize::from(group.blur_radius > 0.0)]);
         }
         for i in 0..self.blur.group_regions.len() {
             let r = self.blur.group_regions[i];
@@ -178,7 +161,8 @@ impl DirectXRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Region;
+    use gpui::{ScaledPixels, bounds, point, size};
 
     #[test]
     fn fractional_bounds_round_outward_and_margin_stays_inside_frame() {
@@ -195,18 +179,22 @@ mod tests {
                 height: 143
             }
         );
-        let r = Region::clipped(b, 6.8, 800, 600);
-        assert_eq!(
-            r.viewport(D3D11_VIEWPORT {
-                Width: 800.0,
-                Height: 600.0,
-                ..Default::default()
-            })
-            .TopLeftX,
-            -24.0
+        let outside = bounds(
+            point(ScaledPixels(900.0), ScaledPixels(700.0)),
+            size(ScaledPixels(20.0), ScaledPixels(10.0)),
         );
-        let outside = bounds(point(ScaledPixels(900.0), ScaledPixels(700.0)), size(ScaledPixels(20.0), ScaledPixels(10.0)));
-        assert_eq!(Region::clipped(outside, 4.8, 800, 600), Region { x: 799, y: 599, width: 1, height: 1 });
-        assert_eq!(Region::clipped(b, f32::NAN, 800, 600), Region::full(800, 600));
+        assert_eq!(
+            Region::clipped(outside, 4.8, 800, 600),
+            Region {
+                x: 799,
+                y: 599,
+                width: 1,
+                height: 1
+            }
+        );
+        assert_eq!(
+            Region::clipped(b, f32::NAN, 800, 600),
+            Region::full(800, 600)
+        );
     }
 }
