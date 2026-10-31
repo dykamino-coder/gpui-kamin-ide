@@ -123,11 +123,16 @@ impl ComputedSlot {
 /// и их потомков. Годный стиль не пересчитывается: на неизменном документе проход только
 /// сверяет входы.
 pub fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) {
+    materialize_changed(nodes, parent, vcx);
+}
+
+/// Был ли опубликован новый computed style: сигнал для кэшей последующих фаз.
+/// Сверка включает viewport, шрифты, наследование и размеры query containers.
+pub fn materialize_changed(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) -> bool {
     crate::work::add!(FullTreeWalks, 1);
     // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
-    let generation = inputs(vcx);
-    walk(nodes, parent, generation, &mut Vec::new(), vcx);
+    walk(nodes, parent, inputs(vcx), &mut Vec::new(), vcx)
 }
 
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.

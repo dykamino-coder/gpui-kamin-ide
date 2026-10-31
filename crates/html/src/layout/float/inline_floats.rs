@@ -21,6 +21,10 @@ pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec
 }
 
 pub(crate) fn transparent(e: &Element) -> bool {
+    transparent_with_clear(e, true)
+}
+
+pub(crate) fn transparent_with_clear(e: &Element, clearance_possible: bool) -> bool {
     let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
@@ -31,7 +35,7 @@ pub(crate) fn transparent(e: &Element) -> bool {
         // them around a float would break that pairing.
         && !matches!(e.tag.as_str(), "ruby" | "rb" | "rbc" | "rt" | "rtc" | "rp")
         && s.float.is_none_or(|f| f == 0)
-        && s.clear.is_none()
+        && (!clearance_possible || s.clear.is_none())
         && s.position.is_none()
         && e.hover.is_none()
         && e.first_letter.is_none()

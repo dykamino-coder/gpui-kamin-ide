@@ -86,7 +86,7 @@ pub(crate) fn multicol_column_stack(
             let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             } else {
-                column_kids(kids)
+                column_kids(kids, opts.cx.vcx().clearance_possible)
             };
             let prepared: Vec<_> = kids
                 .iter()

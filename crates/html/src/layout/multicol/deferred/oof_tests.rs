@@ -28,7 +28,7 @@ fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui
             &source, &merged, 100., &opts, window, app,
         );
         opts.cx.position.geometry = Some(geometry.clone());
-        let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids);
+        let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids, true);
         let prepared = kids.iter().map(|(e, _)| {
             crate::layout::multicol::stack_child::prepare(
                 e,
