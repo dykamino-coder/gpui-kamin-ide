@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from computed_access import aggregate, guarded
 from html_source_inventory import texts
-from computed_f2_rebaseline import approved_base
+from computed_f2_rebaseline import approved_base, approved_ceilings
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = 'scripts/computed_manifest'
@@ -126,7 +126,7 @@ def check(root, base, write=False):
     # Transfers require actual source removals, not a rebaseline allowance.
     changes = owner_changes(current, base_sources)
     base_sources = approved_base(base_sources, revision)
-    older = approved_base(older, revision)
+    older = approved_base(approved_ceilings(older, revision), revision)
     directory = root / INVENTORY
     paths = sorted(directory.glob('access-*.json'))
     ceiling = decode(p.read_text(encoding='utf-8') for p in paths) if paths else Counter()
