@@ -226,6 +226,20 @@ load/switch latency и факт crash/recovery. Методика должна б
 Deliverable: доказанный рабочий диапазон либо вывод, что file size не годится
 как predictor и нужен другой observable metric.
 
+**INC-0083 reconciliation — 2026-10-31:** #536 already implements bounded
+current-history loading, cursors and lazy child readers. Do not reimplement it or
+request another owner hang before research. BR-02 retains the unperformed native
+memory/response envelope; server protocol success does not pass it. Use the
+portable new-directory synthetic generator and exact large-view + small-control-
+tab scenario in [INC-0083](runtime-issues/INC-2026-0083.md#exact-remaining-artifact-not-another-field-log-request).
+Maintainer with a Windows lab records candidate/versions, workstation profile,
+compacted prefixes and 1/50/150/300 child sets, native/CEF/host memory, delivery
+queue bytes/age and input/switch/scroll/reconnect latency with pointer idle and
+Console hidden/visible. Define the method/thresholds before measuring; publish an
+operating envelope or a better predictor, not an assumed file-size cap. Synthetic
+fixture scripts and server results exist; no private field session is required.
+No Windows run is claimed here. BR-03 remains dependent on this result.
+
 ### BR-03 — Long-session mitigation
 
 **Close-out audit 2026-09-06:** Mitigation не реализована и не выбрана; до измерений BR-02
