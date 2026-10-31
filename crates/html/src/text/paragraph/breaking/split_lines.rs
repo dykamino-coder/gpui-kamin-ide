@@ -31,6 +31,7 @@ impl Paragraph {
         }
         let key = self.split_key(limit);
         if let Some(hit) = self.measures.splits.borrow_mut().get(&key).cloned() {
+            crate::work::add!(LayoutCacheHits, 1);
             return (*hit).clone();
         }
         let lines = self.split_uncached(limit, window);
@@ -44,6 +45,7 @@ impl Paragraph {
 
 impl Paragraph {
     pub(crate) fn split_uncached(&self, limit: Option<Pixels>, window: &mut Window) -> Vec<Line> {
+        crate::work::add!(LayoutCacheMisses, 1);
         let segs = self.measure(window);
         let mut lines = self.lay(limit, &segs);
         // Обрезка строк контейнером с `text-overflow: ellipsis`: не влезшая

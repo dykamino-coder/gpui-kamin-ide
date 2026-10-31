@@ -13,29 +13,38 @@ use crate::tolerance::COORD_EPS;
 /// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
 /// (`initial-letter`).
 fn has_clearable(nodes: &[Node]) -> bool {
+    crate::work::add!(SubtreeQueries, 1);
     let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
-    nodes.iter().any(|n| match n {
-        Node::Element(e) => {
-            floats(&e.style.used())
-                || e.first_letter
-                    .as_ref()
-                    .is_some_and(|l| floats(l.cascaded()))
-                || e.hover.as_ref().is_some_and(|l| floats(l.cascaded()))
-                || has_clearable(&e.children)
+    nodes.iter().any(|n| {
+        crate::work::add!(SubtreeNodesVisited, 1);
+        match n {
+            Node::Element(e) => {
+                floats(&e.style.used())
+                    || e.first_letter
+                        .as_ref()
+                        .is_some_and(|l| floats(l.cascaded()))
+                    || e.hover.as_ref().is_some_and(|l| floats(l.cascaded()))
+                    || has_clearable(&e.children)
+            }
+            Node::Text(_) => false,
         }
-        Node::Text(_) => false,
     })
 }
 
 fn has_clear(nodes: &[Node]) -> bool {
-    nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.used().clear.is_some() || has_clear(&e.children),
-        Node::Text(_) => false,
+    crate::work::add!(SubtreeQueries, 1);
+    nodes.iter().any(|n| {
+        crate::work::add!(SubtreeNodesVisited, 1);
+        match n {
+            Node::Element(e) => e.style.used().clear.is_some() || has_clear(&e.children),
+            Node::Text(_) => false,
+        }
     })
 }
 
 fn strip_clear(nodes: &mut [Node]) {
     for n in nodes {
+        crate::work::add!(TreeNodesVisited, 1);
         if let Node::Element(e) = n {
             e.style.used_mut().clear = None;
             e.style.used_mut().clear_inherit = false;
@@ -55,10 +64,16 @@ fn strip_clear(nodes: &mut [Node]) {
 /// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
 /// схлопнуться в ноль). Флоаты есть — дерево не трогается.
 pub(crate) fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
-    if has_clearable(nodes) || !has_clear(nodes) {
+    crate::work::add!(FullTreeWalks, 1);
+    if has_clearable(nodes) {
+        return None;
+    }
+    crate::work::add!(FullTreeWalks, 1);
+    if !has_clear(nodes) {
         return None;
     }
     let mut copy = nodes.to_vec();
+    crate::work::add!(FullTreeWalks, 1);
     strip_clear(&mut copy);
     Some(copy)
 }

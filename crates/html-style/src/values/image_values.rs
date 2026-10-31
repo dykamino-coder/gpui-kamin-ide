@@ -8,6 +8,7 @@ use crate::values::ValueCx;
 use std::collections::HashSet;
 
 pub fn prepare(nodes: &[Node], vcx: ValueCx<'_>) {
+    crate::work::add!(FullTreeWalks, 1);
     let mut urls = HashSet::new();
     collect(nodes, &mut urls);
     publish(urls, vcx);
@@ -25,6 +26,7 @@ fn publish(urls: HashSet<String>, vcx: ValueCx<'_>) {
 
 fn collect(nodes: &[Node], urls: &mut HashSet<String>) {
     for node in nodes {
+        crate::work::add!(TreeNodesVisited, 1);
         let Node::Element(e) = node else { continue };
         style(e.style.cascaded(), urls);
         for c in [

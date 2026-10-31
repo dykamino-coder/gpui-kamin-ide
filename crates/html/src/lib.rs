@@ -37,6 +37,7 @@ pub use kamin_style::budget;
 pub mod coverage;
 pub(crate) use kamin_style::defaults;
 pub use kamin_style::diagnostics;
+pub use kamin_style::work;
 pub(crate) mod hooks;
 pub mod host;
 pub use crate::document::dom;
