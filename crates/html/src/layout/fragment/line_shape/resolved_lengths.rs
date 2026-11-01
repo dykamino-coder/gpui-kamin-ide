@@ -129,10 +129,11 @@ fn relative(style: &crate::style::computed::Computed) -> bool {
     .any(|v| !matches!(v, Len::Px(_) | Len::Auto | Len::Pct(_)))
 }
 
-/// Доказательство отсутствия относительных длин удерживает проверенный COW-снимок.
+/// Доказательство отсутствия относительных длин помечает проверенный COW-снимок:
+/// метка не даёт адресу перейти к другому списку и не удерживает узлы.
 #[derive(Default)]
 pub(crate) struct LengthFacts {
-    children: std::collections::HashMap<usize, (crate::dom::Children, bool)>,
+    children: std::collections::HashMap<usize, (std::rc::Weak<Vec<Node>>, bool)>,
 }
 
 impl LengthFacts {
@@ -150,7 +151,7 @@ impl LengthFacts {
                     _ => true,
                 });
                 self.children
-                    .insert(children.identity(), (children.clone(), unchanged));
+                    .insert(children.identity(), (children.mark(), unchanged));
             } else {
                 pending.push((children, true));
                 for node in children.iter() {

@@ -1,6 +1,6 @@
 //! Факты поддерева: один итеративный post-order проход каждого COW-снимка.
 
-use crate::dom::{Children, Element, Node};
+use crate::dom::{Element, Node};
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow, real_inline};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// длины и сложные inline-коробки остаются на общем пути схлопывания.
 #[derive(Default)]
 pub(crate) struct SubtreeFacts {
-    children: HashMap<usize, (Children, u8)>,
+    children: HashMap<usize, (std::rc::Weak<Vec<Node>>, u8)>,
     base: Option<std::rc::Rc<SubtreeFacts>>,
 }
 
@@ -131,9 +131,10 @@ impl SubtreeFacts {
             }
             if leave {
                 let flags = self.list_flags(children);
-                // Удержание снимка исключает повторное использование адреса.
+                // Метка снимка исключает повторное использование адреса, не
+                // удерживая промежуточные деревья сборки до конца кадра.
                 self.children
-                    .insert(children.identity(), (children.clone(), flags));
+                    .insert(children.identity(), (children.mark(), flags));
             } else {
                 pending.push((children, true));
                 for node in children.iter() {
