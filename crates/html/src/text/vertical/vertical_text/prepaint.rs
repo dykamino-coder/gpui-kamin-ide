@@ -36,10 +36,20 @@ impl VerticalText {
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
-                && let Some(measures) = &self.measures
+                && let Some(doc) = &self.doc
                 && sized.height > gpui::px(0.)
             {
-                measures.record(k, sized.height);
+                let measures = &doc.paragraph.vertical;
+                let claimed = measures.get(k).unwrap_or(self.natural.height);
+                // Раскладка этого кадра заявила другую ширину: кадр не готов,
+                // следующий соберётся с фактом (как у полосы прокрутки).
+                if measures.record(k, sized.height)
+                    && self.inline_keyword.is_none()
+                    && claimed != sized.height
+                {
+                    doc.values.defer_frame();
+                    window.on_next_frame(|window, _| window.refresh());
+                }
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
