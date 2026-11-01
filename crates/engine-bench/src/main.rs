@@ -11,13 +11,18 @@
 mod accounting;
 mod allocations;
 mod args;
+mod diagnostics;
+#[cfg(windows)]
+mod frames;
 #[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
 mod host;
 #[cfg(windows)]
+mod memory;
+#[cfg(windows)]
 mod pixels;
-#[cfg(all(windows, feature = "work-counters"))]
+#[cfg(windows)]
 mod process;
 mod report;
 mod resources;
@@ -36,6 +41,7 @@ mod work;
 static ALLOC: allocations::Counted = allocations::Counted;
 
 fn main() {
+    diagnostics::init();
     if let Err(error) = entry() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
@@ -51,6 +57,9 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", args::USAGE);
         return Ok(());
     };
+    if args.trace_frames {
+        diagnostics::trace_frames();
+    }
     if cfg!(debug_assertions) {
         return Err("measurement requires --profile release (debug assertions are enabled)".into());
     }

@@ -33,6 +33,7 @@ impl ColumnStack {
             _ => return,
         };
         crate::work::add!(MulticolChildLayouts, 1);
+        crate::work::time!(_layout, MulticolChildLayoutNs);
         let (sz, content) = c.el.layout_as_root_with_content(
             if axis.is_vertical() {
                 size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))

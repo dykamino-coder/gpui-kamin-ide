@@ -61,28 +61,28 @@ fn probe_layout(
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
     p: &mut Probe,
 ) -> (f32, f32) {
+    crate::work::add!(BandProbeCalls, 1);
     let positioning = p.positioning.clone();
     let _positioning = positioning.as_ref().map(|p| p.isolate());
     let clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let vert = p.vert;
-    let mut el = frame(
-        kind,
-        avail,
-        build(cb, avail, shapes, None, None),
-        tap.clone(),
-        vert,
-        &p.paint,
-        &p.build,
-    );
+    let child = {
+        crate::work::time!(_build, BandProbeBuildNs);
+        build(cb, avail, shapes, None, None)
+    };
+    let mut el = frame(kind, avail, child, tap.clone(), vert, &p.paint, &p.build);
     let room = AvailableSpace::Definite(px(avail.max(0.0)));
     let space = if vert {
         size(AvailableSpace::MaxContent, room)
     } else {
         size(room, AvailableSpace::MaxContent)
     };
-    el.layout_as_root(space, p.window, p.cx);
+    {
+        crate::work::time!(_layout, BandProbeLayoutNs);
+        el.layout_as_root(space, p.window, p.cx);
+    }
     // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
     let (w, h) = unrounded(&tap, p.window);
     p.last_geometry = match (&p.fragment, tap.get()) {
@@ -141,19 +141,25 @@ pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
 }
 
 fn intrinsic_layout(build: &Build, p: &mut Probe) -> (f32, f32) {
+    crate::work::add!(BandIntrinsicCalls, 1);
     let positioning = p.positioning.clone();
     let _positioning = positioning.as_ref().map(|p| p.isolate());
     let _clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let measure = p.vert.then(crate::text::vertical::InlineMeasure::default);
+    let inner = {
+        crate::work::time!(_build, BandIntrinsicBuildNs);
+        build(0.0, 0.0, None, None, measure.clone())
+    };
     let mut el = Tap {
-        inner: build(0.0, 0.0, None, None, measure.clone()),
+        inner,
         id: tap.clone(),
     }
     .hooked();
     let vert = p.vert;
     let mut w = |a: AvailableSpace, p: &mut Probe| {
+        crate::work::time!(_layout, BandIntrinsicLayoutNs);
         if vert {
             // Повёрнутый текст свою длину высотой не заявляет (растягивается
             // окном) — берём её у самого текста через сборщик

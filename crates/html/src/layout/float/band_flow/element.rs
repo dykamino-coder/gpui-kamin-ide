@@ -1,6 +1,6 @@
 //! Элемент BandFlow: раскладка детей по полосам при request_layout/prepaint.
 
-use super::flow_kid::intrinsic_width;
+use super::flow_kid::intrinsic_sizes;
 use super::kid::Kid;
 use super::{COORD_EPS, Plan, Probe, plan};
 use crate::hooks::Hooks;
@@ -107,10 +107,7 @@ impl Hooks for BandFlow {
                             scopes.clone(),
                             build,
                         );
-                        (
-                            intrinsic_width(&kids, false, p),
-                            intrinsic_width(&kids, true, p),
-                        )
+                        intrinsic_sizes(&kids, p)
                     });
                     // §10.3.5: `min(max(min-content, available), max-content)`.
                     mx.max(mn).min(mn.max(w))
@@ -125,7 +122,12 @@ impl Hooks for BandFlow {
                         scopes.clone(),
                         build,
                     );
-                    intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
+                    let (mn, mx) = intrinsic_sizes(&kids, p);
+                    if matches!(a, AvailableSpace::MaxContent) {
+                        mx
+                    } else {
+                        mn
+                    }
                 }),
             };
             if let Some(p) = cache.borrow().as_ref()

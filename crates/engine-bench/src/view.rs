@@ -24,8 +24,8 @@ pub(super) struct Phases {
 
 pub(super) struct View {
     pub(super) doc: Document,
-    pub(super) viewport_override: Option<(u32, u32)>,
     pub(super) phases: Rc<RefCell<Phases>>,
+    pub(super) viewport: Option<(u32, u32)>,
 }
 
 impl Render for View {
@@ -37,18 +37,20 @@ impl Render for View {
         text.font_family = "Times New Roman".into();
         text.font_size = px(16.).into();
         let mut opts = RenderOpts {
-            viewport: (
-                window.viewport_size().width.into(),
-                window.viewport_size().height.into(),
+            viewport: self.viewport.map_or_else(
+                || {
+                    (
+                        window.viewport_size().width.into(),
+                        window.viewport_size().height.into(),
+                    )
+                },
+                |(w, h)| (w as f32, h as f32),
             ),
             text,
             normal_line_height: 1.31,
             cx: Default::default(),
             frag: Default::default(),
         };
-        if let Some((width, height)) = self.viewport_override {
-            opts.viewport = (width as f32, height as f32);
-        }
         opts.cx.deferred.freeze_scrollbars = true;
         // Коробка области просмотра принадлежит документу: неизменный кадр
         // он повторяет без сборки и раскладки (`Document::render_viewport`).
@@ -142,31 +144,5 @@ impl Element for Timed {
         self.root.paint(window, cx);
         kamin_html::work::switch!(RasterGpuReadback);
         self.phases.borrow_mut().paint += started.elapsed();
-    }
-}
-
-/// Каждый следующий замер меняет CSS viewport и требует нового кадра документа.
-pub(super) fn relayout_viewport(base: (u32, u32), previous: Option<(u32, u32)>) -> (u32, u32) {
-    let changed = (if base.0 == 1 { 2 } else { base.0 - 1 }, base.1);
-    if previous == Some(changed) {
-        base
-    } else {
-        changed
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn relayout_changes_each_frame_and_stays_inside_valid_viewports() {
-        for width in [1, 800, 8192] {
-            let base = (width, 600);
-            let first = relayout_viewport(base, None);
-            assert_ne!(first, base);
-            assert!((1..=8192).contains(&first.0));
-            let second = relayout_viewport(base, Some(first));
-            assert_eq!(second, base);
-            assert_eq!(relayout_viewport(base, Some(second)), first);
-        }
     }
 }
