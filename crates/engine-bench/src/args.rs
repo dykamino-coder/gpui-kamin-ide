@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
 
@@ -39,6 +39,7 @@ pub(super) struct Args {
     pub(super) runs: usize,
     pub(super) mode: Mode,
     pub(super) json: bool,
+    pub(super) trace_frames: bool,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
 }
@@ -61,12 +62,17 @@ impl Args {
             runs: 30,
             mode: Mode::Both,
             json: false,
+            trace_frames: false,
             snapshot: None,
             frame_diff_dir: None,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
                 out.json = true;
+                continue;
+            }
+            if flag == "--trace-frames" {
+                out.trace_frames = true;
                 continue;
             }
             let value = args.next().ok_or("missing option value")?;

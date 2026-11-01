@@ -52,6 +52,9 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", args::USAGE);
         return Ok(());
     };
+    if args.trace_frames {
+        diagnostics::trace_frames();
+    }
     if cfg!(debug_assertions) {
         return Err("measurement requires --profile release (debug assertions are enabled)".into());
     }

@@ -1359,6 +1359,8 @@ impl WindowsWindowInner {
 
     #[inline]
     fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
+        log::debug!(target: "gpui::frame", "native force={} pending={} signal={:?}",
+            force_render, self.state.force_render_pending.get(), self.state.frame_signal.get());
         let Some(_guard) = self.state.draw_coordinator.try_begin_draw() else {
             log::debug!("deferring re-entrant draw of window {handle:?}");
             if force_render {

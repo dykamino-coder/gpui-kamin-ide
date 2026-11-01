@@ -69,6 +69,7 @@ impl Snapshot {
 
 impl ColumnStack {
     pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
+        crate::work::time!(_balance, MulticolBalanceNs);
         self.reserve_row_copies();
         if !self.children.iter().any(|c| c.regrow.is_some()) {
             return;
@@ -125,6 +126,7 @@ impl ColumnStack {
         if self.numeric_balance(start, ceiling, cap.is_some(), window, cx) {
             return;
         }
+        crate::work::add!(MulticolNumericRejected, 1);
         let source: Vec<_> = self.children.iter().map(Snapshot::take).collect();
         let chosen = search(start, ceiling, cap.is_some(), |height| {
             gpui::with_temporary_element_arena(|| {
