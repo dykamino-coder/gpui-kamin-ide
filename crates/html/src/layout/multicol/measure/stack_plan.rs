@@ -83,10 +83,8 @@ pub(crate) fn plan_at(
     nest_rows: Option<f32>,
 ) -> StackPlan {
     let positioned = |s: &Computed| {
-        matches!(
-            s.reset_positioned.position,
-            Some(Position::Absolute | Position::Fixed)
-        )
+        let position = s.reset_positioned.position;
+        matches!(position, Some(Position::Absolute | Position::Fixed))
     };
     let prepared = super::prepared(e, merged, opts, col_vert, line_col_w);
     let ge = &prepared;

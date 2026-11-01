@@ -18,7 +18,6 @@ pub(super) use flush::flush_inline;
 use crate::dom::Node;
 use crate::layout::box_kind::{breaks_inline, contains_block, out_of_flow, real_inline};
 use crate::layout::table::anon::anon_element;
-use crate::style::values::value::Len;
 
 /// Разорвать строчные, внутри которых лежит блок (CSS 2.1 §9.2.1.1).
 ///
@@ -57,31 +56,11 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         let mut piece: Vec<Node> = vec![];
         // Край строчного со стороны `side` (1 — правый, 3 — левый): рамка,
         // отбивка или поле ненулевой толщины.
-        let has_edge = |side: usize| {
-            let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
-            let st = &*e.style.used();
-            let (b, p, m) = if side == 1 {
-                (
-                    st.borders().right,
-                    st.reset_box_layout.padding.right,
-                    st.reset_box_layout.margin.right,
-                )
-            } else {
-                (
-                    st.borders().left,
-                    st.reset_box_layout.padding.left,
-                    st.reset_box_layout.margin.left,
-                )
-            };
-            nz(b) || nz(p) || nz(m)
-        };
+        let has_edge = |side| edges::has_edge(&e.style.used(), side);
         // Horizontal fragments keep their logical start/end edges in either direction.
         let own_rtl = e.style.cascaded().inh.writing.rtl.unwrap_or(parent_rtl);
-        let edges = e
-            .style
-            .cascaded()
-            .inh
-            .writing
+        let writing = &e.style.cascaded().inh.writing;
+        let edges = writing
             .writing_mode
             .is_none()
             .then_some(if own_rtl { (1, 3) } else { (3, 1) });

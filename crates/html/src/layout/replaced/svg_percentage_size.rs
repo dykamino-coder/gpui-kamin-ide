@@ -85,19 +85,17 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     let mut copy = element.clone();
     let mut changed = false;
     let style = &mut *copy.style.used_mut();
-    for (axis, (base, dimension)) in [
-        (
-            parent.reset_box_layout.width,
-            &mut style.reset_box_layout.width,
-        ),
-        (
-            parent.reset_box_layout.height,
-            &mut style.reset_box_layout.height,
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    for axis in 0..2 {
+        let (base, dimension) = match axis {
+            0 => (
+                parent.reset_box_layout.width,
+                &mut style.reset_box_layout.width,
+            ),
+            _ => (
+                parent.reset_box_layout.height,
+                &mut style.reset_box_layout.height,
+            ),
+        };
         let Some(Len::Px(base)) = base else { continue };
         let Some(fraction) = percentages[axis] else {
             continue;

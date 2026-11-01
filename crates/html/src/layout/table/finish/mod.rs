@@ -93,16 +93,9 @@ pub(super) async fn table_finish(
     // закрашивалась бы их фоном. Поэтому у самой коробки рамка снимается,
     // её место держит паддинг, сетка выезжает на его половину, а красит
     // рамку кольцевой квад ПОСЛЕ сетки.
-    let collapse = geom.e.style.cascaded().inh.table_list.border_collapse == Some(true)
-        || (geom
-            .e
-            .style
-            .cascaded()
-            .inh
-            .table_list
-            .border_collapse
-            .is_none()
-            && geom.e.attr("rules").is_some());
+    let border_collapse = geom.e.style.cascaded().inh.table_list.border_collapse;
+    let collapse = border_collapse == Some(true)
+        || (border_collapse.is_none() && geom.e.attr("rules").is_some());
     // Минимумы таблицы меряются ПОЛНОЙ коробкой с рамкой и паддингом
     // (css-tables-3 §computing-the-table-height, CSSWG #5336): пороги
     // пересчитываются в контентные, компенсацию вернёт общий слой.

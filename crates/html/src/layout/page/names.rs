@@ -68,13 +68,8 @@ pub(super) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
             if e.style.used().reset_fragmentation.page.is_none() && !inherited.is_empty() {
                 e.style.used_mut().reset_fragmentation.page = Some(inherited.to_string());
             }
-            let used = e
-                .style
-                .used()
-                .reset_fragmentation
-                .page
-                .clone()
-                .unwrap_or_default();
+            let page = &e.style.used().reset_fragmentation.page;
+            let used = page.clone().unwrap_or_default();
             fill_used_page(&mut e.children, &used);
         }
     }
@@ -141,23 +136,24 @@ fn plain_wrapper(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let st = &*e.style.used();
     let b = st.borders();
+    let geometry = &st.reset_box_layout;
     !e.inline
-        && matches!(st.reset_box_layout.display, None | Some(Display::Block))
+        && matches!(geometry.display, None | Some(Display::Block))
         && st.reset_positioned.position.is_none()
-        && st.reset_box_layout.float.unwrap_or(0) == 0
+        && geometry.float.unwrap_or(0) == 0
         && [
-            &st.reset_box_layout.margin.top,
-            &st.reset_box_layout.margin.right,
-            &st.reset_box_layout.margin.bottom,
-            &st.reset_box_layout.margin.left,
+            &geometry.margin.top,
+            &geometry.margin.right,
+            &geometry.margin.bottom,
+            &geometry.margin.left,
         ]
         .iter()
         .all(|l| zero(l))
         && [
-            &st.reset_box_layout.padding.top,
-            &st.reset_box_layout.padding.right,
-            &st.reset_box_layout.padding.bottom,
-            &st.reset_box_layout.padding.left,
+            &geometry.padding.top,
+            &geometry.padding.right,
+            &geometry.padding.bottom,
+            &geometry.padding.left,
         ]
         .iter()
         .all(|l| zero(l))
@@ -166,14 +162,14 @@ fn plain_wrapper(e: &Element) -> bool {
             .all(|l| zero(l))
         && st.reset_background.background.is_none_or(|c| c.a == 0.0)
         && st.reset_background.bg_image.is_none()
-        && st.reset_box_layout.width.is_none()
-        && st.reset_box_layout.height.is_none()
-        && st.reset_box_layout.min_width.is_none()
-        && st.reset_box_layout.min_height.is_none()
-        && st.reset_box_layout.max_width.is_none()
-        && st.reset_box_layout.max_height.is_none()
-        && st.reset_box_layout.overflow_x.is_none()
-        && st.reset_box_layout.overflow_y.is_none()
+        && geometry.width.is_none()
+        && geometry.height.is_none()
+        && geometry.min_width.is_none()
+        && geometry.min_height.is_none()
+        && geometry.max_width.is_none()
+        && geometry.max_height.is_none()
+        && geometry.overflow_x.is_none()
+        && geometry.overflow_y.is_none()
         && st.reset_effects.opacity.is_none()
         && st.reset_transforms.transform.is_none()
         && st.reset_effects.filter.is_none()

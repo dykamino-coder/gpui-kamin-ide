@@ -18,6 +18,7 @@ pub(crate) fn canvas_layer(
     out: &mut Vec<gpui::AnyElement>,
 ) -> Option<crate::paint::background::RootMeasurement> {
     let st = BoxStyle::shared(e.style.used().style);
+    let geometry = &st.reset_box_layout;
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
     let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
@@ -97,14 +98,8 @@ pub(crate) fn canvas_layer(
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             };
-            let fam = e
-                .style
-                .cascaded()
-                .inh
-                .font
-                .font_family
-                .clone()
-                .unwrap_or_default();
+            let font = &e.style.cascaded().inh.font;
+            let fam = font.font_family.clone().unwrap_or_default();
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
@@ -114,24 +109,19 @@ pub(crate) fn canvas_layer(
             };
             let b = st.borders();
             let root_left = e.style.cascaded().wm().block_rl();
+            let padding = geometry.padding;
             let area = crate::paint::background::RootArea {
                 measured,
-                left: side(st.reset_box_layout.margin.left) + side(b.left),
-                top: side(st.reset_box_layout.margin.top) + side(b.top),
-                right: side(st.reset_box_layout.margin.right) + side(b.right),
-                bottom: side(st.reset_box_layout.margin.bottom) + side(b.bottom),
-                width: match st.reset_box_layout.width {
-                    Some(Len::Px(w)) => Some(
-                        w + side(st.reset_box_layout.padding.left)
-                            + side(st.reset_box_layout.padding.right),
-                    ),
+                left: side(geometry.margin.left) + side(b.left),
+                top: side(geometry.margin.top) + side(b.top),
+                right: side(geometry.margin.right) + side(b.right),
+                bottom: side(geometry.margin.bottom) + side(b.bottom),
+                width: match geometry.width {
+                    Some(Len::Px(w)) => Some(w + side(padding.left) + side(padding.right)),
                     _ => None,
                 },
-                height: match st.reset_box_layout.height {
-                    Some(Len::Px(h)) => Some(
-                        h + side(st.reset_box_layout.padding.top)
-                            + side(st.reset_box_layout.padding.bottom),
-                    ),
+                height: match geometry.height {
+                    Some(Len::Px(h)) => Some(h + side(padding.top) + side(padding.bottom)),
                     _ => None,
                 },
                 from_right: e.style.cascaded().wm().block_rl(),
@@ -190,16 +180,14 @@ pub(crate) fn canvas_layer(
         let side = px_lossy_zero;
         let b = st.borders();
         let mut band = div().absolute().top_0().bottom_0();
-        band = match st.reset_box_layout.width {
+        band = match geometry.width {
             Some(Len::Px(w)) => {
-                let pad_w = w
-                    + side(st.reset_box_layout.padding.left)
-                    + side(st.reset_box_layout.padding.right);
+                let pad_w = w + side(geometry.padding.left) + side(geometry.padding.right);
                 let band = band.w(px(pad_w));
                 if e.style.cascaded().wm().block_rl() {
-                    band.right(px(side(st.reset_box_layout.margin.right) + side(b.right)))
+                    band.right(px(side(geometry.margin.right) + side(b.right)))
                 } else {
-                    band.left(px(side(st.reset_box_layout.margin.left) + side(b.left)))
+                    band.left(px(side(geometry.margin.left) + side(b.left)))
                 }
             }
             _ => band.left_0().right_0(),

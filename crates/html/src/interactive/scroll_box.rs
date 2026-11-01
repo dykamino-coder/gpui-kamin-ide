@@ -3,6 +3,7 @@
 //! доли высоты от содержащего блока (CSS 2.1 §10.5), наружные поля и сжатие flex-элемента;
 //! `resizable` заворачивает коробку с `resize` в `Resizable`, где размер мыши побеждает
 //! разметку. На вход — DOM-элемент и унаследованный стиль, на выход — готовый `AnyElement`.
+mod axes;
 mod hoisting;
 use hoisting::hoist_from_scroll;
 
@@ -30,27 +31,11 @@ pub(crate) fn scrollable(
     {
         return None;
     }
-    use crate::style::computed::Overflow;
-    // Eligibility follows computed overflow; the initially visible opposite
-    // axis becomes auto even when it has no declaration (Overflow 3 §3).
-    if ![
-        e.style.used().reset_box_layout.overflow_x,
-        e.style.used().reset_box_layout.overflow_y,
-    ]
-    .into_iter()
-    .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
-    {
+    if !axes::eligible(&e.style.used()) {
         return None;
     }
     let scroll_style = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
-    let snap = scroll_style.reset_box_layout.snap.axis != 0;
-    let horizontal = scroll_style.reset_box_layout.overflow_x == Some(Overflow::Scroll)
-        || snap && scroll_style.reset_box_layout.overflow_x == Some(Overflow::Hidden);
-    let vertical = scroll_style.reset_box_layout.overflow_y == Some(Overflow::Scroll)
-        || snap && scroll_style.reset_box_layout.overflow_y == Some(Overflow::Hidden);
-    if !horizontal && !vertical {
-        return None;
-    }
+    let (horizontal, vertical) = axes::scroll_axes(&scroll_style)?;
     let scroll_projection = crate::interactive::scroll_extent::projection(
         opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
@@ -96,13 +81,11 @@ pub(crate) fn scrollable(
             // высотой в точках (у гибкого и сеточного долю решает раскладка, у
             // абсолюта содержащий блок другой); `border-box` родителя — мимо,
             // его `height` не высота содержимого.
+            let parent_geometry = &inherited.reset_box_layout;
             if in_flow(&node.style.used())
-                && matches!(
-                    inherited.reset_box_layout.display,
-                    None | Some(Display::Block)
-                )
+                && matches!(parent_geometry.display, None | Some(Display::Block))
                 && inherited.reset_border.border_box != Some(true)
-                && let Some(Len::Px(ph)) = inherited.reset_box_layout.height
+                && let Some(Len::Px(ph)) = parent_geometry.height
                 && ph > 0.0
             {
                 let of = |l: Option<Len>| match l {
@@ -173,15 +156,16 @@ pub(crate) fn scrollable(
             // выходили за её край).
             let sized =
                 crate::style::cascade::materialize::box_style(&inherited, &inner.style, vcx);
-            if h && let Some(Len::Px(w)) = sized.reset_box_layout.width {
+            let dimensions = &sized.reset_box_layout;
+            if h && let Some(Len::Px(w)) = dimensions.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),
                     Some(Len::Px(v)) => Some(v),
                     _ => None,
                 };
                 let b = sized.borders();
-                let edges = side(sized.reset_box_layout.padding.left)
-                    .zip(side(sized.reset_box_layout.padding.right))
+                let edges = side(dimensions.padding.left)
+                    .zip(side(dimensions.padding.right))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
                 let lane = if inner.style.used().reset_border.border_box == Some(true) {
@@ -199,7 +183,7 @@ pub(crate) fn scrollable(
                     // в контейнере 100 обязан ужаться до 100. Безусловный ноль
                     // выпускал ленту за контейнер (`grid-baseline-003-ref`).
                     let flex_item = matches!(
-                        inherited.reset_box_layout.display,
+                        parent_geometry.display,
                         Some(Display::Flex) | Some(Display::InlineFlex)
                     );
                     if node.style.used().reset_flex.flex_shrink.is_none() && !flex_item {

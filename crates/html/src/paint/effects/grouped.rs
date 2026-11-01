@@ -67,9 +67,8 @@ pub(super) fn grouped_with(
                 .font_units_to_px(FontCx::new(&poly_family, poly_font), vcx),
         }
     };
-    let polygon_px: Vec<(Len, Len)> = c
-        .reset_mask
-        .clip_polygon
+    let clip_polygon = &c.reset_mask.clip_polygon;
+    let polygon_px: Vec<(Len, Len)> = clip_polygon
         .as_deref()
         .unwrap_or(&[])
         .iter()
@@ -226,7 +225,6 @@ pub(super) fn grouped_with(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_mask_composite(
     wrapper: &mut crate::paint::effects::grouped_element::Grouped,
     c: &Computed,
@@ -234,7 +232,6 @@ pub(super) fn apply_mask_composite(
     wrapper.mask_composite = c.reset_mask.mask_composite.clone().unwrap_or_default();
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_mask_style(
     wrapper: &mut crate::paint::effects::grouped_element::Grouped,
     c: &Computed,

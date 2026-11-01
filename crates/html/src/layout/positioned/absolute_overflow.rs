@@ -21,11 +21,8 @@ pub(crate) fn probe(
     vcx: ValueCx<'_>,
     build: ChildBuild,
 ) -> Option<AnyElement> {
-    if !matches!(
-        style.reset_box_layout.display,
-        Some(Display::Flex | Display::InlineFlex)
-    ) || style.self_node == 0
-    {
+    let display = style.reset_box_layout.display;
+    if !matches!(display, Some(Display::Flex | Display::InlineFlex)) || style.self_node == 0 {
         return None;
     }
     let id = style.self_node;
@@ -82,15 +79,13 @@ impl Plan {
         }
         // A flex container that is itself the original CB already supplies
         // both bounds to native layout; deferred union placement is unnecessary.
-        let safe = if own.reset_flex.align_self.is_some() {
-            own.reset_flex.align_self_safe
+        let flex = &own.reset_flex;
+        let safe = if flex.align_self.is_some() {
+            flex.align_self_safe
         } else {
             parent.reset_flex.align_items_safe
         };
-        let align = own
-            .reset_flex
-            .align_self
-            .or(parent.reset_flex.align_items)?;
+        let align = flex.align_self.or(parent.reset_flex.align_items)?;
         if !safe || !matches!(align, Align::Center | Align::End | Align::Start) {
             return None;
         }
@@ -113,28 +108,12 @@ impl Plan {
         );
         let vertical = parent.wm().vertical();
         let horizontal = column != vertical;
+        let inset = own.reset_positioned.inset;
+        let margin = own.reset_box_layout.margin;
         let (inset, margin) = if horizontal {
-            (
-                [
-                    own.reset_positioned.inset.left,
-                    own.reset_positioned.inset.right,
-                ],
-                [
-                    own.reset_box_layout.margin.left,
-                    own.reset_box_layout.margin.right,
-                ],
-            )
+            ([inset.left, inset.right], [margin.left, margin.right])
         } else {
-            (
-                [
-                    own.reset_positioned.inset.top,
-                    own.reset_positioned.inset.bottom,
-                ],
-                [
-                    own.reset_box_layout.margin.top,
-                    own.reset_box_layout.margin.bottom,
-                ],
-            )
+            ([inset.top, inset.bottom], [margin.top, margin.bottom])
         };
         if inset
             .into_iter()

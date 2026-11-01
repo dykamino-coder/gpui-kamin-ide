@@ -1,13 +1,13 @@
-//! Р’С‹РєР»СЋС‡РєР° СЃС‚СЂРѕРє: CSS Р°Р±Р·Р°С†Р° Рё РіРµРѕРјРµС‚СЂРёСЏ РѕС‚РґРµР»СЊРЅРѕРіРѕ РІРЅРµС€РЅРµРіРѕ РјР°СЂРєРµСЂР°.
+//! Выключка строк: CSS абзаца и геометрия отдельного внешнего маркера.
 
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, TextAlign};
 use crate::text::paragraph::Align;
 
 pub(super) fn marker(opts: &RenderOpts) -> Option<TextAlign> {
-    // CSS Lists 3 В§3.1: text-align РЅР°СЃР»РµРґСѓРµС‚СЃСЏ С‚РµРєСЃС‚РѕРј ::marker, РЅРѕ РЅРµ
-    // СѓРїСЂР°РІР»СЏРµС‚ РµРіРѕ РєРѕСЂРѕР±РєРѕР№. Р’РЅРµС€РЅРёРµ СЃС‚СЂРѕРєРё Р·Р°РєР°РЅС‡РёРІР°СЋС‚СЃСЏ Сѓ РїСѓРЅРєС‚Р° РґР°Р¶Рµ
-    // РїСЂРё РїСЂРѕС‚РёРІРѕРїРѕР»РѕР¶РЅРѕРј direction СЃР°РјРѕРіРѕ ::marker.
+    // CSS Lists 3 §3.1: text-align наследуется текстом ::marker, но не
+    // управляет его коробкой. Внешние строки заканчиваются у пункта даже
+    // при противоположном direction самого ::marker.
     opts.cx.inline.outside_marker_rtl.map(|rtl| {
         if rtl {
             TextAlign::Left
@@ -36,7 +36,7 @@ pub(super) fn last(style: &Computed, opts: &RenderOpts) -> Option<Align> {
         })
         .map(crate::text::paragraph::align_of_value)
         .map(|a| match a {
-            // CSS Text 3 В§7.3: text-justify:none Р·Р°РїСЂРµС‰Р°РµС‚ СЂР°СЃС‚СЏР¶РµРЅРёРµ РїРѕСЃР»РµРґРЅРµР№ СЃС‚СЂРѕРєРё.
+            // CSS Text 3 §7.3: text-justify:none запрещает растяжение последней строки.
             Align::Justify if style.inh.text_flow.no_justify == Some(true) => {
                 if style.wm().rtl() {
                     Align::Right

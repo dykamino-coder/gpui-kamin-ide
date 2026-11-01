@@ -83,10 +83,8 @@ impl BlockBox {
 
 /// Контейнер сетки, чьи ряды дают точки разрыва его элементам.
 pub(crate) fn grid_container(e: &Element) -> bool {
-    matches!(
-        e.style.used().reset_box_layout.display,
-        Some(Display::Grid) | Some(Display::InlineGrid)
-    )
+    let display = e.style.used().reset_box_layout.display;
+    matches!(display, Some(Display::Grid) | Some(Display::InlineGrid))
 }
 
 /// Все элементы сетки `e`, записываемые native рекордером.

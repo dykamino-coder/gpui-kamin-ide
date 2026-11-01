@@ -138,14 +138,8 @@ pub(super) fn run_for(
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
 ) -> TextRun {
-    decorated_run(
-        text,
-        style,
-        Default::default(),
-        style.inh.ui.color,
-        base,
-        vcx,
-    )
+    let ink = style.inh.ui.color;
+    decorated_run(text, style, Default::default(), ink, base, vcx)
 }
 
 fn decorated_run(
@@ -156,24 +150,19 @@ fn decorated_run(
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
 ) -> TextRun {
+    let font_style = &style.inh.font;
+    let decoration = &style.reset_text_box;
     let mut font = base.font();
     font.fallbacks = crate::text::fonts::fallbacks::fallbacks(style, font.fallbacks, vcx);
-    // Названное семейство сильнее родового: подстановкой занимается система.
-    // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
-    if let Some(family) = style
-        .inh
-        .font
-        .font_family
-        .as_ref()
-        .filter(|f| !f.is_empty())
-    {
+    // Названное семейство сильнее родового; пустое имя сохраняет базовый шрифт.
+    if let Some(family) = font_style.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
         font.family = crate::text::fonts::alias_for(family, style, vcx)
             .unwrap_or_else(|| family.clone())
             .into();
-    } else if style.inh.font.monospace == Some(true) {
+    } else if font_style.monospace == Some(true) {
         font.family =
             crate::text::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), vcx).into();
     }
@@ -181,13 +170,13 @@ fn decorated_run(
     // обычное начертание, а не «как у базы» (база абзаца строится по
     // первому куску, и `abc<b>def</b>ghi` набирался одним прогоном его
     // веса — сквозной дефект по всему корпусу).
-    font.weight = FontWeight(style.inh.font.font_weight.unwrap_or(400) as f32);
-    font.style = if style.inh.font.italic == Some(true) {
+    font.weight = FontWeight(font_style.font_weight.unwrap_or(400) as f32);
+    font.style = if font_style.italic == Some(true) {
         FontStyle::Italic
     } else {
         FontStyle::Normal
     };
-    if let Some(pct) = style.inh.font.font_stretch {
+    if let Some(pct) = font_style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }
     let features = style.used_features(vcx);
@@ -200,8 +189,7 @@ fn decorated_run(
     let color = if style.inh.ui.hidden == Some(true) {
         gpui::hsla(0.0, 0.0, 0.0, 0.0)
     } else {
-        style
-            .reset_text_box
+        decoration
             .text_shadow_ink
             .or(ink)
             .map(Color::to_hsla)
@@ -211,9 +199,7 @@ fn decorated_run(
     // нельзя (см. `single_block`).
     let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
     // TRANSITIONAL(cascade-7b-font-size-adjust): A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face.
-    let font_size = style
-        .inh
-        .font
+    let font_size = font_style
         .font_size
         .map(|_| gpui::px(style.used_font(base_px, vcx).size_px));
     TextRun {
@@ -245,8 +231,7 @@ fn decorated_run(
             .map(gpui::px),
         background_radius: gpui::px(inline_decoration.corner_radius.unwrap_or(0.0)),
         background_line_gap: true,
-        underline: style
-            .reset_text_box
+        underline: decoration
             .underline
             .unwrap_or(false)
             .then(|| UnderlineStyle {
@@ -254,11 +239,12 @@ fn decorated_run(
                 color: Some(color),
                 wavy: false,
             }),
-        strikethrough: style.reset_text_box.line_through.unwrap_or(false).then(|| {
-            gpui::StrikethroughStyle {
+        strikethrough: decoration
+            .line_through
+            .unwrap_or(false)
+            .then(|| gpui::StrikethroughStyle {
                 thickness: gpui::px(1.),
                 color: Some(color),
-            }
-        }),
+            }),
     }
 }
