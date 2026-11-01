@@ -3,15 +3,19 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout] [--edit text|attr|class|resize] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
     engine_bench --list-gpus\n\
-    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
+    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
+    relayout: one cold frame, then N frames alternating the input and its local edit\n\
+    (--edit, default text), then every variant once more cold to check pixel identity.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
     Cold,
     Warm,
     Both,
+    /// Локальная правка между кадрами (`relayout::Edit`).
+    Relayout,
 }
 
 #[cfg(test)]
@@ -38,6 +42,7 @@ pub(super) struct Args {
     pub(super) viewport: (u32, u32),
     pub(super) runs: usize,
     pub(super) mode: Mode,
+    pub(super) edit: super::edit::Edit,
     pub(super) json: bool,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
@@ -60,6 +65,7 @@ impl Args {
             viewport: (800, 600),
             runs: 30,
             mode: Mode::Both,
+            edit: super::edit::Edit::Text,
             json: false,
             snapshot: None,
             frame_diff_dir: None,
@@ -91,9 +97,11 @@ impl Args {
                         "cold" => Mode::Cold,
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
-                        _ => return Err("mode must be cold, warm or both".into()),
+                        "relayout" => Mode::Relayout,
+                        _ => return Err("mode must be cold, warm, both or relayout".into()),
                     };
                 }
+                "--edit" => out.edit = super::edit::Edit::parse(&value)?,
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),

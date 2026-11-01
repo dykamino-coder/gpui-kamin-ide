@@ -10,6 +10,7 @@
 #[cfg(windows)]
 mod accounting;
 mod args;
+mod edit;
 #[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
@@ -18,6 +19,8 @@ mod host;
 mod pixels;
 #[cfg(all(windows, feature = "work-counters"))]
 mod process;
+#[cfg(windows)]
+mod relayout;
 mod report;
 mod resources;
 #[cfg(windows)]

@@ -2,7 +2,8 @@
 
 use super::{DocState, Media, Node, Rc, base_url, viewport};
 
-/// Разбор в СВЕЖЕЕ состояние документа носителем `media`: шрифты и
+/// Разбор в СВЕЖЕЕ состояние документа носителем `media` (у следующей ревизии —
+/// с замерами абзацев прошлой, `DocState::continuing`): шрифты и
 /// `@color-profile` из листов страницы (до разбора: иначе первый же замер
 /// ширины пойдёт по подстановке), разметка (XML — своим разборщиком,
 /// `dom::xml`), правка адресов от действующей базы.
@@ -13,9 +14,13 @@ pub(super) fn parse_document(
     media: Media,
     fonts: &crate::text::metrics::FontContext,
     revision: crate::budget::RevisionBudget,
+    previous: Option<&DocState>,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
-    let state = DocState::new(media);
+    let state = match previous {
+        Some(previous) => DocState::continuing(media, previous),
+        None => DocState::new(media),
+    };
     let admission = crate::budget::admission::Admission::new(revision.clone());
     state.values.admit_revision(revision, base);
     let vcx = state.values();

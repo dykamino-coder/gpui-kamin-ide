@@ -114,6 +114,7 @@ impl Document {
         media: Media,
         fonts: &crate::text::metrics::FontContext,
         revision: crate::budget::RevisionBudget,
+        previous: Option<&DocState>,
     ) -> Result<Self, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url.as_ref());
         #[cfg(feature = "engine-bench")]
@@ -149,6 +150,7 @@ impl Document {
             media,
             fonts,
             revision,
+            previous,
             #[cfg(feature = "engine-bench")]
             &mut timings,
         )

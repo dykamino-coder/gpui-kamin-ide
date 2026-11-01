@@ -25,6 +25,8 @@ pub(super) struct Phases {
 pub(super) struct View {
     pub(super) doc: Document,
     pub(super) phases: Rc<RefCell<Phases>>,
+    /// Ширина области просмотра вместо ширины окна (сценарий `--edit resize`).
+    pub(super) width: Option<f32>,
 }
 
 impl Render for View {
@@ -37,7 +39,8 @@ impl Render for View {
         text.font_size = px(16.).into();
         let mut opts = RenderOpts {
             viewport: (
-                window.viewport_size().width.into(),
+                self.width
+                    .unwrap_or_else(|| window.viewport_size().width.into()),
                 window.viewport_size().height.into(),
             ),
             text,

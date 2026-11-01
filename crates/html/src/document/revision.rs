@@ -56,6 +56,7 @@ impl Document {
             media,
             &fonts,
             revision,
+            Some(&self.state),
         )
         .map_err(|mut failure| {
             failure.report.retained_revision = Some(self.key);
