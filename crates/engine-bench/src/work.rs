@@ -23,11 +23,7 @@ impl Capture {
         })
     }
 
-    pub(super) fn finish(
-        self,
-        cold: bool,
-        doc: &kamin_html::Document,
-    ) -> (Value, Value) {
+    pub(super) fn finish(self, cold: bool, doc: &kamin_html::Document) -> (Value, Value) {
         #[cfg(feature = "work-counters")]
         {
             use kamin_html::work::{Counter, Phase};
