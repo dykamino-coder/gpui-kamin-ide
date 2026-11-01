@@ -34,7 +34,6 @@ pub(crate) fn projected(
     vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     use crate::style::cascade::{inherit::inherit_unpainted, materialize::box_style_unpainted};
-    use crate::style::computed::Computed;
     let mut out = Vec::new();
     for n in nodes {
         match n {

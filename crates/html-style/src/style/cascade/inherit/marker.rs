@@ -1,7 +1,7 @@
 //! Стиль содержимого внешнего маркера, отдельный от главной коробки пункта.
 
 use super::inherit;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 

@@ -26,13 +26,13 @@ impl Capture {
     pub(super) fn finish(
         self,
         cold: bool,
-        doc: &kamin_html::values::DocumentValues,
+        doc: &kamin_html::Document,
     ) -> (Value, Value) {
         #[cfg(feature = "work-counters")]
         {
             use kamin_html::work::{Counter, Phase};
             let mut usage = self.usage.finish(cold);
-            let live = doc.style_storage();
+            let live = doc.values().doc.style_storage();
             usage["style_storage"] = serde_json::json!({
                 "scope": "document initial descendants; nested buffers and Rc control blocks excluded",
                 "computed_headers": live.computed_headers,
@@ -76,7 +76,7 @@ mod tests {
     fn warm_absence_is_distinct_from_zero_work_and_integers_are_exact() {
         let capture = Capture::begin((0, 0)).unwrap();
         kamin_html::work::add!(RebuiltNodes, 9_007_199_254_740_993u64);
-        let doc = kamin_html::values::DocumentValues::detached(Default::default());
+        let doc = kamin_html::Document::builder("", "").build().unwrap();
         let (out, usage) = capture.finish(false, &doc);
         assert!(usage["phases"]["parse"].is_null());
         assert!(out["parse"].is_null());
