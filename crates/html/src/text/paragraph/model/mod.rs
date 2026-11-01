@@ -10,8 +10,6 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 /// Абзац со своей раскладкой строк.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
-    /// Индексы ревизии вне тела элемента: абзац живёт в арене кадра, и
-    /// неподготовленная сборка не должна платить за их место.
     pub(super) prepared: std::cell::OnceCell<Box<super::prepared::Prepared>>,
     pub(super) anchor_values: Option<(ValueDoc, std::rc::Rc<LayoutState>)>,
     pub(super) inline_measure: Option<crate::text::vertical::InlineMeasure>,

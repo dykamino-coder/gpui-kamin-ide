@@ -79,20 +79,24 @@ impl<'a> IntoIterator for &'a mut Children {
 
 /// Единственный владелец списка; слабые метки снимков отделяются от узлов
 /// без их копирования, чтобы drop оставался итеративным.
-fn sole(nodes: &mut Rc<Vec<Node>>) -> Option<&mut Vec<Node>> {
-    (Rc::strong_count(nodes) == 1).then(|| Rc::make_mut(nodes))
+fn sole(nodes: &mut Rc<Vec<Node>>) -> Option<Vec<Node>> {
+    if let Some(nodes) = Rc::get_mut(nodes) {
+        return Some(std::mem::take(nodes));
+    }
+    (Rc::strong_count(nodes) == 1)
+        .then(|| Rc::try_unwrap(std::mem::take(nodes)).ok())
+        .flatten()
 }
 
 impl Drop for Children {
     fn drop(&mut self) {
-        let Some(nodes) = sole(&mut self.0) else {
+        let Some(mut pending) = sole(&mut self.0) else {
             return;
         };
-        let mut pending = std::mem::take(nodes);
         while let Some(node) = pending.pop() {
             if let Node::Element(mut e) = node {
-                if let Some(children) = sole(&mut e.children.0) {
-                    pending.append(children);
+                if let Some(mut children) = sole(&mut e.children.0) {
+                    pending.append(&mut children);
                 }
             }
         }
