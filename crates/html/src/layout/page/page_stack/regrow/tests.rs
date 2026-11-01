@@ -34,7 +34,9 @@ fn unforced_line_break_consumes_unused_fragment_extent_once() {
         head: 0.0,
         foot: 0.0,
     };
-    let grows = growths(&blocks, &kid, &laid, &frag, 100.0);
+    // Строчный рекордер сохраняет занятое место и при собственном продолжении.
+    assert_eq!(growths(&blocks, &kid, &laid, &frag, 100.0, true).len(), 1);
+    let grows = growths(&blocks, &kid, &laid, &frag, 100.0, false);
     assert_eq!(grows.len(), 1);
     assert_eq!(grows[0].amount, 20.0);
     assert!(!grows[0].forced);
@@ -45,7 +47,46 @@ fn unforced_line_break_consumes_unused_fragment_extent_once() {
     assert_eq!(*growth.borrow(), vec![0.0, 0.0, 20.0]);
     // После публикации занятого места новый разрыв стоит у края.
     frag.h = 100.0;
-    assert!(growths(&blocks, &kid, &laid, &frag, 100.0).is_empty());
+    assert!(growths(&blocks, &kid, &laid, &frag, 100.0, false).is_empty());
+}
+
+#[test]
+fn resumed_cleared_box_keeps_the_boundary_in_its_own_geometry() {
+    use crate::layout::fragment::flow::blocks::BlockKid;
+    let mut blocks = BlockBox {
+        id: 1,
+        kids: vec![BlockKid {
+            id: 2,
+            clears: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let laid = Laid::of_boxes(&[(1, 0., 160.), (2, 80., 160.)]);
+    let mut kid = Kid {
+        h: 160.,
+        solid: vec![(80., 160.)],
+        ..Default::default()
+    };
+    let frag = Frag {
+        kid: 0,
+        copy: 0,
+        col: 0,
+        y: 0.,
+        from: 0.,
+        h: 80.,
+        head: 0.,
+        foot: 0.,
+    };
+    assert_eq!(growths(&blocks, &kid, &laid, &frag, 100., false).len(), 1);
+    assert!(growths(&blocks, &kid, &laid, &frag, 100., true).is_empty());
+    // Граница без clear растёт и при независимом продолжении.
+    blocks.kids[0].clears = false;
+    assert_eq!(growths(&blocks, &kid, &laid, &frag, 100., true).len(), 1);
+    blocks.kids[0].clears = true;
+    // Принудительный разрыв сохраняет распорку занятого места.
+    kid.forced.push(80.);
+    assert_eq!(growths(&blocks, &kid, &laid, &frag, 100., true).len(), 1);
 }
 
 #[test]
@@ -122,7 +163,7 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         col: 0,
         y: 0.,
         from: 0.,
-        h: 40.,
+        h: 50.,
         head: 0.,
         foot: 0.,
     };

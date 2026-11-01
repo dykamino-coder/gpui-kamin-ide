@@ -55,15 +55,7 @@ impl Pieces {
                     .pieces
                     .iter()
                     .find(|p| p.placement.id == s.placement.id)?;
-                let shift = (s.placement.destination - s.placement.source) - p.delta();
-                Some(Piece {
-                    placement: s.placement,
-                    fragment: Bounds::new(p.fragment.origin - shift, p.fragment.size),
-                    clip: s.source_clip,
-                    slice: s.source_clip,
-                    tail: p.tail,
-                    admitted: true,
-                })
+                Some(p.with_admission(s))
             })
             .collect()
     }
@@ -126,24 +118,16 @@ pub(crate) fn paint_shadow(
     let _ = window.with_paint_segment_slices(slices.into(), f);
 }
 
-/// Краска художника фрагмента в куске `p` без среза куска: украшение не режется по
-/// фрагменту (его уже обрезала своя геометрия), его режут только обрезки предков.
+/// Краска украшений, уже ограниченных геометрией фрагмента: допуск сохраняет
+/// внутренний cut узла и допускает хвост у края фрагмента; обрезки предков действуют.
 pub(crate) fn paint_unclipped(
     pieces: &Pieces,
     p: &Piece,
+    end: Pixels,
     window: &mut Window,
     f: impl FnOnce(&mut Window),
 ) {
-    // Срез допущенного узла (окно, расход элемента) режет и его украшения, как у копии.
-    let reach = if p.admitted {
-        px(0.)
-    } else {
-        p.slice.size.width
-    };
-    let source_clip = Bounds::from_corners(
-        point(p.slice.left(), p.slice.top() - reach),
-        point(p.slice.right(), p.slice.bottom() + reach),
-    );
+    let source_clip = p.gap_slice(end);
     pieces.reach(
         p.placement.id,
         Bounds::new(source_clip.origin + p.delta(), source_clip.size),
