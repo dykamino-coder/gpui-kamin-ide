@@ -5,15 +5,16 @@ use std::{cell::RefCell, rc::Rc};
 
 /// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
 /// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
+/// Снимок хранит только живых предков; копии разделяют неизменяемый срез.
 #[derive(Clone)]
-pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
+pub struct ElementIdContext(Rc<[crate::ElementId]>);
 
 /// Inputs inherited by an element constructed during deferred measurement.
 /// Paint geometry, clips and effects remain owned by the current traversal.
 #[derive(Clone)]
 pub struct ElementLayoutContext {
     identity: ElementIdContext,
-    text: Vec<crate::TextStyleRefinement>,
+    text: Rc<[crate::TextStyleRefinement]>,
     rem_size: crate::Pixels,
 }
 
@@ -43,14 +44,14 @@ impl Window {
 
     /// Сохраняет цепочку до выхода отложенного измерения из своего view.
     pub fn element_id_context(&self) -> ElementIdContext {
-        ElementIdContext(self.element_id_stack.clone())
+        ElementIdContext(Rc::from(self.element_id_stack.as_slice()))
     }
 
     /// Preserve inherited layout inputs before a measured callback leaves its ancestors.
     pub fn element_layout_context(&self) -> ElementLayoutContext {
         ElementLayoutContext {
             identity: self.element_id_context(),
-            text: self.text_style_stack.clone(),
+            text: Rc::from(self.text_style_stack.as_slice()),
             rem_size: self.rem_size(),
         }
     }
@@ -61,7 +62,7 @@ impl Window {
         context: &ElementLayoutContext,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.text_style_stack, context.text.clone());
+        let outer = std::mem::replace(&mut self.text_style_stack, context.text.to_vec());
         self.with_restore(
             outer,
             |window, outer| std::mem::swap(&mut window.text_style_stack, outer),
@@ -80,7 +81,7 @@ impl Window {
         context: &ElementIdContext,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.element_id_stack, context.0.clone());
+        let outer = std::mem::replace(&mut self.element_id_stack, context.0.iter().cloned().collect());
         self.with_restore(
             outer,
             |window, outer| std::mem::swap(&mut window.element_id_stack, outer),

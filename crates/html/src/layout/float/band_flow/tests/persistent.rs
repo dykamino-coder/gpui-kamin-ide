@@ -75,3 +75,44 @@ fn auto_flex_and_grid_items_leave_intrinsic_sizing_to_their_owner() {
         assert_eq!(inner(&item, parent_width), None);
     }
 }
+
+#[gpui::test]
+fn cloned_deferred_context_survives_deep_ancestry_and_nested_restore(
+    cx: &mut gpui::TestAppContext,
+) {
+    fn capture(
+        window: &mut Window,
+        depth: u64,
+    ) -> (gpui::ElementLayoutContext, gpui::GlobalElementId) {
+        if depth > 0 {
+            window.with_id(depth, |window| capture(window, depth - 1))
+        } else {
+            let context = window.element_layout_context();
+            let id = window.with_global_id(999u64.into(), |id, _| id.clone());
+            (context, id)
+        }
+    }
+    cx.add_empty_window().draw(
+        point(px(0.), px(0.)),
+        size(px(100.), px(100.)),
+        |window, _| {
+            let (context, expected) = capture(window, 40);
+            let snapshot = context.clone();
+            drop(context);
+            let outer = window.with_global_id(999u64.into(), |id, _| id.clone());
+            for _ in 0..2 {
+                window.with_element_layout_context(&snapshot, |window| {
+                    window.with_global_id(999u64.into(), |id, _| assert_eq!(*id, expected));
+                    window.with_id("temporary", |window| {
+                        window.with_element_layout_context(&snapshot, |window| {
+                            window.with_global_id(999u64.into(), |id, _| assert_eq!(*id, expected));
+                        });
+                    });
+                    window.with_global_id(999u64.into(), |id, _| assert_eq!(*id, expected));
+                });
+                window.with_global_id(999u64.into(), |id, _| assert_eq!(*id, outer));
+            }
+            div()
+        },
+    );
+}

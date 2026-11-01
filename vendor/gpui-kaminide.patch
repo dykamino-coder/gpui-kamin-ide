@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state.
+# 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
 # 2. Intrinsic measurement: expose size-only axis queries and their purpose to measured leaves without replacing completed layout geometry or metadata.
 # 3. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
 # 4. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
@@ -20507,10 +20507,10 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained_layout.rs b/vendor/gpui/src/window/retained_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a32feca77fd9ef9fb2359b8fb865e115b06d03cf
+index 0000000000000000000000000000000000000000..94f9f14bb0910a759f03ab627b8a588e8e901281
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained_layout.rs
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,143 @@
 +//! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 +
 +use super::{TaffyLayoutEngine, Window};
@@ -20518,15 +20518,16 @@ index 0000000000000000000000000000000000000000..a32feca77fd9ef9fb2359b8fb865e115
 +
 +/// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
 +/// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
++/// Снимок хранит только живых предков; копии разделяют неизменяемый срез.
 +#[derive(Clone)]
-+pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
++pub struct ElementIdContext(Rc<[crate::ElementId]>);
 +
 +/// Inputs inherited by an element constructed during deferred measurement.
 +/// Paint geometry, clips and effects remain owned by the current traversal.
 +#[derive(Clone)]
 +pub struct ElementLayoutContext {
 +    identity: ElementIdContext,
-+    text: Vec<crate::TextStyleRefinement>,
++    text: Rc<[crate::TextStyleRefinement]>,
 +    rem_size: crate::Pixels,
 +}
 +
@@ -20556,14 +20557,14 @@ index 0000000000000000000000000000000000000000..a32feca77fd9ef9fb2359b8fb865e115
 +
 +    /// Сохраняет цепочку до выхода отложенного измерения из своего view.
 +    pub fn element_id_context(&self) -> ElementIdContext {
-+        ElementIdContext(self.element_id_stack.clone())
++        ElementIdContext(Rc::from(self.element_id_stack.as_slice()))
 +    }
 +
 +    /// Preserve inherited layout inputs before a measured callback leaves its ancestors.
 +    pub fn element_layout_context(&self) -> ElementLayoutContext {
 +        ElementLayoutContext {
 +            identity: self.element_id_context(),
-+            text: self.text_style_stack.clone(),
++            text: Rc::from(self.text_style_stack.as_slice()),
 +            rem_size: self.rem_size(),
 +        }
 +    }
@@ -20574,7 +20575,7 @@ index 0000000000000000000000000000000000000000..a32feca77fd9ef9fb2359b8fb865e115
 +        context: &ElementLayoutContext,
 +        f: impl FnOnce(&mut Window) -> R,
 +    ) -> R {
-+        let outer = std::mem::replace(&mut self.text_style_stack, context.text.clone());
++        let outer = std::mem::replace(&mut self.text_style_stack, context.text.to_vec());
 +        self.with_restore(
 +            outer,
 +            |window, outer| std::mem::swap(&mut window.text_style_stack, outer),
@@ -20593,7 +20594,7 @@ index 0000000000000000000000000000000000000000..a32feca77fd9ef9fb2359b8fb865e115
 +        context: &ElementIdContext,
 +        f: impl FnOnce(&mut Window) -> R,
 +    ) -> R {
-+        let outer = std::mem::replace(&mut self.element_id_stack, context.0.clone());
++        let outer = std::mem::replace(&mut self.element_id_stack, context.0.iter().cloned().collect());
 +        self.with_restore(
 +            outer,
 +            |window, outer| std::mem::swap(&mut window.element_id_stack, outer),
