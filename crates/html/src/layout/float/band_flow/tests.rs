@@ -133,12 +133,12 @@ fn intrinsic_pair_does_not_place_children_or_evict_width_plans(cx: &mut gpui::Te
             assert_eq!(layout(AvailableSpace::MinContent).width, px(20.));
             assert_eq!(layout(AvailableSpace::MaxContent).width, px(20.));
             assert_eq!(builds.get(), 1, "min/max share one child preparation");
-            assert!(plans.borrow().get(100.).is_none());
+            assert!(plans.get(100.).is_none());
             layout(AvailableSpace::Definite(px(100.)));
             layout(AvailableSpace::Definite(px(200.)));
             assert_eq!(builds.get(), 3);
-            assert!(plans.borrow().get(100.).is_some());
-            assert!(plans.borrow().get(200.).is_some());
+            assert!(plans.get(100.).is_some());
+            assert!(plans.get(200.).is_some());
             layout(AvailableSpace::MinContent);
             layout(AvailableSpace::Definite(px(100.)));
             assert_eq!(

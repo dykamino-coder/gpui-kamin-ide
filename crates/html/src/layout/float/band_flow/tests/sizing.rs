@@ -33,7 +33,7 @@ fn definite_axis_query_without_a_known_width_skips_block_intrinsics(cx: &mut gpu
                 );
                 assert_eq!(actual.width, px(if fill { 100. } else { 60. }));
                 assert_eq!(intrinsic.get().is_none(), fill);
-                assert!(plans.borrow().get(f32::from(actual.width)).is_none());
+                assert!(plans.get(f32::from(actual.width)).is_none());
             }
             div()
         },

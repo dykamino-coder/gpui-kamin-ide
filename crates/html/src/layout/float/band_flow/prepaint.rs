@@ -25,14 +25,14 @@ impl BandFlow {
             unr.width
         });
         let origin = window.layout_origin_unrounded(*state);
-        let cached = self.plan.borrow().get(cb);
+        let cached = self.plan.get(cb);
         let p = match cached {
             Some(p) => p,
             None => {
                 let kids = self.kids.clone();
-                let engine =
-                    std::rc::Rc::new(std::cell::RefCell::new(gpui::RetainedLayout::default()));
-                let plan = window.with_retained_layout(&mut engine.borrow_mut(), |window| {
+                let mut engine = gpui::RetainedLayout::default();
+                let retained = engine.clone();
+                let plan = window.with_retained_layout(&mut engine, |window| {
                     let mut p = Probe::new(
                         window,
                         cx,
@@ -42,10 +42,10 @@ impl BandFlow {
                         self.probe_scopes(),
                         self.build,
                     );
-                    p.engine = Some(engine.clone());
+                    p.engine = Some(retained);
                     plan(&kids, cb, contain_floats, &mut p)
                 });
-                self.plan.borrow_mut().insert(plan)
+                self.plan.insert(plan)
             }
         };
         self.built.clear();

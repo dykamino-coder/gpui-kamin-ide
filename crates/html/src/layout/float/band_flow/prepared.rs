@@ -5,13 +5,13 @@ use gpui::{
     AnyElement, App, AvailableSpace, Bounds, ElementIdContext, LayoutId, Pixels, RetainedLayout,
     Size, Window, point, px, size,
 };
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
-pub(super) type Engine = Rc<RefCell<RetainedLayout>>;
+pub(super) type Engine = RetainedLayout;
 
 #[derive(Clone, Default)]
-pub(super) struct Prepared(Rc<RefCell<Option<Child>>>);
+pub(super) struct Prepared(Rc<Cell<Option<Child>>>);
 
 struct Child {
     element: AnyElement,
@@ -23,9 +23,10 @@ struct Child {
 
 impl std::fmt::Debug for Prepared {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Prepared")
-            .field(&self.0.borrow().is_some())
-            .finish()
+        let child = self.0.take();
+        let present = child.is_some();
+        self.0.set(child);
+        f.debug_tuple("Prepared").field(&present).finish()
     }
 }
 
@@ -37,7 +38,7 @@ impl Prepared {
         space: Size<AvailableSpace>,
         size: Size<Pixels>,
     ) -> Self {
-        Self(Rc::new(RefCell::new(Some(Child {
+        Self(Rc::new(Cell::new(Some(Child {
             element,
             engine,
             identity,
@@ -47,7 +48,9 @@ impl Prepared {
     }
 
     pub(super) fn take(&self) -> Option<AnyElement> {
-        self.0.borrow_mut().take().map(|child| child.hooked())
+        // План и его копии разделяют только право однократной передачи:
+        // после take ребёнком целиком владеет держатель текущего дерева.
+        self.0.take().map(|child| child.hooked())
     }
 }
 
@@ -80,7 +83,7 @@ impl Hooks for Child {
         cx: &mut App,
     ) {
         let origin = window.layout_origin_unrounded(*id);
-        window.with_retained_layout(&mut self.engine.borrow_mut(), |window| {
+        window.with_retained_layout(&mut self.engine, |window| {
             window.with_element_id_context(&self.identity, |window| {
                 self.element
                     .layout_as_root_at(origin, self.space, window, cx);
@@ -98,8 +101,38 @@ impl Hooks for Child {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_retained_layout(&mut self.engine.borrow_mut(), |window| {
+        window.with_retained_layout(&mut self.engine, |window| {
             window.with_element_id_context(&self.identity, |window| self.element.paint(window, cx))
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::IntoElement;
+
+    #[gpui::test]
+    fn clones_transfer_the_prepared_child_only_once(cx: &mut gpui::TestAppContext) {
+        cx.add_empty_window().draw(
+            point(px(0.), px(0.)),
+            size(px(100.), px(100.)),
+            |window, _| {
+                let prepared = Prepared::new(
+                    gpui::div().into_any_element(),
+                    RetainedLayout::default(),
+                    window.element_id_context(),
+                    size(AvailableSpace::MaxContent, AvailableSpace::MaxContent),
+                    size(px(20.), px(10.)),
+                );
+                let copy = prepared.clone();
+                assert_eq!(format!("{prepared:?}"), "Prepared(true)");
+                assert!(copy.take().is_some());
+                assert_eq!(format!("{prepared:?}"), "Prepared(false)");
+                assert!(prepared.take().is_none());
+                assert!(copy.take().is_none());
+                gpui::div()
+            },
+        );
     }
 }

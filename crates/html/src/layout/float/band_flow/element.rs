@@ -15,7 +15,7 @@ pub struct BandFlow {
     pub(super) paint: Rc<Deferred>,
     pub(super) build: ChildBuild,
     pub(super) kids: Rc<Vec<Kid>>,
-    pub(super) plan: Rc<RefCell<super::cache::Plans>>,
+    pub(super) plan: Rc<super::cache::Plans>,
     intrinsic: Rc<std::cell::Cell<Option<(f32, f32)>>>,
     pub(super) fill_inline: bool,
     pub(super) built: Vec<AnyElement>,
@@ -136,15 +136,16 @@ impl Hooks for BandFlow {
                 if geometry.intrinsic_axis == Some(axis) {
                     return phys(cb, 0.0);
                 }
-                if let Some(p) = cache.borrow().get(cb) {
+                if let Some(p) = cache.get(cb) {
                     if let Some(f) = &fragment {
                         f.publish(&p, &kids);
                     }
                     super::clamp::publish(&output, &p, vert, inline_up);
                     return phys(cb, p.height);
                 }
-                let engine = Rc::new(RefCell::new(gpui::RetainedLayout::default()));
-                let p = window.with_retained_layout(&mut engine.borrow_mut(), |window| {
+                let mut engine = gpui::RetainedLayout::default();
+                let retained = engine.clone();
+                let p = window.with_retained_layout(&mut engine, |window| {
                     let mut p = Probe::new(
                         window,
                         cx,
@@ -154,7 +155,7 @@ impl Hooks for BandFlow {
                         scopes.clone(),
                         build,
                     );
-                    p.engine = Some(engine.clone());
+                    p.engine = Some(retained);
                     plan(&kids, cb, contain_floats, &mut p)
                 });
                 if let Some(f) = &fragment {
@@ -162,7 +163,7 @@ impl Hooks for BandFlow {
                 }
                 super::clamp::publish(&output, &p, vert, inline_up);
                 let h = p.height;
-                cache.borrow_mut().insert(p);
+                cache.insert(p);
                 phys(cb, h)
             })
         };

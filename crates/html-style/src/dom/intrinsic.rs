@@ -2,7 +2,7 @@
 //! Список детей отделяет слот при COW, материализация помечает цепочку предков.
 
 use crate::style::computed::Computed;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 
 pub type IntrinsicSizes = Rc<Cell<Option<(f32, f32)>>>;
@@ -19,25 +19,49 @@ pub struct IntrinsicInput {
     pub vertical: bool,
 }
 
-#[derive(Debug, Default)]
-pub(super) struct IntrinsicCache(RefCell<Option<(IntrinsicInput, IntrinsicSizes)>>);
+#[derive(Default)]
+pub(super) struct IntrinsicCache(Cell<Option<Rc<Entry>>>);
+
+#[derive(Debug)]
+struct Entry {
+    input: IntrinsicInput,
+    sizes: IntrinsicSizes,
+}
+
+impl std::fmt::Debug for IntrinsicCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("IntrinsicCache")
+            .field(&self.entry())
+            .finish()
+    }
+}
 
 impl IntrinsicCache {
+    fn entry(&self) -> Option<Rc<Entry>> {
+        // Запись неизменяема: Cell передаёт владение указателем, а не выдаёт
+        // изменяемый доступ к данным узла. До возврата слот восстановлен.
+        let entry = self.0.take();
+        self.0.set(entry.clone());
+        entry
+    }
+
     pub(super) fn dirty(&self) {
-        if let Some((_, sizes)) = self.0.borrow_mut().take() {
-            sizes.set(None);
+        if let Some(entry) = self.0.take() {
+            entry.sizes.set(None);
         }
     }
 
     pub(super) fn sizes(&self, input: IntrinsicInput) -> IntrinsicSizes {
-        let mut entry = self.0.borrow_mut();
-        if let Some((old, sizes)) = &*entry
-            && *old == input
+        if let Some(entry) = self.entry()
+            && entry.input == input
         {
-            return sizes.clone();
+            return entry.sizes.clone();
         }
         let sizes = IntrinsicSizes::default();
-        *entry = Some((input, sizes.clone()));
+        self.0.set(Some(Rc::new(Entry {
+            input,
+            sizes: sizes.clone(),
+        })));
         sizes
     }
 }
@@ -88,6 +112,18 @@ mod tests {
         ] {
             assert!(children.intrinsic_sizes(changed).get().is_none());
         }
+    }
+
+    #[test]
+    fn inspecting_the_cache_preserves_its_owned_entry_and_dirty_handle() {
+        let cache = IntrinsicCache::default();
+        let sizes = cache.sizes(input());
+        sizes.set(Some((20., 60.)));
+        assert!(format!("{cache:?}").contains("IntrinsicCache"));
+        assert!(Rc::ptr_eq(&sizes, &cache.sizes(input())));
+        cache.dirty();
+        assert_eq!(sizes.get(), None);
+        assert!(!Rc::ptr_eq(&sizes, &cache.sizes(input())));
     }
 
     #[test]
