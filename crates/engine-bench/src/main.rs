@@ -12,6 +12,8 @@ mod accounting;
 mod args;
 mod diagnostics;
 #[cfg(windows)]
+mod frames;
+#[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
 mod host;

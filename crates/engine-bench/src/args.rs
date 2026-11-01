@@ -3,15 +3,29 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
     engine_bench --list-gpus\n\
-    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
+    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
+    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
     Cold,
     Warm,
     Both,
+    Relayout,
+}
+
+#[cfg(windows)]
+impl Mode {
+    pub(super) fn phases(self) -> &'static [(&'static str, bool)] {
+        match self {
+            Self::Cold => &[("cold", true)],
+            Self::Warm => &[("warm", false)],
+            Self::Both => &[("cold", true), ("warm", false)],
+            Self::Relayout => &[("relayout", false)],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -36,6 +50,7 @@ mod tests {
         for options in [
             vec!["--runs", "4", "--memory-settle-ms", "1"],
             vec!["--mode", "cold", "--memory-settle-ms", "1"],
+            vec!["--mode", "relayout", "--memory-settle-ms", "1"],
             vec!["--memory-settle-ms", "0"],
             vec!["--memory-settle-ms", "60001"],
         ] {
@@ -118,7 +133,8 @@ impl Args {
                         "cold" => Mode::Cold,
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
-                        _ => return Err("mode must be cold, warm or both".into()),
+                        "relayout" => Mode::Relayout,
+                        _ => return Err("mode must be cold, warm, both or relayout".into()),
                     };
                 }
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
@@ -134,8 +150,10 @@ impl Args {
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
         }
-        if out.memory_settle_ms > 0 && (out.runs < 5 || out.mode == Mode::Cold) {
-            return Err("memory audit requires at least five warm frames".into());
+        if out.memory_settle_ms > 0
+            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout))
+        {
+            return Err("memory audit requires at least five unchanged warm frames".into());
         }
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()

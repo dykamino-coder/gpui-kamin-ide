@@ -3,6 +3,7 @@
 use super::{
     accounting::{self, Input, Measured},
     args::{Args, Mode},
+    frames::Frames,
     host, pixels, report, resources,
     view::{Phases, View},
     work,
@@ -186,20 +187,18 @@ pub(super) async fn run(
     let baseline_memory = host::peak_memory()?;
     let startup = super::process::Snapshot::read()?;
     let mut modes = serde_json::Map::new();
-    let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
+    let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
-    if args.mode == Mode::Warm {
+    if matches!(args.mode, Mode::Warm | Mode::Relayout) {
         sample(cx, window, fonts, args, true, capture, luid).await?;
     }
-    for (name, cold) in [("cold", true), ("warm", false)] {
-        if (cold && args.mode == Mode::Warm) || (!cold && args.mode == Mode::Cold) {
-            continue;
-        }
+    for &(name, cold) in args.mode.phases() {
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
         let mut usage = Vec::with_capacity(args.runs);
         for index in 1..=args.runs {
+            frames.prepare(cx, window, index)?;
             let (sample, frame, (counts, resources)) =
                 sample(cx, window, fonts, args, cold, capture, luid).await?;
             work.push(counts);
@@ -207,7 +206,7 @@ pub(super) async fn run(
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
-            pixels.observe(frame.pixels, frame.seq, name, index)?;
+            frames.observe(cx, window, frame, name, index)?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
@@ -226,12 +225,12 @@ pub(super) async fn run(
         "startup_process_memory": startup.json(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
-    if let Some(fields) = pixels.report().as_object() {
+    if let Some(fields) = frames.report().as_object() {
         for (key, value) in fields {
             report[key] = value.clone();
         }
     }
-    drop(pixels);
+    drop(frames);
     if args.memory_settle_ms > 0 {
         if report["frame_pixels_changed"] != false {
             return Err("memory audit requires an unchanged RGB frame sequence".into());
