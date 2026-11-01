@@ -17,14 +17,7 @@ impl Document {
     /// Начать кадр и вернуть опции сборки с этим документом: с ними хост
     /// вызывает `render::*` по `nodes()` (стопка страниц) сам.
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
-        self.state.begin_frame();
-        crate::values::image_values::refresh(self.state.frame_values());
-        let mut opts = opts.clone();
-        opts.cx.clamp.input = None;
-        opts.cx.values.inert_clear = false;
-        opts.cx.contracts.document_root = Some((self.nodes.as_ptr() as usize, self.nodes.len()));
-        opts.cx.values.doc = crate::layout::cx::BuildDoc(self.state.clone());
-        opts
+        frame_opts(&self.state, &self.nodes, opts)
     }
 
     /// Значения кадра документа: ими хост разбирает объявления листа
@@ -41,10 +34,7 @@ impl Document {
 
     /// Собрать кадр всего документа (`render::render`).
     pub fn render(&self, opts: &crate::RenderOpts) -> Vec<gpui::AnyElement> {
-        crate::render::render(&self.nodes, &self.frame_opts(opts))
-            .into_iter()
-            .map(|e| self.scoped(e))
-            .collect()
+        render(&self.state, &self.nodes, opts)
     }
 
     /// Собрать один блок верхнего уровня (`render::render_block`).
@@ -58,4 +48,32 @@ impl Document {
     pub fn page_rules(&self) -> Vec<crate::style::css::PageRule> {
         self.state.page_rules()
     }
+}
+
+/// Начать кадр документа `state` с деревом `nodes` (`Document::frame_opts`).
+pub(super) fn frame_opts(
+    state: &std::rc::Rc<super::state::DocState>,
+    nodes: &[crate::dom::Node],
+    opts: &crate::RenderOpts,
+) -> crate::RenderOpts {
+    state.begin_frame();
+    crate::values::image_values::refresh(state.frame_values());
+    let mut opts = opts.clone();
+    opts.cx.clamp.input = None;
+    opts.cx.values.inert_clear = false;
+    opts.cx.contracts.document_root = Some((nodes.as_ptr() as usize, nodes.len()));
+    opts.cx.values.doc = crate::layout::cx::BuildDoc(state.clone());
+    opts
+}
+
+/// Собрать кадр всего документа (`Document::render`).
+pub(super) fn render(
+    state: &std::rc::Rc<super::state::DocState>,
+    nodes: &[crate::dom::Node],
+    opts: &crate::RenderOpts,
+) -> Vec<gpui::AnyElement> {
+    crate::render::render(nodes, &frame_opts(state, nodes, opts))
+        .into_iter()
+        .map(|e| Scoped::wrap(state, e))
+        .collect()
 }

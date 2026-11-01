@@ -76,7 +76,7 @@ impl VerticalText {
             self.natural.height
         } else {
             self.key
-                .and_then(|k| self.measures.as_ref().and_then(|m| m.get(k)))
+                .and_then(|k| self.doc.as_ref().and_then(|d| d.paragraph.vertical.get(k)))
                 .unwrap_or(self.natural.height)
         };
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
