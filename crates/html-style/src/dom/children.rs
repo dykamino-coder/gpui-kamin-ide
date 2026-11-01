@@ -14,6 +14,12 @@ impl Children {
         Rc::as_ptr(&self.0) as usize
     }
 
+    /// Метка снимка без владения узлами: пока она жива, адрес `identity` не
+    /// достаётся другому списку, а поддерево освобождает последний владелец.
+    pub fn mark(&self) -> std::rc::Weak<Vec<Node>> {
+        Rc::downgrade(&self.0)
+    }
+
     pub fn into_vec(mut self) -> Vec<Node> {
         match Rc::try_unwrap(std::mem::take(&mut self.0)) {
             Ok(nodes) => nodes,
@@ -71,15 +77,21 @@ impl<'a> IntoIterator for &'a mut Children {
     }
 }
 
+/// Единственный владелец списка; слабые метки снимков отделяются от узлов
+/// без их копирования, чтобы drop оставался итеративным.
+fn sole(nodes: &mut Rc<Vec<Node>>) -> Option<&mut Vec<Node>> {
+    (Rc::strong_count(nodes) == 1).then(|| Rc::make_mut(nodes))
+}
+
 impl Drop for Children {
     fn drop(&mut self) {
-        let Some(nodes) = Rc::get_mut(&mut self.0) else {
+        let Some(nodes) = sole(&mut self.0) else {
             return;
         };
         let mut pending = std::mem::take(nodes);
         while let Some(node) = pending.pop() {
             if let Node::Element(mut e) = node {
-                if let Some(children) = Rc::get_mut(&mut e.children.0) {
+                if let Some(children) = sole(&mut e.children.0) {
                     pending.append(children);
                 }
             }
