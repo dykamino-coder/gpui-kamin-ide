@@ -68,7 +68,7 @@ impl Render for Page {
                         _ => 0.0,
                     };
                     let style = e.style.computed();
-                    let m = &style.margin;
+                    let m = &style.reset_box_layout.margin;
                     [px(&m.top), px(&m.right), px(&m.bottom), px(&m.left)]
                 })
                 .unwrap_or([0.0; 4]);
