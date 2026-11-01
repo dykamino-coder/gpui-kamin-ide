@@ -198,7 +198,7 @@ pub(crate) fn prepare_children(
                 Some(Len::Px(v)) => v,
                 _ => MEDIUM_FONT_SIZE_PX,
             };
-            let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
+            let cb_h_def = inherit(inherited, &vcx.doc.initial_style(), vcx).cb_height_def;
             let mcx =
                 crate::layout::block::margins::MarginCx::new(vcx).with_collapse(CollapseInputs {
                     font: base,

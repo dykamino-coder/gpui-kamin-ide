@@ -47,7 +47,7 @@ impl Computed {
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Computed {
-        let mut c = Computed::default();
+        let mut c = vcx.doc.initial_style();
         c.cascade_onto(matched, inline, vars, cx, vcx);
         c
     }
@@ -209,7 +209,7 @@ impl Computed {
         let key = crate::style::css::legacy_name_alias(key).unwrap_or(key);
         ShorthandId::from_name(key).is_some()
             || LonghandId::from_name(key).is_some()
-            || Self::default().apply_property(key, "", vcx)
+            || vcx.doc.initial_style().apply_property(key, "", vcx)
     }
 
     // The temporary cascade callback borrows the current property and variable state.

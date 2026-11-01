@@ -9,7 +9,7 @@ impl Computed {
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Self {
-        let mut out = Self::default();
+        let mut out = vcx.doc.initial_style();
         let mut picks = map.picks("appearance");
         if let Some(first) = picks.next() {
             out.apply_winner("appearance", first, picks, vars, &ComputeCx::new(cx, vcx));

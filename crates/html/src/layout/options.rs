@@ -64,7 +64,7 @@ impl RenderOpts {
                     ..Default::default()
                 },
             ),
-            ..Computed::default()
+            ..self.cx.vcx().doc.initial_style()
         })
     }
 }

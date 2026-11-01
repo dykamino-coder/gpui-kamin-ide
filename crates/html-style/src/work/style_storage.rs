@@ -1,7 +1,6 @@
-//! Живые заголовки и уникальные payload-группы стиля в потоке документа.
-//! Счётчики не сбрасываются между фазами: снимок отражает удерживаемые владельцы.
-//! Вложенные строки/векторы и Rc control blocks сюда не входят; их учитывает allocator.
-use std::cell::Cell;
+//! Журнал живых стилей одного документа; владельцы payload удерживают его до освобождения.
+//! Вложенные буферы и Rc control blocks учитывает общий allocator отдельно.
+use std::{cell::Cell, rc::Rc};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
@@ -18,18 +17,15 @@ impl Snapshot {
         self.inherited_headers * size_of::<crate::style::computed::InheritedStyle>() as u64
     }
 }
-thread_local! {
-    static LIVE: Cell<Snapshot> = const { Cell::new(Snapshot {
-        computed_headers: 0, inherited_headers: 0,
-        group_allocations: 0, group_payload_bytes: 0,
-    }) };
-}
-pub fn snapshot() -> Snapshot {
-    LIVE.with(Cell::get)
-}
-pub(crate) fn header<const INHERITED: bool>(acquire: bool) {
-    LIVE.with(|live| {
-        let mut s = live.get();
+/// Явный владелец наблюдения, независимый от сессии и времени жизни документа.
+#[derive(Clone, Debug, Default)]
+pub struct Owner(Rc<Cell<Snapshot>>);
+impl Owner {
+    pub fn snapshot(&self) -> Snapshot {
+        self.0.get()
+    }
+    pub(crate) fn header<const INHERITED: bool>(&self, acquire: bool) {
+        let mut s = self.snapshot();
         let count = if INHERITED {
             &mut s.inherited_headers
         } else {
@@ -40,69 +36,64 @@ pub(crate) fn header<const INHERITED: bool>(acquire: bool) {
         } else {
             *count -= 1;
         }
-        live.set(s);
-    });
-}
-pub(crate) fn group<T>(acquire: bool) {
-    LIVE.with(|live| {
-        let mut s = live.get();
+        self.0.set(s);
+    }
+    fn group(&self, bytes: u64, acquire: bool) {
+        let mut s = self.snapshot();
         if acquire {
             s.group_allocations += 1;
-            s.group_payload_bytes += size_of::<T>() as u64;
+            s.group_payload_bytes += bytes;
         } else {
             s.group_allocations -= 1;
-            s.group_payload_bytes -= size_of::<T>() as u64;
+            s.group_payload_bytes -= bytes;
         }
-        live.set(s);
-    });
+        self.0.set(s);
+    }
+}
+/// Один token на уникальный payload, а не на каждую Rc-ручку.
+#[derive(Debug, Default)]
+pub(crate) struct Allocation(Option<(Owner, u64)>);
+impl Allocation {
+    pub(crate) fn new<T>(owner: &Owner) -> Self {
+        let bytes = size_of::<T>() as u64;
+        owner.group(bytes, true);
+        Self(Some((owner.clone(), bytes)))
+    }
+}
+impl Clone for Allocation {
+    fn clone(&self) -> Self {
+        if let Some((owner, bytes)) = &self.0 {
+            owner.group(*bytes, true);
+        }
+        Self(self.0.clone())
+    }
+}
+impl Drop for Allocation {
+    fn drop(&mut self) {
+        if let Some((owner, bytes)) = &self.0 {
+            owner.group(*bytes, false);
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::{Computed, StyleGroup};
+    use crate::style::computed::StyleGroup;
     #[test]
-    fn shared_owners_count_one_payload_until_cow_and_release_balances() {
-        let before = snapshot();
-        {
-            let base = StyleGroup::new([0_u64; 3]);
-            let mut copy = base.clone();
-            let shared = snapshot();
-            assert_eq!(shared.group_allocations, before.group_allocations + 1);
-            assert_eq!(shared.group_payload_bytes, before.group_payload_bytes + 24);
-            copy[0] = 1;
-            assert_eq!(snapshot().group_allocations, shared.group_allocations + 1);
-            assert_eq!(
-                snapshot().group_payload_bytes,
-                shared.group_payload_bytes + 24
-            );
-            drop(base);
-            assert_eq!(snapshot(), shared);
-        }
-        assert_eq!(snapshot(), before);
-    }
-    #[test]
-    fn header_clones_are_separate_from_unique_groups() {
-        drop(Computed::default());
-        let before = snapshot();
-        {
-            let base = Computed::default();
-            let shared = snapshot();
-            let copy = base.clone();
-            let cloned = snapshot();
-            assert_eq!(cloned.computed_headers, shared.computed_headers + 1);
-            assert_eq!(
-                cloned.computed_header_bytes() - shared.computed_header_bytes(),
-                size_of::<Computed>() as u64
-            );
-            assert_eq!(
-                cloned.inherited_header_bytes(),
-                shared.inherited_header_bytes()
-            );
-            assert_eq!(cloned.inherited_headers, shared.inherited_headers);
-            assert_eq!(cloned.group_allocations, shared.group_allocations);
-            drop(copy);
-            assert_eq!(snapshot(), shared);
-        }
-        assert_eq!(snapshot(), before);
+    fn owners_isolate_cow_and_balance_after_document_lifetime() {
+        let owner = Owner::default();
+        let other = Owner::default();
+        let mut base = StyleGroup::new([0_u64; 3]);
+        base.track(&owner);
+        let mut copy = base.clone();
+        assert_eq!(owner.snapshot().group_allocations, 1);
+        assert_eq!(owner.snapshot().group_payload_bytes, 24);
+        copy[0] = 1;
+        assert_eq!(owner.snapshot().group_allocations, 2);
+        assert_eq!(other.snapshot(), Snapshot::default());
+        drop(base);
+        assert_eq!(owner.snapshot().group_allocations, 1);
+        drop(copy);
+        assert_eq!(owner.snapshot(), Snapshot::default());
     }
 }

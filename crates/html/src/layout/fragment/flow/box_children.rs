@@ -62,7 +62,7 @@ pub(crate) fn projected(
                             );
                             span.inline = true;
                             span.style = resolved_copy(
-                                inherit_unpainted(&merged, &Computed::default(), vcx)
+                                inherit_unpainted(&merged, &vcx.doc.initial_style(), vcx)
                                     .into_computed(),
                             )
                             .into();

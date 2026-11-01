@@ -6,7 +6,7 @@ use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
 pub fn symbol(marker: Option<BoxStyle>, item: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
-    let mut style = marker.unwrap_or_else(|| inherit(item, &Computed::default(), vcx));
+    let mut style = marker.unwrap_or_else(|| inherit(item, &vcx.doc.initial_style(), vcx));
     // Геометрический символ не имеет текстового tracking или межсловного зазора:
     // Blink ListMarker::InlineMarginsForOutside привязывает сам знак, а не пробел.
     style.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
@@ -15,7 +15,7 @@ pub fn symbol(marker: Option<BoxStyle>, item: &BoxStyle, vcx: ValueCx<'_>) -> Bo
 }
 
 pub fn content(marker: Option<BoxStyle>, item: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
-    let mut style = marker.unwrap_or_else(|| inherit(item, &Computed::default(), vcx));
+    let mut style = marker.unwrap_or_else(|| inherit(item, &vcx.doc.initial_style(), vcx));
     // Анонимный маркер наследует текст, но не размеры главного бокса.
     // Его строчная мера — содержимое, в том числе у вертикального абзаца.
     style.reset_context.hug_inline = true;

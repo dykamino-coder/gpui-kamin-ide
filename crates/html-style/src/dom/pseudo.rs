@@ -155,7 +155,7 @@ pub(super) fn pseudo_box_named(
                                 ..Default::default()
                             },
                         ),
-                        ..Computed::default()
+                        ..vcx.doc.initial_style()
                     }
                     .into(),
                     hover: None,

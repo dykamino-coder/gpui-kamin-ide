@@ -11,7 +11,6 @@ use std::collections::VecDeque;
 
 #[derive(Default)]
 struct Cache {
-    seed: Computed,
     entries: VecDeque<Entry>,
 }
 
@@ -147,7 +146,7 @@ impl Cache {
             crate::work::add!(StyleSharingHits, 1);
             return hit.style.clone();
         }
-        let mut style = self.seed.clone();
+        let mut style = vcx.doc.initial_style();
         style.apply_map(map, vars, cx, vcx);
         if let Some(bytes) = bytes {
             let admission = vcx

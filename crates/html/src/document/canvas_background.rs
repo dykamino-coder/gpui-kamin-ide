@@ -123,7 +123,7 @@ pub(super) fn mark_canvas_background(
             )
         };
         let root_style = crate::style::cascade::preparation::computed(
-            &Computed::default(),
+            &vcx.doc.initial_style(),
             html.style.cascaded(),
             vcx,
         );

@@ -4,13 +4,29 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
-pub struct StyleGroup<T>(Rc<T>);
+pub struct StyleGroup<T>(Rc<Payload<T>>);
+
+#[derive(Clone, Debug)]
+struct Payload<T> {
+    value: T,
+    #[cfg(feature = "work-counters")]
+    allocation: crate::work::style_storage::Allocation,
+}
 
 impl<T> StyleGroup<T> {
     pub fn new(value: T) -> Self {
-        #[cfg(feature = "work-counters")]
-        crate::work::style_storage::group::<T>(true);
-        Self(Rc::new(value))
+        Self(Rc::new(Payload {
+            value,
+            #[cfg(feature = "work-counters")]
+            allocation: Default::default(),
+        }))
+    }
+
+    #[cfg(feature = "work-counters")]
+    pub(crate) fn track(&mut self, owner: &crate::work::style_storage::Owner) {
+        // Только свежий initial payload: до публикации нет разделяемых владельцев.
+        let payload = Rc::get_mut(&mut self.0).expect("fresh initial group");
+        payload.allocation = crate::work::style_storage::Allocation::new::<T>(owner);
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
@@ -26,7 +42,7 @@ impl<T: Default> Default for StyleGroup<T> {
 
 impl<T: PartialEq> PartialEq for StyleGroup<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.ptr_eq(other) || *self.0 == *other.0
+        self.ptr_eq(other) || self.0.value == other.0.value
     }
 }
 
@@ -34,28 +50,17 @@ impl<T> Deref for StyleGroup<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        &self.0
+        &self.0.value
     }
 }
 
 impl<T: Clone> DerefMut for StyleGroup<T> {
     fn deref_mut(&mut self) -> &mut T {
         if Rc::strong_count(&self.0) > 1 {
-            #[cfg(feature = "work-counters")]
-            crate::work::style_storage::group::<T>(true);
             crate::work::add!(StyleGroupClones, 1);
             crate::work::add!(StyleGroupCloneBytes, size_of::<T>());
         }
-        Rc::make_mut(&mut self.0)
-    }
-}
-
-#[cfg(feature = "work-counters")]
-impl<T> Drop for StyleGroup<T> {
-    fn drop(&mut self) {
-        if Rc::strong_count(&self.0) == 1 {
-            crate::work::style_storage::group::<T>(false);
-        }
+        &mut Rc::make_mut(&mut self.0).value
     }
 }
 

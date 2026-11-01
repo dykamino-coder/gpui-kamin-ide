@@ -26,7 +26,7 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -
         return true;
     }
     if matches!(value, "initial" | "unset" | "revert" | "revert-layer") {
-        let initial = Computed::default();
+        let initial = vcx.doc.initial_style();
         for property in properties {
             property.copy(&initial, c, vcx);
         }

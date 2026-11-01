@@ -125,7 +125,7 @@ fn paragraph_routed(
         inherited,
         opts,
         0,
-        &Computed::default(),
+        &opts.cx.vcx().doc.initial_style(),
         native_request,
     )
 }

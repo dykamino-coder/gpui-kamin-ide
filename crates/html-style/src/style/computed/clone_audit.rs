@@ -1,22 +1,30 @@
 //! Учёт фактических копий операндов, включая COW и временные значения на стеке.
 
-/// Нулевой по размеру маркер: derive(Clone) учитывает каждую копию владельца.
-/// Это счётчик копирования, а не оценка аллокаций вложенных строк и векторов.
-#[derive(Debug, PartialEq)]
-pub struct CloneAudit<const INHERITED: bool>;
-
-impl<const INHERITED: bool> Default for CloneAudit<INHERITED> {
-    fn default() -> Self {
-        #[cfg(feature = "work-counters")]
-        crate::work::style_storage::header::<INHERITED>(true);
-        Self
+/// Без instrumentation маркер нулевой; наблюдаемый заголовок удерживает журнал документа.
+#[derive(Debug, Default)]
+pub struct CloneAudit<const INHERITED: bool> {
+    #[cfg(feature = "work-counters")]
+    owner: Option<crate::work::style_storage::Owner>,
+}
+impl<const INHERITED: bool> PartialEq for CloneAudit<INHERITED> {
+    fn eq(&self, _: &Self) -> bool {
+        true
     }
 }
-
+#[cfg(feature = "work-counters")]
+impl<const INHERITED: bool> CloneAudit<INHERITED> {
+    pub(super) fn track(&mut self, owner: &crate::work::style_storage::Owner) {
+        assert!(self.owner.is_none());
+        owner.header::<INHERITED>(true);
+        self.owner = Some(owner.clone());
+    }
+}
 #[cfg(feature = "work-counters")]
 impl<const INHERITED: bool> Drop for CloneAudit<INHERITED> {
     fn drop(&mut self) {
-        crate::work::style_storage::header::<INHERITED>(false);
+        if let Some(owner) = &self.owner {
+            owner.header::<INHERITED>(false);
+        }
     }
 }
 
@@ -29,18 +37,28 @@ impl<const INHERITED: bool> Clone for CloneAudit<INHERITED> {
             crate::work::add!(ComputedClones, 1);
             crate::work::add!(ComputedCloneBytes, size_of::<super::Computed>());
         }
+        #[cfg(feature = "work-counters")]
+        {
+            if let Some(owner) = &self.owner {
+                owner.header::<INHERITED>(true);
+            }
+            Self {
+                owner: self.owner.clone(),
+            }
+        }
+        #[cfg(not(feature = "work-counters"))]
         Self::default()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
+    #[cfg(not(feature = "work-counters"))]
     #[test]
     fn audit_has_no_storage_cost() {
-        assert_eq!(size_of::<CloneAudit<false>>(), 0);
-        assert_eq!(size_of::<CloneAudit<true>>(), 0);
+        assert_eq!(size_of::<super::CloneAudit<false>>(), 0);
+        assert_eq!(size_of::<super::CloneAudit<true>>(), 0);
     }
 
     #[cfg(feature = "work-counters")]

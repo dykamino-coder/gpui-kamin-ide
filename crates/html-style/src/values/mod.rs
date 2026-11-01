@@ -19,6 +19,7 @@ pub mod readiness;
 pub mod synthetic_ids;
 pub mod traversal;
 pub use traversal::MAX_DEPTH;
+mod style_storage;
 mod value_cx;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
@@ -37,6 +38,7 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// Поля пишет его разбор, читают разбор, сборка кадра и фазы GPUI; состояния
 /// фаз раскладки и текста держит верхний `DocState`.
 pub struct DocumentValues {
+    initial_styles: style_storage::InitialStyles,
     /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
     pub budget: RefCell<Option<crate::budget::RevisionBudget>>,
     pub font_facts: font_facts::DocumentFonts,
@@ -104,6 +106,7 @@ impl DocumentValues {
     ) -> Rc<Self> {
         let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
+            initial_styles: Default::default(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),
             frame_owner: Cell::new(arena::new_owner()),

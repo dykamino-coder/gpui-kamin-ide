@@ -112,7 +112,7 @@ async fn sample(
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let work = work.finish(cold);
+    let work = window.read_with(cx, |view, _| work.finish(cold, view.doc.values().doc))?;
     let after = Counters::read(capture);
     let frame = capture
         .take_first()

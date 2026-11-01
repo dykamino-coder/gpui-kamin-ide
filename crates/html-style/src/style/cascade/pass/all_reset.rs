@@ -15,7 +15,7 @@ impl Computed {
             self.reset_cascade.bidi_inherit,
             self.reset_cascade.decl_order,
         );
-        *self = Computed::default();
+        *self = vcx.doc.initial_style();
         (
             self.inh.writing.rtl,
             self.reset_cascade.bidi_override,
