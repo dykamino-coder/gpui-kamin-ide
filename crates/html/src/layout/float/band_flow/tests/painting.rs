@@ -1,7 +1,7 @@
-//! A retained holder preserves CSS float atomicity and positioned descendant export.
+//! Удержанный ребёнок сохраняет атомарную краску float и экспорт positioned-потомков.
 
 use super::*;
-use crate::hooks::{paint_inline, paint_last, paint_root};
+use crate::hooks::{paint_collect, paint_inline, paint_last, paint_root};
 use std::cell::RefCell;
 
 type Events = Rc<RefCell<Vec<&'static str>>>;
@@ -44,7 +44,16 @@ fn prepared_float_drains_inline_locally_and_exports_positioned_content(
             let mut block = kid(Kind::Flow, Default::default(), Default::default());
             let output = events.clone();
             block.build = Rc::new(move |_, _, _, _, _| mark("block", output.clone()));
-            paint_root(BandFlow::new(vec![first, second, block], true, &block_cx()).hooked())
+            // paint_root задаёт проход, а парные метки открывают stacking context,
+            // как в дереве документа: atomic float экспортирует positioned в него.
+            let (open, close) = paint_collect();
+            paint_root(
+                div()
+                    .child(open)
+                    .child(BandFlow::new(vec![first, second, block], true, &block_cx()).hooked())
+                    .child(close)
+                    .into_any_element(),
+            )
         });
     assert_eq!(
         *events.borrow(),
