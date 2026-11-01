@@ -19,6 +19,10 @@ struct Segment {
 }
 
 impl HslRamp {
+    pub(super) fn bytes(&self) -> usize {
+        std::mem::size_of_val(self.0.as_slice())
+    }
+
     pub fn new(stops: &[(Color, f32)], space: GradSpace, hue: u8) -> Option<Self> {
         if !matches!(space, GradSpace::Hsl) {
             return None;
