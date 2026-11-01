@@ -7,14 +7,13 @@ use super::{gradient_geometry::Geometry, place_stops, wrap_repeat};
 use crate::cache::{BoundedCache, FloatKey, Hinted, MIB, hint};
 use crate::resources::images::pixels::optional_bytes as optional_image_bytes;
 use crate::resources::images::types::CpuRaster;
-use crate::style::values::color_space::gradient_colour_at as colour_at;
 use crate::values::ValueCx;
 use std::sync::Arc;
 
-type TileKey = Hinted<(super::raster_keys::ImageKey, u32, u32, [FloatKey; 2])>;
+type TileKey = Hinted<(super::raster_keys::ImageKey, u32, u32, [FloatKey; 2], bool)>;
 /// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
 static TILES: BoundedCache<TileKey, Option<Arc<CpuRaster>>> =
-    BoundedCache::new(64 * MIB, optional_image_bytes);
+    BoundedCache::new(64 * MIB, optional_image_bytes).with_key_weight(|key| key.key.0.bytes());
 
 /// Device-sized samples depend on the concrete CSS line as well as the bitmap.
 pub fn tile(
@@ -24,8 +23,19 @@ pub fn tile(
     css: (f32, f32),
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
+    cached(src, w, h, css, true, vcx)
+}
+
+fn cached(
+    src: &crate::style::computed::ImageSource,
+    w: u32,
+    h: u32,
+    css: (f32, f32),
+    centers: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<CpuRaster>> {
     if !src.cacheable() {
-        return raster(src, w, h, css, true, vcx);
+        return uncached(src, w, h, css, centers, vcx);
     }
     // Conic-растр использует конкретный размер bitmap, остальные — CSS-плитку.
     let size = if matches!(src, crate::style::computed::ImageSource::Conic(_)) {
@@ -34,17 +44,28 @@ pub fn tile(
         css
     };
     let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
-        return raster(src, w, h, css, true, vcx);
+        return uncached(src, w, h, css, centers, vcx);
     };
     let size = [size.0, size.1].map(FloatKey::from);
     let key = Hinted {
-        hint: hint((std::mem::discriminant(src), w, h, size)),
-        key: (image, w, h, size),
+        hint: hint((std::mem::discriminant(src), w, h, size, centers)),
+        key: (image, w, h, size, centers),
     };
-    TILES.get_or_insert_with(key, || raster(src, w, h, css, true, vcx))
+    TILES.get_or_insert_with(key, || uncached(src, w, h, css, centers, vcx))
 }
 
 pub fn raster(
+    src: &crate::style::computed::ImageSource,
+    w: u32,
+    h: u32,
+    css: (f32, f32),
+    centers: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<CpuRaster>> {
+    cached(src, w, h, css, centers, vcx)
+}
+
+fn uncached(
     src: &crate::style::computed::ImageSource,
     w: u32,
     h: u32,
@@ -60,8 +81,9 @@ pub fn raster(
     // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
     // gradient line, which is the horizontal radius for a radial gradient.
     let stops = resolved_stops(g, geometry.length());
-    let hsl = crate::style::values::color_space::HslRamp::new(&stops, g.space, g.hue);
-    let palette = &g.polar;
+    let ramp = super::colour_ramp::ramp(&stops, g.space, g.hue, g.polar.as_ref(), true);
+    crate::work::add!(GradientRasters, 1);
+    crate::work::add!(GradientRasterPixels, u64::from(w) * u64::from(h));
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {
@@ -78,15 +100,7 @@ pub fn raster(
             };
             let t = geometry.at(point, css);
             let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = hsl
-                .as_ref()
-                .and_then(|ramp| ramp.colour_at(t))
-                .unwrap_or_else(|| {
-                    palette.as_ref().map_or_else(
-                        || colour_at(&stops, t, g.space, g.hue),
-                        |palette| palette.colour_at(&stops, t, g.hue),
-                    )
-                });
+            let colour = ramp.colour_at(t);
             // The image upload shader premultiplies straight-alpha samples.
             bytes.extend_from_slice(&[
                 (colour.b * 255.0).round() as u8,

@@ -18,7 +18,13 @@ pub(super) struct Interpolation {
 }
 
 impl Interpolation {
-    fn new(space: GradSpace, hue: u8, palette: Option<&DirectGradient>) -> Self {
+    pub(super) fn bytes(&self) -> usize {
+        self.palette
+            .as_ref()
+            .map_or(0, |p| std::mem::size_of_val(p.0.as_slice()))
+    }
+
+    pub(super) fn new(space: GradSpace, hue: u8, palette: Option<&DirectGradient>) -> Self {
         Self {
             space,
             hue,
@@ -60,6 +66,28 @@ pub(super) enum ImageKey {
 }
 
 impl ImageKey {
+    /// Память вычисленного ключа, включая стопы и исходные полярные оси.
+    pub(super) fn bytes(&self) -> usize {
+        match self {
+            Self::Gradient {
+                stops,
+                interpolation,
+                ..
+            } => std::mem::size_of_val(stops.as_slice()) + interpolation.bytes(),
+            Self::Conic {
+                stops,
+                hints,
+                interpolation,
+                ..
+            } => {
+                std::mem::size_of_val(stops.as_slice())
+                    + std::mem::size_of_val(hints.as_slice())
+                    + interpolation.bytes()
+            }
+            Self::Color(_) => 0,
+        }
+    }
+
     pub(super) fn new(src: &ImageSource, css: (f32, f32), vcx: ValueCx<'_>) -> Option<Self> {
         match src {
             ImageSource::Gradient {
@@ -86,21 +114,29 @@ impl ImageKey {
                     repeating: *repeating,
                 })
             }
-            ImageSource::Conic(g) => Some(Self::Conic {
-                from: g.from.into(),
-                center: [
-                    len_px(g.position.x, css.0, vcx)?,
-                    len_px(g.position.y, css.1, vcx)?,
-                ]
-                .map(FloatKey::from),
-                stops: stops(&g.stops),
-                hints: g.hints.iter().map(|&(i, v)| (i, v.into())).collect(),
-                interpolation: Interpolation::new(g.space, g.hue, g.polar.as_ref()),
-                repeating: g.repeating,
-            }),
+            ImageSource::Conic(g) => Self::conic(g, css, vcx),
             ImageSource::Color(c) => Some(Self::Color(color(c.value))),
             _ => None,
         }
+    }
+
+    pub(super) fn conic(
+        g: &crate::style::computed::ConicGradient,
+        css: (f32, f32),
+        vcx: ValueCx<'_>,
+    ) -> Option<Self> {
+        Some(Self::Conic {
+            from: g.from.into(),
+            center: [
+                len_px(g.position.x, css.0, vcx)?,
+                len_px(g.position.y, css.1, vcx)?,
+            ]
+            .map(FloatKey::from),
+            stops: stops(&g.stops),
+            hints: g.hints.iter().map(|&(i, v)| (i, v.into())).collect(),
+            interpolation: Interpolation::new(g.space, g.hue, g.polar.as_ref()),
+            repeating: g.repeating,
+        })
     }
 }
 
@@ -108,7 +144,7 @@ fn color(c: Color) -> [FloatKey; 4] {
     [c.r, c.g, c.b, c.a].map(FloatKey::from)
 }
 
-fn stops(values: &[(Color, f32)]) -> Vec<Stop> {
+pub(super) fn stops(values: &[(Color, f32)]) -> Vec<Stop> {
     values
         .iter()
         .map(|&(c, at)| (color(c), at.into()))

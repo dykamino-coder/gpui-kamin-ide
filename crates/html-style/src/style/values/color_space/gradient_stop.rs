@@ -82,6 +82,14 @@ pub fn colour_at(
     space: crate::style::computed::GradSpace,
     hue: u8,
 ) -> crate::style::values::value::Color {
+    colour_at_with(stops, t, |a, b, k| super::mix_in(space, hue, a, b, k))
+}
+
+pub(super) fn colour_at_with(
+    stops: &[(Color, f32)],
+    t: f32,
+    mix: impl Fn(Color, Color, f32) -> (f32, f32, f32),
+) -> Color {
     let Some(first) = stops.first() else {
         return crate::style::values::value::Color {
             r: 0.0,
@@ -109,7 +117,7 @@ pub fn colour_at(
             // для прямоугольных осей она равна доле `k·a1 / alpha`.
             let alpha = a.0.a + (b.0.a - a.0.a) * k;
             let kc = if alpha > 0.0 { k * b.0.a / alpha } else { k };
-            let (r, g, bl) = crate::style::values::color_space::mix_in(space, hue, a.0, b.0, kc);
+            let (r, g, bl) = mix(a.0, b.0, kc);
             return crate::style::values::value::Color {
                 r,
                 g,

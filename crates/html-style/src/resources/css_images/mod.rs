@@ -1,6 +1,7 @@
 //! CSS-изображения: вычисленные операнды, синхронный резолвер и CPU-растеризация.
 //! Зависит от style и контекста документа; не зависит от paint, layout и GPUI.
 
+mod colour_ramp;
 pub mod conic;
 pub mod facts;
 pub mod filter_image;
