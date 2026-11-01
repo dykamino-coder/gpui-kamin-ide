@@ -21,11 +21,15 @@ pub(crate) fn probe(
     vcx: ValueCx<'_>,
     build: ChildBuild,
 ) -> Option<AnyElement> {
-    if !matches!(style.display, Some(Display::Flex | Display::InlineFlex)) || style.self_node == 0 {
+    if !matches!(
+        style.reset_box_layout.display,
+        Some(Display::Flex | Display::InlineFlex)
+    ) || style.self_node == 0
+    {
         return None;
     }
     let id = style.self_node;
-    let padding = style.padding;
+    let padding = style.reset_box_layout.padding;
     let sink = positioning.flex_content.clone();
     let values = vcx.keep();
     Some(sink.record_with(move |g, window| {
@@ -65,50 +69,71 @@ impl Plan {
         parent: &BoxStyle,
         positioning: &Rc<Positioning>,
     ) -> Option<Self> {
-        if own.position != Some(Position::Absolute)
-            || !matches!(parent.display, Some(Display::Flex | Display::InlineFlex))
+        if own.reset_positioned.position != Some(Position::Absolute)
+            || !matches!(
+                parent.reset_box_layout.display,
+                Some(Display::Flex | Display::InlineFlex)
+            )
             || parent.self_node == 0
             || own.cb_node == parent.self_node
-            || own.position_area.is_some()
+            || own.reset_positioned.position_area.is_some()
         {
             return None;
         }
         // A flex container that is itself the original CB already supplies
         // both bounds to native layout; deferred union placement is unnecessary.
-        let safe = if own.align_self.is_some() {
-            own.align_self_safe
+        let safe = if own.reset_flex.align_self.is_some() {
+            own.reset_flex.align_self_safe
         } else {
-            parent.align_items_safe
+            parent.reset_flex.align_items_safe
         };
-        let align = own.align_self.or(parent.align_items)?;
+        let align = own
+            .reset_flex
+            .align_self
+            .or(parent.reset_flex.align_items)?;
         if !safe || !matches!(align, Align::Center | Align::End | Align::Start) {
             return None;
         }
         // Percentage padding requires the parent's actual used box edges;
         // its own width is not necessarily the percentage resolution basis.
         if [
-            parent.padding.top,
-            parent.padding.right,
-            parent.padding.bottom,
-            parent.padding.left,
+            parent.reset_box_layout.padding.top,
+            parent.reset_box_layout.padding.right,
+            parent.reset_box_layout.padding.bottom,
+            parent.reset_box_layout.padding.left,
         ]
         .into_iter()
         .any(|v| !matches!(v, None | Some(Len::Px(_))))
         {
             return None;
         }
-        let column = matches!(parent.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse));
+        let column = matches!(
+            parent.reset_flex.flex_dir,
+            Some(FlexDir::Col | FlexDir::ColReverse)
+        );
         let vertical = parent.wm().vertical();
         let horizontal = column != vertical;
         let (inset, margin) = if horizontal {
             (
-                [own.inset.left, own.inset.right],
-                [own.margin.left, own.margin.right],
+                [
+                    own.reset_positioned.inset.left,
+                    own.reset_positioned.inset.right,
+                ],
+                [
+                    own.reset_box_layout.margin.left,
+                    own.reset_box_layout.margin.right,
+                ],
             )
         } else {
             (
-                [own.inset.top, own.inset.bottom],
-                [own.margin.top, own.margin.bottom],
+                [
+                    own.reset_positioned.inset.top,
+                    own.reset_positioned.inset.bottom,
+                ],
+                [
+                    own.reset_box_layout.margin.top,
+                    own.reset_box_layout.margin.bottom,
+                ],
             )
         };
         if inset

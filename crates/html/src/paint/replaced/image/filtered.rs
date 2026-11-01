@@ -31,7 +31,7 @@ impl FilteredImage {
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let nat = self.source.intrinsic();
         let (nw, nh) = crate::paint::background::default_size(nat, (bw, bh));
-        let k = match self.style.object_fit.as_deref() {
+        let k = match self.style.reset_shapes.object_fit.as_deref() {
             Some("cover") => (bw / nw).max(bh / nh),
             Some("contain") => (bw / nw).min(bh / nh),
             Some("scale-down") => (bw / nw).min(bh / nh).min(1.0),
@@ -44,7 +44,7 @@ impl FilteredImage {
             Some(Len::Pct(p)) => p * free,
             _ => free * 0.5,
         };
-        let pos = self.style.object_position.unwrap_or_default();
+        let pos = self.style.reset_shapes.object_position.unwrap_or_default();
         Bounds {
             origin: gpui::point(
                 bounds.origin.x + px(position(pos.x, bw - w)),
@@ -103,7 +103,7 @@ impl Element for FilteredImage {
         let object = self.object_bounds(bounds);
         let Some(image) = self.source.sampled_raster(
             (object.size.width.into(), object.size.height.into()),
-            self.style.image_pixelated == Some(true),
+            self.style.inh.ui.image_pixelated == Some(true),
             self.values.vcx(),
         ) else {
             return;
@@ -115,8 +115,10 @@ impl Element for FilteredImage {
             bottom_right: px(br),
             bottom_left: px(bl),
         };
-        let visible = self.style.overflow_x == Some(crate::style::computed::Overflow::Visible)
-            && self.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
+        let visible = self.style.reset_box_layout.overflow_x
+            == Some(crate::style::computed::Overflow::Visible)
+            && self.style.reset_box_layout.overflow_y
+                == Some(crate::style::computed::Overflow::Visible);
         let mask = (!visible).then_some(gpui::ContentMask { bounds });
         window.with_content_mask(mask, |window| {
             let _ = window.paint_image_with_sampling(

@@ -57,7 +57,7 @@ impl Frame {
             )
         }
         let border = sides(c.borders(), 0.0);
-        let padding = sides(c.padding, f32::from(bounds.size.width));
+        let padding = sides(c.reset_box_layout.padding, f32::from(bounds.size.width));
         let mut origin = [
             f32::from(bounds.left()) + border[0],
             f32::from(bounds.top()) + border[1],
@@ -88,7 +88,7 @@ impl Frame {
             if let Node::Element(e) = node
                 && let Some(rect) = area(e, &boxes, &text_boxes)
             {
-                let margin = sides(e.style.used().margin, view[0]);
+                let margin = sides(e.style.used().reset_box_layout.margin, view[0]);
                 for axis in 0..2 {
                     start[axis] = start[axis].min(
                         rect[axis]
@@ -160,7 +160,7 @@ impl Frame {
         if changed || bars_changed {
             return true;
         }
-        if c.snap.axis != 0 && !self.snapped.get() && !snap_areas.is_empty() {
+        if c.reset_box_layout.snap.axis != 0 && !self.snapped.get() && !snap_areas.is_empty() {
             self.snapped.set(true);
             let mut areas: Vec<_> = snap_areas.iter().map(|(&id, &area)| (id, area)).collect();
             areas.sort_by_key(|(id, _)| *id);

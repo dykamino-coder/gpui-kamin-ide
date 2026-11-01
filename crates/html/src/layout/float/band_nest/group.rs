@@ -11,15 +11,15 @@ use crate::style::computed::{BoxStyle, Computed};
 /// (CSS Masking 1 §clipping-paths, §the-mask).
 pub(crate) fn paint_group(c: &Computed) -> bool {
     crate::style::computed::stacking::stacking_context(c)
-        || c.mask_image.is_some()
-        || c.clip_shape.is_some()
-        || c.clip_inset.is_some()
-        || c.clip_polygon.is_some()
-        || c.clip_edges.is_some()
-        || c.clip_xywh.is_some()
-        || c.clip_ref.is_some()
-        || c.filter_ref.is_some()
-        || c.backdrop_blur.is_some()
+        || c.reset_mask.mask_image.is_some()
+        || c.reset_mask.clip_shape.is_some()
+        || c.reset_mask.clip_inset.is_some()
+        || c.reset_mask.clip_polygon.is_some()
+        || c.reset_mask.clip_edges.is_some()
+        || c.reset_mask.clip_xywh.is_some()
+        || c.reset_mask.clip_ref.is_some()
+        || c.reset_effects.filter_ref.is_some()
+        || c.reset_effects.backdrop_blur.is_some()
 }
 
 /// An absolutely or fixed positioned descendant at any depth.
@@ -27,7 +27,7 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) || positioned_inside(&e.children)
@@ -59,9 +59,9 @@ pub(super) fn group_wrap(
 /// The box shell of paint group `c`: its group effects move to the container
 /// around it and its descendants (`group_wrap`).
 pub(crate) fn group_shell(c: &mut Computed) {
-    c.opacity = None;
-    c.translate = None;
-    c.transform = None;
-    c.rotate_prop = None;
-    c.scale_prop = None;
+    c.reset_effects.opacity = None;
+    c.reset_transforms.translate = None;
+    c.reset_transforms.transform = None;
+    c.reset_transforms.rotate_prop = None;
+    c.reset_transforms.scale_prop = None;
 }

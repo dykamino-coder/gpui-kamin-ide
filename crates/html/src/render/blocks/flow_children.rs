@@ -35,8 +35,8 @@ pub(crate) fn flow_children(
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut e) => {
-                    if e.style.used().flex_shrink.is_none() {
-                        e.style.used_mut().flex_shrink = Some(0.0);
+                    if e.style.used().reset_flex.flex_shrink.is_none() {
+                        e.style.used_mut().reset_flex.flex_shrink = Some(0.0);
                     }
                     // rtl: переполняющий блок с ЗАДАННОЙ шириной прижат к
                     // правому краю и вылезает влево (csswg-drafts#5572);
@@ -49,8 +49,8 @@ pub(crate) fn flow_children(
                     // the rule off (`abs-pos-vlr-border-001-ref`).
                     if inherited.wm().rtl()
                         && !inherited.wm().vertical()
-                        && e.style.used().width.is_some()
-                        && e.style.used().align_self.is_none()
+                        && e.style.used().reset_box_layout.width.is_some()
+                        && e.style.used().reset_flex.align_self.is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
                         // `span { display: block; width: … }` в rtl-блоке —
                         // тоже блок (`block-in-inline-margins-002a/b`).
@@ -58,16 +58,16 @@ pub(crate) fn flow_children(
                         // слева другое (не этот путь).
                         && (!e.inline
                             || matches!(
-                                e.style.used().display,
+                                e.style.used().reset_box_layout.display,
                                 Some(Display::Block)
                                     | Some(Display::ListItem)
                                     | Some(Display::Flex)
                                     | Some(Display::Grid)
                                     | Some(Display::Table)
                             ))
-                        && !crate::style::flow::absolutely_positioned(e.style.used().position)
+                        && !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                     {
-                        e.style.used_mut().align_self = Some(Align::End);
+                        e.style.used_mut().reset_flex.align_self = Some(Align::End);
                     }
                     // A box with a DEFINITE physical cross size stands at its
                     // containing block's inline-start (CSS 2.2 §10.3.3 in logical
@@ -83,19 +83,19 @@ pub(crate) fn flow_children(
                     if inherited.wm().inline_start()
                         == crate::style::computed::writing_mode::Side::Bottom
                         && matches!(
-                            e.style.used().height,
+                            e.style.used().reset_box_layout.height,
                             Some(Len::Px(_))
                                 | Some(Len::Em(_))
                                 | Some(Len::Pct(_))
                                 | Some(Len::Vh(_))
                                 | Some(Len::Vw(_))
                         )
-                        && e.style.used().align_self.is_none()
+                        && e.style.used().reset_flex.align_self.is_none()
                         && !e.inline
-                        && matches!(e.style.used().display, None | Some(Display::Block))
-                        && !crate::style::flow::absolutely_positioned(e.style.used().position)
+                        && matches!(e.style.used().reset_box_layout.display, None | Some(Display::Block))
+                        && !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                     {
-                        e.style.used_mut().align_self = Some(Align::End);
+                        e.style.used_mut().reset_flex.align_self = Some(Align::End);
                     }
                     // Коробка с `aspect-ratio` при auto-ширине и определённой
                     // высоте — fit-content, а не растяжка (css-sizing-4 §5.1:
@@ -107,28 +107,28 @@ pub(crate) fn flow_children(
                     // Нулевое и бесконечное отношение — как `auto`
                     // (css-sizing-4 §5.1; `zero-or-infinity-002`).
                     let positioned_out =
-                        crate::style::flow::absolutely_positioned(e.style.used().position);
+                        crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position);
                     let ratio_ok = e
                         .style
                         .used()
-                        .aspect_ratio
+                        .reset_shapes.aspect_ratio
                         .is_some_and(|r| r.is_finite() && r > 0.0);
                     if ratio_ok
                         && !ordered_context
-                        && matches!(e.style.used().width, None | Some(Len::Auto))
+                        && matches!(e.style.used().reset_box_layout.width, None | Some(Len::Auto))
                         // Доля высоты от блока с высотой в точках — тоже
                         // определённая высота (CSS 2.1 §10.5), и ширина
                         // идёт из соотношения, а не растяжкой
                         // (`percentage-resolution-005`: 50×100 вместо 100×100).
-                        && (matches!(e.style.used().height, Some(Len::Px(_)))
-                            || (matches!(e.style.used().height, Some(Len::Pct(_)))
-                                && matches!(inherited.height, Some(Len::Px(_)))))
-                        && e.style.used().align_self.is_none()
-                        && inherited.writing_mode.is_none()
+                        && (matches!(e.style.used().reset_box_layout.height, Some(Len::Px(_)))
+                            || (matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)))
+                                && matches!(inherited.reset_box_layout.height, Some(Len::Px(_)))))
+                        && e.style.used().reset_flex.align_self.is_none()
+                        && inherited.inh.writing.writing_mode.is_none()
                         && !e.inline
                         && !positioned_out
                     {
-                        e.style.used_mut().align_self = Some(Align::Start);
+                        e.style.used_mut().reset_flex.align_self = Some(Align::Start);
                     }
                     Node::Element(e)
                 }

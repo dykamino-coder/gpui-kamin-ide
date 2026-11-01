@@ -51,11 +51,11 @@ pub(super) async fn collect_element(
         // CSS Ruby box fixup suppresses the break that an empty block would
         // introduce. Its inlinified zero-size box must not create a soft
         // opportunity through our U+FFFC atom placeholder either (UAX14 LB11).
-        let join = inherited.ruby_suppress_breaks
+        let join = inherited.reset_text_box.ruby_suppress_breaks
             && e.children.is_empty()
             && !crate::layout::box_kind::replaced_tag(e)
-            && matches!(st.width, None | Some(Len::Px(0.0)))
-            && matches!(st.height, None | Some(Len::Px(0.0)));
+            && matches!(st.reset_box_layout.width, None | Some(Len::Px(0.0)))
+            && matches!(st.reset_box_layout.height, None | Some(Len::Px(0.0)));
         let joiner = || Piece::Text {
             text: "\u{2060}".into(),
             style: inherited.clone(),
@@ -88,16 +88,16 @@ pub(super) async fn collect_element(
     }
     let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
-        st.display,
+        st.reset_box_layout.display,
         Some(D::InlineBlock | D::InlineFlex | D::InlineGrid | D::InlineTable)
-    ) && st.inline_display != Some(true);
+    ) && st.reset_context.inline_display != Some(true);
     // Ограничитель атомарной коробки — служебный знак, а не текст
     // документа: замена нулевого пробела идеографическим его
     // касаться не должна, иначе вокруг `inline-block` появляется
     // полноширинный пробел, которого в разметке нет.
     let mut marker = merged.clone();
-    if marker.word_space_char.is_some() {
-        marker.word_space_char = None;
+    if marker.inh.text_flow.word_space_char.is_some() {
+        marker.inh.text_flow.word_space_char = None;
     }
     if atomic {
         out.push(box_paint::atomic_marker(marker.clone()));
@@ -143,7 +143,7 @@ pub(super) async fn collect_element(
         0
     };
     let edge = |mut style: BoxStyle, leading: bool| {
-        style.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
+        style.reset_context.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
         style
     };
     if mlead != 0.0 {
@@ -182,14 +182,14 @@ pub(super) async fn collect_element(
     let piece = |text: String, style: BoxStyle| Piece::Text { text, style };
     let control = || {
         let mut style = merged.clone();
-        style.inline_control = true;
+        style.reset_context.inline_control = true;
         style
     };
     // Zero-length markers bound the box content between its edge
     // spacers (`box_extents`); they add no text.
     let box_marker = |start: bool| {
         let mut style = merged.clone();
-        style.spacer_edge = Some((box_id, start, own_rtl));
+        style.reset_context.spacer_edge = Some((box_id, start, own_rtl));
         piece(String::new(), style)
     };
     if box_id != 0 {
@@ -244,5 +244,5 @@ pub(super) async fn collect_element(
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
     // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
     // снимается ниже с последнего куска: за ним границы уже нет.
-    set_parent_boundary_spacing(&mut out[from..], inherited.letter_spacing);
+    set_parent_boundary_spacing(&mut out[from..], inherited.inh.text_flow.letter_spacing);
 }

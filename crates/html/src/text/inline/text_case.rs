@@ -90,8 +90,8 @@ fn apply(text: &str, style: &Computed, context: &mut Context) -> String {
     context.observe(text);
     // Языковые поправки регистра (css-text-3 §2.1.1, SpecialCasing.txt):
     // `lang="tr"` даёт `i` → `İ`, `lang="el"` снимает ударения и т. д.
-    let tailoring = lang_case::tailoring(style.lang.as_deref());
-    match style.text_transform {
+    let tailoring = lang_case::tailoring(style.inh.text_flow.lang.as_deref());
+    match style.inh.text_flow.text_transform {
         Some(TextTransform::Upper) => match tailoring {
             Some(t) => lang_case::upper(text, t),
             None => text.to_uppercase(),
@@ -166,7 +166,7 @@ fn apply(text: &str, style: &Computed, context: &mut Context) -> String {
 }
 
 pub(super) fn transform(text: &str, style: &Computed, context: &mut Context) -> String {
-    let flags = style.text_transform_flags;
+    let flags = style.inh.text_flow.text_transform_flags;
     let cased = apply(text, style, context);
     if flags == 0 {
         return cased;

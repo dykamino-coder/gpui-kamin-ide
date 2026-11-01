@@ -19,11 +19,11 @@ pub(super) fn inline_sides(
     cb: Option<f32>,
     vcx: crate::values::ValueCx<'_>,
 ) -> ((f32, f32), (f32, f32)) {
-    let size = match merged.font_size {
+    let size = match merged.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
-    let family = merged.font_family.clone().unwrap_or_default();
+    let family = merged.inh.font.font_family.clone().unwrap_or_default();
     // Доля поля и отступа строчной коробки — от ширины содержащего блока
     // (CSS 2.1 §8.3, §8.4: «percentage … refer to the width of the
     // containing block»), то есть блока абзаца. Прежде доля молча давала
@@ -53,8 +53,8 @@ pub(super) fn inline_sides(
     let flat = |s: crate::style::computed::Sides| {
         super::physical_sides::project(flow, [s.top, s.right, s.bottom, s.left]).map(px_of)
     };
-    let margin = flat(e.style.used().margin);
-    let padding = flat(e.style.used().padding);
+    let margin = flat(e.style.used().reset_box_layout.margin);
+    let padding = flat(e.style.used().reset_box_layout.padding);
     let border = flat(border);
     (
         (margin[3], margin[1]),

@@ -20,11 +20,11 @@ use gpui::AnyElement;
 /// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
 /// percentages resolve against the reference box at paint time.
 pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
-    matches!(c.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
-        && (c.clip_inset.is_some()
-            || c.clip_edges.is_some()
-            || c.clip_xywh.is_some()
-            || c.clip_polygon.is_some())
+    matches!(c.reset_mask.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
+        && (c.reset_mask.clip_inset.is_some()
+            || c.reset_mask.clip_edges.is_some()
+            || c.reset_mask.clip_xywh.is_some()
+            || c.reset_mask.clip_polygon.is_some())
 }
 
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
@@ -46,18 +46,18 @@ pub(super) fn grouped_with(
     let vcx = frame.values;
     let el = crate::paint::decorations::outline_phase::context(el, c, frame.paint);
     let blur = c.paint_filter().map_or(0.0, |f| f.blur);
-    let blend = c.blend.unwrap_or(0);
+    let blend = c.reset_effects.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
     // `<length-percentage>`) меряются ЗДЕСЬ, как у `clip: rect()` ниже: на
     // разборе кегль и окно неизвестны, а отрисовка (`Grouped::paint`, `coord`)
     // знает только точки и доли — остальное шло нулём, и полоса схлопывалась
     // в линию (clip-path-polygon-013: 4 полосы из 6, 30400/480000 = 6.33).
     // Смесь `calc()` по-прежнему отбрасывается ещё на разборе.
-    let poly_font = match c.font_size {
+    let poly_font = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
-    let poly_family = c.font_family.clone().unwrap_or_default();
+    let poly_family = c.inh.font.font_family.clone().unwrap_or_default();
     let poly_vp = crate::style::computed::ViewportCx::for_box(vcx.viewport, c);
     let poly_unit = |l: Len| -> Len {
         match l {
@@ -68,6 +68,7 @@ pub(super) fn grouped_with(
         }
     };
     let polygon_px: Vec<(Len, Len)> = c
+        .reset_mask
         .clip_polygon
         .as_deref()
         .unwrap_or(&[])
@@ -109,7 +110,7 @@ pub(super) fn grouped_with(
     // исчезнуть вместе с внутренней фигурой — маска берёт её
     // (border-shape-collapsed-shape-clips-background, t3). Запись:
     // `t r b l` опорной коробки, обводка, `t r b l` выноса, `:`, фигура.
-    let bshape = c.border_shape.as_ref().map(|bs| {
+    let bshape = c.reset_border.border_shape.as_ref().map(|bs| {
         let (stroke, colour) = c.border_shape_stroke();
         // Рамка, несущая заливку `border-area`, видима — маска берёт внешнюю
         // фигуру, как у цветной рамки.
@@ -136,15 +137,15 @@ pub(super) fn grouped_with(
     // кегль 16 и системный шрифт, и `2ch`/`10em` при `font: 5px Ahem`
     // выходили ≈17.8/160 вместо 10/50 (clip-path-shape-002-units 0.81).
     // Корневой кегль — тот же, что читает `Len::parse` для `rem`.
-    let clip_shape = c.clip_shape.clone().map(|s| {
+    let clip_shape = c.reset_mask.clip_shape.clone().map(|s| {
         if !s.starts_with("shapedef:") {
             return s;
         }
-        let px = match c.font_size {
+        let px = match c.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
-        let family = c.font_family.clone().unwrap_or_default();
+        let family = c.inh.font.font_family.clone().unwrap_or_default();
         let (ch, ex) = crate::style::font_metrics::horizontal(&family, px, vcx);
         crate::style::computed::font_lengths_to_px(
             &s,
@@ -155,6 +156,7 @@ pub(super) fn grouped_with(
         )
     });
     let mask = c
+        .reset_mask
         .mask_image
         .clone()
         .map(super::grouped_element::GroupMask::Images)
@@ -172,13 +174,14 @@ pub(super) fn grouped_with(
     // неизвестен, а к отрисовке он уже слит. Прежде ненулевые `em`/`ex`
     // читались как `auto`, и обрезки не было вовсе (`visufx/clip-079` и родня).
     let clip_rect = c
+        .reset_mask
         .clip_len
         .map(|sides| {
-            let base = match c.font_size {
+            let base = match c.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => MEDIUM_FONT_SIZE_PX,
             };
-            let family = c.font_family.clone().unwrap_or_default();
+            let family = c.inh.font.font_family.clone().unwrap_or_default();
             sides.map(|l| match l {
                 Some(Len::Px(v)) => Some(v),
                 Some(other) => Some(crate::text::metrics::spacing_px(
@@ -190,10 +193,10 @@ pub(super) fn grouped_with(
                 None => None,
             })
         })
-        .or(c.clip_rect)
+        .or(c.reset_mask.clip_rect)
         .filter(|_| {
             matches!(
-                c.position,
+                c.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             )
@@ -202,16 +205,16 @@ pub(super) fn grouped_with(
     // margin-box шире на поля, padding-box уже на рамку, content-box — на
     // рамку и отбивку (clip-path-marginBox-*, -paddingBox-*, -contentBox-*).
     let (bare_inset, bare_round) = bare_clip(c);
-    let clip_inset = c.clip_inset.or(bare_inset);
+    let clip_inset = c.reset_mask.clip_inset.or(bare_inset);
     if blur <= 0.0
         && blend == 0
         && polygon.is_empty()
-        && c.isolate != Some(true)
+        && c.reset_effects.isolate != Some(true)
         && mask.is_none()
         && clip_rect.is_none()
         && clip_inset.is_none()
-        && c.clip_edges.is_none()
-        && c.clip_xywh.is_none()
+        && c.reset_mask.clip_edges.is_none()
+        && c.reset_mask.clip_xywh.is_none()
     {
         return el;
     }
@@ -228,7 +231,7 @@ pub(super) fn apply_mask_composite(
     wrapper: &mut crate::paint::effects::grouped_element::Grouped,
     c: &Computed,
 ) {
-    wrapper.mask_composite = c.mask_composite.clone().unwrap_or_default();
+    wrapper.mask_composite = c.reset_mask.mask_composite.clone().unwrap_or_default();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -236,15 +239,15 @@ pub(super) fn apply_mask_style(
     wrapper: &mut crate::paint::effects::grouped_element::Grouped,
     c: &Computed,
 ) {
-    wrapper.mask_size = c.mask_size;
-    wrapper.mask_fit = c.mask_fit.unwrap_or(0);
-    wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
-    wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
-    wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
-    wrapper.mask_luminance = c.mask_luminance == Some(true);
-    wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
-    wrapper.mask_orient_none = c.image_orient_none == Some(true);
-    wrapper.mask_pos = c.mask_pos;
-    wrapper.mask_pos_far = c.mask_pos_far;
-    wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();
+    wrapper.mask_size = c.reset_mask.mask_size;
+    wrapper.mask_fit = c.reset_mask.mask_fit.unwrap_or(0);
+    wrapper.mask_no_repeat = c.reset_mask.mask_no_repeat.unwrap_or((false, false));
+    wrapper.mask_repeat_list = c.reset_mask.mask_repeat_list.clone().unwrap_or_default();
+    wrapper.mask_repeat_modes = c.reset_mask.mask_repeat_modes.clone().unwrap_or_default();
+    wrapper.mask_luminance = c.reset_mask.mask_luminance == Some(true);
+    wrapper.mask_alpha_mode = c.reset_mask.mask_alpha_mode == Some(true);
+    wrapper.mask_orient_none = c.inh.ui.image_orient_none == Some(true);
+    wrapper.mask_pos = c.reset_mask.mask_pos;
+    wrapper.mask_pos_far = c.reset_mask.mask_pos_far;
+    wrapper.mask_pos_list = c.reset_mask.mask_pos_list.clone().unwrap_or_default();
 }

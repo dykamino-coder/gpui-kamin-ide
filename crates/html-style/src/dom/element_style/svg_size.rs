@@ -103,29 +103,22 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
             .or_else(|| nat_h.zip(ratio).map(|(h, r)| h * r))
             .unwrap_or(DEFAULT_REPLACED_WIDTH_PX),
     };
-    for v in {
-        let group_0 = &mut *style.reset_box_layout;
-        [
-            &mut group_0.height,
-            &mut group_0.min_height,
-            &mut group_0.max_height,
-        ]
-    } {
+    for group_index in 0..3 {
+        let v = match group_index {
+            0 => &mut style.reset_box_layout.height,
+            1 => &mut style.reset_box_layout.min_height,
+            _ => &mut style.reset_box_layout.max_height,
+        };
         if is_keyword(*v) {
             *v = Some(Len::Px(auto_h + by));
         }
     }
-    for (i, v) in {
-        let group_0 = &mut *style.reset_box_layout;
-        [
-            &mut group_0.width,
-            &mut group_0.min_width,
-            &mut group_0.max_width,
-        ]
-    }
-    .into_iter()
-    .enumerate()
-    {
+    for i in 0..3 {
+        let v = match i {
+            0 => &mut style.reset_box_layout.width,
+            1 => &mut style.reset_box_layout.min_width,
+            _ => &mut style.reset_box_layout.max_width,
+        };
         if is_keyword(*v) && style.reset_context.fit_arg[i].is_none() {
             *v = Some(Len::Px(auto_w + bx));
         }

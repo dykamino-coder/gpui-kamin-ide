@@ -19,8 +19,8 @@ pub(super) fn boundary_gap_after_box(
     inherited: &Computed,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<f32> {
-    let inline_level =
-        e.style.used().display.is_none() || e.style.used().inline_display == Some(true);
+    let inline_level = e.style.used().reset_box_layout.display.is_none()
+        || e.style.used().reset_context.inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
         "img"
@@ -35,16 +35,16 @@ pub(super) fn boundary_gap_after_box(
             | "select"
             | "textarea"
     );
-    if !inline_level || replaced || e.style.used().ruby_role.is_some() {
+    if !inline_level || replaced || e.style.used().reset_text_box.ruby_role.is_some() {
         return None;
     }
-    let size = match inherited.font_size {
+    let size = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
     let gap = crate::text::metrics::spacing_px(
-        inherited.letter_spacing,
-        &inherited.font_family.clone().unwrap_or_default(),
+        inherited.inh.text_flow.letter_spacing,
+        &inherited.inh.font.font_family.clone().unwrap_or_default(),
         size,
         vcx,
     );
@@ -61,9 +61,9 @@ pub(super) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
         _ => None,
     });
     if let Some(style) = last
-        && style.letter_spacing_after != spacing
+        && style.reset_text_box.letter_spacing_after != spacing
     {
-        style.letter_spacing_after = spacing;
+        style.reset_text_box.letter_spacing_after = spacing;
     }
 }
 
@@ -80,11 +80,11 @@ pub(super) fn set_parent_boundary_spacing(pieces: &mut [Piece], parent: Option<L
     if let Some(style) = last {
         let after = match parent {
             Some(len) => Some(len),
-            None if style.letter_spacing.is_some() => Some(Len::Px(0.0)),
+            None if style.inh.text_flow.letter_spacing.is_some() => Some(Len::Px(0.0)),
             None => None,
         };
-        if style.letter_spacing_after != after {
-            style.letter_spacing_after = after;
+        if style.reset_text_box.letter_spacing_after != after {
+            style.reset_text_box.letter_spacing_after = after;
         }
     }
 }

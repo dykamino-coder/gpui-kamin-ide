@@ -66,12 +66,12 @@ fn margin_collapse_matches_the_browser_on_the_fixture_case() {
     // Отступ ребёнка вынесен наружу (24) и уменьшен на уже отданные
     // предыдущим блоком 10 — суммарный зазор остаётся 24, как в браузере.
     assert_eq!(
-        stack.style.used().margin.top,
+        stack.style.used().reset_box_layout.margin.top,
         Some(Len::Px(14.0)),
         "у обёртки"
     );
     let child_top = stack.children.iter().find_map(|n| match n {
-        Node::Element(e) => Some(e.style.used().margin.top),
+        Node::Element(e) => Some(e.style.used().reset_box_layout.margin.top),
         _ => None,
     });
     assert_eq!(child_top, Some(Some(Len::Px(0.0))), "у ребёнка снят");
@@ -109,7 +109,7 @@ fn out_of_flow_neighbours_keep_their_margins() {
     for (i, n) in body.iter().enumerate() {
         let Node::Element(e) = n else { continue };
         assert_eq!(
-            e.style.used().margin.top,
+            e.style.used().reset_box_layout.margin.top,
             Some(Len::Px(16.0)),
             "плавающий блок {i} потерял поле"
         );
@@ -145,7 +145,7 @@ fn margins_in_em_collapse_too() {
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
-        Node::Element(e) => e.style.used().margin.top,
+        Node::Element(e) => e.style.used().reset_box_layout.margin.top,
         _ => panic!("нет второго блока"),
     };
     // 32 всего, из них 16 уже дал нижний отступ предыдущего блока.
@@ -181,7 +181,7 @@ fn adjacent_margins_collapse_into_the_larger() {
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
-        Node::Element(e) => e.style.used().margin.top,
+        Node::Element(e) => e.style.used().reset_box_layout.margin.top,
         _ => panic!("нет второго блока"),
     };
     // 24 всего, из них 10 уже дал нижний отступ предыдущего блока.
@@ -215,14 +215,14 @@ fn first_child_margin_leaks_through_a_borderless_parent() {
         _ => panic!("нет body"),
     };
     assert_eq!(
-        body.style.used().margin.top,
+        body.style.used().reset_box_layout.margin.top,
         Some(Len::Px(24.0)),
         "отступ вынесен на внешнюю коробку"
     );
-    let wrap_top =
-        find_class(std::slice::from_ref(&inner[0]), "wrap").and_then(|e| e.style.used().margin.top);
+    let wrap_top = find_class(std::slice::from_ref(&inner[0]), "wrap")
+        .and_then(|e| e.style.used().reset_box_layout.margin.top);
     assert_eq!(wrap_top, Some(Len::Px(0.0)), "у обёртки отступ снят");
-    let child_top =
-        find_class(std::slice::from_ref(&inner[0]), "in").and_then(|e| e.style.used().margin.top);
+    let child_top = find_class(std::slice::from_ref(&inner[0]), "in")
+        .and_then(|e| e.style.used().reset_box_layout.margin.top);
     assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
 }

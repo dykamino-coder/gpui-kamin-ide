@@ -24,12 +24,12 @@ pub(crate) fn static_self_align(e: &Element, inherited: &BoxStyle) -> Option<(f3
 }
 
 pub(crate) fn static_self_align_style(own: &Computed, inherited: &BoxStyle) -> Option<(f32, f32)> {
-    if own.inline_display == Some(true) {
+    if own.reset_context.inline_display == Some(true) {
         return None;
     }
-    let anchorless = own.position_anchor.is_none()
-        && own.position_area.is_none()
-        && own.implicit_anchor.is_none();
+    let anchorless = own.reset_positioned.position_anchor.is_none()
+        && own.reset_positioned.position_area.is_none()
+        && own.reset_positioned.implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -43,22 +43,23 @@ pub(crate) fn static_self_align_style(own: &Computed, inherited: &BoxStyle) -> O
     // as `justify_items_style`); `align-items` does not apply in block
     // layout, so `align-self: auto` stays `normal`
     // (`align-items-static-position-001`).
-    let jx = match own.justify_self {
-        None if !own.justify_self_normal => {
-            frac(inherited.justify_items, inherited.justify_items_last)
-        }
-        value => frac(value, own.justify_self_last),
+    let jx = match own.reset_flex.justify_self {
+        None if !own.reset_flex.justify_self_normal => frac(
+            inherited.reset_flex.justify_items,
+            inherited.reset_flex.justify_items_last,
+        ),
+        value => frac(value, own.reset_flex.justify_self_last),
     };
-    let ky = frac(own.align_self, own.align_self_last);
+    let ky = frac(own.reset_flex.align_self, own.reset_flex.align_self_last);
     if jx.is_none() && ky.is_none() {
         return None;
     }
     // Строчная ось: `start`/`end` — по письму родителя, `self-*` — по своему
     // (свой `direction` на этом шаге ещё не унаследован — берём родительский).
-    let rtl = if own.justify_self_own_axis {
-        own.rtl.or(inherited.rtl)
+    let rtl = if own.reset_flex.justify_self_own_axis {
+        own.inh.writing.rtl.or(inherited.inh.writing.rtl)
     } else {
-        inherited.rtl
+        inherited.inh.writing.rtl
     } == Some(true);
     let kx = match jx {
         Some(k) if rtl => 1.0 - k,
@@ -96,13 +97,13 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &BoxStyle) -> Opt
     if inherited.wm().vertical()
         || inherited.wm().turned()
         || inherited.wm().rtl()
-        || e.style.used().inline_display == Some(true)
+        || e.style.used().reset_context.inline_display == Some(true)
     {
         return None;
     }
-    let anchorless = e.style.used().position_anchor.is_none()
-        && e.style.used().position_area.is_none()
-        && e.style.used().implicit_anchor.is_none();
+    let anchorless = e.style.used().reset_positioned.position_anchor.is_none()
+        && e.style.used().reset_positioned.position_area.is_none()
+        && e.style.used().reset_positioned.implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -112,10 +113,13 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &BoxStyle) -> Opt
         _ => None,
     };
     let jx = frac(
-        e.style.used().justify_self,
-        e.style.used().justify_self_last,
+        e.style.used().reset_flex.justify_self,
+        e.style.used().reset_flex.justify_self_last,
     );
-    let ky = frac(e.style.used().align_self, e.style.used().align_self_last);
+    let ky = frac(
+        e.style.used().reset_flex.align_self,
+        e.style.used().reset_flex.align_self_last,
+    );
     if jx.is_none() && ky.is_none() {
         return None;
     }

@@ -46,14 +46,14 @@ pub(super) fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
                 // Viewport Propagation): иначе во вьюпорт идёт корневое, а
                 // тело держит своё (`overflow-body-propagation-012`).
                 let root_own_overflow = e.tag == "html"
-                    && (matches!(e.style.cascaded().overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
-                        || matches!(e.style.cascaded().overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
+                    && (matches!(e.style.cascaded().reset_box_layout.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
+                        || matches!(e.style.cascaded().reset_box_layout.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
                 if !own && !root_contained {
                     if e.tag == "html" {
-                        e.style.cascaded_mut().scroll.viewport_root = true;
+                        e.style.cascaded_mut().reset_box_layout.scroll.viewport_root = true;
                     }
-                    e.style.cascaded_mut().overflow_x = None;
-                    e.style.cascaded_mut().overflow_y = None;
+                    e.style.cascaded_mut().reset_box_layout.overflow_x = None;
+                    e.style.cascaded_mut().reset_box_layout.overflow_y = None;
                 }
                 strip(
                     &mut e.children,
@@ -70,11 +70,11 @@ pub(super) fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
 /// `content-visibility: hidden`): оно выключает распространение свойств
 /// элемента в область просмотра.
 pub(super) fn any_containment(e: &crate::dom::Element) -> bool {
-    e.style.cascaded().contain_paint == Some(true)
-        || e.style.cascaded().contain_size == Some(true)
-        || e.style.cascaded().contain_layout == Some(true)
-        || e.style.cascaded().contain_style == Some(true)
-        || e.style.cascaded().skip_content == Some(true)
+    e.style.cascaded().reset_context.contain_paint == Some(true)
+        || e.style.cascaded().reset_context.contain_size == Some(true)
+        || e.style.cascaded().reset_context.contain_layout == Some(true)
+        || e.style.cascaded().reset_context.contain_style == Some(true)
+        || e.style.cascaded().reset_context.skip_content == Some(true)
 }
 
 /// Отметить узел, чей фон красит канвас (CSS 2.2 §14.2): корневой `html`,
@@ -86,12 +86,12 @@ pub(super) fn mark_canvas_background(
     fn has_bg(style: &Computed) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`
         // отдаёт канвас телу, как и отсутствие объявления.
-        style.background.is_some_and(|c| c.a > 0.0)
-            || style.gradient.is_some()
+        style.reset_background.background.is_some_and(|c| c.a > 0.0)
+            || style.reset_background.gradient.is_some()
             // Фон-картинка — та же краска канваса (CSS 2.2 §14.2): без
             // пометки она рисовалась коробкой корня и начиналась с его
             // сдвинутого схлопкой верха (background-size-document-root-vrl).
-            || style.bg_image.is_some()
+            || style.reset_background.bg_image.is_some()
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };
@@ -100,13 +100,16 @@ pub(super) fn mark_canvas_background(
         // всегда. Пометка живёт на самом узле: снимаемая обёртка уносит её с
         // собой, и дети `body` верхнего уровня её не получают.
         if html.tag == "html" {
-            html.style.cascaded_mut().root_box = true;
+            html.style.cascaded_mut().reset_context.root_box = true;
             // css-display-3 §2.7: «a display of contents computes to block on
             // the root element». Без коробки корня слой канваса
             // не заводился, и фон-картинка корня пропадала целиком
             // (`display-contents-root-background` 99.93).
-            if html.style.cascaded().display == Some(crate::style::computed::Display::Contents) {
-                html.style.cascaded_mut().display = Some(crate::style::computed::Display::Block);
+            if html.style.cascaded().reset_box_layout.display
+                == Some(crate::style::computed::Display::Contents)
+            {
+                html.style.cascaded_mut().reset_box_layout.display =
+                    Some(crate::style::computed::Display::Block);
             }
         }
         // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
@@ -114,7 +117,7 @@ pub(super) fn mark_canvas_background(
         // (`background-color-body-propagation-007`, `-root-propagation-001`).
         let boxed = |e: &crate::dom::Element| {
             !matches!(
-                e.style.cascaded().display,
+                e.style.cascaded().reset_box_layout.display,
                 Some(crate::style::computed::Display::None)
                     | Some(crate::style::computed::Display::Contents)
             )

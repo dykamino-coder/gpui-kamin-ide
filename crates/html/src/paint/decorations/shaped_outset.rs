@@ -22,7 +22,7 @@ pub(crate) type Layer =
 /// Аргументы `rrect(...)` коробки с фигурными углами; None — углы круглые
 /// или форму задаёт `border-shape`.
 fn args(c: &Computed, vcx: ValueCx<'_>) -> Option<String> {
-    if !c.corner_shaped() || c.border_shape.is_some() {
+    if !c.corner_shaped() || c.reset_border.border_shape.is_some() {
         return None;
     }
     let s = rrect_spec(c, None, vcx);
@@ -39,7 +39,8 @@ pub(crate) fn shapes_shadows(c: &Computed, vcx: ValueCx<'_>) -> bool {
 /// сплошной и двойной; `auto` остаётся кольцом фокуса.
 pub(crate) fn shapes_outline(c: &Computed, vcx: ValueCx<'_>) -> bool {
     args(c, vcx).is_some()
-        && c.outline
+        && c.reset_border
+            .outline
             .as_ref()
             .is_some_and(|o| matches!(o.style, Some(1) | Some(OUTLINE_DOUBLE)))
         && c.contour_outline_params().is_some()
@@ -164,7 +165,8 @@ pub(crate) fn outline_layer(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<FillLayer>
         return None;
     }
     let third = (w / 3.0).round();
-    let double = c.outline.as_ref().and_then(|o| o.style) == Some(OUTLINE_DOUBLE) && third >= 1.0;
+    let double = c.reset_border.outline.as_ref().and_then(|o| o.style) == Some(OUTLINE_DOUBLE)
+        && third >= 1.0;
     let bands: Vec<(f32, f32)> = if double {
         vec![(off + w, off + w - third), (off + third, off)]
     } else {

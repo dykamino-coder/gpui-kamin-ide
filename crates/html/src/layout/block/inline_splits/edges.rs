@@ -11,8 +11,8 @@ pub(super) fn drop_inline_side(style: &mut crate::style::computed::Computed, sid
             s.left = zero;
         }
     };
-    pick(&mut style.margin);
-    pick(&mut style.padding);
-    pick(&mut style.border_width);
-    style.border_visible[side] = Some(false);
+    pick(&mut style.reset_box_layout.margin);
+    pick(&mut style.reset_box_layout.padding);
+    pick(&mut style.reset_border.border_width);
+    style.reset_border.border_visible[side] = Some(false);
 }

@@ -13,19 +13,19 @@ pub(super) fn resolve(
     marker: Option<&Computed>,
     vcx: ValueCx<'_>,
 ) -> Option<Node> {
-    let image = item.list_style_image.as_ref()?.as_ref()?;
-    let orient = item.image_orient_none != Some(true);
+    let image = item.inh.table_list.list_style_image.as_ref()?.as_ref()?;
+    let orient = item.inh.ui.image_orient_none != Some(true);
     let source = computed_source(image, orient, vcx)?;
     let em = marker.unwrap_or(item).font_cx(vcx).font_px;
     let (w, h) = default_size(source.intrinsic(), (em, em));
     let mut node = anon_element("img", vec![]);
     node.inline = true;
     let used = node.style.used_mut();
-    used.content = Some(vec![ContentItem::Image(image.clone())]);
-    used.width = Some(Len::Px(w));
-    used.height = Some(Len::Px(h));
-    used.image_orient_none = item.image_orient_none;
-    used.image_pixelated = item.image_pixelated;
+    used.reset_generated.content = Some(vec![ContentItem::Image(image.clone())]);
+    used.reset_box_layout.width = Some(Len::Px(w));
+    used.reset_box_layout.height = Some(Len::Px(h));
+    used.inh.ui.image_orient_none = item.inh.ui.image_orient_none;
+    used.inh.ui.image_pixelated = item.inh.ui.image_pixelated;
     Some(Node::Element(node))
 }
 
@@ -52,7 +52,10 @@ mod tests {
         };
         assert_eq!(e.tag, "img");
         assert!(e.inline && e.style.used().content_image().is_some());
-        (e.style.used().width, e.style.used().height)
+        (
+            e.style.used().reset_box_layout.width,
+            e.style.used().reset_box_layout.height,
+        )
     }
 
     #[test]
@@ -169,8 +172,8 @@ mod tests {
         );
         let mut layer = Computed::default();
         layer.apply_one("content", "none", vcx);
-        li.style.cascaded_mut().marker_layer = Some(Box::new(layer));
-        li.style.cascaded_mut().no_marker = Some(true);
+        li.style.cascaded_mut().reset_generated.marker_layer = Some(Box::new(layer));
+        li.style.cascaded_mut().reset_generated.no_marker = Some(true);
         // Как в dom/walk: содержимое псевдоэлемента задаётся до наследования.
         // После смены деклараций прежний снимок merged остаётся неизменным.
         let merged = inherit(
@@ -181,12 +184,13 @@ mod tests {
         assert!(super::super::resolve(&li, &parent.style.used(), &merged, vcx).is_none());
         li.style
             .cascaded_mut()
+            .reset_generated
             .marker_layer
             .as_mut()
             .unwrap()
             .apply_one("content", "'custom'", vcx);
-        li.style.cascaded_mut().no_marker = Some(false);
-        li.style.cascaded_mut().marker_text = Some("custom".into());
+        li.style.cascaded_mut().reset_generated.no_marker = Some(false);
+        li.style.cascaded_mut().reset_generated.marker_text = Some("custom".into());
         let merged = inherit(
             &BoxStyle::shared(parent.style.used()),
             li.style.cascaded(),

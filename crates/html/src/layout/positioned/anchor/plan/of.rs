@@ -20,17 +20,17 @@ impl AnchorPlan {
         layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
     ) -> Option<AnchorPlan> {
         if !matches!(
-            own.position,
+            own.reset_positioned.position,
             Some(Position::Absolute) | Some(Position::Fixed)
         ) {
             return None;
         }
         let m = px_lossy_zero;
         let margin = [
-            m(own.margin.top),
-            m(own.margin.right),
-            m(own.margin.bottom),
-            m(own.margin.left),
+            m(own.reset_box_layout.margin.top),
+            m(own.reset_box_layout.margin.right),
+            m(own.reset_box_layout.margin.bottom),
+            m(own.reset_box_layout.margin.left),
         ];
         let side = |l: Option<Len>, margin: f32| -> Option<SidePlan> {
             let Some(Len::Anchor(i)) = l else { return None };
@@ -42,10 +42,10 @@ impl AnchorPlan {
             Some(SidePlan { f, margin })
         };
         let inset = [
-            own.inset.top,
-            own.inset.right,
-            own.inset.bottom,
-            own.inset.left,
+            own.reset_positioned.inset.top,
+            own.reset_positioned.inset.right,
+            own.reset_positioned.inset.bottom,
+            own.reset_positioned.inset.left,
         ];
         let sides = [
             side(inset[0], margin[0]),
@@ -55,11 +55,12 @@ impl AnchorPlan {
         ];
         let default_anchor = default_anchor_of(own);
         let area = own
+            .reset_positioned
             .position_area
             .filter(|_| default_anchor.is_some())
             .map(|a| physical_area(a, inherited, own));
-        let anchor_center = own.align_self == Some(Align::AnchorCenter)
-            || own.justify_self == Some(Align::AnchorCenter);
+        let anchor_center = own.reset_flex.align_self == Some(Align::AnchorCenter)
+            || own.reset_flex.justify_self == Some(Align::AnchorCenter);
         // §position-visibility, anchor-valid: «If the box references the
         // default anchor box (e.g. using 'position-area', 'anchor()' or
         // 'anchor-size()' functions, or 'anchor-center'), but the default
@@ -68,16 +69,16 @@ impl AnchorPlan {
         // и коробка без якоря (`position-visibility-anchor-valid`, #target2:
         // `position-area: block-end`, имени нет) не пряталась никогда.
         let anchor_lengths = [
-            own.width,
-            own.height,
-            own.min_width,
-            own.min_height,
-            own.max_width,
-            own.max_height,
-            own.inset.top,
-            own.inset.right,
-            own.inset.bottom,
-            own.inset.left,
+            own.reset_box_layout.width,
+            own.reset_box_layout.height,
+            own.reset_box_layout.min_width,
+            own.reset_box_layout.min_height,
+            own.reset_box_layout.max_width,
+            own.reset_box_layout.max_height,
+            own.reset_positioned.inset.top,
+            own.reset_positioned.inset.right,
+            own.reset_positioned.inset.bottom,
+            own.reset_positioned.inset.left,
         ];
         // anchor-size() тоже требует плана: иначе зависимости размера
         // исчезают, а текущая геометрия заменяется запасным значением.
@@ -85,7 +86,7 @@ impl AnchorPlan {
             .into_iter()
             .flatten()
             .any(|l| matches!(l, Len::Anchor(_)));
-        let refs_default = own.position_area.is_some()
+        let refs_default = own.reset_positioned.position_area.is_some()
             || anchor_center
             || anchor_lengths.into_iter().flatten().any(|l| match l {
                 Len::Anchor(i) => anchor_get(i, vcx).is_some_and(|f| f.name.is_none()),
@@ -95,8 +96,8 @@ impl AnchorPlan {
             && sides.iter().all(Option::is_none)
             && area.is_none()
             && !(anchor_center && default_anchor.is_some())
-            && own.position_try_fallbacks.is_empty()
-            && own.position_visibility == 0
+            && own.reset_positioned.position_try_fallbacks.is_empty()
+            && own.reset_positioned.position_visibility == 0
         {
             return None;
         }
@@ -111,18 +112,19 @@ impl AnchorPlan {
             area,
             inset,
             margin,
-            align_self: own.align_self,
-            justify_self: own.justify_self,
-            safe_align: own.align_self_safe,
-            safe_justify: own.justify_self_safe,
+            align_self: own.reset_flex.align_self,
+            justify_self: own.reset_flex.justify_self,
+            safe_align: own.reset_flex.align_self_safe,
+            safe_justify: own.reset_flex.justify_self_safe,
             cb_vertical: inherited.wm().vertical(),
             cb_node: own.cb_node,
-            fixed: own.position == Some(Position::Fixed)
-                && !(inherited.transform_ancestor
-                    || inherited.transform.is_some()
-                    || inherited.contain_layout == Some(true)
-                    || inherited.contain_paint == Some(true)
-                    || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0),
+            fixed: own.reset_positioned.position == Some(Position::Fixed)
+                && !(inherited.reset_transforms.transform_ancestor
+                    || inherited.reset_transforms.transform.is_some()
+                    || inherited.reset_context.contain_layout == Some(true)
+                    || inherited.reset_context.contain_paint == Some(true)
+                    || inherited.reset_effects.will_change & crate::style::computed::wc::CB_FIXED
+                        != 0),
             seq: own.anchor_seq,
             refs_default,
         })

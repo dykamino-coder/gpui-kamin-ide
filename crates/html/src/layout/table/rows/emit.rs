@@ -131,6 +131,7 @@ fn push_cell_wrapped(
         .row
         .style
         .used()
+        .reset_transforms
         .transform
         .as_ref()
         .is_some_and(|t| !pure_shift(t))
@@ -148,6 +149,7 @@ fn push_cell_wrapped(
         let rb = g
             .style
             .used()
+            .reset_transforms
             .transform
             .as_ref()
             .is_some_and(|t| !pure_shift(t))

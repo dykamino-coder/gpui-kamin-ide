@@ -15,7 +15,7 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
 
 pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
-    let Some(first) = parent.first_line_own.as_deref() else {
+    let Some(first) = parent.reset_text_box.first_line_own.as_deref() else {
         return nodes;
     };
     for node in &mut nodes {
@@ -26,12 +26,12 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                 if block_level_in_flow(e)
                     && !table_box(e)
                     && matches!(
-                        e.style.used().display,
+                        e.style.used().reset_box_layout.display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_line.is_none() =>
             {
-                e.style.used_mut().first_line_own = Some(Box::new(first.clone()));
+                e.style.used_mut().reset_text_box.first_line_own = Some(Box::new(first.clone()));
                 e.first_line = Some(first.clone().into());
             }
             _ => {}
@@ -56,7 +56,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Px(32.));
+            with_inherited.inh.font.font_size = Some(Len::Px(32.));
             with_inherited
         };
         let parent = Computed {
@@ -106,10 +106,17 @@ mod tests {
             );
             crate::layout::box_tree::pseudo_line_layers::install(child, &mut merged, doc.values());
             assert_eq!(
-                merged.first_line.as_ref().unwrap().font_size,
+                merged
+                    .reset_text_box
+                    .first_line
+                    .as_ref()
+                    .unwrap()
+                    .inh
+                    .font
+                    .font_size,
                 Some(Len::Px(32.))
             );
-            assert_ne!(merged.font_size, Some(Len::Px(32.)));
+            assert_ne!(merged.inh.font.font_size, Some(Len::Px(32.)));
             inherited = (merged).into_computed();
         }
     }

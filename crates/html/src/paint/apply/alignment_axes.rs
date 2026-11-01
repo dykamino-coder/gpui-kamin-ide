@@ -10,16 +10,19 @@ pub(super) fn abspos_normal(
     c: &crate::style::computed::BoxStyle,
 ) {
     use crate::style::computed::Position;
-    if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
+    if !matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute | Position::Fixed)
+    ) {
         return;
     }
     // CSS Align 3 §align-abspos/justify-abspos: normal is start when
     // determining the static position. Unlike auto, it does not inherit items.
     // Native abspos sizing handles stretching between two definite insets.
-    if c.align_self_normal {
+    if c.reset_flex.align_self_normal {
         style.align_self = Some(gpui::AlignSelf::Start);
     }
-    if c.justify_self_normal {
+    if c.reset_flex.justify_self_normal {
         style.justify_self = Some(gpui::AlignSelf::Start);
     }
     // Outside flex and grid, an axis with both insets `auto` aligns in the
@@ -37,10 +40,10 @@ pub(super) fn abspos_normal(
         let auto = |l: Option<crate::style::values::value::Len>| {
             matches!(l, None | Some(crate::style::values::value::Len::Auto))
         };
-        if auto(c.inset.left) && auto(c.inset.right) {
+        if auto(c.reset_positioned.inset.left) && auto(c.reset_positioned.inset.right) {
             style.justify_self = None;
         }
-        if auto(c.inset.top) && auto(c.inset.bottom) {
+        if auto(c.reset_positioned.inset.top) && auto(c.reset_positioned.inset.bottom) {
             style.align_self = None;
         }
     }
@@ -90,19 +93,19 @@ pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::com
             other => other,
         });
     };
-    if c.align_self_own_axis {
+    if c.reset_flex.align_self_own_axis {
         mirror(
             &mut style.align_self,
             own[align_axis] != (align_axis == 0 && parent_x_end),
         );
     }
-    if c.justify_self_own_axis {
+    if c.reset_flex.justify_self_own_axis {
         mirror(
             &mut style.justify_self,
             own[justify_axis] != (justify_axis == 0 && parent_x_end),
         );
     }
-    if let Some(right) = c.justify_self_physical {
+    if let Some(right) = c.reset_flex.justify_self_physical {
         let end = if vertical {
             right != c.context.cb_wm.sideways_lr()
         } else {

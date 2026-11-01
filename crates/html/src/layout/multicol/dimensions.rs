@@ -42,20 +42,23 @@ impl MulticolDimensions {
         inline: Option<f32>,
         viewport: f32,
     ) -> Option<f32> {
-        match style.display {
+        match style.reset_box_layout.display {
             Some(Display::Contents) => return outer,
             None | Some(Display::Block | Display::ListItem | Display::InlineBlock) => {}
             _ => return None,
         }
         if style.wm().vertical()
             || (matches!(self.preferred[1], Some(Len::Pct(_)))
-                && matches!(style.position, Some(Position::Absolute | Position::Fixed)))
+                && matches!(
+                    style.reset_positioned.position,
+                    Some(Position::Absolute | Position::Fixed)
+                ))
         {
             return None;
         }
         self.content_height(
             style,
-            if style.root_box {
+            if style.reset_context.root_box {
                 Some(viewport)
             } else {
                 outer
@@ -111,9 +114,9 @@ mod tests {
         assert_eq!(input.content_height(&style, None, None), Some(80.));
         assert_eq!(input.prefix().content_height(&style, None, None), None);
         assert_eq!(input.minimum, MulticolDimensions::css(&style).minimum);
-        assert_eq!(style.width, Some(Len::Pct(0.5)));
-        assert_eq!(style.height, Some(Len::Px(200.)));
-        assert_eq!(style.border_box, Some(true));
+        assert_eq!(style.reset_box_layout.width, Some(Len::Pct(0.5)));
+        assert_eq!(style.reset_box_layout.height, Some(Len::Px(200.)));
+        assert_eq!(style.reset_border.border_box, Some(true));
     }
 
     #[test]
@@ -131,15 +134,15 @@ mod tests {
             MulticolDimensions::css(style).percentage_height(style, Some(100.), None, 600.)
         };
         assert_eq!(basis(&style), Some(50.));
-        style.root_box = true;
+        style.reset_context.root_box = true;
         assert_eq!(basis(&style), Some(300.));
-        style.root_box = false;
-        style.position = Some(Position::Absolute);
+        style.reset_context.root_box = false;
+        style.reset_positioned.position = Some(Position::Absolute);
         assert_eq!(basis(&style), None);
-        style.position = None;
-        style.display = Some(Display::Flex);
+        style.reset_positioned.position = None;
+        style.reset_box_layout.display = Some(Display::Flex);
         assert_eq!(basis(&style), None);
-        style.display = Some(Display::Contents);
+        style.reset_box_layout.display = Some(Display::Contents);
         assert_eq!(basis(&style), Some(100.));
     }
 }

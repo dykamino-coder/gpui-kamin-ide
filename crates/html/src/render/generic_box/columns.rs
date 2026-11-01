@@ -25,7 +25,7 @@ pub(super) fn column_plan_in(
     dimensions: MulticolDimensions,
     own: MulticolDimensions,
 ) -> ColumnPlan {
-    let used_gap = match merged.column_gap {
+    let used_gap = match merged.reset_fragmentation.column_gap {
         Some(Len::Px(v)) => v,
         // Доля — от ширины содержимого коробки (css-align-3 §8.1), в
         // единицах раскладки 1/64 точки, как Blink `LayoutUnit`: иначе
@@ -38,7 +38,7 @@ pub(super) fn column_plan_in(
             };
             crate::layout::fragment::line_shape::layout_unit(k * w)
         }
-        _ => match merged.font_size {
+        _ => match merged.inh.font.font_size {
             Some(Len::Px(size)) => size,
             _ => opts.base_size(),
         },
@@ -60,13 +60,14 @@ pub(super) fn column_plan_in(
     // css-multicol-1 §cw: вычисленное значение сохраняется, используемое
     // ограничено снизу 1px, в том числе при расчёте числа колонок (§pseudo-algorithm).
     let column_width = merged
+        .reset_fragmentation
         .column_width
         .filter(|_| multicol)
         .map(|width| match width {
             Len::Px(w) => Len::Px(w.max(1.0)),
             other => other,
         });
-    let column_count = merged.column_count.filter(|_| multicol);
+    let column_count = merged.reset_fragmentation.column_count.filter(|_| multicol);
     // Ось прогрессии колонок — СТРОЧНАЯ ось многоколоночника
     // (css-multicol-1 §2, `Overview.bs:375-379`: «The column boxes are
     // ordered in the inline base direction»). В вертикальном письме она
@@ -107,7 +108,8 @@ pub(super) fn column_plan_in(
     // Заданный `column-height` без числа колонок — одна колонка, но с
     // рядами (`column-height-012`: `column-height:40px` и 80px
     // содержимого — два ряда по 40).
-    let height_driven = e.style.used().column_height.is_some() && used_count.is_none_or(|n| n <= 1);
+    let height_driven = e.style.used().reset_fragmentation.column_height.is_some()
+        && used_count.is_none_or(|n| n <= 1);
     // `column-count: 1` — тоже многоколоночник (css-multicol-1 §2; Blink
     // `ComputedStyle::SpecifiesColumns`: «!HasAutoColumnCount()»), и
     // спаннер в нём режет содержимое на ряды: ряд до спаннера — свой
@@ -121,7 +123,7 @@ pub(super) fn column_plan_in(
     // (`multicol-span-all-list-item-001/002`).
     let lone_span = used_count == Some(1)
         && !height_driven
-        && e.style.used().column_wrap.is_none()
+        && e.style.used().reset_fragmentation.column_wrap.is_none()
         && e.list_item.is_none()
         && has_deep_spanner(e);
     ColumnPlan {

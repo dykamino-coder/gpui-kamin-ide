@@ -45,7 +45,7 @@ pub(crate) fn sticky_wrap(
     // (`ScrollContext::sticky`).
     link: Option<crate::interactive::scroll_extent::StickyShift>,
 ) -> AnyElement {
-    if c.position != Some(crate::style::computed::Position::Sticky) {
+    if c.reset_positioned.position != Some(crate::style::computed::Position::Sticky) {
         return el;
     }
     let side = |l: Option<Len>| match l {
@@ -57,10 +57,10 @@ pub(crate) fn sticky_wrap(
     };
     let link = link.unwrap_or_else(|| crate::interactive::scroll_extent::ShiftLink::inside(None));
     let mut wrapper = crate::interactive::sticky::element::Sticky::new(el, frame.clone(), link);
-    wrapper.top = side(c.inset.top);
-    wrapper.bottom = side(c.inset.bottom);
-    wrapper.left = side(c.inset.left);
-    wrapper.right = side(c.inset.right);
+    wrapper.top = side(c.reset_positioned.inset.top);
+    wrapper.bottom = side(c.reset_positioned.inset.bottom);
+    wrapper.left = side(c.reset_positioned.inset.left);
+    wrapper.right = side(c.reset_positioned.inset.right);
     // Внутри отложенного поддерева липкий элемент рисуется на месте:
     // откладывать повторно нельзя. Без единого порога (все четыре `auto`)
     // липкий не сдвигается вовсе — css-position-3 §sticky-pos: «If both
@@ -78,6 +78,6 @@ pub(crate) fn sticky_wrap(
         return wrapper.hooked();
     }
     gpui::deferred(wrapper.into_hooked())
-        .with_priority(c.z_index.unwrap_or(0).max(0) as usize)
+        .with_priority(c.reset_positioned.z_index.unwrap_or(0).max(0) as usize)
         .into_any_element()
 }

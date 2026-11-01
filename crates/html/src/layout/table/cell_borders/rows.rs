@@ -39,9 +39,11 @@ pub(crate) fn collapsed_row_edges(
             [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)],
             active,
         );
-        let raw_styles = std::array::from_fn(|i| {
-            source.style.used().border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
-        });
+        let raw_styles =
+            std::array::from_fn(|i| {
+                source.style.used().reset_border.border_side_styles[i]
+                    .unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+            });
         let logical_styles = axes.logical(raw_styles);
         let styles = axes.physical(std::array::from_fn(|i| {
             if active[i] { logical_styles[i] } else { 0 }
@@ -63,7 +65,8 @@ pub(crate) fn collapsed_row_edges(
             a: 1.0,
         };
         let colors = std::array::from_fn(|i| {
-            source.style.used().border_colors[i].resolve(computed.color.unwrap_or(black))
+            source.style.used().reset_border.border_colors[i]
+                .resolve(computed.inh.ui.color.unwrap_or(black))
         });
         d = d.child(crate::layout::table::probes::edge_probe(
             table_edges.clone(),

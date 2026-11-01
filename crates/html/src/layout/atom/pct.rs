@@ -24,18 +24,22 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     if replaced_tag(e) || e.style.cascaded().wm().vertical() {
         return None;
     }
-    if !matches!(inherited.display, None | Some(Display::Block)) || inherited.wm().vertical() {
+    if !matches!(
+        inherited.reset_box_layout.display,
+        None | Some(Display::Block)
+    ) || inherited.wm().vertical()
+    {
         return None;
     }
     let px_of = px_lossy_zero;
     // Опора высоты — СОДЕРЖИМОЕ родителя: при `box-sizing: border-box`
     // заданная высота включает его отступы и рамку.
-    let base_h = match inherited.height {
-        Some(Len::Px(h)) if inherited.border_box == Some(true) => {
+    let base_h = match inherited.reset_box_layout.height {
+        Some(Len::Px(h)) if inherited.reset_border.border_box == Some(true) => {
             let b = inherited.borders();
             Some(
-                h - px_of(inherited.padding.top)
-                    - px_of(inherited.padding.bottom)
+                h - px_of(inherited.reset_box_layout.padding.top)
+                    - px_of(inherited.reset_box_layout.padding.bottom)
                     - px_of(b.top)
                     - px_of(b.bottom),
             )
@@ -46,8 +50,11 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         // `style::cascade::inherit`): `.outer {width: 200px; aspect-ratio: 2/1}` даёт
         // доле детей 100 (`intrinsic-percent-replaced-015/016`). Только
         // `content-box`: соотношение тогда — у содержимого.
-        None | Some(Len::Auto) if inherited.border_box != Some(true) => {
-            match (inherited.aspect_ratio, inherited.width) {
+        None | Some(Len::Auto) if inherited.reset_border.border_box != Some(true) => {
+            match (
+                inherited.reset_shapes.aspect_ratio,
+                inherited.reset_box_layout.width,
+            ) {
                 (Some(r), Some(Len::Px(w))) if r.is_finite() && r > 0.0 => Some(w / r),
                 _ => None,
             }
@@ -55,12 +62,12 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         _ => None,
     }
     .filter(|h| *h >= 0.0);
-    let base_w = match inherited.width {
-        Some(Len::Px(w)) if inherited.border_box == Some(true) => {
+    let base_w = match inherited.reset_box_layout.width {
+        Some(Len::Px(w)) if inherited.reset_border.border_box == Some(true) => {
             let b = inherited.borders();
             Some(
-                w - px_of(inherited.padding.left)
-                    - px_of(inherited.padding.right)
+                w - px_of(inherited.reset_box_layout.padding.left)
+                    - px_of(inherited.reset_box_layout.padding.right)
                     - px_of(b.left)
                     - px_of(b.right),
             )
@@ -75,16 +82,28 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     };
     let mut copy = e.clone();
     let mut changed = false;
-    if let Some(v) = of(e.style.used().height, base_h) {
-        copy.style.used_mut().height = v;
+    if let Some(v) = of(e.style.used().reset_box_layout.height, base_h) {
+        copy.style.used_mut().reset_box_layout.height = v;
         changed = true;
     }
-    let padding = &mut copy.style.used_mut().padding;
+    let padding = &mut copy.style.used_mut().reset_box_layout.padding;
     for (dst, src) in [
-        (&mut padding.top, e.style.used().padding.top),
-        (&mut padding.bottom, e.style.used().padding.bottom),
-        (&mut padding.left, e.style.used().padding.left),
-        (&mut padding.right, e.style.used().padding.right),
+        (
+            &mut padding.top,
+            e.style.used().reset_box_layout.padding.top,
+        ),
+        (
+            &mut padding.bottom,
+            e.style.used().reset_box_layout.padding.bottom,
+        ),
+        (
+            &mut padding.left,
+            e.style.used().reset_box_layout.padding.left,
+        ),
+        (
+            &mut padding.right,
+            e.style.used().reset_box_layout.padding.right,
+        ),
     ] {
         if let Some(v) = of(src, base_w) {
             *dst = v;

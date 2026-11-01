@@ -21,9 +21,12 @@ use crate::style::values::value::Len;
 /// размер — тот же shrink-to-fit. Вертикальный флоат (случай 4) сюда не
 /// доходит: его строит хост полос, и `float` до сборщика детей не доезжает.
 pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
-    let auto_inline = |c: &Computed| matches!(c.height, None | Some(Len::Auto));
-    let grid = matches!(own.display, Some(Display::Grid) | Some(Display::InlineGrid));
-    let shrink = merged.hug_claim && auto_inline(own);
+    let auto_inline = |c: &Computed| matches!(c.reset_box_layout.height, None | Some(Len::Auto));
+    let grid = matches!(
+        own.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    );
+    let shrink = merged.reset_context.hug_claim && auto_inline(own);
     if !grid && !shrink {
         return children;
     }
@@ -43,7 +46,11 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
             // Auto inline tracks need a contribution before stretch can resolve their size.
             auto_inline(own)
                 || matches!(
-                    ch.style.used().justify_self.or(own.justify_items),
+                    ch.style
+                        .used()
+                        .reset_flex
+                        .justify_self
+                        .or(own.reset_flex.justify_items),
                     Some(Align::Start)
                         | Some(Align::Center)
                         | Some(Align::End)
@@ -51,13 +58,13 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
                 )
         } else {
             !matches!(
-                ch.style.used().display,
+                ch.style.used().reset_box_layout.display,
                 Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table)
             )
         };
         if hug {
-            ch.style.used_mut().hug_inline = true;
-            ch.style.used_mut().hug_claim = true;
+            ch.style.used_mut().reset_context.hug_inline = true;
+            ch.style.used_mut().reset_context.hug_claim = true;
         }
     }
     out
@@ -78,7 +85,7 @@ mod tests {
                 ),
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
@@ -89,19 +96,22 @@ mod tests {
             let Node::Element(child) = &out[0] else {
                 unreachable!()
             };
-            (child.style.used().hug_inline, child.style.used().hug_claim)
+            (
+                child.style.used().reset_context.hug_inline,
+                child.style.used().reset_context.hug_claim,
+            )
         };
         assert_eq!(claimed(child.clone(), &parent), (true, true));
-        parent.height = Some(Len::Px(50.0));
+        parent.reset_box_layout.height = Some(Len::Px(50.0));
         assert_eq!(claimed(child.clone(), &parent), (false, false));
-        parent.justify_items = Some(Align::Start);
+        parent.reset_flex.justify_items = Some(Align::Start);
         assert_eq!(claimed(child.clone(), &parent), (true, true));
-        parent.height = None;
+        parent.reset_box_layout.height = None;
         let mut fixed = child.clone();
-        fixed.style.used_mut().height = Some(Len::Px(50.0));
+        fixed.style.used_mut().reset_box_layout.height = Some(Len::Px(50.0));
         assert_eq!(claimed(fixed, &parent), (false, false));
         let mut horizontal = child.clone();
-        horizontal.style.used_mut().writing_mode =
+        horizontal.style.used_mut().inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 false,
                 horizontal.style.cascaded().wm().block_rl(),
@@ -109,7 +119,8 @@ mod tests {
             ));
         assert_eq!(claimed(horizontal, &parent), (false, false));
         let mut positioned = child;
-        positioned.style.used_mut().position = Some(crate::style::computed::Position::Absolute);
+        positioned.style.used_mut().reset_positioned.position =
+            Some(crate::style::computed::Position::Absolute);
         assert_eq!(claimed(positioned, &parent), (false, false));
     }
 }

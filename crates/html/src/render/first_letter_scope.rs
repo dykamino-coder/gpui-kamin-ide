@@ -22,8 +22,8 @@ impl Scope {
             .find(|n| {
                 in_flow(
                     n,
-                    style.keep_spaces == Some(true),
-                    style.preserve_newlines == Some(true),
+                    style.inh.text_flow.keep_spaces == Some(true),
+                    style.inh.text_flow.preserve_newlines == Some(true),
                 )
             })
             .is_some_and(|n| matches!(n, Node::Element(e) if block_level_in_flow(e)));
@@ -43,18 +43,18 @@ impl Scope {
         if nodes.iter().any(|n| {
             in_flow(
                 n,
-                style.keep_spaces == Some(true),
-                style.preserve_newlines == Some(true),
+                style.inh.text_flow.keep_spaces == Some(true),
+                style.inh.text_flow.preserve_newlines == Some(true),
             )
         }) {
             self.first = false;
         }
-        if first || style.first_letter.is_none() {
+        if first || style.reset_text_box.first_letter.is_none() {
             build(style)
         } else {
             let mut later = style.clone();
-            later.first_letter = None;
-            later.first_letter_own = None;
+            later.reset_text_box.first_letter = None;
+            later.reset_text_box.first_letter_own = None;
             build(&later)
         }
     }
@@ -67,18 +67,28 @@ fn in_flow(node: &Node, spaces: bool, newlines: bool) -> bool {
         }
         Node::Element(e)
             if out_of_flow(&e.style.used())
-                || e.style.used().display == Some(Display::None)
-                || e.style.used().first_letter_excluded
+                || e.style.used().reset_box_layout.display == Some(Display::None)
+                || e.style.used().reset_text_box.first_letter_excluded
                 || e.tag == "::marker" =>
         {
             false
         }
-        Node::Element(e) if e.style.used().display == Some(Display::Contents) => {
+        Node::Element(e) if e.style.used().reset_box_layout.display == Some(Display::Contents) => {
             e.children.iter().any(|n| {
                 in_flow(
                     n,
-                    e.style.cascaded().keep_spaces.unwrap_or(spaces),
-                    e.style.cascaded().preserve_newlines.unwrap_or(newlines),
+                    e.style
+                        .cascaded()
+                        .inh
+                        .text_flow
+                        .keep_spaces
+                        .unwrap_or(spaces),
+                    e.style
+                        .cascaded()
+                        .inh
+                        .text_flow
+                        .preserve_newlines
+                        .unwrap_or(newlines),
                 )
             })
         }

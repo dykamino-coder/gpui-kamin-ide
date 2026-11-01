@@ -33,9 +33,11 @@ pub(super) fn element_style(
     // Вставки — из СЛИТОГО стиля: там `em` уже в точках (`resolve_em`), а
     // в собственном стиле `left: -6em` читался нулём, и вложенный
     // относительный кусок не сдвигался (`position-relative-033`).
-    let own_rel = if e.style.used().position == Some(crate::style::computed::Position::Relative) {
+    let own_rel = if e.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Relative)
+    {
         let px_of = px_lossy_zero;
-        let i = &merged.inset;
+        let i = &merged.reset_positioned.inset;
         (
             px_of(i.left) - px_of(i.right),
             px_of(i.top) - px_of(i.bottom),
@@ -44,8 +46,8 @@ pub(super) fn element_style(
         (0.0, 0.0)
     };
     if own_rel != (0.0, 0.0) {
-        let base = merged.rel_shift.unwrap_or((0.0, 0.0));
-        merged.rel_shift = Some((base.0 + own_rel.0, base.1 + own_rel.1));
+        let base = merged.reset_positioned.rel_shift.unwrap_or((0.0, 0.0));
+        merged.reset_positioned.rel_shift = Some((base.0 + own_rel.0, base.1 + own_rel.1));
     }
     // Фон строчного бокса рисует прогон текста: коробки у него
     // нет, а фон обязан рваться на переносах вместе со строкой.
@@ -64,11 +66,11 @@ pub(super) fn element_style(
         // Проверено: раздувать `line_bounds` в `vendor/gpui/.../line.rs`
         // на перелив полосы прогона, чтобы фон строки не попадал в один
         // порядок с глифами соседней, ничего не меняет.
-        let size = match merged.font_size {
+        let size = match merged.inh.font.font_size {
             Some(crate::style::values::value::Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
-        let family = merged.font_family.clone().unwrap_or_default();
+        let family = merged.inh.font.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
             Some(
                 crate::style::values::value::Len::Px(_)
@@ -82,18 +84,18 @@ pub(super) fn element_style(
         merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
-                px_of(e.style.used().padding.top),
-                px_of(e.style.used().padding.right),
-                px_of(e.style.used().padding.bottom),
-                px_of(e.style.used().padding.left),
+                px_of(e.style.used().reset_box_layout.padding.top),
+                px_of(e.style.used().reset_box_layout.padding.right),
+                px_of(e.style.used().reset_box_layout.padding.bottom),
+                px_of(e.style.used().reset_box_layout.padding.left),
             ],
         ));
-        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().radius.tl));
+        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().reset_border.radius.tl));
     }
     // Рамка строчной коробки рисуется прогоном: и ровная, и
     // с РАЗНЫМИ гранями (у прогона теперь пооосевые ширины) —
     // коробка рвала перенос, и span с рамкой уезжал столбиком.
-    let font_px = match merged.font_size {
+    let font_px = match merged.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
@@ -125,7 +127,8 @@ pub(super) fn element_style(
     // descendants (which inherit it) continue the same band.
     // Своя коробка (подложка или рамка) едет СВОИМ накопленным сдвигом.
     if own_bg || own_border {
-        merged.box_shift = Some(merged.rel_shift.unwrap_or((0.0, 0.0)));
+        merged.reset_positioned.box_shift =
+            Some(merged.reset_positioned.rel_shift.unwrap_or((0.0, 0.0)));
     }
     let mut painted_bg = merged.inline_decoration.band_color.is_some();
     if own_border && !own_bg && !painted_bg {
@@ -136,7 +139,7 @@ pub(super) fn element_style(
             b: 0.5,
             a: 0.0,
         });
-        let family = merged.font_family.clone().unwrap_or_default();
+        let family = merged.inh.font.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
             Some(
                 crate::style::values::value::Len::Px(_)
@@ -150,13 +153,13 @@ pub(super) fn element_style(
         merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
-                px_of(e.style.used().padding.top),
-                px_of(e.style.used().padding.right),
-                px_of(e.style.used().padding.bottom),
-                px_of(e.style.used().padding.left),
+                px_of(e.style.used().reset_box_layout.padding.top),
+                px_of(e.style.used().reset_box_layout.padding.right),
+                px_of(e.style.used().reset_box_layout.padding.bottom),
+                px_of(e.style.used().reset_box_layout.padding.left),
             ],
         ));
-        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().radius.tl));
+        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().reset_border.radius.tl));
     }
     // Контур строчного куска рисует тот же прогон: коробки у
     // куска нет, а место контур и не занимает. Рисуется только
@@ -171,8 +174,8 @@ pub(super) fn element_style(
     // тогда рисуется дважды (`bidi-00*`); здесь — только контур,
     // второго рисовальщика у которого нет.
     if merged.inline_decoration.border_stroke.is_none()
-        && e.style.used().display.is_none()
-        && let Some(o) = e.style.used().outline.as_ref()
+        && e.style.used().reset_box_layout.display.is_none()
+        && let Some(o) = e.style.used().reset_border.outline.as_ref()
         && o.style.is_some_and(|s| s != 0)
         && let Some(width) = match o.width {
             Some(Len::Px(w)) => Some(w),

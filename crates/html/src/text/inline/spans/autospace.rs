@@ -43,7 +43,7 @@ pub fn autospace_spans(
             prev = None;
             continue;
         };
-        let size = match style.font_size {
+        let size = match style.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => base_size,
         };
@@ -65,9 +65,13 @@ pub fn autospace_spans(
             if let Some((p_at, p_len, p_ch, p_size, p_style)) = prev
                 && autospace_between(p_ch, ch, style)
             {
-                let family = p_style.font_family.clone().unwrap_or_default();
-                let had =
-                    crate::text::metrics::spacing_px(p_style.letter_spacing, &family, p_size, vcx);
+                let family = p_style.inh.font.font_family.clone().unwrap_or_default();
+                let had = crate::text::metrics::spacing_px(
+                    p_style.inh.text_flow.letter_spacing,
+                    &family,
+                    p_size,
+                    vcx,
+                );
                 // Не считать зазор от `ic` вместо кегля (css-text-4 §7.1 «1/8 of
                 // the ideographic advance»): это ломает
                 // `text-autospace-supplementary-ideograph`, а
@@ -83,8 +87,8 @@ pub fn autospace_spans(
 
 /// Нужен ли зазор между двумя соседними знаками.
 pub(super) fn autospace_between(left: char, right: char, style: &Computed) -> bool {
-    let alpha = style.autospace_alpha.unwrap_or(false);
-    let numeric = style.autospace_numeric.unwrap_or(false);
+    let alpha = style.inh.text_flow.autospace_alpha.unwrap_or(false);
+    let numeric = style.inh.text_flow.autospace_numeric.unwrap_or(false);
     let pair = |ideo: char, other: char| {
         ideographic(ideo)
             && ((alpha

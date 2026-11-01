@@ -17,22 +17,22 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
     // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
     // случая забирает подъём разрыва, а не рост.
     let is_flex = matches!(
-        c.style.used().display,
+        c.style.used().reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || c.style.used().webkit_box == Some(true);
+    ) || c.style.used().reset_flex.webkit_box == Some(true);
     let row_nowrap = is_flex
         && matches!(
-            c.style.used().flex_dir,
+            c.style.used().reset_flex.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.used().flex_wrap != Some(true)
-        && c.style.cascaded().webkit_box_vertical != Some(true);
+        && c.style.used().reset_flex.flex_wrap != Some(true)
+        && c.style.cascaded().inh.text_flow.webkit_box_vertical != Some(true);
     // Зазор гибкой стопки (`row-gap`) встал бы и перед распоркой — лишний
     // зазор, как у сетки-стопки; такой разрыв остаётся без роста.
     let flex_gapped = is_flex
-        && c.style.used().webkit_box != Some(true)
-        && matches!(c.style.used().gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
+        && c.style.used().reset_flex.webkit_box != Some(true)
+        && matches!(c.style.used().reset_flex.gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
     let at = if grid_stack(c) || row_nowrap || flex_gapped {
         None
     } else {
@@ -50,13 +50,13 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
         // `margin-bottom: 50px`, обе зелёные).
         let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
         let prev_mb = match pi.map(|j| &c.children[j]) {
-            Some(Node::Element(k)) => k.style.used().margin.bottom,
+            Some(Node::Element(k)) => k.style.used().reset_box_layout.margin.bottom,
             _ => None,
         };
         if prev_mb.is_some()
             && let Some(Node::Element(k)) = pi.map(|j| &mut c.children[j])
         {
-            k.style.used_mut().margin.bottom = None;
+            k.style.used_mut().reset_box_layout.margin.bottom = None;
         }
         let mut style = crate::style::computed::Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(
@@ -67,20 +67,20 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
             ),
             ..Default::default()
         };
-        style.margin.bottom = prev_mb;
+        style.reset_box_layout.margin.bottom = prev_mb;
         // Распорка в гибком хозяине — сама элемент: при переносе по строкам
         // она обязана занять СВОЮ строку (иначе встаёт рядом с предыдущим
         // элементом и строку не растит), не сжиматься в контейнере с заданной
         // высотой и стоять в визуальном порядке рядом со своей коробкой
         // (`order`, `reorder` в `blocks()`).
         if matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             Some(Display::Flex) | Some(Display::InlineFlex)
         ) {
-            style.width = Some(Len::Pct(1.0));
-            style.flex_shrink = Some(0.0);
+            style.reset_box_layout.width = Some(Len::Pct(1.0));
+            style.reset_flex.flex_shrink = Some(0.0);
             if let Node::Element(k) = &c.children[i] {
-                style.order = k.style.used().order;
+                style.reset_flex.order = k.style.used().reset_flex.order;
             }
         }
         c.children.insert(
@@ -152,7 +152,10 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(strut.style.used().height, Some(Len::Px(80.0)));
+        assert_eq!(
+            strut.style.used().reset_box_layout.height,
+            Some(Len::Px(80.0))
+        );
         let laid = Laid::of_boxes(&[
             (blocks.id, 0.0, 130.0),
             (first, 0.0, 20.0),

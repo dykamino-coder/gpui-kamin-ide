@@ -35,11 +35,11 @@ impl Lines {
             || b.tail != 0.
             || child.line_trim.is_some()
             || child.over > child.h + COORD_EPS
-            || style.height.is_some()
-            || style.min_height.is_some()
-            || style.max_height.is_some()
-            || style.aspect_ratio.is_some()
-            || style.contain_size == Some(true)
+            || style.reset_box_layout.height.is_some()
+            || style.reset_box_layout.min_height.is_some()
+            || style.reset_box_layout.max_height.is_some()
+            || style.reset_shapes.aspect_ratio.is_some()
+            || style.reset_context.contain_size == Some(true)
             || crate::layout::box_kind::clamp_host(&r.source, &style)
             || !r.source.children.iter().all(|n| matches!(n, Node::Text(_)))
         {

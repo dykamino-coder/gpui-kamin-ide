@@ -11,12 +11,17 @@ pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &BoxStyle) {
     // Other preferences keep their existing fallback rather than moving the box.
     if c.context.parent_grid == 1
         && !c.wm().vertical()
-        && c.align_content_baseline == Some(false)
+        && c.reset_flex.align_content_baseline == Some(false)
         && matches!(
-            c.align_self.or(c.context.parent_grid_align_items),
+            c.reset_flex
+                .align_self
+                .or(c.context.parent_grid_align_items),
             None | Some(Align::Stretch)
         )
-        && !matches!(c.position, Some(Position::Absolute | Position::Fixed))
+        && !matches!(
+            c.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
     {
         style.table_cell_baseline = Some(true);
     }
@@ -33,16 +38,16 @@ mod tests {
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("align-content", "first baseline", vcx);
-        assert_eq!(parent.align_content_baseline, Some(false));
+        assert_eq!(parent.reset_flex.align_content_baseline, Some(false));
         let mut own = Computed::default();
         own.apply_one("align-content", "inherit", vcx);
         let inherited =
             crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
-        assert_eq!(inherited.align_content_baseline, Some(false));
+        assert_eq!(inherited.reset_flex.align_content_baseline, Some(false));
         parent.apply_one("align-content", "last baseline", vcx);
-        assert_eq!(parent.align_content_baseline, Some(true));
+        assert_eq!(parent.reset_flex.align_content_baseline, Some(true));
         parent.apply_one("align-content", "normal", vcx);
-        assert_eq!(parent.align_content_baseline, None);
+        assert_eq!(parent.reset_flex.align_content_baseline, None);
     }
 
     #[test]

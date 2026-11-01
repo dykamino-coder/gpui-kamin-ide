@@ -43,7 +43,7 @@ fn logical_alignment_follows_the_writing_direction() {
         &styled("text-align: start", vcx),
         vcx,
     );
-    assert_eq!(ltr.text_align, Some(TextAlign::Start));
+    assert_eq!(ltr.inh.text_flow.text_align, Some(TextAlign::Start));
     assert_eq!(
         crate::text::paragraph::align_for(&ltr),
         crate::text::paragraph::Align::Left
@@ -168,10 +168,21 @@ fn inheritance_carries_text_not_box() {
     let parent = styled("color: #ff0000; padding: 10px; font-size: 20px", vcx);
     let child = styled("font-weight: 700", vcx);
     let merged = inherit(&BoxStyle::from(parent), &child, vcx);
-    assert_eq!(merged.color.map(|c| c.r), Some(1.0), "цвет наследуется");
-    assert_eq!(merged.font_size, Some(Len::Px(20.0)), "размер наследуется");
-    assert_eq!(merged.font_weight, Some(700), "свой вес сохранён");
-    assert_eq!(merged.padding.top, None, "отступ родителя вниз не идёт");
+    assert_eq!(
+        merged.inh.ui.color.map(|c| c.r),
+        Some(1.0),
+        "цвет наследуется"
+    );
+    assert_eq!(
+        merged.inh.font.font_size,
+        Some(Len::Px(20.0)),
+        "размер наследуется"
+    );
+    assert_eq!(merged.inh.font.font_weight, Some(700), "свой вес сохранён");
+    assert_eq!(
+        merged.reset_box_layout.padding.top, None,
+        "отступ родителя вниз не идёт"
+    );
 }
 
 #[test]
@@ -182,6 +193,8 @@ fn own_style_wins_over_inherited() {
     let child = styled("color: #0000ff", vcx);
     assert_eq!(
         inherit(&BoxStyle::from(parent), &child, vcx)
+            .inh
+            .ui
             .color
             .map(|c| c.b),
         Some(1.0)

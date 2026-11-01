@@ -84,25 +84,25 @@ pub fn apply_hover(d: Div, hover: &Computed, own: &BoxStyle) -> Div {
     let background = own.background_paint.paints();
     let h = hover.clone();
     d.hover(move |mut s| {
-        if background && let Some(bg) = h.background {
+        if background && let Some(bg) = h.reset_background.background {
             s.background = Some(gpui::Fill::Color(bg.to_hsla().into()));
         }
-        if background && let Some(g) = &h.gradient {
+        if background && let Some(g) = &h.reset_background.gradient {
             s.background = Some(gpui::Fill::Color(fill(g)));
         }
         if let Some(bc) = h.used_uniform_border_color() {
             s.border_color = Some(bc.to_hsla());
         }
-        if let Some(o) = h.opacity {
+        if let Some(o) = h.reset_effects.opacity {
             s.opacity = Some(o);
         }
-        if let Some(col) = h.color {
+        if let Some(col) = h.inh.ui.color {
             s.text.color = Some(col.to_hsla());
         }
-        if let Some(w) = h.font_weight {
+        if let Some(w) = h.inh.font.font_weight {
             s.text.font_weight = Some(gpui::FontWeight(w as f32));
         }
-        if h.italic == Some(true) {
+        if h.inh.font.italic == Some(true) {
             s.text.font_style = Some(gpui::FontStyle::Italic);
         }
         s
@@ -198,10 +198,10 @@ pub(crate) fn apply_for_decorations_with_dimensions(
     // line box. A float is out of flow, so it never gives the enclosing
     // inline-block its baseline (Blink `PropagateBaselineFromBlockChild`
     // ignores floats), whatever row or block wraps it.
-    if c.floated_box || c.float.is_some_and(|f| f != 0) {
+    if c.reset_context.floated_box || c.reset_box_layout.float.is_some_and(|f| f != 0) {
         d.style().no_inline_block_baseline = Some(true);
     }
-    if c.baseline_orthogonal {
+    if c.reset_context.baseline_orthogonal {
         d.style().baseline_unavailable = Some(true);
     }
     d = apply_box(d, c, vcx);
@@ -209,7 +209,7 @@ pub(crate) fn apply_for_decorations_with_dimensions(
     apply_text(
         d,
         c,
-        c.text_shadow_ink.or(c.ink()),
+        c.reset_text_box.text_shadow_ink.or(c.ink()),
         c.paints_decorations(),
         vcx,
     )

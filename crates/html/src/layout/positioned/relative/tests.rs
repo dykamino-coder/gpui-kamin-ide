@@ -39,9 +39,9 @@ fn hoisted_absolute_box_keeps_its_element_and_css_parent_values() {
     // Re-entering under the block keeps the inline's inherited values.
     let span_box = box_style(&block_box, &span.style, vcx);
     let moved_box = box_style(&block_box, &moved.style, vcx);
-    assert_eq!(moved_box.color, span_box.color);
-    assert_ne!(moved_box.color, block_box.color);
-    assert_eq!(moved_box.font_size, span_box.font_size);
+    assert_eq!(moved_box.inh.ui.color, span_box.inh.ui.color);
+    assert_ne!(moved_box.inh.ui.color, block_box.inh.ui.color);
+    assert_eq!(moved_box.inh.font.font_size, span_box.inh.font.font_size);
     // The element's own style is left as it was.
     assert!(original.style.published().is_some());
 }
@@ -75,6 +75,6 @@ fn hoisted_absolute_box_recomputes_position_try_under_its_css_parent() {
     let [(0, first), (1, fallback)] = options.styles.as_slice() else {
         panic!("the base style and one fallback");
     };
-    assert_eq!(first.inset.top, Some(Len::Px(300.0)));
-    assert_eq!(fallback.inset.top, Some(Len::Px(10.0)));
+    assert_eq!(first.reset_positioned.inset.top, Some(Len::Px(300.0)));
+    assert_eq!(fallback.reset_positioned.inset.top, Some(Len::Px(10.0)));
 }

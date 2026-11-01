@@ -13,17 +13,20 @@ use std::cell::RefCell;
 
 pub(crate) fn float_copy(e: &Element, vcx: FrameCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
-        e.style.used().bdb_clone
-            || e.style.used().text_box_trim_start
-            || e.style.used().text_box_trim_end
+        e.style.used().reset_fragmentation.bdb_clone
+            || e.style.used().reset_text_box.text_box_trim_start
+            || e.style.used().reset_text_box.text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || e.style.used().wm().vertical()
-            || e.style.used().column_span == Some(true)
+            || e.style.used().reset_fragmentation.column_span == Some(true)
             || crate::layout::multicol::spanner::multicol_container(&e.style.used())
-            || matches!(e.style.used().display, Some(Display::Flex | Display::Grid))
+            || matches!(
+                e.style.used().reset_box_layout.display,
+                Some(Display::Flex | Display::Grid)
+            )
             || (out_of_flow(&e.style.used())
-                && (e.style.used().float.unwrap_or(0) == 0
+                && (e.style.used().reset_box_layout.float.unwrap_or(0) == 0
                     || !crate::layout::fragment::clone::content_monolith_blockified(e)))
             || e.children
                 .iter()
@@ -62,7 +65,7 @@ fn prepare(
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, FlowMargins)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    if merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end {
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);

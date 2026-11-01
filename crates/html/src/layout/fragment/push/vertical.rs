@@ -24,9 +24,9 @@ pub(super) fn push(
                 unreachable!()
             };
             let margin = if reverse {
-                &mut child.style.used_mut().margin.right
+                &mut child.style.used_mut().reset_box_layout.margin.right
             } else {
-                &mut child.style.used_mut().margin.left
+                &mut child.style.used_mut().reset_box_layout.margin.left
             };
             *margin = Some(Len::Px(px_lossy_zero(*margin) + grow));
             return true;
@@ -41,25 +41,25 @@ pub(super) fn push(
             .find(|n| !crate::dom::whitespace::is_blank(n));
         let tail = if let Some(Node::Element(k)) = previous {
             if reverse {
-                k.style.used_mut().margin.left.take()
+                k.style.used_mut().reset_box_layout.margin.left.take()
             } else {
-                k.style.used_mut().margin.right.take()
+                k.style.used_mut().reset_box_layout.margin.right.take()
             }
         } else {
             None
         };
         let mut spacer = crate::layout::table::anon::anon_element("div", Vec::new());
         spacer.node_id = id ^ crate::layout::fragment::flow::blocks::STRUT_ID;
-        spacer.style.used_mut().width = Some(Len::Px(grow));
-        spacer.style.used_mut().flex_shrink = Some(0.0);
+        spacer.style.used_mut().reset_box_layout.width = Some(Len::Px(grow));
+        spacer.style.used_mut().reset_flex.flex_shrink = Some(0.0);
         if reverse {
-            spacer.style.used_mut().margin.left = tail;
+            spacer.style.used_mut().reset_box_layout.margin.left = tail;
         } else {
-            spacer.style.used_mut().margin.right = tail;
+            spacer.style.used_mut().reset_box_layout.margin.right = tail;
         }
         parent.children.insert(at, Node::Element(spacer));
-        if let Some(Len::Px(width)) = parent.style.used().width {
-            parent.style.used_mut().width = Some(Len::Px(width + grow));
+        if let Some(Len::Px(width)) = parent.style.used().reset_box_layout.width {
+            parent.style.used_mut().reset_box_layout.width = Some(Len::Px(width + grow));
         }
         return true;
     }
@@ -110,13 +110,16 @@ mod tests {
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
             };
-            assert_eq!(child.style.used().width, Some(Len::Px(20.0)));
             assert_eq!(
-                child.style.used().margin.left,
+                child.style.used().reset_box_layout.width,
+                Some(Len::Px(20.0))
+            );
+            assert_eq!(
+                child.style.used().reset_box_layout.margin.left,
                 Some(Len::Px(if reverse { 3.0 } else { 14.0 }))
             );
             assert_eq!(
-                child.style.used().margin.right,
+                child.style.used().reset_box_layout.margin.right,
                 Some(Len::Px(if reverse { 18.0 } else { 7.0 }))
             );
         }
@@ -155,17 +158,23 @@ mod tests {
                 panic!("next")
             };
             assert_eq!(next.node_id, id);
-            assert_eq!(spacer.style.used().width, Some(Len::Px(13.0)));
-            assert_eq!(host.style.used().width, Some(Len::Px(93.0)));
+            assert_eq!(
+                spacer.style.used().reset_box_layout.width,
+                Some(Len::Px(13.0))
+            );
+            assert_eq!(
+                host.style.used().reset_box_layout.width,
+                Some(Len::Px(93.0))
+            );
             let (before, after) = if reverse {
                 (
-                    previous.style.used().margin.left,
-                    spacer.style.used().margin.left,
+                    previous.style.used().reset_box_layout.margin.left,
+                    spacer.style.used().reset_box_layout.margin.left,
                 )
             } else {
                 (
-                    previous.style.used().margin.right,
-                    spacer.style.used().margin.right,
+                    previous.style.used().reset_box_layout.margin.right,
+                    spacer.style.used().reset_box_layout.margin.right,
                 )
             };
             assert_eq!(before, None);

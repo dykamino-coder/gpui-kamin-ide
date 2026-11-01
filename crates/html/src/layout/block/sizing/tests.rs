@@ -91,7 +91,7 @@ fn transferred_constraint_preserves_content_box_units() {
         ),
         ..Computed::default()
     };
-    style.padding.bottom = Some(Len::Px(20.0));
+    style.reset_box_layout.padding.bottom = Some(Len::Px(20.0));
     assert_eq!(
         BoxDimensions::from_computed(&style)
             .transfer_ratio(&style)

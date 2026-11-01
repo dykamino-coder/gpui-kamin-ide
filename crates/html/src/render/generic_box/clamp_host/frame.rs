@@ -17,32 +17,38 @@ pub(super) fn resolved_style(c: &BoxStyle, used: gpui::MeasuredBox, vcx: ValueCx
             _ => Some(v),
         })
     };
-    frame.padding.top = Some(Len::Px(used.padding.top.into()));
-    frame.padding.right = Some(Len::Px(used.padding.right.into()));
-    frame.padding.bottom = Some(Len::Px(used.padding.bottom.into()));
-    frame.padding.left = Some(Len::Px(used.padding.left.into()));
+    frame.reset_box_layout.padding.top = Some(Len::Px(used.padding.top.into()));
+    frame.reset_box_layout.padding.right = Some(Len::Px(used.padding.right.into()));
+    frame.reset_box_layout.padding.bottom = Some(Len::Px(used.padding.bottom.into()));
+    frame.reset_box_layout.padding.left = Some(Len::Px(used.padding.left.into()));
     let style: &mut crate::style::computed::Computed = &mut frame;
     for (axis, basis) in [used.parent_size.width, used.parent_size.height]
         .into_iter()
         .enumerate()
     {
         let frame = &mut *style;
-        if !c.stretch_size[axis] {
+        if !c.reset_box_layout.stretch_size[axis] {
             let dimension = if axis == 0 {
-                &mut frame.width
+                &mut frame.reset_box_layout.width
             } else {
-                &mut frame.height
+                &mut frame.reset_box_layout.height
             };
             *dimension = resolve(*dimension, basis);
         }
         let (min, max) = if axis == 0 {
-            (&mut frame.min_width, &mut frame.max_width)
+            (
+                &mut frame.reset_box_layout.min_width,
+                &mut frame.reset_box_layout.max_width,
+            )
         } else {
-            (&mut frame.min_height, &mut frame.max_height)
+            (
+                &mut frame.reset_box_layout.min_height,
+                &mut frame.reset_box_layout.max_height,
+            )
         };
         *min = resolve(*min, basis);
         *max = resolve(*max, basis);
-        frame.fit_arg[axis] = resolve(frame.fit_arg[axis], basis);
+        frame.reset_context.fit_arg[axis] = resolve(frame.reset_context.fit_arg[axis], basis);
     }
     frame
 }
@@ -92,10 +98,10 @@ mod tests {
                 }
             };
             let frame = resolved_style(&BoxStyle::from(c.clone()), used, values);
-            assert_eq!(frame.width, Some(Len::Px(150.)));
-            assert_eq!(frame.height, Some(Len::Px(100.)));
-            assert_eq!(frame.min_height, Some(Len::Px(50.)));
-            assert_eq!(frame.padding.top, Some(Len::Px(30.)));
+            assert_eq!(frame.reset_box_layout.width, Some(Len::Px(150.)));
+            assert_eq!(frame.reset_box_layout.height, Some(Len::Px(100.)));
+            assert_eq!(frame.reset_box_layout.min_height, Some(Len::Px(50.)));
+            assert_eq!(frame.reset_box_layout.padding.top, Some(Len::Px(30.)));
             use gpui::Styled;
             let mut element = crate::paint::apply::apply(gpui::div(), &frame, values);
             super::super::frame(&mut element, Some(px(210.)));

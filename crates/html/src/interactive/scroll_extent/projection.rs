@@ -34,8 +34,9 @@ pub(crate) fn projection(
         return None;
     }
     if c.is_some_and(|c| {
-        c.position == Some(Position::Fixed) && !c.transform_ancestor
-            || c.position == Some(Position::Absolute) && c.cb_node != parent
+        c.reset_positioned.position == Some(Position::Fixed)
+            && !c.reset_transforms.transform_ancestor
+            || c.reset_positioned.position == Some(Position::Absolute) && c.cb_node != parent
     }) {
         return None;
     }
@@ -114,7 +115,7 @@ mod tests {
                     ..Computed::default()
                 });
                 with_inherited.self_node = 7;
-                with_inherited.rtl = Some(true);
+                with_inherited.inh.writing.rtl = Some(true);
                 with_inherited
             };
             classic::model(Some(&frame), 7, &parent);
@@ -171,7 +172,7 @@ mod tests {
                 ..Computed::default()
             });
             with_inherited.self_node = 7;
-            with_inherited.rtl = Some(true);
+            with_inherited.inh.writing.rtl = Some(true);
             with_inherited
         };
         {

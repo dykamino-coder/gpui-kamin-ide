@@ -37,13 +37,15 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
                 &item.style.used(),
                 vcx,
             )
+            .inh
+            .table_list
             .list_style_image
             .clone();
             let mut node = Node::Element(item);
             for level in 0..depth {
                 let mut parent = ancestor.clone();
                 if level == 0 && depth == 2 {
-                    parent.style.used_mut().list_style_image = None;
+                    parent.style.used_mut().inh.table_list.list_style_image = None;
                 }
                 parent.children = vec![node].into();
                 node = Node::Element(parent);
@@ -59,7 +61,10 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
                 panic!("вынесенный пункт списка")
             };
             let merged = inherit(&BoxStyle::default(), &item.style.used(), vcx);
-            assert_eq!(merged.list_style_image, expected, "{own}, depth={depth}");
+            assert_eq!(
+                merged.inh.table_list.list_style_image, expected,
+                "{own}, depth={depth}"
+            );
             let resolved = marker::resolve(item, &Computed::default(), &merged, vcx).unwrap();
             assert_eq!(resolved.image.is_some(), own != "list-style-image:none");
         }
@@ -82,7 +87,15 @@ fn inherited_marker_image_only_generates_a_marker_for_a_list_item() {
             &child.style.used(),
             vcx,
         );
-        assert!(merged.list_style_image.as_ref().unwrap().is_some());
+        assert!(
+            merged
+                .inh
+                .table_list
+                .list_style_image
+                .as_ref()
+                .unwrap()
+                .is_some()
+        );
         assert_eq!(
             marker::resolve(&child, &parent.style.used(), &merged, vcx).is_some(),
             display == "list-item"
@@ -108,7 +121,7 @@ fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
     let Node::Element(copy) = &mut nodes[0] else {
         unreachable!()
     };
-    copy.style.used_mut().list_style_type =
+    copy.style.used_mut().inh.table_list.list_style_type =
         Some(crate::style::computed::MarkerType::Counter("circle".into()));
     let split = split_block_in_inline(&nodes);
     let [Node::Element(item)] = split.as_slice() else {
@@ -116,7 +129,7 @@ fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
     };
     let boxed = box_style(&BoxStyle::default(), &item.style, vcx);
     assert_eq!(
-        boxed.list_style_type,
+        boxed.inh.table_list.list_style_type,
         Some(crate::style::computed::MarkerType::Counter("square".into()))
     );
     let marker = marker::resolve(item, &Computed::default(), &boxed, vcx).unwrap();

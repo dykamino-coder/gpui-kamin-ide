@@ -62,11 +62,14 @@ pub(super) fn initial_letter_style(
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::values::ValueCx<'_>,
 ) -> Computed {
-    let lead_w = if !vert && inherited.keep_spaces == Some(true) && !lead.contains(['\n', '\r']) {
+    let lead_w = if !vert
+        && inherited.inh.text_flow.keep_spaces == Some(true)
+        && !lead.contains(['\n', '\r'])
+    {
         let space = crate::text::metrics::ch_ex_px(&family, font_px, fonts, vcx).0;
-        let stop = match inherited.tab_size_len {
+        let stop = match inherited.inh.text_flow.tab_size_len {
             Some(Len::Px(v)) if v > 0.0 => v,
-            _ => inherited.tab_size.unwrap_or(8.0).max(0.0) * space,
+            _ => inherited.inh.text_flow.tab_size.unwrap_or(8.0).max(0.0) * space,
         };
         lead.chars().fold(0.0f32, |x, c| match c {
             '\t' if stop > 0.0 => ((x / stop).floor() + 1.0) * stop,
@@ -92,36 +95,40 @@ pub(super) fn initial_letter_style(
             ),
             reset_background: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetBackground {
-                    background: (first.background != inherited.background)
-                        .then_some(first.background)
+                    background: (first.reset_background.background
+                        != inherited.reset_background.background)
+                        .then_some(first.reset_background.background)
                         .flatten(),
                     ..Default::default()
                 },
             ),
             ..Computed::default()
         };
-        with_inherited.font_size = Some(Len::Px(letter_px));
-        with_inherited.line_height = Some(Len::Px(box_h));
-        with_inherited.font_family = Some(letter_family);
-        with_inherited.font_weight = first.font_weight;
-        with_inherited.italic = first.italic;
-        with_inherited.color = color;
+        with_inherited.inh.font.font_size = Some(Len::Px(letter_px));
+        with_inherited.inh.font.line_height = Some(Len::Px(box_h));
+        with_inherited.inh.font.font_family = Some(letter_family);
+        with_inherited.inh.font.font_weight = first.inh.font.font_weight;
+        with_inherited.inh.font.italic = first.inh.font.italic;
+        with_inherited.inh.ui.color = color;
         with_inherited
     };
     // Картинки фона слоя первой буквы (css-pseudo-4 §3.6: к `::first-letter`
     // применимы все свойства фона) — со своими размером, положением,
     // повтором и списками слоёв. Прежде переносился только цвет, и вместо
     // зелёных картинок проступал красный цвет фона (`background-image-007`).
-    if first.bg_image.is_some() || first.gradient.is_some() || !first.bg_lists.is_empty() {
-        style.bg_image = first.bg_image.clone();
-        style.gradient = first.gradient.clone();
-        style.gradient_raw = first.gradient_raw.clone();
-        style.bg_size = first.bg_size;
-        style.bg_pos = first.bg_pos;
-        style.bg_repeat = first.bg_repeat;
-        style.bg_origin = first.bg_origin;
-        style.bg_clip = first.bg_clip;
-        style.bg_lists = first.bg_lists.clone();
+    if first.reset_background.bg_image.is_some()
+        || first.reset_background.gradient.is_some()
+        || !first.reset_background.bg_lists.is_empty()
+    {
+        style.reset_background.bg_image = first.reset_background.bg_image.clone();
+        style.reset_background.gradient = first.reset_background.gradient.clone();
+        style.reset_background.gradient_raw = first.reset_background.gradient_raw.clone();
+        style.reset_background.bg_size = first.reset_background.bg_size;
+        style.reset_background.bg_pos = first.reset_background.bg_pos;
+        style.reset_background.bg_repeat = first.reset_background.bg_repeat;
+        style.reset_background.bg_origin = first.reset_background.bg_origin;
+        style.reset_background.bg_clip = first.reset_background.bg_clip;
+        style.reset_background.bg_lists = first.reset_background.bg_lists.clone();
     }
     // Сдвиг ложится на поле БЛОК-СТАРТА и СКЛАДЫВАЕТСЯ с полем слоя — ровно
     // так же, как в эталонах: `block-position-margins-vrl` задаёт слою
@@ -129,24 +136,37 @@ pub(super) fn initial_letter_style(
     // = 45 + (−4); у `-vlr` то же на левом краю — `margin-left: 11px`
     // = 15 + (−4).
     let (mt, ml, mr) = (
-        own(first.margin.top, inherited.margin.top),
-        own(first.margin.left, inherited.margin.left),
-        own(first.margin.right, inherited.margin.right),
+        own(
+            first.reset_box_layout.margin.top,
+            inherited.reset_box_layout.margin.top,
+        ),
+        own(
+            first.reset_box_layout.margin.left,
+            inherited.reset_box_layout.margin.left,
+        ),
+        own(
+            first.reset_box_layout.margin.right,
+            inherited.reset_box_layout.margin.right,
+        ),
     );
-    style.margin.top = Some(Len::Px(if vert { mt } else { mt + top }));
-    style.margin.bottom = Some(Len::Px(own(first.margin.bottom, inherited.margin.bottom)));
-    style.margin.left = Some(Len::Px(if vert && !block_rl {
+    style.reset_box_layout.margin.top = Some(Len::Px(if vert { mt } else { mt + top }));
+    style.reset_box_layout.margin.bottom = Some(Len::Px(own(
+        first.reset_box_layout.margin.bottom,
+        inherited.reset_box_layout.margin.bottom,
+    )));
+    style.reset_box_layout.margin.left = Some(Len::Px(if vert && !block_rl {
         ml + top
     } else {
         ml + indent
     }));
-    style.margin.right = Some(Len::Px(if vert && block_rl { mr + top } else { mr }));
+    style.reset_box_layout.margin.right =
+        Some(Len::Px(if vert && block_rl { mr + top } else { mr }));
     // Знак встаёт ЗА ведущими пробелами: внутренний отступ строки флоата =
     // отступ абзаца + их ширина (в rtl отступ идёт от правого края коробки,
     // и пробелы остаются у начала строки). Без ведущих пробелов отступ
     // наследуется, как раньше.
     if lead_w > 0.0 {
-        style.text_indent = Some(Len::Px(para_indent + lead_w));
+        style.inh.text_flow.text_indent = Some(Len::Px(para_indent + lead_w));
     }
     style
 }

@@ -43,7 +43,7 @@ pub(super) fn finish_stack_child(
     // по собственным причинам коробки (css-break-3 §4.1).
     let (measure, monolith) =
         measured_monolith(measured_kids, copy, nest_row, whole, scrolls, monolith);
-    let span = copy.style.used().column_span == Some(true) && !copy.inline;
+    let span = copy.style.used().reset_fragmentation.column_span == Some(true) && !copy.inline;
     // Число копий — по измеренной протяжённости (`reserve_overflow_copies`).
     let kid_copies = copies;
     let mut child = stack_child_of(
@@ -107,12 +107,12 @@ pub(super) fn measured_monolith(
     } else if measure.is_some() {
         nest_row.is_none()
             && (size_monolith(copy)
-                || copy.style.used().break_inside_avoid
+                || copy.style.used().reset_fragmentation.break_inside_avoid
                 // Атомарная строчная коробка стоит в строке, а строка
                 // неделима (css-break-3 §4.1, §4.3 class B — только между
                 // строками; Blink `LayoutBox::IsMonolithic`: `IsInline()`).
                 || matches!(
-                    copy.style.used().display,
+                    copy.style.used().reset_box_layout.display,
                     Some(
                         Display::InlineBlock
                             | Display::InlineTable
@@ -123,11 +123,11 @@ pub(super) fn measured_monolith(
                 // css-break-3 §4.1 допускает монолитный overflow:hidden
                 // с auto block size; сохраняем выбор старого пути для строк.
                 || (monolith
-                    && matches!(copy.style.used().height, None | Some(Len::Auto))
-                    && [copy.style.used().overflow_x, copy.style.used().overflow_y].contains(
+                    && matches!(copy.style.used().reset_box_layout.height, None | Some(Len::Auto))
+                    && [copy.style.used().reset_box_layout.overflow_x, copy.style.used().reset_box_layout.overflow_y].contains(
                         &Some(crate::style::computed::Overflow::Hidden)))
-                || scrolls(copy.style.used().overflow_x)
-                || scrolls(copy.style.used().overflow_y))
+                || scrolls(copy.style.used().reset_box_layout.overflow_x)
+                || scrolls(copy.style.used().reset_box_layout.overflow_y))
     } else {
         monolith
     };

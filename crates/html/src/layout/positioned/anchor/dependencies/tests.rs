@@ -61,7 +61,7 @@ fn waits_for_later_inflow_anchor_and_all_candidate_dependencies() {
         .borrow_mut()
         .push(("--other".into(), 5, record(5, 0)));
     assert!(deps.ready());
-    c.position_try_fallbacks.clear();
+    c.reset_positioned.position_try_fallbacks.clear();
     assert!(Dependencies::of(&c, &BoxStyle::default(), vcx, &doc.layout).ready());
     doc.layout.anchors.named_seq.borrow_mut().clear();
     assert!(!deps.ready());

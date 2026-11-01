@@ -36,12 +36,12 @@ fn pairs(text: &Option<String>, default: i64) -> Vec<(String, i64)> {
 
 fn apply(values: &mut Values, style: &Computed, document: &mut Counters) {
     // CSS Paged Media 3 §page-based-counters: pages cannot be manipulated.
-    for (name, value) in pairs(&style.counter_reset, 0) {
+    for (name, value) in pairs(&style.reset_generated.counter_reset, 0) {
         if name != "pages" {
             values.insert(name, value);
         }
     }
-    for (name, value) in pairs(&style.counter_increment, 1) {
+    for (name, value) in pairs(&style.reset_generated.counter_increment, 1) {
         if name != "pages" {
             let current = values
                 .entry(name.clone())
@@ -49,7 +49,7 @@ fn apply(values: &mut Values, style: &Computed, document: &mut Counters) {
             *current = current.saturating_add(value);
         }
     }
-    for (name, value) in pairs(&style.counter_set, 0) {
+    for (name, value) in pairs(&style.reset_generated.counter_set, 0) {
         if name != "pages" {
             values.insert(name, value);
         }
@@ -94,7 +94,7 @@ impl PageCounters {
         self.pages = pages;
         self.current = self.values.clone();
         apply(&mut self.current, page, &mut self.document);
-        if !pairs(&page.counter_increment, 1)
+        if !pairs(&page.reset_generated.counter_increment, 1)
             .iter()
             .any(|(name, _)| name == "page")
         {
@@ -104,7 +104,7 @@ impl PageCounters {
         // Page resets shadow the incoming counter only on that page. Blink's
         // ObscurePageCounterIfNeeded/UnobscurePageCounterIfNeeded restore the
         // outer value on exit; increments without a reset persist across pages.
-        let resets = pairs(&page.counter_reset, 0);
+        let resets = pairs(&page.reset_generated.counter_reset, 0);
         for (name, value) in &self.current {
             if !resets.iter().any(|(reset, _)| reset == name) {
                 self.values.insert(name.clone(), *value);
@@ -127,11 +127,21 @@ impl PageCounters {
 }
 
 pub(super) fn resolve(style: &mut Computed, parent: &Computed) {
-    for (value, inherited) in [
-        (&mut style.counter_reset, &parent.counter_reset),
-        (&mut style.counter_increment, &parent.counter_increment),
-        (&mut style.counter_set, &parent.counter_set),
-    ] {
+    for style_field_index in 0..3 {
+        let (value, inherited) = match style_field_index {
+            0 => (
+                &mut style.reset_generated.counter_reset,
+                &parent.reset_generated.counter_reset,
+            ),
+            1 => (
+                &mut style.reset_generated.counter_increment,
+                &parent.reset_generated.counter_increment,
+            ),
+            _ => (
+                &mut style.reset_generated.counter_set,
+                &parent.reset_generated.counter_set,
+            ),
+        };
         if value.as_deref() == Some("inherit") {
             *value = inherited.clone();
         }

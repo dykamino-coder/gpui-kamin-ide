@@ -14,18 +14,19 @@ pub(crate) fn ordered_element(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Node {
-    e.style.used_mut().float = None;
-    e.style.used_mut().clear = None;
-    e.style.used_mut().vertical_align = None;
-    e.style.used_mut().flex_item = matches!(
-        inherited.display,
+    e.style.used_mut().reset_box_layout.float = None;
+    e.style.used_mut().reset_box_layout.clear = None;
+    e.style.used_mut().inh.text_flow.vertical_align = None;
+    e.style.used_mut().reset_flex.flex_item = matches!(
+        inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
-    e.style.used_mut().flex_line_wraps =
-        e.style.used().flex_item && inherited.flex_wrap == Some(true);
-    e.style.used_mut().flex_main_vertical =
-        matches!(inherited.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse))
-            != (inherited.wm().vertical());
+    e.style.used_mut().reset_flex.flex_line_wraps =
+        e.style.used().reset_flex.flex_item && inherited.reset_flex.flex_wrap == Some(true);
+    e.style.used_mut().reset_flex.flex_main_vertical = matches!(
+        inherited.reset_flex.flex_dir,
+        Some(FlexDir::Col | FlexDir::ColReverse)
+    ) != (inherited.wm().vertical());
     // Элемент КОЛОНКИ: определён ли главный размер
     // контейнера (css-flexbox-1 §9.8 п.1). От этого зависит,
     // определён ли блок у ЕГО детей — доля высоты внутри
@@ -33,10 +34,10 @@ pub(crate) fn ordered_element(
     // (Blink `flex_layout_algorithm.cc`:
     // `is_initial_block_size_indefinite`).
     if matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     ) && matches!(
-        inherited.flex_dir,
+        inherited.reset_flex.flex_dir,
         Some(FlexDir::Col) | Some(FlexDir::ColReverse)
     ) {
         // Абсолют с ОБОИМИ вертикальными отступами и авто-высотой
@@ -49,19 +50,21 @@ pub(crate) fn ordered_element(
         // (`percentage-heights-002`: синяя полоса по содержимому,
         // красный фон контейнера под ней).
         let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
-        let abs_both_insets = matches!(
-            inherited.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        ) && matches!(inherited.height, None | Some(Len::Auto))
-            && edge(inherited.inset.top)
-            && edge(inherited.inset.bottom);
-        let definite = matches!(inherited.height, Some(Len::Px(_)))
-            || (matches!(inherited.height, Some(Len::Pct(_))) && inherited.cb_height_def)
+        let abs_both_insets =
+            matches!(
+                inherited.reset_positioned.position,
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
+            ) && matches!(inherited.reset_box_layout.height, None | Some(Len::Auto))
+                && edge(inherited.reset_positioned.inset.top)
+                && edge(inherited.reset_positioned.inset.bottom);
+        let definite = matches!(inherited.reset_box_layout.height, Some(Len::Px(_)))
+            || (matches!(inherited.reset_box_layout.height, Some(Len::Pct(_)))
+                && inherited.cb_height_def)
             || abs_both_insets
             || inherited.stretched
-            || inherited.root_box;
-        e.style.used_mut().flex_main_def = Some(definite);
+            || inherited.reset_context.root_box;
+        e.style.used_mut().reset_flex.flex_main_def = Some(definite);
     }
     // Доля высоты элемента РЯДА при неопределённой высоте
     // контейнера ведёт себя как `auto` (CSS 2.1 §10.5;
@@ -75,36 +78,38 @@ pub(crate) fn ordered_element(
     if crate::layout::box_kind::flex_row(inherited)
         && !inherited.wm().vertical()
         && !e.style.cascaded().wm().vertical()
-        && matches!(e.style.used().height, Some(Len::Pct(_)))
+        && matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)))
         && !matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
     {
         let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
-        let cross_definite = matches!(inherited.height, Some(Len::Px(_)))
-            || (matches!(inherited.height, Some(Len::Pct(_))) && inherited.cb_height_def)
+        let cross_definite = matches!(inherited.reset_box_layout.height, Some(Len::Px(_)))
+            || (matches!(inherited.reset_box_layout.height, Some(Len::Pct(_)))
+                && inherited.cb_height_def)
             || (matches!(
-                inherited.position,
+                inherited.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && edge(inherited.inset.top)
-                && edge(inherited.inset.bottom))
+            ) && edge(inherited.reset_positioned.inset.top)
+                && edge(inherited.reset_positioned.inset.bottom))
             || inherited.stretched
-            || inherited.root_box
-            || inherited.aspect_ratio.is_some();
+            || inherited.reset_context.root_box
+            || inherited.reset_shapes.aspect_ratio.is_some();
         if !cross_definite {
-            e.style.used_mut().height = None;
-            let stretch = match e.style.used().align_self {
+            e.style.used_mut().reset_box_layout.height = None;
+            let stretch = match e.style.used().reset_flex.align_self {
                 Some(a) => a == crate::style::computed::Align::Stretch,
                 None => matches!(
-                    inherited.align_items,
+                    inherited.reset_flex.align_items,
                     None | Some(crate::style::computed::Align::Stretch)
                 ),
             };
             if stretch {
-                e.style.used_mut().align_self = Some(crate::style::computed::Align::Start);
+                e.style.used_mut().reset_flex.align_self =
+                    Some(crate::style::computed::Align::Start);
             }
         }
     }

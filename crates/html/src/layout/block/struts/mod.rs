@@ -81,15 +81,15 @@ pub(super) fn first_in_flow<'a>(
                 // внутри обязан оборвать поиск — иначе отступ предыдущего
                 // блока протекает под анонимную коробку, и строка встаёт на
                 // него выше (`inline-formatting-context-002`).
-                if ch.style.used().inline_display == Some(true) {
+                if ch.style.used().reset_context.inline_display == Some(true) {
                     if replaced_inline(&ch.tag) || holds_line_box(&ch.children) {
                         return None;
                     }
                     continue;
                 }
-                if ch.style.used().inline_display != Some(true)
+                if ch.style.used().reset_context.inline_display != Some(true)
                     && matches!(
-                        ch.style.used().display,
+                        ch.style.used().reset_box_layout.display,
                         Some(Display::InlineBlock)
                             | Some(Display::InlineFlex)
                             | Some(Display::InlineGrid)
@@ -127,9 +127,12 @@ pub(crate) fn top_edge_open_at(e: &Element, width: Option<f32>) -> bool {
     // (§8.3.1 «no top padding»): `margin-collapse-028` — `padding: 50%` внутри
     // `width: 0`, поле внука уходило внутрь, и зелёная полоса ехала на 40 ниже.
     // Ширина — уровня или (в цепочке) содержимого родителя `e`.
-    let pct_zero = matches!(e.style.used().padding.top, Some(Len::Pct(_))) && width == Some(0.0);
+    let pct_zero = matches!(
+        e.style.used().reset_box_layout.padding.top,
+        Some(Len::Pct(_))
+    ) && width == Some(0.0);
     !own_context(e)
-        && (zero_len(e.style.used().padding.top) || pct_zero)
+        && (zero_len(e.style.used().reset_box_layout.padding.top) || pct_zero)
         && zero_len(e.style.used().borders().top)
 }
 
@@ -149,10 +152,10 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
     let nonzero =
         |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
     let b = c.borders();
-    nonzero(c.margin.left)
-        || nonzero(c.margin.right)
-        || nonzero(c.padding.left)
-        || nonzero(c.padding.right)
+    nonzero(c.reset_box_layout.margin.left)
+        || nonzero(c.reset_box_layout.margin.right)
+        || nonzero(c.reset_box_layout.padding.left)
+        || nonzero(c.reset_box_layout.padding.right)
         || nonzero(b.left)
         || nonzero(b.right)
 }

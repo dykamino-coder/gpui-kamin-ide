@@ -25,9 +25,9 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
             // are measured by the paragraph even without inline text.
             // Blink line_breaker.cc HandleAtomicInline lays them out first.
             // Ordinary inline fragments still need their own float lifting.
-            let container = c.style.used().inline_display != Some(true)
+            let container = c.style.used().reset_context.inline_display != Some(true)
                 && matches!(
-                    c.style.used().display,
+                    c.style.used().reset_box_layout.display,
                     Some(
                         Display::InlineBlock
                             | Display::InlineFlex
@@ -63,7 +63,7 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
                 || (!replaced_tag(c)
                     && c.children.iter().all(is_blank)
                     && matches!(
-                        c.style.used().display,
+                        c.style.used().reset_box_layout.display,
                         Some(Display::InlineBlock)
                             | Some(Display::InlineFlex)
                             | Some(Display::InlineGrid)

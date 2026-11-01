@@ -85,8 +85,8 @@ pub(crate) fn route_pieces(
         let native = wrap_rules.is_some()
             && native_request
                 .is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
-        let selectable =
-            inherited.no_select != Some(true) && inherited.pointer_events_none != Some(true);
+        let selectable = inherited.reset_context.no_select != Some(true)
+            && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
             return gpui::StyledText::new(SharedString::from(text))
                 .with_ligature_breaking(false)
@@ -141,7 +141,7 @@ pub(crate) fn route_pieces(
             && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
         {
             let mut s = style.clone();
-            s.font_features.push(("vert".into(), 1));
+            s.inh.font.font_features.push(("vert".into(), 1));
             vert_style = s;
             &vert_style
         } else {
@@ -162,19 +162,21 @@ pub(crate) fn route_pieces(
     // расходилась с абзацем-соседом.
     let align = super::alignment::marker(opts).unwrap_or_else(|| {
         inherited
+            .inh
+            .text_flow
             .text_align
             .unwrap_or(crate::style::computed::TextAlign::Start)
             .physical(inherited.wm().rtl())
     });
     let row = inline::as_wrapped_row(
         pieces,
-        inherited.vertical_align,
+        inherited.inh.text_flow.vertical_align,
         Some(align),
         inherited.wm().rtl(),
         // Ряд из слов долю не применяет (`Pct` идёт нулём); у смеси берутся
         // точки — абсолютная часть отступа, уже сведённая в `collect`.
         indent.px,
-        inherited.nowrap == Some(true),
+        inherited.inh.text_flow.nowrap == Some(true),
         &mut render_text,
         !inherited.wm().vertical() && !inherited.wm().turned(),
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),

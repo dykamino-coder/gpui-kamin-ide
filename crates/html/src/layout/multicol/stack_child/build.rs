@@ -186,10 +186,10 @@ pub(super) fn build_copy(
     // фрагмента клала элементы автоматически
     // (`grid-item-fragmentation-026`: оба в
     // области `a`, второй уезжал во 2-й ряд).
-    let kids = match &copy.style.used().grid_areas {
+    let kids = match &copy.style.used().reset_grid.grid_areas {
         Some(areas)
             if matches!(
-                copy.style.used().display,
+                copy.style.used().reset_box_layout.display,
                 Some(Display::Grid) | Some(Display::InlineGrid)
             ) =>
         {
@@ -235,10 +235,10 @@ pub(super) fn build_copy(
     let el = build.effects(root, Effect::transform(inner, merged, frame));
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
-    let el = if inner.clip_inset.is_some()
-        || inner.clip_shape.is_some()
-        || inner.clip_polygon.is_some()
-        || inner.mask_image.is_some()
+    let el = if inner.reset_mask.clip_inset.is_some()
+        || inner.reset_mask.clip_shape.is_some()
+        || inner.reset_mask.clip_polygon.is_some()
+        || inner.reset_mask.mask_image.is_some()
     {
         build.effects(el, Effect::group(inner, frame))
     } else {

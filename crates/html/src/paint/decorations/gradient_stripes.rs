@@ -144,24 +144,24 @@ pub(super) fn gradient_stripes(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>) {
                 if vertical {
                     if first_edge {
                         layer = layer
-                            .rounded_tl(px(corner(c.radius.tl)))
-                            .rounded_tr(px(corner(c.radius.tr)));
+                            .rounded_tl(px(corner(c.reset_border.radius.tl)))
+                            .rounded_tr(px(corner(c.reset_border.radius.tr)));
                     }
                     if last_edge {
                         layer = layer
-                            .rounded_bl(px(corner(c.radius.bl)))
-                            .rounded_br(px(corner(c.radius.br)));
+                            .rounded_bl(px(corner(c.reset_border.radius.bl)))
+                            .rounded_br(px(corner(c.reset_border.radius.br)));
                     }
                 } else {
                     if first_edge {
                         layer = layer
-                            .rounded_tl(px(corner(c.radius.tl)))
-                            .rounded_bl(px(corner(c.radius.bl)));
+                            .rounded_tl(px(corner(c.reset_border.radius.tl)))
+                            .rounded_bl(px(corner(c.reset_border.radius.bl)));
                     }
                     if last_edge {
                         layer = layer
-                            .rounded_tr(px(corner(c.radius.tr)))
-                            .rounded_br(px(corner(c.radius.br)));
+                            .rounded_tr(px(corner(c.reset_border.radius.tr)))
+                            .rounded_br(px(corner(c.reset_border.radius.br)));
                     }
                 }
                 out.push(

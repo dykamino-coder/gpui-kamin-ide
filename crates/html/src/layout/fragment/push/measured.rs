@@ -193,7 +193,7 @@ pub(crate) fn measured_tree(c: &Element) -> bool {
 /// Геометрия границ блоков доступна и при атомарном содержимом их строк.
 pub(crate) fn recorded_tree(c: &Element) -> bool {
     !c.marks.paginate
-        && c.style.used().column_span != Some(true)
+        && c.style.used().reset_fragmentation.column_span != Some(true)
         && clone_dec(c).is_none()
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }

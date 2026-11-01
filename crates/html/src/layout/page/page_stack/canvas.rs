@@ -19,23 +19,23 @@ pub type CanvasLayerFn = std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>;
 /// The image part of a propagated background: everything but the colour,
 /// which `PageGeom::canvas` paints. `None` when there is no image layer.
 pub(crate) fn image_layers(s: &Computed) -> Option<Computed> {
-    if s.gradient.is_none() && s.bg_image.is_none() {
+    if s.reset_background.gradient.is_none() && s.reset_background.bg_image.is_none() {
         return None;
     }
     Some(Computed {
         reset_background: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetBackground {
-                background_color: s.background_color.clone(),
-                gradient: s.gradient.clone(),
-                gradient_raw: s.gradient_raw.clone(),
-                bg_image: s.bg_image.clone(),
-                bg_size: s.bg_size,
-                bg_pos: s.bg_pos,
-                bg_repeat: s.bg_repeat,
-                bg_clip: s.bg_clip,
-                bg_origin: s.bg_origin,
-                bg_fixed: s.bg_fixed,
-                bg_lists: s.bg_lists.clone(),
+                background_color: s.reset_background.background_color.clone(),
+                gradient: s.reset_background.gradient.clone(),
+                gradient_raw: s.reset_background.gradient_raw.clone(),
+                bg_image: s.reset_background.bg_image.clone(),
+                bg_size: s.reset_background.bg_size,
+                bg_pos: s.reset_background.bg_pos,
+                bg_repeat: s.reset_background.bg_repeat,
+                bg_clip: s.reset_background.bg_clip,
+                bg_origin: s.reset_background.bg_origin,
+                bg_fixed: s.reset_background.bg_fixed,
+                bg_lists: s.reset_background.bg_lists.clone(),
                 ..Default::default()
             },
         ),

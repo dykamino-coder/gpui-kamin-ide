@@ -35,8 +35,8 @@ pub(super) struct Clip {
 impl Clip {
     pub(super) fn new(c: &Computed) -> Self {
         let axis = |overflow| {
-            if c.contain_layout == Some(true)
-                || c.contain_paint == Some(true)
+            if c.reset_context.contain_layout == Some(true)
+                || c.reset_context.contain_paint == Some(true)
                 || overflow == Some(Overflow::Clip)
             {
                 1
@@ -48,10 +48,13 @@ impl Clip {
         };
         Self {
             border: c.borders(),
-            padding: c.padding,
-            axes: [axis(c.overflow_x), axis(c.overflow_y)],
-            margin: c.clip_margin.unwrap_or(0.0),
-            reference: c.clip_margin_box.unwrap_or(1),
+            padding: c.reset_box_layout.padding,
+            axes: [
+                axis(c.reset_box_layout.overflow_x),
+                axis(c.reset_box_layout.overflow_y),
+            ],
+            margin: c.reset_mask.clip_margin.unwrap_or(0.0),
+            reference: c.reset_mask.clip_margin_box.unwrap_or(1),
         }
     }
     pub(super) fn border(&self) -> [f32; 4] {
@@ -138,7 +141,7 @@ mod tests {
             Clip::new(&c).intersect(own, child),
             Some([-10.0, -10.0, 110.0, 110.0])
         );
-        c.contain_paint = None;
+        c.reset_context.contain_paint = None;
         c.apply_one("overflow", "hidden", vcx);
         assert_eq!(Clip::new(&c).intersect(own, child), Some(own));
     }

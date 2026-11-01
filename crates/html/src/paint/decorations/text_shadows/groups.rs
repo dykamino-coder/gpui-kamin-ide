@@ -27,10 +27,10 @@ impl ShadowStyle {
 
     pub(super) fn child(&self, e: &Element) -> Self {
         Self {
-            color: e.style.cascaded().color.unwrap_or(self.color),
-            list: if e.style.used().text_shadow_none {
+            color: e.style.cascaded().inh.ui.color.unwrap_or(self.color),
+            list: if e.style.used().reset_text_box.text_shadow_none {
                 Vec::new()
-            } else if e.style.cascaded().text_shadow.is_some() {
+            } else if e.style.cascaded().inh.text_ink.text_shadow.is_some() {
                 raw_list(&e.style.used())
             } else {
                 self.list.clone()
@@ -52,10 +52,12 @@ impl ShadowStyle {
 
 fn raw_list(style: &Computed) -> Vec<Shadow> {
     style
+        .inh
+        .text_ink
         .text_shadow
         .clone()
         .into_iter()
-        .chain(style.text_shadow_rest.iter().cloned())
+        .chain(style.inh.text_ink.text_shadow_rest.iter().cloned())
         .collect()
 }
 

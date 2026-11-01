@@ -25,6 +25,24 @@ def scan(source, path=LAYOUT):
 
 
 class AggregateTests(unittest.TestCase):
+    def test_whole_group_mutation_has_no_untracked_escape(self):
+        sources = {
+            DEFINITIONS: ('pub struct Computed {\n    pub sizes: StyleGroup<ResetSizes>,\n'
+                          '    pub inh: InheritedGroup,\n}\n'
+                          'pub struct InheritedStyle {\n    pub font: StyleGroup<InheritedFont>,\n}\n'),
+            'crates/html/src/style/computed/groups/reset_sizes.rs':
+                'pub struct ResetSizes {\n    pub width: f32,\n}\n',
+            'crates/html/src/style/computed/groups/inherited_font.rs':
+                'pub struct InheritedFont {\n    pub font_size: f32,\n}\n',
+            LAYOUT: ('f(&mut s.sizes); s.sizes = other; f(&mut s.inh.font); '
+                     'fn mutate(s: &mut ResetSizes) {} s.sizes.width = 1;'),
+        }
+        counts = aggregate(sources)
+        self.assertEqual(counts['@style-group-mutable', 'layout', 'escape'], 2)
+        self.assertEqual(counts['@style-group-write', 'layout', 'escape'], 1)
+        self.assertEqual(counts['@mut-style-group', 'layout', 'escape'], 1)
+        self.assertEqual(counts['Computed.width', 'layout', 'write'], 1)
+
     def test_grouped_properties_keep_ids_and_constructor_debt(self):
         group = 'crates/html/src/style/computed/groups/'
         sources = {

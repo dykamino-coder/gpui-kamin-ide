@@ -19,11 +19,13 @@ use crate::style::values::value::Len;
 /// под `position: absolute` (§9.7, `dom::finish_inline_display`) её НЕ снимает.
 /// `None` при выключке по началу строки — прежний ход без изменений.
 pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
-    if e.style.used().inline_display != Some(true) {
+    if e.style.used().reset_context.inline_display != Some(true) {
         return None;
     }
     let rtl = inherited.wm().rtl();
     match inherited
+        .inh
+        .text_flow
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)
         .physical(rtl)
@@ -74,10 +76,10 @@ pub(crate) fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> b
         return false;
     }
     let side = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
-    side(inherited.padding.top)
-        || side(inherited.padding.right)
-        || side(inherited.padding.bottom)
-        || side(inherited.padding.left)
+    side(inherited.reset_box_layout.padding.top)
+        || side(inherited.reset_box_layout.padding.right)
+        || side(inherited.reset_box_layout.padding.bottom)
+        || side(inherited.reset_box_layout.padding.left)
 }
 
 /// Абсолютный элемент, которому не задан ни один край.
@@ -95,31 +97,31 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
     // содержащего блока (`absolute-replaced-width-006/013/020`,
     // `margin-bottom-103/104`). Сперва нужен настоящий прямоугольник
     // статической позиции, потом снятие вето.
-    let relative_size = matches!(c.width, Some(Len::Pct(_)))
-        || matches!(c.height, Some(Len::Pct(_)))
-        || matches!(c.min_width, Some(Len::Pct(_)))
-        || matches!(c.min_height, Some(Len::Pct(_)))
-        || matches!(c.max_width, Some(Len::Pct(_)))
-        || matches!(c.max_height, Some(Len::Pct(_)));
+    let relative_size = matches!(c.reset_box_layout.width, Some(Len::Pct(_)))
+        || matches!(c.reset_box_layout.height, Some(Len::Pct(_)))
+        || matches!(c.reset_box_layout.min_width, Some(Len::Pct(_)))
+        || matches!(c.reset_box_layout.min_height, Some(Len::Pct(_)))
+        || matches!(c.reset_box_layout.max_width, Some(Len::Pct(_)))
+        || matches!(c.reset_box_layout.max_height, Some(Len::Pct(_)));
     // Только `absolute`: у `fixed` содержащий блок — окно, и слой ему строит
     // сборщик дерева; пустышка в потоке ломала бы этот слой.
-    c.position == Some(crate::style::computed::Position::Absolute)
+    c.reset_positioned.position == Some(crate::style::computed::Position::Absolute)
         && !relative_size
-        && !edge_set(c.inset.top)
-        && !edge_set(c.inset.right)
-        && !edge_set(c.inset.bottom)
-        && !edge_set(c.inset.left)
+        && !edge_set(c.reset_positioned.inset.top)
+        && !edge_set(c.reset_positioned.inset.right)
+        && !edge_set(c.reset_positioned.inset.bottom)
+        && !edge_set(c.reset_positioned.inset.left)
 }
 
 /// An absolute box with no inset whose percentage size keeps it off the static
 /// position probe (`at_static_position`): only the laid-out flow places it.
 pub(crate) fn static_place_in_flow_only(c: &Computed) -> bool {
-    c.position == Some(crate::style::computed::Position::Absolute)
+    c.reset_positioned.position == Some(crate::style::computed::Position::Absolute)
         && !at_static_position(c)
-        && !edge_set(c.inset.top)
-        && !edge_set(c.inset.right)
-        && !edge_set(c.inset.bottom)
-        && !edge_set(c.inset.left)
+        && !edge_set(c.reset_positioned.inset.top)
+        && !edge_set(c.reset_positioned.inset.right)
+        && !edge_set(c.reset_positioned.inset.bottom)
+        && !edge_set(c.reset_positioned.inset.left)
 }
 
 /// Whether the box's hypothetical static box (`position: static`) is
@@ -129,19 +131,19 @@ pub(crate) fn hypothetical_inline_level(e: &Element) -> bool {
     let st = e.style.used();
     // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
     // hypothetical box (`dom` marks it `abs_inline_level`).
-    if st.abs_inline_level {
+    if st.reset_positioned.abs_inline_level {
         return true;
     }
-    match st.display {
+    match st.reset_box_layout.display {
         Some(crate::style::computed::Display::InlineBlock)
         | Some(crate::style::computed::Display::InlineFlex)
         | Some(crate::style::computed::Display::InlineGrid)
         | Some(crate::style::computed::Display::InlineTable) => true,
-        Some(crate::style::computed::Display::GridLanes) => st.lanes_inline,
+        Some(crate::style::computed::Display::GridLanes) => st.reset_grid.lanes_inline,
         // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
         // позиции остаётся строчным: гипотеза §10.3.7 считается без
         // блокификации (htb-rtl-*).
-        Some(_) => st.inline_display == Some(true),
+        Some(_) => st.reset_context.inline_display == Some(true),
         None => e.inline,
     }
 }

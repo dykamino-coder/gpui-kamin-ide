@@ -18,8 +18,9 @@ pub(super) fn resolve(
     (table_font, table_family): (f32, &str),
     vcx: crate::values::ValueCx<'_>,
 ) -> (HashMap<u64, [f32; 4]>, [f32; 4]) {
-    let collapse_cells_pre = e.style.cascaded().border_collapse == Some(true)
-        || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some());
+    let collapse_cells_pre = e.style.cascaded().inh.table_list.border_collapse == Some(true)
+        || (e.style.cascaded().inh.table_list.border_collapse.is_none()
+            && e.attr("rules").is_some());
     let px_of_pre =
         |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font, vcx);
     let axes = super::axes::Axes::new(&e.style.used());
@@ -143,23 +144,23 @@ mod tests {
         let metric_doc = crate::document::state::DocState::new(Default::default());
         let vcx = metric_doc.values();
         let mut table = anon_element("table", vec![]);
-        table.style.used_mut().writing_mode =
+        table.style.used_mut().inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 true,
                 table.style.used().wm().sideways(),
             ));
-        table.style.used_mut().border_collapse = Some(true);
-        table.style.used_mut().border_width.right = Some(Len::Px(20.0));
-        table.style.used_mut().border_visible[1] = Some(true);
+        table.style.used_mut().inh.table_list.border_collapse = Some(true);
+        table.style.used_mut().reset_border.border_width.right = Some(Len::Px(20.0));
+        table.style.used_mut().reset_border.border_visible[1] = Some(true);
         let mut first = anon_element("td", vec![]);
         first.node_id = 1;
-        first.style.used_mut().border_width.bottom = Some(Len::Px(50.0));
-        first.style.used_mut().border_visible[2] = Some(true);
+        first.style.used_mut().reset_border.border_width.bottom = Some(Len::Px(50.0));
+        first.style.used_mut().reset_border.border_visible[2] = Some(true);
         let mut second = anon_element("td", vec![]);
         second.node_id = 2;
-        second.style.used_mut().border_width.top = Some(Len::Px(100.0));
-        second.style.used_mut().border_visible[0] = Some(true);
+        second.style.used_mut().reset_border.border_width.top = Some(Len::Px(100.0));
+        second.style.used_mut().reset_border.border_visible[0] = Some(true);
         let row = anon_element("tr", vec![Node::Element(first), Node::Element(second)]);
         let grid = TableGrid::new(&[TableRow {
             element: &row,
@@ -169,13 +170,13 @@ mod tests {
         assert_eq!(widths[&1], [0.0, 20.0, 100.0, 0.0]);
         assert_eq!(widths[&2], [100.0, 20.0, 0.0, 0.0]);
         assert_eq!(outer, [0.0, 20.0, 0.0, 0.0]);
-        table.style.used_mut().writing_mode =
+        table.style.used_mut().inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 false,
                 table.style.used().wm().block_rl(),
                 table.style.used().wm().sideways(),
             ));
-        table.style.used_mut().border_width = Sides::default();
+        table.style.used_mut().reset_border.border_width = Sides::default();
         let (widths, _) = resolve(&table, &[&row], &[None], &grid, 2, (16.0, ""), vcx);
         assert_eq!(widths[&1][2], 50.0);
         assert_eq!(widths[&2][0], 100.0);
@@ -185,18 +186,18 @@ mod tests {
     fn rowspan_neighbors_use_the_shared_slot_anchors() {
         let metric_doc = crate::document::state::DocState::new(Default::default());
         let mut table = anon_element("table", vec![]);
-        table.style.used_mut().border_collapse = Some(true);
+        table.style.used_mut().inh.table_list.border_collapse = Some(true);
         let mut spanning = anon_element("td", vec![]);
         spanning.node_id = 1;
         spanning.attrs = vec![("rowspan".into(), "2".into())];
-        spanning.style.used_mut().border_width.right = Some(Len::Px(60.0));
-        spanning.style.used_mut().border_visible[1] = Some(true);
+        spanning.style.used_mut().reset_border.border_width.right = Some(Len::Px(60.0));
+        spanning.style.used_mut().reset_border.border_visible[1] = Some(true);
         let mut upper = anon_element("td", vec![]);
         upper.node_id = 2;
         let mut lower = anon_element("td", vec![]);
         lower.node_id = 3;
-        lower.style.used_mut().border_width.left = Some(Len::Px(30.0));
-        lower.style.used_mut().border_visible[3] = Some(true);
+        lower.style.used_mut().reset_border.border_width.left = Some(Len::Px(30.0));
+        lower.style.used_mut().reset_border.border_visible[3] = Some(true);
         let first = anon_element("tr", vec![Node::Element(spanning), Node::Element(upper)]);
         let second = anon_element("tr", vec![Node::Element(lower)]);
         let rows = [

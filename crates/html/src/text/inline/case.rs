@@ -5,7 +5,7 @@ use crate::text::inline::*;
 
 /// Пробелы куска набираются U+3000 (`text-transform: full-width`).
 fn full_width_spaces(style: &Computed) -> bool {
-    style.text_transform_flags & crate::style::computed::TT_FULL_WIDTH != 0
+    style.inh.text_flow.text_transform_flags & crate::style::computed::TT_FULL_WIDTH != 0
 }
 
 /// `word-space-transform` по КУСКАМ абзаца.
@@ -45,7 +45,7 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
         // Значение `space` подставляет ОБЫЧНЫЙ пробел, и оно тоже работает:
         // сравнение шло только с идеографическим, и половина свойства не
         // действовала вовсе.
-        let Some(sep) = style.word_space_char.filter(|&c| c != '\0') else {
+        let Some(sep) = style.inh.text_flow.word_space_char.filter(|&c| c != '\0') else {
             continue;
         };
         // `space` — разделитель слов ЛЮБОЙ письменности (css-text-4
@@ -68,7 +68,7 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
     // подставленный пробел: прочие уже свёрнуты сбором текста.
     let collapsible = |i: usize| {
         i != usize::MAX
-            && matches!(&pieces[i], Piece::Text { style, .. } if style.keep_spaces != Some(true))
+            && matches!(&pieces[i], Piece::Text { style, .. } if style.inh.text_flow.keep_spaces != Some(true))
     };
     let mut k = 0;
     while k < seq.len() {

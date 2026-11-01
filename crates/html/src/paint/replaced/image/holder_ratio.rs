@@ -23,23 +23,26 @@ pub(crate) fn apply(
         return false;
     }
     let automatic = |length| matches!(length, None | Some(Len::Auto));
-    let (width_auto, height_auto) = (automatic(style.width), automatic(style.height));
+    let (width_auto, height_auto) = (
+        automatic(style.reset_box_layout.width),
+        automatic(style.reset_box_layout.height),
+    );
     if width_auto == height_auto {
         // Both-auto flex images retain their intrinsic measured contribution.
         // Changing it regressed flex-aspect-ratio-027/028 in the prior comparison.
         return false;
     }
-    let percentage =
-        matches!(style.width, Some(Len::Pct(_))) || matches!(style.height, Some(Len::Pct(_)));
+    let percentage = matches!(style.reset_box_layout.width, Some(Len::Pct(_)))
+        || matches!(style.reset_box_layout.height, Some(Len::Pct(_)));
     if percentage {
-        if style.aspect_ratio.is_none() && !natural_content_box(holder, style, vcx) {
+        if style.reset_shapes.aspect_ratio.is_none() && !natural_content_box(holder, style, vcx) {
             return false;
         }
         holder.style().aspect_ratio = Some(ratio);
         // Keep the inner image's object-fit and independently measured natural size.
         return false;
     }
-    if style.flex_item {
+    if style.reset_flex.flex_item {
         holder.style().aspect_ratio = Some(ratio);
         return true;
     }
@@ -58,18 +61,18 @@ fn natural_content_box(holder: &mut Div, style: &BoxStyle, vcx: ValueCx<'_>) -> 
             _ => None,
         })
     };
-    let offsets = if style.border_box == Some(true) {
+    let offsets = if style.reset_border.border_box == Some(true) {
         let Some(x) = edge([
-            style.padding.left,
-            style.padding.right,
+            style.reset_box_layout.padding.left,
+            style.reset_box_layout.padding.right,
             border.left,
             border.right,
         ]) else {
             return false;
         };
         let Some(y) = edge([
-            style.padding.top,
-            style.padding.bottom,
+            style.reset_box_layout.padding.top,
+            style.reset_box_layout.padding.bottom,
             border.top,
             border.bottom,
         ]) else {
@@ -80,12 +83,12 @@ fn natural_content_box(holder: &mut Div, style: &BoxStyle, vcx: ValueCx<'_>) -> 
         [0.0, 0.0]
     };
     let values = [
-        style.width,
-        style.height,
-        style.min_width,
-        style.min_height,
-        style.max_width,
-        style.max_height,
+        style.reset_box_layout.width,
+        style.reset_box_layout.height,
+        style.reset_box_layout.min_width,
+        style.reset_box_layout.min_height,
+        style.reset_box_layout.max_width,
+        style.reset_box_layout.max_height,
     ];
     let mut converted: [Option<Length>; 6] = [None; 6];
     for (index, value) in values.into_iter().enumerate() {
@@ -98,9 +101,9 @@ fn natural_content_box(holder: &mut Div, style: &BoxStyle, vcx: ValueCx<'_>) -> 
         if percentage
             && index % 2 == 1
             && !style.cb_height_def
-            && !style.root_box
+            && !style.reset_context.root_box
             && !matches!(
-                style.position,
+                style.reset_positioned.position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
@@ -167,10 +170,10 @@ mod tests {
             ..Computed::default()
         });
         style.cb_height_def = true;
-        style.padding.left = Some(Len::Px(10.0));
-        style.padding.right = Some(Len::Px(10.0));
-        style.padding.top = Some(Len::Px(10.0));
-        style.padding.bottom = Some(Len::Px(10.0));
+        style.reset_box_layout.padding.left = Some(Len::Px(10.0));
+        style.reset_box_layout.padding.right = Some(Len::Px(10.0));
+        style.reset_box_layout.padding.top = Some(Len::Px(10.0));
+        style.reset_box_layout.padding.bottom = Some(Len::Px(10.0));
         let mut holder = crate::paint::apply::apply(div(), &style, vcx);
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false, vcx));
         assert_eq!(holder.style().content_box, Some(true));
@@ -197,8 +200,8 @@ mod tests {
             ..Computed::default()
         });
         style.cb_height_def = true;
-        style.padding.top = Some(Len::Px(7.0));
-        style.padding.bottom = Some(Len::Px(7.0));
+        style.reset_box_layout.padding.top = Some(Len::Px(7.0));
+        style.reset_box_layout.padding.bottom = Some(Len::Px(7.0));
         // A percentage size already switches `apply` to the native content
         // box (`layout::native_box::native_content_box`), so padding is not
         // folded into the bounds there and the holder keeps them.

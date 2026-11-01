@@ -29,9 +29,9 @@ mod tests {
     fn authored_display_controls_cell_role_before_anonymous_fixup() {
         let mut cell = crate::layout::table::anon::anon_element("td", vec![]);
         assert!(crate::layout::table::is_cell(&cell));
-        cell.style.used_mut().display = Some(Display::Block);
+        cell.style.used_mut().reset_box_layout.display = Some(Display::Block);
         assert!(!crate::layout::table::is_cell(&cell));
-        cell.style.used_mut().display = Some(Display::TableCell);
+        cell.style.used_mut().reset_box_layout.display = Some(Display::TableCell);
         assert!(crate::layout::table::is_cell(&cell));
         cell.tag = "div".into();
         assert!(crate::layout::table::is_cell(&cell));
@@ -81,7 +81,7 @@ mod tests {
     fn block_td_is_content_of_an_anonymous_cell_and_retains_its_style() {
         let mut block =
             crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
-        block.style.used_mut().display = Some(Display::Block);
+        block.style.used_mut().reset_box_layout.display = Some(Display::Block);
         block.node_id = 123;
         let row = crate::layout::table::anon::anon_element("tr", vec![Node::Element(block)]);
         let fixed = crate::layout::table::anon::fixup_row_children(&row);
@@ -92,12 +92,15 @@ mod tests {
             panic!("anonymous cell")
         };
         assert!(crate::layout::table::is_cell(cell));
-        assert_eq!(cell.style.used().display, None);
+        assert_eq!(cell.style.used().reset_box_layout.display, None);
         let Node::Element(block) = &cell.children[0] else {
             panic!("authored block")
         };
         assert_eq!(block.node_id, 123);
-        assert_eq!(block.style.used().display, Some(Display::Block));
+        assert_eq!(
+            block.style.used().reset_box_layout.display,
+            Some(Display::Block)
+        );
         assert_eq!(block.children.len(), 1);
     }
 }

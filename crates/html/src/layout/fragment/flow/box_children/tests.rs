@@ -39,7 +39,8 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
             // давать тот же набор коробок без повторного разбора DOM.
             let mut hidden = e.clone();
             hidden.node_id = u64::MAX;
-            hidden.style.used_mut().display = Some(crate::style::computed::Display::None);
+            hidden.style.used_mut().reset_box_layout.display =
+                Some(crate::style::computed::Display::None);
             let hidden_id = hidden.node_id;
             let Node::Element(contents) = &mut e.children[0] else {
                 panic!("contents")
@@ -87,18 +88,24 @@ fn promoted_copies_keep_inheritance_without_contents_box_properties() {
         panic!("copies")
     };
     assert!(text.inline);
-    assert_eq!(text.style.used().font_size, Some(Len::Px(30.0)));
-    assert_eq!(block.style.used().font_size, Some(Len::Px(60.0)));
-    assert_eq!(text.style.used().color, block.style.used().color);
-    assert_eq!(text.style.used().padding.top, None);
-    assert_eq!(block.style.used().padding.top, None);
+    assert_eq!(text.style.used().inh.font.font_size, Some(Len::Px(30.0)));
+    assert_eq!(block.style.used().inh.font.font_size, Some(Len::Px(60.0)));
+    assert_eq!(
+        text.style.used().inh.ui.color,
+        block.style.used().inh.ui.color
+    );
+    assert_eq!(text.style.used().reset_box_layout.padding.top, None);
+    assert_eq!(block.style.used().reset_box_layout.padding.top, None);
     let resolved = crate::style::cascade::inherit::inherit_unpainted(
         &BoxStyle::default(),
         &block.style.used(),
         tree.values(),
     );
-    assert_eq!(resolved.font_size, block.style.used().font_size);
-    assert_eq!(resolved.color, block.style.used().color);
+    assert_eq!(
+        resolved.inh.font.font_size,
+        block.style.used().inh.font.font_size
+    );
+    assert_eq!(resolved.inh.ui.color, block.style.used().inh.ui.color);
 }
 
 #[test]
@@ -117,11 +124,11 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     let rebound = inherit_unpainted(&parent, &copy.style.used(), tree.values());
     // Вложенный contents наследует только явно запрошенные box-свойства:
     // без собственных padding/margin/width он передаёт начальные значения.
-    assert_eq!(rebound.padding.top, None);
-    assert_eq!(rebound.margin.top, None);
-    assert_eq!(rebound.width, None);
-    assert_eq!(rebound.background, None);
-    assert_eq!(rebound.font_size, Some(Len::Px(32.0)));
+    assert_eq!(rebound.reset_box_layout.padding.top, None);
+    assert_eq!(rebound.reset_box_layout.margin.top, None);
+    assert_eq!(rebound.reset_box_layout.width, None);
+    assert_eq!(rebound.reset_background.background, None);
+    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(32.0)));
 
     let mut contents = root.children.clone();
     let Node::Element(outer) = &mut contents[0] else {
@@ -141,9 +148,9 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
         panic!("one copy")
     };
     let rebound = inherit_unpainted(&parent, &copy.style.used(), tree.values());
-    assert_eq!(rebound.padding.top, Some(Len::Px(11.0)));
-    assert_eq!(rebound.margin.top, Some(Len::Px(12.0)));
-    assert_eq!(rebound.width, Some(Len::Px(13.0)));
-    assert!(rebound.background.is_some());
-    assert_eq!(rebound.font_size, Some(Len::Px(32.0)));
+    assert_eq!(rebound.reset_box_layout.padding.top, Some(Len::Px(11.0)));
+    assert_eq!(rebound.reset_box_layout.margin.top, Some(Len::Px(12.0)));
+    assert_eq!(rebound.reset_box_layout.width, Some(Len::Px(13.0)));
+    assert!(rebound.reset_background.background.is_some());
+    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(32.0)));
 }

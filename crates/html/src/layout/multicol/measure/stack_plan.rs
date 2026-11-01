@@ -82,8 +82,12 @@ pub(crate) fn plan_at(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
 ) -> StackPlan {
-    let positioned =
-        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
+    let positioned = |s: &Computed| {
+        matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
+    };
     let prepared = super::prepared(e, merged, opts, col_vert, line_col_w);
     let ge = &prepared;
     // Прямые флоаты legacy-пути — не в стопку,
@@ -123,7 +127,9 @@ pub(crate) fn plan_at(
     // Высота внешнего фрагментаинера для вложенного рядами
     // (`nested_rows_shape`): `column-fill: auto` и блочный размер
     // в точках, без своих рядов.
-    let outer_frag = (e.style.used().column_fill_auto == Some(true) && rows.is_none() && !col_vert)
+    let outer_frag = (e.style.used().reset_fragmentation.column_fill_auto == Some(true)
+        && rows.is_none()
+        && !col_vert)
         .then(|| col_h.or(box_h))
         .flatten();
     let first_flow = ge
@@ -139,17 +145,17 @@ pub(crate) fn plan_at(
     // Копия стопки шла узкой веткой `styled_div_with` и рисовала его
     // плоско — без колонок и линеек (`multicol-rule-color-inherit-001`).
     let nested_whole: std::cell::RefCell<Vec<u64>> = Default::default();
-    let whole_ok = e.style.used().column_fill_auto != Some(true)
+    let whole_ok = e.style.used().reset_fragmentation.column_fill_auto != Some(true)
         && rows.is_none_or(|r| r.cap)
         && nest_rows.is_none()
         && !col_vert;
     // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
     let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
-    let measure_ok = e.style.used().column_fill_auto == Some(true)
+    let measure_ok = e.style.used().reset_fragmentation.column_fill_auto == Some(true)
         && rows.is_none()
         && nest_rows.is_none()
         && !col_vert
-        && (col_h.is_some() || matches!(e.style.used().height, Some(Len::Px(_))));
+        && (col_h.is_some() || matches!(e.style.used().reset_box_layout.height, Some(Len::Px(_))));
     // Layout-driven pagination (`fragment::paginate`): one line of columns,
     // no spanners, horizontal writing.
     let pag_ok = !opts.frag.in_stack_copy
@@ -159,7 +165,7 @@ pub(crate) fn plan_at(
         && !ge
             .children
             .iter()
-            .any(|n| matches!(n, Node::Element(c) if c.style.used().column_span == Some(true)));
+            .any(|n| matches!(n, Node::Element(c) if c.style.used().reset_fragmentation.column_span == Some(true)));
     let last_flow = ge
         .children
         .iter()

@@ -22,7 +22,7 @@ pub fn style_first_line(
     let mut seen = 0usize;
     for p in pieces {
         match p {
-            Piece::Text { style: ref own, .. } if own.inline_control => out.push(p),
+            Piece::Text { style: ref own, .. } if own.reset_context.inline_control => out.push(p),
             Piece::Text { text, style: own } if seen < at => {
                 let dress = |base: &BoxStyle| {
                     let mut c = base.clone();
@@ -31,44 +31,57 @@ pub fn style_first_line(
                     // line's inline elements (css-pseudo-4
                     // §first-line-inheritance): an element's own color wins
                     // (`display-contents-first-line-002`: green spans).
-                    if base.color == block.color {
-                        c.overlay_pseudo_color(style.color);
+                    if base.inh.ui.color == block.inh.ui.color {
+                        c.overlay_pseudo_color(style.inh.ui.color);
                     }
-                    c.font_weight = style.font_weight.or(base.font_weight);
-                    c.italic = style.italic.or(base.italic);
+                    c.inh.font.font_weight =
+                        style.inh.font.font_weight.or(base.inh.font.font_weight);
+                    c.inh.font.italic = style.inh.font.italic.or(base.inh.font.italic);
                     // Возможности шрифта первой строки, в том числе запрет
                     // подмены начертания (`nsyw`/`nsys`, css-fonts-4 §6.5):
                     // без них полужирный и курсив `::first-line` синтезировались
                     // вопреки `font-synthesis-*: none`. Дописываются ПОСЛЕ
                     // своих: при повторе тега побеждает первая строка.
-                    c.font_features.extend(style.font_features.iter().cloned());
-                    c.font_synth = (
-                        style.font_synth.0.or(base.font_synth.0),
-                        style.font_synth.1.or(base.font_synth.1),
-                        style.font_synth.2.or(base.font_synth.2),
+                    c.inh
+                        .font
+                        .font_features
+                        .extend(style.inh.font.font_features.iter().cloned());
+                    c.inh.font.font_synth = (
+                        style.inh.font.font_synth.0.or(base.inh.font.font_synth.0),
+                        style.inh.font.font_synth.1.or(base.inh.font.font_synth.1),
+                        style.inh.font.font_synth.2.or(base.inh.font.font_synth.2),
                     );
-                    c.font_kerning = style.font_kerning.or(base.font_kerning);
-                    c.font_alternates = style
+                    c.inh.font.font_kerning =
+                        style.inh.font.font_kerning.or(base.inh.font.font_kerning);
+                    c.inh.font.font_alternates = style
+                        .inh
+                        .font
                         .font_alternates
                         .clone()
-                        .or_else(|| base.font_alternates.clone());
+                        .or_else(|| base.inh.font.font_alternates.clone());
                     crate::style::computed::font_family::inherit(&mut c, style, base);
-                    c.font_settings = style
+                    c.inh.font.font_settings = style
+                        .inh
+                        .font
                         .font_settings
                         .clone()
-                        .or_else(|| base.font_settings.clone());
+                        .or_else(|| base.inh.font.font_settings.clone());
                     // Коробочная часть первой строки: интерлиньяж и подложка
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).
-                    c.background = style.background.or(base.background);
+                    c.reset_background.background = style
+                        .reset_background
+                        .background
+                        .or(base.reset_background.background);
                     // Красит подложку прогон текста, и берёт он её из
                     // `InlineDecoration::band_color`: слой первой строки накладывается уже ПОСЛЕ
                     // сборки кусков, когда `InlineDecoration::band_color` посчитан по своему
                     // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
                     c.inline_decoration.band_color = first_line_background::paint_color(
                         base.inline_decoration.band_color,
-                        style.background,
+                        style.reset_background.background,
                     );
-                    c.line_height = style.line_height.or(base.line_height);
+                    c.inh.font.line_height =
+                        style.inh.font.line_height.or(base.inh.font.line_height);
                     // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
                     // `vertical-align` к свойствам `::first-line`): краска
@@ -137,7 +150,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_weight = Some(700);
+            with_inherited.inh.font.font_weight = Some(700);
             with_inherited
         };
         for (generated, at, expected) in [(true, 2, "ab"), (false, 5, "ab")] {
@@ -151,7 +164,8 @@ mod tests {
                 .iter()
                 .filter_map(|p| match p {
                     Piece::Text { text, style }
-                        if !text.contains('\u{2068}') && style.font_weight == Some(700) =>
+                        if !text.contains('\u{2068}')
+                            && style.inh.font.font_weight == Some(700) =>
                     {
                         Some(text.as_str())
                     }

@@ -93,8 +93,16 @@ pub(super) async fn table_finish(
     // закрашивалась бы их фоном. Поэтому у самой коробки рамка снимается,
     // её место держит паддинг, сетка выезжает на его половину, а красит
     // рамку кольцевой квад ПОСЛЕ сетки.
-    let collapse = geom.e.style.cascaded().border_collapse == Some(true)
-        || (geom.e.style.cascaded().border_collapse.is_none() && geom.e.attr("rules").is_some());
+    let collapse = geom.e.style.cascaded().inh.table_list.border_collapse == Some(true)
+        || (geom
+            .e
+            .style
+            .cascaded()
+            .inh
+            .table_list
+            .border_collapse
+            .is_none()
+            && geom.e.attr("rules").is_some());
     // Минимумы таблицы меряются ПОЛНОЙ коробкой с рамкой и паддингом
     // (css-tables-3 §computing-the-table-height, CSSWG #5336): пороги
     // пересчитываются в контентные, компенсацию вернёт общий слой.
@@ -113,25 +121,25 @@ pub(super) async fn table_finish(
     // краёв, и колонки расползались: сжатие у нас выражено только
     // `align_self`, а его у абсолютной коробки с двумя краями не спрашивают.
     let split_wrapper = matches!(
-        geom.inherited.position,
+        geom.inherited.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) && edge_set(geom.inherited.inset.left)
-        && edge_set(geom.inherited.inset.right)
-        && geom.e.style.used().width.is_none();
+    ) && edge_set(geom.inherited.reset_positioned.inset.left)
+        && edge_set(geom.inherited.reset_positioned.inset.right)
+        && geom.e.style.used().reset_box_layout.width.is_none();
     // Стиль СЕТКИ — без позиционирования и краёв: их заберёт обёртка.
     let grid_style = split_wrapper.then(|| {
         let mut c = geom.inherited.clone();
-        c.position = None;
-        c.inset = Default::default();
-        c.z_index = None;
+        c.reset_positioned.position = None;
+        c.reset_positioned.inset = Default::default();
+        c.reset_positioned.z_index = None;
         c
     });
     let inherited: &BoxStyle = grid_style.as_ref().unwrap_or(geom.inherited);
     let needs_clone = collapse
         || table_border_box
-        || min_h != geom.e.style.used().min_height
-        || min_w != geom.e.style.used().min_width
+        || min_h != geom.e.style.used().reset_box_layout.min_height
+        || min_w != geom.e.style.used().reset_box_layout.min_width
         || fixed_floor.is_some();
     let mut outer = table_outer_box(
         geom.e,
@@ -158,7 +166,9 @@ pub(super) async fn table_finish(
     // отбирал у стола высоту дорожки. Метку ставит
     // `dom::grid_table_items_keep_stretch`; авторский `align-self` она же и
     // пропускает вперёд.
-    if geom.e.style.used().width.is_none() && geom.e.style.used().align_self.is_none() {
+    if geom.e.style.used().reset_box_layout.width.is_none()
+        && geom.e.style.used().reset_flex.align_self.is_none()
+    {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
     // Пол GRIDMIN (css-tables-3 §3.9): гибкая раскладка не ужимает стол по
@@ -175,8 +185,8 @@ pub(super) async fn table_finish(
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
-    let root_table =
-        matches!(geom.e.tag.as_str(), "html" | "body") && geom.e.style.used().width.is_none();
+    let root_table = matches!(geom.e.tag.as_str(), "html" | "body")
+        && geom.e.style.used().reset_box_layout.width.is_none();
     // `border-spacing` задан по ЛОГИЧЕСКИМ осям таблицы: первое значение —
     // зазор между КОЛОНКАМИ (инлайн-ось), второе — между РЯДАМИ (блочная
     // ось). css-writing-modes-3 §7.2 «Dimension Mapping» переносит их на
@@ -216,17 +226,17 @@ pub(super) async fn table_finish(
         outer,
     );
     let shrink_wrap = root_table
-        || (geom.e.style.used().width.is_none()
+        || (geom.e.style.used().reset_box_layout.width.is_none()
             // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
             // обёртка рвёт эту связь (без отсечки ломается
             // `min-height-table-2`).
-            && geom.e.style.used().height.is_none()
-            && geom.e.style.used().min_height.is_none()
+            && geom.e.style.used().reset_box_layout.height.is_none()
+            && geom.e.style.used().reset_box_layout.min_height.is_none()
             && !inherited.stretched
-            && geom.e.style.used().flex_basis.is_none()
-            && geom.e.style.used().align_self.is_none()
-            && geom.e.style.used().grid_col.is_none()
-            && geom.e.style.used().grid_row.is_none());
+            && geom.e.style.used().reset_flex.flex_basis.is_none()
+            && geom.e.style.used().reset_flex.align_self.is_none()
+            && geom.e.style.used().reset_grid.grid_col.is_none()
+            && geom.e.style.used().reset_grid.grid_row.is_none());
     finish_table_outer(
         geom.e,
         caps_top,

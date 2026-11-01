@@ -19,10 +19,14 @@ pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (
     let mut out = Vec::new();
     for (range, _, style) in text_ranges(pieces) {
         let (at, end) = (range.start, range.end);
-        if let Some(d) = style.rel_shift
+        if let Some(d) = style.reset_positioned.rel_shift
             && d != (0.0, 0.0)
         {
-            out.push((at..end, d, style.box_shift.unwrap_or((0.0, 0.0))));
+            out.push((
+                at..end,
+                d,
+                style.reset_positioned.box_shift.unwrap_or((0.0, 0.0)),
+            ));
         }
     }
     out
@@ -54,24 +58,24 @@ pub fn shift_spans(
         // (CSS 2.1 §9.5, §10.8): она из строки вынута.
         let out_of_flow = crate::style::flow::out_of_flow(style);
         let dy = (!out_of_flow)
-            .then_some(style.vertical_shift_px)
+            .then_some(style.reset_text_box.vertical_shift_px)
             .flatten()
             .or_else(|| {
                 // Единица шрифта разрешается ЗДЕСЬ: кегль и гарнитура куска
                 // уже известны.
-                style.vertical_shift_len.map(|l| {
-                    let family = style.font_family.clone().unwrap_or_default();
+                style.reset_text_box.vertical_shift_len.map(|l| {
+                    let family = style.inh.font.font_family.clone().unwrap_or_default();
                     -crate::text::metrics::spacing_px(Some(l), &family, size, opts.cx.vcx())
                 })
             })
-            .or_else(|| style.vertical_shift.map(|k| k * size))
+            .or_else(|| style.reset_text_box.vertical_shift.map(|k| k * size))
             // Процент считается от `line-height` САМОГО куска (§10.8.1), а не
             // от кегля: `vertical-align: 50%` при `line-height: 2` — это кегль
             // целиком, а не половина (правка по спеке; в своде такой записи
             // почти нет).
             .or_else(|| {
-                style.vertical_shift_pct.map(|k| {
-                    let own = match style.line_height {
+                style.reset_text_box.vertical_shift_pct.map(|k| {
+                    let own = match style.inh.font.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(f)) | Some(Len::Em(f)) => f * size,
                         _ => line_px,
@@ -89,7 +93,10 @@ pub fn shift_spans(
                 // область без лидинга. Подъём и спуск — доли кегля.
                 const ASCENT: f32 = 0.8;
                 const DESCENT: f32 = 0.2;
-                let parent = style.vertical_align_base.unwrap_or(base_size);
+                let parent = style
+                    .reset_text_box
+                    .vertical_align_base
+                    .unwrap_or(base_size);
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
@@ -100,7 +107,7 @@ pub fn shift_spans(
                 // The edge is physical, so this holds for the central
                 // dominant baseline of mixed/upright text too.
                 let own_line = if vertical {
-                    match style.line_height {
+                    match style.inh.font.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
                         None | Some(Len::Auto) => crate::text::metrics::normal_px(
@@ -114,7 +121,7 @@ pub fn shift_spans(
                     line_px
                 };
                 let half = (own_line - size) / 2.0;
-                style.vertical_align_text.map(|top| {
+                style.reset_text_box.vertical_align_text.map(|top| {
                     if top {
                         (ASCENT * size + half) - ASCENT * parent
                     } else {
@@ -166,24 +173,27 @@ fn dominant_shift(
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<f32> {
     let (fonts, vcx) = (&**cx.text_fonts(), cx.vcx());
-    let family = style.font_family.clone().unwrap_or_default();
+    let family = style.inh.font.font_family.clone().unwrap_or_default();
     let own_central = || {
         let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size, fonts, vcx);
         (a - d) / 2.0
     };
     // A table cell's own `vertical-align: middle` reaches its text runs
     // through the merged style; it aligns the cell, not an inline box.
-    if style.vertical_align == Some(crate::style::computed::Align::Center)
-        && style.vertical_align != block_align
+    if style.inh.text_flow.vertical_align == Some(crate::style::computed::Align::Center)
+        && style.inh.text_flow.vertical_align != block_align
     {
-        let parent = style.vertical_align_base.unwrap_or(base_size);
+        let parent = style
+            .reset_text_box
+            .vertical_align_base
+            .unwrap_or(base_size);
         let x_height = crate::text::metrics::ch_ex_px(&family, parent, fonts, vcx).1;
         return Some(own_central() - central.unwrap_or(0.0) - x_height / 2.0);
     }
     let Some(strut) = central else {
         return dy;
     };
-    if style.vertical_align_text.is_some() {
+    if style.reset_text_box.vertical_align_text.is_some() {
         return dy;
     }
     let offset = own_central() - strut;

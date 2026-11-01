@@ -12,8 +12,10 @@ pub(super) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
             continue;
         };
         if k.node_id == id {
-            let old = crate::style::values::value::px_lossy_zero(k.style.used().margin.top);
-            k.style.used_mut().margin.top = Some(Len::Px(old + grow));
+            let old = crate::style::values::value::px_lossy_zero(
+                k.style.used().reset_box_layout.margin.top,
+            );
+            k.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(old + grow));
             return true;
         }
         if grow_before(k, id, grow) {

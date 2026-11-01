@@ -30,7 +30,7 @@ pub(crate) fn column_layout_width(
 ) -> Option<f32> {
     let u = col_inline_size.or_else(|| {
         (!col_vert && auto_fills_parent(e))
-            .then_some(inherited.width)
+            .then_some(inherited.reset_box_layout.width)
             .flatten()
     });
     column_of(u, &BoxDimensions::for_element(e, merged), cols, used_gap)
@@ -57,15 +57,19 @@ pub(crate) fn kid_layout_w(
 fn auto_fills_parent(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let b = e.style.used().borders();
-    matches!(e.style.used().width, None | Some(Len::Auto))
-        && matches!(e.style.used().display, None | Some(Display::Block))
-        && e.style.used().float.unwrap_or(0) == 0
+    matches!(
+        e.style.used().reset_box_layout.width,
+        None | Some(Len::Auto)
+    ) && matches!(
+        e.style.used().reset_box_layout.display,
+        None | Some(Display::Block)
+    ) && e.style.used().reset_box_layout.float.unwrap_or(0) == 0
         && !out_of_flow(&e.style.used())
         && [
-            &e.style.used().margin.left,
-            &e.style.used().margin.right,
-            &e.style.used().padding.left,
-            &e.style.used().padding.right,
+            &e.style.used().reset_box_layout.margin.left,
+            &e.style.used().reset_box_layout.margin.right,
+            &e.style.used().reset_box_layout.padding.left,
+            &e.style.used().reset_box_layout.padding.right,
             &b.left,
             &b.right,
         ]
@@ -113,15 +117,15 @@ pub(crate) fn column_measure_width(
                     k.inline
                         || inline_content(k)
                         || (k.children.iter().all(is_blank)
-                            && matches!(k.style.used().height, Some(Len::Px(_))))
+                            && matches!(k.style.used().reset_box_layout.height, Some(Len::Px(_))))
                         // Вложенный многоколоночник: его ширина — колонка
                         // внешнего, и мерить его раскладкой копии можно
                         // только при известной ширине (`measured_nested`).
                         || (nested_rows_box(k)
-                            && matches!(k.style.used().height, None | Some(Len::Auto)))
+                            && matches!(k.style.used().reset_box_layout.height, None | Some(Len::Auto)))
                 }
             }))
-        .then_some(inherited.width)
+        .then_some(inherited.reset_box_layout.width)
         .flatten()
         .filter(|w| matches!(w, Len::Px(_)))
     });
@@ -164,6 +168,6 @@ mod tests {
             column_layout_width(&e, &style, &style, width, false, 2, 20.),
             None
         );
-        assert_eq!(e.style.used().border_box, Some(true));
+        assert_eq!(e.style.used().reset_border.border_box, Some(true));
     }
 }

@@ -70,7 +70,7 @@ impl Options {
         }
         Self {
             key: base.anchor_key,
-            order: base.position_try_order,
+            order: base.reset_positioned.position_try_order,
             vertical: inherited.wm().vertical(),
             remembered,
             signature,

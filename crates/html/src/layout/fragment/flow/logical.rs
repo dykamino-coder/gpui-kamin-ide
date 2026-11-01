@@ -8,7 +8,7 @@ use crate::dom::{Element, Node};
 
 /// Native recorder читает блочную ось независимо от inline direction.
 pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
-    if c.style.used().display == Some(crate::style::computed::Display::None) {
+    if c.style.used().reset_box_layout.display == Some(crate::style::computed::Display::None) {
         return Some(c.clone());
     }
     // TRANSITIONAL(F2-3): Transpose отказывает ортогональным потокам и оценочным RTL строкам; удалить отказ в P10 после child logical Space и собственного resume.
@@ -34,16 +34,25 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
     let mut t = c.clone();
     let source = c.style.used();
     let used = &mut *t.style.used_mut();
-    std::mem::swap(&mut used.width, &mut used.height);
-    std::mem::swap(&mut used.min_width, &mut used.min_height);
-    std::mem::swap(&mut used.max_width, &mut used.max_height);
-    used.padding = turn(&source.padding);
-    used.margin = turn(&source.margin);
-    used.border_width = turn(&source.border_width);
-    used.inset = turn(&source.inset);
+    std::mem::swap(
+        &mut used.reset_box_layout.width,
+        &mut used.reset_box_layout.height,
+    );
+    std::mem::swap(
+        &mut used.reset_box_layout.min_width,
+        &mut used.reset_box_layout.min_height,
+    );
+    std::mem::swap(
+        &mut used.reset_box_layout.max_width,
+        &mut used.reset_box_layout.max_height,
+    );
+    used.reset_box_layout.padding = turn(&source.reset_box_layout.padding);
+    used.reset_box_layout.margin = turn(&source.reset_box_layout.margin);
+    used.reset_border.border_width = turn(&source.reset_border.border_width);
+    used.reset_positioned.inset = turn(&source.reset_positioned.inset);
     // Видимость рамки — `[верх, право, низ, лево]` (`Computed::borders`).
-    let v = source.border_visible;
-    used.border_visible = [
+    let v = source.reset_border.border_visible;
+    used.reset_border.border_visible = [
         if rl { v[1] } else { v[3] },
         if c.style.cascaded().wm().rtl() {
             v[0]
@@ -58,12 +67,12 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
         },
     ];
     // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
-    used.overflow_y = source.overflow_x;
-    used.overflow_x = source.overflow_y;
+    used.reset_box_layout.overflow_y = source.reset_box_layout.overflow_x;
+    used.reset_box_layout.overflow_x = source.reset_box_layout.overflow_y;
     // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
     // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = source.border_spacing {
-        used.border_spacing = Some((y, x));
+    if let Some((x, y)) = source.inh.table_list.border_spacing {
+        used.inh.table_list.border_spacing = Some((y, x));
     }
     t.children = c
         .children

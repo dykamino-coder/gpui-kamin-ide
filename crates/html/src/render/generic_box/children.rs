@@ -37,7 +37,7 @@ pub(crate) async fn generic_children(
     let children = if let Some(children) = borrowed {
         Cow::Borrowed(children)
     } else {
-        let children = match &e.style.used().grid_areas {
+        let children = match &e.style.used().reset_grid.grid_areas {
             Some(areas) => place_named_areas(areas, e.children.to_vec()),
             None => e.children.to_vec(),
         };
@@ -57,14 +57,14 @@ pub(crate) async fn generic_children(
                 let (border, pad, own) = if reverse {
                     (
                         b.right,
-                        e.style.used().padding.right,
-                        e.style.used().margin.right,
+                        e.style.used().reset_box_layout.padding.right,
+                        e.style.used().reset_box_layout.margin.right,
                     )
                 } else {
                     (
                         b.left,
-                        e.style.used().padding.left,
-                        e.style.used().margin.left,
+                        e.style.used().reset_box_layout.padding.left,
+                        e.style.used().reset_box_layout.margin.left,
                     )
                 };
                 // Независимый контекст форматирования (overflow не
@@ -189,7 +189,7 @@ pub(crate) async fn generic_children(
         // containment without turning its descendants into clamp containers.
         let formatting = is_clamp.then(|| {
             let mut formatting = merged.clone();
-            formatting.flow_root = Some(true);
+            formatting.reset_context.flow_root = Some(true);
             formatting
         });
         decorated.extend(

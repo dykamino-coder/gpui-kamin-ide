@@ -26,9 +26,9 @@ use gpui::AnyElement;
 ///
 pub(super) fn spacer_style(merged: &BoxStyle, advance: f32) -> BoxStyle {
     let mut style = merged.clone();
-    style.letter_spacing = Some(Len::Px(advance));
-    style.word_spacing = None;
-    style.word_space_char = None;
+    style.inh.text_flow.letter_spacing = Some(Len::Px(advance));
+    style.inh.text_flow.word_spacing = None;
+    style.inh.text_flow.word_space_char = None;
     style.inline_decoration.band_color = None;
     style.inline_decoration.border_stroke = None;
     style
@@ -85,7 +85,7 @@ pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
             continue;
         };
         if text == SPACER
-            && let Some((id, left, own_rtl)) = style.spacer_edge
+            && let Some((id, left, own_rtl)) = style.reset_context.spacer_edge
         {
             out.push((at, id, left, own_rtl));
         }
@@ -104,7 +104,7 @@ pub fn box_extents(pieces: &[Piece]) -> Vec<(u32, usize, usize)> {
             continue;
         };
         if text.is_empty()
-            && let Some((id, start, _)) = style.spacer_edge
+            && let Some((id, start, _)) = style.reset_context.spacer_edge
         {
             if start {
                 out.push((id, at, usize::MAX));

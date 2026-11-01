@@ -13,7 +13,10 @@ use crate::tolerance::COORD_EPS;
 /// Флаг относится к текущему документу, включая отдельный контекст iframe.
 /// Исходный computed style остаётся доступен наследованию и CSSOM.
 pub(crate) fn effective_clear(style: &Computed, values: crate::values::ValueCx<'_>) -> Option<i8> {
-    style.clear.filter(|_| values.clearance_possible)
+    style
+        .reset_box_layout
+        .clear
+        .filter(|_| values.clearance_possible)
 }
 
 /// §9.5, последний абзац: коробка своего контекста, которой РЯДОМ с флоатами
@@ -27,16 +30,16 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
     let Some(cb) = cb else {
         return false;
     };
-    let Some(Len::Px(w)) = n.style.used().width else {
+    let Some(Len::Px(w)) = n.style.used().reset_box_layout.width else {
         return false;
     };
     let b = n.style.used().borders();
-    let bw = if n.style.used().border_box == Some(true) {
+    let bw = if n.style.used().reset_border.border_box == Some(true) {
         Some(w)
     } else {
         match (
-            px_missing_zero(n.style.used().padding.left),
-            px_missing_zero(n.style.used().padding.right),
+            px_missing_zero(n.style.used().reset_box_layout.padding.left),
+            px_missing_zero(n.style.used().reset_box_layout.padding.right),
             px_missing_zero(b.left),
             px_missing_zero(b.right),
         ) {
@@ -47,7 +50,7 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
     (!n.inline || inline_marked_block(n))
         && in_flow(&n.style.used())
         && matches!(
-            n.style.used().display,
+            n.style.used().reset_box_layout.display,
             None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
         )
         && own_context(n)
@@ -65,9 +68,9 @@ mod tests {
     fn inert_clear_does_not_split_margin_struts_or_mutate_computed_style() {
         let doc = crate::document::state::DocState::new(Default::default());
         let mut e = anon_element("div", vec![]);
-        e.style.used_mut().clear = Some(0);
-        e.style.used_mut().clear_inherit = true;
-        e.style.used_mut().margin.top = Some(Len::Px(12.));
+        e.style.used_mut().reset_box_layout.clear = Some(0);
+        e.style.used_mut().reset_context.clear_inherit = true;
+        e.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(12.));
         let active = doc.values();
         assert_eq!(effective_clear(&e.style.used(), active), Some(0));
         assert!(through_strut(&e, MarginCx::new(active)).is_none());
@@ -76,7 +79,7 @@ mod tests {
         assert_eq!(effective_clear(&e.style.used(), inert), None);
         assert_eq!(through_strut(&e, MarginCx::new(inert)), Some((12., 0.)));
         assert!(!inert.keep().vcx().clearance_possible);
-        assert_eq!(e.style.used().clear, Some(0));
-        assert!(e.style.used().clear_inherit);
+        assert_eq!(e.style.used().reset_box_layout.clear, Some(0));
+        assert!(e.style.used().reset_context.clear_inherit);
     }
 }

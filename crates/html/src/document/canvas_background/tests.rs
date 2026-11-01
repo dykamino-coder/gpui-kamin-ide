@@ -31,9 +31,15 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
                 panic!("expected body donor");
             };
             assert_eq!(background.color, Some(blue), "{color}; {image}");
-            assert_eq!(root.style.computed().color, Color::parse(root_color, vcx));
-            assert_eq!(body.style.computed().color, Some(blue));
-            assert_eq!(body.style.computed().background, Some(blue));
+            assert_eq!(
+                root.style.computed().inh.ui.color,
+                Color::parse(root_color, vcx)
+            );
+            assert_eq!(body.style.computed().inh.ui.color, Some(blue));
+            assert_eq!(
+                body.style.computed().reset_background.background,
+                Some(blue)
+            );
             assert!(!body.style.used().background_paint.paints());
         }
     }
@@ -54,10 +60,13 @@ fn root_currentcolor_selects_the_root_and_leaves_body_background_in_place() {
         Some(&CanvasBackgroundSource::Root)
     );
     assert_eq!(
-        root.style.cascaded().background_color,
+        root.style.cascaded().reset_background.background_color,
         Some(StyleColor::Current)
     );
-    assert_eq!(body.style.cascaded().background, Color::parse("green", vcx));
+    assert_eq!(
+        body.style.cascaded().reset_background.background,
+        Color::parse("green", vcx)
+    );
 }
 
 #[test]

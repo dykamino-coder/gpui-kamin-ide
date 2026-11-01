@@ -18,29 +18,36 @@ pub(super) fn gap_rule_layout(
     // пометкой `lanes_taffy`), но промежутки у них — ленты: главные между
     // лентами через всё поле содержимого, поперечные — между элементами
     // ленты (Blink `GridLanesGapAccumulator`).
-    let lanes = merged.lanes_taffy || merged.display == Some(Display::GridLanes);
-    let kind = match merged.display {
-        _ if merged.lanes_taffy => GapLayout::Lines {
+    let lanes = merged.reset_grid.lanes_taffy
+        || merged.reset_box_layout.display == Some(Display::GridLanes);
+    let kind = match merged.reset_box_layout.display {
+        _ if merged.reset_grid.lanes_taffy => GapLayout::Lines {
             stacked_vertically: crate::dom::lanes_row_dir(merged) != vertical,
         },
         Some(Display::Grid) | Some(Display::InlineGrid) => GapLayout::Grid,
         Some(Display::GridLanes) => {
             // Направление лент — как в `lanes()`: явное или по той оси, где
             // объявлены дорожки.
-            let row_tracks = merged.grid_rows.is_some()
-                || merged.auto_repeat_rows.is_some()
-                || merged.grid_auto_fill_row.is_some();
-            let col_tracks = merged.grid_tracks.is_some()
-                || merged.auto_repeat_cols.is_some()
-                || merged.grid_auto_fill_min.is_some();
+            let row_tracks = merged.reset_grid.grid_rows.is_some()
+                || merged.reset_grid.auto_repeat_rows.is_some()
+                || merged.reset_grid.grid_auto_fill_row.is_some();
+            let col_tracks = merged.reset_grid.grid_tracks.is_some()
+                || merged.reset_grid.auto_repeat_cols.is_some()
+                || merged.reset_grid.grid_auto_fill_min.is_some();
             GapLayout::Lines {
-                stacked_vertically: merged.lanes_row.unwrap_or(row_tracks && !col_tracks),
+                stacked_vertically: merged
+                    .reset_grid
+                    .lanes_row
+                    .unwrap_or(row_tracks && !col_tracks),
             }
         }
         _ => {
             // Строки гибкого контейнера уложены поперёк главной оси; в
             // вертикальном письме `row` идёт по вертикали.
-            let row_dir = !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+            let row_dir = !matches!(
+                s.reset_flex.flex_dir,
+                Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+            );
             GapLayout::Lines {
                 stacked_vertically: row_dir != vertical,
             }
@@ -51,7 +58,7 @@ pub(super) fn gap_rule_layout(
         Some(Len::Em(k)) => Some(k * size),
         _ => None,
     };
-    let (row_gap, col_gap) = match s.gap {
+    let (row_gap, col_gap) = match s.reset_flex.gap {
         Some((r, c)) => (gap_px(r), gap_px(c)),
         None => (None, None),
     };
@@ -80,8 +87,8 @@ pub(super) fn gap_rule_layout(
     };
     let (tpl_rows, tpl_cols) = match kind {
         GapLayout::Grid => (
-            track_px(merged.grid_rows.as_ref()),
-            track_px(merged.grid_tracks.as_ref()),
+            track_px(merged.reset_grid.grid_rows.as_ref()),
+            track_px(merged.reset_grid.grid_tracks.as_ref()),
         ),
         GapLayout::Lines { .. } | GapLayout::Multicol => (None, None),
     };
@@ -108,7 +115,10 @@ pub(super) fn gap_rule_layout(
     // `GridLanesGapAccumulator`): `track-reverse` and `fill-reverse` flip the
     // logical start of their axis.
     if lanes && let GapLayout::Lines { stacked_vertically } = kind {
-        let (grid_rev, stack_rev) = (merged.lanes_track_reverse, merged.lanes_fill_reverse);
+        let (grid_rev, stack_rev) = (
+            merged.reset_grid.lanes_track_reverse,
+            merged.reset_grid.lanes_fill_reverse,
+        );
         if stacked_vertically {
             rev_y ^= grid_rev;
             rev_x ^= stack_rev;
@@ -119,10 +129,10 @@ pub(super) fn gap_rule_layout(
     }
     if !lanes && let GapLayout::Lines { stacked_vertically } = kind {
         let items = matches!(
-            merged.flex_dir,
+            merged.reset_flex.flex_dir,
             Some(FlexDir::RowReverse | FlexDir::ColReverse)
         );
-        let lines = merged.flex_wrap_reverse == Some(true);
+        let lines = merged.reset_flex.flex_wrap_reverse == Some(true);
         if stacked_vertically {
             rev_x ^= items;
             rev_y ^= lines;
@@ -139,12 +149,12 @@ pub(super) fn gap_rule_layout(
         _ => 0.0,
     };
     let pad = [
-        pad_px(s.padding.top),
-        pad_px(s.padding.right),
-        pad_px(s.padding.bottom),
-        pad_px(s.padding.left),
+        pad_px(s.reset_box_layout.padding.top),
+        pad_px(s.reset_box_layout.padding.right),
+        pad_px(s.reset_box_layout.padding.bottom),
+        pad_px(s.reset_box_layout.padding.left),
     ];
-    let lines_extent = match merged.display {
+    let lines_extent = match merged.reset_box_layout.display {
         _ if lanes => 2,
         Some(Display::Grid) | Some(Display::InlineGrid) => 0,
         _ => 1,
@@ -154,9 +164,9 @@ pub(super) fn gap_rule_layout(
         lines_extent,
         lanes_content_aligned: lanes
             && if crate::dom::lanes_row_dir(merged) {
-                merged.justify_content.is_some()
+                merged.reset_flex.justify_content.is_some()
             } else {
-                merged.align_content.is_some()
+                merged.reset_flex.align_content.is_some()
             },
         rev_x,
         rev_y,
@@ -165,7 +175,7 @@ pub(super) fn gap_rule_layout(
         kind,
         vertical,
         rtl: merged.wm().rtl(),
-        column_over_row: s.rule_column_over_row == Some(true),
+        column_over_row: s.reset_fragmentation.rule_column_over_row == Some(true),
         gap_x,
         gap_y,
         tracks_x,

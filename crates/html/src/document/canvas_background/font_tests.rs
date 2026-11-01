@@ -79,16 +79,25 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
                     BgSize::Fixed(Some(Len::Px(4.0 * font * x_height)), Some(Len::Pct(0.5)))
                 );
             }
-            assert_eq!(body.style.cascaded().bg_pos.x, Some(Len::Em(1.0)));
+            assert_eq!(
+                body.style.cascaded().reset_background.bg_pos.x,
+                Some(Len::Em(1.0))
+            );
             assert!(!body.style.used().background_paint.paints());
             crate::style::cascade::materialize::materialize(
                 &nodes,
                 &Rc::new(Computed::default()),
                 vcx,
             );
-            assert_eq!(root.style.computed().font_size, Some(Len::Px(20.0)));
-            assert_eq!(body.style.computed().font_size, Some(Len::Px(font)));
-            assert_eq!(root.style.computed().bg_pos.y, None);
+            assert_eq!(
+                root.style.computed().inh.font.font_size,
+                Some(Len::Px(20.0))
+            );
+            assert_eq!(
+                body.style.computed().inh.font.font_size,
+                Some(Len::Px(font))
+            );
+            assert_eq!(root.style.computed().reset_background.bg_pos.y, None);
         }
     }
 }

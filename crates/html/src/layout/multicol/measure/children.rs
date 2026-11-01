@@ -44,8 +44,11 @@ pub(crate) fn measure_children(
             // внешней колонки измеряется живой вложенной раскладкой рядов.
             Node::Element(c)
                 if first_flow == Some(n as *const Node)
-                    && matches!(c.style.used().height, None | Some(Len::Auto))
-                    && zero_len(c.style.used().margin.top)
+                    && matches!(
+                        c.style.used().reset_box_layout.height,
+                        None | Some(Len::Auto)
+                    )
+                    && zero_len(c.style.used().reset_box_layout.margin.top)
                     && outer_frag.is_some()
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
@@ -72,8 +75,11 @@ pub(crate) fn measure_children(
             Node::Element(c)
                 if measure_ok
                     && first_flow != Some(n as *const Node)
-                    && c.style.used().column_fill_auto != Some(true)
-                    && matches!(c.style.used().height, None | Some(Len::Auto))
+                    && c.style.used().reset_fragmentation.column_fill_auto != Some(true)
+                    && matches!(
+                        c.style.used().reset_box_layout.height,
+                        None | Some(Len::Auto)
+                    )
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -82,7 +88,10 @@ pub(crate) fn measure_children(
             }
             Node::Element(c)
                 if whole_ok
-                    && matches!(c.style.used().height, None | Some(Len::Auto))
+                    && matches!(
+                        c.style.used().reset_box_layout.height,
+                        None | Some(Len::Auto)
+                    )
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -100,7 +109,7 @@ pub(crate) fn measure_children(
                     && crate::layout::fragment::paginate::gate(
                         c,
                         line_col_w,
-                        merged.column_fill_auto == Some(true),
+                        merged.reset_fragmentation.column_fill_auto == Some(true),
                         vcx,
                     ) =>
             {
@@ -124,10 +133,10 @@ pub(crate) fn measure_children(
             // накладывается на месте (корень A1).
             Node::Element(c)
                 if !c.inline
-                    && (c.style.used().position.is_none()
-                        || c.style.used().position
+                    && (c.style.used().reset_positioned.position.is_none()
+                        || c.style.used().reset_positioned.position
                             == Some(crate::style::computed::Position::Relative))
-                    && (c.style.used().float.unwrap_or(0) == 0
+                    && (c.style.used().reset_box_layout.float.unwrap_or(0) == 0
                         || block_like_float(&c.style.used())) =>
             {
                 // В вертикальном письме мера — по БЛОЧНОЙ оси
@@ -146,10 +155,14 @@ pub(crate) fn measure_children(
                 // (`brk_trim`), и флаг ребёнка отнял бы его у хоста
                 // (`text-box-trim-multicol-005`).
                 if inline_content(&c) {
-                    if merged.text_box_trim_start && first_flow == Some(n as *const Node) {
+                    if merged.reset_text_box.text_box_trim_start
+                        && first_flow == Some(n as *const Node)
+                    {
                         c.marks.host_trim_start = true;
                     }
-                    if merged.text_box_trim_end && last_flow == Some(n as *const Node) {
+                    if merged.reset_text_box.text_box_trim_end
+                        && last_flow == Some(n as *const Node)
+                    {
                         c.marks.host_trim_end = true;
                     }
                 }

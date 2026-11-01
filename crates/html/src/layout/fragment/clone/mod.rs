@@ -32,35 +32,35 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
         _ => false,
     };
     let b = s.borders();
-    let row = match s.display {
-        Some(Display::Flex) => matches!(s.flex_dir, None | Some(FlexDir::Row)),
+    let row = match s.reset_box_layout.display {
+        Some(Display::Flex) => matches!(s.reset_flex.flex_dir, None | Some(FlexDir::Row)),
         Some(Display::Grid) => false,
         _ => return None,
     };
     if w.inline
-        || s.webkit_box == Some(true)
+        || s.reset_flex.webkit_box == Some(true)
         || s.wm().vertical()
-        || s.position.is_some()
-        || s.float.is_some_and(|f| f != 0)
-        || s.background.is_some()
-        || s.bg_image.is_some()
-        || s.transform.is_some()
-        || s.filter.is_some()
-        || s.opacity.is_some()
-        || s.flex_wrap == Some(true)
-        || s.grid_tracks.is_some()
-        || s.grid_cols.is_some()
-        || s.grid_areas.is_some()
-        || s.align_items.is_some()
-        || s.justify_content.is_some()
-        || !matches!(s.height, None | Some(Len::Auto))
+        || s.reset_positioned.position.is_some()
+        || s.reset_box_layout.float.is_some_and(|f| f != 0)
+        || s.reset_background.background.is_some()
+        || s.reset_background.bg_image.is_some()
+        || s.reset_transforms.transform.is_some()
+        || s.reset_effects.filter.is_some()
+        || s.reset_effects.opacity.is_some()
+        || s.reset_flex.flex_wrap == Some(true)
+        || s.reset_grid.grid_tracks.is_some()
+        || s.reset_grid.grid_cols.is_some()
+        || s.reset_grid.grid_areas.is_some()
+        || s.reset_flex.align_items.is_some()
+        || s.reset_flex.justify_content.is_some()
+        || !matches!(s.reset_box_layout.height, None | Some(Len::Auto))
         || sizes.minimum[1].is_some()
         || sizes.maximum[1].is_some()
         || ![
-            &s.padding.top,
-            &s.padding.bottom,
-            &s.padding.left,
-            &s.padding.right,
+            &s.reset_box_layout.padding.top,
+            &s.reset_box_layout.padding.bottom,
+            &s.reset_box_layout.padding.left,
+            &s.reset_box_layout.padding.right,
             &b.top,
             &b.bottom,
             &b.left,
@@ -80,22 +80,22 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
         || item.inline
         || out_of_flow(&item.style.used())
         || clone_dec(item).is_none()
-        || item.style.used().align_self.is_some()
-        || item.style.used().order.is_some()
-        || !zero(&item.style.used().margin.top)
-        || !zero(&item.style.used().margin.bottom)
+        || item.style.used().reset_flex.align_self.is_some()
+        || item.style.used().reset_flex.order.is_some()
+        || !zero(&item.style.used().reset_box_layout.margin.top)
+        || !zero(&item.style.used().reset_box_layout.margin.bottom)
         || (row
             && !matches!(
-                item.style.used().width,
+                item.style.used().reset_box_layout.width,
                 Some(Len::Px(_)) | Some(Len::Pct(_))
             ))
     {
         return None;
     }
     let mut item = item.clone();
-    item.style.used_mut().display = Some(Display::Block);
-    item.style.used_mut().margin.top = s.margin.top;
-    item.style.used_mut().margin.bottom = s.margin.bottom;
+    item.style.used_mut().reset_box_layout.display = Some(Display::Block);
+    item.style.used_mut().reset_box_layout.margin.top = s.reset_box_layout.margin.top;
+    item.style.used_mut().reset_box_layout.margin.bottom = s.reset_box_layout.margin.bottom;
     Some(item)
 }
 
@@ -106,7 +106,7 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
 pub(crate) fn solid_box(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
-            if !x.inline || x.style.used().display == Some(Display::Block))
+            if !x.inline || x.style.used().reset_box_layout.display == Some(Display::Block))
     };
     monolith_box(k)
         || (k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid))
@@ -118,7 +118,7 @@ pub(crate) fn solid_box(k: &Element) -> bool {
 /// fragmentable, as Blink fragments the remaining block-size of a block
 /// once its content has ended (`FinishFragmentation`).
 pub(crate) fn monolith_box(k: &Element) -> bool {
-    k.style.used().break_inside_avoid || unbreakable_box(k)
+    k.style.used().reset_fragmentation.break_inside_avoid || unbreakable_box(k)
 }
 
 /// `monolith_box` без `break-inside: avoid`: физически неделимая коробка, которая
@@ -130,7 +130,7 @@ pub(crate) fn unbreakable_box(k: &Element) -> bool {
         // прокручиваемый и `break-inside: avoid`);
         // строка таблицы — да, но её не режет и укладка.
         || matches!(
-            k.style.used().display,
+            k.style.used().reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
@@ -142,7 +142,7 @@ pub(crate) fn unbreakable_box(k: &Element) -> bool {
 /// строчной она не является, монолитом её делают только `contain: size`,
 /// `break-inside: avoid`, прокрутка и замещаемое содержимое.
 pub(crate) fn monolith_blockified(k: &Element) -> bool {
-    k.style.used().break_inside_avoid || content_monolith_blockified(k)
+    k.style.used().reset_fragmentation.break_inside_avoid || content_monolith_blockified(k)
 }
 
 /// Физически неделимый блокифицированный элемент; avoid остаётся пожеланием.
@@ -158,8 +158,8 @@ pub(crate) fn content_monolith_blockified(k: &Element) -> bool {
     // обрезающей коробки рожает колонку (`single-line-{column,row}-flex-
     // fragmentation-010/011/051/063`, `overflow-clip-012`).
     size_monolith(k)
-        || scrolls(k.style.used().overflow_x)
-        || scrolls(k.style.used().overflow_y)
+        || scrolls(k.style.used().reset_box_layout.overflow_x)
+        || scrolls(k.style.used().reset_box_layout.overflow_y)
         || matches!(
             k.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"

@@ -29,21 +29,24 @@ use crate::text::paragraph::*;
 /// Правила переноса из стиля БЕЗ вопроса, нужна ли своя раскладка.
 pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
     Wrap {
-        nowrap: c.nowrap == Some(true),
+        nowrap: c.inh.text_flow.nowrap == Some(true),
         break_spaces: crate::dom::whitespace::break_spaces(c),
-        break_all: c.break_anywhere == Some(true) && c.break_anywhere_strict != Some(true),
-        anywhere: c.break_anywhere_strict == Some(true),
-        keep_all: c.keep_all == Some(true),
-        auto_phrase: c.auto_phrase == Some(true),
+        break_all: c.inh.text_flow.break_anywhere == Some(true)
+            && c.inh.text_flow.break_anywhere_strict != Some(true),
+        anywhere: c.inh.text_flow.break_anywhere_strict == Some(true),
+        keep_all: c.inh.text_flow.keep_all == Some(true),
+        auto_phrase: c.inh.text_flow.auto_phrase == Some(true),
         // `word-break: break-word` — устаревшая запись `normal` с
         // `overflow-wrap: anywhere` (css-text-4 §5.2).
-        break_word: c.break_word == Some(true) || c.word_break_word == Some(true),
-        wrap_anywhere: c.wrap_anywhere == Some(true) || c.word_break_word == Some(true),
+        break_word: c.inh.text_flow.break_word == Some(true)
+            || c.inh.text_flow.word_break_word == Some(true),
+        wrap_anywhere: c.inh.text_flow.wrap_anywhere == Some(true)
+            || c.inh.text_flow.word_break_word == Some(true),
         rtl: c.wm().rtl(),
-        balance: c.balance_lines == Some(true),
+        balance: c.inh.text_flow.balance_lines == Some(true),
         keep_spaces: crate::dom::whitespace::keep_spaces(c),
-        loose: c.line_break_loose.unwrap_or(0),
-        cjk_lang: c.lang.as_deref().is_some_and(cjk_writing),
+        loose: c.inh.text_flow.line_break_loose.unwrap_or(0),
+        cjk_lang: c.inh.text_flow.lang.as_deref().is_some_and(cjk_writing),
     }
 }
 

@@ -61,17 +61,27 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
             let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
             let st = &*e.style.used();
             let (b, p, m) = if side == 1 {
-                (st.borders().right, st.padding.right, st.margin.right)
+                (
+                    st.borders().right,
+                    st.reset_box_layout.padding.right,
+                    st.reset_box_layout.margin.right,
+                )
             } else {
-                (st.borders().left, st.padding.left, st.margin.left)
+                (
+                    st.borders().left,
+                    st.reset_box_layout.padding.left,
+                    st.reset_box_layout.margin.left,
+                )
             };
             nz(b) || nz(p) || nz(m)
         };
         // Horizontal fragments keep their logical start/end edges in either direction.
-        let own_rtl = e.style.cascaded().rtl.unwrap_or(parent_rtl);
+        let own_rtl = e.style.cascaded().inh.writing.rtl.unwrap_or(parent_rtl);
         let edges = e
             .style
             .cascaded()
+            .inh
+            .writing
             .writing_mode
             .is_none()
             .then_some(if own_rtl { (1, 3) } else { (3, 1) });
@@ -110,7 +120,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 };
                 // Метка выноса: объёмный контекст и перспектива деда на блок
                 // не действуют (`Computed::hoisted_block`, `transformed`).
-                block.style.used_mut().hoisted_block = true;
+                block.style.used_mut().reset_context.hoisted_block = true;
                 containing::hoist(&mut block, e);
                 // Наследование уже вычислено по дереву элементов (CSS 2 §6.2).
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
@@ -119,61 +129,88 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // каждый слой решает свою долю от того же содержащего блока
                 // (`position-relative-001/002`), а `fixed` едет вместе со
                 // своей статической позицией (`-003`).
-                let host_shift = e.style.used().position
+                let host_shift = e.style.used().reset_positioned.position
                     == Some(crate::style::computed::Position::Relative)
-                    && (e.style.used().inset.left.is_some() || e.style.used().inset.top.is_some());
+                    && (e.style.used().reset_positioned.inset.left.is_some()
+                        || e.style.used().reset_positioned.inset.top.is_some());
                 let wrap_shift = host_shift
                     && matches!(
-                        block.style.used().position,
+                        block.style.used().reset_positioned.position,
                         Some(crate::style::computed::Position::Relative)
                             | Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     );
                 if host_shift && !wrap_shift {
-                    block.style.used_mut().position =
+                    block.style.used_mut().reset_positioned.position =
                         Some(crate::style::computed::Position::Relative);
-                    if block.style.used().inset.left.is_none() {
-                        block.style.used_mut().inset.left = e.style.used().inset.left;
+                    if block.style.used().reset_positioned.inset.left.is_none() {
+                        block.style.used_mut().reset_positioned.inset.left =
+                            e.style.used().reset_positioned.inset.left;
                     }
-                    if block.style.used().inset.top.is_none() {
-                        block.style.used_mut().inset.top = e.style.used().inset.top;
+                    if block.style.used().reset_positioned.inset.top.is_none() {
+                        block.style.used_mut().reset_positioned.inset.top =
+                            e.style.used().reset_positioned.inset.top;
                     }
                 }
                 // `inherit` на размере вынесенного блока брал бы значение уже
                 // не у хозяина, а у его родителя: разрыв делает блок БРАТОМ
                 // хозяина. Значение забирается здесь, пока связь ещё видна.
                 use crate::style::css::LonghandId as L;
-                if block.style.cascaded().inherit_longhands.contains(L::Width) {
-                    block.style.used_mut().width = e.style.used().width;
+                if block
+                    .style
+                    .cascaded()
+                    .reset_cascade
+                    .inherit_longhands
+                    .contains(L::Width)
+                {
+                    block.style.used_mut().reset_box_layout.width =
+                        e.style.used().reset_box_layout.width;
                     block
                         .style
                         .used_mut()
+                        .reset_cascade
                         .inherit_longhands
                         .set(L::Width, false);
                 }
-                if block.style.cascaded().inherit_longhands.contains(L::Height) {
-                    block.style.used_mut().height = e.style.used().height;
+                if block
+                    .style
+                    .cascaded()
+                    .reset_cascade
+                    .inherit_longhands
+                    .contains(L::Height)
+                {
+                    block.style.used_mut().reset_box_layout.height =
+                        e.style.used().reset_box_layout.height;
                     block
                         .style
                         .used_mut()
+                        .reset_cascade
                         .inherit_longhands
                         .set(L::Height, false);
                 }
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском
                 // строки и получал их заодно с ней.
-                if e.style.used().opacity.is_some() && block.style.used().opacity.is_none() {
-                    block.style.used_mut().opacity = e.style.used().opacity;
+                if e.style.used().reset_effects.opacity.is_some()
+                    && block.style.used().reset_effects.opacity.is_none()
+                {
+                    block.style.used_mut().reset_effects.opacity =
+                        e.style.used().reset_effects.opacity;
                 }
-                if e.style.used().z_index.is_some() && block.style.used().z_index.is_none() {
-                    block.style.used_mut().z_index = e.style.used().z_index;
+                if e.style.used().reset_positioned.z_index.is_some()
+                    && block.style.used().reset_positioned.z_index.is_none()
+                {
+                    block.style.used_mut().reset_positioned.z_index =
+                        e.style.used().reset_positioned.z_index;
                 }
                 if wrap_shift {
                     let mut shifter = anon_element("anon-relshift", vec![Node::Element(block)]);
-                    shifter.style.used_mut().position =
+                    shifter.style.used_mut().reset_positioned.position =
                         Some(crate::style::computed::Position::Relative);
-                    shifter.style.used_mut().inset.left = e.style.used().inset.left;
-                    shifter.style.used_mut().inset.top = e.style.used().inset.top;
+                    shifter.style.used_mut().reset_positioned.inset.left =
+                        e.style.used().reset_positioned.inset.left;
+                    shifter.style.used_mut().reset_positioned.inset.top =
+                        e.style.used().reset_positioned.inset.top;
                     out.push(Node::Element(shifter));
                     continue;
                 }
@@ -196,7 +233,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 continue;
             };
             // `box-decoration-break: clone` keeps every side on every fragment.
-            if host.style.used().bdb_clone {
+            if host.style.used().reset_fragmentation.bdb_clone {
                 continue;
             }
             // Physical sides: 1 = right, 3 = left.

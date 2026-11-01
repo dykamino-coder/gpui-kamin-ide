@@ -36,14 +36,42 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
         let blue = Color::parse("blue", vcx).unwrap();
         let green = Color::parse("green", vcx).unwrap();
         assert_eq!(background.gradient.as_ref().unwrap().from, blue);
-        assert_eq!(body.style.computed().gradient.as_ref().unwrap().from, blue);
         assert_eq!(
-            child.style.computed().gradient.as_ref().unwrap().from,
+            body.style
+                .computed()
+                .reset_background
+                .gradient
+                .as_ref()
+                .unwrap()
+                .from,
+            blue
+        );
+        assert_eq!(
+            child
+                .style
+                .computed()
+                .reset_background
+                .gradient
+                .as_ref()
+                .unwrap()
+                .from,
             green
         );
-        assert!(root.style.computed().gradient_raw.is_none());
-        assert!(head.style.computed().gradient_raw.is_none());
-        assert!(root.style.computed().bg_lists.is_empty());
+        assert!(
+            root.style
+                .computed()
+                .reset_background
+                .gradient_raw
+                .is_none()
+        );
+        assert!(
+            head.style
+                .computed()
+                .reset_background
+                .gradient_raw
+                .is_none()
+        );
+        assert!(root.style.computed().reset_background.bg_lists.is_empty());
         assert!(!body.style.used().background_paint.paints());
         assert!(child.style.used().background_paint.paints());
         // Транспорт синтетической коробки сохраняет вход, а не встраивает в CSS.
@@ -54,7 +82,13 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
             panic!("expected transported body donor");
         };
         assert!(Rc::ptr_eq(&transported_background, background));
-        assert!(transported.computed().gradient_raw.is_none());
+        assert!(
+            transported
+                .computed()
+                .reset_background
+                .gradient_raw
+                .is_none()
+        );
     }
 }
 
@@ -95,6 +129,9 @@ fn canvas_keeps_computed_position_expressions_for_single_and_repeated_lists() {
                 (40.0, 100.0)
             );
         }
-        assert_eq!(root.style.cascaded().bg_pos, Default::default());
+        assert_eq!(
+            root.style.cascaded().reset_background.bg_pos,
+            Default::default()
+        );
     }
 }

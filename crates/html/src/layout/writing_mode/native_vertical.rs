@@ -15,8 +15,8 @@ pub(crate) fn claim_float_inline_size(
 ) {
     // CSS Containment 2 §3.1: a float's shrink-to-fit width must measure
     // the empty containment box even after placement removes its float flag.
-    if style.contains_width() && matches!(style.width, None | Some(Len::Auto)) {
-        style.width = Some(Len::FitContent);
+    if style.contains_width() && matches!(style.reset_box_layout.width, None | Some(Len::Auto)) {
+        style.reset_box_layout.width = Some(Len::FitContent);
     }
     // Native block children already establish the float's inline size and stretch together.
     // Only the rotated inline paragraph needs an explicit outer size claim.
@@ -24,14 +24,14 @@ pub(crate) fn claim_float_inline_size(
         return;
     }
     if style.vertical_decl().or(parent.vertical_decl()) == Some(true)
-        && matches!(style.height, None | Some(Len::Auto))
+        && matches!(style.reset_box_layout.height, None | Some(Len::Auto))
     {
         // The float's automatic orthogonal inline size is fit-content. Resolve
         // that size at its flow root before stretching parallel block children;
         // propagating auto claims would give each column its own min-content height.
-        style.height = Some(Len::FitContent);
-        style.hug_inline = true;
-        style.hug_claim = true;
+        style.reset_box_layout.height = Some(Len::FitContent);
+        style.reset_context.hug_inline = true;
+        style.reset_context.hug_claim = true;
     }
 }
 
@@ -61,7 +61,7 @@ pub(crate) fn constraint(
         .or(crate::layout::writing_mode::orthogonal_inline::flow_constraint(style))
         .or_else(|| crate::layout::writing_mode::orthogonal_absolute::constraint(style, fallback))
         .or_else(|| {
-            if !style.hug_inline {
+            if !style.reset_context.hug_inline {
                 return None;
             }
             let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -75,7 +75,7 @@ pub(crate) fn constraint(
         .or_else(|| {
             // The former rotated wrapper explicitly requested min-content for
             // parallel table columns; available space alone must not replace it.
-            if !style.ortho_col || style.ortho_limit.is_none() {
+            if !style.reset_context.ortho_col || style.reset_context.ortho_limit.is_none() {
                 return None;
             }
             let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -89,14 +89,15 @@ pub(crate) fn constraint(
 }
 
 pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
-    match style.height {
+    match style.reset_box_layout.height {
         Some(Len::MinContent) => Some(InlineKeyword::MinContent),
         Some(Len::MaxContent) => Some(InlineKeyword::MaxContent),
         Some(Len::FitContent) => Some(InlineKeyword::FitContent),
         _ => None,
     }
     .or_else(|| {
-        (style.ortho_col && style.ortho_limit.is_some()).then_some(InlineKeyword::MinContent)
+        (style.reset_context.ortho_col && style.reset_context.ortho_limit.is_some())
+            .then_some(InlineKeyword::MinContent)
     })
 }
 

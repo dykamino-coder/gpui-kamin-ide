@@ -19,15 +19,25 @@ pub(crate) struct BoxDimensions {
 impl BoxDimensions {
     pub(crate) fn from_computed(style: &Computed) -> Self {
         Self {
-            preferred: [style.width, style.height],
-            minimum: [style.min_width, style.min_height],
-            maximum: [style.max_width, style.max_height],
-            border_box: style.border_box == Some(true),
+            preferred: [style.reset_box_layout.width, style.reset_box_layout.height],
+            minimum: [
+                style.reset_box_layout.min_width,
+                style.reset_box_layout.min_height,
+            ],
+            maximum: [
+                style.reset_box_layout.max_width,
+                style.reset_box_layout.max_height,
+            ],
+            border_box: style.reset_border.border_box == Some(true),
         }
     }
 
     pub(crate) fn transfer_ratio(self, style: &Computed) -> Self {
-        let Some(ratio) = style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) else {
+        let Some(ratio) = style
+            .reset_shapes
+            .aspect_ratio
+            .filter(|r| r.is_finite() && *r > 0.0)
+        else {
             return self;
         };
         let sizes = self.preferred;
@@ -92,8 +102,8 @@ pub(crate) struct BoxEdges {
 impl BoxEdges {
     pub(crate) fn from_computed(style: &Computed) -> Self {
         Self {
-            outer: style.margin,
-            inner: style.padding,
+            outer: style.reset_box_layout.margin,
+            inner: style.reset_box_layout.padding,
             stroke: style.borders(),
         }
     }

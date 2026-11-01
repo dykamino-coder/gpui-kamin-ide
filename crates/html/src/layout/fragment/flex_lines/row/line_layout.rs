@@ -20,39 +20,39 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
     if depth == 0 || !row_container(c) || main <= 0.0 {
         return None;
     }
-    let gap = px_auto_zero(c.style.used().gap.and_then(|g| g.1))?.max(0.0);
+    let gap = px_auto_zero(c.style.used().reset_flex.gap.and_then(|g| g.1))?.max(0.0);
     let mut items = Vec::new();
     for (source, n) in c.children.iter().enumerate().filter(|(_, n)| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
-        if k.style.used().display == Some(crate::style::computed::Display::None) {
+        if k.style.used().reset_box_layout.display == Some(crate::style::computed::Display::None) {
             continue;
         }
         let s = &*k.style.used();
         let sizes = BoxDimensions::for_element(k, s);
         if k.inline
             || out_of_flow(s)
-            || s.float.unwrap_or(0) != 0
-            || s.flex_grow.is_some_and(|g| g > 0.0)
-            || s.min_width.is_some()
-            || s.max_width.is_some()
+            || s.reset_box_layout.float.unwrap_or(0) != 0
+            || s.reset_flex.flex_grow.is_some_and(|g| g > 0.0)
+            || s.reset_box_layout.min_width.is_some()
+            || s.reset_box_layout.max_width.is_some()
             // Cross-axis auto margins absorb free space instead of stretching
             // the item (§9.6). Bounded stretch also needs max-size resolution.
-            || s.margin.top == Some(Len::Auto)
-            || s.margin.bottom == Some(Len::Auto)
-            || (matches!(s.height, None | Some(Len::Auto)) && sizes.maximum[1].is_some())
+            || s.reset_box_layout.margin.top == Some(Len::Auto)
+            || s.reset_box_layout.margin.bottom == Some(Len::Auto)
+            || (matches!(s.reset_box_layout.height, None | Some(Len::Auto)) && sizes.maximum[1].is_some())
             || !matches!(
-                s.align_self,
+                s.reset_flex.align_self,
                 None | Some(Align::Stretch) | Some(Align::Start)
             )
-            || s.basis_content == Some(true)
+            || s.reset_flex.basis_content == Some(true)
         {
             return None;
         }
         let definite = row_item_width(s, main);
         let (hypothetical, minimum) = match definite {
             Some(w) => (w, w),
-            None if matches!(s.width, None | Some(Len::Auto))
-                && matches!(s.flex_basis, None | Some(Len::Auto)) =>
+            None if matches!(s.reset_box_layout.width, None | Some(Len::Auto))
+                && matches!(s.reset_flex.flex_basis, None | Some(Len::Auto)) =>
             {
                 intrinsic_main(k, main, depth - 1)?
             }
@@ -62,17 +62,20 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
         let edges = if sizes.border_box {
             0.0
         } else {
-            px_auto_zero(s.padding.left)?
-                + px_auto_zero(s.padding.right)?
+            px_auto_zero(s.reset_box_layout.padding.left)?
+                + px_auto_zero(s.reset_box_layout.padding.right)?
                 + px_auto_zero(b.left)?
                 + px_auto_zero(b.right)?
-        } + px_auto_zero(s.margin.left)?
-            + px_auto_zero(s.margin.right)?;
+        } + px_auto_zero(s.reset_box_layout.margin.left)?
+            + px_auto_zero(s.reset_box_layout.margin.right)?;
         let outer = hypothetical + edges;
         let actual = if outer > main + 0.01 {
             // This item necessarily occupies a line alone. Its known intrinsic
             // minimum lets §9.7 shrink it, but §9.3 still collects by its base.
-            if definite.is_some() || s.flex_shrink == Some(0.0) || minimum + edges > main + 0.01 {
+            if definite.is_some()
+                || s.reset_flex.flex_shrink == Some(0.0)
+                || minimum + edges > main + 0.01
+            {
                 return None;
             }
             (main - edges).max(minimum)
@@ -80,11 +83,11 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
             hypothetical
         };
         let mut element = k.clone();
-        element.style.used_mut().width = Some(Len::Px(actual));
-        element.style.used_mut().flex_basis = None;
+        element.style.used_mut().reset_box_layout.width = Some(Len::Px(actual));
+        element.style.used_mut().reset_flex.flex_basis = None;
         items.push((outer, source, element));
     }
-    items.sort_by_key(|(_, _, item)| item.style.used().order.unwrap_or(0));
+    items.sort_by_key(|(_, _, item)| item.style.used().reset_flex.order.unwrap_or(0));
     let mut lines: Lines = Vec::new();
     let mut used = 0.0;
     for (outer, source, item) in items {

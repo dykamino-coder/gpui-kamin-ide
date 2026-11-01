@@ -29,21 +29,21 @@ pub(crate) fn refusal(
     // TRANSITIONAL(F2-7): Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22.
     fn gapped(e: &Element) -> bool {
         (matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::Flex) | Some(Display::Grid)
-        ) && e.style.used().gap.is_some())
+        ) && e.style.used().reset_flex.gap.is_some())
             || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))
     }
     fn has_flex(e: &Element) -> bool {
-        e.style.used().display == Some(Display::Flex)
+        e.style.used().reset_box_layout.display == Some(Display::Flex)
             || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k))))
     }
     if c.inline
         || out_of_flow(&c.style.used())
         || !matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             Some(Display::Block) | Some(Display::Flex) | None
         )
     {
@@ -52,8 +52,8 @@ pub(crate) fn refusal(
     if monolith_box(c)
         || crate::layout::multicol::spanner::multicol_container(&c.style.used())
         || !crate::layout::page::paged::visible_overflow(&c.style.used())
-        || c.style.used().bdb_clone
-        || c.style.used().column_span == Some(true)
+        || c.style.used().reset_fragmentation.bdb_clone
+        || c.style.used().reset_fragmentation.column_span == Some(true)
     {
         return Some("box");
     }
@@ -88,7 +88,7 @@ mod tests {
                 let tree = crate::document::parsed::parse(&html, "");
                 fn flex(node: &Node) -> Option<&Element> {
                     let Node::Element(e) = node else { return None };
-                    if e.style.used().display == Some(Display::Flex) {
+                    if e.style.used().reset_box_layout.display == Some(Display::Flex) {
                         return Some(e);
                     }
                     e.children.iter().find_map(flex)

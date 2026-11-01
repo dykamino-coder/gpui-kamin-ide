@@ -7,8 +7,8 @@ use crate::style::values::value::Len;
 pub(super) fn segment(host: &Element, children: &[Node], tail_height: Option<f32>) -> Element {
     let mut sub = host.clone();
     sub.children = children.to_vec().into();
-    sub.style.used_mut().column_span = None;
-    sub.style.used_mut().background = None;
+    sub.style.used_mut().reset_fragmentation.column_span = None;
+    sub.style.used_mut().reset_background.background = None;
     // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
     // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
     // клон ряда повторял это на каждом ряду: контур и
@@ -21,33 +21,34 @@ pub(super) fn segment(host: &Element, children: &[Node], tail_height: Option<f32
     // §overflow режет коробка многоколоночника, а не ряд.
     // Ряд остаётся содержащим блоком (`relative`), как
     // прежде.
-    sub.style.used_mut().gradient = None;
-    sub.style.used_mut().bg_image = None;
-    sub.style.used_mut().border_image = None;
-    sub.style.used_mut().shadows = Vec::new();
-    sub.style.used_mut().inset_shadows = Vec::new();
-    sub.style.used_mut().outline = None;
-    sub.style.used_mut().opacity = None;
-    sub.style.used_mut().transform = None;
-    sub.style.used_mut().filter = None;
-    sub.style.used_mut().mask_image = None;
-    sub.style.used_mut().backdrop_blur = None;
+    sub.style.used_mut().reset_background.gradient = None;
+    sub.style.used_mut().reset_background.bg_image = None;
+    sub.style.used_mut().reset_border.border_image = None;
+    sub.style.used_mut().reset_effects.shadows = Vec::new();
+    sub.style.used_mut().reset_effects.inset_shadows = Vec::new();
+    sub.style.used_mut().reset_border.outline = None;
+    sub.style.used_mut().reset_effects.opacity = None;
+    sub.style.used_mut().reset_transforms.transform = None;
+    sub.style.used_mut().reset_effects.filter = None;
+    sub.style.used_mut().reset_mask.mask_image = None;
+    sub.style.used_mut().reset_effects.backdrop_blur = None;
     if matches!(
-        sub.style.used().position,
+        sub.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
-        sub.style.used_mut().position = Some(crate::style::computed::Position::Relative);
+        sub.style.used_mut().reset_positioned.position =
+            Some(crate::style::computed::Position::Relative);
     }
-    sub.style.used_mut().inset = Default::default();
-    sub.style.used_mut().z_index = None;
-    sub.style.used_mut().overflow_x = None;
-    sub.style.used_mut().overflow_y = None;
-    sub.style.used_mut().margin = Default::default();
-    sub.style.used_mut().padding = Default::default();
-    sub.style.used_mut().border_width = Default::default();
-    sub.style.used_mut().width = None;
-    sub.style.used_mut().height = tail_height.map(Len::Px);
+    sub.style.used_mut().reset_positioned.inset = Default::default();
+    sub.style.used_mut().reset_positioned.z_index = None;
+    sub.style.used_mut().reset_box_layout.overflow_x = None;
+    sub.style.used_mut().reset_box_layout.overflow_y = None;
+    sub.style.used_mut().reset_box_layout.margin = Default::default();
+    sub.style.used_mut().reset_box_layout.padding = Default::default();
+    sub.style.used_mut().reset_border.border_width = Default::default();
+    sub.style.used_mut().reset_box_layout.width = None;
+    sub.style.used_mut().reset_box_layout.height = tail_height.map(Len::Px);
     // Остаток задаётся один раз: исходная высота хоста не ограничивает ряд.
     sub.marks.spanner_content_box = true;
     sub
@@ -100,11 +101,20 @@ mod tests {
             assert_eq!(dimensions.minimum, [Some(Len::Px(40.)), None]);
             assert_eq!(dimensions.maximum[1], None);
             assert!(!dimensions.border_box);
-            assert_eq!(row.style.used().column_span, None);
+            assert_eq!(row.style.used().reset_fragmentation.column_span, None);
         }
-        assert_eq!(host.style.used().height, Some(Len::Px(300.)));
-        assert_eq!(host.style.used().min_height, Some(Len::Px(200.)));
-        assert_eq!(host.style.used().max_height, Some(Len::Px(250.)));
-        assert_eq!(host.style.used().border_box, Some(true));
+        assert_eq!(
+            host.style.used().reset_box_layout.height,
+            Some(Len::Px(300.))
+        );
+        assert_eq!(
+            host.style.used().reset_box_layout.min_height,
+            Some(Len::Px(200.))
+        );
+        assert_eq!(
+            host.style.used().reset_box_layout.max_height,
+            Some(Len::Px(250.))
+        );
+        assert_eq!(host.style.used().reset_border.border_box, Some(true));
     }
 }

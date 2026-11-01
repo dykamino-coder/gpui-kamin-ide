@@ -15,17 +15,20 @@ pub(super) fn piped_image(
     vcx: ValueCx<'_>,
 ) -> Result<AnyElement, gpui::Div> {
     let values = vcx.keep();
-    if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
-        (wants_pipe, e.style.used().width, e.style.used().height)
-    {
-        let pos = e
-            .style
-            .used()
-            .object_position
-            .unwrap_or(crate::style::computed::BgPos {
-                x: Some(Len::Pct(0.5)),
-                y: Some(Len::Pct(0.5)),
-            });
+    if let (true, Some(Len::Px(w)), Some(Len::Px(h))) = (
+        wants_pipe,
+        e.style.used().reset_box_layout.width,
+        e.style.used().reset_box_layout.height,
+    ) {
+        let pos =
+            e.style
+                .used()
+                .reset_shapes
+                .object_position
+                .unwrap_or(crate::style::computed::BgPos {
+                    x: Some(Len::Pct(0.5)),
+                    y: Some(Len::Pct(0.5)),
+                });
         use crate::style::computed::BgSize;
         let bgc = {
             let mut with_inherited = crate::style::computed::Computed {
@@ -40,7 +43,7 @@ pub(super) fn piped_image(
                         )),
                         bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
                         bg_pos: pos,
-                        bg_size: match e.style.used().object_fit.as_deref() {
+                        bg_size: match e.style.used().reset_shapes.object_fit.as_deref() {
                             Some("contain") => BgSize::Contain,
                             Some("cover") => BgSize::Cover,
                             Some("none") => BgSize::Auto,
@@ -69,8 +72,8 @@ pub(super) fn piped_image(
             // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
             // положить руками: иначе `image-orientation: none` вместе с
             // `object-fit`/`object-position` уходил бы мимо ключа источника.
-            with_inherited.image_orient_none = e.style.cascaded().image_orient_none;
-            with_inherited.image_pixelated = e.style.cascaded().image_pixelated;
+            with_inherited.inh.ui.image_orient_none = e.style.cascaded().inh.ui.image_orient_none;
+            with_inherited.inh.ui.image_pixelated = e.style.cascaded().inh.ui.image_pixelated;
             with_inherited
         };
         // `overflow: visible` на замещаемом (HTML §rendering: UA-правило
@@ -80,8 +83,10 @@ pub(super) fn piped_image(
         // скругление её тоже не режет (`overflow-img`, `-svg`,
         // `-border-radius`: эталон — та же картинка без обрезки).
         // Умолчание (`None`) — UA-шный `clip`, прежний путь ниже.
-        let spills = e.style.used().overflow_x == Some(crate::style::computed::Overflow::Visible)
-            && e.style.used().overflow_y == Some(crate::style::computed::Overflow::Visible);
+        let spills = e.style.used().reset_box_layout.overflow_x
+            == Some(crate::style::computed::Overflow::Visible)
+            && e.style.used().reset_box_layout.overflow_y
+                == Some(crate::style::computed::Overflow::Visible);
         if spills {
             let style = bgc;
             let layer = gpui::canvas(

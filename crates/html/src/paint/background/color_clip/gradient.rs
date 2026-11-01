@@ -135,7 +135,7 @@ mod tests {
                     );
                     c.apply_one("background-color", "transparent", vcx);
                     c.apply_one("border-radius", radius, vcx);
-                    c.bg_clip = Some(clip);
+                    c.reset_background.bg_clip = Some(clip);
                     assert!(
                         !crate::style::background_paint::BackgroundValues::from_computed(&c)
                             .gradient_as_tile()
@@ -152,7 +152,7 @@ mod tests {
                         super::super::geometry::area(&c, area, BgClip::PaddingBox, vcx).0
                     );
                     let paint = super::super::geometry::area(&c, area, clip, vcx).0;
-                    let original = c.gradient.as_ref().unwrap();
+                    let original = c.reset_background.gradient.as_ref().unwrap();
                     let mapped = rebase(original, positioning, paint, IDENTITY);
                     let (oc, ol, _) = axis(positioning, original.angle_deg);
                     let (pc, pl, _) = axis(paint, mapped.angle_deg);

@@ -25,11 +25,14 @@ fn nested_inline_runs_keep_ancestor_band_and_original_css() {
     let (child, _) = element_style(bold, &parent, vcx);
     assert!(painted);
     assert_eq!(child.inline_decoration, parent.inline_decoration);
-    assert!(child.background.is_none());
-    assert!(child.radius.tl.is_none());
+    assert!(child.reset_background.background.is_none());
+    assert!(child.reset_border.radius.tl.is_none());
     assert_eq!(*span.style.computed(), *original);
-    assert_eq!(parent.radius, original.radius);
-    assert_eq!(parent.background, original.background);
+    assert_eq!(parent.reset_border.radius, original.reset_border.radius);
+    assert_eq!(
+        parent.reset_background.background,
+        original.reset_background.background
+    );
     assert_eq!(parent.inline_decoration.corner_radius, Some(5.0));
     let pieces = vec![
         Piece::Text {
@@ -68,12 +71,15 @@ fn inline_border_result_does_not_replace_currentcolor_css() {
         boxed.inline_decoration.border_stroke,
         Some((Color::parse("blue", vcx).unwrap(), [2.0; 4]))
     );
-    assert_eq!(boxed.border_colors, before.border_colors);
-    assert_eq!(boxed.radius, before.radius);
+    assert_eq!(
+        boxed.reset_border.border_colors,
+        before.reset_border.border_colors
+    );
+    assert_eq!(boxed.reset_border.radius, before.reset_border.radius);
     assert_eq!(*span.style.computed(), *before);
     // Прозрачная полоса сохраняет идентичность рамки без добавления CSS фона.
     assert_eq!(boxed.inline_decoration.band_color.unwrap().a, 0.0);
-    assert!(boxed.background.is_none());
+    assert!(boxed.reset_background.background.is_none());
 }
 
 #[test]
@@ -83,8 +89,8 @@ fn splitting_a_run_keeps_band_geometry_independent_of_css() {
     use crate::text::inline::{Piece, style_first_line};
     let doc = crate::document::state::DocState::new(Default::default());
     let mut original = BoxStyle::default();
-    original.background = Color::parse("red", doc.values());
-    original.radius.tl = Some(Len::Px(11.0));
+    original.reset_background.background = Color::parse("red", doc.values());
+    original.reset_border.radius.tl = Some(Len::Px(11.0));
     original.inline_decoration = InlineDecoration {
         band_color: Color::parse("blue", doc.values()),
         physical_padding: Some([2.0; 4]),
@@ -107,8 +113,11 @@ fn splitting_a_run_keeps_band_geometry_independent_of_css() {
             panic!("text split")
         };
         assert_eq!(style.inline_decoration, original.inline_decoration);
-        assert_eq!(style.background, css.background);
-        assert_eq!(style.radius, css.radius);
+        assert_eq!(
+            style.reset_background.background,
+            css.reset_background.background
+        );
+        assert_eq!(style.reset_border.radius, css.reset_border.radius);
     }
     let (text, runs) =
         crate::text::inline::text_and_runs(&pieces, &Default::default(), doc.values()).unwrap();
@@ -122,7 +131,7 @@ fn splitting_a_run_keeps_band_geometry_independent_of_css() {
         assert_eq!(run.background_radius, gpui::px(5.0));
         assert_eq!(run.background_pad, [gpui::px(2.0); 4]);
     }
-    assert_eq!(original.radius.tl, Some(Len::Px(11.0)));
+    assert_eq!(original.reset_border.radius.tl, Some(Len::Px(11.0)));
 }
 
 #[test]
@@ -198,6 +207,6 @@ fn filtered_inline_border_and_band_use_own_result_once() {
     assert_eq!(boxed.inline_decoration.border_stroke, Some((red, [2.0; 4])));
     assert_eq!(boxed.inline_decoration.band_color, Some(blue));
     assert_eq!(boxed.ink(), Some(red));
-    assert_eq!(boxed.color.unwrap().r, 1.0);
-    assert_eq!(boxed.background.unwrap().b, 1.0);
+    assert_eq!(boxed.inh.ui.color.unwrap().r, 1.0);
+    assert_eq!(boxed.reset_background.background.unwrap().b, 1.0);
 }

@@ -27,7 +27,14 @@ fn image_alpha_profile_consumes_typed_source_without_css_replay() {
         radius: [(0.0, 0.0); 4],
         threshold: 0.0,
     };
-    let profile = shape_profile(("", style.shape_image.as_ref()), &b, 0.0, -1, vcx).unwrap();
+    let profile = shape_profile(
+        ("", style.reset_shapes.shape_image.as_ref()),
+        &b,
+        0.0,
+        -1,
+        vcx,
+    )
+    .unwrap();
     assert_eq!(profile, vec![4.0, 4.0]);
 }
 

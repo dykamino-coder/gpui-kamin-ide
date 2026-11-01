@@ -23,8 +23,8 @@ pub(super) fn bars(
     insets: [f32; 4],
     bounds: Bounds<Pixels>,
 ) -> Vec<Bar> {
-    let width = c.scroll.thickness();
-    if !super::uses_modern(c) || width == 0.0 || c.hidden == Some(true) {
+    let width = c.reset_box_layout.scroll.thickness();
+    if !super::uses_modern(c) || width == 0.0 || c.inh.ui.hidden == Some(true) {
         return Vec::new();
     }
     let edge = |v| match v {
@@ -116,7 +116,7 @@ pub(super) fn paint(c: &BoxStyle, bars: &[Bar], alpha: f32, window: &mut Window)
         for filter in c.paint_filter_ops() {
             color = filter.apply(color);
         }
-        color.a *= c.opacity.unwrap_or(1.0);
+        color.a *= c.reset_effects.opacity.unwrap_or(1.0);
         color.to_hsla()
     };
     for bar in bars {

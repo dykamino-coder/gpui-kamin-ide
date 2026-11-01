@@ -16,7 +16,7 @@ pub(crate) fn uses_modern(c: &Computed) -> bool {
 }
 
 pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
-    let overflow = [c.overflow_x, c.overflow_y];
+    let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
     std::array::from_fn(|axis| overflow[axis] == Some(Overflow::Scroll) && selected[axis])
 }
 
@@ -38,8 +38,8 @@ pub(crate) fn paint(
         return;
     }
     let bars = visible(c, selected);
-    let width = c.scroll.thickness();
-    if width == 0.0 || c.hidden == Some(true) {
+    let width = c.reset_box_layout.scroll.thickness();
+    if width == 0.0 || c.inh.ui.hidden == Some(true) {
         return;
     }
     let edges = c.borders();
@@ -56,7 +56,7 @@ pub(crate) fn paint(
         for filter in c.paint_filter_ops() {
             color = filter.apply(color);
         }
-        color.a *= c.opacity.unwrap_or(1.0);
+        color.a *= c.reset_effects.opacity.unwrap_or(1.0);
         color.to_hsla()
     };
     let color = |r, g, b| Color {

@@ -27,14 +27,17 @@ pub(super) fn layout_flex_axes(
     // ниже (записи откатов 04.09).
     if c.wm().rtl()
         && !c.wm().vertical()
-        && c.flex_wrap != Some(true)
-        && c.webkit_box != Some(true)
-        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
+        && c.reset_flex.flex_wrap != Some(true)
+        && c.reset_flex.webkit_box != Some(true)
+        && matches!(
+            c.reset_box_layout.display,
+            Some(Display::Flex) | Some(Display::InlineFlex)
+        )
         && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
     {
         d.style().flex_cross_reverse = Some(true);
     }
-    if c.flex_wrap == Some(true) {
+    if c.reset_flex.flex_wrap == Some(true) {
         d = d.flex_wrap();
         // При `vertical-rl` поперечная ось строки идёт справа налево — обратно
         // тому, как переносит колонку раскладка. Перенос разворачивается,
@@ -47,28 +50,31 @@ pub(super) fn layout_flex_axes(
         // ВВЕРХ (css-writing-modes-4 §3.1), поэтому поперечная ось колонки
         // разворачивается им так же, как `direction: rtl`.
         let inline_reversed = (c.wm().rtl()) != c.wm().sideways_lr();
-        let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
+        let flip = if matches!(
+            c.reset_flex.flex_dir,
+            Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+        ) {
             inline_reversed
         } else {
             c.wm().block_rl()
         };
-        if (c.flex_wrap_reverse == Some(true)) != flip {
+        if (c.reset_flex.flex_wrap_reverse == Some(true)) != flip {
             d.style().flex_wrap = Some(gpui::FlexWrap::WrapReverse);
         }
         // `flex-wrap: balance` — балансировщик строк в раскладке;
         // `flex-line-count` (умолчание 1) — минимум строк. У legacy
         // `-webkit-box` balance не действует (Blink `IsDeprecatedFlexbox`).
-        if c.flex_balance == Some(true) && c.webkit_box != Some(true) {
-            d.style().flex_balance_lines = Some(c.flex_line_count.unwrap_or(1).max(1));
+        if c.reset_flex.flex_balance == Some(true) && c.reset_flex.webkit_box != Some(true) {
+            d.style().flex_balance_lines = Some(c.reset_flex.flex_line_count.unwrap_or(1).max(1));
         }
     }
     // `margin-trim` гибкого контейнера и сетки (css-box-4 §margin-trim):
     // раскладка физическая, поэтому логические края переводятся ЗДЕСЬ, по
     // письму самого контейнера. Биты раскладки: 1 верх, 2 право, 4 низ,
     // 8 лево (`flex-*-trimmed-only`, `flex-*-multiline`, `grid-*-start`).
-    if c.margin_trim != 0
+    if c.reset_fragmentation.margin_trim != 0
         && matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::Flex)
                 | Some(Display::InlineFlex)
                 | Some(Display::Grid)
@@ -94,7 +100,7 @@ pub(super) fn layout_flex_axes(
             (4, inline_start),
             (8, inline_end),
         ] {
-            if c.margin_trim & bit != 0 {
+            if c.reset_fragmentation.margin_trim & bit != 0 {
                 physical |= side;
             }
         }
@@ -103,7 +109,7 @@ pub(super) fn layout_flex_axes(
     if let Some(names) = grid_line_names(c) {
         d.style().grid_line_names = Some(Box::new(names));
     }
-    if c.grid_col.is_some() || c.grid_row.is_some() {
+    if c.reset_grid.grid_col.is_some() || c.reset_grid.grid_row.is_some() {
         let span = |p: Option<(Placement, Placement)>| {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
@@ -112,18 +118,18 @@ pub(super) fn layout_flex_axes(
         // ось сетки), а дорожки вертикальной сетки уже переставлены
         // (`grid_style`, `flip`): ряды — физические колонки.
         let (row, column) = if placement_flip(c) {
-            (span(c.grid_col), span(c.grid_row))
+            (span(c.reset_grid.grid_col), span(c.reset_grid.grid_row))
         } else {
-            (span(c.grid_row), span(c.grid_col))
+            (span(c.reset_grid.grid_row), span(c.reset_grid.grid_col))
         };
         d.style().grid_location = Some(gpui::GridLocation { row, column });
     }
-    if let Some(g) = c.flex_grow {
+    if let Some(g) = c.reset_flex.flex_grow {
         // `flex_grow()` в GPUI ставит жёсткую единицу, а `flex: 2` встречается —
         // пишем значение в стиль напрямую.
         d.style().flex_grow = Some(g);
     }
-    if let Some(shrink) = c.flex_shrink {
+    if let Some(shrink) = c.reset_flex.flex_shrink {
         // Вес сжатия — число, а не флаг: при `flex-shrink: 1` и `3` соседи
         // ужимаются в отношении 1:3. Через `flex_shrink()` доезжала единица,
         // и оба сжимались поровну (поймано сравнением с Chrome).
@@ -139,7 +145,7 @@ pub(super) fn layout_flex_axes(
 
 pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
     d.style().block_flow = Some(grid_flow_axes::block(c));
-    match c.display {
+    match c.reset_box_layout.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         // Инлайновая коробка в строке не растягивается по ширине родителя.
@@ -158,8 +164,8 @@ pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
             // Keep the inline-block boundary flag for non-visible overflow too:
             // native output adaptation then suppresses its content baseline.
             if !c.context.parent_flex_grid
-                && c.ruby_role.is_none()
-                && c.inline_display != Some(true)
+                && c.reset_text_box.ruby_role.is_none()
+                && c.reset_context.inline_display != Some(true)
             {
                 d.style().baseline_from_last = Some(true);
             }
@@ -178,7 +184,9 @@ pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
         // block formatting context (css-display-3 §2.2): the native block
         // layout must not collapse its children's margins through it
         // (CSS 2.1 §8.3.1). Blink: `CreatesNewFormattingContext()`.
-        Some(Display::Block) | Some(Display::ListItem) if c.flow_root == Some(true) => {
+        Some(Display::Block) | Some(Display::ListItem)
+            if c.reset_context.flow_root == Some(true) =>
+        {
             d.style().display = Some(gpui::Display::FlowRoot);
         }
         // `display: none` отсеивается ещё при разборе дерева: узел не строится.
@@ -191,12 +199,15 @@ pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
         // собирается колонкой, и разворот переставлял его детей снизу вверх.
         // Ряд с явно заданным направлением разворачивается ниже, вместе с
         // остальными случаями.
-        let default_row = c.flex_dir.is_none()
-            && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex));
+        let default_row = c.reset_flex.flex_dir.is_none()
+            && matches!(
+                c.reset_box_layout.display,
+                Some(Display::Flex) | Some(Display::InlineFlex)
+            );
         if default_row {
             d = d.flex_row_reverse();
         }
-        if c.text_align.is_none() {
+        if c.inh.text_flow.text_align.is_none() {
             d = d.text_right();
         }
     }

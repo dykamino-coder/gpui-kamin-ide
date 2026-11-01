@@ -27,10 +27,10 @@ fn shadow_layer(
     let frame = opts.cx.frame();
     let copy = if same_paragraph {
         let mut mask = style.clone();
-        mask.text_shadow_ink = Some(shadow.used_color(style.current_color()));
-        mask.text_shadow = None;
-        mask.text_shadow_rest.clear();
-        mask.text_shadow_raw = None;
+        mask.reset_text_box.text_shadow_ink = Some(shadow.used_color(style.current_color()));
+        mask.inh.text_ink.text_shadow = None;
+        mask.inh.text_ink.text_shadow_rest.clear();
+        mask.reset_text_box.text_shadow_raw = None;
         // CSS Text Decoration 3 §4: a shadow masks both glyphs and their
         // decorations. Reusing the paragraph keeps baseline, spacing and
         // decoration geometry identical; its color is the shadow's color.
@@ -67,9 +67,9 @@ pub(crate) fn with_text_shadow(
     let all_text = nodes.iter().all(|n| matches!(n, Node::Text(_)));
     let flat = !style.wm().vertical()
         && !style.wm().turned()
-        && style.first_line.is_none()
-        && style.first_letter.is_none()
-        && style.text_emphasis.is_none();
+        && style.reset_text_box.first_line.is_none()
+        && style.reset_text_box.first_letter.is_none()
+        && style.inh.text_ink.text_emphasis.is_none();
     // Тени строчных коробок (css-text-decor-3 §4: `text-shadow` действует на
     // текст КАЖДОЙ коробки, не только блока): группы по набору теней, в
     // порядке текста. Прежде тень `<span>` или `::marker` не рисовалась
@@ -119,7 +119,7 @@ pub(crate) fn with_text_shadow(
 
 #[cfg(test)]
 fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
-    ShadowStyle::new(c, c.color).resolved()
+    ShadowStyle::new(c, c.inh.ui.color).resolved()
 }
 
 /// Атомная или блочная коробка внутри абзаца: её содержимое в слой тени
@@ -127,7 +127,7 @@ fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
 fn atomic(e: &crate::dom::Element, vcx: crate::values::ValueCx<'_>) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
-    let font = match e.style.used().font_size {
+    let font = match e.style.used().inh.font.font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
         _ => crate::defaults::MEDIUM_FONT_SIZE_PX,
     };

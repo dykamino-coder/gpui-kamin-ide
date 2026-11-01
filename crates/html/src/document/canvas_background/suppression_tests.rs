@@ -27,18 +27,42 @@ fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
         panic!("expected body donor");
     };
     assert!(root.style.used().canvas_background.is_some());
-    assert_eq!(inherited.background, donor.background);
-    assert_eq!(inherited.gradient_raw, donor.gradient_raw);
-    assert_eq!(inherited.bg_size, donor.bg_size);
-    assert_eq!(inherited.bg_pos, donor.bg_pos);
-    assert_eq!(inherited.bg_repeat, donor.bg_repeat);
-    assert_eq!(background.color, donor.background);
-    assert_eq!(background.gradient_image, donor.gradient_raw);
-    assert_eq!(background.top.size, donor.bg_size);
-    assert_eq!(background.top.position, donor.bg_pos);
-    assert_eq!(background.top.repeat, donor.bg_repeat);
-    assert!(root.style.computed().gradient_raw.is_none());
-    assert!(donor.gradient.is_some());
+    assert_eq!(
+        inherited.reset_background.background,
+        donor.reset_background.background
+    );
+    assert_eq!(
+        inherited.reset_background.gradient_raw,
+        donor.reset_background.gradient_raw
+    );
+    assert_eq!(
+        inherited.reset_background.bg_size,
+        donor.reset_background.bg_size
+    );
+    assert_eq!(
+        inherited.reset_background.bg_pos,
+        donor.reset_background.bg_pos
+    );
+    assert_eq!(
+        inherited.reset_background.bg_repeat,
+        donor.reset_background.bg_repeat
+    );
+    assert_eq!(background.color, donor.reset_background.background);
+    assert_eq!(
+        background.gradient_image,
+        donor.reset_background.gradient_raw
+    );
+    assert_eq!(background.top.size, donor.reset_background.bg_size);
+    assert_eq!(background.top.position, donor.reset_background.bg_pos);
+    assert_eq!(background.top.repeat, donor.reset_background.bg_repeat);
+    assert!(
+        root.style
+            .computed()
+            .reset_background
+            .gradient_raw
+            .is_none()
+    );
+    assert!(donor.reset_background.gradient.is_some());
     let root_box = box_style(&BoxStyle::default(), &root.style, vcx);
     let body_box = box_style(&root_box, &body.style, vcx);
     let child_box = box_style(&body_box, &child.style, vcx);
@@ -112,21 +136,27 @@ fn suppressed_background_does_not_supply_a_drop_shadow_silhouette() {
     let root_box = box_style(&BoxStyle::default(), &root.style, vcx);
     let body_box = box_style(&root_box, &body.style, vcx);
     let child_box = box_style(&body_box, &child.style, vcx);
-    assert!(body_box.drop_shadow.is_some());
+    assert!(body_box.reset_effects.drop_shadow.is_some());
     assert!(body_box.paint_shadows().is_empty());
-    assert_eq!(body_box.shadows, body.style.computed().shadows);
+    assert_eq!(
+        body_box.reset_effects.shadows,
+        body.style.computed().reset_effects.shadows
+    );
     let ordinary = box_style(
         &root_box,
         &crate::dom::SharedStyle::from(body.style.cascaded().clone()),
         vcx,
     );
     assert_eq!(ordinary.paint_shadows().len(), 1);
-    assert_eq!(ordinary.shadows, body.style.computed().shadows);
+    assert_eq!(
+        ordinary.reset_effects.shadows,
+        body.style.computed().reset_effects.shadows
+    );
     assert_eq!(child_box.background_paint, BackgroundPaint::Css);
     assert_eq!(body_box.foreground_paint().fill, None);
     assert_eq!(
-        body.style.computed().background,
-        child.style.computed().background
+        body.style.computed().reset_background.background,
+        child.style.computed().reset_background.background
     );
 }
 
@@ -144,7 +174,7 @@ fn initial_background_does_not_supply_text_clip_fill_or_change_corner_geometry()
     input.set_background_paint(BackgroundPaint::Initial);
     let suppressed = box_style(&parent, &input, vcx);
     assert_eq!(suppressed.foreground_paint().fill, None);
-    assert_eq!(suppressed.color, input.computed().color);
+    assert_eq!(suppressed.inh.ui.color, input.computed().inh.ui.color);
 
     let mut css = Computed::default();
     css.apply_one("background", "url(a)", vcx);
@@ -156,6 +186,6 @@ fn initial_background_does_not_supply_text_clip_fill_or_change_corner_geometry()
     assert!(!crate::paint::background::single_corner::eligible(&body));
     body.background_paint = BackgroundPaint::Initial;
     assert!(crate::paint::background::single_corner::eligible(&body));
-    assert_eq!(body.radius, source.radius);
+    assert_eq!(body.reset_border.radius, source.reset_border.radius);
     assert!(Rc::ptr_eq(&source, body.style_rc()));
 }

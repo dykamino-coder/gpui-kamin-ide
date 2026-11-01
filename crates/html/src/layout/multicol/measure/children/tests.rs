@@ -28,8 +28,8 @@ fn measured_margins_keep_auto_zero_and_reject_unresolved_lengths() {
         (Some(Len::Pct(10.0)), None, None),
         (None, Some(Len::Pct(10.0)), None),
     ] {
-        c.style.used_mut().margin.top = top;
-        c.style.used_mut().margin.bottom = bottom;
+        c.style.used_mut().reset_box_layout.margin.top = top;
+        c.style.used_mut().reset_box_layout.margin.bottom = bottom;
         kids.borrow_mut().clear();
         whole.borrow_mut().clear();
         assert_eq!(measured_margins(&c), expected);

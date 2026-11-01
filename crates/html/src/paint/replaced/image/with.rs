@@ -34,7 +34,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     } else {
         e
     };
-    if let Some(vb) = e.style.used().object_view_box
+    if let Some(vb) = e.style.used().reset_shapes.object_view_box
         && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
@@ -48,7 +48,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     // и глушить его здесь значило запрещать картинке ужиматься даже при
     // явных `min-width: 0` и `flex-shrink: 1` (css-flexbox-1 §7.2).
     let mut d = d;
-    match e.style.used().flex_shrink {
+    match e.style.used().reset_flex.flex_shrink {
         Some(k) => d.style().flex_shrink = Some(k),
         None => d = d.flex_shrink_0(),
     }

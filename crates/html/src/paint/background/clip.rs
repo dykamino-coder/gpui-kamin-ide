@@ -16,11 +16,12 @@ pub(super) fn paint(
     mut fill: impl FnMut(&mut Window),
 ) {
     if clip != Some(BgClip::BorderArea)
-        || c.radius != Default::default()
-        || c.radius_ell.is_some()
-        || c.border_shape.is_some()
-        || c.border_image.is_some()
-        || c.border_side_styles
+        || c.reset_border.radius != Default::default()
+        || c.reset_border.radius_ell.is_some()
+        || c.reset_border.border_shape.is_some()
+        || c.reset_border.border_image.is_some()
+        || c.reset_border
+            .border_side_styles
             .iter()
             .any(|s| !matches!(s, None | Some(3..=6) | Some(9)))
     {

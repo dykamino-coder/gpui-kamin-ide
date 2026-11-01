@@ -60,7 +60,11 @@ fn container_css_size_is_scaled_by_the_consumers_zoom(cx: &mut gpui::TestAppCont
         |doc, _, _, _| {
             assert_eq!(content(doc, "child"), (100., 50.));
             assert_eq!(
-                element(doc.nodes(), "child").style.computed().width,
+                element(doc.nodes(), "child")
+                    .style
+                    .computed()
+                    .reset_box_layout
+                    .width,
                 Some(Len::Px(400.))
             );
         },

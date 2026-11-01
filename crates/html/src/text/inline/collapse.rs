@@ -34,13 +34,13 @@ pub fn collapse_across_pieces(pieces: &mut [Piece]) {
             Piece::Text { text, style } => {
                 // A zero-advance empty-box metric marker is not document
                 // content and must not interrupt adjoining collapsible spaces.
-                if text == SPACER && style.letter_spacing == Some(Len::Px(0.0)) {
+                if text == SPACER && style.inh.text_flow.letter_spacing == Some(Len::Px(0.0)) {
                     continue;
                 }
                 // `white-space: pre*` пробелы бережёт — там схлопывать нечего.
                 // `pre-line` переводы строк бережёт, а ПРОБЕЛЫ схлопывает
                 // (§16.6): освобождать его от схлопки нельзя.
-                if style.keep_spaces == Some(true) {
+                if style.inh.text_flow.keep_spaces == Some(true) {
                     prev_space = false;
                     continue;
                 }

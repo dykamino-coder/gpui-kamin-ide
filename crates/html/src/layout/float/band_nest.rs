@@ -25,10 +25,10 @@ use crate::style::values::value::Len;
 /// отступ остаётся унаследованным.
 pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
     if e.marks.cont
-        && inherited.text_indent_each_line != Some(true)
-        && inherited.text_indent_hanging != Some(true)
+        && inherited.inh.text_flow.text_indent_each_line != Some(true)
+        && inherited.inh.text_flow.text_indent_hanging != Some(true)
     {
-        e.style.used_mut().text_indent = Some(Len::Px(0.0));
+        e.style.used_mut().inh.text_flow.text_indent = Some(Len::Px(0.0));
     }
 }
 
@@ -47,19 +47,19 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
-        && c.style.used().is_caption != Some(true)
+        && c.style.used().reset_context.is_caption != Some(true)
         && c.tag != "caption"
-        && matches!(c.style.used().display, None | Some(Display::Block))
-        && (c.style.used().clear.is_none() || band_clear_supported(c))
-        && c.style.used().position.is_none()
+        && matches!(c.style.used().reset_box_layout.display, None | Some(Display::Block))
+        && (c.style.used().reset_box_layout.clear.is_none() || band_clear_supported(c))
+        && c.style.used().reset_positioned.position.is_none()
         // A paint group is painted with all its descendants; an absolute
         // descendant may need it as its containing block (transform,
         // filter) and would otherwise leave the group with its lift.
         && !(paint_group(&c.style.used()) && positioned_inside(&c.children))
-        && (matches!(c.style.used().width, None | Some(Len::Auto))
-            || (band_em(&c.style.used(), em).and_then(|em| band_edge(&c.style.used().width, em)).is_some()
+        && (matches!(c.style.used().reset_box_layout.width, None | Some(Len::Auto))
+            || (band_em(&c.style.used(), em).and_then(|em| band_edge(&c.style.used().reset_box_layout.width, em)).is_some()
                 && !sizes.border_box))
-        && matches!(c.style.used().height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
+        && matches!(c.style.used().reset_box_layout.height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
         && sizes.minimum[1].is_none()
         && sizes.maximum[1].is_none()
         && band_margins(&c.style.used(), em).is_some()
@@ -85,10 +85,10 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::
         })
     };
     Some([
-        side(&c.style.used().padding.top, &b.top)?,
-        side(&c.style.used().padding.right, &b.right)?,
-        side(&c.style.used().padding.bottom, &b.bottom)?,
-        side(&c.style.used().padding.left, &b.left)?,
+        side(&c.style.used().reset_box_layout.padding.top, &b.top)?,
+        side(&c.style.used().reset_box_layout.padding.right, &b.right)?,
+        side(&c.style.used().reset_box_layout.padding.bottom, &b.bottom)?,
+        side(&c.style.used().reset_box_layout.padding.left, &b.left)?,
     ])
 }
 
@@ -118,7 +118,7 @@ pub(super) fn band_nest(
         opts.viewport.1,
     );
     if let Some(height) = height {
-        merged.height = Some(Len::Px(height));
+        merged.reset_box_layout.height = Some(Len::Px(height));
     }
     let opts = &*opts.inner(|cx| cx.constraints.avail_h = height);
     crate::layout::box_tree::pseudo_line_layers::install(c, &mut merged, vcx);
@@ -138,7 +138,7 @@ pub(super) fn band_nest(
         inner_em,
         wm,
         cb,
-        merged.preserve_newlines == Some(true),
+        merged.inh.text_flow.preserve_newlines == Some(true),
         vcx,
     )?;
     trim::route_end(&mut seq, &merged);
@@ -149,10 +149,13 @@ pub(super) fn band_nest(
         kids,
         inset: band_inset(c, em)?,
         height,
-        width: if matches!(c.style.used().width, None | Some(Len::Auto)) {
+        width: if matches!(
+            c.style.used().reset_box_layout.width,
+            None | Some(Len::Auto)
+        ) {
             None
         } else {
-            Some(band_edge(&c.style.used().width, inner_em)?)
+            Some(band_edge(&c.style.used().reset_box_layout.width, inner_em)?)
         },
     })
 }
@@ -173,7 +176,7 @@ pub(super) fn band_seq(
     let mut chunk: Vec<Node> = vec![];
     let mut probes = vec![];
     for n in nodes {
-        let float = matches!(&n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0));
+        let float = matches!(&n, Node::Element(c) if c.style.used().reset_box_layout.float.is_some_and(|f| f != 0));
         if !float {
             chunk.push(n);
             continue;

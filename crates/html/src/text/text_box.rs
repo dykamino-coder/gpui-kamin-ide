@@ -50,10 +50,12 @@ pub(crate) fn text_box_line_style(
             Node::Text(_) => return Some((inherited.clone(), owner)),
             Node::Element(e) => e,
         };
-        if e.style.used().display == Some(Display::None) || out_of_flow(&e.style.used()) {
+        if e.style.used().reset_box_layout.display == Some(Display::None)
+            || out_of_flow(&e.style.used())
+        {
             continue;
         }
-        if e.style.used().display == Some(Display::Contents) {
+        if e.style.used().reset_box_layout.display == Some(Display::Contents) {
             return text_box_line_style(
                 &e.children,
                 &box_style(inherited, &e.style, vcx),
@@ -66,7 +68,7 @@ pub(crate) fn text_box_line_style(
             // Через гибкий, сеточный и табличный контекст свойство не
             // распространяется (css-inline-3 §4.2, примечание).
             if matches!(
-                e.style.used().display,
+                e.style.used().reset_box_layout.display,
                 Some(Display::Flex)
                     | Some(Display::Grid)
                     | Some(Display::Table)
@@ -78,9 +80,9 @@ pub(crate) fn text_box_line_style(
             let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
-                px_of(merged.padding.top) != 0.0 || px_of(bs.top) != 0.0
+                px_of(merged.reset_box_layout.padding.top) != 0.0 || px_of(bs.top) != 0.0
             } else {
-                px_of(merged.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
+                px_of(merged.reset_box_layout.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
             };
             if blocked {
                 return None;
@@ -92,9 +94,9 @@ pub(crate) fn text_box_line_style(
             // ребёнка: `inherit()` клонирует его стиль, а свойство не
             // наследуется.
             let own_trim = if start {
-                merged.text_box_trim_start
+                merged.reset_text_box.text_box_trim_start
             } else {
-                merged.text_box_trim_end
+                merged.reset_text_box.text_box_trim_end
             };
             if own_trim {
                 return None;
@@ -132,7 +134,7 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
         .used_font(opts.base_size(), opts.cx.vcx())
         .size_px;
     let vcx = opts.cx.vcx();
-    let family = line_style.font_family.clone().unwrap_or_default();
+    let family = line_style.inh.font.font_family.clone().unwrap_or_default();
     let extents = crate::style::font_metrics::vertical(&family, size, vcx);
     let (ascent, descent, _) = extents;
     let line = line_style
@@ -168,14 +170,14 @@ pub(crate) fn edge_inset(
         }
     };
     if start {
-        match s.text_box_over {
+        match s.inh.text_flow.text_box_over {
             TextEdge::Cap => ascent - cap,
             TextEdge::Ex => ascent - crate::style::font_metrics::horizontal(family, size, vcx).1,
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(ascent),
             TextEdge::Text | TextEdge::Alphabetic => 0.0,
         }
     } else {
-        match s.text_box_under {
+        match s.inh.text_flow.text_box_under {
             TextEdge::Alphabetic => {
                 descent + crate::style::font_metrics::alphabetic(family, size, vcx)
             }
@@ -214,12 +216,15 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
     // которым строка нарисована, и струт строки из одних атомов был выше
     // атома (`inlines-017-ref`: ячейка 21.3px при картинке 20px).
     let family = style
+        .inh
+        .font
         .font_family
         .clone()
         .filter(|f| !f.is_empty())
         .unwrap_or_else(|| {
-            if style.monospace == Some(true) {
-                super::metrics::mono_family_for(style.lang.as_deref(), opts.cx.vcx()).to_string()
+            if style.inh.font.monospace == Some(true) {
+                super::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), opts.cx.vcx())
+                    .to_string()
             } else {
                 opts.text.font_family.to_string()
             }

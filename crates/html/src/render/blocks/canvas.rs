@@ -23,7 +23,7 @@ pub(crate) fn canvas_layer(
     let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     // Фон холста входит в группу корня (css-compositing-1 §pagebackdrop).
     // Соседний слой получает собственный фильтр корня отдельно.
-    let root_filter = st.filter;
+    let root_filter = st.reset_effects.filter;
     let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
@@ -59,21 +59,23 @@ pub(crate) fn canvas_layer(
     {
         let mut g = g.clone();
         if let Some(f) = root_filter {
-            g.from = f.apply_operations(&st.scrollbar_filter_ops, g.from);
-            g.to = f.apply_operations(&st.scrollbar_filter_ops, g.to);
+            g.from = f.apply_operations(&st.reset_effects.scrollbar_filter_ops, g.from);
+            g.to = f.apply_operations(&st.reset_effects.scrollbar_filter_ops, g.to);
             for stop in g.stops.iter_mut() {
-                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
+                stop.0 = f.apply_operations(&st.reset_effects.scrollbar_filter_ops, stop.0);
             }
             for stop in g.stops_px.iter_mut() {
-                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
+                stop.0 = f.apply_operations(&st.reset_effects.scrollbar_filter_ops, stop.0);
             }
             for stop in g.stops_raw.iter_mut() {
-                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
+                stop.0 = f.apply_operations(&st.reset_effects.scrollbar_filter_ops, stop.0);
             }
         }
         layer = layer.bg(crate::paint::apply::fill(&g));
     } else if let Some(bg) = background.color {
-        let bg = root_filter.map_or(bg, |f| f.apply_operations(&st.scrollbar_filter_ops, bg));
+        let bg = root_filter.map_or(bg, |f| {
+            f.apply_operations(&st.reset_effects.scrollbar_filter_ops, bg)
+        });
         layer = layer.bg(bg.to_hsla());
     }
     // Фон-КАРТИНКА канваса красит всю область просмотра тем же
@@ -91,11 +93,18 @@ pub(crate) fn canvas_layer(
             // Единицы шрифта тоже длина: `html { margin-top: 1em }`
             // роняло отсчёт в ноль, и плитка начиналась с края
             // холста (`margin-collapse-020`).
-            let em = match st.font_size {
+            let em = match st.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             };
-            let fam = e.style.cascaded().font_family.clone().unwrap_or_default();
+            let fam = e
+                .style
+                .cascaded()
+                .inh
+                .font
+                .font_family
+                .clone()
+                .unwrap_or_default();
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
@@ -107,16 +116,22 @@ pub(crate) fn canvas_layer(
             let root_left = e.style.cascaded().wm().block_rl();
             let area = crate::paint::background::RootArea {
                 measured,
-                left: side(st.margin.left) + side(b.left),
-                top: side(st.margin.top) + side(b.top),
-                right: side(st.margin.right) + side(b.right),
-                bottom: side(st.margin.bottom) + side(b.bottom),
-                width: match st.width {
-                    Some(Len::Px(w)) => Some(w + side(st.padding.left) + side(st.padding.right)),
+                left: side(st.reset_box_layout.margin.left) + side(b.left),
+                top: side(st.reset_box_layout.margin.top) + side(b.top),
+                right: side(st.reset_box_layout.margin.right) + side(b.right),
+                bottom: side(st.reset_box_layout.margin.bottom) + side(b.bottom),
+                width: match st.reset_box_layout.width {
+                    Some(Len::Px(w)) => Some(
+                        w + side(st.reset_box_layout.padding.left)
+                            + side(st.reset_box_layout.padding.right),
+                    ),
                     _ => None,
                 },
-                height: match st.height {
-                    Some(Len::Px(h)) => Some(h + side(st.padding.top) + side(st.padding.bottom)),
+                height: match st.reset_box_layout.height {
+                    Some(Len::Px(h)) => Some(
+                        h + side(st.reset_box_layout.padding.top)
+                            + side(st.reset_box_layout.padding.bottom),
+                    ),
                     _ => None,
                 },
                 from_right: e.style.cascaded().wm().block_rl(),
@@ -161,7 +176,7 @@ pub(crate) fn canvas_layer(
             .child(layer)
             .child(tiles)
             .into_any_element();
-    } else if st.bg_image.is_some()
+    } else if st.reset_background.bg_image.is_some()
         && let Some(tiles) = crate::paint::background::layer(&background.top, &st, vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
@@ -175,14 +190,16 @@ pub(crate) fn canvas_layer(
         let side = px_lossy_zero;
         let b = st.borders();
         let mut band = div().absolute().top_0().bottom_0();
-        band = match st.width {
+        band = match st.reset_box_layout.width {
             Some(Len::Px(w)) => {
-                let pad_w = w + side(st.padding.left) + side(st.padding.right);
+                let pad_w = w
+                    + side(st.reset_box_layout.padding.left)
+                    + side(st.reset_box_layout.padding.right);
                 let band = band.w(px(pad_w));
                 if e.style.cascaded().wm().block_rl() {
-                    band.right(px(side(st.margin.right) + side(b.right)))
+                    band.right(px(side(st.reset_box_layout.margin.right) + side(b.right)))
                 } else {
-                    band.left(px(side(st.margin.left) + side(b.left)))
+                    band.left(px(side(st.reset_box_layout.margin.left) + side(b.left)))
                 }
             }
             _ => band.left_0().right_0(),
@@ -202,7 +219,7 @@ pub(crate) fn canvas_layer(
     // сложились бы с двойной альфой. Коробка корня свою
     // прозрачность получает отдельно (`apply::style`), но краска с
     // неё уже снята, так что перекрытия групп нет.
-    if let Some(o) = st.opacity.filter(|o| *o < 1.0) {
+    if let Some(o) = st.reset_effects.opacity.filter(|o| *o < 1.0) {
         layer = div()
             .absolute()
             .top_0()
@@ -217,10 +234,10 @@ pub(crate) fn canvas_layer(
     // compositing-1 §rootgroup: фон корня — часть корневой группы):
     // слой холста получает ту же обрезку, что и коробка корня.
     // Начало координат у них общее — левый верхний угол окна.
-    if st.clip_polygon.is_some()
-        || st.clip_shape.is_some()
-        || st.clip_inset.is_some()
-        || st.clip_xywh.is_some()
+    if st.reset_mask.clip_polygon.is_some()
+        || st.reset_mask.clip_shape.is_some()
+        || st.reset_mask.clip_inset.is_some()
+        || st.reset_mask.clip_xywh.is_some()
     {
         let clip = clip::style(&st);
         layer = grouped(

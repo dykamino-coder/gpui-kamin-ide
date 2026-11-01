@@ -163,10 +163,10 @@ pub fn apply_offset_transform(
     let Some(css) = offset_transform_css(c, cb, svg_origin, shapes, vcx) else {
         return;
     };
-    let author = c.transform.take();
+    let author = c.reset_transforms.transform.take();
     c.apply_one("transform", &css, vcx);
-    if let (Some(off), Some(a)) = (c.transform, author) {
-        c.transform = Some(off.then(&a));
+    if let (Some(off), Some(a)) = (c.reset_transforms.transform, author) {
+        c.reset_transforms.transform = Some(off.then(&a));
     }
 }
 
@@ -175,10 +175,10 @@ pub fn apply_offset_transform(
 /// block; motion-1 §offset-path: коробки берутся у элемента, устанавливающего
 /// содержащий блок).
 pub fn apply_icb(c: &mut Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
-    if !c.offset_icb || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
+    if !c.reset_transforms.offset_icb || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
         return;
     }
-    c.offset_icb = false;
+    c.reset_transforms.offset_icb = false;
     let whole = (0.0, 0.0, viewport.0, viewport.1);
     let g = containing::with_self(
         Cb {
@@ -201,10 +201,10 @@ pub(super) struct MotionStyle<'a> {
 
 pub(super) fn motion_style(c: &Computed) -> MotionStyle<'_> {
     MotionStyle {
-        offset_path: &c.offset_path,
-        offset_distance: c.offset_distance,
-        offset_rotate: &c.offset_rotate,
-        offset_anchor: &c.offset_anchor,
-        offset_position: &c.offset_position,
+        offset_path: &c.reset_transforms.offset_path,
+        offset_distance: c.reset_transforms.offset_distance,
+        offset_rotate: &c.reset_transforms.offset_rotate,
+        offset_anchor: &c.reset_transforms.offset_anchor,
+        offset_position: &c.reset_transforms.offset_position,
     }
 }

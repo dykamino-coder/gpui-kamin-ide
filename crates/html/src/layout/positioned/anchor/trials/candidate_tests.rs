@@ -36,26 +36,33 @@ fn named_try_is_computed_once_and_descendants_see_the_computed_variant() {
     let base = box_style(&BoxStyle::default(), &div.style, vcx);
     let options = super::super::Options::new(&base, &BoxStyle::default(), vcx, &parsed.doc.layout);
     let (_, trial) = &options.styles[1];
-    assert_eq!(trial.width, Some(Len::Px(20.)));
-    assert_eq!(trial.font_size, base.font_size);
-    assert_eq!(trial.color, base.color);
+    assert_eq!(trial.reset_box_layout.width, Some(Len::Px(20.)));
+    assert_eq!(trial.inh.font.font_size, base.inh.font.font_size);
+    assert_eq!(trial.inh.ui.color, base.inh.ui.color);
     let mut layout_copy = trial.clone();
-    layout_copy.width = Some(Len::Px(999.));
-    layout_copy.font_size = Some(Len::Px(7.));
+    layout_copy.reset_box_layout.width = Some(Len::Px(999.));
+    layout_copy.inh.font.font_size = Some(Len::Px(7.));
     assert_eq!(
-        box_style(&layout_copy, &child.style, vcx).width,
+        box_style(&layout_copy, &child.style, vcx)
+            .reset_box_layout
+            .width,
         Some(Len::Px(20.))
     );
-    assert_eq!(div.style.computed().width, Some(Len::Px(10.)));
+    assert_eq!(
+        div.style.computed().reset_box_layout.width,
+        Some(Len::Px(10.))
+    );
     options.record(1, vcx);
     let next = super::super::Options::new(&base, &BoxStyle::default(), vcx, &parsed.doc.layout);
     assert_eq!(next.styles[0].0, 1);
     assert_eq!(
-        box_style(&next.styles[0].1, &child.style, vcx).width,
+        box_style(&next.styles[0].1, &child.style, vcx)
+            .reset_box_layout
+            .width,
         Some(Len::Px(20.))
     );
     assert_eq!(
-        box_style(&base, &child.style, vcx).width,
+        box_style(&base, &child.style, vcx).reset_box_layout.width,
         Some(Len::Px(10.))
     );
 }
@@ -76,19 +83,25 @@ fn remembered_geometry_and_computed_parent_share_only_accepted_values() {
     let parent = BoxStyle::default();
     let base = box_style(&parent, &div.style, vcx);
     let options = super::super::Options::new(&base, &parent, vcx, &parsed.doc.layout);
-    assert_eq!(options.styles[1].1.width, Some(Len::Px(20.)));
+    assert_eq!(
+        options.styles[1].1.reset_box_layout.width,
+        Some(Len::Px(20.))
+    );
     options.record(1, vcx);
     let mut changed = div.clone();
-    changed.style.cascaded_mut().font_size = Some(Len::Px(30.));
+    changed.style.cascaded_mut().inh.font.font_size = Some(Len::Px(30.));
     let nodes = [Node::Element(changed)];
     materialize(&nodes, &Rc::new(Computed::default()), vcx);
     let base = box_style(&parent, &element(&nodes, "div").style, vcx);
     let options = super::super::Options::new(&base, &parent, vcx, &parsed.doc.layout);
     assert_eq!(options.styles[0].0, 1);
-    assert_eq!(options.styles[0].1.width, Some(Len::Px(20.)));
+    assert_eq!(
+        options.styles[0].1.reset_box_layout.width,
+        Some(Len::Px(20.))
+    );
     let raw = &options.styles[0].1.element_style.as_ref().unwrap().computed;
-    assert_eq!(raw.width, Some(Len::Px(20.)));
-    assert_eq!(raw.font_size, Some(Len::Px(30.)));
+    assert_eq!(raw.reset_box_layout.width, Some(Len::Px(20.)));
+    assert_eq!(raw.inh.font.font_size, Some(Len::Px(30.)));
     let fresh = build(&base, &parent, vcx);
-    assert_eq!(fresh[1].1.width, Some(Len::Px(60.)));
+    assert_eq!(fresh[1].1.reset_box_layout.width, Some(Len::Px(60.)));
 }

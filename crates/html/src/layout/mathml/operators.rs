@@ -90,7 +90,7 @@ pub(super) fn operator(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Oper
         Some("prefix") => 1,
         Some("postfix") => 2,
         Some("infix") => 0,
-        _ => style.math_operator_form.unwrap_or(0),
+        _ => style.inh.ui.math_operator_form.unwrap_or(0),
     };
     let entry = lookup(&text, form)
         .or_else(|| lookup(&text, 0))
@@ -109,7 +109,7 @@ pub(super) fn operator(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Oper
             _ => {}
         }
     }
-    let size = px_strict(style.font_size).unwrap_or(opts.base_size());
+    let size = px_strict(style.inh.font.font_size).unwrap_or(opts.base_size());
     let spacing = |name, v| {
         e.attr(name)
             .and_then(|v| super::parameters::length_px(v, style, opts))
@@ -121,7 +121,7 @@ pub(super) fn operator(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Oper
             .chars()
             .next()
             .is_some_and(|c| matches!(c, '\u{2061}'..='\u{2064}'));
-    let suppressed = style.math_level > 0 || invisible;
+    let suppressed = style.inh.ui.math_level > 0 || invisible;
     Operator {
         left: if suppressed {
             0.0

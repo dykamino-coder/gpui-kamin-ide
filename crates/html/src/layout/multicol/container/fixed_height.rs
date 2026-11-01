@@ -14,7 +14,7 @@ pub(super) fn fixed_column_height(
     nest_rows: Option<f32>,
     parent: &BoxConstraints,
 ) -> Option<f32> {
-    if style.column_fill_auto != Some(true) {
+    if style.reset_fragmentation.column_fill_auto != Some(true) {
         return None;
     }
     if let Some(height) = nest_rows.or(col_h) {
@@ -98,13 +98,13 @@ mod tests {
             ),
             ..Default::default()
         };
-        style.padding.top = Some(Len::Px(4.0));
-        style.padding.bottom = Some(Len::Px(10.0));
-        style.border_visible = [Some(true), None, Some(true), None];
-        style.border_width.top = Some(Len::Px(2.0));
-        style.border_width.bottom = Some(Len::Px(4.0));
-        style.padding.left = Some(Len::Px(10.0));
-        style.padding.right = Some(Len::Px(30.0));
+        style.reset_box_layout.padding.top = Some(Len::Px(4.0));
+        style.reset_box_layout.padding.bottom = Some(Len::Px(10.0));
+        style.reset_border.border_visible = [Some(true), None, Some(true), None];
+        style.reset_border.border_width.top = Some(Len::Px(2.0));
+        style.reset_border.border_width.bottom = Some(Len::Px(4.0));
+        style.reset_box_layout.padding.left = Some(Len::Px(10.0));
+        style.reset_box_layout.padding.right = Some(Len::Px(30.0));
         let height = |style: &Computed, vertical| {
             fixed_column_height(
                 style,
@@ -117,21 +117,21 @@ mod tests {
         };
         assert_eq!(height(&style, false), Some(80.0));
         assert_eq!(height(&style, true), Some(100.0));
-        style.border_box = Some(false);
+        style.reset_border.border_box = Some(false);
         assert_eq!(height(&style, false), Some(100.0));
-        style.border_box = Some(true);
-        style.max_height = Some(Len::Px(70.0));
+        style.reset_border.border_box = Some(true);
+        style.reset_box_layout.max_height = Some(Len::Px(70.0));
         assert_eq!(height(&style, false), Some(50.0));
-        style.min_height = Some(Len::Px(90.0));
+        style.reset_box_layout.min_height = Some(Len::Px(90.0));
         assert_eq!(height(&style, false), Some(70.0));
-        style.min_height = None;
-        style.max_height = None;
-        style.height = Some(Len::Px(10.0));
+        style.reset_box_layout.min_height = None;
+        style.reset_box_layout.max_height = None;
+        style.reset_box_layout.height = Some(Len::Px(10.0));
         assert_eq!(height(&style, false), Some(0.0));
-        style.height = None;
-        style.max_height = Some(Len::Px(60.0));
+        style.reset_box_layout.height = None;
+        style.reset_box_layout.max_height = Some(Len::Px(60.0));
         assert_eq!(height(&style, false), Some(40.0));
-        style.max_height = None;
+        style.reset_box_layout.max_height = None;
         assert_eq!(height(&style, false), None);
     }
 }

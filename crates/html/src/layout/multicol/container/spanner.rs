@@ -121,12 +121,13 @@ pub(crate) fn multicol_spanner_segments(
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
             let shell = opts.cx.contracts.build.styled_box(sp, &inner, &opts.cx);
-            let shell =
-                if matches!(inner.display, None | Some(Display::Block)) && !inner.wm().vertical() {
-                    shell.flex().flex_col()
-                } else {
-                    shell
-                };
+            let shell = if matches!(inner.reset_box_layout.display, None | Some(Display::Block))
+                && !inner.wm().vertical()
+            {
+                shell.flex().flex_col()
+            } else {
+                shell
+            };
             d = d.child(shell.children(opts.cx.contracts.build.blocks(&sp.children, &inner, opts)));
         }
     }

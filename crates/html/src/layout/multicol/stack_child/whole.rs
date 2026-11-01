@@ -63,14 +63,18 @@ pub(super) fn copy_whole_box(
         // Ширина `auto` — по колонке (CSS 2.1 §10.3.3):
         // копия кладётся корнем, и её многоколоночнику
         // нужна ширина в точках для меры строк.
-        if matches!(mc.style.used().width, None | Some(Len::Auto))
-            && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
+        if matches!(
+            mc.style.used().reset_box_layout.width,
+            None | Some(Len::Auto)
+        ) && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.used_mut().width = Some(Len::Px(w));
-        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.used().width, line_col_w) {
+            mc.style.used_mut().reset_box_layout.width = Some(Len::Px(w));
+        } else if let (Some(Len::Pct(k)), Some(cw)) =
+            (mc.style.used().reset_box_layout.width, line_col_w)
+        {
             // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
             // доля `column-gap` коробки (`column_plan`).
-            mc.style.used_mut().width = Some(Len::Px(
+            mc.style.used_mut().reset_box_layout.width = Some(Len::Px(
                 crate::layout::fragment::line_shape::layout_unit(k * cw),
             ));
         }
@@ -115,10 +119,12 @@ pub(super) fn copy_whole_box(
     {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids).into();
-        if matches!(mc.style.used().width, None | Some(Len::Auto))
-            && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
+        if matches!(
+            mc.style.used().reset_box_layout.width,
+            None | Some(Len::Auto)
+        ) && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.used_mut().width = Some(Len::Px(w));
+            mc.style.used_mut().reset_box_layout.width = Some(Len::Px(w));
         }
         return Some(opts.cx.contracts.build.element(&mc, merged, opts));
     }

@@ -62,13 +62,20 @@ fn inherited_computed_lengths_and_resize(cx: &mut gpui::TestAppContext) {
         |doc, width, _, cx| {
             assert_eq!(content(doc, "child"), (100., 20.));
             assert_eq!(
-                element(doc.nodes(), "child").style.computed().line_height,
+                element(doc.nodes(), "child")
+                    .style
+                    .computed()
+                    .inh
+                    .font
+                    .line_height,
                 Some(Len::Px(40.))
             );
             assert_eq!(
                 element(doc.nodes(), "child")
                     .style
                     .computed()
+                    .inh
+                    .table_list
                     .border_spacing,
                 Some((Some(Len::Px(40.)), Some(Len::Px(40.))))
             );
@@ -79,13 +86,20 @@ fn inherited_computed_lengths_and_resize(cx: &mut gpui::TestAppContext) {
             });
             assert_eq!(content(doc, "child"), (150., 20.));
             assert_eq!(
-                element(doc.nodes(), "child").style.computed().line_height,
+                element(doc.nodes(), "child")
+                    .style
+                    .computed()
+                    .inh
+                    .font
+                    .line_height,
                 Some(Len::Px(60.))
             );
             assert_eq!(
                 element(doc.nodes(), "child")
                     .style
                     .computed()
+                    .inh
+                    .table_list
                     .border_spacing,
                 Some((Some(Len::Px(60.)), Some(Len::Px(40.))))
             );

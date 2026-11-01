@@ -29,13 +29,13 @@ pub(super) fn table_outer_box(
     if needs_clone {
         let mut c = inherited.clone();
         if collapse {
-            c.bg_border_insets = Some(outer_win.map(|width| width / 2.0));
-            c.border_width = Default::default();
-            c.border_visible = [None; 4];
+            c.reset_background.bg_border_insets = Some(outer_win.map(|width| width / 2.0));
+            c.reset_border.border_width = Default::default();
+            c.reset_border.border_visible = [None; 4];
             // §17.6.2: внутрь таблицы уходит ПОЛОВИНА её кромки. Паддингом,
             // а не рамкой: проба кромок — абсолютный ребёнок по паддинг-боксу,
             // и рамка утащила бы линию сетки внутрь на свою величину.
-            c.padding = crate::style::computed::Sides {
+            c.reset_box_layout.padding = crate::style::computed::Sides {
                 top: Some(Len::Px(outer_win[0] / 2.0)),
                 right: Some(Len::Px(outer_win[1] / 2.0)),
                 bottom: Some(Len::Px(outer_win[2] / 2.0)),
@@ -45,12 +45,12 @@ pub(super) fn table_outer_box(
         // Пол фиксированной раскладки (см. `fixed_floor`) — сама ширина
         // коробки: сетка внутри ровно такой ширины.
         if let Some(f) = fixed_floor {
-            c.width = Some(Len::Px(f));
+            c.reset_box_layout.width = Some(Len::Px(f));
         }
-        c.min_height = min_h;
-        c.min_width = min_w;
+        c.reset_box_layout.min_height = min_h;
+        c.reset_box_layout.min_width = min_w;
         if table_border_box {
-            c.border_box = Some(true);
+            c.reset_border.border_box = Some(true);
             // Вертикальное письмо: `height` — это ИНЛАЙН-размер стола
             // (Blink: `ComputeTableInlineSize` читает `style.LogicalWidth()`,
             // а при `vertical-*` это физическое `height`), и наш конвейер УЖЕ
@@ -67,7 +67,7 @@ pub(super) fn table_outer_box(
             // добавляются к самой величине. Гейт тот же, что у
             // транспонирования решётки и у `spacing_phys`.
             if e.style.used().wm().vertical()
-                && let Some(Len::Px(h)) = c.height
+                && let Some(Len::Px(h)) = c.reset_box_layout.height
             {
                 // Сросшийся стол несёт свои краи не рамкой, а паддингом в
                 // половину победившей кромки (см. ветку `collapse` выше) —
@@ -77,7 +77,7 @@ pub(super) fn table_outer_box(
                 } else {
                     bw[0] + bw[2] + pad_px[0] + pad_px[2]
                 };
-                c.height = Some(Len::Px(h + inline_edges));
+                c.reset_box_layout.height = Some(Len::Px(h + inline_edges));
             }
         }
         host_style = c;
@@ -127,9 +127,9 @@ pub(super) fn finish_table_outer(
         let wrap = BoxStyle::new(Computed {
             reset_positioned: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetPositioned {
-                    position: e.style.used().position,
-                    inset: e.style.used().inset,
-                    z_index: e.style.used().z_index,
+                    position: e.style.used().reset_positioned.position,
+                    inset: e.style.used().reset_positioned.inset,
+                    z_index: e.style.used().reset_positioned.z_index,
                     ..Default::default()
                 },
             ),

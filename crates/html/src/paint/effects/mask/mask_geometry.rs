@@ -9,7 +9,7 @@ pub(crate) fn unclipped(c: &Computed) -> bool {
     // CSS Masking section 7.5: no-clip includes paint outside the element box.
     // Blink css_mask_painter.cc:71-87 includes self-painting descendants;
     // GPUI group buffers already cover the viewport, so retain that extent.
-    c.mask_image.is_some() && c.mask_clip == Some(255)
+    c.reset_mask.mask_image.is_some() && c.reset_mask.mask_clip == Some(255)
 }
 
 pub(crate) fn offsets(c: &Computed, kind: Option<u8>) -> [f32; 4] {
@@ -20,10 +20,10 @@ pub(crate) fn offsets(c: &Computed, kind: Option<u8>) -> [f32; 4] {
         // CSS Masking section 7.5: fill-box on a CSS layout box uses content-box;
         // stroke-box and view-box use border-box.
         Some(3) | Some(4) => [
-            side(b.top) + side(c.padding.top),
-            side(b.right) + side(c.padding.right),
-            side(b.bottom) + side(c.padding.bottom),
-            side(b.left) + side(c.padding.left),
+            side(b.top) + side(c.reset_box_layout.padding.top),
+            side(b.right) + side(c.reset_box_layout.padding.right),
+            side(b.bottom) + side(c.reset_box_layout.padding.bottom),
+            side(b.left) + side(c.reset_box_layout.padding.left),
         ],
         _ => [0.0; 4],
     }

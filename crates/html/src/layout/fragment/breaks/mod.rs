@@ -17,16 +17,16 @@ pub(crate) fn page_monolith(e: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
-    e.style.used().break_inside_avoid
-        || e.style.used().contain_size == Some(true)
-        || scrolls(e.style.used().overflow_x)
-        || scrolls(e.style.used().overflow_y)
+    e.style.used().reset_fragmentation.break_inside_avoid
+        || e.style.used().reset_context.contain_size == Some(true)
+        || scrolls(e.style.used().reset_box_layout.overflow_x)
+        || scrolls(e.style.used().reset_box_layout.overflow_y)
         || matches!(
             e.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
         )
         || matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
 }

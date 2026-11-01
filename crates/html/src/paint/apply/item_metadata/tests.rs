@@ -22,7 +22,7 @@ fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
                 ),
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
             );
             with_inherited
@@ -59,7 +59,7 @@ fn horizontal_flex_items_inherit_vertical_parent_baseline_synthesis() {
                 ),
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
             );
             with_inherited
@@ -68,10 +68,10 @@ fn horizontal_flex_items_inherit_vertical_parent_baseline_synthesis() {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(false, false, false),
             );
-            with_inherited.text_orientation =
+            with_inherited.inh.writing.text_orientation =
                 Some(crate::style::computed::writing_mode::TextOrientation::Mixed);
             with_inherited
         };
@@ -102,7 +102,7 @@ fn flex_items_and_wrappers_preserve_own_vertical_baseline_orientation() {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, rl, false),
             );
             with_inherited
@@ -152,7 +152,7 @@ fn lanes_wrapper_retains_inherited_item_orientation() {
             ),
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
         );
         with_inherited

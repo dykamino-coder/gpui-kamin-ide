@@ -76,17 +76,18 @@ pub(crate) async fn paint_element(
     }
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
-    if e.style.used().display == Some(Display::Contents) {
+    if e.style.used().reset_box_layout.display == Some(Display::Contents) {
         let mut merged = box_style(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
         // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`
         // над `display: contents` над `rotateX(90) scale(2)`).
-        if merged.frame_3d.is_none() {
-            merged.frame_3d = inherited.frame_3d.clone();
+        if merged.reset_transforms.frame_3d.is_none() {
+            merged.reset_transforms.frame_3d = inherited.reset_transforms.frame_3d.clone();
         }
-        if merged.perspective_frame.is_none() {
-            merged.perspective_frame = inherited.perspective_frame.clone();
+        if merged.reset_transforms.perspective_frame.is_none() {
+            merged.reset_transforms.perspective_frame =
+                inherited.reset_transforms.perspective_frame.clone();
         }
         out.extend(
             stk.run(|stk| blocks_stack(stk, &e.children, &merged, opts))
@@ -124,7 +125,8 @@ pub(crate) async fn paint_element(
     };
     let hoist_margins = content_sized_wraps(e)
         && !replaced_tag(e)
-        && (negative(e.style.used().margin.left) || negative(e.style.used().margin.right));
+        && (negative(e.style.used().reset_box_layout.margin.left)
+            || negative(e.style.used().reset_box_layout.margin.right));
     // Размещение в сетке тоже уезжает на обёртку (см.
     // `content_sized`): в дорожках родителя стоит она. Внутри обёртки
     // (своя сетка в одну дорожку) элемент с прежним `grid-row: 2`
@@ -139,14 +141,14 @@ pub(crate) async fn paint_element(
     let e = if hoist_margins || hoist_place {
         let mut copy = e.clone();
         if hoist_margins {
-            copy.style.used_mut().margin.left = None;
-            copy.style.used_mut().margin.right = None;
+            copy.style.used_mut().reset_box_layout.margin.left = None;
+            copy.style.used_mut().reset_box_layout.margin.right = None;
         }
         if hoist_place {
-            copy.style.used_mut().grid_row = None;
-            copy.style.used_mut().grid_col = None;
-            copy.style.used_mut().grid_row_named = [None, None];
-            copy.style.used_mut().grid_col_named = [None, None];
+            copy.style.used_mut().reset_grid.grid_row = None;
+            copy.style.used_mut().reset_grid.grid_col = None;
+            copy.style.used_mut().reset_grid.grid_row_named = [None, None];
+            copy.style.used_mut().reset_grid.grid_col_named = [None, None];
         }
         stripped = copy;
         &stripped
@@ -184,7 +186,7 @@ pub(crate) async fn paint_element(
     let record_root = e.tag == "body"
         && inherited.canvas_background.is_some()
         && inherited.wm().block_rl()
-        && !matches!(inherited.width, Some(Len::Px(_)));
+        && !matches!(inherited.reset_box_layout.width, Some(Len::Px(_)));
     let canvas_stripped;
     let mut root_box = None;
     let e = if let Some(source) = canvas_paint {

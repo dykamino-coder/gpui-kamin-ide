@@ -89,11 +89,18 @@ impl Recording {
 
     pub(super) fn policy(&self, id: u64, style: &BoxStyle) {
         if let Some(flow) = self.flows.iter().find(|f| f.id == id) {
-            flow.fixed.set(style.position == Some(Position::Fixed));
+            flow.fixed
+                .set(style.reset_positioned.position == Some(Position::Fixed));
             let edges = if self.axis.is_vertical() {
-                [style.inset.left, style.inset.right]
+                [
+                    style.reset_positioned.inset.left,
+                    style.reset_positioned.inset.right,
+                ]
             } else {
-                [style.inset.top, style.inset.bottom]
+                [
+                    style.reset_positioned.inset.top,
+                    style.reset_positioned.inset.bottom,
+                ]
             };
             flow.static_block.set(
                 !edges
@@ -101,7 +108,7 @@ impl Recording {
                     .any(crate::layout::positioned::predicates::edge_set),
             );
             flow.policy.set(FixedPolicy::for_box(
-                style.position == Some(Position::Fixed),
+                style.reset_positioned.position == Some(Position::Fixed),
                 style.fixed_cb_node != 0,
             ));
         }
@@ -121,7 +128,7 @@ impl Recorder {
             .map(|e| {
                 (
                     e,
-                    if positioned(e.style.used().position) {
+                    if positioned(e.style.used().reset_positioned.position) {
                         0
                     } else {
                         e.node_id
@@ -135,7 +142,7 @@ impl Recorder {
         while let Some((e, owner, mut parent, nested)) = pending.pop() {
             // A nested multicol fragments its own absolute/fixed descendants: they
             // stay plain nodes of the enclosing family here (css-multicol-1 §2).
-            let is_positioned = !nested && positioned(e.style.used().position);
+            let is_positioned = !nested && positioned(e.style.used().reset_positioned.position);
             if is_positioned {
                 let mut blocks = BlockBox::collect(
                     e,
@@ -159,7 +166,7 @@ impl Recorder {
                     owner,
                     watch: Watched::for_blocks_axis(blocks, axis, true),
                     monolith: crate::layout::fragment::clone::content_monolith_blockified(e),
-                    clone_dec: e.style.used().bdb_clone,
+                    clone_dec: e.style.used().reset_fragmentation.bdb_clone,
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),

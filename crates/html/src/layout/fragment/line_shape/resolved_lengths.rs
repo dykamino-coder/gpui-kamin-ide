@@ -86,43 +86,67 @@ fn resolve(t: &mut Element, m: &BoxStyle) {
         fix(&mut own.left, res.left);
     }
     let style = t.style.used_mut();
-    fix(&mut style.width, m.width);
-    fix(&mut style.height, m.height);
-    fix(&mut style.min_width, m.min_width);
-    fix(&mut style.min_height, m.min_height);
-    fix(&mut style.max_width, m.max_width);
-    fix(&mut style.max_height, m.max_height);
-    fix_sides(&mut style.margin, &m.margin);
-    fix_sides(&mut style.padding, &m.padding);
-    fix_sides(&mut style.border_width, &m.border_width);
-    fix_sides(&mut style.inset, &m.inset);
+    fix(&mut style.reset_box_layout.width, m.reset_box_layout.width);
+    fix(
+        &mut style.reset_box_layout.height,
+        m.reset_box_layout.height,
+    );
+    fix(
+        &mut style.reset_box_layout.min_width,
+        m.reset_box_layout.min_width,
+    );
+    fix(
+        &mut style.reset_box_layout.min_height,
+        m.reset_box_layout.min_height,
+    );
+    fix(
+        &mut style.reset_box_layout.max_width,
+        m.reset_box_layout.max_width,
+    );
+    fix(
+        &mut style.reset_box_layout.max_height,
+        m.reset_box_layout.max_height,
+    );
+    fix_sides(
+        &mut style.reset_box_layout.margin,
+        &m.reset_box_layout.margin,
+    );
+    fix_sides(
+        &mut style.reset_box_layout.padding,
+        &m.reset_box_layout.padding,
+    );
+    fix_sides(
+        &mut style.reset_border.border_width,
+        &m.reset_border.border_width,
+    );
+    fix_sides(&mut style.reset_positioned.inset, &m.reset_positioned.inset);
 }
 
 /// Только эти длины меняет разрешение копии; проценты остаются отложенными.
 fn relative(style: &crate::style::computed::Computed) -> bool {
     [
-        style.width,
-        style.height,
-        style.min_width,
-        style.min_height,
-        style.max_width,
-        style.max_height,
-        style.margin.top,
-        style.margin.right,
-        style.margin.bottom,
-        style.margin.left,
-        style.padding.top,
-        style.padding.right,
-        style.padding.bottom,
-        style.padding.left,
-        style.border_width.top,
-        style.border_width.right,
-        style.border_width.bottom,
-        style.border_width.left,
-        style.inset.top,
-        style.inset.right,
-        style.inset.bottom,
-        style.inset.left,
+        style.reset_box_layout.width,
+        style.reset_box_layout.height,
+        style.reset_box_layout.min_width,
+        style.reset_box_layout.min_height,
+        style.reset_box_layout.max_width,
+        style.reset_box_layout.max_height,
+        style.reset_box_layout.margin.top,
+        style.reset_box_layout.margin.right,
+        style.reset_box_layout.margin.bottom,
+        style.reset_box_layout.margin.left,
+        style.reset_box_layout.padding.top,
+        style.reset_box_layout.padding.right,
+        style.reset_box_layout.padding.bottom,
+        style.reset_box_layout.padding.left,
+        style.reset_border.border_width.top,
+        style.reset_border.border_width.right,
+        style.reset_border.border_width.bottom,
+        style.reset_border.border_width.left,
+        style.reset_positioned.inset.top,
+        style.reset_positioned.inset.right,
+        style.reset_positioned.inset.bottom,
+        style.reset_positioned.inset.left,
     ]
     .into_iter()
     .flatten()
@@ -182,7 +206,7 @@ mod tests {
         let Node::Element(child) = &mut root.children[0] else {
             unreachable!()
         };
-        child.style.used_mut().margin.top = Some(Len::Em(2.));
+        child.style.used_mut().reset_box_layout.margin.top = Some(Len::Em(2.));
         assert!(!facts.unchanged(&root));
         assert_eq!(facts.children.len(), entries + 1);
         let doc = crate::document::state::DocState::new(Default::default());
@@ -195,11 +219,16 @@ mod tests {
         let Node::Element(child) = &copy.children[0] else {
             unreachable!()
         };
-        assert!(matches!(child.style.used().margin.top, Some(Len::Px(v)) if v > 0.));
+        assert!(
+            matches!(child.style.used().reset_box_layout.margin.top, Some(Len::Px(v)) if v > 0.)
+        );
         let Node::Element(original) = &root.children[0] else {
             unreachable!()
         };
-        assert_eq!(original.style.used().margin.top, Some(Len::Em(2.)));
+        assert_eq!(
+            original.style.used().reset_box_layout.margin.top,
+            Some(Len::Em(2.))
+        );
         assert_eq!(child.children.identity(), original.children.identity());
     }
 }

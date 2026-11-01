@@ -138,7 +138,7 @@ pub(crate) fn layer(
     let layer = layer.clone();
     Some(
         exact_layer::ExactLayer::inset(
-            c.bg_border_insets.unwrap_or([0.0; 4]),
+            c.reset_background.bg_border_insets.unwrap_or([0.0; 4]),
             move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
                 let bounds = geometry.snapped;
                 let vcx = values.vcx();

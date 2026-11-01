@@ -66,7 +66,8 @@ pub(super) fn drop_viewport_fixed(n: &Node, fixed_cb: bool) -> Option<Node> {
     match n {
         Node::Element(k)
             if !fixed_cb
-                && k.style.used().position == Some(crate::style::computed::Position::Fixed) =>
+                && k.style.used().reset_positioned.position
+                    == Some(crate::style::computed::Position::Fixed) =>
         {
             None
         }

@@ -25,18 +25,19 @@ pub(crate) fn ordered_children(
             // (flexbox-collapsed-item-baseline-001). Распорка — тот же
             // элемент с нулевой ГЛАВНОЙ осью и невидимой краской.
             .map(|n| match n {
-                Node::Element(mut e) if e.style.used().collapsed == Some(true) => {
-                    match inherited.flex_dir {
+                Node::Element(mut e) if e.style.used().reset_context.collapsed == Some(true) => {
+                    match inherited.reset_flex.flex_dir {
                         Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
-                            e.style.used_mut().height = Some(Len::Px(0.0));
-                            e.style.used_mut().max_height = Some(Len::Px(0.0));
-                            e.style.used_mut().min_height = Some(Len::Px(0.0));
-                            e.style.used_mut().margin.top = Some(Len::Px(0.0));
-                            e.style.used_mut().margin.bottom = Some(Len::Px(0.0));
-                            e.style.used_mut().padding.top = Some(Len::Px(0.0));
-                            e.style.used_mut().padding.bottom = Some(Len::Px(0.0));
-                            e.style.used_mut().border_width.top = Some(Len::Px(0.0));
-                            e.style.used_mut().border_width.bottom = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.height = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.max_height = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.min_height = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.margin.bottom = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.padding.top = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.padding.bottom = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_border.border_width.top = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_border.border_width.bottom =
+                                Some(Len::Px(0.0));
                         }
                         // Распорка в главной оси — ноль ЦЕЛИКОМ: элемент «as
                         // if display:none» (css-flexbox-1 §4.4), значит и его
@@ -44,18 +45,18 @@ pub(crate) fn ordered_children(
                         // раздвигают (`flexbox_visibility-collapse`: между
                         // соседями только их собственные поля).
                         _ => {
-                            e.style.used_mut().width = Some(Len::Px(0.0));
-                            e.style.used_mut().max_width = Some(Len::Px(0.0));
-                            e.style.used_mut().min_width = Some(Len::Px(0.0));
-                            e.style.used_mut().margin.left = Some(Len::Px(0.0));
-                            e.style.used_mut().margin.right = Some(Len::Px(0.0));
-                            e.style.used_mut().padding.left = Some(Len::Px(0.0));
-                            e.style.used_mut().padding.right = Some(Len::Px(0.0));
-                            e.style.used_mut().border_width.left = Some(Len::Px(0.0));
-                            e.style.used_mut().border_width.right = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.width = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.max_width = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.min_width = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.padding.left = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_box_layout.padding.right = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_border.border_width.left = Some(Len::Px(0.0));
+                            e.style.used_mut().reset_border.border_width.right = Some(Len::Px(0.0));
                         }
                     }
-                    e.style.used_mut().hidden = Some(true);
+                    e.style.used_mut().inh.ui.hidden = Some(true);
                     Node::Element(e)
                 }
                 other => other,

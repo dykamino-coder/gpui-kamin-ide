@@ -40,7 +40,7 @@ pub(super) fn blank_box(
     let only_text = e.children.iter().all(|n| matches!(n, Node::Text(_)));
     let blank = only_text
         && (inner_text.is_empty()
-            || (merged.keep_spaces != Some(true)
+            || (merged.inh.text_flow.keep_spaces != Some(true)
                 && !painted_bg
                 && inner_text
                     .chars()
@@ -49,7 +49,7 @@ pub(super) fn blank_box(
         let px_of = px_lossy_zero;
         let size = merged.used_font(MEDIUM_FONT_SIZE_PX, cx.vcx()).size_px;
         let bs = e.style.used().borders();
-        let padding = e.style.used().padding;
+        let padding = e.style.used().reset_box_layout.padding;
         let flat = physical_sides::project(
             inherited,
             [
@@ -64,9 +64,13 @@ pub(super) fn blank_box(
         // у полосы непустого куска (`run_background_quad`); кегль
         // вместо неё оставлял под пустой коробкой светлую черту
         // рядом с полосой соседа (`word-spacing-characters-001`).
-        let family = merged.font_family.clone().unwrap_or_else(|| {
-            if merged.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(merged.lang.as_deref(), cx.vcx()).to_string()
+        let family = merged.inh.font.font_family.clone().unwrap_or_else(|| {
+            if merged.inh.font.monospace == Some(true) {
+                crate::text::metrics::mono_family_for(
+                    merged.inh.text_flow.lang.as_deref(),
+                    cx.vcx(),
+                )
+                .to_string()
             } else {
                 String::new()
             }
@@ -87,20 +91,20 @@ pub(super) fn blank_box(
         // строки, а полулидинг делит остаток поровну (§10.8).
         let dy = ((line - content) / 2.0 - top).max(-line);
         let mut copy = e.clone();
-        copy.style.used_mut().width = Some(Len::Px(0.0));
-        copy.style.used_mut().height = Some(Len::Px(content));
-        copy.style.used_mut().margin = Default::default();
-        copy.style.used_mut().position = None;
-        copy.style.used_mut().display = None;
+        copy.style.used_mut().reset_box_layout.width = Some(Len::Px(0.0));
+        copy.style.used_mut().reset_box_layout.height = Some(Len::Px(content));
+        copy.style.used_mut().reset_box_layout.margin = Default::default();
+        copy.style.used_mut().reset_positioned.position = None;
+        copy.style.used_mut().reset_box_layout.display = None;
         // Размер коробки читается из СЛИТОГО стиля: без этого
         // заданные выше ширина и высота терялись, и коробка
         // выходила нулевой высоты — рамка `border-left` и фон
         // под отступом не рисовались вовсе.
         let mut sized = merged.clone();
-        sized.width = copy.style.used().width;
-        sized.height = copy.style.used().height;
-        sized.margin = Default::default();
-        sized.position = None;
+        sized.reset_box_layout.width = copy.style.used().reset_box_layout.width;
+        sized.reset_box_layout.height = copy.style.used().reset_box_layout.height;
+        sized.reset_box_layout.margin = Default::default();
+        sized.reset_positioned.position = None;
         physical_sides::project_box(inherited, copy.style.used_mut());
         physical_sides::project_box(inherited, &mut sized);
         sized.project_border_paint(physical_sides::project(inherited, [0, 1, 2, 3]));

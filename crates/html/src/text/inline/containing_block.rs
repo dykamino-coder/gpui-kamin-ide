@@ -55,10 +55,10 @@ pub(super) fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
     let id = CB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let px_of = px_lossy_zero;
     let pad = [
-        px_of(e.style.used().padding.top),
-        px_of(e.style.used().padding.right),
-        px_of(e.style.used().padding.bottom),
-        px_of(e.style.used().padding.left),
+        px_of(e.style.used().reset_box_layout.padding.top),
+        px_of(e.style.used().reset_box_layout.padding.right),
+        px_of(e.style.used().reset_box_layout.padding.bottom),
+        px_of(e.style.used().reset_box_layout.padding.left),
     ];
     let marker = |start: bool| {
         Piece::Overlay(

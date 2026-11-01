@@ -65,7 +65,7 @@ fn css_font_lengths_and_roots_follow_each_document_provider() {
         c.apply_one("font-size", "20px", vcx);
         c.apply_one("width", "calc(1ex + 1ch + 1ic + 1cap)", vcx);
         c.resolve_em(16.0, vcx);
-        assert_eq!(c.width, Some(Len::Px(57.0 * factor)));
+        assert_eq!(c.reset_box_layout.width, Some(Len::Px(57.0 * factor)));
         assert_eq!(c.computed_font_px(FontCx::new("", 20.0), vcx), Some(20.0));
         c.apply_one("font-size", "2ch", vcx);
         assert_eq!(
@@ -96,10 +96,10 @@ fn trim_and_math_consume_provider_facts_without_backend_queries() {
     let doc = document(1.0);
     let vcx = doc.values();
     let mut c = Computed::default();
-    c.font_size = Some(Len::Px(20.0));
-    c.line_height = Some(Len::Px(30.0));
-    c.text_box_over = TextEdge::Ex;
-    c.text_box_under = TextEdge::Alphabetic;
+    c.inh.font.font_size = Some(Len::Px(20.0));
+    c.inh.font.line_height = Some(Len::Px(30.0));
+    c.inh.text_flow.text_box_over = TextEdge::Ex;
+    c.inh.text_flow.text_box_under = TextEdge::Alphabetic;
     let extents = vertical("", 20.0, vcx);
     assert_eq!(
         crate::text::text_box::edge_inset(&c, "", 20.0, extents, true, vcx),
@@ -111,14 +111,14 @@ fn trim_and_math_consume_provider_facts_without_backend_queries() {
     );
     // Сама формула trim прежняя: полулидинг + расстояние до края.
     let mut child = Computed::default();
-    child.math_font_size = true;
+    child.reset_svg_math.math_font_size = true;
     child.apply_one("math-depth", "2", vcx);
     let child = crate::style::cascade::inherit::inherit(
         &crate::style::computed::BoxStyle::from(c),
         &child,
         vcx,
     );
-    assert_eq!(child.font_size, Some(Len::Px(12.0)));
+    assert_eq!(child.inh.font.font_size, Some(Len::Px(12.0)));
 }
 
 #[test]

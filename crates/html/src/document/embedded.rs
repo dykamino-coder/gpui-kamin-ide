@@ -129,7 +129,7 @@ pub(crate) fn parse_embedded_sized(
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
     {
-        root.style.cascaded_mut().scroll.width = Some(2);
+        root.style.cascaded_mut().reset_box_layout.scroll.width = Some(2);
     }
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву живёт здесь, а не в разборе стиля, и без этой строки

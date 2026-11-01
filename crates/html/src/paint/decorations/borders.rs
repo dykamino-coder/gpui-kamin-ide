@@ -30,21 +30,21 @@ pub(crate) fn box_borders(
         // edge snapping as the quad border (`apply::apply_paint`; CSS 2.1
         // §8.5.3, Blink box_border_painter.cc snaps outer and inner rects).
         layer.style().snap_to_device_pixels = Some(true);
-        if c.border_dashed == Some(true) {
+        if c.reset_border.border_dashed == Some(true) {
             layer = layer.border_dashed();
         }
-        if c.border_dotted == Some(true) {
+        if c.reset_border.border_dotted == Some(true) {
             layer.style().border_style = Some(gpui::BorderStyle::Dotted);
         }
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
-        if !c.radius_masked(vcx) && c.border_shape.is_none() {
+        if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
             let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
-                .rounded_tl(px(rad(c.radius.tl)))
-                .rounded_tr(px(rad(c.radius.tr)))
-                .rounded_br(px(rad(c.radius.br)))
-                .rounded_bl(px(rad(c.radius.bl)));
+                .rounded_tl(px(rad(c.reset_border.radius.tl)))
+                .rounded_tr(px(rad(c.reset_border.radius.tr)))
+                .rounded_br(px(rad(c.reset_border.radius.br)))
+                .rounded_bl(px(rad(c.reset_border.radius.bl)));
         }
         out.push(layer.into_any_element());
     }
@@ -83,15 +83,15 @@ pub(crate) fn box_borders(
             let rad = |x: Option<Len>| crate::paint::apply::radius_px(c, x, vcx).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer
-                .rounded_tl(px(rad(c.radius.tl)))
-                .rounded_tr(px(rad(c.radius.tr)))
-                .rounded_br(px(rad(c.radius.br)))
-                .rounded_bl(px(rad(c.radius.bl)));
+                .rounded_tl(px(rad(c.reset_border.radius.tl)))
+                .rounded_tr(px(rad(c.reset_border.radius.tr)))
+                .rounded_br(px(rad(c.reset_border.radius.br)))
+                .rounded_bl(px(rad(c.reset_border.radius.bl)));
             inner = inner
-                .rounded_tl(px(shrink(c.radius.tl, t - o_t, l - o_l)))
-                .rounded_tr(px(shrink(c.radius.tr, t - o_t, r - o_r)))
-                .rounded_br(px(shrink(c.radius.br, b - o_b, r - o_r)))
-                .rounded_bl(px(shrink(c.radius.bl, b - o_b, l - o_l)));
+                .rounded_tl(px(shrink(c.reset_border.radius.tl, t - o_t, l - o_l)))
+                .rounded_tr(px(shrink(c.reset_border.radius.tr, t - o_t, r - o_r)))
+                .rounded_br(px(shrink(c.reset_border.radius.br, b - o_b, r - o_r)))
+                .rounded_bl(px(shrink(c.reset_border.radius.bl, b - o_b, l - o_l)));
         }
         out.push(outer.into_any_element());
         out.push(inner.into_any_element());
@@ -143,7 +143,7 @@ pub(crate) fn coloured_borders(
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
     // A one-colour `double` border is painted whole by its rings.
     let rings = crate::paint::apply::double_border(c, vcx).is_some();
-    if !uniform && !rings && c.border_shape.is_none() {
+    if !uniform && !rings && c.reset_border.border_shape.is_none() {
         let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (
@@ -171,7 +171,7 @@ pub(crate) fn coloured_borders(
                 _ => strip.top(px(-t)).left(px(-l)).bottom(px(-b)).w(px(w)),
             };
             // A dotted/dashed side stays patterned (css-backgrounds-3 §4.2).
-            strip = match c.border_side_styles[i] {
+            strip = match c.reset_border.border_side_styles[i] {
                 Some(s @ (7 | 8)) => {
                     strip = match i {
                         0 => strip.border_t(px(w)),

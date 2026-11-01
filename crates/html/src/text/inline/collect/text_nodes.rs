@@ -39,7 +39,7 @@ pub(super) fn collect_text(
     out: &mut Vec<Piece>,
 ) {
     let ruby_text;
-    let t = if inherited.ruby_suppress_breaks && t.contains('\n') {
+    let t = if inherited.reset_text_box.ruby_suppress_breaks && t.contains('\n') {
         ruby_text = t.replace('\n', " ");
         &ruby_text
     } else {
@@ -59,13 +59,15 @@ pub(super) fn collect_text(
     };
     // `white-space: pre*` сохраняет пробелы как есть: отступы кода
     // иначе схлопывались в один пробел и текст терял форму.
-    let raw = if inherited.preserve_newlines == Some(true) && inherited.keep_spaces != Some(false) {
+    let raw = if inherited.inh.text_flow.preserve_newlines == Some(true)
+        && inherited.inh.text_flow.keep_spaces != Some(false)
+    {
         // Табуляция остаётся СВОИМ знаком: её ширину считает
         // раскладка строк по позициям табуляции. Разворот в
         // пробелы менял и число точек переноса, и вид хвоста
         // строки (`break-spaces-tab`).
         t.to_string()
-    } else if inherited.preserve_newlines == Some(true) {
+    } else if inherited.inh.text_flow.preserve_newlines == Some(true) {
         // `pre-line`: пробелы схлопываются, переводы строк живут.
         t.split('\n')
             .map(normalize_spaces)
@@ -83,7 +85,7 @@ pub(super) fn collect_text(
     // коробки (css-text-4 §4.1.3; границ коробок для него нет —
     // `seg-break-transformation-018`): перевод строки в начале
     // узла, а нулевой пробел — последний знак предыдущего куска.
-    if inherited.preserve_newlines != Some(true)
+    if inherited.inh.text_flow.preserve_newlines != Some(true)
         && leading_segment_break(t)
         && ends_with_zwsp(&out)
         && text.starts_with(' ')

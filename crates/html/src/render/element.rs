@@ -84,7 +84,7 @@ async fn element_inner(
     // Разбор двунаправленности выберет её сам при наборе, но выключка и
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
     // текстом прижимался влево.
-    if e.attr("dir") == Some("auto") && e.style.cascaded().rtl.is_none() {
+    if e.attr("dir") == Some("auto") && e.style.cascaded().inh.writing.rtl.is_none() {
         let mut text = String::new();
         gather_text(&e.children, &mut text);
         let strong = text.chars().find_map(|ch| {
@@ -96,7 +96,7 @@ async fn element_inner(
             }
         });
         if let Some(rtl) = strong {
-            merged.rtl = Some(rtl);
+            merged.inh.writing.rtl = Some(rtl);
         }
     }
     // Предел ОРТОГОНАЛЬНОГО потока для строк вертикального письма внутри
@@ -110,9 +110,10 @@ async fn element_inner(
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     if e.tag == "html-viewport" {
         // The synthetic viewport owns the full window; only author units shrink.
-        merged.width = Some(crate::style::values::value::Len::Px(opts.viewport.0));
-        if merged.height.is_some() {
-            merged.height = Some(crate::style::values::value::Len::Px(opts.viewport.1));
+        merged.reset_box_layout.width = Some(crate::style::values::value::Len::Px(opts.viewport.0));
+        if merged.reset_box_layout.height.is_some() {
+            merged.reset_box_layout.height =
+                Some(crate::style::values::value::Len::Px(opts.viewport.1));
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
@@ -123,8 +124,8 @@ async fn element_inner(
         e.node_id,
         &merged,
     );
-    merged.scroll.used = gutters.used;
-    merged.scroll.native = gutters.native;
+    merged.reset_box_layout.scroll.used = gutters.used;
+    merged.reset_box_layout.scroll.native = gutters.native;
     crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
     merged.inline_definite = crate::layout::writing_mode::inline_definite::own(
         &merged,
@@ -133,7 +134,7 @@ async fn element_inner(
         opts.viewport.1,
     );
     if e.tag == "html-viewport" {
-        merged.icb_scroll_insets = Some(gutters.used);
+        merged.reset_positioned.icb_scroll_insets = Some(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     let scroll_projection = crate::interactive::scroll_extent::projection(
@@ -180,8 +181,8 @@ async fn element_inner(
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
         copy.attrs.push(("src".to_string(), url));
-        copy.style.used_mut().width = merged.width;
-        copy.style.used_mut().height = merged.height;
+        copy.style.used_mut().reset_box_layout.width = merged.reset_box_layout.width;
+        copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height;
         iframe(&copy, inherited, opts)
     } else {
         None

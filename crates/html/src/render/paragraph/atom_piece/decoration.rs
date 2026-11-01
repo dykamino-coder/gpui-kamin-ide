@@ -30,11 +30,11 @@ pub(crate) fn decorate_atom(
     // красный квадрат вместо зелёного). Носитель несёт ТОЛЬКО режим:
     // маска и обрезка у атомов живут своими путями, полный стиль
     // применил бы их второй раз.
-    let el = if replaced_tag(e) && e.style.used().blend.is_some_and(|b| b != 0) {
+    let el = if replaced_tag(e) && e.style.used().reset_effects.blend.is_some_and(|b| b != 0) {
         let only = Computed {
             reset_effects: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetEffects {
-                    blend: e.style.used().blend,
+                    blend: e.style.used().reset_effects.blend,
                     ..Default::default()
                 },
             ),
@@ -55,7 +55,7 @@ pub(crate) fn decorate_atom(
         e.tag.as_str(),
         "input" | "textarea" | "select" | "progress" | "meter"
     ) || matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -87,10 +87,10 @@ pub(crate) fn decorate_atom(
             // картинка пропадала целиком (`background-repeat-002-ref`:
             // `img{vertical-align:top}` + `width="100%"`). Долю
             // повторяем на обёртке, чтобы отсчёт остался прежним.
-            if let Some(Len::Pct(k)) = e.style.used().width {
+            if let Some(Len::Pct(k)) = e.style.used().reset_box_layout.width {
                 w = w.w(gpui::relative(k));
             }
-            if let Some(Len::Pct(k)) = e.style.used().height {
+            if let Some(Len::Pct(k)) = e.style.used().reset_box_layout.height {
                 w = w.h(gpui::relative(k));
             }
             w.child(el).into_any_element()
@@ -101,8 +101,14 @@ pub(crate) fn decorate_atom(
     // ПОД содержимое до него (CSS 2.1 §9.9 шаг 3) — как у блочного
     // (background-size-document-root-vrl-*: красный маркер обязан
     // лечь под зелёный фон iframe).
-    let el = if e.style.used().z_index.is_some_and(|z| z < 0)
-        && e.style.used().position == Some(crate::style::computed::Position::Relative)
+    let el = if e
+        .style
+        .used()
+        .reset_positioned
+        .z_index
+        .is_some_and(|z| z < 0)
+        && e.style.used().reset_positioned.position
+            == Some(crate::style::computed::Position::Relative)
     {
         crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(el))
     } else {
@@ -115,7 +121,7 @@ pub(crate) fn decorate_atom(
     // абзаца, а §10.1 п.4 требует прямоугольник фрагментов строчного
     // предка. `Overlay` абзац с текстового пути не уводит.
     if matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) && !at_static_position(&e.style.used())
@@ -128,18 +134,18 @@ pub(crate) fn decorate_atom(
             el,
             inline::OverlayAt {
                 edges: abs_cb,
-                next_line: inherited.band_kid
+                next_line: inherited.reset_context.band_kid
                     && !crate::layout::positioned::static_position::hypothetical_inline_level(e),
                 line_probe: line_box.filter(|_| {
                     !abs_cb
                         && (crate::layout::positioned::predicates::edge_set(
-                            e.style.used().inset.left,
+                            e.style.used().reset_positioned.inset.left,
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.used().inset.right,
+                            e.style.used().reset_positioned.inset.right,
                         )) != (crate::layout::positioned::predicates::edge_set(
-                            e.style.used().inset.top,
+                            e.style.used().reset_positioned.inset.top,
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.used().inset.bottom,
+                            e.style.used().reset_positioned.inset.bottom,
                         ))
                 }),
                 ..Default::default()

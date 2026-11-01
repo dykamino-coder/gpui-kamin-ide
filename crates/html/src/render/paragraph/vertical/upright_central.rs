@@ -38,22 +38,22 @@ fn line_height(style: &Computed, size: f32, fallback: f32) -> f32 {
 /// is `baseline` or `middle`.
 fn plain_span(own: &Computed, declared: &Computed) -> bool {
     let none = crate::style::computed::Sides::default();
-    own.background.is_none()
-        && own.bg_image.is_none()
-        && own.padding == none
-        && own.margin == none
+    own.reset_background.background.is_none()
+        && own.reset_background.bg_image.is_none()
+        && own.reset_box_layout.padding == none
+        && own.reset_box_layout.margin == none
         && own.borders() == none
-        && own.underline.is_none()
-        && own.decors.is_empty()
-        && declared.text_shadow.is_none()
-        && own.position.is_none()
-        && own.vertical_shift.is_none()
-        && own.vertical_shift_pct.is_none()
-        && own.vertical_shift_px.is_none()
-        && own.vertical_shift_len.is_none()
-        && own.vertical_align_text.is_none()
+        && own.reset_text_box.underline.is_none()
+        && own.reset_text_box.decors.is_empty()
+        && declared.inh.text_ink.text_shadow.is_none()
+        && own.reset_positioned.position.is_none()
+        && own.reset_text_box.vertical_shift.is_none()
+        && own.reset_text_box.vertical_shift_pct.is_none()
+        && own.reset_text_box.vertical_shift_px.is_none()
+        && own.reset_text_box.vertical_shift_len.is_none()
+        && own.reset_text_box.vertical_align_text.is_none()
         && matches!(
-            own.vertical_align,
+            own.inh.text_flow.vertical_align,
             None | Some(Align::Baseline) | Some(Align::Center)
         )
 }
@@ -95,7 +95,7 @@ fn collect(
                 // sits on the parent's central baseline raised by half the
                 // parent's x-height (CSS 2.1 §10.8.1; Blink kMiddle).
                 let shift = if e.style.own_vertical_align() == Some(Align::Center) {
-                    let family = style.font_family.clone().unwrap_or_default();
+                    let family = style.inh.font.font_family.clone().unwrap_or_default();
                     let parent = own_size(style, opts);
                     shift
                         + crate::text::metrics::ch_ex_px(&family, parent, opts.cx.text_fonts(), vcx)
@@ -141,11 +141,11 @@ pub(super) fn upright_central(
     let lane = over + under;
     let items = stack.glyphs.into_iter().map(|g| {
         let mut style = g.style;
-        style.flat_mode = style.flow_mode();
-        style.writing_mode = None;
-        style.upright_stack = true;
-        style.line_height = Some(Len::Px(g.size));
-        style.text_align = Some(TextAlign::Center);
+        style.inh.writing.flat_mode = style.flow_mode();
+        style.inh.writing.writing_mode = None;
+        style.reset_context.upright_stack = true;
+        style.inh.font.line_height = Some(Len::Px(g.size));
+        style.inh.text_flow.text_align = Some(TextAlign::Center);
         let wide = 2.0 * lane.max(g.size);
         // Line-over is the physical right in both vertical modes.
         let left = under + g.shift - wide / 2.0;
@@ -176,8 +176,8 @@ mod tests {
     #[test]
     fn adjusted_glyph_size_does_not_scale_numeric_lane() {
         let mut style = Computed::default();
-        style.font_size = Some(Len::Px(20.0));
-        style.line_height = Some(Len::Pct(1.5));
+        style.inh.font.font_size = Some(Len::Px(20.0));
+        style.inh.font.line_height = Some(Len::Pct(1.5));
         assert_eq!(line_height(&style, 40.0, 16.0), 30.0);
         assert_eq!(line_height(&Computed::default(), 40.0, 16.0), 40.0);
     }

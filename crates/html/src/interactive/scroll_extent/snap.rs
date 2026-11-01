@@ -53,10 +53,10 @@ pub(super) fn initial(
         f32::from(bounds.size.width) - border[0] - border[2] - insets[0] - insets[2],
         f32::from(bounds.size.height) - border[1] - border[3] - insets[1] - insets[3],
     ];
-    let padding = snap_sides(c.snap.padding, view, vcx);
+    let padding = snap_sides(c.reset_box_layout.snap.padding, view, vcx);
     let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
-    let active = match c.snap.axis {
+    let active = match c.reset_box_layout.snap.axis {
         1 => [true, false],
         2 => [false, true],
         3 => [vertical, !vertical],
@@ -103,7 +103,7 @@ pub(super) fn initial(
             let distance = (candidate - current[axis]).abs();
             // Proximity is UA-defined (§6.2); use a fraction of the snapport,
             // rather than a fixed CSS-pixel threshold across differently sized ports.
-            if c.snap.strictness == 1 && distance > view[axis] / 3.0 {
+            if c.reset_box_layout.snap.strictness == 1 && distance > view[axis] / 3.0 {
                 continue;
             }
             choices[axis].push(selection::Choice {

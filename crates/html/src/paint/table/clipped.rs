@@ -22,8 +22,8 @@ impl CellsClipped {
     }
 
     pub(super) fn paint_band_outline(&mut self, window: &mut Window, area: Bounds<Pixels>) {
-        if let Some(o) = &self.style.outline {
-            let em = match self.style.font_size {
+        if let Some(o) = &self.style.reset_border.outline {
+            let em = match self.style.inh.font.font_size {
                 Some(crate::style::values::value::Len::Px(v)) => v,
                 _ => MEDIUM_FONT_SIZE_PX,
             };
@@ -63,7 +63,7 @@ impl CellsClipped {
     }
 
     pub(super) fn paint_band_shadows(&mut self, window: &mut Window, area: Bounds<Pixels>) {
-        for sh in &self.style.shadows {
+        for sh in &self.style.reset_effects.shadows {
             let colour = sh.used_color(self.style.current_color());
             let shifted = Bounds {
                 origin: gpui::point(

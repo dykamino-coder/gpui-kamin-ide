@@ -33,35 +33,68 @@ pub(super) fn cell_box_div(
             Some(Len::Px(_)) | None => own,
             _ => merged,
         };
-        c.used_mut().padding = crate::style::computed::Sides {
-            top: fixup(c.used().padding.top, cm.padding.top),
-            right: fixup(c.used().padding.right, cm.padding.right),
-            bottom: fixup(c.used().padding.bottom, cm.padding.bottom),
-            left: fixup(c.used().padding.left, cm.padding.left),
+        c.used_mut().reset_box_layout.padding = crate::style::computed::Sides {
+            top: fixup(
+                c.used().reset_box_layout.padding.top,
+                cm.reset_box_layout.padding.top,
+            ),
+            right: fixup(
+                c.used().reset_box_layout.padding.right,
+                cm.reset_box_layout.padding.right,
+            ),
+            bottom: fixup(
+                c.used().reset_box_layout.padding.bottom,
+                cm.reset_box_layout.padding.bottom,
+            ),
+            left: fixup(
+                c.used().reset_box_layout.padding.left,
+                cm.reset_box_layout.padding.left,
+            ),
         };
-        c.used_mut().height = fixup(c.used().height, cm.height);
+        c.used_mut().reset_box_layout.height =
+            fixup(c.used().reset_box_layout.height, cm.reset_box_layout.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        c.used_mut().border_width = crate::style::computed::Sides {
-            top: fixup(c.used().border_width.top, cm.border_width.top),
-            right: fixup(c.used().border_width.right, cm.border_width.right),
-            bottom: fixup(c.used().border_width.bottom, cm.border_width.bottom),
-            left: fixup(c.used().border_width.left, cm.border_width.left),
+        c.used_mut().reset_border.border_width = crate::style::computed::Sides {
+            top: fixup(
+                c.used().reset_border.border_width.top,
+                cm.reset_border.border_width.top,
+            ),
+            right: fixup(
+                c.used().reset_border.border_width.right,
+                cm.reset_border.border_width.right,
+            ),
+            bottom: fixup(
+                c.used().reset_border.border_width.bottom,
+                cm.reset_border.border_width.bottom,
+            ),
+            left: fixup(
+                c.used().reset_border.border_width.left,
+                cm.reset_border.border_width.left,
+            ),
         };
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.used_mut().bg_pos.x = fixup(c.used().bg_pos.x, cm.bg_pos.x);
-        c.used_mut().bg_pos.y = fixup(c.used().bg_pos.y, cm.bg_pos.y);
+        c.used_mut().reset_background.bg_pos.x = fixup(
+            c.used().reset_background.bg_pos.x,
+            cm.reset_background.bg_pos.x,
+        );
+        c.used_mut().reset_background.bg_pos.y = fixup(
+            c.used().reset_background.bg_pos.y,
+            cm.reset_background.bg_pos.y,
+        );
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (c.used().bg_size, cm.bg_size)
-        {
-            c.used_mut().bg_size =
+        ) = (
+            c.used().reset_background.bg_size,
+            cm.reset_background.bg_size,
+        ) {
+            c.used_mut().reset_background.bg_size =
                 crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
         }
         c
@@ -74,18 +107,22 @@ pub(super) fn cell_box_div(
     let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
-        && box_style.used().bg_clip.is_none()
-        && box_style.used().gradient.is_none()
-        && box_style.used().bg_image.is_none()
-        && box_style.cascaded().hidden != Some(true)
-        && box_style.used().opacity.is_none_or(|o| o >= 1.0)
-        && box_style.used().transform.is_none()
-        && box_style.used().translate.is_none()
-        && box_style.used().filter.is_none();
+        && box_style.used().reset_background.bg_clip.is_none()
+        && box_style.used().reset_background.gradient.is_none()
+        && box_style.used().reset_background.bg_image.is_none()
+        && box_style.cascaded().inh.ui.hidden != Some(true)
+        && box_style
+            .used()
+            .reset_effects
+            .opacity
+            .is_none_or(|o| o >= 1.0)
+        && box_style.used().reset_transforms.transform.is_none()
+        && box_style.used().reset_transforms.translate.is_none()
+        && box_style.used().reset_effects.filter.is_none();
     let mut box_style = box_style;
-    let own_bg = box_style.used().background;
+    let own_bg = box_style.used().reset_background.background;
     if bg_layered {
-        box_style.used_mut().background = None;
+        box_style.used_mut().reset_background.background = None;
     }
     let mut d = cx
         .contracts
@@ -103,9 +140,10 @@ pub(super) fn cell_box_div(
         // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
-        let picture = row.style.used().bg_image.is_some()
-            || row.style.used().gradient_raw.is_some()
-            || (row.style.used().background.is_some() && row.style.used().bg_clip.is_some());
+        let picture = row.style.used().reset_background.bg_image.is_some()
+            || row.style.used().reset_background.gradient_raw.is_some()
+            || (row.style.used().reset_background.background.is_some()
+                && row.style.used().reset_background.bg_clip.is_some());
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -129,12 +167,13 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.used().position == Some(crate::style::computed::Position::Relative)
+    let own_pct = cell.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.used().inset.left,
-            cell.style.used().inset.right,
-            cell.style.used().inset.top,
-            cell.style.used().inset.bottom,
+            cell.style.used().reset_positioned.inset.left,
+            cell.style.used().reset_positioned.inset.right,
+            cell.style.used().reset_positioned.inset.top,
+            cell.style.used().reset_positioned.inset.bottom,
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));
@@ -195,7 +234,7 @@ pub(super) fn ortho_cell_box(
         // `start`/`end` — края СТРОКИ: вертикальная строка идёт
         // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
         let rtl = cm.wm().rtl();
-        d = match cm.text_align {
+        d = match cm.inh.text_flow.text_align {
             Some(TextAlign::Right) => d.items_end(),
             Some(TextAlign::Center) => d.items_center(),
             Some(TextAlign::End) if !rtl => d.items_end(),
@@ -207,13 +246,13 @@ pub(super) fn ortho_cell_box(
         // умолчанием стояла середина, содержимое опускалось на
         // полразницы высот (`direction-applies-to-005`: квадрат на
         // 30 точек ниже эталона).
-        d = match cm.vertical_align {
+        d = match cm.inh.text_flow.vertical_align {
             Some(Align::End) => d.justify_end(),
             Some(Align::Center) => d.justify_center(),
             _ => d.justify_start(),
         };
     } else {
-        d = match cm.vertical_align {
+        d = match cm.inh.text_flow.vertical_align {
             Some(Align::End) => d.justify_end(),
             Some(Align::Center) => d.justify_center(),
             _ => d.justify_start(),

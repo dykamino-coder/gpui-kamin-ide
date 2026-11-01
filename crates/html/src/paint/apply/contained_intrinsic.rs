@@ -25,33 +25,42 @@ pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
     // `gap` хранит пару (ряды, колонки); `column-gap` пишет и пару, и своё
     // поле (`style::computed`, ветки `"gap"`/`"column-gap"`).
     let gap = if inline {
-        c.gap.and_then(|g| g.1).or(c.column_gap)
+        c.reset_flex
+            .gap
+            .and_then(|g| g.1)
+            .or(c.reset_fragmentation.column_gap)
     } else {
-        c.gap.and_then(|g| g.0)
+        c.reset_flex.gap.and_then(|g| g.0)
     };
     if inline
-        && let (Some(count), Some(Len::Px(w))) = (c.column_count, c.column_width)
+        && let (Some(count), Some(Len::Px(w))) = (
+            c.reset_fragmentation.column_count,
+            c.reset_fragmentation.column_width,
+        )
         && count > 0
         && w > 0.0
     {
         // `column-gap: normal` — кегль (css-align-3 §8.3), как в блочном пути.
-        let g = match c.column_gap {
+        let g = match c.reset_fragmentation.column_gap {
             Some(Len::Px(v)) => v,
-            _ => match c.font_size {
+            _ => match c.inh.font.font_size {
                 Some(Len::Px(size)) => size,
                 _ => MEDIUM_FONT_SIZE_PX,
             },
         };
         return count as f32 * w + (count as f32 - 1.0) * g;
     }
-    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    let grid = matches!(
+        c.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    );
     if !grid {
         return 0.0;
     }
     let tracks = if inline {
-        c.grid_tracks.as_ref()
+        c.reset_grid.grid_tracks.as_ref()
     } else {
-        c.grid_rows.as_ref()
+        c.reset_grid.grid_rows.as_ref()
     };
     let Some(tracks) = tracks.filter(|t| !t.is_empty()) else {
         return 0.0;
@@ -85,12 +94,14 @@ pub(super) fn apply(d: &mut Div, c: &Computed) {
     // but their intrinsic contributions exclude real descendants.
     d.style().contained_intrinsic_size = Some([
         c.contains_width().then(|| {
-            c.contain_intrinsic
+            c.reset_context
+                .contain_intrinsic
                 .0
                 .unwrap_or_else(|| empty_contained_size(c, true))
         }),
         c.contains_height().then(|| {
-            c.contain_intrinsic
+            c.reset_context
+                .contain_intrinsic
                 .1
                 .unwrap_or_else(|| empty_contained_size(c, false))
         }),

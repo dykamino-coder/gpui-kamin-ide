@@ -14,26 +14,26 @@ fn float_claim_follows_own_writing_mode_and_preserves_definite_inline_sizes() {
         let mut with_inherited = Computed {
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
     };
     let mut child = Computed::default();
     claim_float_inline_size(&mut child, &parent, &[]);
-    assert!(child.hug_inline && child.hug_claim);
-    assert_eq!(child.height, Some(Len::FitContent));
+    assert!(child.reset_context.hug_inline && child.reset_context.hug_claim);
+    assert_eq!(child.reset_box_layout.height, Some(Len::FitContent));
     let mut horizontal = {
         let mut with_inherited = Computed {
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(false, false, false),
         );
         with_inherited
     };
     claim_float_inline_size(&mut horizontal, &parent, &[]);
-    assert!(!horizontal.hug_inline);
+    assert!(!horizontal.reset_context.hug_inline);
     let mut fixed = Computed {
         reset_box_layout: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetBoxLayout {
@@ -44,7 +44,7 @@ fn float_claim_follows_own_writing_mode_and_preserves_definite_inline_sizes() {
         ..Computed::default()
     };
     claim_float_inline_size(&mut fixed, &parent, &[]);
-    assert!(!fixed.hug_inline);
+    assert!(!fixed.reset_context.hug_inline);
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn auto_shrink_to_fit_claim_uses_real_intrinsics_and_own_limits() {
             ),
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
@@ -90,7 +90,7 @@ fn authored_inline_size_remains_definite_without_an_orthogonal_boundary() {
             ),
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
@@ -122,14 +122,14 @@ fn parallel_table_track_keeps_min_content_and_own_limits() {
             ),
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
     };
     let value = constraint(&style, 200.0).unwrap();
     assert_eq!(value.used_keyword(keyword(&style), 30.0, 900.0), 40.0);
-    style.height = Some(Len::Px(80.0));
+    style.reset_box_layout.height = Some(Len::Px(80.0));
     assert_eq!(
         constraint(&style, 200.0)
             .unwrap()
@@ -150,7 +150,7 @@ fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
             ),
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited

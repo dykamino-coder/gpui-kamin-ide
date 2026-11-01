@@ -19,10 +19,10 @@ fn float_exclusion_survives_float_layout_clearing_the_property() {
         })
         .expect("body");
     let mut body = body.clone();
-    body.style.used_mut().float = None;
+    body.style.used_mut().reset_box_layout.float = None;
     let mut st = Computed::default();
     fill(&body, &mut st, &BoxStyle::default(), &opts());
-    assert_eq!(st.min_height, None);
+    assert_eq!(st.reset_box_layout.min_height, None);
 }
 
 fn opts() -> RenderOpts {
@@ -40,9 +40,9 @@ fn fill_is_a_content_minimum_and_does_not_make_auto_height_definite() {
     let mut body = crate::layout::table::anon::anon_element("body", vec![]);
     body.marks.quirks_fill = true;
     let mut st = Computed::default();
-    st.margin.top = Some(Len::Px(10.0));
-    st.margin.bottom = Some(Len::Px(12.0));
-    st.padding.top = Some(Len::Px(5.0));
+    st.reset_box_layout.margin.top = Some(Len::Px(10.0));
+    st.reset_box_layout.margin.bottom = Some(Len::Px(12.0));
+    st.reset_box_layout.padding.top = Some(Len::Px(5.0));
     let parent = Computed {
         reset_box_layout: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetBoxLayout {
@@ -53,8 +53,8 @@ fn fill_is_a_content_minimum_and_does_not_make_auto_height_definite() {
         ..Default::default()
     };
     fill(&body, &mut st, &BoxStyle::from(parent), &opts());
-    assert_eq!(st.min_height, Some(Len::Px(173.0)));
-    assert_eq!(st.height, None);
+    assert_eq!(st.reset_box_layout.min_height, Some(Len::Px(173.0)));
+    assert_eq!(st.reset_box_layout.height, None);
     assert_eq!(
         crate::layout::block::available_height::inner(&st, Some(200.0), Some(800.0), 600.0,),
         None
@@ -114,7 +114,7 @@ fn inline_floating_and_positioned_bodies_keep_their_normal_size() {
     ] {
         body.style = st.clone().into();
         fill(&body, &mut st, &BoxStyle::default(), &opts());
-        assert_eq!(st.min_height, None);
+        assert_eq!(st.reset_box_layout.min_height, None);
     }
 }
 
@@ -138,8 +138,8 @@ fn vertical_fill_uses_width_and_preserves_border_box_minimum() {
         ..Default::default()
     };
     fill(&body, &mut st, &BoxStyle::from(parent), &opts());
-    assert_eq!(st.min_width, Some(Len::Px(180.0)));
-    assert_eq!(st.width, None);
+    assert_eq!(st.reset_box_layout.min_width, Some(Len::Px(180.0)));
+    assert_eq!(st.reset_box_layout.width, None);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn calc_size_auto_does_not_trigger_either_fill_axis() {
         st.apply_one("writing-mode", mode, doc.values());
         st.apply_one(property, "calc-size(auto, size)", doc.values());
         fill(&body, &mut st, &BoxStyle::default(), &opts());
-        assert_eq!(st.min_width, None);
-        assert_eq!(st.min_height, None);
+        assert_eq!(st.reset_box_layout.min_width, None);
+        assert_eq!(st.reset_box_layout.min_height, None);
     }
 }

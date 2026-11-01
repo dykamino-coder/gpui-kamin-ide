@@ -75,7 +75,7 @@ fn atom_piece_in(
     // before solving absolute insets; an empty frame is still replaced.
     let iframe_sized = (replaced_content::default_iframe(e)
         && matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -92,22 +92,23 @@ fn atom_piece_in(
     // полосы (`band_kid`) без потокового текста хранит статическую точку.
     let plain_flow = !inherited.wm().vertical()
         && (!inherited.wm().rtl()
-            || (flow_text && inherited.ortho_limit.is_some())
-            || (inherited.band_kid && !flow_text));
+            || (flow_text && inherited.reset_context.ortho_limit.is_some())
+            || (inherited.reset_context.band_kid && !flow_text));
     // Статическая позиция — для гипотетической статической коробки (§10.3.7):
     // метка `inline_display` возвращает блокифицированный `display: inline` в
     // строчный путь. БЛОЧНЫЙ абсолют в повёрнутом абзаце — кусок вне потока в
     // начале следующей строки (`next_line_point`): поворачивается вместе со
     // строками, и его до-поворотное место — гипотетическая коробка §10.6.4.
-    let rot_block =
-        inherited.wm().turned() && !inline_level(e) && e.style.used().inline_display != Some(true);
+    let rot_block = inherited.wm().turned()
+        && !inline_level(e)
+        && e.style.used().reset_context.inline_display != Some(true);
     if plain_flow
         && (!in_inline_cb || inherited.wm().turned())
         && at_static_position(&e.style.used())
         && (inline_level(e)
-            || e.style.used().inline_display == Some(true)
+            || e.style.used().reset_context.inline_display == Some(true)
             || rot_block
-            || inherited.band_kid)
+            || inherited.reset_context.band_kid)
     {
         return static_overlay(e, inherited, opts, rot_block);
     }
@@ -123,7 +124,7 @@ fn atom_piece_in(
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
     if inherited.wm().turned()
-        && e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().reset_box_layout.display == Some(Display::InlineBlock)
         && e.style.cascaded().vertical_decl() == Some(false)
     {
         // An orthogonal atomic inline keeps its physical box and own writing
@@ -138,10 +139,10 @@ fn atom_piece_in(
             return Some(inline::Piece::Atom(physical));
         }
         let mut merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
-        merged.turned_line = false;
-        let em = match merged.width {
+        merged.reset_text_box.turned_line = false;
+        let em = match merged.reset_box_layout.width {
             Some(Len::Px(v)) => v,
-            _ => match merged.font_size {
+            _ => match merged.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             },
@@ -193,7 +194,7 @@ fn atom_piece_in(
     let bare;
     let e = if wrapped {
         let mut copy = e.clone();
-        copy.style.used_mut().margin = Default::default();
+        copy.style.used_mut().reset_box_layout.margin = Default::default();
         bare = copy;
         &bare
     } else {
@@ -205,10 +206,10 @@ fn atom_piece_in(
     // piece of the horizontal pre-rotation paragraph, whose clone has
     // `vertical` cleared. Carry the writing mode on the box itself.
     let vertical_abs;
-    let e = if (inherited.wm().turned() || inherited.upright_stack)
-        && e.style.cascaded().writing_mode.is_none()
+    let e = if (inherited.wm().turned() || inherited.reset_context.upright_stack)
+        && e.style.cascaded().inh.writing.writing_mode.is_none()
         && matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -216,7 +217,7 @@ fn atom_piece_in(
         && !replaced_tag(e)
     {
         let mut copy = e.clone();
-        copy.style.used_mut().writing_mode =
+        copy.style.used_mut().inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 inherited.wm().block_rl(),

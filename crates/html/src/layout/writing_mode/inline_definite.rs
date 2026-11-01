@@ -25,7 +25,9 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &BoxStyle) {
     let Some(cb) = parent.inline_definite else {
         return;
     };
-    if !parent.wm().vertical() || crate::style::flow::absolutely_positioned(style.position) {
+    if !parent.wm().vertical()
+        || crate::style::flow::absolutely_positioned(style.reset_positioned.position)
+    {
         return;
     }
     // A float-band piece (`band_flow_host::build_kid`) is laid out in a frame as large as its
@@ -33,7 +35,7 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &BoxStyle) {
     // itself (CSS 2.1 §10.2, §10.5); resolving them here as well put the piece's inline
     // size out of step with the host's measure (`slr-alongside-vlr-floats`: the BFC beside
     // the floats was placed in its window but painted under the first float).
-    if style.band_kid {
+    if style.reset_context.band_kid {
         return;
     }
     let at = |value: &mut Option<Len>| {
@@ -41,10 +43,14 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &BoxStyle) {
             *value = Some(Len::Px(k * cb));
         }
     };
-    at(&mut style.height);
-    at(&mut style.min_height);
-    at(&mut style.max_height);
-    for sides in [&mut style.margin, &mut style.padding] {
+    at(&mut style.reset_box_layout.height);
+    at(&mut style.reset_box_layout.min_height);
+    at(&mut style.reset_box_layout.max_height);
+    for style_field_index in 0..2 {
+        let sides = match style_field_index {
+            0 => &mut style.reset_box_layout.margin,
+            _ => &mut style.reset_box_layout.padding,
+        };
         let Sides {
             top,
             right,
@@ -65,17 +71,23 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     let b = style.borders();
     // A scroll container's scrollbars are only known after a layout pass, so its
     // content inline size is left to the layout engine.
-    if style.scroller
-        || [style.overflow_x, style.overflow_y]
-            .into_iter()
-            .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
+    if style.reset_context.scroller
+        || [
+            style.reset_box_layout.overflow_x,
+            style.reset_box_layout.overflow_y,
+        ]
+        .into_iter()
+        .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
     {
         return None;
     }
-    let edges = px(b.top)? + px(b.bottom)? + px(style.padding.top)? + px(style.padding.bottom)?;
-    match style.height {
+    let edges = px(b.top)?
+        + px(b.bottom)?
+        + px(style.reset_box_layout.padding.top)?
+        + px(style.reset_box_layout.padding.bottom)?;
+    match style.reset_box_layout.height {
         Some(Len::Px(h)) => {
-            return Some(if style.border_box == Some(true) {
+            return Some(if style.reset_border.border_box == Some(true) {
                 (h - edges).max(0.0)
             } else {
                 h
@@ -89,7 +101,7 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     // boxes shrink to fit instead.
     if crate::style::flow::out_of_flow(style)
         || !matches!(
-            style.display,
+            style.reset_box_layout.display,
             None | Some(Display::Block | Display::ListItem)
         )
     {
@@ -102,7 +114,8 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     } else {
         stretched_flex_item(style, parent)
     }?;
-    let margins = px(style.margin.top)? + px(style.margin.bottom)?;
+    let margins =
+        px(style.reset_box_layout.margin.top)? + px(style.reset_box_layout.margin.bottom)?;
     Some((space - margins - edges).max(0.0))
 }
 
@@ -113,18 +126,21 @@ fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
     use crate::style::computed::Align;
     let stretch = |a: Option<Align>| matches!(a, None | Some(Align::Stretch));
     if !crate::layout::box_kind::flex_row_nowrap(parent)
-        || !stretch(style.align_self)
-        || !stretch(parent.align_items)
+        || !stretch(style.reset_flex.align_self)
+        || !stretch(parent.reset_flex.align_items)
         || parent.contains_height()
     {
         return None;
     }
-    let Some(Len::Px(height)) = parent.height else {
+    let Some(Len::Px(height)) = parent.reset_box_layout.height else {
         return None;
     };
     let pb = parent.borders();
-    let parent_edges = if parent.border_box == Some(true) {
-        px(pb.top)? + px(pb.bottom)? + px(parent.padding.top)? + px(parent.padding.bottom)?
+    let parent_edges = if parent.reset_border.border_box == Some(true) {
+        px(pb.top)?
+            + px(pb.bottom)?
+            + px(parent.reset_box_layout.padding.top)?
+            + px(parent.reset_box_layout.padding.bottom)?
     } else {
         0.0
     };
@@ -138,9 +154,9 @@ mod tests {
 
     fn vertical() -> BoxStyle {
         let mut style = BoxStyle::default();
-        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        ));
+        style.inh.writing.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
         style
     }
 
@@ -150,11 +166,11 @@ mod tests {
         html.inline_definite = own(&html, &BoxStyle::default(), true, 600.0);
         assert_eq!(html.inline_definite, Some(600.0));
         let mut body = vertical();
-        body.margin.top = Some(Len::Px(8.0));
-        body.margin.bottom = Some(Len::Px(8.0));
+        body.reset_box_layout.margin.top = Some(Len::Px(8.0));
+        body.reset_box_layout.margin.bottom = Some(Len::Px(8.0));
         assert_eq!(own(&body, &html, false, 600.0), Some(584.0));
         let mut float = vertical();
-        float.float = Some(-1);
+        float.reset_box_layout.float = Some(-1);
         assert_eq!(own(&float, &html, false, 600.0), None);
     }
 
@@ -163,16 +179,16 @@ mod tests {
         let mut parent = vertical();
         parent.inline_definite = Some(200.0);
         let mut child = vertical();
-        child.height = Some(Len::Pct(0.25));
-        child.padding.left = Some(Len::Pct(0.5));
+        child.reset_box_layout.height = Some(Len::Pct(0.25));
+        child.reset_box_layout.padding.left = Some(Len::Pct(0.5));
         resolve_percentages(&mut child, &parent);
-        assert_eq!(child.height, Some(Len::Px(50.0)));
-        assert_eq!(child.padding.left, Some(Len::Px(100.0)));
+        assert_eq!(child.reset_box_layout.height, Some(Len::Px(50.0)));
+        assert_eq!(child.reset_box_layout.padding.left, Some(Len::Px(100.0)));
         let mut abs = vertical();
-        abs.position = Some(Position::Absolute);
-        abs.height = Some(Len::Pct(0.25));
+        abs.reset_positioned.position = Some(Position::Absolute);
+        abs.reset_box_layout.height = Some(Len::Pct(0.25));
         resolve_percentages(&mut abs, &parent);
-        assert_eq!(abs.height, Some(Len::Pct(0.25)));
+        assert_eq!(abs.reset_box_layout.height, Some(Len::Pct(0.25)));
     }
 
     #[test]
@@ -188,12 +204,12 @@ mod tests {
             ..Computed::default()
         };
         let mut item = vertical();
-        item.margin.top = Some(Len::Px(4.0));
+        item.reset_box_layout.margin.top = Some(Len::Px(4.0));
         assert_eq!(
             own(&item, &BoxStyle::from(row.clone()), false, 600.0),
             Some(96.0)
         );
-        item.overflow_y = Some(Overflow::Scroll);
+        item.reset_box_layout.overflow_y = Some(Overflow::Scroll);
         assert_eq!(own(&item, &BoxStyle::from(row), false, 600.0), None);
     }
 }

@@ -84,7 +84,7 @@ impl BlockBox {
 /// Контейнер сетки, чьи ряды дают точки разрыва его элементам.
 pub(crate) fn grid_container(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Grid) | Some(Display::InlineGrid)
     )
 }
@@ -94,7 +94,9 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> GridBo
     let mut out = GridBox::default();
     for k in children(&e.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = k else { continue };
-        if out_of_flow(&k.style.used()) || matches!(k.style.used().display, Some(Display::None)) {
+        if out_of_flow(&k.style.used())
+            || matches!(k.style.used().reset_box_layout.display, Some(Display::None))
+        {
             continue;
         }
         let lens = LenCx::box_viewport(cx.viewport, &k.style.used());
@@ -109,8 +111,8 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> GridBo
         });
         out.items.push(GridItem {
             id: k.node_id,
-            mt: px(k.style.used().margin.top),
-            mb: px(k.style.used().margin.bottom),
+            mt: px(k.style.used().reset_box_layout.margin.top),
+            mb: px(k.style.used().reset_box_layout.margin.bottom),
             force_before: edge_break(k, false, vcx),
             force_after: edge_break(k, true, vcx),
             avoid_before: edge_avoid(k, false, vcx),
@@ -127,7 +129,7 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> GridBo
 fn inherits_rows(grid: &Element, k: &Element) -> bool {
     let (parent, child) = (grid.style.used(), k.style.used());
     grid_container(k)
-        && child.subgrid_rows
+        && child.reset_grid.subgrid_rows
         && parent.wm().vertical() == child.wm().vertical()
         && parent.wm().block_rl() == child.wm().block_rl()
 }

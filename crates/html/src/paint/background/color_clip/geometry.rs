@@ -47,7 +47,7 @@ pub(super) fn area(
         // В схлопнутой модели border представлен половиной кромки внутри
         // layout padding. Для content-box она уже входит в полный отступ.
         BgClip::ContentBox => std::array::from_fn(|i| border[i] + pad[i]),
-        _ => c.bg_border_insets.unwrap_or(border),
+        _ => c.reset_background.bg_border_insets.unwrap_or(border),
     };
     inset(outer, radii, cuts)
 }

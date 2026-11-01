@@ -23,10 +23,14 @@ pub(super) fn position(m: Div, item: &Computed, merged: &Computed) -> Div {
         _ => 0.0,
     };
     // Сохраняем сдвиг за первой строкой, обтекающей предшествующий float.
-    let intrusion = merged.flow_shapes.as_ref().map_or(0.0, |shapes| {
-        let side = if wm.rtl() { &shapes.1 } else { &shapes.0 };
-        side.iter().map(|s| s.cut(0.0, 1.0)).fold(0.0, f32::max)
-    });
+    let intrusion = merged
+        .reset_shapes
+        .flow_shapes
+        .as_ref()
+        .map_or(0.0, |shapes| {
+            let side = if wm.rtl() { &shapes.1 } else { &shapes.0 };
+            side.iter().map(|s| s.cut(0.0, 1.0)).fold(0.0, f32::max)
+        });
     // CSS Lists 3 §3.5: outside находится за inline-start границы.
     // Insets отсчитываются от padding box, поэтому его рамка добавляется
     // к отступу конца маркера. Физические left/right годятся лишь для горизонтали.
@@ -66,29 +70,30 @@ mod tests {
                 ),
                 ..Computed::default()
             };
-            item.writing_mode = Some(WritingModeKw::VerticalLr);
-            item.font_size = Some(Len::Px(20.));
-            item.text_indent = Some(Len::Px(-100.));
-            item.text_indent_each_line = Some(true);
-            item.text_indent_hanging = Some(true);
-            item.list_style_type = kind;
+            item.inh.writing.writing_mode = Some(WritingModeKw::VerticalLr);
+            item.inh.font.font_size = Some(Len::Px(20.));
+            item.inh.text_flow.text_indent = Some(Len::Px(-100.));
+            item.inh.text_flow.text_indent_each_line = Some(true);
+            item.inh.text_flow.text_indent_hanging = Some(true);
+            item.inh.table_list.list_style_type = kind;
             let li = crate::dom::Element::synthetic("li", item, Default::default(), vec![]);
             let mut parent = inherit(&BoxStyle::default(), &li.style.used(), vcx);
-            parent.orthogonal_inline = Some(crate::style::computed::orthogonal::InlineConstraint {
-                available: 160.,
-                fixed: Some(160.),
-                min: None,
-                max: None,
-            });
+            parent.reset_context.orthogonal_inline =
+                Some(crate::style::computed::orthogonal::InlineConstraint {
+                    available: 160.,
+                    fixed: Some(160.),
+                    min: None,
+                    max: None,
+                });
             let marker = super::super::marker::resolve(&li, &parent, &parent, vcx);
             let style = content_style(marker.and_then(|m| m.style), &parent, vcx);
-            assert_eq!(style.width, None);
-            assert_eq!(style.height, None);
-            assert_eq!(style.font_size, Some(Len::Px(20.)));
-            assert_eq!(style.nowrap, Some(true));
-            assert_eq!(style.text_indent, None);
-            assert_eq!(style.text_indent_each_line, None);
-            assert_eq!(style.text_indent_hanging, None);
+            assert_eq!(style.reset_box_layout.width, None);
+            assert_eq!(style.reset_box_layout.height, None);
+            assert_eq!(style.inh.font.font_size, Some(Len::Px(20.)));
+            assert_eq!(style.inh.text_flow.nowrap, Some(true));
+            assert_eq!(style.inh.text_flow.text_indent, None);
+            assert_eq!(style.inh.text_flow.text_indent_each_line, None);
+            assert_eq!(style.inh.text_flow.text_indent_hanging, None);
             assert_eq!(style.wm(), parent.wm());
             let constraint = crate::layout::writing_mode::native_vertical::constraint(&style, 600.)
                 .expect("intrinsic marker inline size");
@@ -107,8 +112,8 @@ mod tests {
         ] {
             for (rtl, start) in starts.into_iter().enumerate() {
                 let mut style = Computed::default();
-                style.writing_mode = Some(WritingModeKw::new(vertical, rl, sideways));
-                style.rtl = Some(rtl == 1);
+                style.inh.writing.writing_mode = Some(WritingModeKw::new(vertical, rl, sideways));
+                style.inh.writing.rtl = Some(rtl == 1);
                 let mut d = position(gpui::div(), &style, &style);
                 let e = &d.style().inset;
                 let actual = [e.top, e.right, e.bottom, e.left];
@@ -130,17 +135,17 @@ mod tests {
             (true, true, false, Side::Top, 3.),
         ] {
             let mut style = Computed::default();
-            style.writing_mode = Some(WritingModeKw::new(vertical, false, sideways));
-            style.rtl = Some(rtl);
-            style.border_visible = [Some(true); 4];
-            style.border_width = Sides {
+            style.inh.writing.writing_mode = Some(WritingModeKw::new(vertical, false, sideways));
+            style.inh.writing.rtl = Some(rtl);
+            style.reset_border.border_visible = [Some(true); 4];
+            style.reset_border.border_width = Sides {
                 top: Some(Len::Px(1.)),
                 right: Some(Len::Px(2.)),
                 bottom: Some(Len::Px(3.)),
                 left: Some(Len::Px(4.)),
             };
             for visible in [true, false] {
-                style.border_visible = [Some(visible); 4];
+                style.reset_border.border_visible = [Some(visible); 4];
                 let mut d = position(gpui::div(), &style, &style);
                 let e = &d.style().margin;
                 let actual = [e.top, e.right, e.bottom, e.left];

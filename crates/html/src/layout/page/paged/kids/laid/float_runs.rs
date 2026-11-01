@@ -80,14 +80,14 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
     let (nodes, contexts) = flow::page_percentages(&tree, &opts.root_style(), &opts);
     let source = &super::tests::authored(&nodes).children;
     let height = |n: &Node| match n {
-        Node::Element(e) => e.style.used().height,
+        Node::Element(e) => e.style.used().reset_box_layout.height,
         _ => panic!("float box"),
     };
     assert_eq!(height(&source[1]), Some(Len::Px(115.200005)));
     let (_, after, _, _, _) = super::super::names::group_break_names(
         "",
         &mut None,
-        |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
+        |n| matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)),
         &source[..2],
         &source[0],
         FrameCx::new(&tree.doc),
@@ -104,7 +104,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
     let Node::Element(root) = &p.nodes[0] else {
         panic!("measured root")
     };
-    assert_eq!(root.style.used().height, None);
+    assert_eq!(root.style.used().reset_box_layout.height, None);
     assert_eq!(height(&root.children[1]), height(&source[1]));
     let blocks = flow::blocks::BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(&tree.doc));
     assert!(blocks.edge(true, &Default::default()).0);
@@ -118,7 +118,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         },
         &opts,
     );
-    assert_eq!(resumed.style.used().height, None);
+    assert_eq!(resumed.style.used().reset_box_layout.height, None);
     assert_eq!(height(&resumed.children[1]), Some(Len::Px(192.)));
     let mut continuation = super::tests::authored(&nodes).clone();
     contexts.refresh(

@@ -37,7 +37,7 @@ pub(in crate::layout::positioned::anchor) fn apply(
             }
         }
         let transpose = map[0] % 2 == 1;
-        if let Some(area) = c.position_area {
+        if let Some(area) = c.reset_positioned.position_area {
             let (x, y) = physical_area(area, cb, c);
             let mut tracks = [x, y];
             for (axis, t) in [(0, x), (1, y)] {
@@ -52,13 +52,15 @@ pub(in crate::layout::positioned::anchor) fn apply(
                     }
                 };
             }
-            c.position_area = Some(PositionArea(
+            c.reset_positioned.position_area = Some(PositionArea(
                 area_side(tracks[0], AreaAxis::X),
                 area_side(tracks[1], AreaAxis::Y),
             ));
         }
-        c.inset = sides(c.inset, map, |l, old| transform(l, old, map, cb, c, vcx));
-        c.margin = sides(c.margin, map, |l, _| l);
+        c.reset_positioned.inset = sides(c.reset_positioned.inset, map, |l, old| {
+            transform(l, old, map, cb, c, vcx)
+        });
+        c.reset_box_layout.margin = sides(c.reset_box_layout.margin, map, |l, _| l);
         let permute = |input: [bool; 4]| {
             let mut out = [false; 4];
             for k in 0..4 {
@@ -70,32 +72,44 @@ pub(in crate::layout::positioned::anchor) fn apply(
             [L::MarginTop, L::MarginRight, L::MarginBottom, L::MarginLeft],
             [L::Top, L::Right, L::Bottom, L::Left],
         ] {
-            let flags = permute(ids.map(|id| c.inherit_longhands.contains(id)));
+            let flags = permute(ids.map(|id| c.reset_cascade.inherit_longhands.contains(id)));
             for (id, on) in ids.into_iter().zip(flags) {
-                c.inherit_longhands.set(id, on);
+                c.reset_cascade.inherit_longhands.set(id, on);
             }
         }
         if transpose {
             super::sizing::transpose(c, vcx);
-            std::mem::swap(&mut c.align_self, &mut c.justify_self);
-            std::mem::swap(&mut c.align_self_safe, &mut c.justify_self_safe);
-            std::mem::swap(&mut c.align_self_normal, &mut c.justify_self_normal);
-            std::mem::swap(&mut c.align_self_own_axis, &mut c.justify_self_own_axis);
-            std::mem::swap(&mut c.align_self_last, &mut c.justify_self_last);
-            c.align_self_decl = Some(c.align_self);
+            std::mem::swap(&mut c.reset_flex.align_self, &mut c.reset_flex.justify_self);
+            std::mem::swap(
+                &mut c.reset_flex.align_self_safe,
+                &mut c.reset_flex.justify_self_safe,
+            );
+            std::mem::swap(
+                &mut c.reset_flex.align_self_normal,
+                &mut c.reset_flex.justify_self_normal,
+            );
+            std::mem::swap(
+                &mut c.reset_flex.align_self_own_axis,
+                &mut c.reset_flex.justify_self_own_axis,
+            );
+            std::mem::swap(
+                &mut c.reset_flex.align_self_last,
+                &mut c.reset_flex.justify_self_last,
+            );
+            c.reset_flex.align_self_decl = Some(c.reset_flex.align_self);
         } else {
             let y = map[0] == 2;
             let align = if y != cb.wm().vertical() {
-                &mut c.align_self
+                &mut c.reset_flex.align_self
             } else {
-                &mut c.justify_self
+                &mut c.reset_flex.justify_self
             };
             *align = match *align {
                 Some(Align::Start) => Some(Align::End),
                 Some(Align::End) => Some(Align::Start),
                 other => other,
             };
-            c.align_self_decl = Some(c.align_self);
+            c.reset_flex.align_self_decl = Some(c.reset_flex.align_self);
         }
     }
 }

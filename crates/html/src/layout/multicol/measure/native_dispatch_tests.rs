@@ -87,9 +87,9 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                         "vertical-rl" => WritingModeKw::VerticalRl,
                         _ => WritingModeKw::HorizontalTb,
                     };
-                    e.style.used_mut().writing_mode = Some(wm);
-                    e.style.used_mut().flat_mode = Some(wm);
-                    e.style.used_mut().rtl = Some(rtl);
+                    e.style.used_mut().inh.writing.writing_mode = Some(wm);
+                    e.style.used_mut().inh.writing.flat_mode = Some(wm);
+                    e.style.used_mut().inh.writing.rtl = Some(rtl);
                     for n in &mut e.children {
                         if let Node::Element(k) = n {
                             writing(k, mode, rtl);
@@ -98,7 +98,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 }
                 writing(&mut root, mode, rtl);
                 for auto in [false, true] {
-                    root.style.used_mut().column_fill_auto = Some(auto);
+                    root.style.used_mut().reset_fragmentation.column_fill_auto = Some(auto);
                     for width in [None, Some(Len::Px(240.0))] {
                         for rows in [
                             None,

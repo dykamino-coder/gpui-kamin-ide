@@ -24,7 +24,7 @@ fn forced_float_after_ends_its_shared_inline_run() {
             ),
             "",
         );
-        let floated = |n: &Node| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0));
+        let floated = |n: &Node| matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0));
         let mut groups = Vec::new();
         group_runs(
             body(&tree).children.to_vec(),
@@ -47,7 +47,7 @@ fn forced_boundary_does_not_carry_float_run_into_next_page() {
     group_runs(
         body(&tree).children.to_vec(),
         |n| matches!(n, Node::Element(e) if matches!(e.tag.as_str(), "br" | "span")),
-        |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
+        |n| matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)),
         &mut groups,
         FrameCx::new(&tree.doc),
     );
@@ -67,13 +67,13 @@ fn named_page_transition_closes_the_float_run_but_ignores_float_name() {
         group_runs(
             body(&tree).children.to_vec(),
             |_| false,
-            |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
+            |n| matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)),
             &mut groups,
             FrameCx::new(&tree.doc),
         );
         assert_eq!(groups.len(), if next == "a" { 2 } else { 3 });
         assert!(
-            matches!(&groups[1][0], Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0))
+            matches!(&groups[1][0], Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0))
         );
     }
 }

@@ -31,7 +31,7 @@ pub fn hyphenate_pieces(pieces: &mut [Piece]) {
     for (i, p) in pieces.iter().enumerate() {
         match p {
             Piece::Text { text, style } => {
-                if style.hyphens_auto == Some(true) {
+                if style.inh.text_flow.hyphens_auto == Some(true) {
                     any = true;
                 }
                 map.push((whole.len(), i));
@@ -80,7 +80,7 @@ pub fn hyphenate_pieces(pieces: &mut [Piece]) {
         let Some(Piece::Text { style, .. }) = pieces.get(piece) else {
             continue;
         };
-        if style.hyphens_auto != Some(true) {
+        if style.inh.text_flow.hyphens_auto != Some(true) {
             continue;
         }
         cuts.extend(points(word, style).into_iter().map(|offset| from + offset));
@@ -109,10 +109,10 @@ fn points(word: &str, style: &Computed) -> Vec<usize> {
     if word.contains('\u{00ad}') {
         return Vec::new();
     }
-    let Some(lang) = style.lang.as_deref().and_then(language) else {
+    let Some(lang) = style.inh.text_flow.lang.as_deref().and_then(language) else {
         return Vec::new();
     };
-    let limits = style.hyphen_limit_chars.unwrap_or([None; 3]);
+    let limits = style.inh.text_flow.hyphen_limit_chars.unwrap_or([None; 3]);
     let (before, after) = lang.bounds();
     let before = limits[1].unwrap_or(before).max(1);
     let after = limits[2].unwrap_or(after).max(1);
@@ -159,7 +159,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.lang = Some(lang.into());
+            with_inherited.inh.text_flow.lang = Some(lang.into());
             with_inherited
         }
     }
@@ -180,9 +180,9 @@ mod tests {
     #[test]
     fn character_limits_filter_dictionary_points() {
         let mut style = style("en");
-        style.hyphen_limit_chars = Some([None, Some(3), Some(2)]);
+        style.inh.text_flow.hyphen_limit_chars = Some([None, Some(3), Some(2)]);
         assert_eq!(points("example", &style), [4]);
-        style.hyphen_limit_chars = Some([Some(8), None, None]);
+        style.inh.text_flow.hyphen_limit_chars = Some([Some(8), None, None]);
         assert!(points("example", &style).is_empty());
     }
 
@@ -192,7 +192,7 @@ mod tests {
             text: text.into(),
             style: {
                 let mut with_inherited = Computed { ..style("en") };
-                with_inherited.hyphens_auto = Some(true);
+                with_inherited.inh.text_flow.hyphens_auto = Some(true);
                 BoxStyle::from(with_inherited)
             },
         };

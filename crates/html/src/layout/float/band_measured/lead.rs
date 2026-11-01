@@ -104,7 +104,7 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Default::default()
                 };
-                with_inherited.line_height = Some(Len::Px(200.));
+                with_inherited.inh.font.line_height = Some(Len::Px(200.));
                 with_inherited
             },
             Default::default(),
@@ -113,12 +113,12 @@ mod tests {
         span.inline = true;
         let (base, line) = split(vec![Node::Element(span.clone())], false);
         assert!(matches!(&base.unwrap()[0], Node::Element(e)
-            if e.style.cascaded().line_height == Some(Len::Px(200.))
+            if e.style.cascaded().inh.font.line_height == Some(Len::Px(200.))
             && matches!(&e.children[0], Node::Element(br) if br.tag == "br")));
         assert!(matches!(&line[0], Node::Element(e)
-            if e.style.cascaded().line_height == Some(Len::Px(200.))
+            if e.style.cascaded().inh.font.line_height == Some(Len::Px(200.))
             && matches!(&e.children[0], Node::Text(t) if t == "tail")));
-        span.style.used_mut().display = Some(Display::InlineBlock);
+        span.style.used_mut().reset_box_layout.display = Some(Display::InlineBlock);
         let (base, _) = split(vec![Node::Element(span)], false);
         assert!(base.is_none());
     }

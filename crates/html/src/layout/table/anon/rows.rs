@@ -35,13 +35,18 @@ pub(in crate::layout::table) fn collect_rows<'a>(
             let shift = RowCarry {
                 dx: carry.dx + dx,
                 dy: carry.dy + dy,
-                background: e.style.used().background.or(carry.background),
+                background: e
+                    .style
+                    .used()
+                    .reset_background
+                    .background
+                    .or(carry.background),
                 group: carry.group,
             };
             // Retain collapsed rows through intrinsic sizing and rowspan placement.
             // Роль задаётся тегом ИЛИ стилем: разметка на `div` с
             // `display: table-row` встречается не реже настоящих таблиц.
-            if e.tag == "tr" || e.style.used().display == Some(Display::TableRow) {
+            if e.tag == "tr" || e.style.used().reset_box_layout.display == Some(Display::TableRow) {
                 out.push(TableRow {
                     element: e,
                     carry: shift,
@@ -49,7 +54,7 @@ pub(in crate::layout::table) fn collect_rows<'a>(
             } else if e.tag == "thead"
                 || e.tag == "tbody"
                 || e.tag == "tfoot"
-                || e.style.used().display == Some(Display::TableRowGroup)
+                || e.style.used().reset_box_layout.display == Some(Display::TableRowGroup)
             {
                 // Группа с КАРТИНКОЙ красит и цвет САМА — полосой `grp_band`
                 // (§14.2: цвет лежит ПОД картинкой). Ячейка его не дублирует:
@@ -60,9 +65,10 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // Отсечка держится на том, что полоса знает
                 // `attachment: fixed`: без этого ломается тройка
                 // `background-attachment-applies-to-*`.
-                let picture = e.style.used().bg_image.is_some()
-                    || e.style.used().gradient_raw.is_some()
-                    || (e.style.used().background.is_some() && e.style.used().bg_clip.is_some());
+                let picture = e.style.used().reset_background.bg_image.is_some()
+                    || e.style.used().reset_background.gradient_raw.is_some()
+                    || (e.style.used().reset_background.background.is_some()
+                        && e.style.used().reset_background.bg_clip.is_some());
                 let deeper = RowCarry {
                     background: if picture { None } else { shift.background },
                     group: Some(e),
@@ -76,8 +82,8 @@ pub(in crate::layout::table) fn collect_rows<'a>(
 
 /// Row-group collapse applies even when a row specifies visible.
 pub(in crate::layout::table) fn row_collapsed(row: &Element, group: Option<&Element>) -> bool {
-    row.style.used().collapsed == Some(true)
-        || group.is_some_and(|g| g.style.used().collapsed == Some(true))
+    row.style.used().reset_context.collapsed == Some(true)
+        || group.is_some_and(|g| g.style.used().reset_context.collapsed == Some(true))
 }
 
 #[cfg(test)]
@@ -88,10 +94,10 @@ mod tests {
     #[test]
     fn logical_rows_retain_collapsed_row_and_group() {
         let mut collapsed = anon_element("tr", vec![]);
-        collapsed.style.used_mut().collapsed = Some(true);
+        collapsed.style.used_mut().reset_context.collapsed = Some(true);
         let visible = anon_element("tr", vec![]);
         let mut group = anon_element("tbody", vec![Node::Element(visible)]);
-        group.style.used_mut().collapsed = Some(true);
+        group.style.used_mut().reset_context.collapsed = Some(true);
         let nodes = vec![Node::Element(collapsed), Node::Element(group)];
         let mut rows = Vec::new();
         collect_rows(&nodes, None, RowCarry::default(), &mut rows);
@@ -107,20 +113,20 @@ mod tests {
         use crate::style::computed::Position;
         use crate::style::values::value::{Color, Len};
         let mut row = anon_element("tr", vec![]);
-        row.style.used_mut().position = Some(Position::Relative);
-        row.style.used_mut().inset.left = Some(Len::Px(3.0));
-        row.style.used_mut().inset.top = Some(Len::Px(7.0));
+        row.style.used_mut().reset_positioned.position = Some(Position::Relative);
+        row.style.used_mut().reset_positioned.inset.left = Some(Len::Px(3.0));
+        row.style.used_mut().reset_positioned.inset.top = Some(Len::Px(7.0));
         let mut group = anon_element("tbody", vec![Node::Element(row)]);
-        group.style.used_mut().position = Some(Position::Relative);
-        group.style.used_mut().inset.left = Some(Len::Px(11.0));
-        group.style.used_mut().inset.top = Some(Len::Px(17.0));
+        group.style.used_mut().reset_positioned.position = Some(Position::Relative);
+        group.style.used_mut().reset_positioned.inset.left = Some(Len::Px(11.0));
+        group.style.used_mut().reset_positioned.inset.top = Some(Len::Px(17.0));
         let background = Color {
             r: 0.0,
             g: 0.5,
             b: 0.0,
             a: 1.0,
         };
-        group.style.used_mut().background = Some(background);
+        group.style.used_mut().reset_background.background = Some(background);
         let nodes = vec![Node::Element(group)];
         let mut rows = Vec::new();
         collect_rows(
@@ -152,20 +158,27 @@ mod tests {
         for clip in [BgClip::BorderBox, BgClip::PaddingBox, BgClip::ContentBox] {
             let row = anon_element("tr", vec![]);
             let mut group = anon_element("tbody", vec![Node::Element(row)]);
-            group.style.used_mut().background = Some(Color {
+            group.style.used_mut().reset_background.background = Some(Color {
                 r: 0.0,
                 g: 0.5,
                 b: 0.0,
                 a: 0.5,
             });
-            group.style.used_mut().bg_clip = Some(clip);
+            group.style.used_mut().reset_background.bg_clip = Some(clip);
             let nodes = vec![Node::Element(group)];
             let mut rows = Vec::new();
             collect_rows(&nodes, None, RowCarry::default(), &mut rows);
             assert_eq!(rows.len(), 1);
             assert!(rows[0].carry.background.is_none());
             assert_eq!(
-                rows[0].carry.group.unwrap().style.used().bg_clip,
+                rows[0]
+                    .carry
+                    .group
+                    .unwrap()
+                    .style
+                    .used()
+                    .reset_background
+                    .bg_clip,
                 Some(clip)
             );
         }

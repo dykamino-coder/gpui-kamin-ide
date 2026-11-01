@@ -24,7 +24,12 @@ pub(super) fn frag_box_div(
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`
     // обратный. Гибкому и сеточному ось ставит `apply`.
-    if col_vert && matches!(src.style.used().display, None | Some(Display::Block)) {
+    if col_vert
+        && matches!(
+            src.style.used().reset_box_layout.display,
+            None | Some(Display::Block)
+        )
+    {
         d = d.flex().flex_shrink(0.0);
         d = if col_rl {
             d.flex_row_reverse()
@@ -54,12 +59,12 @@ pub(super) fn frag_box_div(
         matches!(n, Node::Element(k)
             if !k.inline
                 && k.style
-                    .used().aspect_ratio
+                    .used().reset_shapes.aspect_ratio
                     .is_some_and(|r| r.is_finite() && r > 0.0)
-                && matches!(k.style.used().width, None | Some(Len::Auto))
-                && matches!(k.style.used().height, Some(Len::Px(_))))
+                && matches!(k.style.used().reset_box_layout.width, None | Some(Len::Auto))
+                && matches!(k.style.used().reset_box_layout.height, Some(Len::Px(_))))
     };
-    if src.style.used().display.is_none()
+    if src.style.used().reset_box_layout.display.is_none()
         && !src_inner.wm().vertical()
         && kids.iter().any(ratio_kid)
     {
@@ -81,12 +86,13 @@ pub(super) fn frag_box_div(
     // `multi-line-*-flex-fragmentation-*`; её
     // закрывает раскладка гибкой стопки — держать
     // их вместе.
-    if matches!(copy.style.used().width, None | Some(Len::Auto))
-        && matches!(
-            copy.style.used().display,
-            Some(Display::Grid) | Some(Display::InlineGrid) | Some(Display::Flex)
-        )
-    {
+    if matches!(
+        copy.style.used().reset_box_layout.width,
+        None | Some(Len::Auto)
+    ) && matches!(
+        copy.style.used().reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid) | Some(Display::Flex)
+    ) {
         d = d.w_full();
     }
     if let (Some(items), Some(spec)) = (frag_gap_items, frag_gap_rules) {

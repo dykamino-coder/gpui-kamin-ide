@@ -13,7 +13,7 @@ pub(crate) fn children(
     vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     if matches!(
-        parent.display,
+        parent.reset_box_layout.display,
         Some(
             Display::Grid
                 | Display::InlineGrid
@@ -29,7 +29,7 @@ pub(crate) fn children(
         // (`render::blocks::prepare_children`); the collapse step runs before
         // the children's styles are inherited (`clearance-calculations-vrl-002`:
         // `margin-right: 4em` at 20px collapsed as 64px).
-        let base = match parent.font_size {
+        let base = match parent.inh.font.font_size {
             Some(crate::style::values::value::Len::Px(v)) => v,
             _ => crate::layout::block::margins::CollapseInputs::default().font,
         };
@@ -53,8 +53,8 @@ mod tests {
             .map(|_| {
                 let mut element =
                     crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
-                element.style.used_mut().margin.left = Some(Len::Px(12.0));
-                element.style.used_mut().margin.right = Some(Len::Px(6.0));
+                element.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(12.0));
+                element.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(6.0));
                 Node::Element(element)
             })
             .collect()
@@ -82,7 +82,7 @@ mod tests {
                         ),
                         ..Computed::default()
                     };
-                    with_inherited.writing_mode =
+                    with_inherited.inh.writing.writing_mode =
                         Some(crate::style::computed::writing_mode::WritingModeKw::new(
                             true, false, false,
                         ));
@@ -92,8 +92,14 @@ mod tests {
                     let Node::Element(item) = node else {
                         panic!("element expected")
                     };
-                    assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
-                    assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
+                    assert_eq!(
+                        item.style.used().reset_box_layout.margin.left,
+                        Some(Len::Px(12.0))
+                    );
+                    assert_eq!(
+                        item.style.used().reset_box_layout.margin.right,
+                        Some(Len::Px(6.0))
+                    );
                 }
             }
         }
@@ -107,7 +113,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
@@ -116,8 +122,14 @@ mod tests {
         let Node::Element(second) = &result[1] else {
             panic!("element expected")
         };
-        assert_eq!(second.style.used().margin.left, Some(Len::Px(6.0)));
-        assert_eq!(second.style.used().margin.right, Some(Len::Px(6.0)));
+        assert_eq!(
+            second.style.used().reset_box_layout.margin.left,
+            Some(Len::Px(6.0))
+        );
+        assert_eq!(
+            second.style.used().reset_box_layout.margin.right,
+            Some(Len::Px(6.0))
+        );
     }
 
     #[test]
@@ -129,14 +141,20 @@ mod tests {
             let Node::Element(middle) = &mut input[1] else {
                 unreachable!()
             };
-            middle.style.used_mut().display = Some(Display::InlineBlock);
+            middle.style.used_mut().reset_box_layout.display = Some(Display::InlineBlock);
             let output = children(input, &Computed::default(), reverse, None, vcx);
             for index in [1, 2] {
                 let Node::Element(item) = &output[index] else {
                     unreachable!()
                 };
-                assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
-                assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
+                assert_eq!(
+                    item.style.used().reset_box_layout.margin.left,
+                    Some(Len::Px(12.0))
+                );
+                assert_eq!(
+                    item.style.used().reset_box_layout.margin.right,
+                    Some(Len::Px(6.0))
+                );
             }
         }
     }
@@ -153,7 +171,7 @@ mod tests {
                 unreachable!()
             };
             assert_eq!(
-                second.style.used().margin.left,
+                second.style.used().reset_box_layout.margin.left,
                 Some(Len::Px(expected_left))
             );
         }

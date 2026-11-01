@@ -60,14 +60,12 @@ pub(super) fn resolve(s: &mut Computed) {
     } else {
         h + by
     };
-    for v in {
-        let group_0 = &mut *s.reset_box_layout;
-        [
-            &mut group_0.height,
-            &mut group_0.min_height,
-            &mut group_0.max_height,
-        ]
-    } {
+    for group_index in 0..3 {
+        let v = match group_index {
+            0 => &mut s.reset_box_layout.height,
+            1 => &mut s.reset_box_layout.min_height,
+            _ => &mut s.reset_box_layout.max_height,
+        };
         if intrinsic(*v) {
             *v = Some(Len::Px(intrinsic_h));
         }
@@ -89,17 +87,12 @@ pub(super) fn resolve(s: &mut Computed) {
     } else {
         w + bx
     };
-    for (index, v) in {
-        let group_0 = &mut *s.reset_box_layout;
-        [
-            &mut group_0.width,
-            &mut group_0.min_width,
-            &mut group_0.max_width,
-        ]
-    }
-    .into_iter()
-    .enumerate()
-    {
+    for index in 0..3 {
+        let v = match index {
+            0 => &mut s.reset_box_layout.width,
+            1 => &mut s.reset_box_layout.min_width,
+            _ => &mut s.reset_box_layout.max_width,
+        };
         if intrinsic(*v) && s.reset_context.fit_arg[index].is_none() {
             *v = Some(Len::Px(intrinsic_w));
         }

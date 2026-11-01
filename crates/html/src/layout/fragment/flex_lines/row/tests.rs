@@ -43,7 +43,11 @@ fn break_before_on_the_second_item_of_the_first_row_reaches_the_container() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = crate::layout::cx::FrameCx::new(&doc);
     let mut second = item(25.0, 25.0);
-    second.style.used_mut().break_before_force = true;
+    second
+        .style
+        .used_mut()
+        .reset_fragmentation
+        .break_before_force = true;
     let c = element(
         Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(

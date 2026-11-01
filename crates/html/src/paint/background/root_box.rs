@@ -21,11 +21,11 @@ pub(crate) fn record(
     base_size: f32,
     vcx: crate::values::ValueCx<'_>,
 ) -> AnyElement {
-    let em = match style.font_size {
+    let em = match style.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => base_size,
     };
-    let family = style.font_family.clone().unwrap_or_default();
+    let family = style.inh.font.font_family.clone().unwrap_or_default();
     let side = |v| crate::text::metrics::spacing_px(v, &family, em, vcx);
     let b = style.borders();
     RootBox {

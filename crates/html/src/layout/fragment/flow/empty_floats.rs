@@ -11,7 +11,7 @@ pub(crate) use parallel::separate;
 pub(crate) fn empty_floats(e: &Element) -> bool {
     fn walk(e: &Element) -> Option<bool> {
         if !matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             None | Some(Display::Block | Display::ListItem)
         ) || !crate::layout::page::paged::visible_overflow(&e.style.used())
         {
@@ -25,9 +25,14 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
         let mut floats = false;
         for n in children(&e.children).filter(|n| !is_blank(n)) {
             let Node::Element(f) = n else { return None };
-            if f.style.used().float.is_some_and(|s| s != 0) {
+            if f.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|s| s != 0)
+            {
                 let mut flow = f.clone();
-                flow.style.used_mut().float = None;
+                flow.style.used_mut().reset_box_layout.float = None;
                 if !children(&f.children).all(is_blank) || !super::independent_copy(&flow) {
                     return None;
                 }

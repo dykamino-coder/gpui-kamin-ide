@@ -24,13 +24,13 @@ fn zero_inflow(e: &Element, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         || own_context(e)
         || inline_level_box(e)
         || replaced_inline(&e.tag)
-        || !matches!(st.display, None | Some(Display::Block))
+        || !matches!(st.reset_box_layout.display, None | Some(Display::Block))
         || e.list_item.is_some()
         || matches!(e.tag.as_str(), "html" | "body")
         || !matches!(sizes.preferred[1], None | Some(Len::Auto))
         || !zero_len(sizes.minimum[1])
-        || e.style.cascaded().keep_spaces == Some(true)
-        || e.style.cascaded().preserve_newlines == Some(true)
+        || e.style.cascaded().inh.text_flow.keep_spaces == Some(true)
+        || e.style.cascaded().inh.text_flow.preserve_newlines == Some(true)
     {
         return false;
     }
@@ -42,8 +42,8 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
     let e = match node {
         Node::Text(text) => {
             return blank_text(text)
-                && inherited.keep_spaces != Some(true)
-                && inherited.preserve_newlines != Some(true);
+                && inherited.inh.text_flow.keep_spaces != Some(true)
+                && inherited.inh.text_flow.preserve_newlines != Some(true);
         }
         // Only floats and absolutes leave the flow (CSS 2.1 §9.3). An
         // inline-block/-flex/-grid is inline-level content in flow: it sits in
@@ -54,14 +54,14 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
     };
     let st = e.style.used();
     let sizes = BoxDimensions::for_element(e, &st);
-    if st.display == Some(Display::None) {
+    if st.reset_box_layout.display == Some(Display::None) {
         return true;
     }
     let b = st.borders();
     let merged = box_style(inherited, &e.style, vcx);
     !merged.wm().vertical()
         && !inline_level_box(e)
-        && matches!(st.display, None | Some(Display::Block))
+        && matches!(st.reset_box_layout.display, None | Some(Display::Block))
         && e.list_item.is_none()
         && !own_context(e)
         && !replaced_inline(&e.tag)
@@ -72,24 +72,24 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         )
         && zero_len(sizes.minimum[1])
         && [
-            st.margin.top,
-            st.margin.bottom,
-            st.padding.top,
-            st.padding.bottom,
+            st.reset_box_layout.margin.top,
+            st.reset_box_layout.margin.bottom,
+            st.reset_box_layout.padding.top,
+            st.reset_box_layout.padding.bottom,
             b.top,
             b.bottom,
         ]
         .into_iter()
         .all(zero_len)
-        && e.style.cascaded().keep_spaces != Some(true)
-        && e.style.cascaded().preserve_newlines != Some(true)
+        && e.style.cascaded().inh.text_flow.keep_spaces != Some(true)
+        && e.style.cascaded().inh.text_flow.preserve_newlines != Some(true)
         && e.children.iter().all(|node| zero_child(node, &merged, vcx))
 }
 
 /// Apply the zero-content proof with the real parent's inherited white-space.
 pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &BoxStyle, vcx: ValueCx<'_>) {
     if matches!(
-        inherited.position,
+        inherited.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -99,11 +99,11 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &BoxStyle, vcx: V
         let Node::Element(e) = node else { continue };
         let has_float = e.children.iter().any(|node| {
             matches!(node,
-            Node::Element(child) if child.style.used().float.is_some_and(|side| side != 0))
+            Node::Element(child) if child.style.used().reset_box_layout.float.is_some_and(|side| side != 0))
         });
         // Our float host carries floats to later boxes and to the formatting
         // root only through this block's height (see `dom::float_tail`).
-        if has_float && e.style.used().float_tail && zero_inflow(e, inherited, vcx) {
+        if has_float && e.style.used().reset_context.float_tail && zero_inflow(e, inherited, vcx) {
             e.marks.auto_zero_height = true;
         }
     }
@@ -114,11 +114,11 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &BoxStyle, vcx: V
 pub(crate) fn used_style(e: &Element, style: &BoxStyle) -> Option<BoxStyle> {
     if !e.marks.auto_zero_height
         || style.wm().vertical()
-        || !matches!(style.height, None | Some(Len::Auto))
+        || !matches!(style.reset_box_layout.height, None | Some(Len::Auto))
     {
         return None;
     }
     let mut used = style.clone();
-    used.height = Some(Len::Px(0.0));
+    used.reset_box_layout.height = Some(Len::Px(0.0));
     Some(used)
 }

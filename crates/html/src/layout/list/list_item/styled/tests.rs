@@ -18,10 +18,10 @@ fn empty_item_keeps_its_font_baseline_beside_a_taller_marker(cx: &mut gpui::Test
                 frag: Default::default(),
             };
             let mut style = Computed::default();
-            style.font_size = Some(Len::Px(16.));
+            style.inh.font.font_size = Some(Len::Px(16.));
             let mut marker = Computed::default();
-            marker.font_size = Some(Len::Px(40.));
-            style.marker_layer = Some(Box::new(marker));
+            marker.inh.font.font_size = Some(Len::Px(40.));
+            style.reset_generated.marker_layer = Some(Box::new(marker));
             let merged = BoxStyle::from(style.clone());
             let mut item = Element::synthetic("li", style, Default::default(), vec![]);
             item.list_item = Some(1);

@@ -37,16 +37,16 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     // block»); ширину ИХ детей решает `items_kind`.
     if c.inline
         || !matches!(
-            s.display,
+            s.reset_box_layout.display,
             None | Some(Display::Block)
                 | Some(Display::ListItem)
                 | Some(Display::Flex)
                 | Some(Display::Grid)
         )
-        || s.webkit_box == Some(true)
-        || s.float.unwrap_or(0) != 0
+        || s.reset_flex.webkit_box == Some(true)
+        || s.reset_box_layout.float.unwrap_or(0) != 0
         || !matches!(
-            s.position,
+            s.reset_positioned.position,
             None | Some(crate::style::computed::Position::Relative)
         )
         || table_box(c)
@@ -64,16 +64,22 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     // ребёнок. Концевое поле копии учитывает баланс (`balance_line`); без
     // этого обёртка ломала `multicol-nested-002`.
     let b = s.borders();
-    let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
-    match s.width {
+    let edges = px(&s.reset_box_layout.padding.left)?
+        + px(&s.reset_box_layout.padding.right)?
+        + px(&b.left)?
+        + px(&b.right)?;
+    match s.reset_box_layout.width {
         Some(Len::Px(w)) => Some(if sizes.border_box {
             (w - edges).max(0.0)
         } else {
             w
         }),
-        None | Some(Len::Auto) => {
-            Some((pw - px(&s.margin.left)? - px(&s.margin.right)? - edges).max(0.0))
-        }
+        None | Some(Len::Auto) => Some(
+            (pw - px(&s.reset_box_layout.margin.left)?
+                - px(&s.reset_box_layout.margin.right)?
+                - edges)
+                .max(0.0),
+        ),
         _ => None,
     }
 }
@@ -87,12 +93,17 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
 /// картинки и скруглений, а видимые боковые рамки того же цвета. Иначе `None`.
 pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
     let s = &c.style.used();
-    let bg = s.background?;
-    if s.bg_image.is_some()
-        || s.webkit_box == Some(true)
-        || [&s.radius.tl, &s.radius.tr, &s.radius.br, &s.radius.bl]
-            .into_iter()
-            .any(|r| !matches!(r, None | Some(Len::Px(0.0))))
+    let bg = s.reset_background.background?;
+    if s.reset_background.bg_image.is_some()
+        || s.reset_flex.webkit_box == Some(true)
+        || [
+            &s.reset_border.radius.tl,
+            &s.reset_border.radius.tr,
+            &s.reset_border.radius.br,
+            &s.reset_border.radius.bl,
+        ]
+        .into_iter()
+        .any(|r| !matches!(r, None | Some(Len::Px(0.0))))
         || !visible_overflow(s)
     {
         return None;
@@ -115,10 +126,13 @@ pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
 pub(super) fn items_kind(c: &Element) -> u8 {
     use crate::style::computed::FlexDir;
     let s = &*c.style.used();
-    match s.display {
+    match s.reset_box_layout.display {
         Some(Display::Flex) => {
-            let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
-            let stretch = matches!(s.align_items, None | Some(Align::Stretch));
+            let col = matches!(
+                s.reset_flex.flex_dir,
+                Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+            );
+            let stretch = matches!(s.reset_flex.align_items, None | Some(Align::Stretch));
             if col && stretch && !s.wm().vertical() {
                 1
             } else {
@@ -126,7 +140,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
             }
         }
         Some(Display::Grid) => {
-            if grid_stack(c) && matches!(s.justify_items, None | Some(Align::Stretch)) {
+            if grid_stack(c) && matches!(s.reset_flex.justify_items, None | Some(Align::Stretch)) {
                 1
             } else {
                 2
@@ -141,7 +155,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
 pub(crate) fn inline_content(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
-            if !x.inline || x.style.used().display == Some(Display::Block))
+            if !x.inline || x.style.used().reset_box_layout.display == Some(Display::Block))
     };
     k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid)
 }

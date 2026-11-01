@@ -77,7 +77,7 @@ mod tests {
             "linear-gradient(green, green) 80 / 20px",
             vcx,
         );
-        let mut image = c.border_image.unwrap();
+        let mut image = c.reset_border.border_image.clone().unwrap();
         image.slice = [BorderImageSlice::Px(80.0); 4];
         let source = Source::Image(CpuSource::Gradient {
             image: std::sync::Arc::new(
@@ -101,7 +101,7 @@ mod tests {
             "border-image-width: 3; border-image: url(x.png) 25% / / 2 5px",
         );
         let c = Computed::resolve(&[], &declarations, vcx);
-        let image = c.border_image.unwrap();
+        let image = c.reset_border.border_image.clone().unwrap();
         assert_eq!(image.width, [BorderImageWidth::Times(1.0); 4]);
         assert_eq!(image.outset[0].px(20.0, 100.0), 40.0);
         assert_eq!(image.outset[1].px(20.0, 100.0), 5.0);

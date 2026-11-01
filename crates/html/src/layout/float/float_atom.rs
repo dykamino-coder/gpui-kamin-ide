@@ -21,17 +21,17 @@ pub(super) fn band_atom(
     let vcx = opts.cx.vcx();
     let (w, h) = px_margin_box(&c.style.used())?;
     let (ml, mt) = (
-        px_margin(&c.style.used().margin.left).unwrap_or(0.0),
-        px_margin(&c.style.used().margin.top).unwrap_or(0.0),
+        px_margin(&c.style.used().reset_box_layout.margin.left).unwrap_or(0.0),
+        px_margin(&c.style.used().reset_box_layout.margin.top).unwrap_or(0.0),
     );
     let mut merged = box_style(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
     merged.self_node = c.node_id;
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already
     // represents the margin box; its contents paint the border box once.
-    merged.margin = crate::style::computed::Sides::default();
+    merged.reset_box_layout.margin = crate::style::computed::Sides::default();
     let mut inner = c.clone();
-    inner.style.used_mut().margin = crate::style::computed::Sides::default();
+    inner.style.used_mut().reset_box_layout.margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
         opts.cx.contracts.build.replaced(
             &with_inherited_font(&inner, inherited),

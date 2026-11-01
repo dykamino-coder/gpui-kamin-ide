@@ -37,9 +37,9 @@ pub(super) fn paint_leaf(
                 unreachable!()
             };
             let used = c.style.used_mut();
-            used.height = style.height;
-            used.min_height = style.min_height;
-            used.max_height = style.max_height;
+            used.reset_box_layout.height = style.reset_box_layout.height;
+            used.reset_box_layout.min_height = style.reset_box_layout.min_height;
+            used.reset_box_layout.max_height = style.reset_box_layout.max_height;
             if leaf.edges.clone {
                 let edges = leaf
                     .edges
@@ -63,15 +63,15 @@ pub(super) fn paint_leaf(
 pub(super) fn eligible(e: &Element) -> bool {
     let c = e.style.used();
     let mut flow = e.clone();
-    flow.style.used_mut().bdb_clone = false;
+    flow.style.used_mut().reset_fragmentation.bdb_clone = false;
     // IFC и прочие FC принадлежат своим child consumers.
     if !e.children.is_empty()
         || !independent_copy(&flow)
-        || c.float.is_some_and(|side| side != 0)
-        || !matches!(c.display, None | Some(Display::Block))
+        || c.reset_box_layout.float.is_some_and(|side| side != 0)
+        || !matches!(c.reset_box_layout.display, None | Some(Display::Block))
         || crate::layout::box_kind::replaced_tag(e)
-        || c.aspect_ratio.is_some()
-        || c.aspect_ratio_auto.is_some()
+        || c.reset_shapes.aspect_ratio.is_some()
+        || c.reset_shapes.aspect_ratio_auto.is_some()
     {
         return false;
     }

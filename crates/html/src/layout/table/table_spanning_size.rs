@@ -20,8 +20,8 @@ pub(super) fn preserve(
     // spanning cell raises its columns together. Grid measurement includes
     // internal gutters in this minimum; assigning each column the width would
     // count those gutters twice. Percentages need the table's resolved basis.
-    if let Some(Len::Px(width)) = merged.width {
-        cell.min_width = Some(Len::Px(match merged.min_width {
+    if let Some(Len::Px(width)) = merged.reset_box_layout.width {
+        cell.reset_box_layout.min_width = Some(Len::Px(match merged.reset_box_layout.min_width {
             Some(Len::Px(minimum)) => width.max(minimum),
             _ => width,
         }));

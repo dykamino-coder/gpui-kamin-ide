@@ -23,8 +23,8 @@ pub(super) fn layout_sizing(
     // `<canvas width=200 height=200 style="max-height: 100px">` выходил
     // 200×100 вместо 100×100 (`percent-height-replaced-in-percent-cell-002`).
     // Пороги и размеры здесь — content-box, отбивки добавит цикл ниже.
-    let natural_fit: Option<(f32, f32)> = if c.attr_sized.0
-        && c.attr_sized.1
+    let natural_fit: Option<(f32, f32)> = if c.reset_box_layout.attr_sized.0
+        && c.reset_box_layout.attr_sized.1
         && let (Some(Len::Px(w)), Some(Len::Px(h))) = (sizes.preferred[0], sizes.preferred[1])
         && w > 0.0
         && h > 0.0
@@ -69,12 +69,15 @@ pub(super) fn layout_sizing(
     };
     // Positioned boxes cannot use the intrinsic grid wrapper: it would change
     // their containing block. Preserve authored keywords for native measurement.
-    if matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
+    if matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute) | Some(Position::Fixed)
+    ) {
         d.style().sizing_keywords = Some(intrinsic_size::keywords_with_dimensions(c, sizes));
     }
     // Explicit flex constraints must preserve the preferred size / flex basis.
     // Native layout measures their intrinsic border-box sizes independently.
-    if c.flex_item {
+    if c.reset_flex.flex_item {
         let kw = |l: Option<Len>| match l {
             Some(Len::MinContent) => Some(gpui::CssSizingKeyword::MinContent),
             Some(Len::MaxContent) => Some(gpui::CssSizingKeyword::MaxContent),
@@ -126,7 +129,7 @@ pub(super) fn layout_sizing(
                 Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
             )
         };
-        if (!c.flex_item
+        if (!c.reset_flex.flex_item
             || matches!(sizes.minimum[1], Some(Len::FitContent))
             || matches!(sizes.maximum[1], Some(Len::FitContent)))
             && f == 1
@@ -169,7 +172,7 @@ pub(super) fn layout_sizing(
     // отдаётся, иначе taffy зафиксировал бы ось (`block-aspect-ratio-009/…`,
     // `flex-aspect-ratio-040/…`).
     if ratio_as_auto_min(c, sizes)
-        && let Some(r) = c.aspect_ratio
+        && let Some(r) = c.reset_shapes.aspect_ratio
     {
         // Определённая ось сперва зажимается своими min/max (§5.1 «size
         // transfers»: `block-aspect-ratio-033`); при `box-sizing: border-box`

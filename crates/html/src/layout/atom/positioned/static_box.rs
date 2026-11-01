@@ -27,8 +27,8 @@ pub(in crate::layout::atom) fn static_position_atom(
     // в нулевом блоке это ноль, и элемент пропадал вовсе. Без
     // позиционирования она меряется своим содержимым и висит от угла
     // пустышки, то есть ровно от статической позиции.
-    merged.position = None;
-    merged.abs_static = true;
+    merged.reset_positioned.position = None;
+    merged.reset_positioned.abs_static = true;
     // Замещаемый элемент строит своя ветка: голая коробка со стилем
     // теряла содержимое (сломанная картинка с alt-подписью пропадала,
     // `abs-pos-vlr-border-001`). Позиция снимается копией — та же
@@ -36,18 +36,18 @@ pub(in crate::layout::atom) fn static_position_atom(
     let replaced: Option<AnyElement> = match e.tag.as_str() {
         "img" | "svg" => {
             let mut copy = e.clone();
-            copy.style.used_mut().position = None;
+            copy.style.used_mut().reset_positioned.position = None;
             // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4), а
             // копия несёт только собственный стиль элемента: без этой
             // строки `image-orientation: none`, заданный на `body`, до
             // картинки не доезжает и EXIF-разворот применяется всё равно.
-            copy.style.used_mut().image_orient_none = merged.image_orient_none;
+            copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
             Some(match copy.tag.as_str() {
                 // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
                 // позиция снята и со слитого стиля, как с копии выше.
                 "svg" => {
                     let mut unpositioned = merged.clone();
-                    unpositioned.position = None;
+                    unpositioned.reset_positioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
                         .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
                 }
@@ -66,7 +66,12 @@ pub(in crate::layout::atom) fn static_position_atom(
     // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
     // и держит место, и сообщает, куда потом вернуть содержимое.
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
-    let below = e.style.used().z_index.is_some_and(|z| z < 0);
+    let below = e
+        .style
+        .used()
+        .reset_positioned
+        .z_index
+        .is_some_and(|z| z < 0);
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
     // текущей строки. Строчный остаётся точкой в самой строке.

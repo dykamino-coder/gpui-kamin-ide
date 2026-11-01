@@ -23,9 +23,21 @@ pub(super) fn break_trim(
     }
     let own = copy.tag != "anon-block";
     let s = copy.style.used();
-    let side = |mine: bool, host: bool| if own && mine { s.bdb_clone } else { host };
-    let start = side(s.text_box_trim_start, host.text_box_trim_start);
-    let end = side(s.text_box_trim_end, host.text_box_trim_end);
+    let side = |mine: bool, host: bool| {
+        if own && mine {
+            s.reset_fragmentation.bdb_clone
+        } else {
+            host
+        }
+    };
+    let start = side(
+        s.reset_text_box.text_box_trim_start,
+        host.reset_text_box.text_box_trim_start,
+    );
+    let end = side(
+        s.reset_text_box.text_box_trim_end,
+        host.reset_text_box.text_box_trim_end,
+    );
     if !start && !end {
         return (0.0, 0.0);
     }
@@ -41,12 +53,12 @@ pub(super) fn break_trim(
 
 /// Кегль и высота строки коробки строк в точках.
 fn line_metrics(inner: &BoxStyle, opts: &RenderOpts) -> Option<(f32, f32)> {
-    let size = match inner.font_size {
+    let size = match inner.inh.font.font_size {
         Some(Len::Px(v)) if v > 0.0 => v,
         None => opts.base_size(),
         _ => return None,
     };
-    let lh = match inner.line_height {
+    let lh = match inner.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
         None => crate::text::metrics::normal_px(
@@ -62,7 +74,7 @@ fn line_metrics(inner: &BoxStyle, opts: &RenderOpts) -> Option<(f32, f32)> {
 /// Срез с одной стороны строки: полулидинг плюс расстояние от подъёма/спуска до
 /// метрики края (та же арифметика, что у срезов первой и последней строки).
 fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool, opts: &RenderOpts) -> f32 {
-    let family = s.font_family.clone().unwrap_or_default();
+    let family = s.inh.font.font_family.clone().unwrap_or_default();
     let (ascent, descent, cap) =
         crate::text::metrics::vmetrics_px(&family, size, opts.cx.text_fonts(), opts.cx.vcx());
     let half = (lh - (ascent + descent)) / 2.0;

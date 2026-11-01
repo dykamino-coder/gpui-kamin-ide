@@ -63,7 +63,7 @@ async fn prepare_stack(
         let element = changed.as_ref().unwrap_or(original);
         if !(real_inline(element)
             || matches!(
-                element.style.used().display,
+                element.style.used().reset_box_layout.display,
                 Some(Display::Flex)
                     | Some(Display::InlineFlex)
                     | Some(Display::Grid)
@@ -112,7 +112,12 @@ fn floats_inside(nodes: &[Node]) -> bool {
     while let Some(nodes) = pending.pop() {
         for node in nodes {
             let Node::Element(e) = node else { continue };
-            if e.style.used().float.is_some_and(|f| f != 0) {
+            if e.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 return true;
             }
             pending.push(&e.children);

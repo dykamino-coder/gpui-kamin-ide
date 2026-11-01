@@ -30,18 +30,25 @@ fn family(doc: &DocState, value: &str) -> Computed {
 fn installed_alias_generic_mono_and_language_keep_the_existing_order() {
     let doc = document();
     assert_eq!(
-        family(&doc, "Absent, aHeM").font_family.as_deref(),
+        family(&doc, "Absent, aHeM").inh.font.font_family.as_deref(),
         Some("aHeM")
     );
     assert_eq!(
-        family(&doc, "Absent, serif").font_family.as_deref(),
+        family(&doc, "Absent, serif")
+            .inh
+            .font
+            .font_family
+            .as_deref(),
         Some("Times New Roman")
     );
-    assert_eq!(family(&doc, "Absent").font_family.as_deref(), Some(""));
-    let mono = family(&doc, "monospace");
-    assert_eq!(mono.monospace, Some(true));
     assert_eq!(
-        mono.font_families.as_deref(),
+        family(&doc, "Absent").inh.font.font_family.as_deref(),
+        Some("")
+    );
+    let mono = family(&doc, "monospace");
+    assert_eq!(mono.inh.font.monospace, Some(true));
+    assert_eq!(
+        mono.inh.font.font_families.as_deref(),
         Some(["Consolas".into()].as_slice())
     );
     let snapshot = doc.values.font_snapshot();
@@ -50,7 +57,7 @@ fn installed_alias_generic_mono_and_language_keep_the_existing_order() {
     assert_eq!(snapshot.mono_family(Some("en")), "Consolas");
     // M preserves the old named-family-first branch; changing list order is S.
     assert_eq!(
-        family(&doc, "serif, Ahem").font_family.as_deref(),
+        family(&doc, "serif, Ahem").inh.font.font_family.as_deref(),
         Some("Ahem")
     );
 }
@@ -86,7 +93,7 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     assert_eq!(cold.alias("aLIas").as_deref(), Some("Ahem"));
     assert!(!cold.covers_space("Alias"));
     assert_eq!(
-        family(&a, "Alias, Ahem").font_family.as_deref(),
+        family(&a, "Alias, Ahem").inh.font.font_family.as_deref(),
         Some("Ahem")
     );
     assert!(cold.covers_space("Ahem"));
@@ -102,7 +109,7 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     assert!(later.covers_space("Alias"));
     assert!(!cold.covers_space("Alias"));
     assert_eq!(
-        family(&a, "Alias, Ahem").font_family.as_deref(),
+        family(&a, "Alias, Ahem").inh.font.font_family.as_deref(),
         Some("Alias")
     );
     assert_eq!(calls.get(), 1);

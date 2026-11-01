@@ -28,17 +28,12 @@ pub fn inherit_counter_decls(style: &mut Computed, parent: Option<&[Option<Strin
     }) {
         return;
     }
-    for (i, value) in {
-        let group_0 = &mut *style.reset_generated;
-        [
-            &mut group_0.counter_reset,
-            &mut group_0.counter_increment,
-            &mut group_0.counter_set,
-        ]
-    }
-    .into_iter()
-    .enumerate()
-    {
+    for i in 0..3 {
+        let value = match i {
+            0 => &mut style.reset_generated.counter_reset,
+            1 => &mut style.reset_generated.counter_increment,
+            _ => &mut style.reset_generated.counter_set,
+        };
         let Some(text) = value.as_deref() else {
             continue;
         };

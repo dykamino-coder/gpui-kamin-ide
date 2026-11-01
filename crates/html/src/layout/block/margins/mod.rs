@@ -40,7 +40,11 @@ pub(crate) fn fragment_box(
         ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
     };
     let used = element.style.used_mut();
-    for margin in [&mut used.margin.top, &mut used.margin.bottom] {
+    for style_field_index in 0..2 {
+        let margin = match style_field_index {
+            0 => &mut used.reset_box_layout.margin.top,
+            _ => &mut used.reset_box_layout.margin.bottom,
+        };
         if let Some(px) = lengths.px_strict(*margin, vcx) {
             *margin = Some(Len::Px(px));
         }
@@ -66,7 +70,11 @@ pub(crate) fn vertical_fragment_box(
         ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
     };
     let used = element.style.used_mut();
-    for margin in [&mut used.margin.left, &mut used.margin.right] {
+    for style_field_index in 0..2 {
+        let margin = match style_field_index {
+            0 => &mut used.reset_box_layout.margin.left,
+            _ => &mut used.reset_box_layout.margin.right,
+        };
         if let Some(px) = lengths.px_strict(*margin, vcx) {
             *margin = Some(Len::Px(px));
         }
@@ -82,8 +90,8 @@ pub(crate) fn fragment_margins(c: &crate::dom::Element) -> Option<(f32, f32)> {
         _ => None,
     };
     Some((
-        m(&c.style.used().margin.top)?,
-        m(&c.style.used().margin.bottom)?,
+        m(&c.style.used().reset_box_layout.margin.top)?,
+        m(&c.style.used().reset_box_layout.margin.bottom)?,
     ))
 }
 
@@ -132,7 +140,7 @@ pub(crate) fn collapse_margins_prepared(
         let has_float = e
             .children
             .iter()
-            .any(|n| matches!(n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0)));
+            .any(|n| matches!(n, Node::Element(c) if c.style.used().reset_box_layout.float.is_some_and(|f| f != 0)));
         if has_float && through_strut_no_clear(e, vcx).is_some() {
             e.marks.auto_zero_height = true;
         }
@@ -157,7 +165,7 @@ pub(crate) fn collapse_margins_prepared(
         if rest > 0.0
             && let Some(Node::Element(e)) = out.get_mut(i)
         {
-            e.style.used_mut().margin.bottom = Some(Len::Px(rest));
+            e.style.used_mut().reset_box_layout.margin.bottom = Some(Len::Px(rest));
         }
     }
     out

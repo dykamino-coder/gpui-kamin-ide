@@ -78,12 +78,12 @@ impl TableBox {
     pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> Self {
         let mut out = TableBox {
             key: table_key(e),
-            collapsed: e.style.used().border_collapse == Some(true),
+            collapsed: e.style.used().inh.table_list.border_collapse == Some(true),
             ..Default::default()
         };
         for n in children(&e.children).filter(|n| !is_blank(n)) {
             let Node::Element(cap) = n else { continue };
-            if cap.tag != "caption" && cap.style.used().is_caption != Some(true) {
+            if cap.tag != "caption" && cap.style.used().reset_context.is_caption != Some(true) {
                 continue;
             }
             // Сторона — computed `caption-side` самой подписи, как у
@@ -124,22 +124,22 @@ impl TableBox {
                     .collect();
                 out.rows.push(TableRowBox {
                     group,
-                    group_avoid: gs(|g| g.style.used().break_inside_avoid),
+                    group_avoid: gs(|g| g.style.used().reset_fragmentation.break_inside_avoid),
                     force_before: row_force(r.row, false, vcx)
-                        || (first && gs(|g| g.style.used().break_before_force)),
+                        || (first && gs(|g| g.style.used().reset_fragmentation.break_before_force)),
                     force_after: row_force(r.row, true, vcx)
-                        || (last && gs(|g| g.style.used().break_after_force)),
+                        || (last && gs(|g| g.style.used().reset_fragmentation.break_after_force)),
                     avoid_before: row_avoid(r.row, false, vcx)
-                        || (first && gs(|g| g.style.used().break_before_avoid)),
+                        || (first && gs(|g| g.style.used().reset_fragmentation.break_before_avoid)),
                     avoid_after: row_avoid(r.row, true, vcx)
-                        || (last && gs(|g| g.style.used().break_after_avoid)),
-                    avoid_inside: r.row.style.used().break_inside_avoid,
+                        || (last && gs(|g| g.style.used().reset_fragmentation.break_after_avoid)),
+                    avoid_inside: r.row.style.used().reset_fragmentation.break_inside_avoid,
                     cells,
                 });
                 let section = |slot: &mut Option<(usize, usize, bool)>| {
                     let avoid = match g {
-                        Some(g) => g.style.used().break_inside_avoid,
-                        None => r.row.style.used().break_inside_avoid,
+                        Some(g) => g.style.used().reset_fragmentation.break_inside_avoid,
+                        None => r.row.style.used().reset_fragmentation.break_inside_avoid,
                     };
                     *slot = Some(match *slot {
                         Some((a, _, _)) => (a, i, avoid),
@@ -196,7 +196,7 @@ fn caption_kid(cap: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> BlockKid {
     BlockKid {
         id: cap.node_id,
         adjoins: true,
-        clears: cap.style.used().clear.is_some(),
+        clears: cap.style.used().reset_box_layout.clear.is_some(),
         lines_around: (false, false),
         force_before: edge_break(cap, false, vcx),
         force_after: edge_break(cap, true, vcx),
@@ -226,9 +226,9 @@ pub(crate) fn row_avoid(row: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
 /// `break-before: column`).
 pub(crate) fn row_force(row: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     (if last {
-        row.style.used().break_after_force
+        row.style.used().reset_fragmentation.break_after_force
     } else {
-        row.style.used().break_before_force
+        row.style.used().reset_fragmentation.break_before_force
     }) || row
         .children
         .iter()

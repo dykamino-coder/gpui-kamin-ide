@@ -28,7 +28,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // (`fragment::replay::admission::items`).
         // Сросшиеся кромки таблицы решают стыки по фрагменту каждого куска записи
         // (`EdgePainter`), как копия — по маске своего куска.
-        let collapsed = table_part(e) && s.border_collapse == Some(true);
+        let collapsed = table_part(e) && s.inh.table_list.border_collapse == Some(true);
         // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
         // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
@@ -36,24 +36,29 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // фрагментаинера каждого куска в его сегмент (`continuation::replayed`); под
         // плоским преобразованием поддерево пишется вложенной записью кусков, куда
         // сегменты слотов не входят, — такой ребёнок остаётся на копиях.
-        let oof = matches!(s.position, Some(Position::Absolute | Position::Fixed));
-        let plane = s.transform.is_some() || s.rotate_prop.is_some() || s.scale_prop.is_some();
-        let solid = s.transform.is_some_and(|t| t.has_3d)
-            || s.perspective.is_some()
-            || s.preserve_3d == Some(true);
-        if (oof && planed) || solid || s.backdrop_filter_set {
+        let oof = matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        );
+        let plane = s.reset_transforms.transform.is_some()
+            || s.reset_transforms.rotate_prop.is_some()
+            || s.reset_transforms.scale_prop.is_some();
+        let solid = s.reset_transforms.transform.is_some_and(|t| t.has_3d)
+            || s.reset_transforms.perspective.is_some()
+            || s.reset_transforms.preserve_3d == Some(true);
+        if (oof && planed) || solid || s.reset_effects.backdrop_filter_set {
             return (false, false);
         }
         effects |= collapsed
-            || !s.shadows.is_empty()
-            || s.transform.is_some()
-            || s.rotate_prop.is_some()
-            || s.scale_prop.is_some()
-            || s.filter.is_some()
-            || s.column_rule_width.is_some()
-            || s.column_rule_styles.is_some()
-            || s.row_rule_width.is_some()
-            || s.row_rule_styles.is_some();
+            || !s.reset_effects.shadows.is_empty()
+            || s.reset_transforms.transform.is_some()
+            || s.reset_transforms.rotate_prop.is_some()
+            || s.reset_transforms.scale_prop.is_some()
+            || s.reset_effects.filter.is_some()
+            || s.reset_fragmentation.column_rule_width.is_some()
+            || s.reset_fragmentation.column_rule_styles.is_some()
+            || s.reset_fragmentation.row_rule_width.is_some()
+            || s.reset_fragmentation.row_rule_styles.is_some();
         stack.extend(e.children.iter().filter_map(|n| match n {
             Node::Element(c) => Some((c, planed || plane)),
             _ => None,
@@ -91,9 +96,11 @@ fn page_free(root: &Element) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
         let s = e.style.used();
-        if matches!(s.position, Some(Position::Absolute | Position::Fixed))
-            || s.column_count.is_some()
-            || s.column_width.is_some()
+        if matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        ) || s.reset_fragmentation.column_count.is_some()
+            || s.reset_fragmentation.column_width.is_some()
         {
             return false;
         }
@@ -108,7 +115,7 @@ fn page_free(root: &Element) -> bool {
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
 fn table_part(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(
             Display::Table
                 | Display::InlineTable
@@ -127,14 +134,14 @@ fn table_part(e: &Element) -> bool {
 fn orphan_part(parent: &Element, e: &Element) -> bool {
     let table = |e: &Element| {
         matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(
                 Display::Table | Display::InlineTable | Display::TableRowGroup | Display::TableRow
             )
         ) || matches!(e.tag.as_str(), "table" | "thead" | "tbody" | "tfoot" | "tr")
     };
     let whole = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Table | Display::InlineTable)
     ) || e.tag == "table";
     table_part(e) && !whole && !table(parent)

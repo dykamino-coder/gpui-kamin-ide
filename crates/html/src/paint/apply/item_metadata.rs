@@ -39,7 +39,7 @@ pub(super) fn baseline_x_flags(c: &BoxStyle) -> Option<u8> {
     let vertical = c.wm().vertical();
     let rl = if c.context.parent_grid != 0
         && matches!(
-            c.position,
+            c.reset_positioned.position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -70,14 +70,16 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &BoxStyle) {
         return;
     }
     style.align_self = c
+        .reset_flex
         .align_self
-        .map(|a| super::self_align(a, c.align_self_last));
+        .map(|a| super::self_align(a, c.reset_flex.align_self_last));
     style.justify_self = c
+        .reset_flex
         .justify_self
-        .map(|a| super::self_align(a, c.justify_self_last));
-    if c.align_self_safe || c.justify_self_safe {
-        style.safe_alignment = Some((false, c.align_self_safe, false, false));
-        style.safe_justify_alignment = Some((false, c.justify_self_safe));
+        .map(|a| super::self_align(a, c.reset_flex.justify_self_last));
+    if c.reset_flex.align_self_safe || c.reset_flex.justify_self_safe {
+        style.safe_alignment = Some((false, c.reset_flex.align_self_safe, false, false));
+        style.safe_justify_alignment = Some((false, c.reset_flex.justify_self_safe));
     }
     super::alignment_axes::abspos_normal(style, c);
     super::alignment_axes::grid_self(style, c);

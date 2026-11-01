@@ -162,7 +162,7 @@ pub fn render_paged_select(
             (e.inline || inline_display(e))
                 && !out_of_flow(&e.style.used())
                 && !matches!(
-                    e.style.used().display,
+                    e.style.used().reset_box_layout.display,
                     Some(Display::Block)
                         | Some(Display::Flex)
                         | Some(Display::Grid)
@@ -180,13 +180,17 @@ pub fn render_paged_select(
     // `clear: both`). Группа флоата закрывается первым блоком после него.
     let floated = |n: &Node| match n {
         Node::Element(e) => {
-            e.style.used().float.is_some_and(|f| f != 0)
+            e.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
                 && !matches!(
-                    e.style.used().position,
+                    e.style.used().reset_positioned.position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 )
-                && !matches!(e.style.used().display, Some(Display::None))
+                && !matches!(e.style.used().reset_box_layout.display, Some(Display::None))
         }
         _ => false,
     };

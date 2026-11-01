@@ -20,8 +20,17 @@ fn descendants_use_the_content_remainder_as_the_percentage_basis() {
     let Node::Element(child) = &resolved.children[0] else {
         panic!("article child")
     };
-    assert_eq!(child.style.used().height, Some(Len::Px(40.0)));
-    assert_eq!(resolved.style.used().min_height, Some(Len::Px(150.0)));
-    assert_eq!(resolved.style.used().max_height, Some(Len::Px(180.0)));
-    assert_eq!(resolved.style.used().border_box, Some(true));
+    assert_eq!(
+        child.style.used().reset_box_layout.height,
+        Some(Len::Px(40.0))
+    );
+    assert_eq!(
+        resolved.style.used().reset_box_layout.min_height,
+        Some(Len::Px(150.0))
+    );
+    assert_eq!(
+        resolved.style.used().reset_box_layout.max_height,
+        Some(Len::Px(180.0))
+    );
+    assert_eq!(resolved.style.used().reset_border.border_box, Some(true));
 }

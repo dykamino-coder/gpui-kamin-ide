@@ -18,7 +18,12 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
             element(
                 "div",
                 Computed {
-                    float: Some(-1),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            float: Some(-1),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 },
                 vec![],
@@ -36,7 +41,7 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
         .iter()
         .position(|n| {
             matches!(n, Node::Element(c)
-        if c.style.used().float == Some(-1))
+        if c.style.used().reset_box_layout.float == Some(-1))
         })
         .unwrap();
     assert_eq!(float, 1);

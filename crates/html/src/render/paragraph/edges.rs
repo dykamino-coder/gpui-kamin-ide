@@ -19,7 +19,7 @@ pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(e) => {
-            !crate::style::flow::absolutely_positioned(e.style.used().position)
+            !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                 && has_flow_text(&e.children)
         }
     })
@@ -51,14 +51,14 @@ pub(crate) fn edge_pieces(
             continue;
         };
         let end = at + text.len();
-        let top = match style.vertical_align {
+        let top = match style.inh.text_flow.vertical_align {
             Some(Align::Start) => Some(true),
             Some(Align::End) => Some(false),
             _ => None,
         };
         let out_of_flow = crate::style::flow::out_of_flow(style);
         if let Some(top) = top
-            && style.vertical_align != inherited.vertical_align
+            && style.inh.text_flow.vertical_align != inherited.inh.text_flow.vertical_align
             && !out_of_flow
             && !text.is_empty()
         {

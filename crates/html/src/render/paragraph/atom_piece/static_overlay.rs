@@ -30,17 +30,17 @@ pub(crate) fn static_overlay(
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
     let mut group_style = BoxStyle::shared(e.style.used());
-    group_style.mask_image = merged.mask_image.clone();
-    merged.position = None;
-    merged.abs_static = true;
+    group_style.reset_mask.mask_image = merged.reset_mask.mask_image.clone();
+    merged.reset_positioned.position = None;
+    merged.reset_positioned.abs_static = true;
     // Самостоятельная коробка сохраняет computed-письмо; поворот содержащей
     // строки отменяется обёрткой, как у атомарного строчного контекста.
     let physical = inherited.inline_format == Some(crate::style::computed::InlineFormat::Turned)
         && crate::layout::writing_mode::rotated_atom::text_turn(&opts.cx);
     if physical {
-        merged.turned_line = false;
-        merged.lines_reversed = None;
-        merged.para_vertical = None;
+        merged.reset_text_box.turned_line = false;
+        merged.reset_context.lines_reversed = None;
+        merged.reset_context.para_vertical = None;
     }
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
     // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
@@ -50,13 +50,13 @@ pub(crate) fn static_overlay(
     // `probe/absimg2.html`).
     let inner = if e.tag == "svg" {
         let mut copy = e.clone();
-        copy.style.used_mut().image_orient_none = merged.image_orient_none;
-        copy.style.used_mut().position = None;
+        copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
+        copy.style.used_mut().reset_positioned.position = None;
         crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
-        copy.style.used_mut().image_orient_none = merged.image_orient_none;
-        copy.style.used_mut().position = None;
+        copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
+        copy.style.used_mut().reset_positioned.position = None;
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
@@ -131,7 +131,8 @@ pub(crate) fn static_overlay(
     // (`CSS2/text/text-indent-013-ref`: `margin-left: -10em` — чёрная
     // полоса на 328 вместо 168 закрывала PASS).
     let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    let inner = if nz(merged.margin.left) || nz(merged.margin.top) {
+    let inner = if nz(merged.reset_box_layout.margin.left) || nz(merged.reset_box_layout.margin.top)
+    {
         div()
             .flex()
             .flex_row()
@@ -146,7 +147,7 @@ pub(crate) fn static_overlay(
         inline::OverlayAt {
             normal_probe,
             next_line: rot_block
-                || (inherited.band_kid
+                || (inherited.reset_context.band_kid
                     && !crate::layout::positioned::static_position::hypothetical_inline_level(e)),
             bidi_hang: rotated_rtl && !rot_block,
             ..Default::default()

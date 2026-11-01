@@ -21,12 +21,17 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
     for n in children(&p.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { continue };
         if out_of_flow(&k.style.used()) {
-            if k.style.used().float.is_some_and(|f| f != 0) {
+            if k.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 if solid_box(k) {
                     out.push((
                         k.node_id,
                         Cand::Float {
-                            soft: k.style.used().break_inside_avoid
+                            soft: k.style.used().reset_fragmentation.break_inside_avoid
                                 && !crate::layout::fragment::probe::size_monolith(k)
                                 && crate::layout::page::paged::visible_overflow(&k.style.used()),
                         },
@@ -44,7 +49,7 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
         if k.list_item.is_some()
             || crate::layout::multicol::spanner::multicol_container(&k.style.used())
             || !matches!(
-                k.style.used().display,
+                k.style.used().reset_box_layout.display,
                 None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
             )
         {
@@ -56,12 +61,15 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).
         if let Some((pid, avoid_after)) = prev
-            && (avoid_after || k.style.used().break_before_avoid)
+            && (avoid_after || k.style.used().reset_fragmentation.break_before_avoid)
         {
             out.push((pid, Cand::Item));
             out.push((k.node_id, Cand::Avoid { prev: pid }));
         }
-        prev = Some((k.node_id, k.style.used().break_after_avoid));
+        prev = Some((
+            k.node_id,
+            k.style.used().reset_fragmentation.break_after_avoid,
+        ));
         let edge = crate::layout::fragment::breaks::edge_break;
         let forced = force_next || edge(k, false, vcx);
         force_next = edge(k, true, vcx);
@@ -81,7 +89,7 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
             out.push((
                 k.node_id,
                 Cand::Mono {
-                    soft: k.style.used().break_inside_avoid
+                    soft: k.style.used().reset_fragmentation.break_inside_avoid
                         && !crate::layout::fragment::probe::size_monolith(k)
                         && crate::layout::page::paged::visible_overflow(&k.style.used()),
                 },
@@ -92,7 +100,7 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
             out.push((
                 k.node_id,
                 Cand::Forced {
-                    mt: px_auto_zero(k.style.used().margin.top)?,
+                    mt: px_auto_zero(k.style.used().reset_box_layout.margin.top)?,
                 },
             ));
         }

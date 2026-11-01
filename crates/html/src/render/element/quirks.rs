@@ -7,18 +7,30 @@ use crate::style::values::value::Len;
 
 pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &RenderOpts) {
     if !e.marks.quirks_fill
-        || matches!(st.display, Some(Display::None | Display::Contents))
-        || matches!(st.position, Some(Position::Absolute | Position::Fixed))
-        || st.float.is_some_and(|f| f != 0)
+        || matches!(
+            st.reset_box_layout.display,
+            Some(Display::None | Display::Contents)
+        )
+        || matches!(
+            st.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
+        || st.reset_box_layout.float.is_some_and(|f| f != 0)
         || crate::render::inline_level(e)
         || crate::render::inline_level_box(e)
-        || st.column_span == Some(true)
+        || st.reset_fragmentation.column_span == Some(true)
     {
         return;
     }
     let vertical = st.wm().vertical();
-    let size = if vertical { st.width } else { st.height };
-    if !matches!(size, None | Some(Len::Auto)) || st.calc_size[usize::from(!vertical)].is_some() {
+    let size = if vertical {
+        st.reset_box_layout.width
+    } else {
+        st.reset_box_layout.height
+    };
+    if !matches!(size, None | Some(Len::Auto))
+        || st.reset_box_layout.calc_size[usize::from(!vertical)].is_some()
+    {
         return;
     }
     let vcx = opts.cx.vcx();
@@ -36,20 +48,22 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
         if vertical {
             px(b.left, style)
                 + px(b.right, style)
-                + px(style.padding.left, style)
-                + px(style.padding.right, style)
+                + px(style.reset_box_layout.padding.left, style)
+                + px(style.reset_box_layout.padding.right, style)
         } else {
             px(b.top, style)
                 + px(b.bottom, style)
-                + px(style.padding.top, style)
-                + px(style.padding.bottom, style)
+                + px(style.reset_box_layout.padding.top, style)
+                + px(style.reset_box_layout.padding.bottom, style)
         }
     };
     let margins = |style: &Computed| {
         if vertical {
-            px(style.margin.left, style) + px(style.margin.right, style)
+            px(style.reset_box_layout.margin.left, style)
+                + px(style.reset_box_layout.margin.right, style)
         } else {
-            px(style.margin.top, style) + px(style.margin.bottom, style)
+            px(style.reset_box_layout.margin.top, style)
+                + px(style.reset_box_layout.margin.bottom, style)
         }
     };
     let viewport = if vertical {
@@ -57,18 +71,18 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
     } else {
         opts.viewport.1
     };
-    let available = if st.root_box {
+    let available = if st.reset_context.root_box {
         viewport
     } else {
         let parent_size = if vertical {
-            parent.width
+            parent.reset_box_layout.width
         } else {
-            parent.height
+            parent.reset_box_layout.height
         };
         let parent_min = if vertical {
-            parent.min_width
+            parent.reset_box_layout.min_width
         } else {
-            parent.min_height
+            parent.reset_box_layout.min_height
         };
         match parent_size {
             _ if !vertical && opts.cx.constraints.avail_h.is_some() => {
@@ -78,7 +92,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
                 let size = v
                     .to_px(Some(viewport), parent.font_cx(vcx), vcx)
                     .unwrap_or(0.0);
-                size - if parent.border_box == Some(true) {
+                size - if parent.reset_border.border_box == Some(true) {
                     edges(parent)
                 } else {
                     0.0
@@ -86,7 +100,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
             }
             _ => {
                 px(parent_min, parent)
-                    - if parent.border_box == Some(true) {
+                    - if parent.reset_border.border_box == Some(true) {
                         edges(parent)
                     } else {
                         0.0
@@ -96,25 +110,25 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
     };
     let minimum = (available
         - margins(st)
-        - if st.border_box == Some(true) {
+        - if st.reset_border.border_box == Some(true) {
             0.0
         } else {
             edges(st)
         })
     .max(0.0);
     let old = if vertical {
-        st.min_width
+        st.reset_box_layout.min_width
     } else {
-        st.min_height
+        st.reset_box_layout.min_height
     };
     let old = old
         .and_then(|v| v.to_px(Some(available), st.font_cx(vcx), vcx))
         .unwrap_or(0.0);
     let minimum = Len::Px(minimum.max(old));
     if vertical {
-        st.min_width = Some(minimum);
+        st.reset_box_layout.min_width = Some(minimum);
     } else {
-        st.min_height = Some(minimum);
+        st.reset_box_layout.min_height = Some(minimum);
     }
 }
 

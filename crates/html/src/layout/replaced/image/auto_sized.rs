@@ -10,8 +10,8 @@ impl PictureSizing<'_> {
         let style = self.style;
         let (sub_w, sub_h) = self.sub;
         let (max_w, max_h) = (self.max_w, self.max_h);
-        let both_auto = matches!(style.width, None | Some(Len::Auto))
-            && matches!(style.height, None | Some(Len::Auto));
+        let both_auto = matches!(style.reset_box_layout.width, None | Some(Len::Auto))
+            && matches!(style.reset_box_layout.height, None | Some(Len::Auto));
         if both_auto && let Some(side) = self.natural {
             // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
             // загрузчику картинок: тот работает асинхронно, и в первом
@@ -50,8 +50,8 @@ impl PictureSizing<'_> {
             };
             if w0 > 0.0 && h0 > 0.0 {
                 // §10.4: пределы — по таблице (`css2_replaced_limits`).
-                let min_w = self.clamp(style.min_width, sub_w);
-                let min_h = self.clamp(style.min_height, sub_h);
+                let min_w = self.clamp(style.reset_box_layout.min_width, sub_w);
+                let min_h = self.clamp(style.reset_box_layout.min_height, sub_h);
                 // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
                 // высоты режет только высоту, и ширина остаётся своей
                 // (§10.4, таблица «no intrinsic ratio»). Прежде общий

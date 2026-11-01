@@ -9,8 +9,11 @@ pub(crate) fn children(nodes: &[Node]) -> impl Iterator<Item = &Node> {
     std::iter::from_fn(move || {
         loop {
             match stack.last_mut()?.next() {
-                Some(Node::Element(e)) if e.style.used().display == Some(Display::None) => {}
-                Some(Node::Element(e)) if e.style.used().display == Some(Display::Contents) => {
+                Some(Node::Element(e))
+                    if e.style.used().reset_box_layout.display == Some(Display::None) => {}
+                Some(Node::Element(e))
+                    if e.style.used().reset_box_layout.display == Some(Display::Contents) =>
+                {
                     stack.push(e.children.iter());
                 }
                 Some(n) => return Some(n),
@@ -35,8 +38,10 @@ pub(crate) fn projected(
     let mut out = Vec::new();
     for n in nodes {
         match n {
-            Node::Element(e) if e.style.used().display == Some(Display::None) => {}
-            Node::Element(e) if e.style.used().display == Some(Display::Contents) => {
+            Node::Element(e) if e.style.used().reset_box_layout.display == Some(Display::None) => {}
+            Node::Element(e)
+                if e.style.used().reset_box_layout.display == Some(Display::Contents) =>
+            {
                 let merged = box_style_unpainted(parent, &e.style, vcx);
                 let promoted: Vec<_> = e
                     .children
@@ -77,21 +82,21 @@ pub(crate) fn projected(
 // вычисленным значением. Повторная сборка копии пересчитывает containing-block
 // metadata, но не должна заново исполнять директивы от прежнего CSS-родителя.
 fn resolved_copy(mut c: crate::style::computed::Computed) -> crate::style::computed::Computed {
-    c.explicit_inherit.clear();
-    c.inherit_bits = 0;
-    c.inherit_longhands = Default::default();
-    c.border_inherit = false;
-    c.shadow_inherit = false;
-    c.text_overflow_inherit = false;
-    c.bidi_inherit = false;
-    c.clear_inherit = false;
-    c.content_inherit = false;
-    c.text_align_match_parent = 0;
-    c.font_size_step = 0;
-    c.font_weight_step = 0;
-    c.scroll.inherit_gutter = false;
-    c.scroll.inherit_width = false;
-    c.snap.inherit = 0;
+    c.reset_cascade.explicit_inherit.clear();
+    c.reset_cascade.inherit_bits = 0;
+    c.reset_cascade.inherit_longhands = Default::default();
+    c.reset_border.border_inherit = false;
+    c.reset_effects.shadow_inherit = false;
+    c.reset_text_box.text_overflow_inherit = false;
+    c.reset_cascade.bidi_inherit = false;
+    c.reset_context.clear_inherit = false;
+    c.reset_generated.content_inherit = false;
+    c.reset_text_box.text_align_match_parent = 0;
+    c.reset_cascade.font_size_step = 0;
+    c.reset_cascade.font_weight_step = 0;
+    c.reset_box_layout.scroll.inherit_gutter = false;
+    c.reset_box_layout.scroll.inherit_width = false;
+    c.reset_box_layout.snap.inherit = 0;
     c
 }
 

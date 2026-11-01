@@ -34,7 +34,7 @@ pub(super) fn defer(
     {
         return false;
     }
-    let fixed = e.style.used().position == Some(Position::Fixed);
+    let fixed = e.style.used().reset_positioned.position == Some(Position::Fixed);
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
@@ -42,8 +42,10 @@ pub(super) fn defer(
         return false;
     }
     let axes = (
-        edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right),
-        edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom),
+        edge_set(e.style.used().reset_positioned.inset.left)
+            || edge_set(e.style.used().reset_positioned.inset.right),
+        edge_set(e.style.used().reset_positioned.inset.top)
+            || edge_set(e.style.used().reset_positioned.inset.bottom),
     );
     let spot: SpotCell = Default::default();
     spot.set(Spot {
@@ -55,7 +57,7 @@ pub(super) fn defer(
                 0.
             } else {
                 crate::layout::block::struts::margin_px(
-                    e.style.used().margin.left,
+                    e.style.used().reset_box_layout.margin.left,
                     &e.style.used(),
                     opts.cx.vcx(),
                 )
@@ -65,7 +67,7 @@ pub(super) fn defer(
                 0.
             } else {
                 crate::layout::block::struts::margin_px(
-                    e.style.used().margin.top,
+                    e.style.used().reset_box_layout.margin.top,
                     &e.style.used(),
                     opts.cx.vcx(),
                 )
@@ -145,7 +147,14 @@ pub(super) fn defer(
                 )
             })
             .finish();
-        let child = if !fixed && source.style.used().z_index.is_some_and(|z| z > 0) {
+        let child = if !fixed
+            && source
+                .style
+                .used()
+                .reset_positioned
+                .z_index
+                .is_some_and(|z| z > 0)
+        {
             crate::paint::stacking::layered(
                 child,
                 &source.style.used(),
@@ -163,7 +172,12 @@ pub(super) fn defer(
         } else {
             child
         };
-        if source.style.used().z_index.is_some_and(|z| z < 0)
+        if source
+            .style
+            .used()
+            .reset_positioned
+            .z_index
+            .is_some_and(|z| z < 0)
             && !crate::paint::stacking::nested_context(&inherited)
         {
             crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(child))
@@ -182,7 +196,13 @@ pub(super) fn defer(
         vcx,
         opts.cx.layout(),
     );
-    let kid = if e.style.used().position_try_fallbacks.is_empty() {
+    let kid = if e
+        .style
+        .used()
+        .reset_positioned
+        .position_try_fallbacks
+        .is_empty()
+    {
         OofKid::Deferred(
             Box::new(move |bounds, window, _cx| {
                 build(None, retained.resume(), None, bounds, window)

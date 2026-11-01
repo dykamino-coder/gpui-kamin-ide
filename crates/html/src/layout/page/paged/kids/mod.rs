@@ -44,7 +44,7 @@ pub(super) fn page_kids_from_groups(
     for group in &groups {
         let n = &group[0];
         if let Node::Element(e) = n
-            && matches!(e.style.used().display, Some(Display::None))
+            && matches!(e.style.used().reset_box_layout.display, Some(Display::None))
         {
             continue;
         }

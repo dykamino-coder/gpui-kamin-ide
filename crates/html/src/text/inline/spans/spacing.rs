@@ -20,10 +20,10 @@ pub fn letter_spans(
             continue;
         }
         let size = text_size(style, base_size);
-        let extra = style.letter_spacing.map(|len| {
+        let extra = style.inh.text_flow.letter_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
-                &style.font_family.clone().unwrap_or_default(),
+                &style.inh.font.font_family.clone().unwrap_or_default(),
                 size,
                 vcx,
             )
@@ -48,12 +48,12 @@ pub fn letter_spans(
         // общему предку обоих знаков (css-text-3 §8.2). Ставится на последний
         // знак куска и обязан перебить его собственный трекинг, поэтому идёт
         // впереди — поиск диапазона берёт первое попадание.
-        if let Some(len) = style.letter_spacing_after
+        if let Some(len) = style.reset_text_box.letter_spacing_after
             && let Some(last) = text.char_indices().next_back()
         {
             let v = crate::text::metrics::spacing_px(
                 Some(len),
-                &style.font_family.clone().unwrap_or_default(),
+                &style.inh.font.font_family.clone().unwrap_or_default(),
                 size,
                 vcx,
             );
@@ -98,10 +98,10 @@ pub fn word_spans(
             continue;
         }
         let size = text_size(style, base_size);
-        let extra = style.word_spacing.map(|len| {
+        let extra = style.inh.text_flow.word_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
-                &style.font_family.clone().unwrap_or_default(),
+                &style.inh.font.font_family.clone().unwrap_or_default(),
                 size,
                 vcx,
             )

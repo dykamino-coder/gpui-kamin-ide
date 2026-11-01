@@ -25,7 +25,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let tree = e.clone();
     let opts = opts.clone();
     let mut wrapper = gpui::div().w(px(w)).h(px(h)).flex_shrink_0();
-    if let Some(bg) = e.style.used().background {
+    if let Some(bg) = e.style.used().reset_background.background {
         wrapper = wrapper.bg(bg.to_hsla());
     }
     let blend = geometry::sole_blend(e);
@@ -34,7 +34,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
             gpui::canvas(
                 move |_, window, cx| {
                     let mut tree = tree;
-                    let zoom = tree.style.used().zoom_eff.unwrap_or(1.0);
+                    let zoom = tree.style.used().inh.font.zoom_eff.unwrap_or(1.0);
                     let viewport = crate::dom::resource_facts::view_box_ratio(&tree)
                         .unwrap_or((w / zoom, h / zoom));
                     let scale = (w / viewport.0).max(h / viewport.1);

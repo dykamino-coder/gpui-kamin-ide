@@ -49,7 +49,7 @@ pub(super) fn breakable(text: &str, style: &Computed) -> String {
     // переносчик UAX-14 знает его как точку разрыва, а на месте разрыва
     // рисуется знак переноса (`hyphenate-character`). Замена нулевым пробелом
     // нужна только ЧУЖОМУ набору — он о мягком переносе не знает.
-    let owned = if style.hyphenate == Some(false) {
+    let owned = if style.inh.text_flow.hyphenate == Some(false) {
         text.replace('\u{00ad}', "")
     } else if crate::text::paragraph::rules(style).is_some() {
         text.to_string()
@@ -67,7 +67,7 @@ pub(super) fn breakable(text: &str, style: &Computed) -> String {
     // точка разрыва, а сам пробел остаётся в строке и занимает место. Нулевой
     // пробел сразу за ним и означает ровно это: разрыв разрешён здесь, и
     // предыдущий пробел уходит в измеряемую часть строки, а не свисает.
-    let owned = if style.break_after_spaces == Some(true) {
+    let owned = if style.inh.text_flow.break_after_spaces == Some(true) {
         owned.replace(' ', " \u{200b}")
     } else {
         owned
@@ -75,7 +75,7 @@ pub(super) fn breakable(text: &str, style: &Computed) -> String {
     // `word-break: keep-all`: иероглифы переносятся только по пробелам. Между
     // знаками ставится словосоединитель — он и означает «здесь не рвать», и
     // переносчик его уважает (класс WJ по UAX-14).
-    if style.keep_all == Some(true) {
+    if style.inh.text_flow.keep_all == Some(true) {
         let mut out = String::with_capacity(owned.len() * 2);
         let mut prev: Option<char> = None;
         for ch in owned.chars() {
@@ -90,14 +90,16 @@ pub(super) fn breakable(text: &str, style: &Computed) -> String {
         }
         return out;
     }
-    if style.break_anywhere != Some(true) && style.break_anywhere_strict != Some(true) {
+    if style.inh.text_flow.break_anywhere != Some(true)
+        && style.inh.text_flow.break_anywhere_strict != Some(true)
+    {
         return owned;
     }
     let text = owned.as_str();
     // `line-break: anywhere` рвёт где угодно, в том числе рядом с пробелом;
     // `word-break: break-all` — только внутри слова, поэтому перед пробелом
     // точку разрыва не ставит.
-    let anywhere = style.break_anywhere_strict == Some(true);
+    let anywhere = style.inh.text_flow.break_anywhere_strict == Some(true);
     let mut out = String::with_capacity(text.len() * 2);
     for (i, ch) in text.chars().enumerate() {
         if i > 0 && (anywhere || !ch.is_whitespace()) {

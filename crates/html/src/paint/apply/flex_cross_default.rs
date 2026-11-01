@@ -5,8 +5,11 @@
 use crate::style::computed::{Computed, Display, FlexDir};
 pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
     c.wm().block_rl()
-        && (c.align_items.is_none() || super::layout::legacy_block(c))
-        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
+        && (c.reset_flex.align_items.is_none() || super::layout::legacy_block(c))
+        && matches!(
+            c.reset_box_layout.display,
+            Some(Display::Flex) | Some(Display::InlineFlex)
+        )
         && matches!(physical, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
 }
 #[cfg(test)]
@@ -26,7 +29,7 @@ mod tests {
                     ),
                     ..Computed::default()
                 };
-                with_inherited.writing_mode = Some(
+                with_inherited.inh.writing.writing_mode = Some(
                     crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
                 );
                 with_inherited
@@ -36,18 +39,18 @@ mod tests {
             }
             for physical in [FlexDir::Col, FlexDir::ColReverse] {
                 assert!(ends_on_x(&c, Some(physical)));
-                c.align_items = Some(Align::Start);
+                c.reset_flex.align_items = Some(Align::Start);
                 assert!(!ends_on_x(&c, Some(physical)));
-                c.align_items = None;
+                c.reset_flex.align_items = None;
             }
-            c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            ));
+            c.inh.writing.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
             assert!(!ends_on_x(&c, Some(FlexDir::Col)));
-            c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, true, false,
-            ));
-            c.display = Some(Display::Block);
+            c.inh.writing.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
+            );
+            c.reset_box_layout.display = Some(Display::Block);
             assert!(!ends_on_x(&c, Some(FlexDir::Col)));
         }
     }

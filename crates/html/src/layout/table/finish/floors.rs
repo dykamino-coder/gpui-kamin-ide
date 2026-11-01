@@ -21,12 +21,14 @@ pub(super) fn table_size_floors(
         // `box-sizing: content-box` порог по спеке и так контентный
         // (`min-max-size-table-content-box`). Зелёная `min-height-table-2`
         // (тот же тег, порог долей) держится ровно на `border_box` без вычета.
-        Some(Len::Px(v)) if e.style.used().border_box != Some(true) && e.tag != "table" => {
+        Some(Len::Px(v))
+            if e.style.used().reset_border.border_box != Some(true) && e.tag != "table" =>
+        {
             Some(Len::Px((v - edges).max(0.0)))
         }
         other => other,
     };
-    let pad = &e.style.used().padding;
+    let pad = &e.style.used().reset_box_layout.padding;
     let pad_px = [
         px_of(pad.top),
         px_of(pad.right),
@@ -34,7 +36,7 @@ pub(super) fn table_size_floors(
         px_of(pad.left),
     ];
     let min_h = min_fix(
-        e.style.used().min_height,
+        e.style.used().reset_box_layout.min_height,
         bw[0] + bw[2] + pad_px[0] + pad_px[2],
     );
     // Проверено: поднимать нижнюю грань ширины таблицы до суммы дорожек с
@@ -43,7 +45,7 @@ pub(super) fn table_size_floors(
     // `fixed-table-layout-02*`): минимум доезжает, но заданную ширину не
     // перебивает — упирается ниже, в раздачу дорожек внутри сетки.
     let min_w = min_fix(
-        e.style.used().min_width,
+        e.style.used().reset_box_layout.min_width,
         bw[1] + bw[3] + pad_px[1] + pad_px[3],
     );
     // У ТЕГА `<table>` ширина считается по BORDER-BOX (UA-правило
@@ -52,7 +54,7 @@ pub(super) fn table_size_floors(
     // HTML/XHTML table is the distance between the left and right table border
     // edges» против «the width of a CSS table … excluding table padding and
     // table borders».
-    let table_border_box = e.tag == "table" && e.style.used().border_box.is_none();
+    let table_border_box = e.tag == "table" && e.style.used().reset_border.border_box.is_none();
     // Фиксированная раскладка: ширина стола — БОЛЬШЕЕ из `width` и суммы
     // колонок с зазорами (CSS 2.1 §17.5.2.1, «the greater of the value of the
     // 'width' property … and the sum of the column widths (plus cell spacing
@@ -61,15 +63,16 @@ pub(super) fn table_size_floors(
     // сетке 42+16+42, `-004c` — 70 при 20·3+20·2. Считается только когда
     // ВСЕ колонки первого ряда известны в точках: иначе сумма не определена.
     // Сросшаяся модель не берётся — её края лежат паддингом `outer_win`.
-    let fixed_floor: Option<f32> = match e.style.used().width {
+    let fixed_floor: Option<f32> = match e.style.used().reset_box_layout.width {
         Some(Len::Px(w))
-            if e.style.used().table_fixed == Some(true)
+            if e.style.used().reset_context.table_fixed == Some(true)
                 && !collapse
                 && !e.style.used().wm().vertical()
                 && !first_row_widths.is_empty()
                 && first_row_widths.iter().all(|c| c.is_some()) =>
         {
-            let edges = if table_border_box || e.style.used().border_box == Some(true) {
+            let edges = if table_border_box || e.style.used().reset_border.border_box == Some(true)
+            {
                 bw[1] + bw[3] + pad_px[1] + pad_px[3]
             } else {
                 0.0

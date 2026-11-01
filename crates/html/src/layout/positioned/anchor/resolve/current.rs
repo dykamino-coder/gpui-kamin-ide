@@ -14,28 +14,30 @@ pub(crate) struct SizeInputs {
 }
 
 pub(crate) fn needs_deferred(c: &Computed) -> bool {
-    matches!(c.position, Some(Position::Absolute | Position::Fixed))
-        && (!c.position_try_fallbacks.is_empty()
-            || c.position_visibility
-                & (super::super::parse::VIS_VALID | super::super::parse::VIS_VISIBLE)
-                != 0
-            || c.position_area.is_some()
-            || c.align_self == Some(Align::AnchorCenter)
-            || c.justify_self == Some(Align::AnchorCenter)
-            || [
-                c.width,
-                c.height,
-                c.min_width,
-                c.min_height,
-                c.max_width,
-                c.max_height,
-                c.inset.top,
-                c.inset.right,
-                c.inset.bottom,
-                c.inset.left,
-            ]
-            .into_iter()
-            .any(|l| matches!(l, Some(Len::Anchor(_)))))
+    matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute | Position::Fixed)
+    ) && (!c.reset_positioned.position_try_fallbacks.is_empty()
+        || c.reset_positioned.position_visibility
+            & (super::super::parse::VIS_VALID | super::super::parse::VIS_VISIBLE)
+            != 0
+        || c.reset_positioned.position_area.is_some()
+        || c.reset_flex.align_self == Some(Align::AnchorCenter)
+        || c.reset_flex.justify_self == Some(Align::AnchorCenter)
+        || [
+            c.reset_box_layout.width,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.max_height,
+            c.reset_positioned.inset.top,
+            c.reset_positioned.inset.right,
+            c.reset_positioned.inset.bottom,
+            c.reset_positioned.inset.left,
+        ]
+        .into_iter()
+        .any(|l| matches!(l, Some(Len::Anchor(_)))))
 }
 
 /// Потомки построенного на prepaint OOF используют тот же протокол CB:
@@ -43,7 +45,10 @@ pub(crate) fn needs_deferred(c: &Computed) -> bool {
 pub(crate) fn needs_host(c: &Computed, cx: &crate::layout::cx::LayoutCx) -> bool {
     needs_deferred(c)
         || (cx.position.oof_sizes.is_some()
-            && matches!(c.position, Some(Position::Absolute | Position::Fixed)))
+            && matches!(
+                c.reset_positioned.position,
+                Some(Position::Absolute | Position::Fixed)
+            ))
 }
 
 pub(crate) fn current_inputs(

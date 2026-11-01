@@ -153,7 +153,7 @@ pub(crate) fn draw_tiles(
         found,
         super::super::Source::Image(CpuSource::Filtered { .. })
     ) {
-        found.sampled_raster(tile, c.image_pixelated == Some(true), vcx)
+        found.sampled_raster(tile, c.inh.ui.image_pixelated == Some(true), vcx)
     } else {
         conic::tile(&found, tile, window.scale_factor(), vcx)
     };
@@ -161,13 +161,13 @@ pub(crate) fn draw_tiles(
         return;
     };
     let corners_of = area_corners::corners(c, clip);
-    let pixelated = c.image_pixelated == Some(true);
+    let pixelated = c.inh.ui.image_pixelated == Some(true);
     // Собственная обрезка коробки (`overflow` ≠ visible) режет по её
     // padding-box, а фон по `background-clip` живёт до border-box: маска
     // раздвигается на рамку — ровно на то, что коробка отняла у себя сама
     // (`attachment-local-clipping-image-*`).
-    let clips_self = matches!(c.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
-        || matches!(c.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible);
+    let clips_self = matches!(c.reset_box_layout.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
+        || matches!(c.reset_box_layout.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible);
     // Без собственной обрезки маска предка остаётся как есть: её не пересобирать из
     // `content_mask()` — в записи сегментов это маска захвата, а не цепочка clip
     // предков (маски ячеек полосы ряда, `table-row-paint-*` в колонках).

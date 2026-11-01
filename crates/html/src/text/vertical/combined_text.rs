@@ -22,12 +22,12 @@ pub(crate) fn piece(
     let vcx = opts.cx.vcx();
     if !inherited.wm().turned()
         || inherited.wm().sideways()
-        || element.style.used().display.is_some()
+        || element.style.used().reset_box_layout.display.is_some()
     {
         return None;
     }
     let mut merged = box_style(inherited, &element.style, vcx);
-    let count = merged.combine_upright.flatten()?;
+    let count = merged.inh.writing.combine_upright.flatten()?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);
     let text = plain.trim();
@@ -38,12 +38,12 @@ pub(crate) fn piece(
     {
         return None;
     }
-    merged.combine_upright = Some(None);
+    merged.inh.writing.combine_upright = Some(None);
     merged.inline_format = Some(crate::style::computed::InlineFormat::Combined);
     // An explicit zero overrides inherited spacing in nested inline descendants.
-    merged.letter_spacing = Some(Len::Px(0.0));
+    merged.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
     let em = crate::layout::options::own_size(&merged, opts);
-    merged.line_height = Some(Len::Px(em));
+    merged.inh.font.line_height = Some(Len::Px(em));
     let feature = match text.graphemes(true).count() {
         2 => Some("hwid"),
         3 => Some("twid"),
@@ -51,7 +51,7 @@ pub(crate) fn piece(
         _ => None,
     };
     if let Some(feature) = feature {
-        merged.font_features.push((feature.to_string(), 1));
+        merged.inh.font.font_features.push((feature.to_string(), 1));
     }
     let composed;
     let nodes = if element
@@ -66,8 +66,8 @@ pub(crate) fn piece(
             .map(|ch| if multiple { narrow(ch) } else { ch })
             .collect();
         // Width normalization follows text-transform; do not reapply full-width during shaping.
-        merged.text_transform = Some(TextTransform::None);
-        merged.text_transform_flags = 0;
+        merged.inh.text_flow.text_transform = Some(TextTransform::None);
+        merged.inh.text_flow.text_transform_flags = 0;
         composed = vec![Node::Text(text)];
         composed.as_slice()
     } else {

@@ -110,7 +110,8 @@ fn settled(
     let nest_report = outer_space.as_ref().map(|n| n.first_row.clone());
     // `continue: discard` без рядов (или с потолком баланса): линии и спаннеры одним проходом стопки — только
     // раскладка узнаёт, есть ли у линии переполняющие колонки (`balance_discard`).
-    let discard = rows.is_none_or(|r| r.cap) && e.style.used().clamp_discard == Some(true);
+    let discard = rows.is_none_or(|r| r.cap)
+        && e.style.used().reset_fragmentation.clamp_discard == Some(true);
     let unified =
         (rows.is_some_and(|r| r.wrap && r.h.is_some()) || discard) && !opts.frag.in_stack_copy;
     if e.children.iter().any(&is_span) && !unified {
@@ -122,7 +123,8 @@ fn settled(
     // Текстовый путь `text-box-trim` не знает (ни у краёв колонок, ни у
     // первой/последней строки) — такой многоколоночник идёт стопкой
     // со строками (`text-box-trim-multicol-009/010`).
-    let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
+    let trim_host =
+        merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end;
     let flow = match dimensions {
         Some((dimensions, _)) => {
             column_flow_with_dimensions(e, &merged, opts, want, col_w_px, outer_space, dimensions)

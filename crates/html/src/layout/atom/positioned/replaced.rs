@@ -21,14 +21,14 @@ pub(super) fn replaced_abs_atom(
 ) -> Option<AnyElement> {
     let frame = opts.cx.frame();
     let mut copy = e.clone();
-    copy.style.used_mut().image_orient_none = merged.image_orient_none;
-    copy.style.used_mut().position = None;
-    copy.style.used_mut().margin = Default::default();
-    if matches!(copy.style.used().width, Some(Len::Pct(_))) {
-        copy.style.used_mut().width = Some(Len::Pct(1.0));
+    copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
+    copy.style.used_mut().reset_positioned.position = None;
+    copy.style.used_mut().reset_box_layout.margin = Default::default();
+    if matches!(copy.style.used().reset_box_layout.width, Some(Len::Pct(_))) {
+        copy.style.used_mut().reset_box_layout.width = Some(Len::Pct(1.0));
     }
-    if matches!(copy.style.used().height, Some(Len::Pct(_))) {
-        copy.style.used_mut().height = Some(Len::Pct(1.0));
+    if matches!(copy.style.used().reset_box_layout.height, Some(Len::Pct(_))) {
+        copy.style.used_mut().reset_box_layout.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
         opts.cx
@@ -67,9 +67,11 @@ pub(super) fn replaced_abs_atom(
     if crate::layout::positioned::anchor::trials::inline::is_root(e, opts) {
         return Some(holder);
     }
-    let x_set = edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right);
-    let y_set = edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom);
-    if x_set != y_set && e.style.used().z_index.unwrap_or(0) >= 0 {
+    let x_set = edge_set(e.style.used().reset_positioned.inset.left)
+        || edge_set(e.style.used().reset_positioned.inset.right);
+    let y_set = edge_set(e.style.used().reset_positioned.inset.top)
+        || edge_set(e.style.used().reset_positioned.inset.bottom);
+    if x_set != y_set && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0 {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             hole: None,
@@ -107,7 +109,12 @@ pub(super) fn replaced_abs_atom(
             }
         };
     }
-    let below_icb = e.style.used().z_index.is_some_and(|z| z < 0)
+    let below_icb = e
+        .style
+        .used()
+        .reset_positioned
+        .z_index
+        .is_some_and(|z| z < 0)
         && !crate::style::computed::stacking::nested_context(inherited);
     // Позиционированный предок есть — слой ЕГО содержащего блока
     // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
@@ -118,7 +125,7 @@ pub(super) fn replaced_abs_atom(
     if x_set
         && y_set
         && !inline_cb
-        && (e.style.used().z_index.unwrap_or(0) >= 0 || below_icb)
+        && (e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0 || below_icb)
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {

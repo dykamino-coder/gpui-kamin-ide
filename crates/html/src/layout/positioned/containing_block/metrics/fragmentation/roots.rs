@@ -8,7 +8,7 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
     let mut roots = Vec::new();
     let mut pending: Vec<&Element> = kids.collect();
     while let Some(e) = pending.pop() {
-        if positioned(e.style.used().position) {
+        if positioned(e.style.used().reset_positioned.position) {
             roots.push(e.node_id);
             continue;
         }

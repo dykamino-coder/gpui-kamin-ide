@@ -29,23 +29,33 @@ pub(crate) fn pin_inherited_margins(
         };
         [(0, top), (2, bottom)].into_iter().any(|(side, wanted)| {
             wanted
-                && child.style.cascaded().inherit_longhands.contains(
-                    crate::style::css::LonghandId::physical(
+                && child
+                    .style
+                    .cascaded()
+                    .reset_cascade
+                    .inherit_longhands
+                    .contains(crate::style::css::LonghandId::physical(
                         crate::style::css::BoxGroup::Margin,
                         side,
-                    ),
-                )
+                    ))
         })
     }) {
         return;
     }
-    let own = e.style.used().margin;
+    let own = e.style.used().reset_box_layout.margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
             let side =
                 crate::style::css::LonghandId::physical(crate::style::css::BoxGroup::Margin, i);
-            if !want || !ch.style.cascaded().inherit_longhands.contains(side) {
+            if !want
+                || !ch
+                    .style
+                    .cascaded()
+                    .reset_cascade
+                    .inherit_longhands
+                    .contains(side)
+            {
                 continue;
             }
             let pinned = match src {
@@ -57,11 +67,15 @@ pub(crate) fn pin_inherited_margins(
                 other => other,
             };
             if i == 0 {
-                ch.style.used_mut().margin.top = pinned;
+                ch.style.used_mut().reset_box_layout.margin.top = pinned;
             } else {
-                ch.style.used_mut().margin.bottom = pinned;
+                ch.style.used_mut().reset_box_layout.margin.bottom = pinned;
             }
-            ch.style.used_mut().inherit_longhands.set(side, false);
+            ch.style
+                .used_mut()
+                .reset_cascade
+                .inherit_longhands
+                .set(side, false);
         }
     }
 }
@@ -84,7 +98,7 @@ pub(crate) fn margin_px_in(
     // схлопывался по 16 вместо 50 — вся семья Hixie `margin-collapse-1xx`
     // расходилась с эталоном ровно на эту разницу.
     let parent = vcx.collapse.font;
-    let base = match style.font_size {
+    let base = match style.inh.font.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * parent,
         Some(Len::Pct(k)) => k * parent,
@@ -99,7 +113,7 @@ pub(crate) fn margin_px_in(
         // отдавало `None`, поле пропадало целиком (`positioning/top-091`).
         l @ (Len::Ch(_) | Len::Ex(_)) => Some(crate::text::metrics::spacing_px(
             Some(l),
-            &style.font_family.clone().unwrap_or_default(),
+            &style.inh.font.font_family.clone().unwrap_or_default(),
             base,
             vcx.values,
         )),

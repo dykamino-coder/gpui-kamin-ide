@@ -8,15 +8,15 @@ use crate::style::values::value::Len;
 use crate::text::paragraph::Paragraph;
 
 pub(super) fn configure(para: Paragraph, block: &Computed, opts: &RenderOpts) -> Paragraph {
-    let Some(first) = block.first_line.as_deref() else {
+    let Some(first) = block.reset_text_box.first_line.as_deref() else {
         return para;
     };
-    let normal = match block.font_size {
+    let normal = match block.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     };
     let size = first.used_font(normal, opts.cx.vcx()).size_px;
-    let height = match first.line_height.or(block.line_height) {
+    let height = match first.inh.font.line_height.or(block.inh.font.line_height) {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => first
             .numeric_line_value_px(Some(Len::Pct(k)), normal)

@@ -58,7 +58,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
     // `float: right` на элементе ряда выкидывал его из раскладки родителя.
     let collapsed = ordered_children(collapsed, ordered_context, inherited, opts);
     let flex_ctx = matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
     let letter_scope = first_letter_scope::Scope::new(&collapsed, inherited);
@@ -81,7 +81,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
     // блока, только если того не отделяют ни рамка, ни отбивка и он не
     // заводит своего контекста форматирования.
     let cb_top_open = !own_context_style(inherited)
-        && zero_len(inherited.padding.top)
+        && zero_len(inherited.reset_box_layout.padding.top)
         && zero_len(inherited.borders().top);
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
     // горизонтального письма: в гибком и сетке `float` не
@@ -97,7 +97,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
     // retain the counting scope, including the float's independent BFC.
     let measured_ok = !flex_ctx
         && !matches!(
-            inherited.display,
+            inherited.reset_box_layout.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && (!inherited.wm().block_rl() || inherited.wm().vertical());
@@ -107,12 +107,12 @@ pub(crate) async fn blocks_stack_with_dimensions(
             collapsed,
             inherited,
             cb_top_open,
-            match inherited.font_size {
+            match inherited.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             },
             measured_ok,
-            own_context_style(inherited) || inherited.flex_item,
+            own_context_style(inherited) || inherited.reset_flex.flex_item,
             cell_bfc,
             opts.cx.constraints.cb_width,
             opts.cx.constraints.avail_h,
@@ -125,7 +125,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
     // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
     // просила обратного.
     let flex_context = matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
     let collapsed = flow_children(collapsed, ordered_context, inherited, opts, flex_context);
@@ -147,8 +147,13 @@ pub(crate) async fn blocks_stack_with_dimensions(
     let collapsed: Vec<Node> = if ordered_context {
         let in_flow = |n: &Node| match n {
             Node::Element(e) => {
-                e.style.used().position != Some(crate::style::computed::Position::Absolute)
-                    || e.style.used().z_index.is_some_and(|z| z < 0)
+                e.style.used().reset_positioned.position
+                    != Some(crate::style::computed::Position::Absolute)
+                    || e.style
+                        .used()
+                        .reset_positioned
+                        .z_index
+                        .is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
         };
@@ -183,7 +188,8 @@ pub(crate) async fn blocks_stack_with_dimensions(
     // потому что готовит замер до отрисовки детей.
     let sticky = collapsed.iter().any(|n| match n {
         Node::Element(e) => {
-            e.style.used().position == Some(crate::style::computed::Position::Sticky)
+            e.style.used().reset_positioned.position
+                == Some(crate::style::computed::Position::Sticky)
         }
         _ => false,
     });

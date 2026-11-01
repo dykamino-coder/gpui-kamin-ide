@@ -171,9 +171,14 @@ pub(super) fn border_commands(
 /// Доли резолвятся при растре от размера коробки — прежде `Pct` уходил
 /// нулём (`side()` в `render::grouped`).
 pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>, vcx: ValueCx<'_>) -> String {
-    let ell = c.radius_ell.unwrap_or([None; 4]);
+    let ell = c.reset_border.radius_ell.unwrap_or([None; 4]);
     let tok = radius_lengths::token;
-    let radii = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl];
+    let radii = [
+        c.reset_border.radius.tl,
+        c.reset_border.radius.tr,
+        c.reset_border.radius.br,
+        c.reset_border.radius.bl,
+    ];
     let mut out = String::from("rrect(");
     for (i, r) in radii.iter().enumerate() {
         match ell[i] {
@@ -183,7 +188,7 @@ pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>, vcx: ValueCx<'_>) -> Str
             None => out.push_str(&format!("{} {} ", tok(*r, vcx), tok(*r, vcx))),
         }
     }
-    let k = c.corner_shape.unwrap_or([1.0; 4]);
+    let k = c.reset_border.corner_shape.unwrap_or([1.0; 4]);
     out.push_str(&format!("{} {} {} {}", k[0], k[1], k[2], k[3]));
     if let Some([t, r, b, l]) = ring {
         out.push_str(&format!(" / {t} {r} {b} {l}"));

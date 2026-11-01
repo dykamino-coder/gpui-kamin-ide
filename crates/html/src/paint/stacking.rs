@@ -34,7 +34,7 @@ pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
     depth < 32
         && nodes.iter().any(|n| match n {
             Node::Element(c) => {
-                c.style.used().blend.is_some_and(|b| b != 0)
+                c.style.used().reset_effects.blend.is_some_and(|b| b != 0)
                     || blends_inside(&c.children, depth + 1)
             }
             Node::Text(_) => false,
@@ -60,13 +60,13 @@ pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
 /// правка убирает расхождение двух мест одного файла.
 pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
     matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(crate::style::computed::Position::Relative)
             | Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
             | Some(crate::style::computed::Position::Sticky)
     ) || matches!(
-        parent.display,
+        parent.reset_box_layout.display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
@@ -78,9 +78,9 @@ pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
 pub(crate) fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     // `fixed` под трансформированным предком — абсолют в его блоке, а не
     // слой окна (css-transforms-1 §transform-rendering).
-    (c.position == Some(crate::style::computed::Position::Fixed) && !under_tf)
-        || c.position == Some(crate::style::computed::Position::Sticky)
-        || (c.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
+    (c.reset_positioned.position == Some(crate::style::computed::Position::Fixed) && !under_tf)
+        || c.reset_positioned.position == Some(crate::style::computed::Position::Sticky)
+        || (c.reset_positioned.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
 }
 
 /// `z-index`: порядок наложения.
@@ -97,7 +97,8 @@ pub(crate) fn layered(
     allowed: bool,
     under_tf: bool,
 ) -> AnyElement {
-    let fixed_to_window = c.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
+    let fixed_to_window =
+        c.reset_positioned.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
     if !allowed {
         // Внутри отложенного поддерева `position: fixed` отсчитывается от
         // ближайшего отложенного предка, а не от окна: своей системы
@@ -116,12 +117,12 @@ pub(crate) fn layered(
     // `position: fixed` — отсчёт от ОКНА: отложенная отрисовка выносит
     // элемент из потока родителя, а размер окна задаёт его систему координат.
     if fixed_to_window {
-        let priority = c.z_index.unwrap_or(0).max(0) as usize;
+        let priority = c.reset_positioned.z_index.unwrap_or(0).max(0) as usize;
         return gpui::deferred(div().absolute().top_0().left_0().size_full().child(el))
             .with_priority(priority)
             .into_any_element();
     }
-    match c.z_index {
+    match c.reset_positioned.z_index {
         // Отложенный слой рисуется вне масок дерева — маску обрезающего
         // предка ему передаёт пара обёрток (`paint::effects::mask::element::MaskKeep/MaskUse`).
         // Гейт `z_index_applies` — CSS 2.1 §9.9.1 «Applies to: positioned

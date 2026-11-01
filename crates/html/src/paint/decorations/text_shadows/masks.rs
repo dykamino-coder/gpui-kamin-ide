@@ -35,10 +35,10 @@ pub(super) fn masked_layer(
         transparent()
     };
     let mut mask = style.clone();
-    mask.text_shadow_ink = Some(ink);
-    mask.text_shadow = None;
-    mask.text_shadow_rest.clear();
-    mask.text_shadow_raw = None;
+    mask.reset_text_box.text_shadow_ink = Some(ink);
+    mask.inh.text_ink.text_shadow = None;
+    mask.inh.text_ink.text_shadow_rest.clear();
+    mask.reset_text_box.text_shadow_raw = None;
     let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
     let copy = opts.cx.contracts.build.paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
@@ -71,7 +71,7 @@ pub(super) fn mask_nodes(
             Node::Element(e) => {
                 let mut e = e.clone();
                 if atomic(&e, vcx) {
-                    e.style.used_mut().hidden = Some(true);
+                    e.style.used_mut().inh.ui.hidden = Some(true);
                     return Node::Element(e);
                 }
                 let list = parent.child(&e);
@@ -81,15 +81,15 @@ pub(super) fn mask_nodes(
                     transparent()
                 };
                 let s = e.style.used_mut();
-                s.text_shadow_ink = Some(ink);
-                s.background = None;
-                s.bg_image = None;
-                s.shadows.clear();
-                s.outline = None;
-                s.border_colors = std::array::from_fn(|_| transparent().into());
-                s.text_shadow = None;
-                s.text_shadow_rest.clear();
-                s.text_shadow_raw = None;
+                s.reset_text_box.text_shadow_ink = Some(ink);
+                s.reset_background.background = None;
+                s.reset_background.bg_image = None;
+                s.reset_effects.shadows.clear();
+                s.reset_border.outline = None;
+                s.reset_border.border_colors = std::array::from_fn(|_| transparent().into());
+                s.inh.text_ink.text_shadow = None;
+                s.inh.text_ink.text_shadow_rest.clear();
+                s.reset_text_box.text_shadow_raw = None;
                 e.children = mask_nodes(&e.children, &list, group, shadow, vcx).into();
                 Node::Element(e)
             }

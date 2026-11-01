@@ -63,9 +63,25 @@ pub(crate) fn leading_chain(
             }
             // Плавающий и абсолютный в потоке не участвуют и примыкания не рвут.
             if !in_flow(&ch.style.used()) {
-                if ch.style.used().float.is_some_and(|f| f != 0) {
-                    adjoining_left |= ch.style.used().float.is_some_and(|f| f < 0);
-                    adjoining_right |= ch.style.used().float.is_some_and(|f| f > 0);
+                if ch
+                    .style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|f| f != 0)
+                {
+                    adjoining_left |= ch
+                        .style
+                        .used()
+                        .reset_box_layout
+                        .float
+                        .is_some_and(|f| f < 0);
+                    adjoining_right |= ch
+                        .style
+                        .used()
+                        .reset_box_layout
+                        .float
+                        .is_some_and(|f| f > 0);
                     let w = px_margin_w(&ch.style.used()).unwrap_or(0.0);
                     adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
                 }
@@ -79,7 +95,7 @@ pub(crate) fn leading_chain(
             // Keep definite-height boxes on the existing clearance path: their
             // external float offset cannot be resolved by this margin-only walk.
             if vcx.clear(&ch.style.used()).is_some_and(|side| {
-                ch.style.used().height.is_some()
+                ch.style.used().reset_box_layout.height.is_some()
                     || (side <= 0 && adjoining_left)
                     || (side >= 0 && adjoining_right)
             }) {
@@ -98,7 +114,7 @@ pub(crate) fn leading_chain(
             s = adjoin(
                 s,
                 strut_of(margin_or_bail(
-                    ch.style.used().margin.top,
+                    ch.style.used().reset_box_layout.margin.top,
                     &ch.style.used(),
                     vcx,
                 )?),
@@ -121,10 +137,12 @@ pub(crate) fn leading_chain(
             // его первого ребёнка (и всё, что с ним схлопнулось) обрезано, наружу
             // примыкать нечему. Без этого поле 50 ребёнка уходило через контейнер
             // в `body`, и страница съезжала на 50 (`block-container-non-adjoining-item`).
-            if top_edge_open_at(ch, vcx.collapse.width) && ch.style.used().margin_trim & 1 == 0 {
+            if top_edge_open_at(ch, vcx.collapse.width)
+                && ch.style.used().reset_fragmentation.margin_trim & 1 == 0
+            {
                 // Содержащий блок детей `ch` — сам `ch`: его ширина точками —
                 // оценка для `bfc_no_fit` на спуске.
-                cb = match ch.style.used().width {
+                cb = match ch.style.used().reset_box_layout.width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => cb,
                 };
@@ -185,7 +203,7 @@ pub(crate) fn trailing_chain(
             s = adjoin(
                 s,
                 strut_of(margin_or_bail(
-                    ch.style.used().margin.bottom,
+                    ch.style.used().reset_box_layout.margin.bottom,
                     &ch.style.used(),
                     vcx,
                 )?),
@@ -200,7 +218,9 @@ pub(crate) fn trailing_chain(
             let next = eat.add(parent, i, false);
             // Заданная высота или нижняя рамка/отступ отрезают цепочку: поле
             // внука к краю контейнера уже не примыкает.
-            if ch.style.used().height.is_none() && top_edge_open_at(ch, vcx.collapse.width) {
+            if ch.style.used().reset_box_layout.height.is_none()
+                && top_edge_open_at(ch, vcx.collapse.width)
+            {
                 children = &ch.children;
                 parent = next;
                 continue 'level;

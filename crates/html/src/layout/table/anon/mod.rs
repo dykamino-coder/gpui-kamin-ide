@@ -18,10 +18,10 @@ pub(super) use rows::{RowCarry, TableRow, collect_rows, row_collapsed};
 /// Красится ли коробка (фон или рамка) — такой блок в бюджете строк
 /// прячется целиком, если точка среза попала внутрь него.
 pub(crate) fn has_box_style_probe(c: &Computed) -> bool {
-    c.background.is_some()
-        || c.bg_image.is_some()
-        || c.gradient_raw.is_some()
-        || c.border_visible.contains(&Some(true))
+    c.reset_background.background.is_some()
+        || c.reset_background.bg_image.is_some()
+        || c.reset_background.gradient_raw.is_some()
+        || c.reset_border.border_visible.contains(&Some(true))
 }
 
 pub(crate) use crate::dom::table_boxes::{anon_element, wrap_anon_tables};

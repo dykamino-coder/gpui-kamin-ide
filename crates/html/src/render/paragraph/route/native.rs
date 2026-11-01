@@ -42,7 +42,7 @@ pub(crate) fn native_paragraph(
     } else {
         flow_metrics(&pieces, &edges, inherited, opts)
     };
-    let line = match inherited.line_height {
+    let line = match inherited.inh.font.line_height {
         Some(Len::Px(v)) => gpui::px(v),
         Some(Len::Pct(_) | Len::Em(_)) => {
             gpui::px(inherited.numeric_line_px(opts.base_size()).unwrap_or(0.0))
@@ -68,7 +68,7 @@ pub(crate) fn native_paragraph(
         None => line,
     };
     let id = gpui::ElementId::Integer(text_id(&text));
-    let family = inherited.font_family.clone().unwrap_or_default();
+    let family = inherited.inh.font.font_family.clone().unwrap_or_default();
     let para = crate::text::paragraph::Paragraph::new(
         SharedString::from(text),
         runs,
@@ -94,32 +94,33 @@ pub(crate) fn native_paragraph(
         )
         .rel_spans(rotate_rel_spans(inline::rel_spans(&pieces), inherited))
         .ruby_justify(
-            inherited.ruby_justify == Some(true),
-            inherited.ruby_unit,
+            inherited.inh.text_flow.ruby_justify == Some(true),
+            inherited.reset_text_box.ruby_unit,
             inherited.wm().turned(),
             line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
-        .justify_chars(inherited.justify_chars.unwrap_or(1))
+        .justify_chars(inherited.inh.text_flow.justify_chars.unwrap_or(1))
         .align_last(super::alignment::last(inherited, opts))
         .letter_spacing(gpui::px(metrics::spacing_px(
-            inherited.letter_spacing,
+            inherited.inh.text_flow.letter_spacing,
             &family,
             biggest,
             opts.cx.vcx(),
         )))
         .word_spacing(gpui::px(metrics::spacing_px(
-            inherited.word_spacing,
+            inherited.inh.text_flow.word_spacing,
             &family,
             biggest,
             opts.cx.vcx(),
         )))
-        .hanging(inherited.hanging)
+        .hanging(inherited.inh.text_flow.hanging)
         .indent(indent)
         .spacers(inline::spacers(&pieces))
         .spacer_edges(inline::spacer_edges(&pieces))
         .box_extents(inline::box_extents(&pieces))
         .flow_shapes(
             inherited
+                .reset_shapes
                 .flow_shapes
                 .clone()
                 .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new()))),
@@ -135,13 +136,14 @@ pub(crate) fn native_paragraph(
         }))
         .clamp_marked(clamp_budget.is_some())
         .text_ellipsis(
-            inherited.ellipsis == Some(true)
+            inherited.reset_text_box.ellipsis == Some(true)
                 && inherited
+                    .reset_box_layout
                     .overflow_x
                     .is_some_and(|o| o != crate::style::computed::Overflow::Visible),
         )
         .overflow_marker(
-            inherited.overflow_marker.clone(),
+            inherited.reset_text_box.overflow_marker.clone(),
             Some(measure_font(inherited, opts)),
             Some(gpui::px(own_size(inherited, opts))),
         )
@@ -152,7 +154,7 @@ pub(crate) fn native_paragraph(
         // css-overflow-4 §block-ellipsis): у скрытого блока знака не
         // видно, даже если кусок у среза `visible`
         // (`text-overflow-ellipsis-002`, `webkit-line-clamp-035`).
-        .marker_color(Some(if inherited.hidden == Some(true) {
+        .marker_color(Some(if inherited.inh.ui.hidden == Some(true) {
             gpui::transparent_black()
         } else {
             inherited
@@ -164,15 +166,18 @@ pub(crate) fn native_paragraph(
         .fit_parts(
             // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
             // (от вычисленного кегля) подбор не трогает.
-            [inherited.letter_spacing, inherited.word_spacing]
-                .iter()
-                .all(|l| matches!(l, None | Some(Len::Pct(_)))),
+            [
+                inherited.inh.text_flow.letter_spacing,
+                inherited.inh.text_flow.word_spacing,
+            ]
+            .iter()
+            .all(|l| matches!(l, None | Some(Len::Pct(_)))),
             matches!(
-                inherited.line_height,
+                inherited.inh.font.line_height,
                 Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ex(_)) | Some(Len::Ch(_))
             ),
         )
-        .hyphen_limit_lines(inherited.hyphen_limit_lines)
+        .hyphen_limit_lines(inherited.inh.text_flow.hyphen_limit_lines)
         .hyphen_char(
             crate::render::paragraph::paragraph_style(inherited)
                 .hyphen_char
@@ -192,8 +197,8 @@ pub(crate) fn native_paragraph(
         .ruby_trim(
             crate::text::line_trim::para(opts.cx.inline.trim_para, inherited.self_node).unwrap_or(
                 crate::text::line_trim::Trim {
-                    start: inherited.text_box_trim_start,
-                    end: inherited.text_box_trim_end,
+                    start: inherited.reset_text_box.text_box_trim_start,
+                    end: inherited.reset_text_box.text_box_trim_end,
                     over: 0.0,
                 },
             ),
@@ -202,8 +207,8 @@ pub(crate) fn native_paragraph(
         opts.frag.watch.as_ref().map(|w| w.flow.clone()),
         crate::layout::fragment::types::StackAxis::of(inherited.wm()),
         (
-            usize::from(inherited.orphans.unwrap_or(2)),
-            usize::from(inherited.widows.unwrap_or(2)),
+            usize::from(inherited.inh.text_flow.orphans.unwrap_or(2)),
+            usize::from(inherited.inh.text_flow.widows.unwrap_or(2)),
         ),
     );
     let para = crate::render::paragraph::first_line_box::configure(para, inherited, opts);

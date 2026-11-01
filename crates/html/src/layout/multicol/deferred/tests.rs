@@ -61,19 +61,25 @@ fn deferred_children_resolve_percentages_from_original_content_box() {
         let Node::Element(child) = &resolved.children[0] else {
             unreachable!()
         };
-        assert_eq!(child.style.used().height, Some(Len::Px(170.0)));
+        assert_eq!(
+            child.style.used().reset_box_layout.height,
+            Some(Len::Px(170.0))
+        );
         let measured = RefCell::default();
         let kids = laid::children(&resolved, &merged, opts.cx.frame(), width, &measured)
             .expect("resolved measured tree");
         let child = kids[0].0.style.used();
-        assert_eq!(child.height, Some(Len::Px(170.0)));
-        assert_eq!(child.min_height, Some(Len::Px(85.0)));
-        assert_eq!(child.max_height, Some(Len::Px(255.0)));
+        assert_eq!(child.reset_box_layout.height, Some(Len::Px(170.0)));
+        assert_eq!(child.reset_box_layout.min_height, Some(Len::Px(85.0)));
+        assert_eq!(child.reset_box_layout.max_height, Some(Len::Px(255.0)));
     }
     let Node::Element(original) = &host.children[0] else {
         unreachable!()
     };
-    assert_eq!(original.style.used().height, Some(Len::Pct(0.5)));
+    assert_eq!(
+        original.style.used().reset_box_layout.height,
+        Some(Len::Pct(0.5))
+    );
 }
 
 #[gpui::test]
@@ -108,8 +114,11 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
             panic!("float")
         };
         assert!(float.marks.float_block);
-        assert_eq!(float.style.used().float, None);
-        assert_eq!(float.style.used().height, Some(Len::Px(100.0)));
+        assert_eq!(float.style.used().reset_box_layout.float, None);
+        assert_eq!(
+            float.style.used().reset_box_layout.height,
+            Some(Len::Px(100.0))
+        );
         cx.draw(
             gpui::point(gpui::px(0.), gpui::px(0.)),
             gpui::size(gpui::px(400.), gpui::px(400.)),
@@ -122,7 +131,7 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
     let Node::Element(original) = &host.children[1] else {
         panic!("original float")
     };
-    assert_eq!(original.style.used().float, Some(-1));
+    assert_eq!(original.style.used().reset_box_layout.float, Some(-1));
 }
 
 #[gpui::test]

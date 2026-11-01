@@ -95,6 +95,8 @@ def access(words, index):
 
 def aggregate(sources):
     fields, constructors = grouped_definitions(sources)
+    group_handles = set(re.findall(
+        r'^    pub (\w+): StyleGroup<', sources[DEFINITIONS], re.MULTILINE))
     inherited_groups = set(re.findall(
         r'^    pub (\w+): StyleGroup<',
         sources[DEFINITIONS].split('pub struct InheritedStyle {', 1)[-1].split('}', 1)[0],
@@ -121,6 +123,14 @@ def aggregate(sources):
             group_projection = (word == 'inh' and words[index + 1:index + 2] == ['.']
                                 and index + 2 < len(words)
                                 and words[index + 2] in inherited_groups)
+            # Moving CSS operands behind handles must not create an unguarded
+            # whole-record mutation path outside style. Leaf projections keep
+            # their historical IDs; whole handles have zero new escape budget.
+            if (owner != 'style' and word in group_handles and before == '.'
+                    and following not in (['.'], ['['])):
+                kind = access(words, index)
+                if kind in ('write', 'mutable') and receivers.may_write(path, words, index):
+                    counts['@style-group-' + kind, context, 'escape'] += 1
             if word in fields and (before == '.' or initialized) and not group_projection:
                 kind = access(words, index) if before == '.' else 'initialize'
                 if kind in ('write', 'mutable') and not receivers.may_write(path, words, index):
@@ -133,6 +143,10 @@ def aggregate(sources):
                 counts['@' + word, context, 'escape'] += 1
             if owner != 'style' and words[index:index + 3] == ['&', 'mut', 'Computed']:
                 counts['@mut-Computed', context, 'escape'] += 1
+            if (owner != 'style' and words[index:index + 2] == ['&', 'mut']
+                    and words[index + 2:index + 3]
+                    and words[index + 2] in constructors - {'Computed', 'InheritedStyle'}):
+                counts['@mut-style-group', context, 'escape'] += 1
     return counts
 
 

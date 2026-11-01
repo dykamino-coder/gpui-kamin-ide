@@ -32,7 +32,8 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             // Ячейка таблицы узнаётся и по тегу: `Display::TableCell` на этом шаге
             // приходит только из авторского CSS.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
-                || e.style.cascaded().display == Some(crate::style::computed::Display::TableCell);
+                || e.style.cascaded().reset_box_layout.display
+                    == Some(crate::style::computed::Display::TableCell);
             e.style
                 .cascaded_mut()
                 .resolve_logical(wm, parent_vertical, is_cell, vcx);
@@ -56,8 +57,10 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             // Ортогональный корень потока тоже сохраняет их: его строчный размер —
             // запасное доступное место минус собственные поля строчной оси
             // (css-writing-modes-4 §7.3), которые схлопывание может вынести наружу.
-            if e.style.cascaded().clip_ref == Some(1) || wm.vertical() != parent_vertical {
-                e.style.cascaded_mut().own_margin = Some(e.style.cascaded().margin);
+            if e.style.cascaded().reset_mask.clip_ref == Some(1) || wm.vertical() != parent_vertical
+            {
+                e.style.cascaded_mut().reset_box_layout.own_margin =
+                    Some(e.style.cascaded().reset_box_layout.margin);
             }
             walk(&mut e.children, props, vcx);
         }
@@ -86,9 +89,9 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
 fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        let orientation = e.style.cascaded().image_orient_none.or(parent);
-        if e.style.cascaded().mask_image.is_some() {
-            e.style.cascaded_mut().image_orient_none = orientation;
+        let orientation = e.style.cascaded().inh.ui.image_orient_none.or(parent);
+        if e.style.cascaded().reset_mask.mask_image.is_some() {
+            e.style.cascaded_mut().inh.ui.image_orient_none = orientation;
         }
         settle_mask_orientation(&mut e.children, orientation);
     }
@@ -119,8 +122,8 @@ mod tests {
         fn collect(nodes: &[Node], flags: &mut Vec<Option<bool>>) {
             for node in nodes {
                 if let Node::Element(e) = node {
-                    if e.style.cascaded().mask_image.is_some() {
-                        flags.push(e.style.cascaded().image_orient_none);
+                    if e.style.cascaded().reset_mask.mask_image.is_some() {
+                        flags.push(e.style.cascaded().inh.ui.image_orient_none);
                     }
                     collect(&e.children, flags);
                 }
@@ -145,10 +148,19 @@ mod tests {
         let p =
             crate::dom::test_support::find(doc.nodes(), &|e| e.attr("id") == Some("a")).expect("p");
         // sideways-lr + rtl: inline-start сверху, block-start слева (§6.4).
-        assert_eq!(p.style.cascaded().margin.top, Some(Len::Px(15.0)));
-        assert_eq!(p.style.cascaded().padding.left, Some(Len::Px(5.0)));
         assert_eq!(
-            (p.style.cascaded().writing_mode, p.style.cascaded().rtl),
+            p.style.cascaded().reset_box_layout.margin.top,
+            Some(Len::Px(15.0))
+        );
+        assert_eq!(
+            p.style.cascaded().reset_box_layout.padding.left,
+            Some(Len::Px(5.0))
+        );
+        assert_eq!(
+            (
+                p.style.cascaded().inh.writing.writing_mode,
+                p.style.cascaded().inh.writing.rtl
+            ),
             (None, None)
         );
     }

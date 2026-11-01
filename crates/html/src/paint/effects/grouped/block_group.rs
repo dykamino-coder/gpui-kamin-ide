@@ -16,11 +16,11 @@ pub(crate) fn group_style(
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
     let mut style = BoxStyle::shared(own.used());
-    if style.mask_image.is_none() {
+    if style.reset_mask.mask_image.is_none() {
         return style;
     }
     let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
-    style.mask_image = computed.mask_image.clone();
+    style.reset_mask.mask_image = computed.reset_mask.mask_image.clone();
     style
 }
 
@@ -41,11 +41,11 @@ pub(crate) fn block_group(
     let vcx = frame.values;
     let style = group_style(&e.style, inherited, vcx);
     if crate::paint::stacking::stacking_context(&e.style.used())
-        && e.style.used().isolate != Some(true)
+        && e.style.used().reset_effects.isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
         let mut iso = style;
-        iso.isolate = Some(true);
+        iso.reset_effects.isolate = Some(true);
         return super::grouped(el, &iso, frame);
     }
     super::grouped(el, &style, frame)

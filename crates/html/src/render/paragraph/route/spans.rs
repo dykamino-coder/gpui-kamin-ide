@@ -24,25 +24,28 @@ pub(crate) fn paragraph_spans(
             crate::render::paragraph::paragraph_style(inherited).lines_reversed == Some(true),
         )
         .vertical(
-            inherited.para_vertical.is_some(),
-            inherited.para_vertical == Some(true),
+            inherited.reset_context.para_vertical.is_some(),
+            inherited.reset_context.para_vertical == Some(true),
         )
-        .ortho_limit(inherited.ortho_limit.map(px))
+        .ortho_limit(inherited.reset_context.ortho_limit.map(px))
         .vertical_central_baseline(!inherited.wm().alphabetic_baseline())
         .rotated_central(rotated_central(inherited))
         .vertical_counter_clockwise(
-            inherited.para_vertical == Some(false) && inherited.wm().sideways(),
+            inherited.reset_context.para_vertical == Some(false) && inherited.wm().sideways(),
         )
         .vertical_inline_constraint(
-            inherited.orthogonal_inline,
+            inherited.reset_context.orthogonal_inline,
             native_vertical::keyword(inherited),
         )
         .plaintext(
             inherited
+                .reset_cascade
                 .bidi_plaintext
                 .unwrap_or(false)
                 .then(|| {
                     inherited
+                        .inh
+                        .text_flow
                         .text_align
                         .unwrap_or(crate::style::computed::TextAlign::Start)
                 })
@@ -81,7 +84,7 @@ pub(crate) fn paragraph_spans(
                 f32::from(line),
                 opts,
                 rotated_central(inherited).then(|| {
-                    let family = inherited.font_family.clone().unwrap_or_default();
+                    let family = inherited.inh.font.font_family.clone().unwrap_or_default();
                     let size = crate::render::paragraph::own_size(inherited, opts);
                     let (a, d, _) = crate::text::metrics::vmetrics_px(
                         &family,
@@ -91,7 +94,7 @@ pub(crate) fn paragraph_spans(
                     );
                     (a - d) / 2.0
                 }),
-                inherited.vertical_align,
+                inherited.inh.text_flow.vertical_align,
             );
             v.retain(|(r, _)| !in_edge(edges, r));
             v
@@ -102,7 +105,7 @@ pub(crate) fn paragraph_spans(
                 inherited,
                 biggest,
                 crate::text::metrics::normal_line(
-                    &inherited.font_family.clone().unwrap_or_default(),
+                    &inherited.inh.font.font_family.clone().unwrap_or_default(),
                     opts.cx.text_fonts(),
                     opts.cx.vcx(),
                 ),
@@ -119,7 +122,7 @@ pub(crate) fn paragraph_spans(
             pieces,
             biggest,
             crate::text::metrics::normal_line(
-                &inherited.font_family.clone().unwrap_or_default(),
+                &inherited.inh.font.font_family.clone().unwrap_or_default(),
                 opts.cx.text_fonts(),
                 opts.cx.vcx(),
             ),

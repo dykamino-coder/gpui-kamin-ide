@@ -118,7 +118,7 @@ mod tests {
         let interned = ["chapter".into()];
         let geoms = [geom_for(0, ""), geom_for(1, "chapter")];
         let mut style = Computed::default();
-        style.writing_mode = Some(WritingModeKw::VerticalRl);
+        style.inh.writing.writing_mode = Some(WritingModeKw::VerticalRl);
         let pages = Pages {
             names: &names,
             interned: &interned,

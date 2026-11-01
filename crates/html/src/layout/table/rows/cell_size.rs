@@ -10,18 +10,18 @@ pub(super) fn vertical_block_floor(
     family: &str,
     vcx: crate::values::ValueCx<'_>,
 ) {
-    if style.width_from_inline {
+    if style.reset_box_layout.width_from_inline {
         return;
     }
-    let width = match style.width {
+    let width = match style.reset_box_layout.width {
         Some(Len::Px(width)) => width,
         Some(length @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
             crate::text::metrics::spacing_px(Some(length), family, font, vcx)
         }
         _ => return,
     };
-    style.width = None;
-    style.min_width = Some(Len::Px(match style.min_width {
+    style.reset_box_layout.width = None;
+    style.reset_box_layout.min_width = Some(Len::Px(match style.reset_box_layout.min_width {
         Some(Len::Px(minimum)) => width.max(minimum),
         _ => width,
     }));
@@ -44,15 +44,15 @@ mod tests {
             ..Computed::default()
         };
         vertical_block_floor(&mut cell, 16.0, "", vcx);
-        assert_eq!(cell.width, None);
-        assert_eq!(cell.min_width, Some(Len::Px(100.0)));
-        cell.width = Some(Len::Px(50.0));
+        assert_eq!(cell.reset_box_layout.width, None);
+        assert_eq!(cell.reset_box_layout.min_width, Some(Len::Px(100.0)));
+        cell.reset_box_layout.width = Some(Len::Px(50.0));
         vertical_block_floor(&mut cell, 16.0, "", vcx);
-        assert_eq!(cell.min_width, Some(Len::Px(100.0)));
-        cell.width = Some(Len::Px(150.0));
-        cell.width_from_inline = true;
+        assert_eq!(cell.reset_box_layout.min_width, Some(Len::Px(100.0)));
+        cell.reset_box_layout.width = Some(Len::Px(150.0));
+        cell.reset_box_layout.width_from_inline = true;
         vertical_block_floor(&mut cell, 16.0, "", vcx);
-        assert_eq!(cell.width, Some(Len::Px(150.0)));
-        assert_eq!(cell.min_width, Some(Len::Px(100.0)));
+        assert_eq!(cell.reset_box_layout.width, Some(Len::Px(150.0)));
+        assert_eq!(cell.reset_box_layout.min_width, Some(Len::Px(100.0)));
     }
 }

@@ -29,22 +29,22 @@ fn embedded_root_is_a_clipped_block_without_host_effects() {
         ),
         ..Computed::default()
     };
-    host.font_size = Some(Len::Px(20.0));
+    host.inh.font.font_size = Some(Len::Px(20.0));
     let host = BoxStyle::new(host);
     let root = embedded_root(host.clone(), (30.0, 20.0));
-    assert_eq!(root.width, Some(Len::Px(30.0)));
-    assert_eq!(root.height, Some(Len::Px(20.0)));
-    assert_eq!(root.display, Some(Display::Block));
-    assert_eq!(root.position, Some(Position::Relative));
-    assert_eq!(root.flow_root, Some(true));
-    assert_eq!(root.opacity, None);
-    assert_eq!(root.overflow_x, Some(Overflow::Hidden));
+    assert_eq!(root.reset_box_layout.width, Some(Len::Px(30.0)));
+    assert_eq!(root.reset_box_layout.height, Some(Len::Px(20.0)));
+    assert_eq!(root.reset_box_layout.display, Some(Display::Block));
+    assert_eq!(root.reset_positioned.position, Some(Position::Relative));
+    assert_eq!(root.reset_context.flow_root, Some(true));
+    assert_eq!(root.reset_effects.opacity, None);
+    assert_eq!(root.reset_box_layout.overflow_x, Some(Overflow::Hidden));
     // An authored overflow stays; inherited values reach the content.
-    assert_eq!(root.overflow_y, Some(Overflow::Scroll));
-    assert_eq!(root.font_size, Some(Len::Px(20.0)));
+    assert_eq!(root.reset_box_layout.overflow_y, Some(Overflow::Scroll));
+    assert_eq!(root.inh.font.font_size, Some(Len::Px(20.0)));
     // The host box itself is not edited.
-    assert_eq!(host.opacity, Some(0.5));
-    assert_eq!(host.display, Some(Display::InlineBlock));
+    assert_eq!(host.reset_effects.opacity, Some(0.5));
+    assert_eq!(host.reset_box_layout.display, Some(Display::InlineBlock));
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn embedded_root_reenters_under_the_default_viewport_parent() {
     let doc = crate::document::state::DocState::new(Default::default());
     let vcx = doc.values();
     let mut host = Computed::default();
-    host.font_size = Some(Len::Px(20.0));
+    host.inh.font.font_size = Some(Len::Px(20.0));
     let host = BoxStyle::new(host);
     let mut html = crate::dom::table_boxes::anon_element("div", vec![]);
     html.set_layout_box(LayoutBoxInput::new(
@@ -61,7 +61,7 @@ fn embedded_root_reenters_under_the_default_viewport_parent() {
     ));
     assert_eq!(html.marks.box_origin, Some(BoxOrigin::EmbeddedRoot));
     let boxed = box_style(&BoxStyle::default(), &html.style, vcx);
-    assert_eq!(boxed.font_size, Some(Len::Px(20.0)));
-    assert_eq!(boxed.width, Some(Len::Px(30.0)));
-    assert_eq!(boxed.display, Some(Display::Block));
+    assert_eq!(boxed.inh.font.font_size, Some(Len::Px(20.0)));
+    assert_eq!(boxed.reset_box_layout.width, Some(Len::Px(30.0)));
+    assert_eq!(boxed.reset_box_layout.display, Some(Display::Block));
 }

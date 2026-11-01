@@ -28,6 +28,8 @@ pub(super) fn last(style: &Computed, opts: &RenderOpts) -> Option<Align> {
     marker(opts)
         .or_else(|| {
             style
+                .inh
+                .text_flow
                 .text_align_last
                 .flatten()
                 .map(|a| a.physical(style.wm().rtl()))
@@ -35,7 +37,7 @@ pub(super) fn last(style: &Computed, opts: &RenderOpts) -> Option<Align> {
         .map(crate::text::paragraph::align_of_value)
         .map(|a| match a {
             // CSS Text 3 В§7.3: text-justify:none Р·Р°РїСЂРµС‰Р°РµС‚ СЂР°СЃС‚СЏР¶РµРЅРёРµ РїРѕСЃР»РµРґРЅРµР№ СЃС‚СЂРѕРєРё.
-            Align::Justify if style.no_justify == Some(true) => {
+            Align::Justify if style.inh.text_flow.no_justify == Some(true) => {
                 if style.wm().rtl() {
                     Align::Right
                 } else {
@@ -66,16 +68,22 @@ mod tests {
                         TextAlign::Justify,
                     ] {
                         let mut item = Computed::default();
-                        item.text_align = Some(align);
-                        item.text_align_last = Some(Some(align));
-                        item.rtl = Some(item_rtl);
-                        item.writing_mode = Some(mode);
+                        item.inh.text_flow.text_align = Some(align);
+                        item.inh.text_flow.text_align_last = Some(Some(align));
+                        item.inh.writing.rtl = Some(item_rtl);
+                        item.inh.writing.writing_mode = Some(mode);
                         let item = BoxStyle::new(item);
                         let mut own = Computed::default();
-                        own.rtl = Some(marker_rtl);
+                        own.inh.writing.rtl = Some(marker_rtl);
                         let marker = inherit(&item, &own, vcx);
-                        assert_eq!(marker.text_align, item.text_align);
-                        assert_eq!(marker.text_align_last, item.text_align_last);
+                        assert_eq!(
+                            marker.inh.text_flow.text_align,
+                            item.inh.text_flow.text_align
+                        );
+                        assert_eq!(
+                            marker.inh.text_flow.text_align_last,
+                            item.inh.text_flow.text_align_last
+                        );
                         let before = (*marker).clone();
                         let mut opts = RenderOpts {
                             text: Default::default(),

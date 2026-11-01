@@ -17,13 +17,13 @@ pub(crate) use styled::render_with_style;
 
 fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
     let flex_parent = matches!(
-        parent.display,
+        parent.reset_box_layout.display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
     );
-    if li.style.used().flex_shrink.is_none() && !flex_parent {
+    if li.style.used().reset_flex.flex_shrink.is_none() && !flex_parent {
         d.flex_shrink_0()
     } else {
         d
@@ -38,17 +38,17 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
         "lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero",
     ];
     let numeric = |t: &str| NUMERIC.contains(&t);
-    if layer.is_some_and(|m| m.font_features.iter().any(|(t, _)| numeric(t))) {
+    if layer.is_some_and(|m| m.inh.font.font_features.iter().any(|(t, _)| numeric(t))) {
         return;
     }
-    let mut features = if style.font_features.is_empty() {
-        item.font_features.clone()
+    let mut features = if style.inh.font.font_features.is_empty() {
+        item.inh.font.font_features.clone()
     } else {
-        std::mem::take(&mut style.font_features)
+        std::mem::take(&mut style.inh.font.font_features)
     };
     features.retain(|(t, _)| !numeric(t));
     features.push(("tnum".into(), 1));
-    style.font_features = features;
+    style.inh.font.font_features = features;
 }
 
 pub(super) async fn render(
@@ -60,10 +60,10 @@ pub(super) async fn render(
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(
-        li.style.used().display,
+        li.style.used().reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)
-    ) || (li.style.used().display == Some(Display::InlineBlock)
-        && li.style.used().inline_display != Some(true))
+    ) || (li.style.used().reset_box_layout.display == Some(Display::InlineBlock)
+        && li.style.used().reset_context.inline_display != Some(true))
     {
         crate::layout::box_tree::pseudo_line_layers::install(li, &mut merged, vcx);
     }

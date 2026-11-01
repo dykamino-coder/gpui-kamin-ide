@@ -51,7 +51,10 @@ fn addressed_budget_keeps_first_remainder_and_later_constraints() {
     assert_eq!(outer.at(0).unwrap().block_size, Some(25.));
     assert_eq!(outer.at(1).unwrap().block_size, Some(40.));
     assert_eq!((plan.nest_rows, plan.nest_phase), (Some(100.), 75.));
-    assert_eq!(e.style.used().min_height, Some(Len::Px(600.)));
+    assert_eq!(
+        e.style.used().reset_box_layout.min_height,
+        Some(Len::Px(600.))
+    );
     for property in ["column-height:30px", "column-wrap:nowrap"] {
         let tree = crate::document::parsed::parse(&format!("<div style='{property}'></div>"), "");
         let plan = row_plan(
@@ -89,7 +92,7 @@ fn measured_rows_and_auto_prefix_share_constraints_without_mutating_host() {
     let prefix = super::row_plan_in(e, &opts, None, 2, false, None, input.prefix());
     assert_eq!(prefix.box_h, None);
     assert!(prefix.rows.is_none());
-    assert_eq!(e.style.used().height, Some(Len::Px(500.)));
+    assert_eq!(e.style.used().reset_box_layout.height, Some(Len::Px(500.)));
 }
 
 #[test]
@@ -123,6 +126,9 @@ fn measured_rows_keep_indefinite_own_height_and_relative_minimum() {
         assert_eq!(plan.box_h, height);
         assert!(plan.rows.is_none());
     }
-    assert_eq!(e.style.used().height, Some(Len::Pct(0.5)));
-    assert_eq!(e.style.used().min_height, Some(Len::Em(2.)));
+    assert_eq!(e.style.used().reset_box_layout.height, Some(Len::Pct(0.5)));
+    assert_eq!(
+        e.style.used().reset_box_layout.min_height,
+        Some(Len::Em(2.))
+    );
 }

@@ -25,8 +25,8 @@ pub(super) fn register(
         return req;
     }
     for (start, on) in [
-        (true, inherited.text_box_trim_start),
-        (false, inherited.text_box_trim_end),
+        (true, inherited.reset_text_box.text_box_trim_start),
+        (false, inherited.reset_text_box.text_box_trim_end),
     ] {
         if !on {
             continue;
@@ -63,18 +63,24 @@ pub(super) fn para_flags(own: Trim, first: bool, last: bool) -> Trim {
 /// пересчитывается от нового кегля сам.
 fn first_line_root(line_style: &Computed) -> Computed {
     let mut c = line_style.clone();
-    if let Some(fl) = line_style.first_line.as_deref() {
-        let base = px_strict(line_style.font_size);
+    if let Some(fl) = line_style.reset_text_box.first_line.as_deref() {
+        let base = px_strict(line_style.inh.font.font_size);
         c.overlay_font_size(fl);
-        c.font_size = match (fl.font_size, base) {
+        c.inh.font.font_size = match (fl.inh.font.font_size, base) {
             (Some(Len::Em(k)), Some(b)) | (Some(Len::Pct(k)), Some(b)) => Some(Len::Px(k * b)),
             (Some(v), _) => Some(v),
-            (None, _) => line_style.font_size,
+            (None, _) => line_style.inh.font.font_size,
         };
-        if fl.font_family.as_ref().is_some_and(|f| !f.is_empty()) {
-            c.font_family = fl.font_family.clone();
+        if fl
+            .inh
+            .font
+            .font_family
+            .as_ref()
+            .is_some_and(|f| !f.is_empty())
+        {
+            c.inh.font.font_family = fl.inh.font.font_family.clone();
         }
-        c.line_height = fl.line_height.or(line_style.line_height);
+        c.inh.font.line_height = fl.inh.font.line_height.or(line_style.inh.font.line_height);
     }
     c
 }
@@ -82,7 +88,7 @@ fn first_line_root(line_style: &Computed) -> Computed {
 /// Расстояние от верха строки струта до базовой линии: полулидинг + подъём.
 fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
     let size = crate::layout::options::own_size(s, opts);
-    let family = s.font_family.clone().unwrap_or_default();
+    let family = s.inh.font.font_family.clone().unwrap_or_default();
     let (ascent, descent, _) = crate::style::font_metrics::vertical(&family, size, opts.cx.vcx());
     let line = s
         .numeric_line_px(opts.base_size())
@@ -96,7 +102,8 @@ pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
     rest.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
         Node::Element(e) => {
-            e.style.used().display == Some(Display::None) || out_of_flow(&e.style.used())
+            e.style.used().reset_box_layout.display == Some(Display::None)
+                || out_of_flow(&e.style.used())
         }
     })
 }
@@ -124,7 +131,7 @@ pub(super) fn apply(
     let vcx = opts.cx.vcx();
     let vertical = inherited.wm().vertical();
     let rl = inherited.wm().block_rl();
-    if inherited.text_box_trim_start
+    if inherited.reset_text_box.text_box_trim_start
         && let Some((line_style, _)) =
             text_box_line_style(nodes, inherited, true, inherited.self_node, vcx)
     {
@@ -142,7 +149,7 @@ pub(super) fn apply(
             out.insert(0, holder.child(first).into_any_element());
         }
     }
-    if inherited.text_box_trim_end
+    if inherited.reset_text_box.text_box_trim_end
         && let Some((line_style, _)) =
             text_box_line_style(nodes, inherited, false, inherited.self_node, vcx)
     {

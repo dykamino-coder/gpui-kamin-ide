@@ -48,7 +48,8 @@ pub(crate) async fn dispatch_element(
     }
     match e.tag.as_str() {
         // CSS Lists 3 §2: блочный list-item создаёт свой маркер даже вне списка.
-        _ if (st.display == Some(Display::ListItem) || (e.tag == "li" && st.display.is_none()))
+        _ if (st.reset_box_layout.display == Some(Display::ListItem)
+            || (e.tag == "li" && st.reset_box_layout.display.is_none()))
             && !matches!(
                 e.tag.as_str(),
                 "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
@@ -77,15 +78,15 @@ pub(crate) async fn dispatch_element(
             if inline_level(e) {
                 replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
             }
-            used.image_orient_none = merged.image_orient_none;
+            used.inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
             let context = inherit_item_metadata(used, context, &merged, inherited);
             // Определённость блока (§10.5) берётся от слитого стиля, иначе
             // `apply` теряет `height: %`; ячейки и лунки ведут её сами.
             if !matches!(
-                inherited.display,
+                inherited.reset_box_layout.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
             ) {
-                used.cb_height_def_hint = merged.cb_height_def;
+                used.reset_context.cb_height_def_hint = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
             used.resolve_viewport(opts.viewport, vcx);
@@ -102,7 +103,8 @@ pub(crate) async fn dispatch_element(
         // контекст просмотра держит размер по умолчанию (CSS 2.1 §§10.3.2,
         // 10.6.2).
         "iframe"
-            if st.floated_box && crate::layout::replaced::replaced_content::default_iframe(e) =>
+            if st.reset_context.floated_box
+                && crate::layout::replaced::replaced_content::default_iframe(e) =>
         {
             crate::layout::replaced::replaced_content::empty_iframe(e, inherited, opts)
         }
@@ -114,27 +116,32 @@ pub(crate) async fn dispatch_element(
         // (рукав `"iframe"` в `atom_element`), у обёрток флоатов свой путь
         // размеров с процентной базой (`float-replaced-height-005/007`).
         "iframe"
-            if st.float.is_none_or(|f| f == 0)
-                && matches!(inherited.display, None | Some(Display::Block))
-                && st.flow_root != Some(true)
+            if st.reset_box_layout.float.is_none_or(|f| f == 0)
+                && matches!(
+                    inherited.reset_box_layout.display,
+                    None | Some(Display::Block)
+                )
+                && st.reset_context.flow_root != Some(true)
                 && !matches!(
-                    st.width,
+                    st.reset_box_layout.width,
                     Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
                 ) =>
         {
             let mut copy = pct_height_to_px(e, inherited);
             if !matches!(
-                copy.style.used().width,
+                copy.style.used().reset_box_layout.width,
                 Some(Len::Px(_)) | Some(Len::Pct(_))
             ) {
-                copy.style.used_mut().width = Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
+                copy.style.used_mut().reset_box_layout.width =
+                    Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
             }
-            let pct_ok =
-                matches!(copy.style.used().height, Some(Len::Pct(_))) && merged.cb_height_def;
-            if !matches!(copy.style.used().height, Some(Len::Px(_))) && !pct_ok {
-                copy.style.used_mut().height = Some(Len::Px(DEFAULT_REPLACED_HEIGHT_PX));
+            let pct_ok = matches!(copy.style.used().reset_box_layout.height, Some(Len::Pct(_)))
+                && merged.cb_height_def;
+            if !matches!(copy.style.used().reset_box_layout.height, Some(Len::Px(_))) && !pct_ok {
+                copy.style.used_mut().reset_box_layout.height =
+                    Some(Len::Px(DEFAULT_REPLACED_HEIGHT_PX));
             }
-            copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
+            copy.style.used_mut().reset_context.cb_height_def_hint = merged.cb_height_def;
             styled_div(&copy, &opts.cx)
                 .flex_shrink_0()
                 .into_any_element()
@@ -159,7 +166,7 @@ pub(crate) async fn dispatch_element(
             // Тот же stretch-fit, что у строчного атома (`atom_element`).
             // Содержащий блок — `inherited` (родитель), а не `merged`: это
             // уже собственный стиль рисунка.
-            let cb_w = match inherited.width {
+            let cb_w = match inherited.reset_box_layout.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
                 _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
             };
@@ -178,7 +185,7 @@ pub(crate) async fn dispatch_element(
         "hr" => {
             let d = styled_div_with(e, &merged, &opts.cx);
             // A `width` (CSS or the §15.3.11 hint) keeps its own size.
-            if inherited.wm().vertical() || merged.width.is_some() {
+            if inherited.wm().vertical() || merged.reset_box_layout.width.is_some() {
                 d.into_any_element()
             } else {
                 d.w_full().into_any_element()
@@ -194,7 +201,7 @@ pub(crate) async fn dispatch_element(
         // только узел, собранный мимо того прохода, — он переводится тем же
         // правилом. Рукописная раскладка `lanes` удалена: все оси (вертикальное
         // письмо, `rtl`) ведёт `taffy::compute::grid::lanes`.
-        _ if merged.display == Some(Display::GridLanes) => {
+        _ if merged.reset_box_layout.display == Some(Display::GridLanes) => {
             let mut copy = e.clone();
             crate::dom::lanes_to_grid(copy.style.used_mut());
             stk.run(|stk| element_stack(stk, &copy, inherited, opts))
@@ -205,7 +212,7 @@ pub(crate) async fn dispatch_element(
         // Табличный путь минует общий, где стоит этот сторож (`makes_bfc`),
         // поэтому он ставится здесь.
         _ if matches!(
-            st.display,
+            st.reset_box_layout.display,
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
@@ -215,7 +222,7 @@ pub(crate) async fn dispatch_element(
         // css-tables-3 §3.1: вне таблицы ряд, группа рядов и ячейка получают
         // анонимную таблицу, иначе ячейки складывались бы столбиком обычных блоков.
         _ if matches!(
-            st.display,
+            st.reset_box_layout.display,
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
@@ -229,7 +236,9 @@ pub(crate) async fn dispatch_element(
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if st.display.is_none() => list::render(stk, e, &merged, opts).await,
+        "ul" | "ol" if st.reset_box_layout.display.is_none() => {
+            list::render(stk, e, &merged, opts).await
+        }
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.

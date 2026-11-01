@@ -28,9 +28,13 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 /// Слой рамки-картинки поверх коробки.
 pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let values = vcx.keep();
-    let image = c.border_image.clone().filter(|bi| bi.src.is_some())?;
-    let family = c.font_family.clone().unwrap_or_default();
-    let size = match c.font_size {
+    let image = c
+        .reset_border
+        .border_image
+        .clone()
+        .filter(|bi| bi.src.is_some())?;
+    let family = c.inh.font.font_family.clone().unwrap_or_default();
+    let size = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
@@ -48,11 +52,11 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let outset = std::array::from_fn::<_, 4, _>(|i| image.outset[i].px(base[i], 0.0));
     let src = crate::resources::css_images::computed_source(
         image.src.as_ref()?,
-        c.image_orient_none != Some(true),
+        c.inh.ui.image_orient_none != Some(true),
         vcx,
     )
     .map(crate::paint::background::Source::from_cpu)?;
-    let pixelated = c.image_pixelated == Some(true);
+    let pixelated = c.inh.ui.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},

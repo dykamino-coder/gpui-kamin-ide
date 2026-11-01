@@ -9,8 +9,8 @@ use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
     !parent.wm().vertical()
-        && matches!(parent.display, None | Some(Display::Block))
-        && matches!(child.display, None | Some(Display::Block))
+        && matches!(parent.reset_box_layout.display, None | Some(Display::Block))
+        && matches!(child.reset_box_layout.display, None | Some(Display::Block))
 }
 
 pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
@@ -20,7 +20,7 @@ pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
     // block; a wrapping fallback alone must not become a definite size.
     if parent.wm().vertical()
         && matches!(
-            parent.display,
+            parent.reset_box_layout.display,
             None | Some(
                 Display::Block | Display::InlineBlock | Display::ListItem | Display::TableCell
             )
@@ -37,7 +37,7 @@ pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
             });
         }
     }
-    parent.orthogonal_inline
+    parent.reset_context.orthogonal_inline
 }
 
 pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> InlineConstraint {
@@ -56,19 +56,20 @@ pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> Inl
                 *value = Some(Len::Px(k * basis));
             }
         };
-        for value in [
-            &mut style.height,
-            &mut style.min_height,
-            &mut style.max_height,
-            &mut style.margin.top,
-            &mut style.margin.right,
-            &mut style.margin.bottom,
-            &mut style.margin.left,
-            &mut style.padding.top,
-            &mut style.padding.right,
-            &mut style.padding.bottom,
-            &mut style.padding.left,
-        ] {
+        for style_field_index in 0..11 {
+            let value = match style_field_index {
+                0 => &mut style.reset_box_layout.height,
+                1 => &mut style.reset_box_layout.min_height,
+                2 => &mut style.reset_box_layout.max_height,
+                3 => &mut style.reset_box_layout.margin.top,
+                4 => &mut style.reset_box_layout.margin.right,
+                5 => &mut style.reset_box_layout.margin.bottom,
+                6 => &mut style.reset_box_layout.margin.left,
+                7 => &mut style.reset_box_layout.padding.top,
+                8 => &mut style.reset_box_layout.padding.right,
+                9 => &mut style.reset_box_layout.padding.bottom,
+                _ => &mut style.reset_box_layout.padding.left,
+            };
             resolve(value);
         }
     }
@@ -83,9 +84,11 @@ pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> Inl
     }
     if let Some(size) = used_parent {
         let margin = |value| px_lossy_zero(value);
-        let content =
-            (size - edges(style, true) - margin(style.margin.top) - margin(style.margin.bottom))
-                .max(0.0);
+        let content = (size
+            - edges(style, true)
+            - margin(style.reset_box_layout.margin.top)
+            - margin(style.reset_box_layout.margin.bottom))
+        .max(0.0);
         parent = InlineConstraint {
             available: content,
             fixed: Some(content),

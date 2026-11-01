@@ -15,7 +15,7 @@ use crate::style::computed::Display;
 pub(crate) fn size_monolith(k: &Element) -> bool {
     k.style.used().contains_block_size()
         && !matches!(
-            k.style.used().display,
+            k.style.used().reset_box_layout.display,
             Some(Display::TableCell) | Some(Display::TableRow) | Some(Display::TableRowGroup)
         )
         && !matches!(
@@ -29,9 +29,10 @@ pub(crate) fn forced_opaque(k: &Element) -> bool {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     size_monolith(k)
-        || ((scrolls(k.style.used().overflow_x) || scrolls(k.style.used().overflow_y))
+        || ((scrolls(k.style.used().reset_box_layout.overflow_x)
+            || scrolls(k.style.used().reset_box_layout.overflow_y))
             && !matches!(
-                k.style.used().display,
+                k.style.used().reset_box_layout.display,
                 Some(Display::TableRow) | Some(Display::TableRowGroup)
             )
             && !matches!(k.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot"))

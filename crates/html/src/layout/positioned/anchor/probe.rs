@@ -14,7 +14,7 @@ pub fn key_of(e: &crate::dom::Element) -> u64 {
         return e.node_id;
     }
     (1u64 << 63)
-        | (e.style.used().implicit_anchor.unwrap_or(0) << 1)
+        | (e.style.used().reset_positioned.implicit_anchor.unwrap_or(0) << 1)
         | u64::from(e.tag == "::after")
 }
 
@@ -23,9 +23,9 @@ pub fn key_of(e: &crate::dom::Element) -> u64 {
 /// (§position-anchor: «normal: If position-area is none, behaves as none.
 /// Otherwise, behaves as auto»).
 pub(super) fn wants_implicit(c: &Computed) -> bool {
-    match &c.position_anchor {
+    match &c.reset_positioned.position_anchor {
         Some(PositionAnchor::Auto) => true,
-        Some(PositionAnchor::Normal) | None => c.position_area.is_some(),
+        Some(PositionAnchor::Normal) | None => c.reset_positioned.position_area.is_some(),
         _ => false,
     }
 }
@@ -40,7 +40,13 @@ pub fn probe_for(
     hidden: bool,
     layout: &std::rc::Rc<LayoutState>,
 ) -> Option<AnyElement> {
-    let names: Vec<String> = e.style.used().anchor_name.clone().unwrap_or_default();
+    let names: Vec<String> = e
+        .style
+        .used()
+        .reset_positioned
+        .anchor_name
+        .clone()
+        .unwrap_or_default();
     let implicit = e.node_id != 0
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k) if k.tag.starts_with("::") && wants_implicit(&k.style.used()))
@@ -54,7 +60,7 @@ pub fn probe_for(
     }
     let id = e.node_id;
     if matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     ) {
         layout

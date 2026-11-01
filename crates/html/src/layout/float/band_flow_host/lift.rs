@@ -20,7 +20,12 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
-            if k.style.used().float.is_some_and(|f| f != 0) {
+            if k.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 return false;
             }
             // `<br style="clear">` под срезом конца строки по НЕ-текстовому
@@ -41,7 +46,7 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
                 // clear:both>`).
                 !own_context(k)
                     && k.tag != "table"
-                    && k.style.used().clear.is_none()
+                    && k.style.used().reset_box_layout.clear.is_none()
                     && flow_interior_plain(k)
             } else {
                 // Строчный: атом в строке (инлайн-блок) режется вырезом как
@@ -56,9 +61,9 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
 /// trimmed to a non-text edge (css-inline-3 §text-box-trim): the trim must
 /// not move the clearance, which the measured host's runs do not express.
 pub(in crate::layout::float) fn trimmed_clear(c: &Element, k: &Element) -> bool {
-    k.style.used().clear.is_some()
-        && c.style.used().text_box_trim_end
-        && c.style.cascaded().text_box_under != crate::style::computed::TextEdge::Text
+    k.style.used().reset_box_layout.clear.is_some()
+        && c.style.used().reset_text_box.text_box_trim_end
+        && c.style.cascaded().inh.text_flow.text_box_under != crate::style::computed::TextEdge::Text
 }
 
 /// Абсолютная коробка с заданными вставками по обеим осям: её место от
@@ -68,11 +73,11 @@ pub(in crate::layout::float) fn trimmed_clear(c: &Element, k: &Element) -> bool 
 pub(super) fn abs_pinned(c: &Computed) -> bool {
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) && (set(c.inset.top) || set(c.inset.bottom))
-        && (set(c.inset.left) || set(c.inset.right))
+    ) && (set(c.reset_positioned.inset.top) || set(c.reset_positioned.inset.bottom))
+        && (set(c.reset_positioned.inset.left) || set(c.reset_positioned.inset.right))
 }
 
 /// `band_flow_rest`, где абсолюты с заданными вставками (`abs_pinned`) не
@@ -180,12 +185,12 @@ pub(crate) fn band_flow_rest_lift(
                 if !block_level_in_flow(c) {
                     // `<br clear>`: the break ends the run, the next run
                     // clears (`pending_clear`).
-                    if c.style.used().clear.is_some() {
+                    if c.style.used().reset_box_layout.clear.is_some() {
                         let mut br = c.clone();
-                        br.style.used_mut().clear = None;
+                        br.style.used_mut().reset_box_layout.clear = None;
                         run.push(Node::Element(br));
                         flush(&mut run, &mut out, cont, pending_clear.take());
-                        pending_clear = c.style.used().clear;
+                        pending_clear = c.style.used().reset_box_layout.clear;
                         cont = true;
                         continue;
                     }

@@ -17,17 +17,26 @@ fn inner_width_px(c: &Computed, sizes: &BoxDimensions, cb: Option<f32>) -> Optio
         _ => None,
     };
     let b = c.borders();
-    let edges =
-        || Some(side(c.padding.left)? + side(c.padding.right)? + side(b.left)? + side(b.right)?);
+    let edges = || {
+        Some(
+            side(c.reset_box_layout.padding.left)?
+                + side(c.reset_box_layout.padding.right)?
+                + side(b.left)?
+                + side(b.right)?,
+        )
+    };
     match sizes.preferred[0] {
         Some(Len::Px(w)) if sizes.border_box => Some((w - edges()?).max(0.0)),
         Some(Len::Px(w)) => Some(w),
         Some(Len::Pct(k)) if !sizes.border_box => cb.map(|w| k * w),
         // §10.3.3: блок в потоке с `width: auto` занимает содержащий блок за
         // вычетом своих полей, рамок и отступов (auto-поле — ноль).
-        None | Some(Len::Auto) if in_flow(c) => {
-            Some((cb? - side(c.margin.left)? - side(c.margin.right)? - edges()?).max(0.0))
-        }
+        None | Some(Len::Auto) if in_flow(c) => Some(
+            (cb? - side(c.reset_box_layout.margin.left)?
+                - side(c.reset_box_layout.margin.right)?
+                - edges()?)
+            .max(0.0),
+        ),
         _ => None,
     }
 }
@@ -58,7 +67,7 @@ pub(super) fn with_inner_dimensions<'a, T>(
     // Прежде `html{font-size:2em} p{font-size:.5em}` схлопывал поле абзаца
     // сквозь `body` по 8 точкам вместо 16 (`numbers-units-021`).
     let font = vcx.collapse.font;
-    let own = match c.font_size {
+    let own = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * font,
         _ => font,
@@ -96,7 +105,7 @@ mod tests {
                 ),
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Em(2.0));
+            with_inherited.inh.font.font_size = Some(Len::Em(2.0));
             with_inherited
         };
         let snapshot = with_inner_cb(&style, parent, |child| {
@@ -112,7 +121,7 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Default::default()
                 };
-                with_inherited.font_size = Some(Len::Em(0.5));
+                with_inherited.inh.font.font_size = Some(Len::Em(0.5));
                 with_inherited
             };
             with_inner_cb(&grandchild, child, |grandchild| {
@@ -139,7 +148,7 @@ mod tests {
     fn percent_padding_uses_only_the_supplied_level_width() {
         let doc = DocState::new(Default::default());
         let mut e = crate::layout::table::anon::anon_element("div", vec![]);
-        e.style.used_mut().padding.top = Some(Len::Pct(0.5));
+        e.style.used_mut().reset_box_layout.padding.top = Some(Len::Pct(0.5));
         use crate::layout::block::struts::{top_edge_open, top_edge_open_at};
         assert!(top_edge_open_at(&e, Some(0.0)));
         assert!(!top_edge_open_at(&e, Some(100.0)));

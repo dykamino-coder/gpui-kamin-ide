@@ -40,11 +40,15 @@ fn repeated_marker_boxes_are_identical_generated_boxes() {
         assert_eq!(span.marks.box_origin, Some(BoxOrigin::Marker));
         assert!(span.inline);
         let used = span.style.used();
-        assert_eq!(used.bidi_isolate, Some(true));
-        assert!(used.first_letter_excluded);
-        assert!(used.content.is_none() && used.marker_layer.is_none());
+        assert_eq!(used.reset_cascade.bidi_isolate, Some(true));
+        assert!(used.reset_text_box.first_letter_excluded);
+        assert!(
+            used.reset_generated.content.is_none() && used.reset_generated.marker_layer.is_none()
+        );
         // CSS Lists 3 §3.1.1: tabular-nums replaces the inherited numeric variant once.
         let numeric: Vec<_> = used
+            .inh
+            .font
             .font_features
             .iter()
             .filter(|(t, _)| t == "tnum" || t == "onum")
@@ -61,7 +65,7 @@ fn author_marker_bidi_and_numeric_variant_win_over_ua_rules() {
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
     let mut item = style("display:list-item;list-style:decimal inside", vcx);
-    item.marker_layer = Some(
+    item.reset_generated.marker_layer = Some(
         style(
             "unicode-bidi:plaintext;font-variant-numeric:oldstyle-nums",
             vcx,
@@ -72,9 +76,9 @@ fn author_marker_bidi_and_numeric_variant_win_over_ua_rules() {
     let span = marker_box(&li, vcx);
     let used = span.style.used();
     assert_eq!(span.marks.box_origin, Some(BoxOrigin::Marker));
-    assert_ne!(used.bidi_isolate, Some(true));
-    assert_eq!(used.bidi_plaintext, Some(true));
-    assert!(!used.font_features.iter().any(|(t, _)| t == "tnum"));
+    assert_ne!(used.reset_cascade.bidi_isolate, Some(true));
+    assert_eq!(used.reset_cascade.bidi_plaintext, Some(true));
+    assert!(!used.inh.font.font_features.iter().any(|(t, _)| t == "tnum"));
 }
 
 #[test]

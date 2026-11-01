@@ -57,8 +57,8 @@ mod tests {
             Default::default(),
             vec![],
         );
-        e.style.used_mut().padding.top = Some(Len::Px(10.));
-        e.style.used_mut().padding.bottom = Some(Len::Px(20.));
+        e.style.used_mut().reset_box_layout.padding.top = Some(Len::Px(10.));
+        e.style.used_mut().reset_box_layout.padding.bottom = Some(Len::Px(20.));
         e.marks.spanner_content_box = true;
         let style = BoxStyle::shared(e.style.used());
         let sizes = BoxDimensions::for_element(&e, &style);
@@ -79,8 +79,14 @@ mod tests {
             &e,
             crate::layout::block::margins::MarginCx::new(doc.values())
         ));
-        assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));
-        assert_eq!(e.style.used().max_height, Some(Len::Px(180.)));
-        assert_eq!(e.style.used().border_box, Some(true));
+        assert_eq!(
+            e.style.used().reset_box_layout.min_height,
+            Some(Len::Px(150.))
+        );
+        assert_eq!(
+            e.style.used().reset_box_layout.max_height,
+            Some(Len::Px(180.))
+        );
+        assert_eq!(e.style.used().reset_border.border_box, Some(true));
     }
 }

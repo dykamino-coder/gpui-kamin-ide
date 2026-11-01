@@ -41,7 +41,7 @@ mod vertical_intrinsic;
 /// элемента место определённое, и подбирать нечего.
 pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
     let starts_here = e.style.cascaded().wm().vertical() && !inherited.wm().vertical();
-    if !starts_here || e.style.used().width.is_some() {
+    if !starts_here || e.style.used().reset_box_layout.width.is_some() {
         return el;
     }
     // Письмо, заданное на `body` (или `html`), — ГЛАВНОЕ письмо страницы: оно
@@ -56,7 +56,7 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // the box's layout parent, so `top: 0; left: 0` landed inside the padding
     // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
     if matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -92,7 +92,7 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // и отсекает. Лунки (`GridLanes`) не включены сознательно: у них свой
     // второй проход дорожек, это отдельный шаг.
     if matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::Grid)
             | Some(Display::InlineGrid)
             | Some(Display::Flex)

@@ -58,12 +58,12 @@ pub(super) fn align_units(merged: &mut crate::style::computed::Computed) {
     // `ruby-align`: `space-around` (начальное) и `center` — по центру
     // (у латиницы точек выключки нет, §4.3); `space-between` —
     // выключка обоих краёв; `start` — к началу.
-    match merged.ruby_align {
-        Some(RubyAlign::Start) => merged.text_align = Some(TextAlign::Start),
+    match merged.inh.text_flow.ruby_align {
+        Some(RubyAlign::Start) => merged.inh.text_flow.text_align = Some(TextAlign::Start),
         Some(RubyAlign::SpaceBetween) => {
-            merged.text_align = Some(TextAlign::Justify);
-            merged.text_align_last = Some(Some(TextAlign::Justify));
+            merged.inh.text_flow.text_align = Some(TextAlign::Justify);
+            merged.inh.text_flow.text_align_last = Some(Some(TextAlign::Justify));
         }
-        _ => merged.text_align = Some(TextAlign::Center),
+        _ => merged.inh.text_flow.text_align = Some(TextAlign::Center),
     }
 }

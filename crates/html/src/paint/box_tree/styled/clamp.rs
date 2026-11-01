@@ -4,7 +4,8 @@ use crate::style::values::value::{px_lossy_zero, px_strict};
 use crate::{dom::Element, layout::cx::LayoutCx, style::computed::Computed};
 use gpui::{Styled, px};
 pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) -> gpui::Div {
-    let sized = e.style.used().height.is_some() || e.style.used().min_height.is_some();
+    let sized = e.style.used().reset_box_layout.height.is_some()
+        || e.style.used().reset_box_layout.min_height.is_some();
     // A box fragmented at a line-clamp point ends there (css-overflow-4
     // §5.3): content after the point no longer sizes it (`line-clamp-024/
     // 025`: margins of boxes after the point).
@@ -23,7 +24,10 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     // вместо 1+4+128+4+1 = 138).
     let side = px_lossy_zero;
     let bw = c.borders();
-    let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
+    let mbp_y = side(bw.top)
+        + side(bw.bottom)
+        + side(c.reset_box_layout.padding.top)
+        + side(c.reset_box_layout.padding.bottom);
     if !multicol && !measuring && e.style.used().clamp_by_height() && auto_clamp_limit(c).is_some()
     {
         if let Some(cut) = cx
@@ -32,7 +36,13 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
             .filter(|c| !sized && c.is_finite())
         {
             d = d.max_h(px(cut + mbp_y));
-            crate::text::clamp::extend_clip(d.style(), e.node_id, cut, side(c.padding.bottom), cx);
+            crate::text::clamp::extend_clip(
+                d.style(),
+                e.node_id,
+                cut,
+                side(c.reset_box_layout.padding.bottom),
+                cx,
+            );
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
         // оставленные строки по строчной оси переполняют коробку как
@@ -55,9 +65,9 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
         // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
         // box is border-box here, the style value content-box unless
         // `box-sizing: border-box`.
-        let style_max = px_strict(c.max_height);
+        let style_max = px_strict(c.reset_box_layout.max_height);
         let style_max = style_max.map(|m| {
-            if c.border_box == Some(true) {
+            if c.reset_border.border_box == Some(true) {
                 m
             } else {
                 m + mbp_y
@@ -80,7 +90,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
             // обрезано краем паддинга; Blink — `is_hidden_for_paint`):
             // нижний край обрезки — край поля содержимого
             // (`webkit-line-clamp-050`: «Line4» в паддинге 10px).
-            let pad_bottom = side(c.padding.bottom);
+            let pad_bottom = side(c.reset_box_layout.padding.bottom);
             if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
                 d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
             }

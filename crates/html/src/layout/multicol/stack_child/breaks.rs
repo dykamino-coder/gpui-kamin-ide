@@ -55,7 +55,7 @@ fn positioned_in(copy: &Element) -> Vec<u64> {
             let style = k.style.used();
             if contained
                 && matches!(
-                    style.position,
+                    style.reset_positioned.position,
                     Some(crate::style::computed::Position::Absolute)
                 )
             {
@@ -177,8 +177,8 @@ fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
 /// копии сдвигает срез (`StackChild::line_trim`).
 pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {
     fn trims(e: &Element, depth: u8) -> bool {
-        e.style.used().text_box_trim_start
-            || e.style.used().text_box_trim_end
+        e.style.used().reset_text_box.text_box_trim_start
+            || e.style.used().reset_text_box.text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (depth > 0
@@ -187,7 +187,9 @@ pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::C
                     _ => false,
                 }))
     }
-    merged.text_box_trim_start || merged.text_box_trim_end || trims(copy, 5)
+    merged.reset_text_box.text_box_trim_start
+        || merged.reset_text_box.text_box_trim_end
+        || trims(copy, 5)
 }
 
 /// Таблица-корень копии, чьи ряды даёт раскладка (`breaks_w` или мера

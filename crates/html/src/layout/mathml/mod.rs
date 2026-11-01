@@ -57,7 +57,8 @@ async fn build_stack(
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if !e.style.used().mathml || e.style.used().math_layout.is_none() {
+    if !e.style.used().reset_svg_math.mathml || e.style.used().reset_svg_math.math_layout.is_none()
+    {
         return None;
     }
     let mut style = box_style(inherited, &e.style, vcx);
@@ -78,9 +79,14 @@ async fn build_stack(
         (
             vec![],
             Kind::Space(Metrics {
-                width: px_strict(style.width).unwrap_or(0.0).max(0.0),
+                width: px_strict(style.reset_box_layout.width)
+                    .unwrap_or(0.0)
+                    .max(0.0),
                 ascent,
-                descent: px_strict(style.height).unwrap_or(0.0).max(0.0) - ascent,
+                descent: px_strict(style.reset_box_layout.height)
+                    .unwrap_or(0.0)
+                    .max(0.0)
+                    - ascent,
             }),
         )
     } else if token {
@@ -100,7 +106,8 @@ async fn build_stack(
         let mut children = Vec::new();
         for node in &e.children {
             let Node::Element(child) = node else { continue };
-            if child.style.used().display == Some(crate::style::computed::Display::None)
+            if child.style.used().reset_box_layout.display
+                == Some(crate::style::computed::Display::None)
                 || child.tag == "mprescripts"
             {
                 continue;
@@ -143,22 +150,24 @@ async fn build_stack(
         operator,
         kind,
         rtl: style.wm().rtl(),
-        width: px_strict(style.width),
-        height: px_strict(style.height),
+        width: px_strict(style.reset_box_layout.width),
+        height: px_strict(style.reset_box_layout.height),
         offsets: vec![],
         margins,
         roots: vec![],
         rule: None,
-        color: style.color.map_or(opts.text.color, |c| c.to_hsla()),
+        color: style.inh.ui.color.map_or(opts.text.color, |c| c.to_hsla()),
         font: crate::text::inline::strut_font(&style, &opts.text, opts.cx.vcx()),
-        font_size: px_strict(style.font_size).unwrap_or(opts.base_size()),
+        font_size: px_strict(style.inh.font.font_size).unwrap_or(opts.base_size()),
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
     let mut outer = opts.cx.contracts.build.styled_box(e, &style, &opts.cx);
     // The measured content owns its baseline, including an explicit zero.
     outer.style().align_items = Some(gpui::AlignItems::FlexStart);
-    if e.tag == "math" && style.display == Some(crate::style::computed::Display::Block) {
+    if e.tag == "math"
+        && style.reset_box_layout.display == Some(crate::style::computed::Display::Block)
+    {
         outer.style().flex_direction = Some(gpui::FlexDirection::Row);
         outer.style().justify_content = Some(gpui::JustifyContent::Center);
     }
@@ -177,6 +186,6 @@ fn margins_px(child: &Computed, opts: &RenderOpts) -> [f32; 4] {
     let vcx = opts.cx.vcx();
     let mut child = child.clone();
     child.resolve_viewport(opts.viewport, vcx);
-    let m = &child.margin;
+    let m = &child.reset_box_layout.margin;
     [m.top, m.right, m.bottom, m.left].map(|side| px_strict(side).unwrap_or(0.0))
 }

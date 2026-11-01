@@ -87,13 +87,13 @@ fn own_strut(
     // 200 вместо 100 (`margin-collapse-through-percentage-height-block`).
     // Признак блока несёт сам стиль — `cb_height_def` ставит `style::cascade::inherit`.
     let height_is_auto = matches!(
-        e.style.used().height,
+        e.style.used().reset_box_layout.height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
-    ) || matches!(e.style.used().height, Some(Len::Pct(_)) if !e.style.used().cb_height_def_hint);
+    ) || matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)) if !e.style.used().reset_context.cb_height_def_hint);
     let min_height_is_zero = zero(BoxDimensions::for_element(e, &e.style.used()).minimum[1])
-        || matches!(BoxDimensions::for_element(e, &e.style.used()).minimum[1], Some(Len::Pct(_)) if !e.style.used().cb_height_def_hint);
-    if !zero(e.style.used().padding.top)
-        || !zero(e.style.used().padding.bottom)
+        || matches!(BoxDimensions::for_element(e, &e.style.used()).minimum[1], Some(Len::Pct(_)) if !e.style.used().reset_context.cb_height_def_hint);
+    if !zero(e.style.used().reset_box_layout.padding.top)
+        || !zero(e.style.used().reset_box_layout.padding.bottom)
         || !zero(b.top)
         || !zero(b.bottom)
         || !min_height_is_zero
@@ -108,12 +108,12 @@ fn own_strut(
     }
     let s = adjoin(
         strut_of(margin_or_bail(
-            e.style.used().margin.top,
+            e.style.used().reset_box_layout.margin.top,
             &e.style.used(),
             vcx,
         )?),
         strut_of(margin_or_bail(
-            e.style.used().margin.bottom,
+            e.style.used().reset_box_layout.margin.bottom,
             &e.style.used(),
             vcx,
         )?),
@@ -135,20 +135,23 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     let b = w.style.used().borders();
     if (w.inline && !inline_marked_block(w))
         || !in_flow(&w.style.used())
-        || !matches!(w.style.used().display, None | Some(Display::Block))
-        || own_context(w)
-        || w.style.used().clear.is_some()
-        || w.style.used().position.is_some()
         || !matches!(
-            w.style.used().height,
+            w.style.used().reset_box_layout.display,
+            None | Some(Display::Block)
+        )
+        || own_context(w)
+        || w.style.used().reset_box_layout.clear.is_some()
+        || w.style.used().reset_positioned.position.is_some()
+        || !matches!(
+            w.style.used().reset_box_layout.height,
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
         || !zero(BoxDimensions::for_element(w, &w.style.used()).minimum[1])
         || ![
-            w.style.used().margin.top,
-            w.style.used().margin.bottom,
-            w.style.used().padding.top,
-            w.style.used().padding.bottom,
+            w.style.used().reset_box_layout.margin.top,
+            w.style.used().reset_box_layout.margin.bottom,
+            w.style.used().reset_box_layout.padding.top,
+            w.style.used().reset_box_layout.padding.bottom,
             b.top,
             b.bottom,
         ]
@@ -161,9 +164,15 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     for n in &w.children {
         match n {
             Node::Text(t) if blank_text(t) => {}
-            Node::Element(f) if f.style.used().float.is_some_and(|s| s != 0) => {
+            Node::Element(f)
+                if f.style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|s| s != 0) =>
+            {
                 any = true;
-                if f.style.used().float.is_some_and(|s| s < 0) {
+                if f.style.used().reset_box_layout.float.is_some_and(|s| s < 0) {
                     left = true;
                 } else {
                     right = true;

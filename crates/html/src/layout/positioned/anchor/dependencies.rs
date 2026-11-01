@@ -62,7 +62,7 @@ impl Inputs {
         if plan
             .as_ref()
             .is_some_and(|p| p.area.is_some() || p.refs_default)
-            || c.position_visibility & (VIS_VALID | VIS_VISIBLE) != 0
+            || c.reset_positioned.position_visibility & (VIS_VALID | VIS_VISIBLE) != 0
         {
             names.push(None);
         }
@@ -81,16 +81,16 @@ impl Inputs {
             }
         }
         for l in [
-            c.width,
-            c.height,
-            c.min_width,
-            c.min_height,
-            c.max_width,
-            c.max_height,
-            c.inset.top,
-            c.inset.right,
-            c.inset.bottom,
-            c.inset.left,
+            c.reset_box_layout.width,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.max_height,
+            c.reset_positioned.inset.top,
+            c.reset_positioned.inset.right,
+            c.reset_positioned.inset.bottom,
+            c.reset_positioned.inset.left,
         ] {
             collect(l, &mut names, vcx, 4);
         }

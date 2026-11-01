@@ -30,10 +30,10 @@ const KNOWN_GAPS: &[&str] = &[
 /// bookkeeping (sequence numbers and the capability-query result).
 fn fields(style: &Computed) -> Vec<String> {
     let mut style = style.clone();
-    style.decl_order = Default::default();
-    style.side_order = Default::default();
-    style.declaration_parse = Default::default();
-    if let Some(logical) = style.logical.as_mut() {
+    style.reset_cascade.decl_order = Default::default();
+    style.reset_cascade.side_order = Default::default();
+    style.reset_cascade.declaration_parse = Default::default();
+    if let Some(logical) = style.reset_context.logical.as_mut() {
         logical.padding.order = [None; 4];
         logical.margin.order = [None; 4];
         logical.inset.order = [None; 4];

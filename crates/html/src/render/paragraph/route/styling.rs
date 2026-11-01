@@ -22,8 +22,8 @@ pub(crate) fn style_pieces(
     // изоляции порядка не меняет, а знаки — текстовые куски — уводили её с
     // пути атомов: inline-block'и `dir=rtl`-блока (HTML `[dir] { unicode-bidi:
     // isolate }`) шли слева направо (`anchor-position-005`).
-    let own_bidi = inherited.bidi_override == Some(true)
-        || (inherited.bidi_isolate == Some(true)
+    let own_bidi = inherited.reset_cascade.bidi_override == Some(true)
+        || (inherited.reset_cascade.bidi_isolate == Some(true)
             && pieces
                 .iter()
                 .any(|p| matches!(p, inline::Piece::Text { text, .. } if !text.trim().is_empty())));
@@ -39,7 +39,7 @@ pub(crate) fn style_pieces(
                 text: open.to_string(),
                 style: {
                     let mut style = inherited.clone();
-                    style.inline_control = true;
+                    style.reset_context.inline_control = true;
                     style
                 },
             },
@@ -48,7 +48,7 @@ pub(crate) fn style_pieces(
             text: close.to_string(),
             style: {
                 let mut style = inherited.clone();
-                style.inline_control = true;
+                style.reset_context.inline_control = true;
                 style
             },
         });
@@ -71,16 +71,17 @@ pub(crate) fn style_pieces(
     // плавающим узлом (`initial_letter_float`), и следующая буква абзаца не
     // должна стать второй буквицей с кеглем слоя.
     if let Some(first) = inherited
+        .reset_text_box
         .first_letter
         .as_deref()
-        .filter(|f| f.initial_letter.is_none())
+        .filter(|f| f.reset_text_box.initial_letter.is_none())
     {
         // Слой — копия стиля блока плюс объявления `::first-letter`
         // (`layout::box_tree::pseudo_line_layers`): фон блока в нём чужой, букве его не красить —
         // тот же отсев, что в `initial_letter_float`.
         let mut first = first.clone();
-        if first.background == inherited.background {
-            first.background = None;
+        if first.reset_background.background == inherited.reset_background.background {
+            first.reset_background.background = None;
         }
         // Inherited values of the letter come from the element that holds
         // the letter, not from the block (Blink `FirstLetterPseudoElement::
@@ -89,17 +90,17 @@ pub(crate) fn style_pieces(
         // sits inside the innermost element). Values the layer only copied
         // from the block must not override a nested element's own
         // (`display-contents-first-letter-002`: `<span>` color green).
-        if first.color == inherited.color {
-            first.color = None;
+        if first.inh.ui.color == inherited.inh.ui.color {
+            first.inh.ui.color = None;
         }
-        if first.font_family == inherited.font_family {
-            first.font_family = None;
+        if first.inh.font.font_family == inherited.inh.font.font_family {
+            first.inh.font.font_family = None;
         }
-        if first.font_weight == inherited.font_weight {
-            first.font_weight = None;
+        if first.inh.font.font_weight == inherited.inh.font.font_weight {
+            first.inh.font.font_weight = None;
         }
-        if first.italic == inherited.italic {
-            first.italic = None;
+        if first.inh.font.italic == inherited.inh.font.italic {
+            first.inh.font.italic = None;
         }
         pieces = inline::split_first_letter(pieces, &first, fonts, vcx);
     }

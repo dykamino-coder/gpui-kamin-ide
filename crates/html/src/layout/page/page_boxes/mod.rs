@@ -95,11 +95,11 @@ fn page_margin_boxes(
         let resolved = inherit(&ctx_style, &own, vcx);
         // CSS Logical 1 §4: generated margin boxes also map logical properties
         // through their own computed writing mode, after page-context inheritance.
-        own.writing_mode = resolved.writing_mode;
-        own.flat_mode = resolved.flat_mode;
-        own.rtl = resolved.rtl;
+        own.inh.writing.writing_mode = resolved.inh.writing.writing_mode;
+        own.inh.writing.flat_mode = resolved.inh.writing.flat_mode;
+        own.inh.writing.rtl = resolved.inh.writing.rtl;
         own.resolve_logical(own.wm(), ctx_style.wm().vertical(), false, vcx);
-        let fs = match resolved.font_size {
+        let fs = match resolved.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
@@ -119,10 +119,10 @@ fn page_margin_boxes(
         let zero = |l: &Option<Len>, base: f32| len(l, base).unwrap_or(0.0);
         let b = own.borders();
         let pad = [
-            zero(&own.padding.top, cb.3),
-            zero(&own.padding.right, cb.2),
-            zero(&own.padding.bottom, cb.3),
-            zero(&own.padding.left, cb.2),
+            zero(&own.reset_box_layout.padding.top, cb.3),
+            zero(&own.reset_box_layout.padding.right, cb.2),
+            zero(&own.reset_box_layout.padding.bottom, cb.3),
+            zero(&own.reset_box_layout.padding.left, cb.2),
         ];
         let edges = [
             zero(&b.top, cb.3) + pad[0],
@@ -132,21 +132,27 @@ fn page_margin_boxes(
         ];
         let auto_m = |l: &Option<Len>| matches!(l, Some(Len::Auto));
         let margin = [
-            (!auto_m(&own.margin.top)).then(|| zero(&own.margin.top, cb.3)),
-            (!auto_m(&own.margin.right)).then(|| zero(&own.margin.right, cb.2)),
-            (!auto_m(&own.margin.bottom)).then(|| zero(&own.margin.bottom, cb.3)),
-            (!auto_m(&own.margin.left)).then(|| zero(&own.margin.left, cb.2)),
+            (!auto_m(&own.reset_box_layout.margin.top))
+                .then(|| zero(&own.reset_box_layout.margin.top, cb.3)),
+            (!auto_m(&own.reset_box_layout.margin.right))
+                .then(|| zero(&own.reset_box_layout.margin.right, cb.2)),
+            (!auto_m(&own.reset_box_layout.margin.bottom))
+                .then(|| zero(&own.reset_box_layout.margin.bottom, cb.3)),
+            (!auto_m(&own.reset_box_layout.margin.left))
+                .then(|| zero(&own.reset_box_layout.margin.left, cb.2)),
         ];
-        let bb = own.border_box == Some(true);
-        let w = len(&own.width, cb.2).map(|v| if bb { v } else { v + edges[1] + edges[3] });
-        let h = len(&own.height, cb.3).map(|v| if bb { v } else { v + edges[0] + edges[2] });
+        let bb = own.reset_border.border_box == Some(true);
+        let w = len(&own.reset_box_layout.width, cb.2)
+            .map(|v| if bb { v } else { v + edges[1] + edges[3] });
+        let h = len(&own.reset_box_layout.height, cb.3)
+            .map(|v| if bb { v } else { v + edges[0] + edges[2] });
         // `size` — border box в точках (итог раскладки) либо `None` для меры по
         // содержимому: доли от обёртки не годятся, `blocks` кладёт коробку в
         // свою обёртку, и `height: 100%` решалась от неё как `auto` —
         // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
         let opts = opts.clone();
         let ctx_style = ctx_style.clone();
-        let intrinsic = [own.width, own.height];
+        let intrinsic = [own.reset_box_layout.width, own.reset_box_layout.height];
         let vertical = resolved.wm().vertical();
         let build = move |size: Option<(f32, f32)>, inline: Option<Len>| -> AnyElement {
             let vcx = opts.cx.vcx();

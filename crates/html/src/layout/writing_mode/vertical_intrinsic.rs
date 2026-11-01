@@ -12,7 +12,7 @@ pub(super) fn constraint(
     if !style.wm().vertical() || style.contains_height() {
         return None;
     }
-    let keyword = match style.height {
+    let keyword = match style.reset_box_layout.height {
         Some(Len::MinContent) => InlineKeyword::MinContent,
         Some(Len::MaxContent) => InlineKeyword::MaxContent,
         Some(Len::FitContent) => InlineKeyword::FitContent,
@@ -23,6 +23,7 @@ pub(super) fn constraint(
         keyword,
         InlineConstraint {
             available: style
+                .reset_context
                 .orthogonal_inline
                 .map_or(available, |c| c.available)
                 .max(0.0),
@@ -42,7 +43,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
@@ -52,12 +53,12 @@ mod tests {
             (Len::MaxContent, 900.0),
             (Len::FitContent, 600.0),
         ] {
-            style.height = Some(height);
+            style.reset_box_layout.height = Some(height);
             let (keyword, c) = constraint(&style, 600.0).unwrap();
             assert_eq!(c.used_keyword(Some(keyword), 30.0, 900.0), expected);
         }
-        style.min_height = Some(Len::Px(700.0));
-        style.max_height = Some(Len::Px(500.0));
+        style.reset_box_layout.min_height = Some(Len::Px(700.0));
+        style.reset_box_layout.max_height = Some(Len::Px(500.0));
         let (keyword, c) = constraint(&style, 600.0).unwrap();
         assert_eq!(c.used_keyword(Some(keyword), 30.0, 900.0), 700.0);
     }
@@ -68,24 +69,25 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
         };
         assert!(constraint(&style, 600.0).is_none());
-        style.height = Some(Len::Px(100.0));
+        style.reset_box_layout.height = Some(Len::Px(100.0));
         assert!(constraint(&style, 600.0).is_none());
-        style.height = Some(Len::MinContent);
-        style.flat_mode = style.flow_mode();
-        style.writing_mode = None;
+        style.reset_box_layout.height = Some(Len::MinContent);
+        style.inh.writing.flat_mode = style.flow_mode();
+        style.inh.writing.writing_mode = None;
         assert!(constraint(&style, 600.0).is_none());
-        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true,
-            style.wm().block_rl(),
-            style.wm().sideways(),
-        ));
-        style.contain_size = Some(true);
+        style.inh.writing.writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true,
+                style.wm().block_rl(),
+                style.wm().sideways(),
+            ));
+        style.reset_context.contain_size = Some(true);
         assert!(constraint(&style, 600.0).is_none());
     }
 }

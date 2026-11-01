@@ -22,7 +22,7 @@ pub(crate) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::layout::float
 /// Кегль коробки для `em` её полей; относительный `font-size` берёт
 /// кегль родителя, в том числе проценты (CSS 2.1 §15.7).
 pub(crate) fn band_em(c: &Computed, em: f32) -> Option<f32> {
-    match c.font_size {
+    match c.inh.font.font_size {
         None => Some(em),
         Some(Len::Px(v)) => Some(v),
         Some(Len::Em(k)) | Some(Len::Pct(k)) => Some(k * em),
@@ -42,9 +42,9 @@ pub(crate) fn band_margins(
         _ => band_edge(l, 0.0),
     };
     Some([
-        edge(&c.margin.top)?,
-        edge(&c.margin.right)?,
-        edge(&c.margin.bottom)?,
-        edge(&c.margin.left)?,
+        edge(&c.reset_box_layout.margin.top)?,
+        edge(&c.reset_box_layout.margin.right)?,
+        edge(&c.reset_box_layout.margin.bottom)?,
+        edge(&c.reset_box_layout.margin.left)?,
     ])
 }

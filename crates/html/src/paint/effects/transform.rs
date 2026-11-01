@@ -20,18 +20,18 @@ use gpui::AnyElement;
 fn flattens_3d(c: &Computed) -> bool {
     use crate::style::computed::Overflow;
     let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
-    c.opacity.is_some_and(|o| o < 1.0)
-        || c.filter.is_some()
-        || c.filter_ref.is_some()
-        || c.backdrop_blur.is_some()
-        || clipped(c.overflow_x)
-        || clipped(c.overflow_y)
-        || c.mask_image.is_some()
-        || c.clip_ref.is_some()
-        || c.blend.is_some_and(|b| b != 0)
-        || c.isolate == Some(true)
-        || c.contain_paint == Some(true)
-        || c.contain_layout == Some(true)
+    c.reset_effects.opacity.is_some_and(|o| o < 1.0)
+        || c.reset_effects.filter.is_some()
+        || c.reset_effects.filter_ref.is_some()
+        || c.reset_effects.backdrop_blur.is_some()
+        || clipped(c.reset_box_layout.overflow_x)
+        || clipped(c.reset_box_layout.overflow_y)
+        || c.reset_mask.mask_image.is_some()
+        || c.reset_mask.clip_ref.is_some()
+        || c.reset_effects.blend.is_some_and(|b| b != 0)
+        || c.reset_effects.isolate == Some(true)
+        || c.reset_context.contain_paint == Some(true)
+        || c.reset_context.contain_layout == Some(true)
 }
 
 pub(crate) fn transformed(
@@ -86,29 +86,34 @@ fn transformed_inner(
     let inherited_tf;
     let c = {
         use crate::style::computed::inh;
-        let bits = c.inherit_bits & (inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
+        let bits = c.reset_cascade.inherit_bits & (inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
         if bits == 0 {
             c
         } else {
             let mut own = c.clone();
             // Значение родителя уже в его зуме: домножаем на отношение
             // собственного зума к родительскому (css-viewport-1 §493).
-            let k = c.zoom_eff.unwrap_or(1.0) / parent.zoom_eff.unwrap_or(1.0);
+            let k = c.inh.font.zoom_eff.unwrap_or(1.0) / parent.inh.font.zoom_eff.unwrap_or(1.0);
             if bits & inh::TRANSFORM != 0 {
-                own.transform = parent.transform;
-                if let Some(t) = own.transform.as_mut()
+                own.reset_transforms.transform = parent.reset_transforms.transform;
+                if let Some(t) = own.reset_transforms.transform.as_mut()
                     && (k - 1.0).abs() > f32::EPSILON
                 {
                     crate::style::zoom::scale_transform(t, k);
                 }
             }
             if bits & inh::TRANSFORM_ORIGIN != 0 {
-                own.transform_origin = parent.transform_origin;
-                own.transform_origin_px = parent.transform_origin_px;
-                own.transform_origin_z = parent.transform_origin_z;
-                own.transform_origin_px.0 = own.transform_origin_px.0.map(|v| v * k);
-                own.transform_origin_px.1 = own.transform_origin_px.1.map(|v| v * k);
-                own.transform_origin_z = own.transform_origin_z.map(|v| v * k);
+                own.reset_transforms.transform_origin = parent.reset_transforms.transform_origin;
+                own.reset_transforms.transform_origin_px =
+                    parent.reset_transforms.transform_origin_px;
+                own.reset_transforms.transform_origin_z =
+                    parent.reset_transforms.transform_origin_z;
+                own.reset_transforms.transform_origin_px.0 =
+                    own.reset_transforms.transform_origin_px.0.map(|v| v * k);
+                own.reset_transforms.transform_origin_px.1 =
+                    own.reset_transforms.transform_origin_px.1.map(|v| v * k);
+                own.reset_transforms.transform_origin_z =
+                    own.reset_transforms.transform_origin_z.map(|v| v * k);
             }
             inherited_tf = own;
             &inherited_tf
@@ -118,26 +123,34 @@ fn transformed_inner(
     // КАЖДОМУ его прямому ребёнку, даже без собственного `transform`:
     // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
     // — у `.card.front` своего преобразования нет вовсе).
-    let keeps_3d = c.preserve_3d == Some(true) && !flattens_3d(c);
+    let keeps_3d = c.reset_transforms.preserve_3d == Some(true) && !flattens_3d(c);
     // Вынесенный блок-в-строчном (`Computed::hoisted_block`): по DOM он
     // внук, и плоский строчный хозяин — лист контекста: ни ячейка объёма, ни
     // перспектива деда ему не достаются (css-transforms-2
     // §3d-rendering-context; `3d-rendering-context-and-inline`:
     // `rotateX(-90deg)` внутри `display: inline` под `preserve-3d; rotateX(90deg)`
     // не раскручивается обратно; `perspective-children-only-inline`).
-    let under_3d = if c.hoisted_block {
+    let under_3d = if c.reset_context.hoisted_block {
         None
     } else {
-        parent.frame_3d.clone()
+        parent.reset_transforms.frame_3d.clone()
     };
-    if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
+    if c.reset_transforms.transform.is_none()
+        && c.reset_transforms.perspective.is_none()
+        && !keeps_3d
+        && under_3d.is_none()
+    {
         return el;
     }
     let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el, frame);
     wrapper.ref_box = ref_box;
     wrapper.node = node;
     wrapper.under_3d = under_3d;
-    wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };
+    wrapper.frame_3d = if keeps_3d {
+        c.reset_transforms.frame_3d.clone()
+    } else {
+        None
+    };
     // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2
     // §3d-transform-rendering п.3 — только прямого родителя, внукам не
     // достаётся: perspective-children-only-*); своя — наполняет ячейку для
@@ -149,17 +162,17 @@ fn transformed_inner(
     // перспективу, хотя по DOM он внук; `overflow-perspective-001` —
     // у прокручиваемой коробки начало перспективы считается от коробки,
     // а не от области прокрутки.
-    wrapper.under_perspective = if c.hoisted_block {
+    wrapper.under_perspective = if c.reset_context.hoisted_block {
         None
     } else {
-        parent.perspective_frame.clone()
+        parent.reset_transforms.perspective_frame.clone()
     };
-    wrapper.perspective = c.perspective;
-    wrapper.perspective_frame = c.perspective_frame.clone();
-    if let Some(o) = c.perspective_origin {
+    wrapper.perspective = c.reset_transforms.perspective;
+    wrapper.perspective_frame = c.reset_transforms.perspective_frame.clone();
+    if let Some(o) = c.reset_transforms.perspective_origin {
         wrapper.perspective_origin = o;
     }
-    wrapper.perspective_origin_px = c.perspective_origin_px;
+    wrapper.perspective_origin_px = c.reset_transforms.perspective_origin_px;
     // Изнанка ставится ДО раннего выхода: ребёнок объёмного контекста без
     // своего `transform` (`backface-visibility-hidden-004` `.card.front`,
     // `transform3d-backface-visibility-006`, `backface-visibility-with-
@@ -167,9 +180,9 @@ fn transformed_inner(
     // (css-transforms-2 §backface-visibility), а флаг прежде выставлялся
     // только на пути с собственным преобразованием — красный ребёнок под
     // `rotateX(180deg); preserve-3d` оставался виден.
-    wrapper.backface_hidden = c.backface_hidden == Some(true);
-    wrapper.fragment_clip_ancestor = c.fragment_clip_ancestor;
-    let Some(t) = c.transform else {
+    wrapper.backface_hidden = c.reset_transforms.backface_hidden == Some(true);
+    wrapper.fragment_clip_ancestor = c.reset_context.fragment_clip_ancestor;
+    let Some(t) = c.reset_transforms.transform else {
         return wrapper.hooked();
     };
     // Отдельные `rotate`/`scale` — ПЕРЕД списком `transform` (css-transforms-2
@@ -178,7 +191,10 @@ fn transformed_inner(
     // (`rotate_rad`/`scale`), а `Transformed` рисует по `lin`/`tr`/`m4` —
     // до экрана они не доходили вовсе. `translate` здесь не нужен: он уже
     // сдвинул коробку (`paint/apply/`).
-    let mut t = t.after_individual(c.rotate_prop, c.scale_prop);
+    let mut t = t.after_individual(
+        c.reset_transforms.rotate_prop,
+        c.reset_transforms.scale_prop,
+    );
     // Чистый px-сдвиг уже сдвинул коробку в раскладке
     // (`Computed::folded_shift`, `paint/apply/`) — матрица остаётся единичной.
     if c.folded_shift().is_some() {
@@ -204,10 +220,10 @@ fn transformed_inner(
     // `div()`, и коробка теряла место в раскладке
     // (backface-visibility-hidden-002: эталон держит пустые 100px;
     // -child-translate: высота обёртки от скрытого ребёнка).
-    if let Some(o) = c.transform_origin {
+    if let Some(o) = c.reset_transforms.transform_origin {
         wrapper.origin = o;
     }
-    wrapper.origin_px = c.transform_origin_px;
-    wrapper.origin_z = c.transform_origin_z;
+    wrapper.origin_px = c.reset_transforms.transform_origin_px;
+    wrapper.origin_z = c.reset_transforms.transform_origin_z;
     wrapper.hooked()
 }

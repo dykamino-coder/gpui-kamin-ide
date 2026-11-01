@@ -6,17 +6,18 @@ use super::*;
 use crate::style::computed::CalcSizeBasis;
 
 pub(super) fn apply(mut d: Div, c: &Computed, sizes: &BoxDimensions) -> Div {
-    if c.calc_size
+    if c.reset_box_layout
+        .calc_size
         .iter()
-        .chain(c.calc_size_max.iter())
+        .chain(c.reset_box_layout.calc_size_max.iter())
         .all(Option::is_none)
     {
         return d;
     }
     d.style().calc_size_content_box = Some(!sizes.border_box);
-    d.style().calc_size = Some(c.calc_size);
-    d.style().calc_size_max = Some(c.calc_size_max);
-    d.style().calc_size_basis = Some(c.calc_size_basis.map(|basis| match basis {
+    d.style().calc_size = Some(c.reset_box_layout.calc_size);
+    d.style().calc_size_max = Some(c.reset_box_layout.calc_size_max);
+    d.style().calc_size_basis = Some(c.reset_box_layout.calc_size_basis.map(|basis| match basis {
         None | Some(CalcSizeBasis::Auto) => None,
         Some(CalcSizeBasis::MinContent) => Some(gpui::CssSizingKeyword::MinContent),
         Some(CalcSizeBasis::MaxContent) => Some(gpui::CssSizingKeyword::MaxContent),

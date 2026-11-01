@@ -22,7 +22,7 @@ pub(crate) fn inline_node(
         // одного перевода строки это ПУСТАЯ СТРОКА перед `</pre>`
         // (block-plaintext-006), отбрасывание съедало её высоту.
         Node::Text(t) => {
-            inherited.preserve_newlines == Some(true)
+            inherited.inh.text_flow.preserve_newlines == Some(true)
                 || !blank_text(t)
                 || (!pending.is_empty() && t.contains(' '))
         }
@@ -38,14 +38,14 @@ pub(crate) fn inline_node(
         // `atom_element` (`x_set != y_set`).
         Node::Element(e)
             if matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) && !at_static_position(&e.style.used())
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
-                        && (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
+                    (edge(e.style.used().reset_positioned.inset.left) || edge(e.style.used().reset_positioned.inset.right))
+                        && (edge(e.style.used().reset_positioned.inset.top) || edge(e.style.used().reset_positioned.inset.bottom))
                 }
                 // Поле формы и заменяемый элемент строит СВОЙ путь
                 // (`forms::element`, картинка), и краями он распоряжается
@@ -67,10 +67,10 @@ pub(crate) fn inline_node(
         // Only a free axis needs the paragraph's hypothetical static position.
         // Fully pinned boxes retain their external containing block above.
         Node::Element(e)
-            if inherited.band_kid
+            if inherited.reset_context.band_kid
                 && !ordered_context
                 && matches!(
-                    e.style.used().position,
+                    e.style.used().reset_positioned.position,
                     Some(
                         crate::style::computed::Position::Absolute
                             | crate::style::computed::Position::Fixed
@@ -92,26 +92,30 @@ pub(crate) fn inline_node(
         // такой абсолют остаётся прежним блочным путём
         // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
         Node::Element(e)
-            if e.style.used().abs_inline_level
+            if e.style.used().reset_positioned.abs_inline_level
                 && !ordered_context
                 && pending.iter().any(|p| match p {
                     Node::Text(t) => !t.trim().is_empty(),
                     Node::Element(x) => !matches!(
-                        x.style.used().position,
+                        x.style.used().reset_positioned.position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ),
                 })
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
-                        != (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
+                    (edge(e.style.used().reset_positioned.inset.left)
+                        || edge(e.style.used().reset_positioned.inset.right))
+                        != (edge(e.style.used().reset_positioned.inset.top)
+                            || edge(e.style.used().reset_positioned.inset.bottom))
                 } =>
         {
             true
         }
-        Node::Element(e) => match e.style.used().display {
-            Some(Display::ListItem) if e.style.used().inline_display == Some(true) => {
+        Node::Element(e) => match e.style.used().reset_box_layout.display {
+            Some(Display::ListItem)
+                if e.style.used().reset_context.inline_display == Some(true) =>
+            {
                 !ordered_context
             }
             // Явно заявленная инлайновая коробка остаётся в строке даже у
@@ -129,7 +133,7 @@ pub(crate) fn inline_node(
             // семьи `grid-lanes-intrinsic-sizing-*` написаны на
             // `display: inline-grid`, и без этой строки девять сеток
             // вставали столбиком вместо ряда.
-            Some(Display::GridLanes) if e.style.used().lanes_inline => !ordered_context,
+            Some(Display::GridLanes) if e.style.used().reset_grid.lanes_inline => !ordered_context,
             // `display: contents` without block-level descendants: its
             // children are inline-level boxes and text runs of THIS
             // container (css-display-3 §2.5 «as if they replaced the
@@ -171,7 +175,7 @@ pub(crate) fn inline_node(
             None => {
                 e.inline
                     && (!ordered_context || e.tag == "br")
-                    && e.style.used().float.is_none_or(|f| f == 0)
+                    && e.style.used().reset_box_layout.float.is_none_or(|f| f == 0)
             }
         },
     }
@@ -195,21 +199,21 @@ mod tests {
             ..Default::default()
         };
         let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
-        e.style.used_mut().position = Some(Position::Absolute);
+        e.style.used_mut().reset_positioned.position = Some(Position::Absolute);
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.used_mut().inset.top = Some(Len::Px(0.));
+        e.style.used_mut().reset_positioned.inset.top = Some(Len::Px(0.));
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.used_mut().inset.left = Some(Len::Px(0.));
+        e.style.used_mut().reset_positioned.inset.left = Some(Len::Px(0.));
         assert!(!inline_node(
             &Node::Element(e.clone()),
             &inherited,

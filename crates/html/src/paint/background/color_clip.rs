@@ -30,7 +30,7 @@ pub(crate) enum ColorBox {
 pub(crate) fn needs_color_layer(c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> bool {
     match c.color_clip(vcx) {
         Some(BgClip::PaddingBox | BgClip::ContentBox) => true,
-        None | Some(BgClip::BorderBox) => c.backdrop_filter_set,
+        None | Some(BgClip::BorderBox) => c.reset_effects.backdrop_filter_set,
         _ => false,
     }
 }
@@ -173,7 +173,7 @@ mod tests {
         ] {
             for clip in ["padding-box", "content-box"] {
                 let mut c = crate::style::computed::BoxStyle::default();
-                c.display = Some(display);
+                c.reset_box_layout.display = Some(display);
                 c.apply_one("background", &format!("blue {clip}"), vcx);
                 assert!(color_layer(&c, vcx).is_some(), "{display:?}: {clip}");
                 c.context.parent_flex_grid = true;
@@ -223,7 +223,7 @@ mod tests {
         assert!(color_layer(&c, vcx).is_some());
         c.apply_one("background", "url(a) content-box, blue border-box", vcx);
         assert!(color_layer(&c, vcx).is_none());
-        c.padding.left = Some(Len::Px(10.0));
+        c.reset_box_layout.padding.left = Some(Len::Px(10.0));
         c.apply_one("background-clip", "text", vcx);
         assert!(color_layer(&c, vcx).is_none());
     }

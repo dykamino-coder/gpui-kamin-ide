@@ -14,36 +14,36 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let s = &c.style.used();
     let sizes = BoxDimensions::for_element(c, s);
     multicol_container(s)
-        && (s.column_count.is_some() || s.column_width.is_some())
+        && (s.reset_fragmentation.column_count.is_some() || s.reset_fragmentation.column_width.is_some())
         // Свои ряды (`column-height`, `column-wrap`) — без спаннеров: линии
         // между спаннерами идут сеткой рядов самой коробки (`Rows::outer`
         // спаннеров не несёт).
-        && (s.column_height.is_none() && s.column_wrap.is_none()
-            || matches!(s.column_height, None | Some(Len::Px(_)))
+        && (s.reset_fragmentation.column_height.is_none() && s.reset_fragmentation.column_wrap.is_none()
+            || matches!(s.reset_fragmentation.column_height, None | Some(Len::Px(_)))
                 && !c.children.iter().any(
                     |n| matches!(n, Node::Element(k) if crate::layout::multicol::spanner::spanner_box(k)),
                 ))
-        && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
-            || (matches!(s.height, None | Some(Len::Auto))
+        && (matches!(s.reset_box_layout.height, Some(Len::Px(h)) if h > 0.0)
+            || (matches!(s.reset_box_layout.height, None | Some(Len::Auto))
                 && sizes.minimum[1].is_none()
                 && matches!(sizes.maximum[1], None | Some(Len::Px(_)))))
-        && matches!(s.display, None | Some(Display::Block))
+        && matches!(s.reset_box_layout.display, None | Some(Display::Block))
         && !s.wm().vertical()
-        && s.float.unwrap_or(0) == 0
+        && s.reset_box_layout.float.unwrap_or(0) == 0
         // Ряды считаются от верха СОДЕРЖИМОГО: блочные рамка и отбивка (и их
         // повтор у `box-decoration-break: clone`) сдвинули бы границы рядов с
         // границ внешних колонок (`box-decoration-break-clone-010`).
-        && !s.bdb_clone
+        && !s.reset_fragmentation.bdb_clone
         && {
             // Нижние рамка и отбивка у `height: auto` допустимы: они встают
             // после последнего ряда (`multicol-breaking-006`), а у заданной
             // высоты сдвинули бы последний ряд.
             let b = s.borders();
             let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
-            let auto = matches!(s.height, None | Some(Len::Auto));
-            zero(&s.padding.top)
+            let auto = matches!(s.reset_box_layout.height, None | Some(Len::Auto));
+            zero(&s.reset_box_layout.padding.top)
                 && zero(&b.top)
-                && (auto || (zero(&s.padding.bottom) && zero(&b.bottom)))
+                && (auto || (zero(&s.reset_box_layout.padding.bottom) && zero(&b.bottom)))
         }
         && c.children.iter().any(|n| !is_blank(n))
 }
@@ -58,8 +58,11 @@ pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
         _ => None,
     };
     let b = s.borders();
-    let outer = cw - px(&s.margin.left)? - px(&s.margin.right)?;
-    let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
+    let outer = cw - px(&s.reset_box_layout.margin.left)? - px(&s.reset_box_layout.margin.right)?;
+    let edges = px(&s.reset_box_layout.padding.left)?
+        + px(&s.reset_box_layout.padding.right)?
+        + px(&b.left)?
+        + px(&b.right)?;
     Some(
         if sizes.border_box {
             outer

@@ -92,25 +92,30 @@ impl PagePercentages {
         }
         let style = context.style(space, opts);
         let used = e.style.used_mut();
-        for (original, resolved, target) in [
-            (context.style.height, style.height, &mut used.height),
-            (
-                context.style.min_height,
-                style.min_height,
-                &mut used.min_height,
-            ),
-            (
-                context.style.max_height,
-                style.max_height,
-                &mut used.max_height,
-            ),
-        ] {
+        for style_field_index in 0..3 {
+            let (original, resolved, target) = match style_field_index {
+                0 => (
+                    context.style.reset_box_layout.height,
+                    style.reset_box_layout.height,
+                    &mut used.reset_box_layout.height,
+                ),
+                1 => (
+                    context.style.reset_box_layout.min_height,
+                    style.reset_box_layout.min_height,
+                    &mut used.reset_box_layout.min_height,
+                ),
+                _ => (
+                    context.style.reset_box_layout.max_height,
+                    style.reset_box_layout.max_height,
+                    &mut used.reset_box_layout.max_height,
+                ),
+            };
             if matches!(original, Some(Len::Pct(_))) {
                 *target = resolved;
             }
         }
         if matches!(
-            style.display,
+            style.reset_box_layout.display,
             None | Some(
                 crate::style::computed::Display::Block
                     | crate::style::computed::Display::ListItem
@@ -118,8 +123,8 @@ impl PagePercentages {
                     | crate::style::computed::Display::InlineBlock
             )
         ) && !style.wm().vertical()
-            && style.column_count.is_none()
-            && style.column_width.is_none()
+            && style.reset_fragmentation.column_count.is_none()
+            && style.reset_fragmentation.column_width.is_none()
         {
             for node in &mut e.children {
                 if let Node::Element(child) = node
@@ -147,12 +152,12 @@ impl Context {
         for parent in &self.parents {
             let mut parent = (**parent).clone();
             parent.resolve_viewport(opts.viewport, opts.cx.vcx());
-            let next_height = if parent.icb {
+            let next_height = if parent.reset_context.icb {
                 Some(viewport.1)
             } else {
                 available_height::inner(&parent, height, width, viewport.1)
             };
-            width = if parent.icb {
+            width = if parent.reset_context.icb {
                 Some(viewport.0)
             } else {
                 available_width::inner(&parent, width)
@@ -163,7 +168,7 @@ impl Context {
         // css-page-3 §7: единицы окна используют ICB первой страницы,
         // проценты — содержащий блок текущей страницы.
         style.resolve_viewport(opts.viewport, opts.cx.vcx());
-        let base = if style.root_box {
+        let base = if style.reset_context.root_box {
             Some(viewport.1)
         } else {
             height
@@ -185,11 +190,11 @@ impl Context {
         };
         let border = style.borders();
         let edges = Edges {
-            start: side(style.padding.top) + side(border.top),
-            end: side(style.padding.bottom) + side(border.bottom),
-            clone: style.bdb_clone,
+            start: side(style.reset_box_layout.padding.top) + side(border.top),
+            end: side(style.reset_box_layout.padding.bottom) + side(border.bottom),
+            clone: style.reset_fragmentation.bdb_clone,
         };
-        let subtract = if style.border_box == Some(true) {
+        let subtract = if style.reset_border.border_box == Some(true) {
             edges.sum()
         } else {
             0.0
@@ -198,10 +203,10 @@ impl Context {
             Some(Len::Px(value)) => Some((value - subtract).max(0.0)),
             _ => None,
         };
-        let content_block = content(style.height)
+        let content_block = content(style.reset_box_layout.height)
             .unwrap_or(0.0)
-            .min(content(style.max_height).unwrap_or(f32::INFINITY))
-            .max(content(style.min_height).unwrap_or(0.0));
+            .min(content(style.reset_box_layout.max_height).unwrap_or(f32::INFINITY))
+            .max(content(style.reset_box_layout.min_height).unwrap_or(0.0));
         (
             Leaf {
                 content_block,

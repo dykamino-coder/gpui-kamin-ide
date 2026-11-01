@@ -24,7 +24,12 @@ pub(crate) fn place_in_context(
     if let Some((key, probe)) = &cx.position.oof_trial
         && *key == own.anchor_key
     {
-        return probe.wrap(el, first, own.position_visibility, own.anchor_key);
+        return probe.wrap(
+            el,
+            first,
+            own.reset_positioned.position_visibility,
+            own.anchor_key,
+        );
     }
     let vcx = cx.vcx();
     let plans = PlacementPlans {
@@ -32,7 +37,7 @@ pub(crate) fn place_in_context(
         indices: vec![0],
         order: 0,
         key: own.anchor_key,
-        visibility: own.position_visibility,
+        visibility: own.reset_positioned.position_visibility,
         values: vcx.keep(),
         layout: cx.layout().clone(),
     };

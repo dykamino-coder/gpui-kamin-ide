@@ -19,7 +19,7 @@ pub(crate) fn independent_copy(c: &Element) -> bool {
 /// поток допускается как blockified-копия. Вложенные float проверяются отдельно.
 pub(crate) fn page_copy(c: &Element, growth: bool) -> bool {
     let mut root = c.clone();
-    root.style.used_mut().float = None;
+    root.style.used_mut().reset_box_layout.float = None;
     if growth {
         regrow_copy(&root)
     } else {
@@ -42,7 +42,7 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
     use super::blocks::{flex_tree, grid_tree, stacked_tree, table_tree};
     !c.inline
         && !c.marks.paginate
-        && c.style.used().column_span != Some(true)
+        && c.style.used().reset_fragmentation.column_span != Some(true)
         && crate::layout::fragment::clone::clone_dec(c).is_none()
         && (super::empty_floats(&logical)
             || (!separate(c, true)
@@ -56,8 +56,8 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
 pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
     fn horizontal(e: &mut Element) {
         use crate::style::computed::writing_mode::WritingModeKw::HorizontalTb;
-        e.style.used_mut().writing_mode = Some(HorizontalTb);
-        e.style.used_mut().flat_mode = Some(HorizontalTb);
+        e.style.used_mut().inh.writing.writing_mode = Some(HorizontalTb);
+        e.style.used_mut().inh.writing.flat_mode = Some(HorizontalTb);
         for n in &mut e.children {
             if let Node::Element(k) = n {
                 horizontal(k);
@@ -70,18 +70,18 @@ pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
 }
 
 fn separate(e: &Element, vertical: bool) -> bool {
-    if e.style.used().display == Some(Display::None) {
+    if e.style.used().reset_box_layout.display == Some(Display::None) {
         return false;
     }
-    (e.style.used().display != Some(Display::Contents)
-        && (e.style.used().bdb_clone
-            || e.style.used().text_box_trim_start
-            || e.style.used().text_box_trim_end
+    (e.style.used().reset_box_layout.display != Some(Display::Contents)
+        && (e.style.used().reset_fragmentation.bdb_clone
+            || e.style.used().reset_text_box.text_box_trim_start
+            || e.style.used().reset_text_box.text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (!vertical && e.style.used().vertical_decl() == Some(true))
             || matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(Position::Absolute | Position::Fixed)
             )
             || crate::layout::multicol::spanner::multicol_container(&e.style.used())))
@@ -165,8 +165,14 @@ mod tests {
                 let logical = logical_copy(physical, rl).unwrap();
                 assert!(!logical.style.used().wm().vertical());
                 assert!(physical.style.used().wm().vertical());
-                assert_eq!(logical.style.used().height, physical.style.used().width);
-                assert_eq!(logical.style.used().width, physical.style.used().height);
+                assert_eq!(
+                    logical.style.used().reset_box_layout.height,
+                    physical.style.used().reset_box_layout.width
+                );
+                assert_eq!(
+                    logical.style.used().reset_box_layout.width,
+                    physical.style.used().reset_box_layout.height
+                );
                 let blocks = BlockBox::collect(
                     &logical,
                     ShapeCx::COLUMNS,
@@ -204,22 +210,28 @@ mod tests {
                 "",
             );
             let mut physical = authored(&tree).clone();
-            physical.style.used_mut().border_visible =
+            physical.style.used_mut().reset_border.border_visible =
                 [Some(true), Some(true), Some(false), Some(false)];
             assert!(vertical_copy(&physical, rl));
             let logical = logical_copy(&physical, rl).unwrap();
             assert_eq!(
-                logical.style.used().margin.top,
+                logical.style.used().reset_box_layout.margin.top,
                 Some(Len::Px(if rl { 2.0 } else { 4.0 }))
             );
             assert_eq!(
-                logical.style.used().margin.bottom,
+                logical.style.used().reset_box_layout.margin.bottom,
                 Some(Len::Px(if rl { 4.0 } else { 2.0 }))
             );
-            assert_eq!(logical.style.used().margin.left, Some(Len::Px(3.0)));
-            assert_eq!(logical.style.used().margin.right, Some(Len::Px(1.0)));
             assert_eq!(
-                logical.style.used().border_visible,
+                logical.style.used().reset_box_layout.margin.left,
+                Some(Len::Px(3.0))
+            );
+            assert_eq!(
+                logical.style.used().reset_box_layout.margin.right,
+                Some(Len::Px(1.0))
+            );
+            assert_eq!(
+                logical.style.used().reset_border.border_visible,
                 [Some(rl), Some(true), Some(!rl), Some(false)]
             );
             assert!(physical.style.used().wm().vertical());

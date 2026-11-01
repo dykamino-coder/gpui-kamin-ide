@@ -19,17 +19,17 @@ pub(super) fn fill_anchor_pairs(
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     // Содержащий блок — ячейка сетки или окно для `fixed`: IMCB от рамки
     // всего блока здесь не годится, раскладка решает сама.
-    if c.position == Some(Position::Fixed) || matches!(grid_parent, Some(true)) {
+    if c.reset_positioned.position == Some(Position::Fixed) || matches!(grid_parent, Some(true)) {
         return;
     }
-    let x = auto(c.width)
-        && set(c.inset.left)
-        && set(c.inset.right)
-        && (anchored(c.inset.left) || anchored(c.inset.right));
-    let y = auto(c.height)
-        && set(c.inset.top)
-        && set(c.inset.bottom)
-        && (anchored(c.inset.top) || anchored(c.inset.bottom));
+    let x = auto(c.reset_box_layout.width)
+        && set(c.reset_positioned.inset.left)
+        && set(c.reset_positioned.inset.right)
+        && (anchored(c.reset_positioned.inset.left) || anchored(c.reset_positioned.inset.right));
+    let y = auto(c.reset_box_layout.height)
+        && set(c.reset_positioned.inset.top)
+        && set(c.reset_positioned.inset.bottom)
+        && (anchored(c.reset_positioned.inset.top) || anchored(c.reset_positioned.inset.bottom));
     if !x && !y {
         return;
     }
@@ -38,7 +38,7 @@ pub(super) fn fill_anchor_pairs(
     };
     let pxv = px_lossy_zero;
     let b = c.borders();
-    let inner = c.border_box != Some(true);
+    let inner = c.reset_border.border_box != Some(true);
     let edge = |m0: Option<Len>, m1: Option<Len>, b0, b1, p0, p1| {
         pxv(m0)
             + pxv(m1)
@@ -50,24 +50,24 @@ pub(super) fn fill_anchor_pairs(
     };
     if x {
         let e = edge(
-            c.margin.left,
-            c.margin.right,
+            c.reset_box_layout.margin.left,
+            c.reset_box_layout.margin.right,
             b.left,
             b.right,
-            c.padding.left,
-            c.padding.right,
+            c.reset_box_layout.padding.left,
+            c.reset_box_layout.padding.right,
         );
-        c.width = Some(Len::Px((w - e).max(0.0)));
+        c.reset_box_layout.width = Some(Len::Px((w - e).max(0.0)));
     }
     if y {
         let e = edge(
-            c.margin.top,
-            c.margin.bottom,
+            c.reset_box_layout.margin.top,
+            c.reset_box_layout.margin.bottom,
             b.top,
             b.bottom,
-            c.padding.top,
-            c.padding.bottom,
+            c.reset_box_layout.padding.top,
+            c.reset_box_layout.padding.bottom,
         );
-        c.height = Some(Len::Px((h - e).max(0.0)));
+        c.reset_box_layout.height = Some(Len::Px((h - e).max(0.0)));
     }
 }

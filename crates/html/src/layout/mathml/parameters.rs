@@ -29,13 +29,13 @@ pub(super) fn kind(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Kind {
     let attr = |name| e.attr(name).and_then(|v| length_px(v, style, opts));
     if e.tag == "mpadded" {
         Kind::Padded(padded::Parameters {
-            width: px_strict(style.width),
+            width: px_strict(style.reset_box_layout.width),
             ascent: attr("height"),
             descent: attr("depth"),
             lspace: attr("lspace").unwrap_or(0.0),
             voffset: attr("voffset").unwrap_or(0.0),
-            css_width: px_strict(style.width),
-            css_height: px_strict(style.height),
+            css_width: px_strict(style.reset_box_layout.width),
+            css_height: px_strict(style.reset_box_layout.height),
             rtl: style.wm().rtl(),
         })
     } else {
@@ -45,7 +45,7 @@ pub(super) fn kind(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Kind {
             .iter()
             .filter(|n| matches!(n, crate::dom::Node::Element(_)))
             .count();
-        let movable = style.math_compact != Some(false)
+        let movable = style.inh.ui.math_compact != Some(false)
             && e.children
                 .iter()
                 .find_map(|n| {
@@ -108,5 +108,5 @@ pub(super) fn length_px(raw: &str, style: &BoxStyle, opts: &RenderOpts) -> Optio
     };
     let mut resolved = inherit(style, &own, vcx);
     resolved.resolve_viewport(opts.viewport, vcx);
-    px_strict(resolved.width)
+    px_strict(resolved.reset_box_layout.width)
 }

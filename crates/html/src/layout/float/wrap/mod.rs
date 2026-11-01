@@ -49,7 +49,8 @@ pub(crate) fn wrap_floats(
     // только у вызывающего.
     let cb = FloatCb {
         margin_basis: cb_px,
-        height: cb_height.or_else(|| crate::style::values::value::px_strict(parent.height)),
+        height: cb_height
+            .or_else(|| crate::style::values::value::px_strict(parent.reset_box_layout.height)),
         ..FloatCb::of(parent)
     };
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
@@ -72,7 +73,7 @@ pub(crate) fn wrap_floats(
             i += 1;
             continue;
         };
-        if e.style.used().float.is_none_or(|f| f == 0) {
+        if e.style.used().reset_box_layout.float.is_none_or(|f| f == 0) {
             out.push(nodes[i].clone());
             i += 1;
             continue;

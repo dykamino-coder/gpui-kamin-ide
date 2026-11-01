@@ -112,7 +112,7 @@ pub(crate) fn context(
     c: &crate::style::computed::Computed,
     owner: Option<&Rc<Deferred>>,
 ) -> AnyElement {
-    if c.opacity.is_some_and(|opacity| opacity < 1.0) {
+    if c.reset_effects.opacity.is_some_and(|opacity| opacity < 1.0) {
         in_band(child, owner)
     } else {
         child

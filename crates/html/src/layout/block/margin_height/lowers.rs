@@ -17,7 +17,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
     let st = e.style.used();
     let sizes = BoxDimensions::for_element(e, &st);
     if !matches!(
-        st.display,
+        st.reset_box_layout.display,
         None | Some(
             crate::style::computed::Display::Block | crate::style::computed::Display::ListItem
         )
@@ -29,13 +29,18 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
     };
     let edges = |style: &Computed| -> Option<f32> {
         let b = style.borders();
-        [style.padding.top, style.padding.bottom, b.top, b.bottom]
-            .into_iter()
-            .try_fold(0.0, |sum, value| match value {
-                None => Some(sum),
-                Some(Len::Px(v)) => Some(sum + v),
-                _ => None,
-            })
+        [
+            style.reset_box_layout.padding.top,
+            style.reset_box_layout.padding.bottom,
+            b.top,
+            b.bottom,
+        ]
+        .into_iter()
+        .try_fold(0.0, |sum, value| match value {
+            None => Some(sum),
+            Some(Len::Px(v)) => Some(sum + v),
+            _ => None,
+        })
     };
     if sizes.border_box {
         let Some(inset) = edges(&st) else {
@@ -76,7 +81,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
             // (CSS2 §10.6.3/§10.6.7), в том числе пустой flow-root.
             None if matches!(child_sizes.preferred[1], None | Some(Len::Auto))
                 && matches!(
-                    cs.display,
+                    cs.reset_box_layout.display,
                     None | Some(crate::style::computed::Display::Block)
                 )
                 && !replaced_inline(&child.tag)
@@ -91,7 +96,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
         let Some(inset) = edges(&cs) else {
             return false;
         };
-        let Some(top) = margin_or_bail(cs.margin.top, &cs, vcx) else {
+        let Some(top) = margin_or_bail(cs.reset_box_layout.margin.top, &cs, vcx) else {
             return false;
         };
         let height = if child_sizes.border_box {
@@ -107,7 +112,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
             solve(adjoin(previous_margin, strut_of(top)))
         };
         bottom = Some(bottom.unwrap_or(0.0) + gap + height);
-        let Some(margin) = margin_or_bail(cs.margin.bottom, &cs, vcx) else {
+        let Some(margin) = margin_or_bail(cs.reset_box_layout.margin.bottom, &cs, vcx) else {
             return false;
         };
         previous_margin = strut_of(margin);
@@ -131,7 +136,7 @@ mod tests {
             ),
             ..Default::default()
         };
-        child_style.margin.top = Some(Len::Px(200.0));
+        child_style.reset_box_layout.margin.top = Some(Len::Px(200.0));
         let mut parent = Element::synthetic(
             "div",
             Computed {
@@ -155,7 +160,7 @@ mod tests {
             &parent,
             crate::layout::block::margins::MarginCx::new(doc.values())
         ));
-        parent.style.used_mut().flow_root = Some(true);
+        parent.style.used_mut().reset_context.flow_root = Some(true);
         assert!(lowers(
             &parent,
             crate::layout::block::margins::MarginCx::new(doc.values())
@@ -174,7 +179,7 @@ mod tests {
             ),
             ..Default::default()
         };
-        first.margin.bottom = Some(Len::Px(10.0));
+        first.reset_box_layout.margin.bottom = Some(Len::Px(10.0));
         let mut last = Computed {
             reset_context: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetContext {
@@ -184,8 +189,8 @@ mod tests {
             ),
             ..Default::default()
         };
-        last.margin.top = Some(Len::Px(20.0));
-        last.margin.bottom = Some(Len::Px(80.0));
+        last.reset_box_layout.margin.top = Some(Len::Px(20.0));
+        last.reset_box_layout.margin.bottom = Some(Len::Px(80.0));
         let children = vec![
             Node::Element(Element::synthetic("div", first, Default::default(), vec![])),
             Node::Element(Element::synthetic(
@@ -220,13 +225,16 @@ mod tests {
         let Node::Element(first) = &parent.children[0] else {
             panic!("first")
         };
-        assert_eq!(first.style.used().margin.bottom, Some(Len::Px(10.0)));
-        parent.style.used_mut().max_height = Some(Len::Px(170.0));
+        assert_eq!(
+            first.style.used().reset_box_layout.margin.bottom,
+            Some(Len::Px(10.0))
+        );
+        parent.style.used_mut().reset_box_layout.max_height = Some(Len::Px(170.0));
         assert!(!lowers(
             &parent,
             crate::layout::block::margins::MarginCx::new(doc.values())
         ));
-        parent.style.used_mut().max_height = Some(Len::Px(169.0));
+        parent.style.used_mut().reset_box_layout.max_height = Some(Len::Px(169.0));
         assert!(lowers(
             &parent,
             crate::layout::block::margins::MarginCx::new(doc.values())

@@ -23,13 +23,13 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         let colour = sh.used_color(c.current_color());
         if sh.blur > 0.0
             || colour.a == 0.0
-            || c.border_shape.is_some()
+            || c.reset_border.border_shape.is_some()
             || super::shaped_outset::shapes_shadows(c, vcx)
         {
             continue;
         }
         let spread = sh.spread;
-        let radius = match c.radius.tl {
+        let radius = match c.reset_border.radius.tl {
             // §7.1: при радиусе МЕНЬШЕ разлёта разлёт сперва домножается на
             // 1 + (r − 1)³, r = радиус / разлёт — острый угол переходит в
             // круглый без скачка (`box-shadow-radius-000`: 5 px при разлёте
@@ -39,7 +39,7 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
                 v + spread * (1.0 + (k - 1.0).powi(3))
             }
             Some(Len::Px(v)) if v > 0.0 => (v + spread).max(0.0),
-            Some(Len::Pct(k)) => match (c.width, c.height) {
+            Some(Len::Pct(k)) => match (c.reset_box_layout.width, c.reset_box_layout.height) {
                 (Some(Len::Px(w)), Some(Len::Px(h))) => {
                     k * (w + 2.0 * spread).min(h + 2.0 * spread)
                 }
@@ -65,10 +65,15 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         let bw = c.borders();
         let side = px_lossy_zero;
         let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
-        let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
-            .iter()
-            .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
-        if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
+        let square = [
+            c.reset_border.radius.tl,
+            c.reset_border.radius.tr,
+            c.reset_border.radius.br,
+            c.reset_border.radius.bl,
+        ]
+        .iter()
+        .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
+        if square && c.reset_border.radius_ell.is_none() && c.reset_border.corner_shape.is_none() {
             // CSS Backgrounds 3 §7.1: shadow rect minus border box. Plain fills
             // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
@@ -136,11 +141,11 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
     // краску несёт рамка толщиной «разлёт ± смещение»: её внутренний край и
     // есть фигура. Слой — после плиток фона и до рамки: «inner shadows …
     // immediately above the background … (below the borders and border image)».
-    for sh in c.inset_shadows.iter().rev() {
+    for sh in c.reset_effects.inset_shadows.iter().rev() {
         // У `border-shape` внутренняя тень — растр по внутреннему контуру
         // (слой фигуры ниже), кольцо здесь было бы прямоугольным.
         let colour = sh.used_color(c.current_color());
-        if sh.blur > 0.0 || colour.a == 0.0 || c.border_shape.is_some() {
+        if sh.blur > 0.0 || colour.a == 0.0 || c.reset_border.border_shape.is_some() {
             continue;
         }
         let s = sh.spread;
@@ -153,10 +158,15 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         if widths.iter().all(|v| *v <= 0.0) {
             continue;
         }
-        let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
-            .iter()
-            .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
-        if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
+        let square = [
+            c.reset_border.radius.tl,
+            c.reset_border.radius.tr,
+            c.reset_border.radius.br,
+            c.reset_border.radius.bl,
+        ]
+        .iter()
+        .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
+        if square && c.reset_border.radius_ell.is_none() && c.reset_border.corner_shape.is_none() {
             // Square inner shadow = padding box minus the padding box moved by
             // the offset and shrunk by the spread (css-backgrounds-3 §7.1),
             // from the unrounded padding box, painted as fills like the outer
@@ -200,7 +210,7 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         ring.style().snap_to_device_pixels = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
-        if !c.radius_masked(vcx) && c.border_shape.is_none() {
+        if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
             let bw = c.borders();
             let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
@@ -208,10 +218,10 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
                     .max(0.0)
             };
             ring = ring
-                .rounded_tl(px(pad(c.radius.tl, bw.top, bw.left)))
-                .rounded_tr(px(pad(c.radius.tr, bw.top, bw.right)))
-                .rounded_br(px(pad(c.radius.br, bw.bottom, bw.right)))
-                .rounded_bl(px(pad(c.radius.bl, bw.bottom, bw.left)));
+                .rounded_tl(px(pad(c.reset_border.radius.tl, bw.top, bw.left)))
+                .rounded_tr(px(pad(c.reset_border.radius.tr, bw.top, bw.right)))
+                .rounded_br(px(pad(c.reset_border.radius.br, bw.bottom, bw.right)))
+                .rounded_bl(px(pad(c.reset_border.radius.bl, bw.bottom, bw.left)));
         }
         out.push(ring.into_any_element());
     }

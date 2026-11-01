@@ -11,7 +11,7 @@ pub(crate) fn flex_tree(e: &Element) -> bool {
     fn eligible(e: &Element, item: bool) -> bool {
         if e.style.cascaded().wm().vertical()
             || clone_dec(e).is_some()
-            || e.style.used().webkit_box == Some(true)
+            || e.style.used().reset_flex.webkit_box == Some(true)
             || crate::layout::multicol::spanner::multicol_container(&e.style.used())
             || !crate::layout::page::paged::visible_overflow(&e.style.used())
         {
@@ -23,10 +23,10 @@ pub(crate) fn flex_tree(e: &Element) -> bool {
         let flex = flex_container(e);
         if !(flex
             || matches!(
-                e.style.used().display,
+                e.style.used().reset_box_layout.display,
                 None | Some(Display::Block | Display::ListItem)
             )
-            || item && e.style.used().display == Some(Display::InlineBlock))
+            || item && e.style.used().reset_box_layout.display == Some(Display::InlineBlock))
         {
             return false;
         }
@@ -36,7 +36,10 @@ pub(crate) fn flex_tree(e: &Element) -> bool {
             // Атомарная строчная коробка блочного контейнера стоит в его
             // строке: разрыв — между строками, сама она неделима
             // (css-break-3 §4.1, §4.3 класс B).
-            Node::Element(k) if !flex && k.style.used().display == Some(Display::InlineBlock) => {
+            Node::Element(k)
+                if !flex
+                    && k.style.used().reset_box_layout.display == Some(Display::InlineBlock) =>
+            {
                 true
             }
             Node::Element(k) if !k.inline || flex => monolith_blockified(k) || eligible(k, flex),

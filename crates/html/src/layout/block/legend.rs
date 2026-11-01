@@ -23,7 +23,7 @@ pub(crate) fn with_rendered_legend(
         || merged.wm().vertical()
         || crate::layout::multicol::spanner::multicol_container(merged)
         || !matches!(
-            merged.display,
+            merged.reset_box_layout.display,
             None | Some(Display::Block | Display::InlineBlock)
         )
     {
@@ -32,7 +32,7 @@ pub(crate) fn with_rendered_legend(
     let Some(at) = children.iter().position(|n| {
         matches!(n, Node::Element(c) if c.tag == "legend"
             && !out_of_flow(&c.style.used())
-            && c.style.used().float.unwrap_or(0) == 0)
+            && c.style.used().reset_box_layout.float.unwrap_or(0) == 0)
     }) else {
         return children;
     };
@@ -50,7 +50,10 @@ pub(crate) fn legend_band(legend: Node, merged: &BoxStyle) -> Node {
         Some(Len::Px(v)) => Some(v),
         _ => None,
     };
-    match (px(merged.borders().top), px(merged.padding.top)) {
+    match (
+        px(merged.borders().top),
+        px(merged.reset_box_layout.padding.top),
+    ) {
         (Some(border), Some(pad)) => Node::Element(band(legend, border, pad)),
         _ => legend,
     }
@@ -58,7 +61,7 @@ pub(crate) fn legend_band(legend: Node, merged: &BoxStyle) -> Node {
 
 fn band(legend: Node, border: f32, pad: f32) -> Element {
     let justify = match &legend {
-        Node::Element(l) => match l.style.used().text_align {
+        Node::Element(l) => match l.style.used().inh.text_flow.text_align {
             Some(TextAlign::Center) => Some(Justify::Center),
             Some(TextAlign::Right | TextAlign::End) => Some(Justify::End),
             _ => None,
@@ -129,10 +132,22 @@ mod tests {
         let Node::Element(band) = &kids[0] else {
             panic!()
         };
-        assert_eq!(band.style.used().display, Some(Display::Flex));
-        assert_eq!(band.style.used().min_height, Some(Len::Px(5.0)));
-        assert_eq!(band.style.used().margin.top, Some(Len::Px(-7.0)));
-        assert_eq!(band.style.used().margin.bottom, Some(Len::Px(2.0)));
+        assert_eq!(
+            band.style.used().reset_box_layout.display,
+            Some(Display::Flex)
+        );
+        assert_eq!(
+            band.style.used().reset_box_layout.min_height,
+            Some(Len::Px(5.0))
+        );
+        assert_eq!(
+            band.style.used().reset_box_layout.margin.top,
+            Some(Len::Px(-7.0))
+        );
+        assert_eq!(
+            band.style.used().reset_box_layout.margin.bottom,
+            Some(Len::Px(2.0))
+        );
         assert!(matches!(&band.children[0], Node::Element(l) if l.tag == "legend"));
         let tags: Vec<_> = kids[1..]
             .iter()

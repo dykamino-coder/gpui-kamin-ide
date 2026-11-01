@@ -11,17 +11,20 @@ pub(super) fn layout_grid_gap(
     sizes: &BoxDimensions,
     vcx: ValueCx<'_>,
 ) -> Div {
-    let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    let real_grid = matches!(
+        c.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    );
     // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
     // are decided for each item in its physical alignment axis. Dropping the
     // container keyword before projection changes baseline fallback to stretch.
     // A vertical grid projects justify-items onto y, where the layout engine
     // can use horizontal content baselines or synthesize the bottom baseline.
-    if let Some(a) = c.justify_items {
-        d.style().justify_items = Some(self_align(a, c.justify_items_last));
+    if let Some(a) = c.reset_flex.justify_items {
+        d.style().justify_items = Some(self_align(a, c.reset_flex.justify_items_last));
     }
-    if let Some(a) = c.justify_self {
-        d.style().justify_self = Some(self_align(a, c.justify_self_last));
+    if let Some(a) = c.reset_flex.justify_self {
+        d.style().justify_self = Some(self_align(a, c.reset_flex.justify_self_last));
     }
     alignment_axes::abspos_normal(d.style(), c);
     alignment_axes::grid_self(d.style(), c);
@@ -39,12 +42,12 @@ pub(super) fn layout_grid_gap(
     // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
     d.style().baseline_x_flags = item_metadata::baseline_x_flags(c);
     grid_content_baseline::apply(d.style(), c);
-    if let Some(r) = c.aspect_ratio
+    if let Some(r) = c.reset_shapes.aspect_ratio
         && !ratio_as_auto_min(c, sizes)
     {
         d.style().aspect_ratio = Some(r);
     }
-    if let Some((row, col)) = c.gap {
+    if let Some((row, col)) = c.reset_flex.gap {
         // При вертикальном письме ось блока горизонтальна: `row-gap` — зазор
         // ПО ГОРИЗОНТАЛИ, `column-gap` — по вертикали. Главную ось выше уже
         // переставили, зазор обязан ехать за ней. Сокращение `gap: 20px`
@@ -72,11 +75,21 @@ pub(super) fn layout_grid_gap(
         };
         let basis_y = content(
             sizes.preferred[1],
-            [c.padding.top, c.padding.bottom, edges.top, edges.bottom],
+            [
+                c.reset_box_layout.padding.top,
+                c.reset_box_layout.padding.bottom,
+                edges.top,
+                edges.bottom,
+            ],
         );
         let basis_x = content(
             sizes.preferred[0],
-            [c.padding.left, c.padding.right, edges.left, edges.right],
+            [
+                c.reset_box_layout.padding.left,
+                c.reset_box_layout.padding.right,
+                edges.left,
+                edges.right,
+            ],
         );
         let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {
             // CSS Gaps 1 gap-percent: grid intrinsic sizing uses a zero

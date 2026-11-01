@@ -49,7 +49,7 @@ fn holds_grid(e: &Element) -> bool {
 /// `item` — элемент сетки: его `inline-block` блокифицирован.
 fn measured_tree(e: &Element, item: bool) -> bool {
     if crate::layout::multicol::spanner::multicol_container(&e.style.used())
-        || e.style.used().webkit_box == Some(true)
+        || e.style.used().reset_flex.webkit_box == Some(true)
         || crate::layout::fragment::clone::clone_dec(e).is_some()
         || !crate::layout::page::paged::visible_overflow(&e.style.used())
     {
@@ -61,7 +61,11 @@ fn measured_tree(e: &Element, item: bool) -> bool {
     if grid_container(e) {
         return children(&e.children).all(|n| match n {
             Node::Element(k) if out_of_flow(&k.style.used()) => true,
-            Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => true,
+            Node::Element(k)
+                if matches!(k.style.used().reset_box_layout.display, Some(Display::None)) =>
+            {
+                true
+            }
             Node::Element(k) => {
                 monolith_blockified(k) || measured_tree(k, true) || super::flex_tree(k)
             }
@@ -69,9 +73,10 @@ fn measured_tree(e: &Element, item: bool) -> bool {
         });
     }
     let block = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) || (item && e.style.used().display == Some(Display::InlineBlock));
+    ) || (item
+        && e.style.used().reset_box_layout.display == Some(Display::InlineBlock));
     block
         && children(&e.children).all(|n| match n {
             Node::Element(k) if out_of_flow(&k.style.used()) => true,

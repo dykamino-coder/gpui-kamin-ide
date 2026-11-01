@@ -96,7 +96,7 @@ fn collapsed_half_border_is_already_inside_the_layout_padding() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = Computed::default();
-    c.bg_border_insets = Some([10.0; 4]);
+    c.reset_background.bg_border_insets = Some([10.0; 4]);
     c.apply_one("padding", "15px", vcx);
     let bounds = Bounds {
         origin: point(px(0.0), px(0.0)),

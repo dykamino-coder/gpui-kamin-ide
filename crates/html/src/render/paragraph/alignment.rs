@@ -24,12 +24,12 @@ pub(crate) fn atom_line_align(
     use crate::text::paragraph::AtomAlign;
     let st = &*e.style.used();
     let atomic = matches!(
-        st.display,
+        st.reset_box_layout.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineTable)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
-    ) && st.inline_display != Some(true);
+    ) && st.reset_context.inline_display != Some(true);
     let replaced = matches!(
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
@@ -39,7 +39,7 @@ pub(crate) fn atom_line_align(
     // гибкий ряд слов не умеет. Прочие роли (база, аннотация вне контейнера)
     // остаются в ряду.
     let ruby = ruby_role(e) == Some(crate::style::computed::RubyRole::Container);
-    if !(atomic || replaced || ruby) || (st.ruby_role.is_some() && !ruby) {
+    if !(atomic || replaced || ruby) || (st.reset_text_box.ruby_role.is_some() && !ruby) {
         return None;
     }
     // Внутри `line-clamp` руби остаётся в ряду: вычислитель среза
@@ -59,14 +59,22 @@ pub(crate) fn atom_line_align(
     fn has_vertical(nodes: &[Node], in_box_layout: bool) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(k) => {
-                let sized_by_parent = in_box_layout || k.style.used().height.is_some();
+                let sized_by_parent =
+                    in_box_layout || k.style.used().reset_box_layout.height.is_some();
                 // Ломает замер только ортогональный ФЛОАТ (его ширина «по
                 // содержимому» берётся от доступного места); ортогональный
                 // блок в потоке раскладывается одинаково, и исключать атом
                 // ради него значило вести тест рядом, а эталон строкой
                 // (`baseline-with-orthogonal-flow-001`).
-                let floated = k.style.used().float.is_some_and(|f| f != 0);
-                (k.style.cascaded().writing_mode.is_some() && !sized_by_parent && floated)
+                let floated = k
+                    .style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|f| f != 0);
+                (k.style.cascaded().inh.writing.writing_mode.is_some()
+                    && !sized_by_parent
+                    && floated)
                     || has_vertical(&k.children, box_layout(&k.style.used()))
             }
             _ => false,
@@ -74,7 +82,7 @@ pub(crate) fn atom_line_align(
     }
     fn box_layout(c: &Computed) -> bool {
         matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::Grid)
                 | Some(Display::InlineGrid)
                 | Some(Display::Flex)
@@ -85,12 +93,14 @@ pub(crate) fn atom_line_align(
     // размеры (Writing Modes 4 §4.3); own_box подавляет его содержательную
     // baseline. Обратная ортогональность требует адаптера повёрнутой строки:
     // обычный атом и text-combine там пока идут общим прежним путём.
-    let orthogonal_block = st.display == Some(Display::InlineBlock)
+    let orthogonal_block = st.reset_box_layout.display == Some(Display::InlineBlock)
         && st.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned();
     // Своё письмо атома — объявленное (вычисленное наследуется).
-    if (e.style.cascaded().writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
+    if (e.style.cascaded().inh.writing.writing_mode.is_some()
+        && !box_layout(st)
+        && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {
         return None;
@@ -98,7 +108,9 @@ pub(crate) fn atom_line_align(
     // Замещаемый с `aspect-ratio`: соотношение разрешается от ДОСТУПНОГО
     // места, а замер по содержимому его не даёт (`zero-or-infinity-006`:
     // `aspect-ratio: 0/1` давал другую высоту).
-    if replaced && (st.aspect_ratio.is_some() || st.aspect_ratio_auto.is_some()) {
+    if replaced
+        && (st.reset_shapes.aspect_ratio.is_some() || st.reset_shapes.aspect_ratio_auto.is_some())
+    {
         return None;
     }
     // Абсолютная замещаемая коробка с заданными краями места в строке не
@@ -107,7 +119,7 @@ pub(crate) fn atom_line_align(
     // соседний текст шире и ниже, чем эталон с тем же текстом без картинки
     // (`background-bg-pos-204-ref`).
     if matches!(
-        st.position,
+        st.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -121,24 +133,24 @@ pub(crate) fn atom_line_align(
         fixed(s.top) && fixed(s.right) && fixed(s.bottom) && fixed(s.left)
     };
     if ![
-        st.width,
-        st.height,
-        st.min_width,
-        st.min_height,
-        st.max_width,
-        st.max_height,
+        st.reset_box_layout.width,
+        st.reset_box_layout.height,
+        st.reset_box_layout.min_width,
+        st.reset_box_layout.min_height,
+        st.reset_box_layout.max_width,
+        st.reset_box_layout.max_height,
     ]
     .into_iter()
     .all(fixed)
-        || !sides(&st.margin)
-        || !sides(&st.padding)
+        || !sides(&st.reset_box_layout.margin)
+        || !sides(&st.reset_box_layout.padding)
     {
         return None;
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
     let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
-    let size = match merged.font_size {
+    let size = match merged.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
     };
@@ -148,23 +160,23 @@ pub(crate) fn atom_line_align(
         Some(crate::style::computed::Align::Start) => AtomAlign::Top,
         Some(crate::style::computed::Align::End) => AtomAlign::Bottom,
         Some(crate::style::computed::Align::Center) => AtomAlign::Middle,
-        _ => match st.vertical_align_text {
+        _ => match st.reset_text_box.vertical_align_text {
             Some(true) => AtomAlign::TextTop,
             Some(false) => AtomAlign::TextBottom,
             None => {
-                if let Some(v) = st.vertical_shift_px {
+                if let Some(v) = st.reset_text_box.vertical_shift_px {
                     AtomAlign::Shift(-v)
-                } else if let Some(l) = st.vertical_shift_len {
-                    let family = merged.font_family.clone().unwrap_or_default();
+                } else if let Some(l) = st.reset_text_box.vertical_shift_len {
+                    let family = merged.inh.font.font_family.clone().unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(
                         Some(l),
                         &family,
                         size,
                         vcx,
                     ))
-                } else if let Some(k) = st.vertical_shift {
+                } else if let Some(k) = st.reset_text_box.vertical_shift {
                     AtomAlign::Shift(-k * size)
-                } else if let Some(k) = st.vertical_shift_pct {
+                } else if let Some(k) = st.reset_text_box.vertical_shift_pct {
                     // Процент — от `line-height` самого атома (§10.8.1).
                     let own = merged.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
                         crate::text::metrics::normal_px(

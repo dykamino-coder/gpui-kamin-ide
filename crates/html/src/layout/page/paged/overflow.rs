@@ -38,9 +38,11 @@ pub(crate) fn visible_overflow(c: &Computed) -> bool {
     // осям раздельная, `paint/apply/` `overflow.x = Clip`). `overflow-clip-003/008`:
     // `overflow-x: clip` на коробке 150/200 с содержимым 200/400 — хвост обязан
     // уйти в следующие колонки, а ворота отдавали ему нулевой поток.
-    matches!(c.overflow_y, None | Some(Overflow::Visible))
-        && matches!(
-            c.overflow_x,
-            None | Some(Overflow::Visible) | Some(Overflow::Clip)
-        )
+    matches!(
+        c.reset_box_layout.overflow_y,
+        None | Some(Overflow::Visible)
+    ) && matches!(
+        c.reset_box_layout.overflow_x,
+        None | Some(Overflow::Visible) | Some(Overflow::Clip)
+    )
 }

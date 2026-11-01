@@ -22,7 +22,12 @@ pub(super) fn unfloated_flow(
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.used().float.is_some_and(|f| f != 0),
+        Node::Element(e) => e
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|f| f != 0),
         Node::Text(_) => false,
     });
     if !floated {
@@ -58,15 +63,24 @@ pub(super) fn prepare_float_nodes(
     let nodes: Vec<Node> = nodes
         .into_iter()
         .map(|n| match n {
-            Node::Element(mut e) if e.style.used().display == Some(Display::Contents) => {
-                e.style.used_mut().float = None;
+            Node::Element(mut e)
+                if e.style.used().reset_box_layout.display == Some(Display::Contents) =>
+            {
+                e.style.used_mut().reset_box_layout.float = None;
                 Node::Element(e)
             }
-            Node::Element(mut e) if e.style.used().float.is_some_and(|f| f != 0) => {
+            Node::Element(mut e)
+                if e.style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|f| f != 0) =>
+            {
                 // Font-relative margins use the float's computed font, before
                 // the band planner takes ownership of its margin box.
-                e.style.used_mut().margin =
+                e.style.used_mut().reset_box_layout.margin =
                     crate::style::cascade::materialize::box_style_unpainted(parent, &e.style, vcx)
+                        .reset_box_layout
                         .margin;
                 Node::Element(e)
             }
@@ -125,7 +139,7 @@ pub(super) fn prepare_float_nodes(
         && let Some(b) =
             (a + 1..nodes.len()).find(|&k| !is_blank(&nodes[k]) && !phantom_inline(&nodes[k]))
         && let Node::Element(n) = &nodes[b]
-        && (match n.style.used().clear {
+        && (match n.style.used().reset_box_layout.clear {
             Some(0) => true,
             Some(c) if c < 0 => left,
             Some(_) => right,
@@ -133,10 +147,10 @@ pub(super) fn prepare_float_nodes(
         } || bfc_no_fit(n, min_w, cb_px))
     {
         if let Node::Element(w) = &mut nodes[a] {
-            w.style.used_mut().height = None;
+            w.style.used_mut().reset_box_layout.height = None;
         }
         if let Node::Element(n) = &mut nodes[b] {
-            n.style.used_mut().margin.top = Some(Len::Px(0.0));
+            n.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(0.0));
         }
     }
     nodes
@@ -200,8 +214,8 @@ pub(super) fn wrap_into_host(
         if !parent_bfc
             && !cell_bfc
             && next == nodes.len()
-            && parent.float_tail
-            && !parent.in_multicol
+            && parent.reset_context.float_tail
+            && !parent.reset_fragmentation.in_multicol
         {
             host.marks.inflow_height = true;
         }
@@ -218,7 +232,12 @@ pub(super) fn wrap_into_host(
                 is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style.used()))
             })
         {
-            host.first_line = parent.first_line.as_deref().cloned().map(Into::into);
+            host.first_line = parent
+                .reset_text_box
+                .first_line
+                .as_deref()
+                .cloned()
+                .map(Into::into);
         }
         band_clearance::mark_start(&mut host, cb_top_open, &*out);
         out.push(Node::Element(host));

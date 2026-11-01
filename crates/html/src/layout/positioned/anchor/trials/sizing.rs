@@ -6,36 +6,46 @@ use crate::style::values::value::{AnchorFn, AnchorSize, Len, anchor_get, anchor_
 use crate::values::ValueCx;
 
 pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
-    std::mem::swap(&mut c.width, &mut c.height);
-    std::mem::swap(&mut c.min_width, &mut c.min_height);
-    std::mem::swap(&mut c.max_width, &mut c.max_height);
+    std::mem::swap(
+        &mut c.reset_box_layout.width,
+        &mut c.reset_box_layout.height,
+    );
+    std::mem::swap(
+        &mut c.reset_box_layout.min_width,
+        &mut c.reset_box_layout.min_height,
+    );
+    std::mem::swap(
+        &mut c.reset_box_layout.max_width,
+        &mut c.reset_box_layout.max_height,
+    );
     for (a, b) in [
         (L::Width, L::Height),
         (L::MinWidth, L::MinHeight),
         (L::MaxWidth, L::MaxHeight),
     ] {
-        let av = c.inherit_longhands.contains(a);
-        let bv = c.inherit_longhands.contains(b);
-        c.inherit_longhands.set(a, bv);
-        c.inherit_longhands.set(b, av);
+        let av = c.reset_cascade.inherit_longhands.contains(a);
+        let bv = c.reset_cascade.inherit_longhands.contains(b);
+        c.reset_cascade.inherit_longhands.set(a, bv);
+        c.reset_cascade.inherit_longhands.set(b, av);
     }
-    c.calc_size.swap(0, 1);
-    c.calc_size.swap(2, 3);
-    c.calc_size_max.swap(0, 1);
-    c.calc_size_basis.swap(0, 1);
-    c.calc_size_basis.swap(2, 3);
-    c.calc_size_basis.swap(4, 5);
-    c.stretch_size.swap(0, 1);
-    c.stretch_size.swap(2, 4);
-    c.stretch_size.swap(3, 5);
-    for l in [
-        &mut c.width,
-        &mut c.height,
-        &mut c.min_width,
-        &mut c.min_height,
-        &mut c.max_width,
-        &mut c.max_height,
-    ] {
+    c.reset_box_layout.calc_size.swap(0, 1);
+    c.reset_box_layout.calc_size.swap(2, 3);
+    c.reset_box_layout.calc_size_max.swap(0, 1);
+    c.reset_box_layout.calc_size_basis.swap(0, 1);
+    c.reset_box_layout.calc_size_basis.swap(2, 3);
+    c.reset_box_layout.calc_size_basis.swap(4, 5);
+    c.reset_box_layout.stretch_size.swap(0, 1);
+    c.reset_box_layout.stretch_size.swap(2, 4);
+    c.reset_box_layout.stretch_size.swap(3, 5);
+    for style_field_index in 0..6 {
+        let l = match style_field_index {
+            0 => &mut c.reset_box_layout.width,
+            1 => &mut c.reset_box_layout.height,
+            2 => &mut c.reset_box_layout.min_width,
+            3 => &mut c.reset_box_layout.min_height,
+            4 => &mut c.reset_box_layout.max_width,
+            _ => &mut c.reset_box_layout.max_height,
+        };
         *l = size_len(*l, vcx);
     }
 }

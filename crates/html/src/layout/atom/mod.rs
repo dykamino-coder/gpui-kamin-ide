@@ -42,11 +42,11 @@ pub(crate) fn atom_element(
     let vcx = opts.cx.vcx();
     // Atomic inline containers own a scrollport just like block containers
     // (CSS Overflow 3 §3). The raw atom path otherwise only clips their content.
-    if !e.style.used().scroller
-        && e.style.used().snap.axis != 0
+    if !e.style.used().reset_context.scroller
+        && e.style.used().reset_box_layout.snap.axis != 0
         && !replaced_tag(e)
         && matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(
                 crate::style::computed::Display::InlineBlock
                     | crate::style::computed::Display::InlineFlex
@@ -54,7 +54,7 @@ pub(crate) fn atom_element(
                     | crate::style::computed::Display::InlineTable
             )
         )
-        && e.style.used().inline_display != Some(true)
+        && e.style.used().reset_context.inline_display != Some(true)
         && let Some(scroll) = crate::interactive::scroll_box::scrollable(e, inherited, opts)
     {
         return Some(scroll);
@@ -77,8 +77,8 @@ pub(crate) fn atom_element(
     let inline_axis_only = !inherited.wm().vertical()
         && !inherited.wm().turned()
         && !e.style.cascaded().wm().vertical()
-        && keyword(e.style.used().width)
-        && !keyword(e.style.used().height);
+        && keyword(e.style.used().reset_box_layout.width)
+        && !keyword(e.style.used().reset_box_layout.height);
     let wraps = inline_axis_only
         && content_sized_wraps(e)
         && !replaced_tag(e)

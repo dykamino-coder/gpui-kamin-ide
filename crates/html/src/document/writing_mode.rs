@@ -32,7 +32,7 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
             if let Node::Element(b) = n
                 && b.tag == "body"
             {
-                b.style.cascaded_mut().wm_contained = true;
+                b.style.cascaded_mut().reset_context.wm_contained = true;
             }
         }
         return nodes;
@@ -49,10 +49,11 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
         for n in html.children.iter_mut() {
             if let Node::Element(b) = n
                 && b.tag == "body"
-                && b.style.cascaded().height.is_none()
-                && b.style.cascaded().min_height.is_none()
+                && b.style.cascaded().reset_box_layout.height.is_none()
+                && b.style.cascaded().reset_box_layout.min_height.is_none()
             {
-                b.style.cascaded_mut().min_height = Some(crate::style::values::value::Len::Px(0.0));
+                b.style.cascaded_mut().reset_box_layout.min_height =
+                    Some(crate::style::values::value::Len::Px(0.0));
             }
         }
     }
@@ -67,16 +68,23 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
     let body_contained = any_containment(body);
     let taken = if body_contained {
         (
-            html.style.cascaded().writing_mode,
-            html.style.cascaded().rtl,
+            html.style.cascaded().inh.writing.writing_mode,
+            html.style.cascaded().inh.writing.rtl,
         )
     } else {
         (
+            body.style.cascaded().inh.writing.writing_mode.or(html
+                .style
+                .cascaded()
+                .inh
+                .writing
+                .writing_mode),
             body.style
                 .cascaded()
-                .writing_mode
-                .or(html.style.cascaded().writing_mode),
-            body.style.cascaded().rtl.or(html.style.cascaded().rtl),
+                .inh
+                .writing
+                .rtl
+                .or(html.style.cascaded().inh.writing.rtl),
         )
     };
     // Та же пометка, что и при обособлении корня: письмо тела осталось при
@@ -89,13 +97,13 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
             if let Node::Element(b) = n
                 && b.tag == "body"
             {
-                b.style.cascaded_mut().wm_contained = true;
+                b.style.cascaded_mut().reset_context.wm_contained = true;
             }
         }
     }
     let own = (
-        html.style.cascaded().writing_mode,
-        html.style.cascaded().rtl,
+        html.style.cascaded().inh.writing.writing_mode,
+        html.style.cascaded().inh.writing.rtl,
     );
     let taken_vertical = taken.0.is_some_and(|m| m.is_vertical());
     // Главное вертикальное письмо: строчная ось корня занимает всё окно
@@ -109,27 +117,29 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
     if taken.0.is_some_and(|m| m.is_rl())
-        && html.style.cascaded().align_self.is_none()
-        && html.style.cascaded().bg_image.is_none()
+        && html.style.cascaded().reset_flex.align_self.is_none()
+        && html.style.cascaded().reset_background.bg_image.is_none()
     {
-        html.style.cascaded_mut().align_self = Some(crate::style::computed::Align::End);
+        html.style.cascaded_mut().reset_flex.align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
     // (background-size-document-root-vrl-*). Обычным вертикальным корням
     // минимум не ставится — терялась скроллер-структура (av-size-022/023).
     if taken_vertical
-        && html.style.cascaded().bg_image.is_some()
-        && html.style.cascaded().height.is_none()
-        && html.style.cascaded().min_height.is_none()
+        && html.style.cascaded().reset_background.bg_image.is_some()
+        && html.style.cascaded().reset_box_layout.height.is_none()
+        && html.style.cascaded().reset_box_layout.min_height.is_none()
     {
-        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
+        html.style.cascaded_mut().reset_box_layout.min_height =
+            Some(fill_inline(html.style.cascaded(), vcx));
     }
     if taken_vertical
-        && html.style.cascaded().height.is_none()
-        && html.style.cascaded().min_height.is_none()
+        && html.style.cascaded().reset_box_layout.height.is_none()
+        && html.style.cascaded().reset_box_layout.min_height.is_none()
     {
-        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
+        html.style.cascaded_mut().reset_box_layout.min_height =
+            Some(fill_inline(html.style.cascaded(), vcx));
     }
     if taken == own {
         return nodes;
@@ -147,23 +157,32 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
         // Their text participates in the root's used line orientation; block
         // pseudo boxes retain the root's original computed writing mode.
         if !crate::layout::box_kind::inline_level(e) {
-            e.style.cascaded_mut().writing_mode = e
+            e.style.cascaded_mut().inh.writing.writing_mode = e
                 .style
                 .cascaded()
+                .inh
+                .writing
                 .writing_mode
                 .or(Some(own.0.unwrap_or_default()));
         }
-        e.style.cascaded_mut().rtl = e.style.cascaded().rtl.or(Some(own.1.unwrap_or(false)));
+        e.style.cascaded_mut().inh.writing.rtl = e
+            .style
+            .cascaded()
+            .inh
+            .writing
+            .rtl
+            .or(Some(own.1.unwrap_or(false)));
     }
     if taken_vertical
-        && html.style.cascaded().height.is_none()
-        && html.style.cascaded().min_height.is_none()
+        && html.style.cascaded().reset_box_layout.height.is_none()
+        && html.style.cascaded().reset_box_layout.min_height.is_none()
     {
-        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
+        html.style.cascaded_mut().reset_box_layout.min_height =
+            Some(fill_inline(html.style.cascaded(), vcx));
     }
     (
-        html.style.cascaded_mut().writing_mode,
-        html.style.cascaded_mut().rtl,
+        html.style.cascaded_mut().inh.writing.writing_mode,
+        html.style.cascaded_mut().inh.writing.rtl,
     ) = taken;
     nodes
 }
@@ -184,7 +203,7 @@ fn fill_inline(
     };
     let edge = |m: Option<Len>, b: Option<Len>, bv: Option<bool>, p: Option<Len>| {
         let border = if bv == Some(true) { px(b)? } else { 0.0 };
-        let inner = if style.border_box == Some(true) {
+        let inner = if style.reset_border.border_box == Some(true) {
             0.0
         } else {
             border + px(p)?
@@ -192,16 +211,16 @@ fn fill_inline(
         Some(px(m)? + inner)
     };
     let sum = edge(
-        style.margin.top,
-        style.border_width.top,
-        style.border_visible[0],
-        style.padding.top,
+        style.reset_box_layout.margin.top,
+        style.reset_border.border_width.top,
+        style.reset_border.border_visible[0],
+        style.reset_box_layout.padding.top,
     )
     .zip(edge(
-        style.margin.bottom,
-        style.border_width.bottom,
-        style.border_visible[2],
-        style.padding.bottom,
+        style.reset_box_layout.margin.bottom,
+        style.reset_border.border_width.bottom,
+        style.reset_border.border_visible[2],
+        style.reset_box_layout.padding.bottom,
     ));
     match sum {
         Some((a, b)) if a + b > 0.0 => {

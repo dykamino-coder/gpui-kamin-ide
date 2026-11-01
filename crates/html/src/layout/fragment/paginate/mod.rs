@@ -48,24 +48,31 @@ pub(crate) enum Cand {
 
 fn row_flex(s: &crate::style::computed::Computed) -> bool {
     use crate::style::computed::FlexDir;
-    matches!(s.display, Some(Display::Flex) | Some(Display::InlineFlex))
-        && matches!(
-            s.flex_dir,
-            None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
-        )
+    matches!(
+        s.reset_box_layout.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) && matches!(
+        s.reset_flex.flex_dir,
+        None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
+    )
 }
 
 fn column_flex(s: &crate::style::computed::Computed) -> bool {
     use crate::style::computed::FlexDir;
-    matches!(s.display, Some(Display::Flex) | Some(Display::InlineFlex))
-        && matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+    matches!(
+        s.reset_box_layout.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) && matches!(
+        s.reset_flex.flex_dir,
+        Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+    )
 }
 
 fn layout_parent(s: &crate::style::computed::Computed) -> bool {
     matches!(
-        s.display,
+        s.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::Grid) | Some(Display::InlineFlex)
-    ) || s.webkit_box == Some(true)
+    ) || s.reset_flex.webkit_box == Some(true)
 }
 
 /// Collect the candidates of `c`'s subtree, or `None` when the subtree holds
@@ -84,11 +91,11 @@ pub(crate) fn candidates(c: &Element, vcx: FrameCx<'_>) -> Option<Vec<(u64, Cand
 /// is avoided as a whole.
 pub(crate) fn avoid_row(p: &Element) -> bool {
     row_flex(&p.style.used())
-        && p.style.used().flex_wrap != Some(true)
+        && p.style.used().reset_flex.flex_wrap != Some(true)
         && p.children.iter().any(|n| {
             matches!(n, Node::Element(k)
                 if !out_of_flow(&k.style.used())
-                    && k.style.used().break_inside_avoid
+                    && k.style.used().reset_fragmentation.break_inside_avoid
                     && !crate::layout::fragment::probe::size_monolith(k)
                     && crate::layout::page::paged::visible_overflow(&k.style.used()))
         })

@@ -17,16 +17,16 @@ pub(super) fn content_radii(s: &crate::style::computed::Computed) -> [f32; 4] {
     };
     let b = s.borders();
     let (top, right, bottom, left) = (
-        v(b.top) + v(s.padding.top),
-        v(b.right) + v(s.padding.right),
-        v(b.bottom) + v(s.padding.bottom),
-        v(b.left) + v(s.padding.left),
+        v(b.top) + v(s.reset_box_layout.padding.top),
+        v(b.right) + v(s.reset_box_layout.padding.right),
+        v(b.bottom) + v(s.reset_box_layout.padding.bottom),
+        v(b.left) + v(s.reset_box_layout.padding.left),
     );
     let inner = |r: f32, h: f32, w: f32| (r - h.max(w)).max(0.0);
     [
-        inner(v(s.radius.tl), left, top),
-        inner(v(s.radius.tr), right, top),
-        inner(v(s.radius.br), right, bottom),
-        inner(v(s.radius.bl), left, bottom),
+        inner(v(s.reset_border.radius.tl), left, top),
+        inner(v(s.reset_border.radius.tr), right, top),
+        inner(v(s.reset_border.radius.br), right, bottom),
+        inner(v(s.reset_border.radius.bl), left, bottom),
     ]
 }

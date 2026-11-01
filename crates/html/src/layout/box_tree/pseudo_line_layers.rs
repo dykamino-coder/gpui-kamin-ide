@@ -17,7 +17,7 @@ pub(crate) fn install(element: &Element, merged: &mut BoxStyle, vcx: ValueCx<'_>
     install_first_letter(element, merged);
     // Без слоя у блока и у стиля нечего менять: запись копировала бы общий
     // вычисленный стиль коробки (P-18).
-    if element.first_line.is_none() && merged.first_line.is_none() {
+    if element.first_line.is_none() && merged.reset_text_box.first_line.is_none() {
         return;
     }
     let first_line = element.first_line.as_ref().map(|layer| {
@@ -27,28 +27,29 @@ pub(crate) fn install(element: &Element, merged: &mut BoxStyle, vcx: ValueCx<'_>
         let own = element
             .style
             .cascaded()
+            .reset_text_box
             .first_line_own
             .as_deref()
             .unwrap_or(layer.cascaded());
         Box::new(crate::style::cascade::inherit::inherit(merged, own, vcx).into_computed())
     });
-    merged.first_line = first_line;
+    merged.reset_text_box.first_line = first_line;
 }
 
 pub(crate) fn install_first_letter(element: &Element, merged: &mut BoxStyle) {
-    if element.first_letter.is_none() && merged.first_letter.is_none() {
+    if element.first_letter.is_none() && merged.reset_text_box.first_letter.is_none() {
         return;
     }
-    merged.first_letter = element
+    merged.reset_text_box.first_letter = element
         .first_letter
         .as_ref()
-        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.font_size));
+        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.inh.font.font_size));
 }
 
 fn resolve_first_letter_font_size(layer: &Computed, base: Option<Len>) -> Box<Computed> {
     let mut layer = layer.clone();
-    if let (Some(Len::Px(base)), Some(Len::Pct(factor))) = (base, layer.font_size) {
-        layer.font_size = Some(Len::Px(base * factor));
+    if let (Some(Len::Px(base)), Some(Len::Pct(factor))) = (base, layer.inh.font.font_size) {
+        layer.inh.font.font_size = Some(Len::Px(base * factor));
     }
     // Leave em values for inline::max_font_size, which resolves them
     // against the paragraph's parent rather than scaling them twice.

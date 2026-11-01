@@ -30,8 +30,11 @@ pub(super) fn resolve_cyclic_size_percentage(
     }
     if field.is_multiple_of(2)
         || style.cb_height_def
-        || style.root_box
-        || matches!(style.position, Some(Position::Absolute | Position::Fixed))
+        || style.reset_context.root_box
+        || matches!(
+            style.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
     {
         return Some(value);
     }

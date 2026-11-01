@@ -21,14 +21,14 @@ pub fn apply_text(
     // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
     // там пропадало.
-    if decorations && c.underline == Some(true) {
+    if decorations && c.reset_text_box.underline == Some(true) {
         d.style().text.underline = Some(gpui::UnderlineStyle {
             thickness: px(1.),
             color: ink.map(|col| col.to_hsla()),
             wavy: false,
         });
     }
-    if decorations && c.line_through == Some(true) {
+    if decorations && c.reset_text_box.line_through == Some(true) {
         d.style().text.strikethrough = Some(gpui::StrikethroughStyle {
             thickness: px(1.),
             color: ink.map(|col| col.to_hsla()),
@@ -36,7 +36,7 @@ pub fn apply_text(
     }
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
     // всё это таблицы OpenType, и GPUI умеет их включать.
-    if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
+    if let Some(family) = c.inh.font.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки — придуманное (`@font-face`): в набор обязано уйти
         // имя, под которым файл знает система шрифтов. Без подмены весь
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
@@ -45,7 +45,7 @@ pub fn apply_text(
             crate::text::fonts::alias_for(family, c, vcx).unwrap_or_else(|| family.clone()),
         );
     }
-    if let Some(pct) = c.font_stretch {
+    if let Some(pct) = c.inh.font.font_stretch {
         d.style().text.font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
     let features = c.used_features(vcx);
@@ -55,16 +55,16 @@ pub fn apply_text(
     if let Some(col) = ink {
         d = d.text_color(col.to_hsla());
     }
-    if c.font_size.is_some() {
+    if c.inh.font.font_size.is_some() {
         d = d.text_size(px(c.used_font(MEDIUM_FONT_SIZE_PX, vcx).size_px));
     }
-    if let Some(w) = c.font_weight {
+    if let Some(w) = c.inh.font.font_weight {
         d = d.font_weight(gpui::FontWeight(w as f32));
     }
-    if c.italic == Some(true) {
+    if c.inh.font.italic == Some(true) {
         d = d.italic();
     }
-    if let Some(lh) = c.line_height {
+    if let Some(lh) = c.inh.font.line_height {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(px(c
@@ -88,12 +88,12 @@ pub fn apply_text(
             | Len::Anchor(_) => d,
         };
     }
-    if c.nowrap == Some(true) {
+    if c.inh.text_flow.nowrap == Some(true) {
         d = d.whitespace_nowrap();
     }
     // Выравнивание текста разбиралось, но до элемента не доходило — поле
     // оставалось мёртвым, и `text-align: center` не делал ничего.
-    match c.text_align {
+    match c.inh.text_flow.text_align {
         Some(TextAlign::Center) => d = d.text_center(),
         Some(TextAlign::Right) => d = d.text_right(),
         Some(TextAlign::Left) => d = d.text_left(),
@@ -116,26 +116,27 @@ pub fn apply_text(
         }
         None => {}
     }
-    if c.monospace == Some(true) {
+    if c.inh.font.monospace == Some(true) {
         d = d.font_family(crate::text::metrics::mono_family_for(
-            c.lang.as_deref(),
+            c.inh.text_flow.lang.as_deref(),
             vcx,
         ));
     }
-    if let Some(Len::Px(v)) = c.letter_spacing {
+    if let Some(Len::Px(v)) = c.inh.text_flow.letter_spacing {
         d = d.letter_spacing(px(v));
     }
     // `text-overflow: ellipsis` действует на БЛОК-КОНТЕЙНЕРЕ с overflow,
     // отличным от visible (css-overflow-3 §text-overflow) — слитый стиль
     // растаскивал его на текстовые куски, и «…» дорисовывался даже там,
     // где текст помещался.
-    if c.ellipsis == Some(true)
-        && c.overflow_x
+    if c.reset_text_box.ellipsis == Some(true)
+        && c.reset_box_layout
+            .overflow_x
             .is_some_and(|o| o != crate::style::computed::Overflow::Visible)
     {
         // Строковый маркер `text-overflow: "…текст…"` рисуется вместо
         // многоточия (css-overflow-4): gpui умеет любой текст усечения.
-        d = match &c.overflow_marker {
+        d = match &c.reset_text_box.overflow_marker {
             Some(m) => d.text_overflow(gpui::TextOverflow::Truncate(m.clone().into())),
             None => d.text_ellipsis(),
         };

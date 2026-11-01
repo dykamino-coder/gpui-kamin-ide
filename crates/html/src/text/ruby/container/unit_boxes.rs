@@ -46,8 +46,8 @@ pub(super) fn only_space(nodes: &[Node]) -> bool {
         Node::Element(k) => {
             let plain = ruby_role(k)
                 .is_some_and(|r| r != crate::style::computed::RubyRole::Container)
-                || (k.style.used().display.is_none()
-                    && k.style.used().inline_display != Some(false)
+                || (k.style.used().reset_box_layout.display.is_none()
+                    && k.style.used().reset_context.inline_display != Some(false)
                     && !replaced_tag(k));
             plain && only_space(&k.children)
         }
@@ -98,14 +98,14 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
         nodes
     };
     let mut style = style.clone();
-    style.nowrap = Some(true);
-    style.ruby_unit = true;
+    style.inh.text_flow.nowrap = Some(true);
+    style.reset_text_box.ruby_unit = true;
     // CSS Ruby 1 §2.1.1: these units share an inline formatting
     // context, rather than starting indented block paragraphs.
     // Blink line_breaker.cc:846-848 excludes ruby sub-line breakers.
-    style.text_indent = Some(Len::Px(0.0));
-    style.text_indent_each_line = Some(false);
-    style.text_indent_hanging = Some(false);
+    style.inh.text_flow.text_indent = Some(Len::Px(0.0));
+    style.inh.text_flow.text_indent_each_line = Some(false);
+    style.inh.text_flow.text_indent_hanging = Some(false);
     if let [Node::Element(k)] = nodes
         && matches!(
             ruby_role(k),
@@ -115,14 +115,14 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
     {
         let mut block = k.clone();
         ruby_transform::clear(block.style.used_mut());
-        block.style.used_mut().display = Some(Display::Block);
-        block.style.used_mut().inline_display = None;
-        block.style.used_mut().ruby_role = None;
-        block.style.used_mut().ruby_unit = true;
-        block.style.used_mut().nowrap = Some(true);
-        block.style.used_mut().text_indent = Some(Len::Px(0.0));
-        block.style.used_mut().text_indent_each_line = Some(false);
-        block.style.used_mut().text_indent_hanging = Some(false);
+        block.style.used_mut().reset_box_layout.display = Some(Display::Block);
+        block.style.used_mut().reset_context.inline_display = None;
+        block.style.used_mut().reset_text_box.ruby_role = None;
+        block.style.used_mut().reset_text_box.ruby_unit = true;
+        block.style.used_mut().inh.text_flow.nowrap = Some(true);
+        block.style.used_mut().inh.text_flow.text_indent = Some(Len::Px(0.0));
+        block.style.used_mut().inh.text_flow.text_indent_each_line = Some(false);
+        block.style.used_mut().inh.text_flow.text_indent_hanging = Some(false);
         // База и аннотация выравнивают содержимое своим computed
         // `ruby-align` (css-ruby-1 §4.3), включая унаследованное значение.
         super::stacks::align_units(block.style.used_mut());
@@ -145,7 +145,7 @@ fn has_inflow(nodes: &[Node]) -> bool {
         Node::Text(text) => !text.is_empty(),
         Node::Element(e) => {
             !matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(Position::Absolute | Position::Fixed)
             ) && (replaced_tag(e) || has_inflow(&e.children))
         }

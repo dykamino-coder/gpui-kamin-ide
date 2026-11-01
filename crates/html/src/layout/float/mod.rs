@@ -47,17 +47,18 @@ impl FloatCb {
     pub(crate) fn of(cb: &Computed) -> Self {
         FloatCb {
             wm: cb.wm(),
-            width: px_strict(cb.width),
-            height: px_strict(cb.height),
-            icb: cb.icb,
-            preserve_newlines: cb.preserve_newlines.unwrap_or(false),
+            width: px_strict(cb.reset_box_layout.width),
+            height: px_strict(cb.reset_box_layout.height),
+            icb: cb.reset_context.icb,
+            preserve_newlines: cb.inh.text_flow.preserve_newlines.unwrap_or(false),
             margin_basis: None,
         }
     }
 }
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {
-    c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)
+    c.reset_box_layout.float.unwrap_or(0) != 0
+        && matches!(c.reset_box_layout.width, Some(Len::Pct(p)) if p >= 0.9999)
 }
 
 /// Коробка, у которой в потоке НЕТ НИЧЕГО, кроме флоатов — не больше одного
@@ -69,7 +70,12 @@ pub(crate) fn block_like_float(c: &Computed) -> bool {
 /// чтобы резать коробку по колонкам вместо отказа от всей стопки
 /// (`floats-clear-multicol-*`: флоаты 250 в колонках по 100).
 pub(super) fn float_only_box(c: &Element) -> Option<f32> {
-    if c.inline || !matches!(c.style.used().display, None | Some(Display::Block)) {
+    if c.inline
+        || !matches!(
+            c.style.used().reset_box_layout.display,
+            None | Some(Display::Block)
+        )
+    {
         return None;
     }
     let (mut left, mut right, mut tall) = (0usize, 0usize, 0.0f32);
@@ -77,22 +83,26 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
         let f = match n {
             Node::Text(t) if blank_text(t) => continue,
             Node::Element(f)
-                if f.style.used().float.is_some_and(|s| s != 0)
+                if f.style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|s| s != 0)
                     && !block_like_float(&f.style.used()) =>
             {
                 f
             }
             _ => return None,
         };
-        if !matches!(f.style.used().width, Some(Len::Px(_)))
-            || !matches!(f.style.used().height, Some(Len::Px(_)))
-            || f.style.used().clear.is_some()
-            || f.style.used().position.is_some()
+        if !matches!(f.style.used().reset_box_layout.width, Some(Len::Px(_)))
+            || !matches!(f.style.used().reset_box_layout.height, Some(Len::Px(_)))
+            || f.style.used().reset_box_layout.clear.is_some()
+            || f.style.used().reset_positioned.position.is_some()
             || !f.children.iter().all(is_blank)
         {
             return None;
         }
-        if f.style.used().float.is_some_and(|s| s < 0) {
+        if f.style.used().reset_box_layout.float.is_some_and(|s| s < 0) {
             left += 1;
         } else {
             right += 1;

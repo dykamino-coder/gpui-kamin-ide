@@ -46,11 +46,11 @@ pub(crate) fn vertical_paragraph(
     }
     let mut horizontal = inherited.clone();
     horizontal.inline_format = Some(crate::style::computed::InlineFormat::Turned);
-    horizontal.flat_mode = horizontal.flow_mode();
-    horizontal.writing_mode = None;
+    horizontal.inh.writing.flat_mode = horizontal.flow_mode();
+    horizontal.inh.writing.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого
     // абзаца нужен контр-поворот (см. atom-ветку ниже).
-    horizontal.turned_line = true;
+    horizontal.reset_text_box.turned_line = true;
     // `vertical-lr`: колонки идут слева направо — строки подаются снизу
     // вверх, чтобы после поворота ПО ЧАСОВОЙ первая оказалась левой (у
     // vertical-rl порядок родной: первая строка правой колонкой).
@@ -63,7 +63,7 @@ pub(crate) fn vertical_paragraph(
     let wm = inherited.wm();
     let ccw_line = wm.line_turn() == crate::style::computed::writing_mode::Turn::CounterClockwise;
     if wm.lines_reversed() {
-        horizontal.lines_reversed = Some(true);
+        horizontal.reset_context.lines_reversed = Some(true);
     }
     // Replaced and atomic inlines are counter-rotated inside the turned line
     // (`rotated_atom::physical`), so a line of atoms only is turned like any
@@ -98,10 +98,13 @@ pub(crate) fn vertical_paragraph(
     // (`VerticalText::prepaint`), not at a fixed fallback width.
     let atom_line = plain.trim().is_empty() && !plain.contains('\u{a0}');
     let mut flow = horizontal.clone();
-    flow.para_vertical = Some(inherited.wm().block_rl());
-    let fallback = inherited.ortho_limit.unwrap_or(opts.viewport.1);
-    flow.ortho_limit = Some(fallback);
-    flow.orthogonal_inline = native_vertical::constraint(inherited, fallback);
+    flow.reset_context.para_vertical = Some(inherited.wm().block_rl());
+    let fallback = inherited
+        .reset_context
+        .ortho_limit
+        .unwrap_or(opts.viewport.1);
+    flow.reset_context.ortho_limit = Some(fallback);
+    flow.reset_context.orthogonal_inline = native_vertical::constraint(inherited, fallback);
     let built = std::cell::Cell::new(false);
     let request = NativeRequest {
         style: &flow,
@@ -117,7 +120,10 @@ pub(crate) fn vertical_paragraph(
     // ортогонального потока уже принесён вниз стилем: задаём его ШИРИНОЙ
     // до поворота, и после поворота он становится высотой коробки — то
     // есть перенос считается по той оси, по которой идёт строка.
-    let limit = inherited.ortho_limit.unwrap_or(opts.viewport.1);
+    let limit = inherited
+        .reset_context
+        .ortho_limit
+        .unwrap_or(opts.viewport.1);
     // …и всё же ОДИН случай жёсткую ширину не терпит: АБСОЛЮТНАЯ коробка
     // со свободной строчной осью. Её размер по этой оси — по содержимому
     // (§10.3.7), а жёсткая ширина делает `natural.width` тождественно
@@ -129,13 +135,17 @@ pub(crate) fn vertical_paragraph(
     // Коробка на СТАТИЧЕСКОЙ позиции тоже абсолютна: `position` с неё
     // снято ради отсчёта, и без пометки `abs_static` гейт её не узнавал.
     let free_inline = (matches!(
-        inherited.position,
+        inherited.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) || inherited.abs_static
-        || inherited.hug_inline)
-        && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
-        && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
+    ) || inherited.reset_positioned.abs_static
+        || inherited.reset_context.hug_inline)
+        && !matches!(
+            inherited.reset_box_layout.height,
+            Some(Len::Px(_)) | Some(Len::Pct(_))
+        )
+        && !(edge(inherited.reset_positioned.inset.top)
+            && edge(inherited.reset_positioned.inset.bottom));
     // Ячейка вертикальной таблицы: предел строки — мера её КОЛОНКИ, а не
     // инлайн-размер всего стола. Колонку решает решётка (дорожка
     // `MinMax(MinContent, Auto)` = «наибольший min-content ячеек
@@ -146,7 +156,8 @@ pub(crate) fn vertical_paragraph(
     // три дорожки становились 140 и каждая ячейка рвала строку по
     // 7 знаков вместо 3/2/2. Потолок при этом остаётся: колонка не шире
     // инлайн-размера стола.
-    let col_min = inherited.ortho_col && inherited.ortho_limit.is_some();
+    let col_min =
+        inherited.reset_context.ortho_col && inherited.reset_context.ortho_limit.is_some();
     // Atomic content shares native text's fixed and shrink-to-fit inline sizing.
     let inline_constraint = native_vertical::constraint(inherited, limit);
     let inner = if let Some(constraint) = inline_constraint {
@@ -166,12 +177,12 @@ pub(crate) fn vertical_paragraph(
         div().w(px(limit)).child(inner).into_any_element()
     };
     // Intrinsic inline claims are independent of the first-line baseline metrics.
-    let em = match inherited.font_size {
+    let em = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * opts.base_size(),
         _ => opts.base_size(),
     };
-    let lh = match inherited.line_height {
+    let lh = match inherited.inh.font.line_height {
         Some(Len::Px(v)) => Some(px(v)),
         Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(px(k * em)),
         _ => None,
@@ -203,7 +214,7 @@ pub(crate) fn vertical_paragraph(
     // ячейка мерила коробку нулём и justify уводил глиф из виду.
     let vt = if let Some(constraint) = inline_constraint {
         vt.inline_constraint(constraint)
-    } else if let Some(l) = inherited.ortho_limit {
+    } else if let Some(l) = inherited.reset_context.ortho_limit {
         vt.fit_within(px(l))
     } else if crate::render::paragraph::paragraph_style(inherited).hug_claim {
         // Родитель размером в содержимое по строчной оси
@@ -214,7 +225,7 @@ pub(crate) fn vertical_paragraph(
     } else {
         vt
     };
-    let vt = if let Some(Len::Px(cap)) = inherited.max_height {
+    let vt = if let Some(Len::Px(cap)) = inherited.reset_box_layout.max_height {
         vt.claiming_height(px(cap))
     } else {
         vt
@@ -236,9 +247,13 @@ fn turned_atom_line(nodes: &[Node], style: &BoxStyle) -> bool {
     atoms >= 2
         && (parallel
             || style_definite_inline(style)
-            || ((style.flex_item || style.context.parent_flex_grid) && !style.flex_line_wraps))
+            || ((style.reset_flex.flex_item || style.context.parent_flex_grid)
+                && !style.reset_flex.flex_line_wraps))
 }
 
 fn style_definite_inline(style: &Computed) -> bool {
-    matches!(style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
+    matches!(
+        style.reset_box_layout.height,
+        Some(Len::Px(_)) | Some(Len::Pct(_))
+    )
 }

@@ -94,7 +94,7 @@ pub(crate) fn paragraph_pieces_routed(
                 // `<div>` с одной абсолютной картинкой вырастал на строку).
                 let lone_abs = !flow_text
                     && matches!(
-                        e.style.used().position,
+                        e.style.used().reset_positioned.position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     );
@@ -160,21 +160,21 @@ pub(crate) fn paragraph_pieces_routed(
     // считает раскладка строк, когда ширина решена.
     // `calc(50% - 3px)` несёт обе части разом: `Paragraph` складывает
     // `px + pct × ширина строки` сам (`lines.rs`, css-text-3 §2.1).
-    let mixed = match inherited.text_indent {
+    let mixed = match inherited.inh.text_flow.text_indent {
         Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx).pct_px(),
         _ => None,
     };
     let indent = crate::text::paragraph::Indent {
-        px: match inherited.text_indent {
+        px: match inherited.inh.text_flow.text_indent {
             Some(Len::Px(v)) => v,
             _ => mixed.map_or(0.0, |(_, px)| px),
         },
-        pct: match inherited.text_indent {
+        pct: match inherited.inh.text_flow.text_indent {
             Some(Len::Pct(k)) => k,
             _ => mixed.map_or(0.0, |(pct, _)| pct),
         },
-        each_line: inherited.text_indent_each_line == Some(true),
-        hanging: inherited.text_indent_hanging == Some(true),
+        each_line: inherited.inh.text_flow.text_indent_each_line == Some(true),
+        hanging: inherited.inh.text_flow.text_indent_hanging == Some(true),
     };
     // Межсловный интервал считает своя раскладка строк: ряд из слов ломает
     // выключку, висящие пробелы и перенос. Ряд остаётся только под отступ
@@ -205,8 +205,8 @@ pub(crate) fn paragraph_pieces_routed(
         let mut at = 0usize;
         let mut out = Vec::with_capacity(pieces.len() + 2 * atom_count);
         let mut mark = inherited.clone();
-        mark.word_space_char = None;
-        mark.letter_spacing = Some(Len::Px(0.0));
+        mark.inh.text_flow.word_space_char = None;
+        mark.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
         mark.inline_decoration.band_color = None;
         mark.inline_decoration.border_stroke = None;
         for p in pieces {

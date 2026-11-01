@@ -45,20 +45,23 @@ fn floats_in(
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
     // (`spanner-in-child-after-parallel-flow-001`: флоат 50px в колонке
     // 50px, дальше только пустой обломок предка спаннера).
-    let wide_px = |c: &Element| matches!((c.style.used().width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
+    let wide_px = |c: &Element| matches!((c.style.used().reset_box_layout.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {
             let sizes = BoxDimensions::for_element(k, &k.style.used());
             k.children.iter().all(is_blank)
-                && matches!(k.style.used().height, None | Some(Len::Auto))
+                && matches!(
+                    k.style.used().reset_box_layout.height,
+                    None | Some(Len::Auto)
+                )
                 && matches!(sizes.minimum[1], None | Some(Len::Auto))
-                && k.style.used().padding.top.is_none()
-                && k.style.used().padding.bottom.is_none()
+                && k.style.used().reset_box_layout.padding.top.is_none()
+                && k.style.used().reset_box_layout.padding.bottom.is_none()
                 && k.style.used().borders().top.is_none()
                 && k.style.used().borders().bottom.is_none()
-                && zero_m(&k.style.used().margin.top)
-                && zero_m(&k.style.used().margin.bottom)
+                && zero_m(&k.style.used().reset_box_layout.margin.top)
+                && zero_m(&k.style.used().reset_box_layout.margin.bottom)
         }
     };
     let last_content = |i: usize| {
@@ -67,18 +70,18 @@ fn floats_in(
             .is_some_and(|rest| rest.iter().all(inert))
     };
     let full_float = |i: usize, c: &Element| {
-        c.style.used().float.is_some_and(|f| f != 0)
-            && (matches!(c.style.used().width, Some(Len::Pct(k)) if k >= 1.0 - 1e-4)
+        c.style.used().reset_box_layout.float.is_some_and(|f| f != 0)
+            && (matches!(c.style.used().reset_box_layout.width, Some(Len::Pct(k)) if k >= 1.0 - 1e-4)
                 || (wide_px(c) && last_content(i)))
-            && zero_m(&c.style.used().margin.left)
-            && zero_m(&c.style.used().margin.right)
+            && zero_m(&c.style.used().reset_box_layout.margin.left)
+            && zero_m(&c.style.used().reset_box_layout.margin.right)
             // Поля флоата не схлопываются и у края колонки не
             // усекаются (CSS 2.1 §8.3.1), а у блока стопки —
             // да: флоат с вертикальными полями — прежним путём
             // (`multicol-fill-balance-037`: `margin: 40px 0`).
-            && zero_m(&c.style.used().margin.top)
-            && zero_m(&c.style.used().margin.bottom)
-            && c.style.used().shape_outside.is_none()
+            && zero_m(&c.style.used().reset_box_layout.margin.top)
+            && zero_m(&c.style.used().reset_box_layout.margin.bottom)
+            && c.style.used().reset_shapes.shape_outside.is_none()
             && !positioned(&c.style.used())
     };
     let full: Vec<bool> = ge
@@ -105,8 +108,8 @@ fn floats_in(
         for ((n, f), w) in g.children.iter_mut().zip(&full).zip(nested) {
             if let Node::Element(c) = n {
                 if *f {
-                    c.style.used_mut().float = None;
-                    c.style.used_mut().clear = None;
+                    c.style.used_mut().reset_box_layout.float = None;
+                    c.style.used_mut().reset_box_layout.clear = None;
                     c.marks.float_block = true;
                 } else if let Some(w) = w {
                     *c = w;
@@ -131,24 +134,24 @@ fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
     let b = s.borders();
     !c.inline
         && matches!(
-            s.display,
+            s.reset_box_layout.display,
             None | Some(crate::style::computed::Display::Block)
         )
-        && s.float.unwrap_or(0) == 0
-        && s.clear.is_none()
+        && s.reset_box_layout.float.unwrap_or(0) == 0
+        && s.reset_box_layout.clear.is_none()
         && !positioned(s)
-        && s.position.is_none()
-        && matches!(s.height, None | Some(Len::Auto))
+        && s.reset_positioned.position.is_none()
+        && matches!(s.reset_box_layout.height, None | Some(Len::Auto))
         && sizes.minimum[1].is_none()
         && sizes.maximum[1].is_none()
         && crate::layout::page::paged::visible_overflow(s)
         && [
-            &s.margin.top,
-            &s.margin.bottom,
-            &s.padding.top,
-            &s.padding.bottom,
-            &s.padding.left,
-            &s.padding.right,
+            &s.reset_box_layout.margin.top,
+            &s.reset_box_layout.margin.bottom,
+            &s.reset_box_layout.padding.top,
+            &s.reset_box_layout.padding.bottom,
+            &s.reset_box_layout.padding.left,
+            &s.reset_box_layout.padding.right,
             &b.top,
             &b.bottom,
             &b.left,
@@ -209,6 +212,9 @@ mod tests {
         assert!(plain_wrapper(&tail, &|_| false));
         tail.marks.spanner_content_box = false;
         assert!(!plain_wrapper(&tail, &|_| false));
-        assert_eq!(tail.style.used().min_height, Some(Len::Px(150.)));
+        assert_eq!(
+            tail.style.used().reset_box_layout.min_height,
+            Some(Len::Px(150.))
+        );
     }
 }

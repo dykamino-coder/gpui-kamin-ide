@@ -51,7 +51,7 @@ pub(crate) fn attach(
     let mut div = stateful.0;
     let bars =
         crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e.node_id, c);
-    div.style().scrollbar_width = Some(gpui::px(c.scroll.thickness()).into());
+    div.style().scrollbar_width = Some(gpui::px(c.reset_box_layout.scroll.thickness()).into());
     // Taffy reserves a classic gutter for Scroll, while Hidden has the same
     // sizing semantics without a gutter. Auto starts without bars.
     if horizontal && !bars[0] {
@@ -62,10 +62,10 @@ pub(crate) fn attach(
     }
     // Hidden boxes still support programmatic scrolling and snapping, but must
     // not register GPUI wheel scrolling (CSS Overflow 3 §3).
-    if c.overflow_x == Some(crate::style::computed::Overflow::Hidden) {
+    if c.reset_box_layout.overflow_x == Some(crate::style::computed::Overflow::Hidden) {
         div.style().overflow.x = Some(gpui::Overflow::Hidden);
     }
-    if c.overflow_y == Some(crate::style::computed::Overflow::Hidden) {
+    if c.reset_box_layout.overflow_y == Some(crate::style::computed::Overflow::Hidden) {
         div.style().overflow.y = Some(gpui::Overflow::Hidden);
     }
     if let Some(marker) =

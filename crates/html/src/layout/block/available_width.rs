@@ -27,17 +27,23 @@ pub(crate) fn inner_with_dimensions(
         Some(Len::Pct(k)) => outer.map(|o| k * o),
         _ => None,
     };
-    match st.display {
+    match st.reset_box_layout.display {
         // Коробки нет — дети живут в потоке родителя.
         Some(Display::Contents) => return outer,
         None | Some(Display::Block) | Some(Display::ListItem) => {}
         _ => return None,
     }
-    if st.wm().vertical() || st.column_count.is_some() || st.column_width.is_some() {
+    if st.wm().vertical()
+        || st.reset_fragmentation.column_count.is_some()
+        || st.reset_fragmentation.column_width.is_some()
+    {
         return None;
     }
     let b = st.borders();
-    let pb = side(st.padding.left)? + side(st.padding.right)? + side(b.left)? + side(b.right)?;
+    let pb = side(st.reset_box_layout.padding.left)?
+        + side(st.reset_box_layout.padding.right)?
+        + side(b.left)?
+        + side(b.right)?;
     let bb = sizes.border_box;
     let w = match sizes.preferred[0] {
         Some(Len::Px(w)) => {
@@ -51,7 +57,7 @@ pub(crate) fn inner_with_dimensions(
             // A percentage is definite when its containing block is definite.
             // Preserve deferred layout for out-of-flow and intrinsic limits.
             if matches!(
-                st.position,
+                st.reset_positioned.position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
@@ -64,9 +70,9 @@ pub(crate) fn inner_with_dimensions(
             if bb { width - pb } else { width }
         }
         None | Some(Len::Auto) => {
-            if st.float.is_some_and(|f| f != 0)
+            if st.reset_box_layout.float.is_some_and(|f| f != 0)
                 || matches!(
-                    st.position,
+                    st.reset_positioned.position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 )
@@ -74,7 +80,10 @@ pub(crate) fn inner_with_dimensions(
                 return None;
             }
 
-            outer? - side(st.margin.left)? - side(st.margin.right)? - pb
+            outer?
+                - side(st.reset_box_layout.margin.left)?
+                - side(st.reset_box_layout.margin.right)?
+                - pb
         }
         _ => return None,
     };

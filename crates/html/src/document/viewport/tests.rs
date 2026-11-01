@@ -34,7 +34,11 @@ fn viewport_units_use_root_unconditional_gutters_only() {
     ] {
         let nodes = crate::document::parsed::parse(&format!("<style>{css}</style>"), "");
         let c = policy(&nodes, vcx).unwrap();
-        assert_eq!(c.viewport_unit_insets, Some(expected), "{css}");
+        assert_eq!(
+            c.reset_positioned.viewport_unit_insets,
+            Some(expected),
+            "{css}"
+        );
         let mut child = inherit_unpainted(
             &BoxStyle::from(c.clone()),
             &Computed {
@@ -50,14 +54,23 @@ fn viewport_units_use_root_unconditional_gutters_only() {
             vcx,
         );
         child.resolve_viewport((800.0, 600.0), vcx);
-        assert_eq!(child.width, Some(Len::Px(800.0 - expected[0])));
-        assert_eq!(child.height, Some(Len::Px(600.0 - expected[1])));
+        assert_eq!(
+            child.reset_box_layout.width,
+            Some(Len::Px(800.0 - expected[0]))
+        );
+        assert_eq!(
+            child.reset_box_layout.height,
+            Some(Len::Px(600.0 - expected[1]))
+        );
         let mut image = crate::layout::table::anon::anon_element("img", vec![]);
-        image.style.cascaded_mut().width = Some(Len::Vw(1.0));
+        image.style.cascaded_mut().reset_box_layout.width = Some(Len::Vw(1.0));
         let mut image = crate::layout::replaced::image::pct_height_to_px(&image, &c);
         let image = image.style.cascaded_mut();
         image.resolve_viewport((800.0, 600.0), vcx);
-        assert_eq!(image.width, Some(Len::Px(800.0 - expected[0])));
+        assert_eq!(
+            image.reset_box_layout.width,
+            Some(Len::Px(800.0 - expected[0]))
+        );
     }
 }
 
@@ -72,8 +85,10 @@ fn body_colors_do_not_propagate_to_the_viewport() {
     assert!(
         policy(&nodes, vcx)
             .unwrap()
+            .reset_box_layout
             .scroll
             .colors
+            .clone()
             .flatten()
             .is_none()
     );
@@ -92,6 +107,6 @@ fn root_width_and_computed_color_survive_body_propagation() {
         c.used_scrollbar_colors().unwrap(),
         [crate::style::values::value::Color::parse("red", vcx).unwrap(); 2]
     );
-    assert_eq!(c.scroll.width, Some(2));
-    assert_eq!(c.scroll.forced, [true; 2]);
+    assert_eq!(c.reset_box_layout.scroll.width, Some(2));
+    assert_eq!(c.reset_box_layout.scroll.forced, [true; 2]);
 }

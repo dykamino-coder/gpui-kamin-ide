@@ -8,7 +8,7 @@ fn sample(children: Vec<Node>, letter: bool) -> Element {
     let mut e = Element::synthetic("div", Computed::default(), Default::default(), children);
     if letter {
         let mut layer = Computed::default();
-        layer.initial_letter = Some((3.0, 3));
+        layer.reset_text_box.initial_letter = Some((3.0, 3));
         e.first_letter = Some(layer.into());
     }
     e

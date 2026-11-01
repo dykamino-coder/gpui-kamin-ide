@@ -5,11 +5,11 @@
 use crate::dom::Node;
 
 pub(crate) fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
-    c.transform.is_some()
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
+    c.reset_transforms.transform.is_some()
+        || c.reset_context.contain_layout == Some(true)
+        || c.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(c)
-        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
+        || c.reset_effects.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 
 /// Повтор шапки/подвала таблицы (css-tables-3 §repeated-headers) — копия
@@ -22,8 +22,16 @@ pub(crate) fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
 pub(crate) fn drop_uncontained_oof(n: &Node, abs_cb: bool, fixed_cb: bool) -> Option<Node> {
     use crate::style::computed::Position;
     match n {
-        Node::Element(k) if k.style.used().position == Some(Position::Absolute) && !abs_cb => None,
-        Node::Element(k) if k.style.used().position == Some(Position::Fixed) && !fixed_cb => None,
+        Node::Element(k)
+            if k.style.used().reset_positioned.position == Some(Position::Absolute) && !abs_cb =>
+        {
+            None
+        }
+        Node::Element(k)
+            if k.style.used().reset_positioned.position == Some(Position::Fixed) && !fixed_cb =>
+        {
+            None
+        }
         Node::Element(k) => {
             let mut c = k.clone();
             let fixed = fixed_cb || fixed_cb_box(&k.style.used());

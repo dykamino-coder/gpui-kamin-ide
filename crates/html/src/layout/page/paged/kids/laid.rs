@@ -79,7 +79,12 @@ pub(super) fn group(
     let [Node::Element(e)] = nodes else {
         return None;
     };
-    let floated = e.style.used().float.is_some_and(|f| f != 0);
+    let floated = e
+        .style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0);
     let float_extent = floated
         || e.children
             .iter()

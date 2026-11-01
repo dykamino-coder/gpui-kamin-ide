@@ -16,9 +16,9 @@ mod tests {
         assert!(!super::super::uses_modern(&style));
         style.apply_one("scrollbar-color", "auto", vcx);
         assert!(super::super::uses_modern(&style));
-        assert_eq!(style.scroll.thickness(), 15.0);
+        assert_eq!(style.reset_box_layout.scroll.thickness(), 15.0);
         style.apply_one("scrollbar-width", "thin", vcx);
-        assert_eq!(style.scroll.thickness(), 10.0);
+        assert_eq!(style.reset_box_layout.scroll.thickness(), 10.0);
     }
 }
 

@@ -7,20 +7,23 @@ use crate::style::values::value::{Len, px_lossy_zero};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
-    let bare_inset = if c.clip_bare_box && c.clip_inset.is_none() {
+    let bare_inset = if c.reset_mask.clip_bare_box && c.reset_mask.clip_inset.is_none() {
         let b = c.borders();
         let s = px_lossy_zero;
-        let [t, r, bo, l] = match c.clip_ref {
+        let [t, r, bo, l] = match c.reset_mask.clip_ref {
             Some(1) => {
-                let m = c.own_margin.unwrap_or(c.margin);
+                let m = c
+                    .reset_box_layout
+                    .own_margin
+                    .unwrap_or(c.reset_box_layout.margin);
                 [-s(m.top), -s(m.right), -s(m.bottom), -s(m.left)]
             }
             Some(2) => [s(b.top), s(b.right), s(b.bottom), s(b.left)],
             Some(3) => [
-                s(b.top) + s(c.padding.top),
-                s(b.right) + s(c.padding.right),
-                s(b.bottom) + s(c.padding.bottom),
-                s(b.left) + s(c.padding.left),
+                s(b.top) + s(c.reset_box_layout.padding.top),
+                s(b.right) + s(c.reset_box_layout.padding.right),
+                s(b.bottom) + s(c.reset_box_layout.padding.bottom),
+                s(b.left) + s(c.reset_box_layout.padding.left),
             ],
             _ => [0.0; 4],
         };
@@ -34,10 +37,15 @@ pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
     // толщину (css-backgrounds-3 §5.2 inner/outer curves). Пока — только
     // равные круглые углы и равные стороны сдвига.
     let bare_round = bare_inset.and_then(|inset| {
-        if c.radius_ell.is_some() {
+        if c.reset_border.radius_ell.is_some() {
             return None;
         }
-        let r = match (c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl) {
+        let r = match (
+            c.reset_border.radius.tl,
+            c.reset_border.radius.tr,
+            c.reset_border.radius.br,
+            c.reset_border.radius.bl,
+        ) {
             (Some(Len::Px(a)), Some(Len::Px(b)), Some(Len::Px(d)), Some(Len::Px(e)))
                 if a == b && b == d && d == e && a > 0.0 =>
             {

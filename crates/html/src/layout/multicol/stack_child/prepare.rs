@@ -25,11 +25,11 @@ pub(in crate::layout::multicol) fn prepare(
     // правое; схлопывание сквозь верх (`strip_through_top`)
     // там не считается вовсе (мера повёрнутая).
     if col_vert {
-        copy.style.used_mut().margin.left = None;
-        copy.style.used_mut().margin.right = None;
+        copy.style.used_mut().reset_box_layout.margin.left = None;
+        copy.style.used_mut().reset_box_layout.margin.right = None;
     } else {
-        copy.style.used_mut().margin.top = None;
-        copy.style.used_mut().margin.bottom = None;
+        copy.style.used_mut().reset_box_layout.margin.top = None;
+        copy.style.used_mut().reset_box_layout.margin.bottom = None;
         // И поле, схлопнутое СКВОЗЬ верх (`through` в
         // `mt`): стопка уже положила его `lead`-ом,
         // второй раз его вставил бы корень копии.

@@ -83,7 +83,7 @@ fn both_sides_authored_fill_a_flex_item() {
             size: Some((40.0, 30.0)),
         }
     );
-    style.flex_item = true;
+    style.reset_flex.flex_item = true;
     let sizing = PictureSizing::new(&style, natural(10.0, 10.0), None);
     assert_eq!(
         sizing.picture().0,

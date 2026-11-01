@@ -24,12 +24,15 @@ const SPLIT: u8 = 32;
 fn own(e: &Element, descendants: u8) -> u8 {
     crate::work::add!(SubtreeNodesVisited, 1);
     let style = e.style.used();
-    let breaks = style.break_before_force
-        || style.break_after_force
-        || style.break_before_avoid
-        || style.break_after_avoid;
-    let floats = style.float.is_some_and(|f| f != 0);
-    let clearable = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
+    let breaks = style.reset_fragmentation.break_before_force
+        || style.reset_fragmentation.break_after_force
+        || style.reset_fragmentation.break_before_avoid
+        || style.reset_fragmentation.break_after_avoid;
+    let floats = style.reset_box_layout.float.is_some_and(|f| f != 0);
+    let clearable = |c: &Computed| {
+        c.reset_box_layout.float.is_some_and(|f| f != 0)
+            || c.reset_text_box.initial_letter.is_some()
+    };
     let may_clear = clearable(&style)
         || e.first_letter
             .as_ref()
@@ -40,8 +43,11 @@ fn own(e: &Element, descendants: u8) -> u8 {
     // но блок в его потомках требует разбиения даже при нулевых полях.
     let split = inline && !out_of_flow(&style) && descendants & BLOCK != 0;
     let zero = |v| matches!(v, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    let margins = floats || split || !zero(style.margin.top) || !zero(style.margin.bottom);
-    let block = if inline || style.display == Some(Display::Contents) {
+    let margins = floats
+        || split
+        || !zero(style.reset_box_layout.margin.top)
+        || !zero(style.reset_box_layout.margin.bottom);
+    let block = if inline || style.reset_box_layout.display == Some(Display::Contents) {
         !out_of_flow(&style) && descendants & BLOCK != 0
     } else {
         block_level_in_flow(e)

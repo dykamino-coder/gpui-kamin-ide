@@ -16,19 +16,19 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
-    let b = &c.style.used().border_width;
-    let clone = c.style.used().bdb_clone;
+    let b = &c.style.used().reset_border.border_width;
+    let clone = c.style.used().reset_fragmentation.bdb_clone;
     (first
-        && (spanner_edge(&c.style.used().margin.top)
-            || spanner_edge(&c.style.used().padding.top)
+        && (spanner_edge(&c.style.used().reset_box_layout.margin.top)
+            || spanner_edge(&c.style.used().reset_box_layout.padding.top)
             || spanner_edge(&b.top)))
         || (last
-            && (spanner_edge(&c.style.used().margin.bottom)
-                || spanner_edge(&c.style.used().padding.bottom)
+            && (spanner_edge(&c.style.used().reset_box_layout.margin.bottom)
+                || spanner_edge(&c.style.used().reset_box_layout.padding.bottom)
                 || spanner_edge(&b.bottom)))
         || (clone
-            && (spanner_edge(&c.style.used().padding.top)
-                || spanner_edge(&c.style.used().padding.bottom)
+            && (spanner_edge(&c.style.used().reset_box_layout.padding.top)
+                || spanner_edge(&c.style.used().reset_box_layout.padding.bottom)
                 || spanner_edge(&b.top)
                 || spanner_edge(&b.bottom)))
 }
@@ -52,10 +52,10 @@ pub(super) fn spanner_fragment(
     let mut f = c.clone();
     f.children = kids.into();
     if !first {
-        f.style.used_mut().margin.top = None;
-        if !c.style.used().bdb_clone {
-            f.style.used_mut().padding.top = None;
-            f.style.used_mut().border_width.top = None;
+        f.style.used_mut().reset_box_layout.margin.top = None;
+        if !c.style.used().reset_fragmentation.bdb_clone {
+            f.style.used_mut().reset_box_layout.padding.top = None;
+            f.style.used_mut().reset_border.border_width.top = None;
         }
         // Устойчивый номер узла у продолжения свой: по нему GPUI хранит
         // состояние (анимация, буферы линеек промежутков), и два фрагмента
@@ -63,14 +63,14 @@ pub(super) fn spanner_fragment(
         f.node_id = c.node_id ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     }
     if !last {
-        f.style.used_mut().margin.bottom = None;
-        if !c.style.used().bdb_clone {
-            f.style.used_mut().padding.bottom = None;
-            f.style.used_mut().border_width.bottom = None;
+        f.style.used_mut().reset_box_layout.margin.bottom = None;
+        if !c.style.used().reset_fragmentation.bdb_clone {
+            f.style.used_mut().reset_box_layout.padding.bottom = None;
+            f.style.used_mut().reset_border.border_width.bottom = None;
         }
     }
     if !keep_size {
-        f.style.used_mut().height = None;
+        f.style.used_mut().reset_box_layout.height = None;
         f.marks.spanner_content_box = true;
     }
     f
@@ -101,11 +101,26 @@ mod tests {
             let parent = find(&tree).expect("parent");
             let fragment = spanner_fragment(parent, vec![], false, false, false, 1);
             let style = fragment.style.used();
-            assert!(style.margin.top.is_none() && style.margin.bottom.is_none());
-            assert_eq!(style.padding.top, clone.then_some(Len::Px(20.)));
-            assert_eq!(style.padding.bottom, clone.then_some(Len::Px(20.)));
-            assert_eq!(style.border_width.top, clone.then_some(Len::Px(3.)));
-            assert_eq!(style.border_width.bottom, clone.then_some(Len::Px(3.)));
+            assert!(
+                style.reset_box_layout.margin.top.is_none()
+                    && style.reset_box_layout.margin.bottom.is_none()
+            );
+            assert_eq!(
+                style.reset_box_layout.padding.top,
+                clone.then_some(Len::Px(20.))
+            );
+            assert_eq!(
+                style.reset_box_layout.padding.bottom,
+                clone.then_some(Len::Px(20.))
+            );
+            assert_eq!(
+                style.reset_border.border_width.top,
+                clone.then_some(Len::Px(3.))
+            );
+            assert_eq!(
+                style.reset_border.border_width.bottom,
+                clone.then_some(Len::Px(3.))
+            );
             assert_ne!(fragment.node_id, parent.node_id);
             assert_eq!(spanner_frag_visible(parent, &[], false, false), clone);
         }

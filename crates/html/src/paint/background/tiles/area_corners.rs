@@ -18,10 +18,10 @@ pub(super) fn corners(
         _ => 0.0,
     };
     let radii = [
-        r(c.radius.tl),
-        r(c.radius.tr),
-        r(c.radius.br),
-        r(c.radius.bl),
+        r(c.reset_border.radius.tl),
+        r(c.reset_border.radius.tr),
+        r(c.reset_border.radius.br),
+        r(c.reset_border.radius.bl),
     ];
     let near = |a: f32, b: f32| (a - b).abs() < crate::tolerance::PAINT_EDGE_EPS;
     let (pl, pt) = (f32::from(clip.origin.x), f32::from(clip.origin.y));

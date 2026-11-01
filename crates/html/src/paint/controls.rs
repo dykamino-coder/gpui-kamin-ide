@@ -36,7 +36,7 @@ fn control(paint: gpui::Div, natural: [f32; 2]) -> AnyElement {
 }
 
 fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
-    system_color(role, style.dark_color_scheme).to_hsla()
+    system_color(role, style.reset_cascade.dark_color_scheme).to_hsla()
 }
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
@@ -114,7 +114,7 @@ fn text_field(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
 
 /// `<input type="button">` — значение лежит в атрибуте, а не в детях.
 fn button_like(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
-    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+    if style.reset_context.appearance == Some(crate::style::computed::Appearance::Base) {
         return apply(div(), style, vcx)
             .child(SharedString::from(e.attr("value").unwrap_or("").to_owned()))
             .into_any_element();
@@ -138,7 +138,7 @@ fn button_like(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
 /// Умолчания ставятся ТОЛЬКО там, где документ ничего не сказал: раньше они
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
 fn field_box(style: &BoxStyle, vcx: ValueCx<'_>) -> gpui::Div {
-    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+    if style.reset_context.appearance == Some(crate::style::computed::Appearance::Base) {
         return apply(div(), style, vcx);
     }
     let mut d = apply(div(), style, vcx)
@@ -148,14 +148,19 @@ fn field_box(style: &BoxStyle, vcx: ValueCx<'_>) -> gpui::Div {
     // Служебная заливка поля — только когда автор о фоне НЕ говорил:
     // `background: linear-gradient(...)` сбрасывает цвет в прозрачный, и
     // заливка поверх него закрашивала бы страницу под полем.
-    if !style.bg_explicit && style.background.is_none() && style.gradient.is_none() {
+    if !style.reset_background.bg_explicit
+        && style.reset_background.background.is_none()
+        && style.reset_background.gradient.is_none()
+    {
         d = d.bg(native_color(style, SystemColor::Field));
     }
     // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.
     // По `borders()` отличить нельзя: он гасит толщину без рисунка, и
     // `border: none` выглядел бы как отсутствие правила — умолчание UA
     // возвращало рамку обратно.
-    if style.border_width.top.is_none() && style.border_visible[0].is_none() {
+    if style.reset_border.border_width.top.is_none()
+        && style.reset_border.border_visible[0].is_none()
+    {
         d = d.border_1();
     }
     let b = style.borders();
@@ -168,17 +173,17 @@ fn field_box(style: &BoxStyle, vcx: ValueCx<'_>) -> gpui::Div {
     // The rounded native look is part of `appearance: auto`; an author
     // border or background replaces it with a plain CSS box (CSS UI 4
     // section 7.2, HTML rendering section 15.5), so its corners stay square.
-    let author_box = style.border_width.top.is_some()
-        || style.border_visible[0].is_some()
-        || style.bg_explicit
-        || style.background.is_some();
-    if style.radius.tl.is_none() && !author_box {
+    let author_box = style.reset_border.border_width.top.is_some()
+        || style.reset_border.border_visible[0].is_some()
+        || style.reset_background.bg_explicit
+        || style.reset_background.background.is_some();
+    if style.reset_border.radius.tl.is_none() && !author_box {
         d = d.rounded(px(4.));
     }
-    if style.padding.left.is_none() {
+    if style.reset_box_layout.padding.left.is_none() {
         d = d.px(px(8.));
     }
-    if style.padding.top.is_none() {
+    if style.reset_box_layout.padding.top.is_none() {
         d = d.py(px(4.));
     }
     d

@@ -48,11 +48,11 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let Node::Element(block) = &collapsed[0] else {
             panic!("block")
         };
-        assert_eq!(block.style.used().height, height);
+        assert_eq!(block.style.used().reset_box_layout.height, height);
         assert!(block.marks.auto_zero_height);
         let painted = used_style(block, &BoxStyle::from((*block.style.cascaded()).clone()))
             .unwrap_or_else(|| BoxStyle::from(block.style.cascaded().clone()));
-        assert_eq!(painted.height, Some(Len::Px(0.0)));
+        assert_eq!(painted.reset_box_layout.height, Some(Len::Px(0.0)));
         let mut child = {
             let mut with_inherited = Computed {
                 reset_context: crate::style::computed::StyleGroup::new(
@@ -63,11 +63,15 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
                 ),
                 ..Default::default()
             };
-            with_inherited.writing_mode = Some(WritingModeKw::new(true, false, false));
+            with_inherited.inh.writing.writing_mode = Some(WritingModeKw::new(true, false, false));
             with_inherited
         };
         orthogonal_inline::resolve(&mut child, &block.style.used(), (800.0, 600.0), false);
-        let available = child.orthogonal_inline.expect("root constraint").available;
+        let available = child
+            .reset_context
+            .orthogonal_inline
+            .expect("root constraint")
+            .available;
         assert_eq!(
             available,
             if height == Some(Len::Px(0.0)) {
@@ -83,8 +87,8 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
 fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut child = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
-    child.style.used_mut().height = Some(Len::Px(70.0));
-    child.style.used_mut().margin.bottom = Some(Len::Px(50.0));
+    child.style.used_mut().reset_box_layout.height = Some(Len::Px(70.0));
+    child.style.used_mut().reset_box_layout.margin.bottom = Some(Len::Px(50.0));
     let fieldset = Element::synthetic(
         "fieldset",
         Computed::default(),
@@ -96,5 +100,8 @@ fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
     let Node::Element(child) = &fieldset.children[0] else {
         panic!("child")
     };
-    assert_eq!(child.style.used().margin.bottom, Some(Len::Px(50.0)));
+    assert_eq!(
+        child.style.used().reset_box_layout.margin.bottom,
+        Some(Len::Px(50.0))
+    );
 }

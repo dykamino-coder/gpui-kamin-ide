@@ -9,32 +9,41 @@ use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
-    if !matches!(child.style.used().display, None | Some(Display::Block))
-        || !matches!(child.style.used().width, None | Some(Len::Auto))
-    {
+    if !matches!(
+        child.style.used().reset_box_layout.display,
+        None | Some(Display::Block)
+    ) || !matches!(
+        child.style.used().reset_box_layout.width,
+        None | Some(Len::Auto)
+    ) {
         return false;
     }
-    let original = child.style.used().width;
-    child.style.used_mut().width = Some(Len::FitContent);
+    let original = child.style.used().reset_box_layout.width;
+    child.style.used_mut().reset_box_layout.width = Some(Len::FitContent);
     if !native_intrinsic::eligible(child) {
-        child.style.used_mut().width = original;
+        child.style.used_mut().reset_box_layout.width = original;
         return false;
     }
     let fallback = available(
         orthogonal_inline::axis(container, false),
-        container.orthogonal_scrollport.map(|axes| axes[0]),
+        container
+            .reset_context
+            .orthogonal_scrollport
+            .map(|axes| axes[0]),
         icb_width,
     );
     let px = |value| px_lossy_zero(value);
-    let outer = fallback - px(child.style.used().margin.left) - px(child.style.used().margin.right);
-    let adjustment = if child.style.used().border_box == Some(true) {
+    let outer = fallback
+        - px(child.style.used().reset_box_layout.margin.left)
+        - px(child.style.used().reset_box_layout.margin.right);
+    let adjustment = if child.style.used().reset_border.border_box == Some(true) {
         0.0
     } else {
         orthogonal_inline::edges(&child.style.used(), false)
     };
     // The native functional fit-content clamp preserves min-content when a
     // word is wider than the available space. CSS author limits stay intact.
-    child.style.used_mut().fit_arg[0] = Some(Len::Px((outer - adjustment).max(0.0)));
+    child.style.used_mut().reset_context.fit_arg[0] = Some(Len::Px((outer - adjustment).max(0.0)));
     true
 }
 
@@ -56,24 +65,36 @@ mod tests {
         };
         for authored in [None, Some(Len::Auto)] {
             let mut child = crate::layout::table::anon::anon_element("div", vec![]);
-            child.style.used_mut().width = authored;
-            child.style.used_mut().border_width.left = Some(Len::Px(3.0));
-            child.style.used_mut().border_width.right = Some(Len::Px(3.0));
-            child.style.used_mut().border_visible = [Some(true); 4];
-            child.style.used_mut().max_width = Some(Len::Px(500.0));
-            child.style.used_mut().min_width = Some(Len::Px(10.0));
+            child.style.used_mut().reset_box_layout.width = authored;
+            child.style.used_mut().reset_border.border_width.left = Some(Len::Px(3.0));
+            child.style.used_mut().reset_border.border_width.right = Some(Len::Px(3.0));
+            child.style.used_mut().reset_border.border_visible = [Some(true); 4];
+            child.style.used_mut().reset_box_layout.max_width = Some(Len::Px(500.0));
+            child.style.used_mut().reset_box_layout.min_width = Some(Len::Px(10.0));
             assert!(size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.used().width, Some(Len::FitContent));
-            assert_eq!(child.style.used().fit_arg[0], Some(Len::Px(394.0)));
-            assert_eq!(child.style.used().max_width, Some(Len::Px(500.0)));
-            assert_eq!(child.style.used().min_width, Some(Len::Px(10.0)));
+            assert_eq!(
+                child.style.used().reset_box_layout.width,
+                Some(Len::FitContent)
+            );
+            assert_eq!(
+                child.style.used().reset_context.fit_arg[0],
+                Some(Len::Px(394.0))
+            );
+            assert_eq!(
+                child.style.used().reset_box_layout.max_width,
+                Some(Len::Px(500.0))
+            );
+            assert_eq!(
+                child.style.used().reset_box_layout.min_width,
+                Some(Len::Px(10.0))
+            );
         }
     }
 
     #[test]
     fn nearest_scrollport_and_border_box_define_the_available_border_edge() {
         let mut container = Computed::default();
-        container.orthogonal_scrollport = Some([
+        container.reset_context.orthogonal_scrollport = Some([
             crate::style::computed::orthogonal::AxisSizes {
                 size: Some(300.0),
                 ..Default::default()
@@ -81,11 +102,14 @@ mod tests {
             Default::default(),
         ]);
         let mut child = crate::layout::table::anon::anon_element("div", vec![]);
-        child.style.used_mut().margin.left = Some(Len::Px(10.0));
-        child.style.used_mut().padding.left = Some(Len::Px(20.0));
-        child.style.used_mut().border_box = Some(true);
+        child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(10.0));
+        child.style.used_mut().reset_box_layout.padding.left = Some(Len::Px(20.0));
+        child.style.used_mut().reset_border.border_box = Some(true);
         assert!(size_auto(&mut child, &container, 800.0));
-        assert_eq!(child.style.used().fit_arg[0], Some(Len::Px(290.0)));
+        assert_eq!(
+            child.style.used().reset_context.fit_arg[0],
+            Some(Len::Px(290.0))
+        );
     }
 
     #[test]
@@ -98,17 +122,17 @@ mod tests {
             Display::InlineGrid,
             Display::GridLanes,
         ] {
-            child.style.used_mut().display = Some(display);
+            child.style.used_mut().reset_box_layout.display = Some(display);
             assert!(!size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.used().width, None);
+            assert_eq!(child.style.used().reset_box_layout.width, None);
         }
-        child.style.used_mut().display = Some(Display::Block);
-        child.style.used_mut().width = Some(Len::Px(100.0));
+        child.style.used_mut().reset_box_layout.display = Some(Display::Block);
+        child.style.used_mut().reset_box_layout.width = Some(Len::Px(100.0));
         assert!(!size_auto(&mut child, &container, 800.0));
-        child.style.used_mut().width = None;
-        child.style.used_mut().position = Some(Position::Absolute);
+        child.style.used_mut().reset_box_layout.width = None;
+        child.style.used_mut().reset_positioned.position = Some(Position::Absolute);
         assert!(!size_auto(&mut child, &container, 800.0));
-        child.style.used_mut().position = None;
+        child.style.used_mut().reset_positioned.position = None;
         child.tag = "img".into();
         assert!(!size_auto(&mut child, &container, 800.0));
     }

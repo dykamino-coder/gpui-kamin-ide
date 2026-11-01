@@ -22,7 +22,7 @@ pub(in crate::document) fn wrap(
     let id = maximum_id(&nodes) + 1;
     let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
     viewport.node_id = id;
-    let (rtl, writing_mode) = (c.rtl, c.writing_mode);
+    let (rtl, writing_mode) = (c.inh.writing.rtl, c.inh.writing.writing_mode);
     viewport.style = {
         let mut with_inherited = Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(
@@ -30,9 +30,9 @@ pub(in crate::document) fn wrap(
                     display: Some(Display::Block),
                     width: Some(Len::Vw(1.0)),
                     height: Some(Len::Vh(1.0)),
-                    overflow_x: c.overflow_x,
-                    overflow_y: c.overflow_y,
-                    scroll: c.scroll,
+                    overflow_x: c.reset_box_layout.overflow_x,
+                    overflow_y: c.reset_box_layout.overflow_y,
+                    scroll: c.reset_box_layout.scroll.clone(),
                     ..Default::default()
                 },
             ),
@@ -50,14 +50,14 @@ pub(in crate::document) fn wrap(
             ),
             reset_positioned: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetPositioned {
-                    viewport_unit_insets: c.viewport_unit_insets,
+                    viewport_unit_insets: c.reset_positioned.viewport_unit_insets,
                     ..Default::default()
                 },
             ),
             ..Computed::default()
         };
-        with_inherited.rtl = rtl;
-        with_inherited.writing_mode = writing_mode;
+        with_inherited.inh.writing.rtl = rtl;
+        with_inherited.inh.writing.writing_mode = writing_mode;
         with_inherited
     }
     .into();

@@ -41,13 +41,17 @@ fn paragraph_routed(
     }
     // Первая строка со своим стилем: где она кончается, известно только после
     // переноса, поэтому абзац собирается замером (см. `float::FirstLine`).
-    if let Some(first) = inherited.first_line.clone() {
+    if let Some(first) = inherited.reset_text_box.first_line.clone() {
         let mut base = inherited.clone();
-        base.first_line = None;
+        base.reset_text_box.first_line = None;
         let nodes_owned = nodes.to_vec();
         let opts_owned = opts.clone();
         let mut plain = String::new();
-        first_line_text::gather(nodes, inherited.preserve_newlines == Some(true), &mut plain);
+        first_line_text::gather(
+            nodes,
+            inherited.inh.text_flow.preserve_newlines == Some(true),
+            &mut plain,
+        );
         let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), inherited);
         if !plain.trim().is_empty() {
             let size = own_size(&base, opts);
@@ -59,14 +63,14 @@ fn paragraph_routed(
                 )
             });
             let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
-            let base_lh = base.line_height;
+            let base_lh = base.inh.font.line_height;
             let for_build = first.clone();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
             // среза строк (`InlineContext::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
                     let mut styled = base.clone();
-                    styled.first_line = Some(for_build.clone());
+                    styled.reset_text_box.first_line = Some(for_build.clone());
                     let mut para =
                         paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
                     para = div().w(width).child(para).into_any_element();
@@ -76,7 +80,7 @@ fn paragraph_routed(
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
             let font = crate::text::inline::strut_font(&first, &opts.text, opts.cx.vcx());
-            let computed_base = match inherited.font_size {
+            let computed_base = match inherited.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             };
@@ -85,7 +89,7 @@ fn paragraph_routed(
             // унаследованный — числовой пересчитывается от её кегля.
             // The root inline inherits this strut, including a smaller height
             // (css-pseudo-4 §first-line-styling).
-            let first_lh = match first.line_height.or(base_lh) {
+            let first_lh = match first.inh.font.line_height.or(base_lh) {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => first
                     .numeric_line_value_px(Some(Len::Pct(k)), computed_base)
@@ -93,7 +97,11 @@ fn paragraph_routed(
                 _ => line * measure_size / size.max(1.0),
             };
             let mut full = String::new();
-            first_line_text::lines(nodes, inherited.preserve_newlines == Some(true), &mut full);
+            first_line_text::lines(
+                nodes,
+                inherited.inh.text_flow.preserve_newlines == Some(true),
+                &mut full,
+            );
             let following = full
                 .split('\n')
                 .skip(1)
@@ -143,9 +151,9 @@ pub(super) struct ParagraphStyle<'a> {
 
 pub(super) fn paragraph_style(c: &Computed) -> ParagraphStyle<'_> {
     ParagraphStyle {
-        hug_claim: c.hug_claim,
-        lines_reversed: c.lines_reversed,
-        text_fit: c.text_fit.flatten(),
-        hyphen_char: &c.hyphen_char,
+        hug_claim: c.reset_context.hug_claim,
+        lines_reversed: c.reset_context.lines_reversed,
+        text_fit: c.inh.text_flow.text_fit.flatten(),
+        hyphen_char: &c.inh.text_flow.hyphen_char,
     }
 }

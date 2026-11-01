@@ -29,7 +29,10 @@ fn resolve_with(
     vcx: ValueCx<'_>,
     layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
 ) {
-    if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
+    if !matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute) | Some(Position::Fixed)
+    ) {
         return;
     }
     let default_anchor = default_anchor_of(c);
@@ -52,7 +55,8 @@ fn resolve_with(
                     // (до-трансформная рамка), без него — отображённую
                     // (`transform-002/009`: `anchor-size(width)` = 100, а не 50).
                     let b = if r.tf_top != 0
-                        && !(inherited.transform_ancestor || inherited.transform.is_some())
+                        && !(inherited.reset_transforms.transform_ancestor
+                            || inherited.reset_transforms.transform.is_some())
                     {
                         r.rect_tf
                     } else {
@@ -87,7 +91,7 @@ fn resolve_with(
     // блока (`position-area-percents-001`: 5% от 80 в горизонтальном, от 40
     // в `vertical-rl`); размеры — по своей оси (`transform-001`:
     // `width: 100%` = ширина якоря, а не 800 окна).
-    if c.position_area.is_some()
+    if c.reset_positioned.position_area.is_some()
         && default_anchor.is_some()
         && let Some((cw, ch)) = current.and_then(|v| v.cell)
     {
@@ -96,30 +100,30 @@ fn resolve_with(
             other => other,
         };
         let inline = if cb_vertical { ch } else { cw };
-        c.width = of(c.width, cw);
-        c.min_width = of(c.min_width, cw);
-        c.max_width = of(c.max_width, cw);
-        c.height = of(c.height, ch);
-        c.min_height = of(c.min_height, ch);
-        c.max_height = of(c.max_height, ch);
-        c.margin.top = of(c.margin.top, inline);
-        c.margin.right = of(c.margin.right, inline);
-        c.margin.bottom = of(c.margin.bottom, inline);
-        c.margin.left = of(c.margin.left, inline);
-        c.padding.top = of(c.padding.top, inline);
-        c.padding.right = of(c.padding.right, inline);
-        c.padding.bottom = of(c.padding.bottom, inline);
-        c.padding.left = of(c.padding.left, inline);
+        c.reset_box_layout.width = of(c.reset_box_layout.width, cw);
+        c.reset_box_layout.min_width = of(c.reset_box_layout.min_width, cw);
+        c.reset_box_layout.max_width = of(c.reset_box_layout.max_width, cw);
+        c.reset_box_layout.height = of(c.reset_box_layout.height, ch);
+        c.reset_box_layout.min_height = of(c.reset_box_layout.min_height, ch);
+        c.reset_box_layout.max_height = of(c.reset_box_layout.max_height, ch);
+        c.reset_box_layout.margin.top = of(c.reset_box_layout.margin.top, inline);
+        c.reset_box_layout.margin.right = of(c.reset_box_layout.margin.right, inline);
+        c.reset_box_layout.margin.bottom = of(c.reset_box_layout.margin.bottom, inline);
+        c.reset_box_layout.margin.left = of(c.reset_box_layout.margin.left, inline);
+        c.reset_box_layout.padding.top = of(c.reset_box_layout.padding.top, inline);
+        c.reset_box_layout.padding.right = of(c.reset_box_layout.padding.right, inline);
+        c.reset_box_layout.padding.bottom = of(c.reset_box_layout.padding.bottom, inline);
+        c.reset_box_layout.padding.left = of(c.reset_box_layout.padding.left, inline);
     }
-    c.width = one(c.width, false);
-    c.min_width = one(c.min_width, false);
-    c.max_width = one(c.max_width, false);
-    c.height = one(c.height, true);
-    c.min_height = one(c.min_height, true);
-    c.max_height = one(c.max_height, true);
+    c.reset_box_layout.width = one(c.reset_box_layout.width, false);
+    c.reset_box_layout.min_width = one(c.reset_box_layout.min_width, false);
+    c.reset_box_layout.max_width = one(c.reset_box_layout.max_width, false);
+    c.reset_box_layout.height = one(c.reset_box_layout.height, true);
+    c.reset_box_layout.min_height = one(c.reset_box_layout.min_height, true);
+    c.reset_box_layout.max_height = one(c.reset_box_layout.max_height, true);
     // §position-area: без default anchor box область не действует;
     // явные anchor()-вставки продолжают задавать обычный IMCB.
-    let area_active = c.position_area.is_some()
+    let area_active = c.reset_positioned.position_area.is_some()
         && default_anchor.is_some()
         && current.is_none_or(|v| v.cell.is_some());
     if !area_active {
@@ -130,8 +134,8 @@ fn resolve_with(
         return;
     };
     let pxv = px_lossy_zero;
-    let block_stretch = c.align_self == Some(Align::Stretch);
-    let inline_stretch = c.justify_self == Some(Align::Stretch);
+    let block_stretch = c.reset_flex.align_self == Some(Align::Stretch);
+    let inline_stretch = c.reset_flex.justify_self == Some(Align::Stretch);
     let (x_stretch, y_stretch) = if cb_vertical {
         (block_stretch, inline_stretch)
     } else {
@@ -139,28 +143,28 @@ fn resolve_with(
     };
     let b = c.borders();
     if x_stretch {
-        let extra = pxv(c.margin.left)
-            + pxv(c.margin.right)
+        let extra = pxv(c.reset_box_layout.margin.left)
+            + pxv(c.reset_box_layout.margin.right)
             + pxv(b.left)
             + pxv(b.right)
-            + pxv(c.padding.left)
-            + pxv(c.padding.right);
-        c.width = Some(Len::Px((w - extra).max(0.0)));
+            + pxv(c.reset_box_layout.padding.left)
+            + pxv(c.reset_box_layout.padding.right);
+        c.reset_box_layout.width = Some(Len::Px((w - extra).max(0.0)));
     }
     if y_stretch {
-        let extra = pxv(c.margin.top)
-            + pxv(c.margin.bottom)
+        let extra = pxv(c.reset_box_layout.margin.top)
+            + pxv(c.reset_box_layout.margin.bottom)
             + pxv(b.top)
             + pxv(b.bottom)
-            + pxv(c.padding.top)
-            + pxv(c.padding.bottom);
-        c.height = Some(Len::Px((h - extra).max(0.0)));
+            + pxv(c.reset_box_layout.padding.top)
+            + pxv(c.reset_box_layout.padding.bottom);
+        c.reset_box_layout.height = Some(Len::Px((h - extra).max(0.0)));
     }
 }
 
 fn is_grid(c: &Computed) -> bool {
     matches!(
-        c.display,
+        c.reset_box_layout.display,
         Some(crate::style::computed::Display::Grid)
             | Some(crate::style::computed::Display::InlineGrid)
     )

@@ -24,16 +24,22 @@ use crate::style::values::value::Len;
 pub(crate) fn grid_stack(c: &Element) -> bool {
     use crate::style::computed::{AutoFlow, Track, TrackSize};
     let s = &*c.style.used();
-    if !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
+    if !matches!(
+        s.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    ) {
         return false;
     }
-    if s.grid_cols.unwrap_or(1) > 1
-        || s.grid_tracks.as_ref().is_some_and(|t| t.len() > 1)
-        || s.grid_areas.is_some()
+    if s.reset_grid.grid_cols.unwrap_or(1) > 1
+        || s.reset_grid
+            .grid_tracks
+            .as_ref()
+            .is_some_and(|t| t.len() > 1)
+        || s.reset_grid.grid_areas.is_some()
     {
         return false;
     }
-    if let Some(rows) = s.grid_rows.as_ref() {
+    if let Some(rows) = s.reset_grid.grid_rows.as_ref() {
         // Ряд, чей размер при `height: auto` равен вкладу ЕДИНСТВЕННОГО
         // элемента ряда: `auto`/`min-content`/`max-content` (css-grid-1
         // §12.4-12.6); `minmax(<0 | по содержимому>, <auto | max-content |
@@ -70,7 +76,7 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
             })
             .count();
         if !all_auto
-            && (!matches!(s.height, None | Some(Len::Auto))
+            && (!matches!(s.reset_box_layout.height, None | Some(Len::Auto))
                 || BoxDimensions::for_element(c, s).maximum[1].is_some()
                 || flexible > 1
                 || !rows.iter().all(by_item))
@@ -79,25 +85,28 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
         }
     }
     if !matches!(
-        s.grid_auto_rows,
+        s.reset_grid.grid_auto_rows,
         None | Some(TrackSize::Single(Track::Auto))
-    ) || !s.grid_auto_rows_list.is_empty()
+    ) || !s.reset_grid.grid_auto_rows_list.is_empty()
         || matches!(
-            s.grid_auto_flow,
+            s.reset_grid.grid_auto_flow,
             Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
         )
-        || s.align_content.is_some()
+        || s.reset_flex.align_content.is_some()
     {
         return false;
     }
-    if !matches!(s.gap, None | Some((None, _)) | Some((Some(Len::Px(_)), _))) {
+    if !matches!(
+        s.reset_flex.gap,
+        None | Some((None, _)) | Some((Some(Len::Px(_)), _))
+    ) {
         return false;
     }
     !c.children.iter().any(|n| match n {
         Node::Element(k) => {
-            k.style.used().grid_row.is_some()
-                || k.style.used().grid_col.is_some()
-                || k.style.used().grid_area_name.is_some()
+            k.style.used().reset_grid.grid_row.is_some()
+                || k.style.used().reset_grid.grid_col.is_some()
+                || k.style.used().reset_grid.grid_area_name.is_some()
         }
         _ => false,
     })

@@ -50,7 +50,7 @@ pub(crate) fn probe(
         return super::grid::probe(frame, c, sticky.cloned());
     }
     let clip = Clip::new(c);
-    let snap = c.snap;
+    let snap = c.reset_box_layout.snap;
     let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
     let link = sticky.cloned();

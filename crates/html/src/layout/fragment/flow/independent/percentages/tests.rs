@@ -17,14 +17,14 @@ fn definite_and_indefinite_cb_have_distinct_percentage_rules() {
     };
     let mut definite = original.clone();
     freeze(&mut definite, Some(400.0));
-    assert_eq!(definite.height, Some(Len::Px(200.0)));
-    assert_eq!(definite.min_height, Some(Len::Px(100.0)));
-    assert_eq!(definite.max_height, Some(Len::Px(300.0)));
+    assert_eq!(definite.reset_box_layout.height, Some(Len::Px(200.0)));
+    assert_eq!(definite.reset_box_layout.min_height, Some(Len::Px(100.0)));
+    assert_eq!(definite.reset_box_layout.max_height, Some(Len::Px(300.0)));
     let mut indefinite = original;
     freeze(&mut indefinite, None);
-    assert_eq!(indefinite.height, None);
-    assert_eq!(indefinite.min_height, Some(Len::Px(0.0)));
-    assert_eq!(indefinite.max_height, None);
+    assert_eq!(indefinite.reset_box_layout.height, None);
+    assert_eq!(indefinite.reset_box_layout.min_height, Some(Len::Px(0.0)));
+    assert_eq!(indefinite.reset_box_layout.max_height, None);
 }
 
 fn opts(tree: &crate::document::parsed::Parsed) -> RenderOpts {
@@ -59,7 +59,10 @@ fn original_cb_survives_wrapper_removal_and_changes_with_page_area() {
     );
     let opts = opts(&tree);
     let (nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
-    assert_eq!(target(&nodes).style.used().height, Some(Len::Px(560.0)));
+    assert_eq!(
+        target(&nodes).style.used().reset_box_layout.height,
+        Some(Len::Px(560.0))
+    );
     let context = contexts.context(target(&nodes).node_id);
     for (page, expected) in [(600.0, 560.0), (400.0, 360.0)] {
         let (leaf, _) = context.leaf(
@@ -85,7 +88,7 @@ fn original_cb_survives_wrapper_removal_and_changes_with_page_area() {
             &opts,
         );
         assert_eq!(
-            target(&continuation).style.used().height,
+            target(&continuation).style.used().reset_box_layout.height,
             Some(Len::Px(expected))
         );
     }
@@ -100,9 +103,9 @@ fn parent_minimum_does_not_supply_a_definite_percentage_cb() {
     let opts = opts(&tree);
     let (nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
     let style = target(&nodes).style.used();
-    assert_eq!(style.height, None);
-    assert_eq!(style.min_height, Some(Len::Px(0.0)));
-    assert_eq!(style.max_height, None);
+    assert_eq!(style.reset_box_layout.height, None);
+    assert_eq!(style.reset_box_layout.min_height, Some(Len::Px(0.0)));
+    assert_eq!(style.reset_box_layout.max_height, None);
     let (leaf, _) = contexts.context(target(&nodes).node_id).leaf(
         crate::layout::fragment::token::Space {
             inline_size: Some(800.0),
@@ -122,9 +125,9 @@ fn column_cb_is_not_the_remaining_fragment_height() {
     );
     let opts = opts(&tree);
     let mut parent = opts.root_style();
-    parent.icb = false;
-    parent.height = Some(Len::Px(400.0));
-    parent.column_count = Some(2);
+    parent.reset_context.icb = false;
+    parent.reset_box_layout.height = Some(Len::Px(400.0));
+    parent.reset_fragmentation.column_count = Some(2);
     // Обёртки документа не участвуют в изолированном контракте колонки.
     let section = target(&tree).clone();
     let columns = column_percentages(
@@ -133,19 +136,25 @@ fn column_cb_is_not_the_remaining_fragment_height() {
         Some(200.0),
         &opts,
     );
-    assert_eq!(target(&columns).style.used().height, Some(Len::Px(200.0)));
     assert_eq!(
-        target(&columns).style.used().min_height,
+        target(&columns).style.used().reset_box_layout.height,
+        Some(Len::Px(200.0))
+    );
+    assert_eq!(
+        target(&columns).style.used().reset_box_layout.min_height,
         Some(Len::Px(100.0))
     );
     assert_eq!(
-        target(&columns).style.used().max_height,
+        target(&columns).style.used().reset_box_layout.max_height,
         Some(Len::Px(300.0))
     );
     let mut span = section;
-    span.style.used_mut().column_span = Some(true);
+    span.style.used_mut().reset_fragmentation.column_span = Some(true);
     let spanning = column_percentages(&[Node::Element(span)], &parent, Some(200.0), &opts);
-    assert_eq!(target(&spanning).style.used().height, Some(Len::Px(200.0)));
+    assert_eq!(
+        target(&spanning).style.used().reset_box_layout.height,
+        Some(Len::Px(200.0))
+    );
 }
 
 #[test]
@@ -201,7 +210,10 @@ fn viewport_parent_supplies_a_definite_percentage_containing_block() {
     );
     let opts = opts(&tree);
     let (nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
-    assert_eq!(target(&nodes).style.used().height, Some(Len::Px(150.0)));
+    assert_eq!(
+        target(&nodes).style.used().reset_box_layout.height,
+        Some(Len::Px(150.0))
+    );
     let (leaf, _) = contexts.context(target(&nodes).node_id).leaf(
         crate::layout::fragment::token::Space {
             inline_size: Some(800.0),
@@ -235,7 +247,16 @@ fn vertical_inline_percentages_remain_owned_by_vertical_layout() {
         &opts,
     );
     let actual = target(&nodes).style.used();
-    assert_eq!(actual.height, original.height);
-    assert_eq!(actual.min_height, original.min_height);
-    assert_eq!(actual.max_height, original.max_height);
+    assert_eq!(
+        actual.reset_box_layout.height,
+        original.reset_box_layout.height
+    );
+    assert_eq!(
+        actual.reset_box_layout.min_height,
+        original.reset_box_layout.min_height
+    );
+    assert_eq!(
+        actual.reset_box_layout.max_height,
+        original.reset_box_layout.max_height
+    );
 }

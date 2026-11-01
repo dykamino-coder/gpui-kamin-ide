@@ -10,8 +10,8 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.font_size = Some(Len::Px(20.));
-        with_inherited.monospace = Some(true);
+        with_inherited.inh.font.font_size = Some(Len::Px(20.));
+        with_inherited.inh.font.monospace = Some(true);
         with_inherited
     };
     let mut style = {
@@ -24,11 +24,11 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
             ),
             ..Default::default()
         };
-        with_inherited.font_size = Some(Len::Pct(2.));
+        with_inherited.inh.font.font_size = Some(Len::Pct(2.));
         with_inherited
     };
-    style.margin.left = Some(Len::Ch(2.));
-    style.margin.right = Some(Len::Pct(0.1));
+    style.reset_box_layout.margin.left = Some(Len::Ch(2.));
+    style.reset_box_layout.margin.right = Some(Len::Pct(0.1));
     let resolved = crate::style::cascade::inherit::inherit_unpainted(
         &BoxStyle::from(parent.clone()),
         &style,
@@ -49,10 +49,16 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
     let Node::Element(float) = &nodes[0] else {
         panic!("float")
     };
-    assert_eq!(float.style.used().margin.left, resolved.margin.left);
-    assert!(matches!(float.style.used().margin.left, Some(Len::Px(v)) if v > 0.));
-    assert_eq!(float.style.used().margin.right, Some(Len::Pct(0.1)));
-    assert_eq!(float.style.used().font_size, Some(Len::Pct(2.)));
+    assert_eq!(
+        float.style.used().reset_box_layout.margin.left,
+        resolved.reset_box_layout.margin.left
+    );
+    assert!(matches!(float.style.used().reset_box_layout.margin.left, Some(Len::Px(v)) if v > 0.));
+    assert_eq!(
+        float.style.used().reset_box_layout.margin.right,
+        Some(Len::Pct(0.1))
+    );
+    assert_eq!(float.style.used().inh.font.font_size, Some(Len::Pct(2.)));
 }
 
 #[test]
@@ -62,8 +68,8 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.font_size = Some(Len::Px(20.));
-        with_inherited.monospace = Some(true);
+        with_inherited.inh.font.font_size = Some(Len::Px(20.));
+        with_inherited.inh.font.monospace = Some(true);
         with_inherited
     };
     let mut style = Computed {
@@ -82,7 +88,7 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
         ),
         ..Default::default()
     };
-    style.margin.left = Some(Len::Ch(1.));
+    style.reset_box_layout.margin.left = Some(Len::Ch(1.));
     let float = Element::synthetic(
         "div",
         style,
@@ -112,8 +118,11 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
         panic!("float")
     };
     assert_eq!(float.style.used().clamp_lines(), Some(2));
-    assert_eq!(float.style.used().width, Some(Len::Ch(8.5)));
-    assert!(matches!(float.style.used().margin.left, Some(Len::Px(v)) if v > 0.));
+    assert_eq!(
+        float.style.used().reset_box_layout.width,
+        Some(Len::Ch(8.5))
+    );
+    assert!(matches!(float.style.used().reset_box_layout.margin.left, Some(Len::Px(v)) if v > 0.));
 }
 
 #[test]
@@ -144,7 +153,7 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
             .collect(),
     );
     inline.inline = true;
-    inline.style.used_mut().margin.left = Some(Len::Px(40.));
+    inline.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(40.));
     inline.children.insert(1, Node::Text("\n ".into()));
     for (newlines, spaces) in [(true, false), (false, true)] {
         for inherited in [false, true] {
@@ -155,8 +164,8 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
             } else {
                 kept.style.used_mut()
             };
-            style.preserve_newlines = Some(newlines);
-            style.keep_spaces = Some(spaces);
+            style.inh.text_flow.preserve_newlines = Some(newlines);
+            style.inh.text_flow.keep_spaces = Some(spaces);
             let lifted = inline_floats::lift(
                 vec![Node::Element(kept)],
                 &BoxStyle::from(parent.clone()),
@@ -186,14 +195,20 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
         panic!("inline fragment")
     };
     assert!(fragment.children.is_empty());
-    assert_eq!(fragment.style.used().margin.left, Some(Len::Px(40.)));
+    assert_eq!(
+        fragment.style.used().reset_box_layout.margin.left,
+        Some(Len::Px(40.))
+    );
     for node in &nodes[1..] {
         let Node::Element(float) = node else {
             panic!("float")
         };
-        assert_eq!(float.style.used().float, Some(-1));
-        assert_eq!(float.style.used().width, Some(Len::Pct(0.5)));
-        assert_eq!(float.style.used().margin.left, None);
+        assert_eq!(float.style.used().reset_box_layout.float, Some(-1));
+        assert_eq!(
+            float.style.used().reset_box_layout.width,
+            Some(Len::Pct(0.5))
+        );
+        assert_eq!(float.style.used().reset_box_layout.margin.left, None);
     }
     let (host, end, lead, _) = host_for_run(
         16.,

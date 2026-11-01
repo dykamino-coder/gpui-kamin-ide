@@ -44,8 +44,8 @@ fn content_height(k: &Element, h: f32) -> Option<f32> {
     }
     let b = k.style.used().borders();
     Some(
-        h - px_auto_zero(k.style.used().padding.top)?
-            - px_auto_zero(k.style.used().padding.bottom)?
+        h - px_auto_zero(k.style.used().reset_box_layout.padding.top)?
+            - px_auto_zero(k.style.used().reset_box_layout.padding.bottom)?
             - px_auto_zero(b.top)?
             - px_auto_zero(b.bottom)?,
     )
@@ -67,17 +67,22 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
     // an item may grow to encompass its fragmented content (Blink
     // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
     let column = column_flex(&c.style.used());
-    let can_shrink_box = matches!(c.style.used().height, Some(Len::Px(_)));
+    let can_shrink_box = matches!(c.style.used().reset_box_layout.height, Some(Len::Px(_)));
     let moved = column && inner_by(c, struts) > 0.0;
     let mut i = 0;
     while i < c.children.len() {
         let mut spacer = None;
         if let Node::Element(k) = &mut c.children[i] {
             if column && let Some(st) = struts.get(&k.node_id) {
-                let can_shrink = can_shrink_box && k.style.used().flex_shrink != Some(0.0);
-                let auto_h = matches!(k.style.used().height, None | Some(Len::Auto));
+                let can_shrink =
+                    can_shrink_box && k.style.used().reset_flex.flex_shrink != Some(0.0);
+                let auto_h = matches!(
+                    k.style.used().reset_box_layout.height,
+                    None | Some(Len::Auto)
+                );
                 let basis_auto =
-                    matches!(k.style.used().flex_basis, None | Some(Len::Auto)) && auto_h;
+                    matches!(k.style.used().reset_flex.flex_basis, None | Some(Len::Auto))
+                        && auto_h;
                 let encompass = !monolith_box(k)
                     && ((basis_auto && !can_shrink)
                         || (auto_h
@@ -91,33 +96,43 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     return false;
                 };
                 if encompass {
-                    k.style.used_mut().height = None;
-                    k.style.used_mut().min_height = Some(Len::Px(h.max(0.0)));
+                    k.style.used_mut().reset_box_layout.height = None;
+                    k.style.used_mut().reset_box_layout.min_height = Some(Len::Px(h.max(0.0)));
                 } else if moved {
-                    k.style.used_mut().height = Some(Len::Px(h.max(0.0)));
-                    k.style.used_mut().min_height = None;
+                    k.style.used_mut().reset_box_layout.height = Some(Len::Px(h.max(0.0)));
+                    k.style.used_mut().reset_box_layout.min_height = None;
                 }
                 if encompass || moved {
-                    k.style.used_mut().max_height = None;
-                    k.style.used_mut().flex_basis = None;
-                    k.style.used_mut().flex_grow = Some(0.0);
-                    k.style.used_mut().flex_shrink = Some(0.0);
+                    k.style.used_mut().reset_box_layout.max_height = None;
+                    k.style.used_mut().reset_flex.flex_basis = None;
+                    k.style.used_mut().reset_flex.flex_grow = Some(0.0);
+                    k.style.used_mut().reset_flex.flex_shrink = Some(0.0);
                 }
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
-                if k.style.used().float.is_some_and(|f| f != 0) {
+                if k.style
+                    .used()
+                    .reset_box_layout
+                    .float
+                    .is_some_and(|f| f != 0)
+                {
                     // BandFlow consumes the same strut as a placement ceiling.
                     // A normal-flow spacer would move the surrounding lines.
                 } else if as_margin {
-                    let Some(m) = px_auto_zero(k.style.used().margin.top) else {
+                    let Some(m) = px_auto_zero(k.style.used().reset_box_layout.margin.top) else {
                         return false;
                     };
-                    k.style.used_mut().margin.top = Some(Len::Px(m + st.by));
-                    if row && matches!(k.style.used().height, None | Some(Len::Auto)) {
+                    k.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(m + st.by));
+                    if row
+                        && matches!(
+                            k.style.used().reset_box_layout.height,
+                            None | Some(Len::Auto)
+                        )
+                    {
                         let Some(h) = content_height(k, st.size) else {
                             return false;
                         };
-                        k.style.used_mut().height = Some(Len::Px(h.max(0.0)));
+                        k.style.used_mut().reset_box_layout.height = Some(Len::Px(h.max(0.0)));
                     }
                 } else if st.by > 0.0 {
                     spacer = Some(spacer_box(k.node_id, st.by));

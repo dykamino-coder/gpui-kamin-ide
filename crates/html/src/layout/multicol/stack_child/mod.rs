@@ -83,12 +83,12 @@ pub(super) fn multicol_stack_child(
         let edge = |l: &Option<crate::style::values::value::Len>| {
             !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))
         };
-        let top = !s.text_box_trim_start
+        let top = !s.reset_text_box.text_box_trim_start
             && !copy.marks.host_trim_start
-            && !edge(&s.padding.top)
+            && !edge(&s.reset_box_layout.padding.top)
             && !edge(&s.borders().top)
             && matches!(
-                s.height,
+                s.reset_box_layout.height,
                 None | Some(crate::style::values::value::Len::Auto)
             );
         (from > 0.0 || need > 0.0).then_some((from, need, top))
@@ -96,10 +96,10 @@ pub(super) fn multicol_stack_child(
     // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
     if copy.marks.host_trim_start {
-        copy.style.used_mut().text_box_trim_start = true;
+        copy.style.used_mut().reset_text_box.text_box_trim_start = true;
     }
     if copy.marks.host_trim_end {
-        copy.style.used_mut().text_box_trim_end = true;
+        copy.style.used_mut().reset_text_box.text_box_trim_end = true;
     }
     // Вложенный многоколоночник режут ряды внешних колонок (`nest_candidate`):
     // ряд — внешний фрагментаинер высоты `hh`, первый ряд — его остаток от места
@@ -113,7 +113,7 @@ pub(super) fn multicol_stack_child(
     let report: crate::layout::fragment::token::space::sequence::NestReport = Default::default();
     let mut inner = box_style(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
-    inner.fragment_clip_ancestor = false;
+    inner.reset_context.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,
     // а фрагмент нужен свой в каждой колонке. Больше, чем колонок, ребёнок
     // занять не может.

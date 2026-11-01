@@ -85,7 +85,10 @@ mod tests {
     fn try_rule_is_deterministic() {
         let mut seen = std::collections::BTreeSet::new();
         for _ in 0..64 {
-            seen.insert(format!("{:?}", applied("inset: 1px; top: 5px").inset.top));
+            seen.insert(format!(
+                "{:?}",
+                applied("inset: 1px; top: 5px").reset_positioned.inset.top
+            ));
         }
         assert_eq!(seen.len(), 1, "{seen:?}");
         assert!(
@@ -97,9 +100,9 @@ mod tests {
     #[test]
     fn try_rule_drops_unaccepted_and_important() {
         let c = applied("inset: 1px; left: 9px !important; color: red; width: 7px");
-        assert_eq!(c.inset.left, Some(Len::Px(1.0)));
-        assert_eq!(c.color, Computed::default().color);
-        assert_eq!(c.width, Some(Len::Px(7.0)));
+        assert_eq!(c.reset_positioned.inset.left, Some(Len::Px(1.0)));
+        assert_eq!(c.inh.ui.color, Computed::default().inh.ui.color);
+        assert_eq!(c.reset_box_layout.width, Some(Len::Px(7.0)));
     }
 }
 

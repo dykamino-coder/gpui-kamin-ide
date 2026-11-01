@@ -65,7 +65,7 @@ fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
         Styling::Text(style) => apply::apply_text(
             gpui::div(),
             style,
-            style.text_shadow_ink.or(style.ink()),
+            style.reset_text_box.text_shadow_ink.or(style.ink()),
             true,
             vcx,
         ),

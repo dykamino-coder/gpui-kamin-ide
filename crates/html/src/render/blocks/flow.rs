@@ -105,9 +105,13 @@ pub(super) async fn blocks_flow(
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
             && opts.cx.position.state.late_pending()
-            && e.style.used().z_index.is_none_or(|z| z >= 0)
+            && e.style
+                .used()
+                .reset_positioned
+                .z_index
+                .is_none_or(|z| z >= 0)
             && matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Sticky)
             )
@@ -121,7 +125,7 @@ pub(super) async fn blocks_flow(
             // блоке: размер окна известен только здесь (`motion::apply_icb`);
             // обёртку `transformed()` ниже строят от `e.style`.
             let patched;
-            let e = if e.style.used().offset_icb {
+            let e = if e.style.used().reset_transforms.offset_icb {
                 let mut copy = e.clone();
                 if copy.style.used().has_viewport_lengths(vcx) {
                     copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
@@ -156,7 +160,7 @@ pub(super) async fn blocks_flow(
             &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
         )));
     }
-    if (inherited.text_box_trim_start || inherited.text_box_trim_end)
+    if (inherited.reset_text_box.text_box_trim_start || inherited.reset_text_box.text_box_trim_end)
         && !out.is_empty()
         && !ordered_context
     {

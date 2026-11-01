@@ -33,7 +33,7 @@ fn text_ranges(
 }
 
 fn text_size(style: &Computed, base: f32) -> f32 {
-    match style.font_size {
+    match style.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => base,
     }
@@ -86,8 +86,9 @@ pub fn line_height_spans(
         if text.is_empty() {
             continue;
         }
-        if (style.line_height != inherited.line_height || style.font_size != inherited.font_size)
-            && let Some(lh) = style.line_height
+        if (style.inh.font.line_height != inherited.inh.font.line_height
+            || style.inh.font.font_size != inherited.inh.font.font_size)
+            && let Some(lh) = style.inh.font.line_height
         {
             let size = text_size(style, base_size);
             let px_of = match lh {
@@ -129,8 +130,12 @@ pub fn decor_spans(
         match p {
             Piece::Text { text, style } => {
                 let end = at + text.len();
-                if !style.decors.is_empty() && style.hidden != Some(true) && !text.is_empty() {
+                if !style.reset_text_box.decors.is_empty()
+                    && style.inh.ui.hidden != Some(true)
+                    && !text.is_empty()
+                {
                     let mut items: Vec<DecorItem> = style
+                        .reset_text_box
                         .decors
                         .iter()
                         .map(|d| {
@@ -138,11 +143,11 @@ pub fn decor_spans(
                                 let mut with_inherited = Computed {
                                     ..Computed::default()
                                 };
-                                with_inherited.font_family = d.font.family.clone();
-                                with_inherited.monospace = d.font.monospace;
-                                with_inherited.font_weight = d.font.weight;
-                                with_inherited.italic = d.font.italic;
-                                with_inherited.font_stretch = d.font.stretch;
+                                with_inherited.inh.font.font_family = d.font.family.clone();
+                                with_inherited.inh.font.monospace = d.font.monospace;
+                                with_inherited.inh.font.font_weight = d.font.weight;
+                                with_inherited.inh.font.italic = d.font.italic;
+                                with_inherited.inh.font.font_stretch = d.font.stretch;
                                 with_inherited
                             };
                             DecorItem {
@@ -164,12 +169,12 @@ pub fn decor_spans(
                             }
                         }
                     }
-                    shadow_inks.push(style.text_shadow_ink);
+                    shadow_inks.push(style.reset_text_box.text_shadow_ink);
                     out.push(DecorSpan {
                         range: at..end,
                         items,
-                        skip_ink: style.skip_ink != Some(0),
-                        skip_spaces: style.skip_spaces.unwrap_or(3),
+                        skip_ink: style.inh.text_ink.skip_ink != Some(0),
+                        skip_spaces: style.inh.text_ink.skip_spaces.unwrap_or(3),
                     });
                 }
                 if !text.is_empty() {

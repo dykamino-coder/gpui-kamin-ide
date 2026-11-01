@@ -17,7 +17,9 @@ pub(crate) fn empty(e: &Element) -> bool {
         "video" => e.attr("poster").is_none(),
         "embed" => e.attr("src").is_none() && e.attr("type").is_some(),
         "audio" => e.style.used().contains_width() || e.style.used().contains_height(),
-        "object" => e.attr("data").is_none() && e.style.used().contain_size == Some(true),
+        "object" => {
+            e.attr("data").is_none() && e.style.used().reset_context.contain_size == Some(true)
+        }
         _ => false,
     }
 }
@@ -70,37 +72,44 @@ pub(crate) fn resolve(
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");
-    if copy.style.used().contain_size == Some(true) {
+    if copy.style.used().reset_context.contain_size == Some(true) {
         return Some(copy);
     }
     let s = copy.style.used_mut();
     let ratio = s
+        .reset_shapes
         .aspect_ratio
-        .or(s.aspect_ratio_auto)
+        .or(s.reset_shapes.aspect_ratio_auto)
         .or_else(|| {
             if e.tag != "video" {
                 return None;
             }
-            match (s.attr_width, s.attr_height) {
+            match (
+                s.reset_box_layout.attr_width,
+                s.reset_box_layout.attr_height,
+            ) {
                 (Some(Len::Px(w)), Some(Len::Px(h))) if w > 0.0 && h > 0.0 => Some(w / h),
                 _ => None,
             }
         })
         .filter(|r| r.is_finite() && *r > 0.0);
     let auto = |v| matches!(v, None | Some(Len::Auto));
-    let (aw, ah) = (auto(s.width), auto(s.height));
+    let (aw, ah) = (
+        auto(s.reset_box_layout.width),
+        auto(s.reset_box_layout.height),
+    );
     let px = |v| px_strict(v);
     let clamp = |v: f32, lo: Option<Len>, hi: Option<Len>| {
         v.min(px(hi).unwrap_or(f32::INFINITY))
             .max(px(lo).unwrap_or(0.0))
     };
     let dw = if s.contains_width() {
-        s.contain_intrinsic.0.unwrap_or(0.0)
+        s.reset_context.contain_intrinsic.0.unwrap_or(0.0)
     } else {
         DEFAULT_REPLACED_WIDTH_PX
     };
     let dh = if s.contains_height() {
-        s.contain_intrinsic.1.unwrap_or(0.0)
+        s.reset_context.contain_intrinsic.1.unwrap_or(0.0)
     } else {
         DEFAULT_REPLACED_HEIGHT_PX
     };
@@ -110,30 +119,38 @@ pub(crate) fn resolve(
             let (w, h) = css2_replaced_limits(
                 w,
                 w / r,
-                px(s.min_width),
-                px(s.max_width),
-                px(s.min_height),
-                px(s.max_height),
+                px(s.reset_box_layout.min_width),
+                px(s.reset_box_layout.max_width),
+                px(s.reset_box_layout.min_height),
+                px(s.reset_box_layout.max_height),
             );
-            s.width = Some(Len::Px(w));
-            s.height = Some(Len::Px(h));
+            s.reset_box_layout.width = Some(Len::Px(w));
+            s.reset_box_layout.height = Some(Len::Px(h));
         }
         (true, false, Some(r)) => {
-            if let Some(h) = px(s.height) {
-                s.width = Some(Len::Px(clamp(h * r, s.min_width, s.max_width)));
+            if let Some(h) = px(s.reset_box_layout.height) {
+                s.reset_box_layout.width = Some(Len::Px(clamp(
+                    h * r,
+                    s.reset_box_layout.min_width,
+                    s.reset_box_layout.max_width,
+                )));
             }
         }
         (false, true, Some(r)) => {
-            if let Some(w) = px(s.width) {
-                s.height = Some(Len::Px(clamp(w / r, s.min_height, s.max_height)));
+            if let Some(w) = px(s.reset_box_layout.width) {
+                s.reset_box_layout.height = Some(Len::Px(clamp(
+                    w / r,
+                    s.reset_box_layout.min_height,
+                    s.reset_box_layout.max_height,
+                )));
             }
         }
         _ => {
             if aw {
-                s.width = Some(Len::Px(dw));
+                s.reset_box_layout.width = Some(Len::Px(dw));
             }
             if ah {
-                s.height = Some(Len::Px(dh));
+                s.reset_box_layout.height = Some(Len::Px(dh));
             }
         }
     }
@@ -157,10 +174,16 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.used_mut().height = Some(Len::Px(40.0));
+        e.style.used_mut().reset_box_layout.height = Some(Len::Px(40.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.used().width, Some(Len::Px(300.0)));
-        assert_eq!(sized.style.used().height, Some(Len::Px(40.0)));
+        assert_eq!(
+            sized.style.used().reset_box_layout.width,
+            Some(Len::Px(300.0))
+        );
+        assert_eq!(
+            sized.style.used().reset_box_layout.height,
+            Some(Len::Px(40.0))
+        );
     }
 
     #[test]
@@ -168,12 +191,18 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.used_mut().attr_width = Some(Len::Px(100.0));
-        e.style.used_mut().attr_height = Some(Len::Px(100.0));
-        e.style.used_mut().max_width = Some(Len::Px(100.0));
+        e.style.used_mut().reset_box_layout.attr_width = Some(Len::Px(100.0));
+        e.style.used_mut().reset_box_layout.attr_height = Some(Len::Px(100.0));
+        e.style.used_mut().reset_box_layout.max_width = Some(Len::Px(100.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.used().width, Some(Len::Px(100.0)));
-        assert_eq!(sized.style.used().height, Some(Len::Px(100.0)));
+        assert_eq!(
+            sized.style.used().reset_box_layout.width,
+            Some(Len::Px(100.0))
+        );
+        assert_eq!(
+            sized.style.used().reset_box_layout.height,
+            Some(Len::Px(100.0))
+        );
     }
 
     #[test]
@@ -181,9 +210,9 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.used_mut().contain_size = Some(true);
+        e.style.used_mut().reset_context.contain_size = Some(true);
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.used().width, None);
-        assert_eq!(sized.style.used().height, None);
+        assert_eq!(sized.style.used().reset_box_layout.width, None);
+        assert_eq!(sized.style.used().reset_box_layout.height, None);
     }
 }

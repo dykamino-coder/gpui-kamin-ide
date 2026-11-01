@@ -33,7 +33,14 @@ pub(super) fn non_inline_columns(
         let (Some(Node::Element(only)), None) = (blocks.next(), blocks.next()) else {
             return Some(None);
         };
-        if only.style.used().position.is_some() || only.style.used().float.is_some_and(|f| f != 0) {
+        if only.style.used().reset_positioned.position.is_some()
+            || only
+                .style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+        {
             return Some(None);
         }
         // Пункт списка — не «тот же поток»: его `::marker` (css-lists-3 §3)
@@ -73,7 +80,11 @@ pub(super) fn non_inline_columns(
                         only, &inside,
                     );
                 if !only.marks.spanner_content_box {
-                    dimensions.preferred[1] = inside.height.or(only.style.used().height);
+                    dimensions.preferred[1] = inside.reset_box_layout.height.or(only
+                        .style
+                        .used()
+                        .reset_box_layout
+                        .height);
                 }
                 dimensions
             },

@@ -82,7 +82,7 @@ pub(super) fn stack_child_of(
             && crate::layout::block::sizing::BoxDimensions::for_element(copy, &copy.style.used())
                 .border_box
             && matches!(
-                copy.style.used().height,
+                copy.style.used().reset_box_layout.height,
                 Some(crate::style::values::value::Len::Px(_))
             ),
         // Монолит с верха колонки переполняет её
@@ -100,17 +100,21 @@ pub(super) fn stack_child_of(
         par: kid_par[ix],
         positioned: !span
             && (matches!(
-                copy.style.used().position,
+                copy.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Sticky)
-            ) || copy.style.used().transform.is_some())
-            && copy.style.used().z_index.unwrap_or(0) == 0,
+            ) || copy.style.used().reset_transforms.transform.is_some())
+            && copy.style.used().reset_positioned.z_index.unwrap_or(0) == 0,
         // Хвост непоследнего фрагмента таблицы — её фоном
         // (`StackChild::slack`).
         slack: if col_vert {
             None
         } else if table_box(copy) {
-            copy.style.used().background.map(|c| c.to_hsla())
+            copy.style
+                .used()
+                .reset_background
+                .background
+                .map(|c| c.to_hsla())
         } else if dec.is_none() && over <= h + COORD_EPS {
             // Продолжение одного лишь параллельного
             // потока (`over`) — не продолжение коробки:
