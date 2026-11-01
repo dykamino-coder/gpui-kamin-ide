@@ -1,7 +1,7 @@
 //! Компактный набор разделяемых групп computed values (CSS Cascade §4).
 use super::*;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Computed {
     /// Идентичность украшающей коробки; не CSS и не часть разделяемых групп.
     pub decor_box: u64,

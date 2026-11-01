@@ -34,9 +34,11 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
                 || e.style.cascaded().reset_box_layout.display
                     == Some(crate::style::computed::Display::TableCell);
-            e.style
-                .cascaded_mut()
-                .resolve_logical(wm, parent_vertical, is_cell, vcx);
+            if e.style.cascaded().reset_context.logical.is_some() {
+                e.style
+                    .cascaded_mut()
+                    .resolve_logical(wm, parent_vertical, is_cell, vcx);
+            }
             // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
             // снятые до этого прохода, поэтому логические стороны ложатся на их
             // физические поля тем же письмом, что у элемента
@@ -49,9 +51,11 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             .into_iter()
             .flatten()
             {
-                layer
-                    .cascaded_mut()
-                    .resolve_logical(wm, parent_vertical, is_cell, vcx);
+                if layer.cascaded().reset_context.logical.is_some() {
+                    layer
+                        .cascaded_mut()
+                        .resolve_logical(wm, parent_vertical, is_cell, vcx);
+                }
             }
             // Физические поля здесь окончательны; схлопывание изменит их позже.
             // Ортогональный корень потока тоже сохраняет их: его строчный размер —
@@ -102,6 +106,41 @@ mod tests {
     //! Ориентация картинок масок сохраняется при подготовке документа.
     use crate::document::Document;
     use crate::dom::Node;
+
+    #[test]
+    fn absent_logical_properties_preserve_publication_and_variant_groups() {
+        use crate::dom::{Element, Marks};
+        use crate::style::cascade::materialize::materialize;
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let seed = doc.initial_style();
+        let mut element = Element::synthetic("div", seed.clone(), Marks::default(), Vec::new());
+        element.hover = Some(seed.clone().into());
+        element.first_letter = Some(seed.clone().into());
+        element.first_line = Some(seed.clone().into());
+        let nodes = vec![Node::Element(element)];
+        materialize(&nodes, &std::rc::Rc::new(seed.clone()), doc.values());
+        let Node::Element(element) = &nodes[0] else {
+            panic!("element")
+        };
+        let published = element.style.published().unwrap();
+        let nodes = super::resolve_logical(nodes, doc.values());
+        let Node::Element(element) = &nodes[0] else {
+            panic!("element")
+        };
+        assert!(published.ptr_eq(&element.style.published().unwrap()));
+        for style in [
+            Some(&element.style),
+            element.hover.as_ref(),
+            element.first_letter.as_ref(),
+            element.first_line.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(seed.reset_context.ptr_eq(&style.cascaded().reset_context));
+            assert_eq!(seed, *style.cascaded());
+        }
+    }
 
     #[test]
     fn mask_orientation_inherits_through_unwrapped_ancestors_and_resets() {

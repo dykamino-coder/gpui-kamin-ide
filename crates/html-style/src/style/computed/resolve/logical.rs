@@ -37,6 +37,10 @@ impl Computed {
         is_cell: bool,
         vcx: ValueCx<'_>,
     ) {
+        // Пустой logical не требует записи: take() иначе отделяет общий контекст.
+        if self.reset_context.logical.is_none() {
+            return;
+        }
         let Some(logical) = self.reset_context.logical.take() else {
             return;
         };
@@ -201,5 +205,20 @@ impl Computed {
             4 => &mut self.reset_box_layout.max_width,
             _ => &mut self.reset_box_layout.max_height,
         } = value;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absent_logical_properties_preserve_shared_context() {
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let seed = doc.initial_style();
+        let mut value = seed.clone();
+        value.resolve_logical(WritingMode::default(), false, false, doc.values());
+        assert!(seed.reset_context.ptr_eq(&value.reset_context));
+        assert_eq!(seed, value);
     }
 }

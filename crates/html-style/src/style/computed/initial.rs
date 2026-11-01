@@ -1,33 +1,6 @@
 //! Начальные CSS-группы создаются документом и разделяются его каскадом через COW.
+#[cfg(feature = "work-counters")]
 use super::Computed;
-
-impl Default for Computed {
-    fn default() -> Self {
-        Self {
-            decor_box: 0,
-            block_tag: false,
-            plain_block_box: false,
-            clone_audit: Default::default(),
-            reset_text_box: Default::default(),
-            reset_cascade: Default::default(),
-            reset_box_layout: Default::default(),
-            reset_flex: Default::default(),
-            reset_border: Default::default(),
-            reset_grid: Default::default(),
-            reset_context: Default::default(),
-            reset_generated: Default::default(),
-            reset_svg_math: Default::default(),
-            reset_positioned: Default::default(),
-            reset_effects: Default::default(),
-            reset_background: Default::default(),
-            reset_mask: Default::default(),
-            reset_shapes: Default::default(),
-            reset_fragmentation: Default::default(),
-            reset_transforms: Default::default(),
-            inh: Default::default(),
-        }
-    }
-}
 
 #[cfg(feature = "work-counters")]
 impl Computed {
