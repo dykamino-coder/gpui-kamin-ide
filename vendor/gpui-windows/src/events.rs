@@ -32,6 +32,12 @@ pub(crate) const WM_GPUI_END_SESSION: u32 = WM_USER + 9;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
+/// KaminIDE patch: a forced callback also consumes a deferred forced draw.
+fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
+    let deferred = pending.take();
+    incoming || deferred
+}
+
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
 /// because the coordination is inherently cross-window: while window A is
@@ -1381,7 +1387,7 @@ impl WindowsWindowInner {
             }
         }
 
-        let force_render = force_render || self.state.force_render_pending.take();
+        let force_render = consume_force_render(force_render, &self.state.force_render_pending);
         if force_render {
             // Re-enable drawing after a device loss recovery. The forced render
             // will rebuild the scene with fresh atlas textures.
@@ -1837,3 +1843,18 @@ fn notify_frame_changed(handle: HWND) {
     }
 }
 
+#[cfg(test)]
+mod forced_frame_tests {
+    use super::{Cell, consume_force_render};
+
+    #[test]
+    fn forced_callback_consumes_deferred_request_once() {
+        for incoming in [false, true] {
+            for deferred in [false, true] {
+                let pending = Cell::new(deferred);
+                assert_eq!(consume_force_render(incoming, &pending), incoming || deferred);
+                assert!(!consume_force_render(false, &pending));
+            }
+        }
+    }
+}

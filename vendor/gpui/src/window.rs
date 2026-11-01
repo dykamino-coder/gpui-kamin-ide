@@ -407,6 +407,19 @@ pub(crate) fn with_element_arena<R>(callback: impl FnOnce(&mut Arena) -> R) -> R
     result.expect("arena callback produces a result")
 }
 
+/// KaminIDE patch: private measurement storage, released on return or unwind.
+/// Returned values must not use elements allocated inside the closure: their
+/// arena generation is invalidated before returning. Nested layout callbacks
+/// must also finish inside the closure; numeric geometry may escape it.
+pub fn with_temporary_element_arena<R>(f: impl FnOnce() -> R) -> R {
+    let arena = RefCell::new(Arena::new(1024 * 1024));
+    let scope = ElementArenaScope::enter(&arena);
+    let result = f();
+    // This is a private arena, not an App draw; dropping it performs the clear.
+    drop(scope.exit(&arena));
+    result
+}
+
 /// Scope guard that sets CURRENT_ELEMENT_ARENA for the duration of a draw
 /// operation and tracks the arena's scope depth, so that a nested draw's
 /// `ArenaClearNeeded::clear` is deferred rather than freeing memory the outer
@@ -8997,6 +9010,37 @@ mod tests {
         TouchId, TouchPhase, Underline, UnderlineStyle, Window, WindowAppearance, WindowOptions,
         canvas, div, hsla, point, px, size,
     };
+
+    #[test]
+    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
+        use super::{ElementArenaScope, with_element_arena, with_temporary_element_arena};
+        let outer = RefCell::new(crate::Arena::new(1024));
+        let scope = ElementArenaScope::enter(&outer);
+        let parent = with_element_arena(|arena| arena.alloc(|| 7u64));
+        let dropped = Rc::new(Cell::new(false));
+        struct Value(Rc<Cell<bool>>);
+        impl Drop for Value {
+            fn drop(&mut self) {
+                self.0.set(true);
+            }
+        }
+        let escaped = with_temporary_element_arena(|| {
+            with_element_arena(|arena| arena.alloc(|| Value(dropped.clone())))
+        });
+        assert!(dropped.get());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = &*escaped;
+        })).is_err());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_temporary_element_arena(|| panic!("trial unwinds"));
+        })).is_err());
+        assert_eq!(*parent, 7);
+        let next = with_element_arena(|arena| arena.alloc(|| 11u64));
+        assert_eq!(*next, 11);
+        assert_eq!(outer.borrow().capacity(), 1024);
+        drop(scope.exit(&outer));
+        outer.borrow_mut().clear();
+    }
 
     #[cfg(feature = "profiler")]
     #[gpui::test]

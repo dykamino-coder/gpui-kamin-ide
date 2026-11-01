@@ -12,6 +12,7 @@ mod native;
 mod paint;
 mod piece;
 mod prepaint;
+mod prepaint_piece;
 mod replay;
 
 impl ColumnStack {

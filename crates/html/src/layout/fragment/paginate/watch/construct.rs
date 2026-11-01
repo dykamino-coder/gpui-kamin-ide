@@ -41,8 +41,26 @@ impl Watched {
             tables: Rc::new(blocks.table_keys().into_iter().collect()),
             flow,
             item_flows: Self::flex_item_flows(&blocks),
-            blocks: Some(blocks),
+            blocks: Some(Rc::new(blocks)),
             axis: Some(axis),
+            ..Self::default()
+        })
+    }
+
+    /// Проба разделяет неизменяемую модель, но имеет свои узлы и распорки.
+    pub(crate) fn fresh_blocks(&self) -> Rc<Self> {
+        let blocks = self.blocks.as_ref().expect("regrow records blocks");
+        Rc::new(Self {
+            ids: self.ids.clone(),
+            tables: self.tables.clone(),
+            blocks: Some(blocks.clone()),
+            axis: self.axis,
+            flow: if self.flow.lines {
+                Rc::new(FlowMeasure::for_lines())
+            } else {
+                Rc::default()
+            },
+            item_flows: Self::flex_item_flows(blocks),
             ..Self::default()
         })
     }
@@ -65,5 +83,27 @@ impl Watched {
             flow,
             ..Self::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trial_shares_block_model_but_not_mutable_constraints() {
+        let source = Watched::for_blocks_axis(BlockBox::default(), StackAxis::Horizontal, true);
+        assert!(source.grow_grid_row(3, 0, 20.));
+        let trial = source.fresh_blocks();
+        assert!(Rc::ptr_eq(
+            source.blocks.as_ref().unwrap(),
+            trial.blocks.as_ref().unwrap()
+        ));
+        assert!(Rc::ptr_eq(&source.ids, &trial.ids));
+        assert!(!Rc::ptr_eq(&source.flow, &trial.flow));
+        assert!(trial.grid_growth.borrow().is_empty());
+        assert!(trial.grow_grid_row(3, 0, 10.));
+        assert_eq!(source.grid_growth.borrow()[&3], [20.]);
+        assert_eq!(trial.grid_growth.borrow()[&3], [10.]);
     }
 }

@@ -49,6 +49,24 @@ pub(super) fn probe_of(
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
     p: &mut Probe,
 ) -> (f32, f32) {
+    // Готовое дерево плана живёт до paint; только числовая проба может
+    // освобождать свои элементы сразу после измерения.
+    if p.engine.is_some() {
+        probe_layout(kind, build, cb, avail, shapes, watched, p)
+    } else {
+        p.temporary_layout(|p| probe_layout(kind, build, cb, avail, shapes, watched, p))
+    }
+}
+
+fn probe_layout(
+    kind: Kind,
+    build: &Build,
+    cb: f32,
+    avail: f32,
+    shapes: Option<Shapes>,
+    watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
+    p: &mut Probe,
+) -> (f32, f32) {
     let positioning = p.positioning.clone();
     let _positioning = positioning.as_ref().map(|p| p.isolate());
     let clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
@@ -140,6 +158,10 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
 
 /// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
 pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
+    p.temporary_layout(|p| intrinsic_layout(build, p))
+}
+
+fn intrinsic_layout(build: &Build, p: &mut Probe) -> (f32, f32) {
     let positioning = p.positioning.clone();
     let _positioning = positioning.as_ref().map(|p| p.isolate());
     let _clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
