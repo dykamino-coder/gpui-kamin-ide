@@ -40,12 +40,15 @@ impl VerticalMeasures {
         self.sizes.borrow().get(&key).copied()
     }
 
-    pub(crate) fn record(&self, key: u64, size: Pixels) {
+    /// Keep `size` for the next frame. A full store keeps its facts and drops the new
+    /// key (`false`): that box keeps its free measure in every frame.
+    pub(crate) fn record(&self, key: u64, size: Pixels) -> bool {
         let mut sizes = self.sizes.borrow_mut();
-        if sizes.len() >= 256 {
-            sizes.clear();
+        if sizes.len() >= 256 && !sizes.contains_key(&key) {
+            return false;
         }
         sizes.insert(key, size);
+        true
     }
 }
 
@@ -74,5 +77,19 @@ mod tests {
         assert_eq!(outer.paragraph.vertical.next_key(7), b);
         assert_eq!(outer.paragraph.vertical.get(b), Some(px(40.)));
         assert_eq!(inner.paragraph.vertical.get(a), Some(px(80.)));
+    }
+
+    #[test]
+    fn a_full_store_keeps_its_facts_and_refuses_new_keys() {
+        let doc = DocState::new(Default::default());
+        let measures = &doc.paragraph.vertical;
+        for key in 0..256 {
+            assert!(measures.record(key, px(key as f32)));
+        }
+        assert!(!measures.record(1000, px(1.)));
+        assert_eq!(measures.get(1000), None);
+        assert!(measures.record(3, px(30.)));
+        assert_eq!(measures.get(3), Some(px(30.)));
+        assert_eq!(measures.get(255), Some(px(255.)));
     }
 }

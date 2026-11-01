@@ -75,6 +75,29 @@ impl Window {
         RetainedPrepaint(start..self.prepaint_index())
     }
 
+    /// Whether a record made in the rendered frame can be replayed into this
+    /// one. Deferred draws paint after the whole tree, outside the subtree's
+    /// paint range, and nested deferred draws are appended after their owner;
+    /// when the subtree registered any, every deferred draw from its first one
+    /// on must be free of composition groups.
+    pub fn retained_replayable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
+        use crate::scene::{PaintOperation, Primitive};
+        let frame = &self.rendered_frame;
+        let first = prepaint.0.start.deferred_draws_index;
+        let groups = |draw: &DeferredDraw| {
+            let range = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
+            frame.scene.paint_operations[range].iter().any(|operation| {
+                matches!(
+                    operation,
+                    PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0
+                )
+            })
+        };
+        paint.replayable
+            && (first == prepaint.0.end.deferred_draws_index
+                || !frame.deferred_draws[first..].iter().any(groups))
+    }
+
     /// Run the paint of a subtree and return its range in this frame.
     pub fn record_retained_paint<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> (R, RetainedPaint) {
         let root = self.retained_root_environment();

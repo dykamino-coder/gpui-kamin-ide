@@ -122,7 +122,7 @@ impl Element for Retained {
 
     fn id(&self) -> Option<ElementId> {
         Some(ElementId::NamedInteger(
-            "kamin-document".into(),
+            "retained-document".into(),
             Rc::as_ptr(&self.slot) as usize as u64,
         ))
     }
@@ -161,9 +161,17 @@ impl Element for Retained {
         let root = window.retained_root_environment();
         window.with_element_state::<Record, _>(id, |record, window| {
             let before = window.next_frame_callback_count();
+            let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
+            if let Some(r) = &record
+                && !window.retained_replayable(&r.prepaint, &r.paint)
+            {
+                self.slot.unreplayable.set(true);
+                *self.slot.recorded.borrow_mut() = None;
+            }
             if self.tree.is_none()
                 && root
-                && let Some(record) = record.filter(|r| r.reusable(&self.slot, &self.key, &key))
+                && !self.slot.unreplayable.get()
+                && let Some(record) = record
             {
                 self.replay = true;
                 self.slot.replays.set(self.slot.replays.get() + 1);
@@ -220,6 +228,7 @@ impl Element for Retained {
                 && self.scheduled == 0
                 && self.builder.state.values.frame_ready();
             record.paint = paint;
+            record.settled &= !self.slot.unreplayable.get();
             *self.slot.recorded.borrow_mut() = self.key.clone().filter(|_| record.settled);
             ((), record)
         });
