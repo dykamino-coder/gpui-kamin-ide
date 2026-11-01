@@ -43,24 +43,7 @@ impl Snapshot {
 
     fn restore(&self, child: &mut StackChild) {
         crate::work::add!(MulticolTrialRestores, 1);
-        let k = &self.geometry;
-        child.h = k.h;
-        child.over = k.over;
-        child.mt = k.mt;
-        child.mb = k.mb;
-        child.monolith = k.monolith;
-        child.cuts = k.cuts.clone();
-        child.forced = k.forced.clone();
-        child.solid = k.solid.clone();
-        child.avoid = k.avoid.clone();
-        child.keep = k.keep.clone();
-        child.line_keep = k.line_keep.clone();
-        child.table_rows = k.table_rows.clone();
-        child.force_before = k.force_before;
-        child.force_after = k.force_after;
-        child.avoid_before = k.avoid_before;
-        child.avoid_after = k.avoid_after;
-        child.par = k.par;
+        restore_geometry(child, &self.geometry);
         let source = &self.regrow;
         let watched = source.watched.fresh_blocks();
         let mut opts = source.opts.clone();
@@ -132,13 +115,17 @@ impl ColumnStack {
             }
         }
         self.forced_h = previous_height;
-        let source: Vec<_> = self.children.iter().map(Snapshot::take).collect();
+
         let cap = self.rows.and_then(|r| r.h).map(|h| h.max(1.));
         let ceiling = cap.unwrap_or_else(|| {
             self.oof_balance_bound(Self::whole_flow_bound(&kids))
                 .max(start)
         });
         let forced = Self::forced_breaks(&kids).saturating_add(1);
+        if self.numeric_balance(start, ceiling, cap.is_some(), window, cx) {
+            return;
+        }
+        let source: Vec<_> = self.children.iter().map(Snapshot::take).collect();
         let chosen = search(start, ceiling, cap.is_some(), |height| {
             gpui::with_temporary_element_arena(|| {
                 window.with_nested_layout(|window| {
@@ -210,3 +197,24 @@ impl ColumnStack {
 
 #[cfg(test)]
 mod tests;
+
+/// Восстановить числовой вход, сохранив элементы и рекордеры.
+pub(super) fn restore_geometry(child: &mut StackChild, k: &Kid) {
+    child.h = k.h;
+    child.over = k.over;
+    child.mt = k.mt;
+    child.mb = k.mb;
+    child.monolith = k.monolith;
+    child.cuts = k.cuts.clone();
+    child.forced = k.forced.clone();
+    child.solid = k.solid.clone();
+    child.avoid = k.avoid.clone();
+    child.keep = k.keep.clone();
+    child.line_keep = k.line_keep.clone();
+    child.table_rows = k.table_rows.clone();
+    child.force_before = k.force_before;
+    child.force_after = k.force_after;
+    child.avoid_before = k.avoid_before;
+    child.avoid_after = k.avoid_after;
+    child.par = k.par;
+}

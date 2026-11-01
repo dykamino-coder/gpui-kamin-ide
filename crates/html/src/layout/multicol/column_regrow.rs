@@ -11,6 +11,7 @@ mod extent;
 mod growth;
 mod items;
 mod nest;
+mod numeric;
 pub(crate) use nest::{first_row_overflow, fragmentainer_extent};
 mod owners;
 mod progress;
