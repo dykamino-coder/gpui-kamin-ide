@@ -1,6 +1,6 @@
 //! Предраскладка фрагментов колонок и линеек промежутков.
 
-use super::copies::{layout_frag, prepaint_bands, prepaint_frag};
+use super::copies::prepaint_frag;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
@@ -155,74 +155,31 @@ impl ColumnStack {
         step: f32,
     ) {
         self.record_places(bounds, plan, step);
-        let places = self.static_places.clone();
-        let spill = Self::spill(bounds, window);
         for f in plan {
-            // Ребёнок, чьи куски рисует запись главной копии, раскладывает только её.
-            let replay = self.replays(f.kid, plan).then(|| {
-                let geometry = (col_w, step, spill);
-                self.replay_routes(f.kid, plan, bounds, geometry, window.scale_factor())
-            });
-            let replay = replay.flatten();
-            // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
-            // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
-            // на полную высоту коробки и поднимать на срез нельзя.
-            // Корень clone в записи раскладывается непрерывной коробкой; украшения его
-            // фрагментов — свои копии без содержимого на месте каждого куска.
-            let clone = self.children[f.kid].clone_dec.is_some() && replay.is_none();
-            let full_h = if clone { f.h } else { self.children[f.kid].h };
-            // Колонка в своём ряду: `x` по номеру в ряду, `y` от верха ряда.
-            let (c, ry) = self.place(f.col);
-            // Сдвиг фрагмента (css-break-3 §5.5) — здесь, а не внутри копии:
-            // `layout_as_root` края её КОРНЯ не читает (проба `pm1`).
-            let rel = self.children[f.kid].rel;
-            let x = bounds.origin.x + px(c as f32 * step + rel.0);
-            let x = x + px(self.children[f.kid].par.dx);
-            let y = bounds.origin.y + px(ry + f.y + rel.1);
-            let kid = &mut self.children[f.kid];
-            // Полосы повтора таблицы — своими копиями: шапка встаёт над
-            // содержимым продолжения (`f.y − f.head`), подвал — сразу под ним.
-            // Копия та же полная таблица, поднятая так, что её полоса
-            // совпадает с местом во фрагменте; видимой полосу делает маска.
-            if let Some(r) = kid.repeat.as_mut() {
-                prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx);
-            }
-            let decos = kid.clone_deco.as_mut().map(|d| &mut d.decos[..]);
-            let deco = decos.and_then(|d| d.iter_mut().nth(f.copy));
-            if let Some(deco) = deco.filter(|_| replay.is_some()) {
-                let rtl = kid.par.rtl_root_in_ltr;
-                layout_frag(deco, point(x, y), (col_w, f.h), rtl, window, cx);
-                deco.prepaint(window, cx);
-            }
-            if replay.is_some() && f.copy != 0 {
+            let Some(prepared) =
+                self.prepare_prepaint_frag(f, plan, (bounds, col_w, step), window, cx)
+            else {
                 continue;
-            }
+            };
+            let kid = &mut self.children[f.kid];
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {
                 continue;
             };
-            // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
-            // часть делает маска в отрисовке. Иначе половина коробки просто
-            // сжалась бы, а не продолжилась в следующей колонке.
-            let at = point(x, if clone { y } else { y - px(f.from) });
-            let laid = layout_frag(el, at, (col_w, full_h), kid.par.rtl_root_in_ltr, window, cx);
-            let mapping = places
-                .as_ref()
-                .filter(|_| !clone)
-                .map(|places| (f.kid, point(x, y - px(f.from)), places.clone()));
             let segment = gpui::PaintSegmentId(f.col as u64);
             let (paint, scopes) = (&self.paint, &self.oof.slot_scopes);
-            match replay {
+            let prepaint = |window: &mut Window, cx: &mut App| {
+                prepaint_frag(el, paint, scopes, prepared.mapping, segment, window, cx)
+            };
+            match prepared.replay.as_ref() {
                 Some(routes) => {
-                    let _ = routes.prepaint(window, cx, |window, cx| {
-                        prepaint_frag(el, paint, scopes, mapping, segment, window, cx)
-                    });
+                    let _ = routes.prepaint(window, cx, prepaint);
                 }
-                None => prepaint_frag(el, paint, scopes, mapping, segment, window, cx),
+                None => prepaint(window, cx),
             }
-            // Retain the actual root width for fragment decoration bounds.
-            kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
+            // Сохраняем реальную ширину корня для украшений фрагмента.
+            kid.laid_w.set(kid.laid_w.get().max(prepared.width));
         }
     }
 }
