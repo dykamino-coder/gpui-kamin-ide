@@ -29,9 +29,7 @@ mod prepaint;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
 pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
-use std::cell::Cell;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::{cell::Cell, rc::Rc, sync::Arc};
 mod place;
 use place::place_seq;
 mod float_kid;
@@ -45,6 +43,7 @@ pub use element::BandFlow;
 mod tap;
 use tap::Tap;
 mod probe;
+mod temporary;
 use probe::{intrinsic, intrinsic_of, probe, probe_of};
 
 /// Вырезы обтекания для строк потокового ребёнка: левые и правые формы от

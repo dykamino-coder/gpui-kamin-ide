@@ -18,7 +18,7 @@ fn before(value: f32) -> f32 {
     ((((f64::from(value) * 64.).ceil() - 1.) / 64.) as f32).min(value.next_down())
 }
 
-fn ceil_unit(value: f32) -> f32 {
+pub(crate) fn ceil_unit(value: f32) -> f32 {
     let exact = (f64::from(value) * 64.).ceil() / 64.;
     let rounded = exact as f32;
     if f64::from(rounded) < exact {

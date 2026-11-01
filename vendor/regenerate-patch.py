@@ -35,6 +35,7 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
+        "Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.",
         "Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.",
         "Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.",
         "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
@@ -70,6 +71,7 @@ FIXES = {
         "LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.",
     ],
     "gpui-windows": [
+        "Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.",
         "DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.",
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
