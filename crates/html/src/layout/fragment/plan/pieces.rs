@@ -161,7 +161,8 @@ pub(super) fn fill_pieces_inner(
         } else {
             from
         };
-        let overflow_to = if k.overflow_top && !mono && room > 0.01 && at_top {
+        let decoration = k.decorations.iter().any(|&(a, b)| holds(a, b));
+        let overflow_to = if k.overflow_top && !mono && room > 0.01 && at_top && !decoration {
             k.solid
                 .iter()
                 .filter(|&&(a, b)| holds(a, b) && a <= start + 0.01)

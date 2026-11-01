@@ -5,13 +5,31 @@ mod provenance;
 use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{cell::RefCell, path::Path, rc::Rc, time::Duration};
+use std::{cell::RefCell, io::Read, path::Path, rc::Rc, time::Duration};
 
 #[derive(Clone)]
 pub(super) struct Audit(Rc<RefCell<Value>>);
 
 pub(super) fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+pub(super) fn hash_file(path: &Path) -> std::io::Result<String> {
+    hash_reader(&mut std::fs::File::open(path)?)
+}
+
+// Аудит не удерживает копию executable или UMD размером с весь файл.
+fn hash_reader(reader: &mut impl Read) -> std::io::Result<String> {
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => return Ok(format!("{:x}", digest.finalize())),
+            Ok(count) => digest.update(&buffer[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 pub(super) fn fatal(error: impl std::fmt::Display) -> ! {
@@ -45,9 +63,9 @@ impl Audit {
     }
 
     pub(super) fn png(&self, path: &Path, shot: &super::capture_dump::Shot) {
-        let bytes = std::fs::read(path).unwrap_or_else(|e| fatal(e));
+        let digest = hash_file(path).unwrap_or_else(|e| fatal(e));
         self.0.borrow_mut()["pngs"].as_array_mut().expect("manifest PNG array").push(json!({
-            "path": path.canonicalize().unwrap_or_else(|e| fatal(e)), "sha256": hash(&bytes), "bgra_sha256": hash(&shot.2),
+            "path": path.canonicalize().unwrap_or_else(|e| fatal(e)), "sha256": digest, "bgra_sha256": hash(&shot.2),
             "width": shot.0, "height": shot.1,
         }));
     }
@@ -59,7 +77,7 @@ impl Audit {
                 fatal("report contains no completed GPU captures");
             }
             value["report_sha256"] =
-                json!(hash(&std::fs::read(report).unwrap_or_else(|e| fatal(e))));
+                json!(hash_file(Path::new(report)).unwrap_or_else(|e| fatal(e)));
             value["driver_dlls"] = provenance::drivers().unwrap_or_else(|e| fatal(e));
             value["complete"] = json!(true);
         }
@@ -100,5 +118,41 @@ impl FrameCaptureSink for Endpoint {
             "width": frame.width, "height": frame.height, "bgra_sha256": hash(&frame.bgra)}));
         drop(value);
         self.inner.completed(frame, readback);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Error, ErrorKind, Result};
+
+    #[test]
+    fn streamed_hash_matches_complete_bytes_across_buffer_boundaries() {
+        let bytes: Vec<_> = (0..100_000).map(|n| (n % 251) as u8).collect();
+        for len in [0, 1, 16_383, 16_384, 16_385, bytes.len()] {
+            assert_eq!(
+                hash_reader(&mut Cursor::new(&bytes[..len])).unwrap(),
+                hash(&bytes[..len])
+            );
+        }
+    }
+
+    #[test]
+    fn streamed_hash_retries_interruption_and_preserves_read_errors() {
+        struct Faults(bool);
+        impl Read for Faults {
+            fn read(&mut self, _: &mut [u8]) -> Result<usize> {
+                let kind = if std::mem::replace(&mut self.0, false) {
+                    ErrorKind::Interrupted
+                } else {
+                    ErrorKind::PermissionDenied
+                };
+                Err(Error::from(kind))
+            }
+        }
+        assert_eq!(
+            hash_reader(&mut Faults(true)).unwrap_err().kind(),
+            ErrorKind::PermissionDenied
+        );
     }
 }

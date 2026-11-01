@@ -62,6 +62,36 @@ fn two_windows_never_share_frames_sequences_timing_or_waiters() {
 }
 
 #[test]
+fn consuming_latest_transfers_pixels_without_changing_first_or_completion() {
+    let (session, mut sink) = CaptureSession::open();
+    session.arm_first();
+    store(&mut *sink, 1);
+    let pointer = session
+        .0
+        .borrow()
+        .latest
+        .as_ref()
+        .unwrap()
+        .pixels
+        .bgra
+        .as_ptr();
+    assert!(session.take_latest_after(1).is_none());
+    let frame = session.take_latest_after(0).unwrap();
+    assert_eq!(frame.pixels.bgra.as_ptr(), pointer);
+    assert_eq!(frame.pixels.bgra, [1; 4]);
+    assert!(session.latest().is_none());
+    assert!(session.take_latest_after(0).is_none());
+    assert_eq!(session.sequence(), 1);
+    assert_eq!(session.take_first().unwrap().pixels.bgra, [1; 4]);
+    assert_eq!(session.after(0).now_or_never(), Some(Ok(1)));
+    let next = session.after(1);
+    store(&mut *sink, 2);
+    assert_eq!(next.now_or_never(), Some(Ok(2)));
+    assert_eq!(session.take_latest_after(1).unwrap().pixels.bgra, [2; 4]);
+    assert_eq!(session.readback_time(), Duration::from_micros(14));
+}
+
+#[test]
 fn endpoint_drop_cancels_waiters_and_a_replacement_starts_independently() {
     let (old, mut sink) = CaptureSession::open();
     store(&mut *sink, 1);

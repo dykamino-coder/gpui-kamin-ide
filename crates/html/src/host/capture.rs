@@ -49,6 +49,16 @@ impl CaptureSession {
         self.0.borrow().latest.clone()
     }
 
+    /// Передать буфер единственному потребителю без копии, сохранив fence
+    /// и независимый first. Старый кадр остаётся доступен другим читателям.
+    pub fn take_latest_after(&self, seq: u64) -> Option<Frame> {
+        let mut state = self.0.borrow_mut();
+        if state.latest.as_ref()?.seq <= seq {
+            return None;
+        }
+        state.latest.take()
+    }
+
     pub fn arm_first(&self) {
         let mut state = self.0.borrow_mut();
         state.first = None;
