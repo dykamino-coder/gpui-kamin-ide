@@ -134,11 +134,14 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) -> (f32, Option<Pixels>, Option<Pixels>) {
-        window.with_nested_layout(|window| {
-            let col_width =
-                ((width - stack.gap * (stack.count as f32 - 1.0)) / stack.count as f32).max(1.0);
-            self.prepare(stack, col_width, window, cx);
-            self.measured_extent(stack, width, window, cx)
+        gpui::with_temporary_element_arena(|| {
+            window.with_nested_layout(|window| {
+                let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
+                    / stack.count as f32)
+                    .max(1.0);
+                self.prepare(stack, col_width, window, cx);
+                self.measured_extent(stack, width, window, cx)
+            })
         })
     }
 

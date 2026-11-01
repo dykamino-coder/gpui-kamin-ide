@@ -1,7 +1,7 @@
 //! Запас копий после измерения детей: число копий ребёнка — число фрагментов его
 //! измеренной протяжённости в плане; геометрия не оценивается.
 
-use crate::layout::fragment::types::StackChild;
+use crate::layout::fragment::types::{FragmentHandle, StackChild};
 use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
@@ -48,17 +48,28 @@ impl ColumnStack {
 
 /// Достроить копии ребёнка до `copies`: выросшее дерево (`Regrow`) или его рецепт.
 fn reserve(c: &mut StackChild, copies: usize) {
+    let build = c
+        .regrow
+        .as_ref()
+        .filter(|_| c.frags.len() + 1 < copies)
+        .map(|r| r.builder());
     while c.frags.len() + 1 < copies {
         let part = c.frags.len() + 1;
-        let el = if let Some(r) = c.regrow.as_ref() {
-            (r.build)(&r.dom, part, false, &r.opts)
+        let build = if let Some(build) = &build {
+            build.clone()
         } else if let Some(copier) = c.copier.as_ref() {
-            copier(part, false)
+            let copier = copier.clone();
+            std::rc::Rc::new(move |part| copier(part, false))
         } else {
             return;
         };
-        c.fragment_builders.clear();
-        c.frags.push(el);
+        let handle = FragmentHandle::new(move || build(part));
+        c.frags.push(handle.element());
+        if c.fragment_builders.len() == part {
+            c.fragment_builders.push(handle);
+        } else {
+            c.fragment_builders.clear();
+        }
     }
     reserve_bands(c);
 }
@@ -97,10 +108,12 @@ mod tests;
 /// Геометрия полос и их содержимое используют одно дерево после роста.
 pub(super) fn rebuild(c: &mut crate::layout::fragment::types::StackChild) {
     let Some(r) = &c.regrow else { return };
-    let (el, frags) = r.rebuild(c.frags.len());
-    c.fragment_builders.clear();
-    c.el = el;
-    c.frags = frags;
+    c.fragment_builders = r.rebuild_lazy(c.frags.len());
+    c.el = c.fragment_builders[0].element();
+    c.frags = c.fragment_builders[1..]
+        .iter()
+        .map(FragmentHandle::element)
+        .collect();
     if let Some(repeat) = &mut c.repeat {
         for (i, el) in repeat.head_els.iter_mut().enumerate() {
             *el = (r.build)(&r.dom, i + 1, true, &r.opts);

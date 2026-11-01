@@ -134,15 +134,35 @@ impl Regrow {
         }
     }
 
-    /// Главная и `spare` запасных копий из правленого дерева.
+    /// Неизменяемый рецепт: продолжения разделяют DOM, но строятся по требованию.
+    pub(crate) fn builder(&self) -> std::rc::Rc<dyn Fn(usize) -> AnyElement> {
+        let build = self.build.clone();
+        let dom = self.dom.clone();
+        let opts = self.opts.clone();
+        std::rc::Rc::new(move |part| build(&dom, part, false, &opts))
+    }
+
+    /// Копии для страниц, которым пока нужен готовый набор элементов.
     pub(crate) fn rebuild(&self, spare: usize) -> (AnyElement, Vec<AnyElement>) {
         self.watched.rewind_flows();
-        (
-            (self.build)(&self.dom, 0, false, &self.opts),
-            (1..=spare)
-                .map(|i| (self.build)(&self.dom, i, false, &self.opts))
-                .collect(),
-        )
+        let build = self.builder();
+        (build(0), (1..=spare).map(|part| build(part)).collect())
+    }
+
+    /// Главная и `spare` отложенных копий из правленого дерева.
+    pub(crate) fn rebuild_lazy(
+        &self,
+        spare: usize,
+    ) -> Vec<crate::layout::fragment::types::FragmentHandle> {
+        use crate::layout::fragment::types::FragmentHandle;
+        self.watched.rewind_flows();
+        let build = self.builder();
+        (0..=spare)
+            .map(|part| {
+                let build = build.clone();
+                FragmentHandle::new(move || build(part))
+            })
+            .collect()
     }
 }
 
