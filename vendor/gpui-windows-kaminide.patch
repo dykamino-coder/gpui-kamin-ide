@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Frame diagnostics: opt-in host logging exposes native draw force, pending force and queued frame source without changing requests.
+# 1. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
 # 2. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
 # 3. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
 # 4. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
@@ -9813,7 +9813,7 @@ index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf16015
 +    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 +}
 diff --git a/vendor/gpui-windows/src/events.rs b/vendor/gpui-windows/src/events.rs
-index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..4be7a05fe8918bd2876a4a73e05e7d3d637d14bd
+index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..86981b919f514c96a5982336c132611b2ee4a3aa
 --- a/vendor/gpui-windows/src/events.rs
 +++ b/vendor/gpui-windows/src/events.rs
 @@ -33,0 +34,6 @@
@@ -9862,8 +9862,8 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..4be7a05fe8918bd2876a4a73e05e7d3d
 -        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor))?;
 +        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
 @@ -1329,0 +1362,2 @@
-+        log::debug!(target: "gpui::frame", "native force={} pending={} signal={:?}",
-+            force_render, self.state.force_render_pending.get(), self.state.frame_signal.get());
++        log::debug!(target: "gpui::frame", "native force={} pending={}",
++            force_render, self.state.force_render_pending.get());
 @@ -1358 +1392 @@
 -        let force_render = force_render || self.state.force_render_pending.take();
 +        let force_render = consume_force_render(force_render, &self.state.force_render_pending);

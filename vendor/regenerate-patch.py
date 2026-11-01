@@ -72,7 +72,7 @@ FIXES = {
         "LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.",
     ],
     "gpui-windows": [
-        "Frame diagnostics: opt-in host logging exposes native draw force, pending force and queued frame source without changing requests.",
+        "Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.",
         "Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.",
         "DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.",
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
