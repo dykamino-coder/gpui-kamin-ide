@@ -2,8 +2,8 @@
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, ElementIdContext, LayoutId, Pixels, RetainedLayout,
-    Size, Window, point, px, size,
+    AnyElement, App, AvailableSpace, Bounds, ElementIdContext, LayoutId, Pixels, Point,
+    RetainedLayout, Size, Window, point, px, size,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -19,6 +19,7 @@ struct Child {
     identity: ElementIdContext,
     space: Size<AvailableSpace>,
     size: Size<Pixels>,
+    position: Option<Point<Pixels>>,
 }
 
 impl std::fmt::Debug for Prepared {
@@ -44,13 +45,17 @@ impl Prepared {
             identity,
             space,
             size,
+            position: None,
         }))))
     }
 
-    pub(super) fn take(&self) -> Option<AnyElement> {
+    pub(super) fn take(&self, position: Option<Point<Pixels>>) -> Option<AnyElement> {
         // План и его копии разделяют только право однократной передачи:
         // после take ребёнком целиком владеет держатель текущего дерева.
-        self.0.take().map(|child| child.hooked())
+        self.0.take().map(|mut child| {
+            child.position = position;
+            child.hooked()
+        })
     }
 }
 
@@ -66,11 +71,17 @@ impl Hooks for Child {
     }
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
-        let style = gpui::Style {
+        let mut style = gpui::Style {
             size: size(self.size.width.into(), self.size.height.into()),
             flex_shrink: 0.0,
             ..Default::default()
         };
+        if let Some(position) = self.position {
+            // Сам держатель несёт offset; второй layout-узел не нужен.
+            style.position = gpui::Position::Absolute;
+            style.inset.left = position.x.into();
+            style.inset.top = position.y.into();
+        }
         let id = window.request_layout(style, [], cx);
         (id, id)
     }
@@ -127,10 +138,10 @@ mod tests {
                 );
                 let copy = prepared.clone();
                 assert_eq!(format!("{prepared:?}"), "Prepared(true)");
-                assert!(copy.take().is_some());
+                assert!(copy.take(None).is_some());
                 assert_eq!(format!("{prepared:?}"), "Prepared(false)");
-                assert!(prepared.take().is_none());
-                assert!(copy.take().is_none());
+                assert!(prepared.take(None).is_none());
+                assert!(copy.take(None).is_none());
                 gpui::div()
             },
         );

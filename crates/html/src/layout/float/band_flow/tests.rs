@@ -7,6 +7,7 @@ use gpui::{AvailableSpace, Bounds, ParentElement, Pixels, Styled, point, size};
 mod lifetime;
 mod painting;
 mod persistent;
+mod placement;
 mod sizing;
 mod text_context;
 
