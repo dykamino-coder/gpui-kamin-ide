@@ -10,6 +10,7 @@
 #[cfg(windows)]
 mod accounting;
 mod args;
+mod diagnostics;
 #[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
@@ -35,6 +36,7 @@ mod work;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    diagnostics::init();
     if let Err(error) = entry() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);

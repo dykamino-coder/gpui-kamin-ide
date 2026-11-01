@@ -123,8 +123,9 @@ async fn sample(
         || phases.borrow().renders != 1
     {
         return Err(format!(
-            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, draws={}, renders={}; refusing an ambiguous phase sample",
+            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, renders={}; refusing an ambiguous phase sample",
             frame.seq,
+            capture.sequence(),
             after.frames.wrapping_sub(before.frames),
             phases.borrow().renders,
         ).into());

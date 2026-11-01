@@ -20,6 +20,7 @@ gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
 futures = "0.3"
+log = "0.4"
 encoding_rs = "0.8.35"
 html5ever = { path = "../../vendor/html5ever" }
 markup5ever_rcdom = { path = "../../vendor/markup5ever_rcdom" }
