@@ -131,3 +131,45 @@ fn a_group_painted_by_a_deferred_draw_is_never_replayed(cx: &mut TestAppContext)
         "frames with a deferred group were not rebuilt: {builds}"
     );
 }
+
+/// A rebuilt frame (here after a revision update) finds the line splits of the
+/// previous frame: the measurement cache rotates once per frame, not once per
+/// `begin_frame` and once more per tree build.
+#[gpui::test]
+fn a_rebuilt_frame_reuses_the_previous_frames_line_splits(cx: &mut TestAppContext) {
+    let spans: String = (0..60)
+        .map(|i| format!("<span>word{i} alpha beta </span>"))
+        .collect();
+    let a = format!("<p style='width:300px'>{spans}</p><p>second</p>");
+    let b = a.replacen("<span>word40", "<span data-edit=1>word40", 1);
+    let (view, cx) = open(cx, &a);
+    frame(cx);
+    let misses = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| {
+            view.read(cx)
+                .doc
+                .state
+                .paragraph
+                .paragraphs
+                .split_misses
+                .get()
+        })
+    };
+    let first = misses(&view, cx);
+    assert!(first > 0, "the first frame splits its paragraphs");
+    for html in [&b, &a] {
+        cx.update(|_, cx| {
+            view.update(cx, |v, _| {
+                v.doc.update(html, "").unwrap();
+            })
+        });
+        frame(cx);
+        assert_eq!(
+            misses(&view, cx),
+            first,
+            "an unchanged paragraph was split again"
+        );
+    }
+    let (builds, _) = frames(&view, cx);
+    assert!(builds >= 1);
+}
