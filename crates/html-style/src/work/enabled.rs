@@ -28,6 +28,9 @@ macro_rules! vocabulary {
 }
 
 vocabulary!(Counter {
+    GradientRasters => "gradient_rasters",
+    GradientRasterPixels => "gradient_raster_pixels",
+    RoundedMaskRasters => "rounded_mask_rasters",
     TextPositionQueries => "text_position_queries",
     TextPositionSteps => "text_position_steps",
     TextPositionBuildBytes => "text_position_build_bytes",
