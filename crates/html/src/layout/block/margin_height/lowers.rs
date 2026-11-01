@@ -123,14 +123,24 @@ mod tests {
     fn collapsed_start_margin_is_not_intrinsic_content_height() {
         let doc = crate::document::state::DocState::new(Default::default());
         let mut child_style = Computed {
-            height: Some(Len::Px(100.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         child_style.margin.top = Some(Len::Px(200.0));
         let mut parent = Element::synthetic(
             "div",
             Computed {
-                max_height: Some(Len::Px(150.0)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        max_height: Some(Len::Px(150.0)),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -156,12 +166,22 @@ mod tests {
     fn constrained_stack_keeps_the_last_end_margin_inside() {
         let doc = crate::document::state::DocState::new(Default::default());
         let mut first = Computed {
-            height: Some(Len::Px(150.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(150.0)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         first.margin.bottom = Some(Len::Px(10.0));
         let mut last = Computed {
-            flow_root: Some(true),
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    flow_root: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         last.margin.top = Some(Len::Px(20.0));
@@ -178,7 +198,12 @@ mod tests {
         let mut parent = Element::synthetic(
             "div",
             Computed {
-                max_height: Some(Len::Px(0.0)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        max_height: Some(Len::Px(0.0)),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

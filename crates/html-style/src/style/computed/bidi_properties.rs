@@ -23,9 +23,9 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
     }
     // CSS Cascade 4 section 7.3.2: inherit replaces every part of the value.
     style.accept_declaration();
-    style.bidi_inherit = value == "inherit";
-    style.bidi_override = Some(matches!(value, "bidi-override" | "isolate-override"));
-    style.bidi_isolate = Some(matches!(value, "isolate" | "isolate-override"));
-    style.bidi_plaintext = Some(value == "plaintext");
-    style.bidi_embed = Some(value == "embed");
+    style.reset_cascade.bidi_inherit = value == "inherit";
+    style.reset_cascade.bidi_override = Some(matches!(value, "bidi-override" | "isolate-override"));
+    style.reset_cascade.bidi_isolate = Some(matches!(value, "isolate" | "isolate-override"));
+    style.reset_cascade.bidi_plaintext = Some(value == "plaintext");
+    style.reset_cascade.bidi_embed = Some(value == "embed");
 }

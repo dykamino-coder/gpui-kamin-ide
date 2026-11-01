@@ -98,7 +98,12 @@ pub(super) fn length_px(raw: &str, style: &BoxStyle, opts: &RenderOpts) -> Optio
     let vcx = opts.cx.vcx();
     let value = crate::dom::mathml::parse_mathml_length(raw, vcx)?;
     let own = Computed {
-        width: Some(value),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(value),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let mut resolved = inherit(style, &own, vcx);

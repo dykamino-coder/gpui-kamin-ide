@@ -38,7 +38,9 @@ pub(super) fn resolve(
         // `zoom` is not inherited: the pseudo-element's own factor is its own
         // declaration, not the originating element's (that one reaches it
         // through the effective zoom of its parent box).
-        merged.zoom = None;
+        if merged.reset_cascade.zoom.is_some() {
+            merged.reset_cascade.zoom = None;
+        }
         merged.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
         merged
     })

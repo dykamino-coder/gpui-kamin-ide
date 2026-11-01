@@ -36,7 +36,12 @@ mod tests {
     fn free_absolute_inline_size_uses_intrinsics_instead_of_zero() {
         let style = {
             let mut with_inherited = Computed {
-                position: Some(Position::Absolute),
+                reset_positioned: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetPositioned {
+                        position: Some(Position::Absolute),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.writing_mode = Some(
@@ -57,7 +62,12 @@ mod tests {
     fn two_auto_size_insets_and_parent_layout_keep_their_contracts() {
         let mut style = {
             let mut with_inherited = Computed {
-                position: Some(Position::Absolute),
+                reset_positioned: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetPositioned {
+                        position: Some(Position::Absolute),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.writing_mode = Some(
@@ -84,8 +94,18 @@ mod tests {
     fn definite_absolute_inline_size_replaces_fallback_before_alignment() {
         let mut style = {
             let mut with_inherited = Computed {
-                position: Some(Position::Absolute),
-                height: Some(Len::Px(80.0)),
+                reset_positioned: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetPositioned {
+                        position: Some(Position::Absolute),
+                        ..Default::default()
+                    },
+                ),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(80.0)),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.writing_mode = Some(

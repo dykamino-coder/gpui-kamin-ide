@@ -143,39 +143,61 @@ pub(super) fn cascade_element(
     } else {
         pre
     };
-    let mut style = Computed::default();
-    style.apply_map(&map, vars, element, vcx);
+    let mut style = tree
+        .style_sharing
+        .resolve(&matched, &inline_decls, &map, vars, element, vcx);
     // Важные объявления сильнее анимаций (css-cascade-5 §6.2): кадры
     // `@keyframes` кладутся под них. Лист форм
     // (`appearance: base`) важных объявлений не несёт.
-    let important = style.animation.is_some().then(|| map.important_block());
+    let important = style
+        .reset_context
+        .animation
+        .is_some()
+        .then(|| map.important_block());
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // вычисленное `color-scheme` элемента (каскад уже решил им свои цвета,
     // `ComputeCx`), иначе родительская — свойство наследуемое. При
     // `light dark` берётся предпочтение текущего документа, включая схему
     // embedding element. Держится на время узла и его потомков.
     let vcx = style
+        .inh
+        .ui
         .color_scheme
         .as_deref()
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
-    style.mathml = crate::dom::mathml::is_mathml(handle);
-    style.svg_no_css_box = super::ancestor::svg_no_css_box(handle);
+    let value = crate::dom::mathml::is_mathml(handle);
+    if style.reset_svg_math.mathml != value {
+        style.reset_svg_math.mathml = value;
+    }
+    let value = super::ancestor::svg_no_css_box(handle);
+    if style.reset_svg_math.svg_no_css_box != value {
+        style.reset_svg_math.svg_no_css_box = value;
+    }
     if crate::dom::mathml_routing::enabled(handle, vcx) {
-        if let Some(display) = style.math_layout {
-            style.display = Some(display);
+        if let Some(display) = style.reset_svg_math.math_layout {
+            style.reset_box_layout.display = Some(display);
         }
     } else {
-        style.math_layout = None;
+        if style.reset_svg_math.math_layout.is_some() {
+            style.reset_svg_math.math_layout = None;
+        }
     }
-    style.dark_color_scheme = crate::style::values::value::dark_scheme(vcx);
-    style.embedding_dark_scheme = crate::style::values::value::embedding_dark_scheme(vcx);
+    let value = crate::style::values::value::dark_scheme(vcx);
+    if style.reset_cascade.dark_color_scheme != value {
+        style.reset_cascade.dark_color_scheme = value;
+    }
+    let value = crate::style::values::value::embedding_dark_scheme(vcx);
+    if style.reset_cascade.embedding_dark_scheme != value {
+        style.reset_cascade.embedding_dark_scheme = value;
+    }
     // css-color-4 §4.1: the initial `color` is `CanvasText` of the used color
     // scheme. Below the root an empty slot inherits; at the root it is the
     // initial value, resolved against the root's own scheme.
-    if element.root && style.color.is_none() && style.color_function.is_none() {
+    if element.root && style.inh.ui.color.is_none() && style.reset_cascade.color_function.is_none()
+    {
         style.apply_one("color", "canvastext", vcx);
     }
-    style.custom_scrollbar = candidates.iter().any(|&i| {
+    let custom_scrollbar = candidates.iter().any(|&i| {
         let rule = &rules[i];
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;
@@ -184,6 +206,9 @@ pub(super) fn cascade_element(
         owner.pseudo = None;
         matches(&owner, me, path, sibs)
     });
+    if style.reset_box_layout.custom_scrollbar != custom_scrollbar {
+        style.reset_box_layout.custom_scrollbar = custom_scrollbar;
+    }
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
     (Box::new(style), own_vars, vcx.scheme, shadow, important)

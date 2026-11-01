@@ -98,8 +98,13 @@ pub(super) fn pseudo_box_named(
     inlinify_in_ruby(&mut style, "", std::iter::once(me).chain(path.iter().rev()));
     // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
     // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
-    let list = resolve_content_attributes(style.content.as_ref()?, attrs, me.html_attrs, vcx)?;
-    if style.display == Some(Display::None) {
+    let list = resolve_content_attributes(
+        style.reset_generated.content.as_ref()?,
+        attrs,
+        me.html_attrs,
+        vcx,
+    )?;
+    if style.reset_box_layout.display == Some(Display::None) {
         return None;
     }
     // Pseudo counters occupy their own level among the host children.
@@ -124,7 +129,7 @@ pub(super) fn pseudo_box_named(
                 run,
                 counters,
                 attrs,
-                style.quotes.as_ref(),
+                style.reset_generated.quotes.as_ref(),
                 me.html_attrs,
                 crate::style::generated::counter_style::Context::new(&style, me.counter_context),
                 vcx,
@@ -144,7 +149,12 @@ pub(super) fn pseudo_box_named(
                     anim: None,
                     tag: "img".into(),
                     style: Computed {
-                        content: Some(vec![item.clone()]),
+                        reset_generated: crate::style::computed::StyleGroup::new(
+                            crate::style::computed::ResetGenerated {
+                                content: Some(vec![item.clone()]),
+                                ..Default::default()
+                            },
+                        ),
                         ..Computed::default()
                     }
                     .into(),
@@ -164,8 +174,8 @@ pub(super) fn pseudo_box_named(
     if children.is_empty() {
         children.push(Node::Text(String::new()));
     }
-    let list_item =
-        (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
+    let list_item = (style.reset_box_layout.display == Some(Display::ListItem))
+        .then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
         marks: Default::default(),
@@ -206,14 +216,20 @@ pub(super) fn may_set_content(rule: &Rule) -> bool {
 fn anchor_positioned(c: &crate::style::computed::Computed) -> bool {
     use crate::style::computed::{Align, Position, PositionAnchor};
     use crate::style::values::value::Len;
-    let abspos = matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed));
-    let i = &c.inset;
+    let abspos = matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute) | Some(Position::Fixed)
+    );
+    let i = &c.reset_positioned.inset;
     abspos
-        && (c.position_area.is_some()
+        && (c.reset_positioned.position_area.is_some()
             || [i.top, i.right, i.bottom, i.left]
                 .iter()
                 .any(|l| matches!(l, Some(Len::Anchor(_))))
-            || c.align_self == Some(Align::AnchorCenter)
-            || c.justify_self == Some(Align::AnchorCenter)
-            || matches!(c.position_anchor, Some(PositionAnchor::Named(_))))
+            || c.reset_flex.align_self == Some(Align::AnchorCenter)
+            || c.reset_flex.justify_self == Some(Align::AnchorCenter)
+            || matches!(
+                c.reset_positioned.position_anchor,
+                Some(PositionAnchor::Named(_))
+            ))
 }

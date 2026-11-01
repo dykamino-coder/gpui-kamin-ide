@@ -33,20 +33,23 @@ pub fn align_self_from_dom_parent(
     crate::dom::traversal::preorder(admission, nodes, parent.map(|p| p.block), |el, parent| {
         let s = el.style.cascaded_mut();
         if parent == &Some(true)
-            && s.align_self.is_some()
-            && s.align_self_decl == Some(s.align_self)
-            && !matches!(s.position, Some(Position::Absolute) | Some(Position::Fixed))
+            && s.reset_flex.align_self.is_some()
+            && s.reset_flex.align_self_decl == Some(s.reset_flex.align_self)
+            && !matches!(
+                s.reset_positioned.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            )
         {
-            s.align_self = None;
-            s.align_self_normal = false;
+            s.reset_flex.align_self = None;
+            s.reset_flex.align_self_normal = false;
         }
         let block = matches!(
-            s.display,
+            s.reset_box_layout.display,
             None | Some(Display::Block)
                 | Some(Display::ListItem)
                 | Some(Display::InlineBlock)
                 | Some(Display::TableCell)
-        ) && s.webkit_box != Some(true);
+        ) && s.reset_flex.webkit_box != Some(true);
         Some(Some(block))
     })
 }
@@ -79,13 +82,13 @@ pub fn grid_table_items_keep_stretch(
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::postorder(admission, nodes, |el| {
         if !matches!(
-            el.style.cascaded().display,
+            el.style.cascaded().reset_box_layout.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             return;
         }
         if !matches!(
-            el.style.cascaded().align_items,
+            el.style.cascaded().reset_flex.align_items,
             None | Some(crate::style::computed::Align::Stretch)
         ) {
             return;
@@ -95,18 +98,18 @@ pub fn grid_table_items_keep_stretch(
                 continue;
             };
             if matches!(
-                child.style.cascaded().position,
+                child.style.cascaded().reset_positioned.position,
                 Some(Position::Absolute) | Some(Position::Fixed)
             ) {
                 continue;
             }
             let is_table = child.tag == "table"
                 || matches!(
-                    child.style.cascaded().display,
+                    child.style.cascaded().reset_box_layout.display,
                     Some(Display::Table) | Some(Display::InlineTable)
                 );
-            if is_table && child.style.cascaded().align_self.is_none() {
-                child.style.cascaded_mut().align_self =
+            if is_table && child.style.cascaded().reset_flex.align_self.is_none() {
+                child.style.cascaded_mut().reset_flex.align_self =
                     Some(crate::style::computed::Align::Stretch);
             }
         }

@@ -204,7 +204,12 @@ mod tests {
                 };
                 opts.cx.inline.pure_atom_paragraph = physical;
                 let inherited = Computed {
-                    no_select: Some(true),
+                    reset_context: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetContext {
+                            no_select: Some(true),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 };
                 let pieces = vec![

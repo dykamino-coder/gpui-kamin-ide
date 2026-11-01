@@ -16,9 +16,13 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -
     if properties.is_empty() {
         return false;
     }
-    c.explicit_inherit.retain(|p| !properties.contains(p));
+    c.reset_cascade
+        .explicit_inherit
+        .retain(|p| !properties.contains(p));
     if value.eq_ignore_ascii_case("inherit") {
-        c.explicit_inherit.extend_from_slice(properties);
+        c.reset_cascade
+            .explicit_inherit
+            .extend_from_slice(properties);
         return true;
     }
     if matches!(value, "initial" | "unset" | "revert" | "revert-layer") {
@@ -32,7 +36,7 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -
 }
 
 pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
-    for property in std::mem::take(&mut c.explicit_inherit) {
+    for property in std::mem::take(&mut c.reset_cascade.explicit_inherit) {
         property.copy(parent, c, vcx);
     }
 }
@@ -53,12 +57,19 @@ mod tests {
         let mut child = Computed::default();
         child.apply_one("column-width", "inherit", vcx);
         assert_eq!(
-            compute(&parent, &child, vcx).column_width,
+            compute(&parent, &child, vcx)
+                .reset_fragmentation
+                .column_width,
             Some(Len::Px(100.0))
         );
         child.apply_one("column-width", "inherit", vcx);
         child.apply_one("column-width", "auto", vcx);
-        assert_eq!(compute(&parent, &child, vcx).column_width, None);
+        assert_eq!(
+            compute(&parent, &child, vcx)
+                .reset_fragmentation
+                .column_width,
+            None
+        );
     }
 
     #[test]
@@ -71,7 +82,10 @@ mod tests {
         child.apply_one("gap", "inherit", vcx);
         child.apply_one("row-gap", "30px", vcx);
         let child = super::super::compute::compute(&parent, &child, vcx);
-        assert_eq!(child.gap, Some((Some(Len::Px(30.0)), Some(Len::Px(20.0)))));
+        assert_eq!(
+            child.reset_flex.gap,
+            Some((Some(Len::Px(30.0)), Some(Len::Px(20.0))))
+        );
     }
 
     #[test]
@@ -82,8 +96,8 @@ mod tests {
         child.apply_one("column-width", "60px", vcx);
         child.apply_one("column-width", "inherit", vcx);
         child.apply_one("column-width", "initial", vcx);
-        assert_eq!(child.column_width, None);
-        assert!(child.explicit_inherit.is_empty());
+        assert_eq!(child.reset_fragmentation.column_width, None);
+        assert!(child.reset_cascade.explicit_inherit.is_empty());
     }
 
     #[test]
@@ -99,7 +113,10 @@ mod tests {
         child.apply_one("font-size", "10px", vcx);
         child.apply_one("column-width", "inherit", vcx);
         let computed = super::super::inherit::inherit_unpainted(&parent, &child, vcx);
-        assert_eq!(computed.column_width, Some(Len::Px(100.0)));
-        assert_eq!(computed.font_size, Some(Len::Px(10.0)));
+        assert_eq!(
+            computed.reset_fragmentation.column_width,
+            Some(Len::Px(100.0))
+        );
+        assert_eq!(computed.inh.font.font_size, Some(Len::Px(10.0)));
     }
 }

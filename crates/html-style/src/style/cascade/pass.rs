@@ -49,9 +49,9 @@ impl Computed {
     ) {
         // Каждое применение карты — новый проход каскада по стилю: слой
         // (`:hover`, кадр анимации) ложится поверх уже применённого.
-        self.decl_order.pass += 1;
+        self.reset_cascade.decl_order.pass += 1;
         // Значения каскада — заданные: зум их длин — стадия вычисления.
-        self.zoom_pending = true;
+        self.reset_cascade.zoom_pending = true;
         // `all: initial | unset` (§3.2) задаёт и свойства, которых не назвало
         // ни одно объявление: сброс идёт ДО победителей — их выбор уже учёл
         // `all` кандидатом каждого имени.
@@ -113,8 +113,8 @@ impl Computed {
         }
         self.settle_border_widths();
         // Прямая запись после карты — позже любого её объявления.
-        self.decl_order.pass += 1;
-        self.decl_order.key = Default::default();
+        self.reset_cascade.decl_order.pass += 1;
+        self.reset_cascade.decl_order.key = Default::default();
     }
 
     fn apply_winner(
@@ -128,7 +128,7 @@ impl Computed {
         let (cx, vcx) = (compute.element, compute.vcx);
         let mut pick = first;
         loop {
-            self.decl_order.key = pick.key();
+            self.reset_cascade.decl_order.key = pick.key();
             let (cand, value) = match pick {
                 Pick::Value(c, v) => (c, v),
                 // Откат к агенту, у которого правила для имени нет: значение
@@ -167,14 +167,14 @@ impl Computed {
             let wide = matches!(cand.decl.specified, Specified::Wide(_));
             let fallback = !pending && !wide && rest.clone().next().is_some();
             if fallback {
-                self.declaration_parse = ParseResult::Invalid;
+                self.reset_cascade.declaration_parse = ParseResult::Invalid;
             }
             self.apply_resolved(k, value, vars, compute);
             if !fallback {
                 return;
             }
-            let accepted = self.declaration_parse == ParseResult::Accepted;
-            self.declaration_parse = ParseResult::Inactive;
+            let accepted = self.reset_cascade.declaration_parse == ParseResult::Accepted;
+            self.reset_cascade.declaration_parse = ParseResult::Inactive;
             if accepted {
                 return;
             }

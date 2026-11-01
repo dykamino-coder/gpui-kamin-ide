@@ -14,11 +14,13 @@ impl Computed {
         // avoiding needless shaping, this keeps paint-time font measurement
         // out of ordinary backgrounds and masks.
         let position_units = self
+            .reset_background
             .bg_position_math
             .iter()
             .flatten()
             .any(|value| value.needs_font_resolution())
             || self
+                .reset_background
                 .bg_lists
                 .position_expressions()
                 .any(|value| value.needs_font_resolution());
@@ -28,11 +30,12 @@ impl Computed {
         let (font, ex, ch, line) = self.image_font_metrics(vcx);
         // Relative units become computed lengths before position inheritance;
         // only the percentage basis must remain for concrete image geometry.
-        for expression in self
+        let group = &mut *self.reset_background;
+        for expression in group
             .bg_position_math
             .iter_mut()
             .flatten()
-            .chain(self.bg_lists.position_expressions())
+            .chain(group.bg_lists.position_expressions())
         {
             expression.resolve_font(font, root_font_px(vcx), ex, ch, line, vcx);
         }
@@ -42,14 +45,14 @@ impl Computed {
         &self,
         vcx: ValueCx<'_>,
     ) -> (f32, f32, f32, f32) {
-        let font = match self.font_size {
+        let font = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let family = self.font_family.as_deref().unwrap_or("");
+        let family = self.inh.font.font_family.as_deref().unwrap_or("");
         let used = self.used_font(font, vcx).size_px;
         let [_, ch, ex, _] = self.glyph_units(family, font, vcx);
-        let line = match self.line_height {
+        let line = match self.inh.font.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
             _ => {

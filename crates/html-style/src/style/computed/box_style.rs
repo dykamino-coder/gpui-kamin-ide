@@ -141,8 +141,8 @@ impl BoxStyle {
             canvas_background,
             paint,
             try_style: try_source,
-            cb_height_def: style.cb_height_def_hint,
-            quirk_pct_base: style.quirk_pct_base_hint,
+            cb_height_def: style.reset_context.cb_height_def_hint,
+            quirk_pct_base: style.reset_context.quirk_pct_base_hint,
             style,
             // `Self::default()` выделяет Rc<Computed>, который здесь сразу
             // отбрасывался. Конструктор коробки сохраняет переданный стиль.

@@ -20,11 +20,11 @@ impl Computed {
             // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
                 self.accept_declaration();
-                self.mask_origin = Some(coord_box(top_layer(v)).unwrap_or(0));
+                self.reset_mask.mask_origin = Some(coord_box(top_layer(v)).unwrap_or(0));
             }
             "mask-clip" | "-webkit-mask-clip" => {
                 self.accept_declaration();
-                self.mask_clip = Some(match top_layer(v) {
+                self.reset_mask.mask_clip = Some(match top_layer(v) {
                     "no-clip" => 255,
                     b => coord_box(b).unwrap_or(0),
                 });
@@ -33,9 +33,9 @@ impl Computed {
             // `none` держит место своего слоя.
             "mask-image" => {
                 if let Some(images) = mask_shorthand::images(v, vcx) {
-                    self.mask_image = accept_parsed!(self, Some(images));
+                    self.reset_mask.mask_image = accept_parsed!(self, Some(images));
                     if v.trim() == "none" {
-                        self.mask_image = None;
+                        self.reset_mask.mask_image = None;
                     }
                 }
             }
@@ -65,8 +65,9 @@ impl Computed {
                     .iter()
                     .map(|l| one(l))
                     .collect();
-                self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
-                self.mask_repeat_list = (!list.is_empty()).then_some(list);
+                self.reset_mask.mask_no_repeat =
+                    Some(list.first().copied().unwrap_or((false, false)));
+                self.reset_mask.mask_repeat_list = (!list.is_empty()).then_some(list);
                 let mode = |w: &str| match w {
                     "space" => 2u8,
                     "round" => 3,
@@ -83,7 +84,7 @@ impl Computed {
                         }
                     })
                     .collect();
-                self.mask_repeat_modes =
+                self.reset_mask.mask_repeat_modes =
                     modes.iter().any(|&(x, y)| x > 0 || y > 0).then_some(modes);
             }
             "mask-position" | "-webkit-mask-position" => {
@@ -133,10 +134,10 @@ impl Computed {
                     .collect();
                 if let Some((x, y, fx, fy)) = list.first().copied() {
                     self.accept_declaration();
-                    self.mask_pos = Some((x, y));
-                    self.mask_pos_far = (fx, fy);
+                    self.reset_mask.mask_pos = Some((x, y));
+                    self.reset_mask.mask_pos_far = (fx, fy);
                 }
-                self.mask_pos_list = (!list.is_empty()).then_some(list);
+                self.reset_mask.mask_pos_list = (!list.is_empty()).then_some(list);
             }
             "clip-path" => self.apply_clip_mask(key, v, vcx),
             _ => *hit = false,

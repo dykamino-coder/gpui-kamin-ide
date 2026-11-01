@@ -47,10 +47,16 @@ pub(super) fn accepts(id: LonghandId, v: &str, vcx: ValueCx<'_>) -> bool {
 impl Computed {
     pub(super) fn apply_svg_paint(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {
         match id {
-            LonghandId::Fill => self.svg_fill = paint(v, vcx).or(self.svg_fill.take()),
-            LonghandId::Stroke => self.svg_stroke = paint(v, vcx).or(self.svg_stroke.take()),
+            LonghandId::Fill => {
+                self.reset_svg_math.svg_fill = paint(v, vcx).or(self.reset_svg_math.svg_fill.take())
+            }
+            LonghandId::Stroke => {
+                self.reset_svg_math.svg_stroke =
+                    paint(v, vcx).or(self.reset_svg_math.svg_stroke.take())
+            }
             LonghandId::StrokeWidth => {
-                self.svg_stroke_width = stroke_width(v, vcx).or(self.svg_stroke_width.take())
+                self.reset_svg_math.svg_stroke_width =
+                    stroke_width(v, vcx).or(self.reset_svg_math.svg_stroke_width.take())
             }
             _ => {}
         }
@@ -58,9 +64,9 @@ impl Computed {
 
     pub(super) fn inherit_svg_paint(&mut self, id: LonghandId) {
         match id {
-            LonghandId::Fill => self.svg_fill = None,
-            LonghandId::Stroke => self.svg_stroke = None,
-            LonghandId::StrokeWidth => self.svg_stroke_width = None,
+            LonghandId::Fill => self.reset_svg_math.svg_fill = None,
+            LonghandId::Stroke => self.reset_svg_math.svg_stroke = None,
+            LonghandId::StrokeWidth => self.reset_svg_math.svg_stroke_width = None,
             _ => {}
         }
     }

@@ -60,13 +60,23 @@ mod tests {
             with_inherited
         };
         let parent = Computed {
-            first_line_own: Some(Box::new(first)),
+            reset_text_box: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetTextBox {
+                    first_line_own: Some(Box::new(first)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let positioned = Element::synthetic(
             "div",
             Computed {
-                position: Some(Position::Absolute),
+                reset_positioned: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetPositioned {
+                        position: Some(Position::Absolute),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

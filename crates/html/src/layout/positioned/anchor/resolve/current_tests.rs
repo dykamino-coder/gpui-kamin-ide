@@ -30,8 +30,18 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
         .borrow_mut()
         .push(("--a".into(), 1, record(40.)));
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
-        width: Len::parse("anchor-size(--a width, 9px)", vcx),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Len::parse("anchor-size(--a width, 9px)", vcx),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_seq = 2;
@@ -62,9 +72,16 @@ fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
     let vcx = doc.frame_values();
     for position_anchor in [None, Some(PositionAnchor::Named("--missing".into()))] {
         let mut c = BoxStyle::new(Computed {
-            position: Some(Position::Absolute),
-            position_anchor,
-            position_area: crate::style::values::position_area::parse_area("span-bottom right"),
+            reset_positioned: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetPositioned {
+                    position: Some(Position::Absolute),
+                    position_anchor,
+                    position_area: crate::style::values::position_area::parse_area(
+                        "span-bottom right",
+                    ),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         });
         c.inset.top = Len::parse("anchor(--explicit bottom)", vcx);

@@ -40,7 +40,10 @@ mod tests {
             let projected = Computed::appearance_from_map(&map, &vars, CascadeCx::NONE, vcx);
             let mut full = Computed::default();
             full.apply_map(&map, &vars, CascadeCx::NONE, vcx);
-            assert_eq!(projected.appearance, full.appearance, "{raw}");
+            assert_eq!(
+                projected.reset_context.appearance, full.reset_context.appearance,
+                "{raw}"
+            );
         }
     }
 }

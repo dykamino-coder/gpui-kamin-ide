@@ -49,34 +49,34 @@ impl Computed {
                     ["stable"] => Some(1),
                     ["stable", "both-edges"] | ["both-edges", "stable"] => Some(2),
                     ["inherit"] => {
-                        self.scroll.inherit_gutter = true;
+                        self.reset_box_layout.scroll.inherit_gutter = true;
                         None
                     }
                     _ => None,
                 };
                 if let Some(gutter) = gutter {
                     self.accept_declaration();
-                    self.scroll.gutter = Some(gutter);
-                    self.scroll.inherit_gutter = false;
+                    self.reset_box_layout.scroll.gutter = Some(gutter);
+                    self.reset_box_layout.scroll.inherit_gutter = false;
                 }
             }
             "scrollbar-width" => match v {
                 "auto" => {
                     self.accept_declaration();
-                    self.scroll.width = Some(0);
-                    self.scroll.inherit_width = false;
+                    self.reset_box_layout.scroll.width = Some(0);
+                    self.reset_box_layout.scroll.inherit_width = false;
                 }
                 "thin" => {
                     self.accept_declaration();
-                    self.scroll.width = Some(1);
-                    self.scroll.inherit_width = false;
+                    self.reset_box_layout.scroll.width = Some(1);
+                    self.reset_box_layout.scroll.inherit_width = false;
                 }
                 "none" => {
                     self.accept_declaration();
-                    self.scroll.width = Some(2);
-                    self.scroll.inherit_width = false;
+                    self.reset_box_layout.scroll.width = Some(2);
+                    self.reset_box_layout.scroll.inherit_width = false;
                 }
-                "inherit" => self.scroll.inherit_width = true,
+                "inherit" => self.reset_box_layout.scroll.inherit_width = true,
                 _ => (),
             },
             _ => self.apply_snap(key, v, hit, vcx),
@@ -101,13 +101,16 @@ mod tests {
             &Computed::default(),
             vcx,
         );
-        assert_eq!(child.scroll.colors, parent.scroll.colors);
-        assert_eq!(child.scroll.width, None);
+        assert_eq!(
+            child.reset_box_layout.scroll.colors,
+            parent.reset_box_layout.scroll.colors
+        );
+        assert_eq!(child.reset_box_layout.scroll.width, None);
         let mut reset = Computed::default();
         reset.apply_one("scrollbar-color", "initial", vcx);
         let child =
             crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &reset, vcx);
-        assert_eq!(child.scroll.colors, Some(None));
+        assert_eq!(child.reset_box_layout.scroll.colors, Some(None));
     }
 
     #[test]
@@ -123,10 +126,13 @@ mod tests {
         own.apply_one("color", "green", vcx);
         // css-color-4 §6.4: the keyword is inherited, not the parent's color.
         let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
-        assert_eq!(child.scroll.colors, parent.scroll.colors);
+        assert_eq!(
+            child.reset_box_layout.scroll.colors,
+            parent.reset_box_layout.scroll.colors
+        );
         assert_eq!(
             child.used_scrollbar_colors().unwrap()[0],
-            child.color.unwrap()
+            child.inh.ui.color.unwrap()
         );
         assert_ne!(
             child.used_scrollbar_colors(),
@@ -140,10 +146,10 @@ mod tests {
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("scrollbar-color", "red blue", vcx);
-        let valid = c.scroll.colors.clone();
+        let valid = c.reset_box_layout.scroll.colors.clone();
         for invalid in ["red", "red blue green", "red not-a-color"] {
             c.apply_one("scrollbar-color", invalid, vcx);
-            assert_eq!(c.scroll.colors, valid);
+            assert_eq!(c.reset_box_layout.scroll.colors, valid);
         }
     }
 
@@ -155,10 +161,19 @@ mod tests {
         let mut own = Computed::default();
         own.apply_one("overflow-x", "scroll", vcx);
         let c = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
-        assert_eq!([c.overflow_x, c.overflow_y], [Some(Overflow::Scroll); 2]);
-        assert_eq!(c.scroll.forced, [true, false]);
+        assert_eq!(
+            [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y],
+            [Some(Overflow::Scroll); 2]
+        );
+        assert_eq!(c.reset_box_layout.scroll.forced, [true, false]);
         let child = crate::style::cascade::inherit::inherit(&c, &Computed::default(), vcx);
-        assert_eq!([child.overflow_x, child.overflow_y], [None; 2]);
+        assert_eq!(
+            [
+                child.reset_box_layout.overflow_x,
+                child.reset_box_layout.overflow_y
+            ],
+            [None; 2]
+        );
     }
 
     #[test]
@@ -179,8 +194,11 @@ mod tests {
             let mut own = Computed::default();
             own.apply_one("overflow", declaration, vcx);
             let c = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
-            assert_eq!([c.overflow_x, c.overflow_y], expected);
-            assert_eq!(c.scroll.forced, [false; 2]);
+            assert_eq!(
+                [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y],
+                expected
+            );
+            assert_eq!(c.reset_box_layout.scroll.forced, [false; 2]);
         }
     }
 
@@ -190,19 +208,19 @@ mod tests {
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("scrollbar-gutter", "both-edges  stable", vcx);
-        parent.scroll.viewport_root = true;
+        parent.reset_box_layout.scroll.viewport_root = true;
         let mut own = Computed::default();
         own.apply_one("scrollbar-gutter", "inherit", vcx);
         own.apply_one("scrollbar-gutter", "both-edges", vcx); // invalid declaration retains inherit
         let child =
             crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
-        assert_eq!(child.scroll.gutter, Some(2));
-        assert!(!child.scroll.viewport_root);
+        assert_eq!(child.reset_box_layout.scroll.gutter, Some(2));
+        assert!(!child.reset_box_layout.scroll.viewport_root);
         let local = crate::style::cascade::inherit::inherit(
             &BoxStyle::from(parent.clone()),
             &Computed::default(),
             vcx,
         );
-        assert_eq!(local.scroll.gutter, None);
+        assert_eq!(local.reset_box_layout.scroll.gutter, None);
     }
 }

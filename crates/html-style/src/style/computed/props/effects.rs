@@ -19,10 +19,12 @@ impl Computed {
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
             "x" => {
-                self.svg_x = apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+                self.reset_svg_math.svg_x =
+                    apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
             "y" => {
-                self.svg_y = apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+                self.reset_svg_math.svg_y =
+                    apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
             "cx" | "cy" | "r" | "rx" | "ry" | "d" | "path-length" => {
                 crate::style::values::basic_shape::geometry_property(self, key, v, vcx);
@@ -33,23 +35,24 @@ impl Computed {
                 // размытие идёт своим проходом, цветовые функции — матрицей.
                 let Some(parsed) = apply_parsed!(self, filter::ParsedFilter::parse(v, None, vcx))
                 else {
-                    self.backdrop_blur = None;
-                    self.backdrop_color = None;
-                    self.backdrop_filter_set = false;
-                    self.backdrop_ref = None;
+                    self.reset_effects.backdrop_blur = None;
+                    self.reset_effects.backdrop_color = None;
+                    self.reset_effects.backdrop_filter_set = false;
+                    self.reset_effects.backdrop_ref = None;
                     return;
                 };
                 let f = parsed.program.filter.unwrap_or_else(Filter::neutral);
-                self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
-                self.backdrop_color = f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
+                self.reset_effects.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
+                self.reset_effects.backdrop_color =
+                    f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
                 // Корень подложки — любое значение, кроме `none`
                 // (filter-effects-2 Overview.bs:119; Blink
                 // paint_property_tree_builder.cc:1846): тождественная
                 // `invert(0)` матрицы не даёт, но корнем остаётся
                 // (`backdrop-filter-backdrop-root-backdrop-filter`).
-                self.backdrop_filter_set = !v.trim().eq_ignore_ascii_case("none");
+                self.reset_effects.backdrop_filter_set = !v.trim().eq_ignore_ascii_case("none");
                 // `url(#id)` — SVG `<filter>` (`render::svg_filter_matrix`).
-                self.backdrop_ref = parsed.reference;
+                self.reset_effects.backdrop_ref = parsed.reference;
             }
             // `view-transition-name` не `none` — корень подложки
             // (css-view-transitions-1 Overview.bs:577-582 «Form a backdrop
@@ -59,7 +62,8 @@ impl Computed {
                 if !crate::style::css::selector_tokens::ident(v) {
                     return;
                 }
-                self.vt_name = accept_parsed!(self, !v.trim().eq_ignore_ascii_case("none"));
+                self.reset_effects.vt_name =
+                    accept_parsed!(self, !v.trim().eq_ignore_ascii_case("none"));
             }
             // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
             // дало бы его неначальное значение, — содержащий блок для
@@ -126,8 +130,8 @@ impl Computed {
                         _ => 0,
                     };
                 }
-                self.will_change = accept_parsed!(self, bits);
-                self.will_change_root = root;
+                self.reset_effects.will_change = accept_parsed!(self, bits);
+                self.reset_effects.will_change_root = root;
             }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
             // текста читался ровным. Значения складываются: `first last`.
@@ -145,19 +149,20 @@ impl Computed {
                     },
                 };
                 if let Some(k) = k.filter(|k| k.is_finite() && *k >= 0.0) {
-                    self.zoom = accept_parsed!(self, Some(if k == 0.0 { 1.0 } else { k }));
+                    self.reset_cascade.zoom =
+                        accept_parsed!(self, Some(if k == 0.0 { 1.0 } else { k }));
                 }
             }
 
             // --- Прочее ------------------------------------------------------
             "table-layout" => {
-                self.table_fixed =
+                self.reset_context.table_fixed =
                     apply_parsed!(self, matches!(v, "auto" | "fixed").then_some(v == "fixed"))
             }
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" | "counter-increment" | "counter-set" => {
-                if self.css_wide_value && v != "inherit" {
+                if self.reset_cascade.css_wide_value && v != "inherit" {
                     return counters::reset(self, key);
                 }
                 if !values::counter_value(v, key == "counter-reset") {
@@ -167,7 +172,7 @@ impl Computed {
             }
             "content" => {
                 match v {
-                    "inherit" => self.content_inherit = true,
+                    "inherit" => self.reset_generated.content_inherit = true,
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
                     // псевдоэлемента создаётся, просто в ней нет знаков. На
                     // этом стоит целый приём эталонов WPT — `::after` с
@@ -175,9 +180,9 @@ impl Computed {
                     // (`overflow-wrap-anywhere-001` и родня).
                     "none" | "normal" => {
                         self.accept_declaration();
-                        self.content_inherit = false;
-                        self.content = None;
-                        self.content_none = Some(v == "none");
+                        self.reset_generated.content_inherit = false;
+                        self.reset_generated.content = None;
+                        self.reset_generated.content_none = Some(v == "none");
                     }
                     // Негодная запись НЕ применяется вовсе, прежнее значение
                     // остаётся (CSS 2.1 §4.1.8): иначе мусор вроде
@@ -186,15 +191,15 @@ impl Computed {
                     other => {
                         if let Some(list) = parse_content(other, vcx) {
                             self.accept_declaration();
-                            self.content_inherit = false;
-                            self.content = Some(list);
+                            self.reset_generated.content_inherit = false;
+                            self.reset_generated.content = Some(list);
                         }
                     }
                 }
             }
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {
-                    self.appearance = accept_parsed!(self, Some(a));
+                    self.reset_context.appearance = accept_parsed!(self, Some(a));
                 }
             }
 

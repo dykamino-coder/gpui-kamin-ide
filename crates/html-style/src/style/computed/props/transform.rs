@@ -22,7 +22,7 @@ impl Computed {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
                 if v == "none" {
-                    self.translate = accept_parsed!(self, None);
+                    self.reset_transforms.translate = accept_parsed!(self, None);
                     return;
                 }
                 let words = split_outside_parens(v);
@@ -36,7 +36,7 @@ impl Computed {
                         .map(|w| Len::parse_mixed(w, vcx))
                         .collect::<Option<Vec<_>>>()
                 );
-                self.translate =
+                self.reset_transforms.translate =
                     Some((lengths[0], lengths.get(1).copied().unwrap_or(Len::Px(0.0))));
             }
 
@@ -51,14 +51,15 @@ impl Computed {
                 {
                     return;
                 }
-                self.offset_path =
+                self.reset_transforms.offset_path =
                     accept_parsed!(self, (v.trim() != "none").then(|| v.trim().to_string()))
             }
             // `<length-percentage>`: смесь `calc(12.5% + 200px)` доживает
             // индексом арены — доля решается длиной пути во втором проходе
             // (`motion::path_css`; offset-path-shape-xywh-002).
             "offset-distance" => {
-                self.offset_distance = apply_parsed!(self, Len::parse_mixed(v.trim(), vcx))
+                self.reset_transforms.offset_distance =
+                    apply_parsed!(self, Len::parse_mixed(v.trim(), vcx))
             }
             "offset-rotate" => {
                 // motion-1 §offset-rotate: `[auto | reverse] || <angle>`.
@@ -80,13 +81,15 @@ impl Computed {
                 {
                     return;
                 }
-                self.offset_rotate = accept_parsed!(self, Some(v.trim().to_string()))
+                self.reset_transforms.offset_rotate =
+                    accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-anchor" => {
                 if !matches!(v, "auto") && !super::background::values::position_valid(v, vcx) {
                     return;
                 }
-                self.offset_anchor = accept_parsed!(self, Some(v.trim().to_string()))
+                self.reset_transforms.offset_anchor =
+                    accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-position" => {
                 if !matches!(v, "auto" | "normal")
@@ -94,29 +97,33 @@ impl Computed {
                 {
                     return;
                 }
-                self.offset_position = accept_parsed!(self, Some(v.trim().to_string()))
+                self.reset_transforms.offset_position =
+                    accept_parsed!(self, Some(v.trim().to_string()))
             }
-            "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
+            "transform" if v.trim() == "inherit" => {
+                self.reset_cascade.inherit_bits |= inh::TRANSFORM
+            }
             "transform-origin" if v.trim() == "inherit" => {
-                self.inherit_bits |= inh::TRANSFORM_ORIGIN
+                self.reset_cascade.inherit_bits |= inh::TRANSFORM_ORIGIN
             }
             "transform" if has_font_units(v) => {
                 if !transform_value_valid(v, vcx) {
                     return;
                 }
-                self.transform_raw = accept_parsed!(self, Some(v.to_string()))
+                self.reset_transforms.transform_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "transform-origin" if has_font_units(v) => {
                 if !origin_valid(v, vcx) {
                     return;
                 }
-                self.transform_origin_raw = accept_parsed!(self, Some(v.to_string()))
+                self.reset_transforms.transform_origin_raw =
+                    accept_parsed!(self, Some(v.to_string()))
             }
             "transform" => {
                 if v != "none" && !transform_value_valid(v, vcx) {
                     return;
                 }
-                let mut t = self.transform.unwrap_or_default();
+                let mut t = self.reset_transforms.transform.unwrap_or_default();
                 // Невалидный аргумент отбрасывает ВСЁ объявление (CSS-каскад),
                 // а не превращается в ноль (`scale(invalid)` схлопывал фигуру,
                 // хотя обязан быть проигнорирован — svg-document-styles-005).
@@ -195,11 +202,11 @@ impl Computed {
                         v.trim().to_ascii_lowercase().as_str(),
                         "none" | "initial" | "unset"
                     ) {
-                        self.transform = None;
+                        self.reset_transforms.transform = None;
                         self.accept_declaration();
                     }
                 } else if !invalid {
-                    self.transform = accept_parsed!(self, Some(t));
+                    self.reset_transforms.transform = accept_parsed!(self, Some(t));
                 }
             }
             _ => self.apply_transform_individual(key, v, hit, vcx),

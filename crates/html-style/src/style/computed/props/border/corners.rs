@@ -21,10 +21,10 @@ impl Computed {
             "border-shape" => {
                 if v.eq_ignore_ascii_case("none") {
                     self.accept_declaration();
-                    self.border_shape = None;
+                    self.reset_border.border_shape = None;
                 } else if let Some(bs) = parse_border_shape(v) {
                     self.accept_declaration();
-                    self.border_shape = Some(bs);
+                    self.reset_border.border_shape = Some(bs);
                 }
             }
             // `corner-shape` (css-borders-4 §corner-shaping-shorthand): 1–4
@@ -79,7 +79,7 @@ impl Computed {
             // (`cascade::inherit::explicit`).
             "border-radius" | "corner-shape" if v.trim().eq_ignore_ascii_case("inherit") => {
                 use crate::style::computed::inh;
-                self.inherit_bits |= if key == "corner-shape" {
+                self.reset_cascade.inherit_bits |= if key == "corner-shape" {
                     inh::CORNER_SHAPE
                 } else {
                     inh::RADIUS
@@ -88,7 +88,7 @@ impl Computed {
             "corner-shape" => {
                 if let Some(k) = corner_shape_shorthand(v) {
                     self.accept_declaration();
-                    self.corner_shape = Some(k);
+                    self.reset_border.corner_shape = Some(k);
                 }
             }
             // Боковые шортхенды (§corner-shaping-side-shorthands): 1–2 значения
@@ -104,7 +104,7 @@ impl Computed {
                 if let Some(first) = vals.first().copied() {
                     self.accept_declaration();
                     let second = vals.get(1).copied().unwrap_or(first);
-                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    let mut k = self.reset_border.corner_shape.unwrap_or([1.0; 4]);
                     // Порядок пар — по часовой от первого угла стороны.
                     let (a, b) = match key {
                         "corner-top-shape" => (0, 1),
@@ -114,7 +114,7 @@ impl Computed {
                     };
                     k[a] = first;
                     k[b] = second;
-                    self.corner_shape = Some(k);
+                    self.reset_border.corner_shape = Some(k);
                 }
             }
             "corner-top-left-shape"
@@ -123,14 +123,14 @@ impl Computed {
             | "corner-bottom-left-shape" => {
                 if let Some(val) = corner_shape_param(v) {
                     self.accept_declaration();
-                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    let mut k = self.reset_border.corner_shape.unwrap_or([1.0; 4]);
                     k[match key {
                         "corner-top-left-shape" => 0,
                         "corner-top-right-shape" => 1,
                         "corner-bottom-right-shape" => 2,
                         _ => 3,
                     }] = val;
-                    self.corner_shape = Some(k);
+                    self.reset_border.corner_shape = Some(k);
                 }
             }
             // Сокращения стороны (css-borders-4 §corner-sizing, tentative):

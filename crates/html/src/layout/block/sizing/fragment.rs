@@ -38,10 +38,20 @@ mod tests {
         let mut e = Element::synthetic(
             "div",
             Computed {
-                height: Some(Len::Px(80.)),
-                min_height: Some(Len::Px(150.)),
-                max_height: Some(Len::Px(180.)),
-                border_box: Some(true),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(80.)),
+                        min_height: Some(Len::Px(150.)),
+                        max_height: Some(Len::Px(180.)),
+                        ..Default::default()
+                    },
+                ),
+                reset_border: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBorder {
+                        border_box: Some(true),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

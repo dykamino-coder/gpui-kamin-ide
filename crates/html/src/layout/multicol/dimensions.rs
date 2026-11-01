@@ -89,11 +89,21 @@ mod tests {
     #[test]
     fn measured_content_and_prefix_keep_css_constraints_without_style_writes() {
         let style = Computed {
-            width: Some(Len::Pct(0.5)),
-            height: Some(Len::Px(200.)),
-            min_height: Some(Len::Px(60.)),
-            max_height: Some(Len::Px(90.)),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Pct(0.5)),
+                    height: Some(Len::Px(200.)),
+                    min_height: Some(Len::Px(60.)),
+                    max_height: Some(Len::Px(90.)),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let input = MulticolDimensions::measured(&style, 240., Some(80.));
@@ -109,7 +119,12 @@ mod tests {
     #[test]
     fn percentage_basis_preserves_container_and_position_boundaries() {
         let mut style = Computed {
-            height: Some(Len::Pct(0.5)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.5)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let basis = |style: &Computed| {

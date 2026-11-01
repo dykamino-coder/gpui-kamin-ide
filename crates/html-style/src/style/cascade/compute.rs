@@ -39,6 +39,7 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     let zoomed;
     let mut own_zoom = 1.0;
     let own = match own
+        .reset_cascade
         .zoom_pending
         .then(|| zoom::factors(parent, own))
         .flatten()
@@ -56,7 +57,9 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     // родителя вместо своего (css-cascade-5 §7.3.1), до всех шагов ниже:
     // они видят его как значение элемента. Длины родителя — в зуме элемента.
     let resolved;
-    let own = if own.explicit_inherit.is_empty() && own.inherit_longhands.is_empty() {
+    let own = if own.reset_cascade.explicit_inherit.is_empty()
+        && own.reset_cascade.inherit_longhands.is_empty()
+    {
         own
     } else {
         let scaled = zoom::parent_in_own_zoom(parent, own_zoom, vcx);
@@ -68,13 +71,13 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
         &resolved
     };
     let mut c = ComputedBuilder::from_cascaded(own);
-    c.cq_box = parent.container_box_for_children();
+    c.reset_context.cq_box = parent.container_box_for_children();
     // Коробка раскладки своего зума не задаёт: она в зуме родителя.
-    if !own.zoom_pending && c.zoom_eff.is_none() {
+    if !own.reset_cascade.zoom_pending && c.inh.font.zoom_eff.is_none() {
         let eff = zoom::parent_eff(parent);
-        c.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
+        c.inh.font.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
     }
-    c.zoom_pending = false;
+    c.reset_cascade.zoom_pending = false;
     crate::style::computed::scroll::inherit(parent, &mut c);
     resolve_bidi_inheritance(parent, &mut c);
     fonts::inherit_writing_mode(parent, own, &mut c);
@@ -96,12 +99,13 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     let parent_px = parent_font_px(parent);
     // Кегль (в том числе процент, `larger`/`smaller` по таблице и единицы
     // шрифта) — доля РОДИТЕЛЬСКОГО: его считает `resolve_em` первым шагом.
-    if parent.font_size_adjust.is_some() || parent.used_font(parent_px, vcx).descriptor_scale != 1.0
+    if parent.inh.font.font_size_adjust.is_some()
+        || parent.used_font(parent_px, vcx).descriptor_scale != 1.0
     {
         let font = parent.font_cx(vcx);
         if let Some(px) = c.computed_font_px(font, vcx) {
-            c.font_size = Some(Len::Px(px));
-            c.font_size_step = 0;
+            c.inh.font.font_size = Some(Len::Px(px));
+            c.reset_cascade.font_size_step = 0;
         }
     }
     c.resolve_em(parent_px, vcx);
@@ -109,30 +113,36 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
     // (`tab-size-inheritance-001`).
     let own_px = own_font_px(&c, parent_px);
-    c.tab_size_len = match own.tab_size_len.and(c.tab_size_len) {
+    c.inh.text_flow.tab_size_len = match own
+        .inh
+        .text_flow
+        .tab_size_len
+        .and(c.inh.text_flow.tab_size_len)
+    {
         Some(len) => Some(Len::Px(crate::style::font_metrics::spacing_px(
             Some(len),
-            c.font_family.as_deref().unwrap_or_default(),
+            c.inh.font.font_family.as_deref().unwrap_or_default(),
             own_px,
             vcx,
         ))),
-        None if own.tab_size.is_some() => None,
-        None => parent.tab_size_len,
+        None if own.inh.text_flow.tab_size.is_some() => None,
+        None => parent.inh.text_flow.tab_size_len,
     };
     text::inherit_decoration_values(parent, own, &mut c, own_px, vcx);
     // `path-length` вычисляется в абсолютную длину (SVG 2 §pathLength).
     if let Some(mut length) = c
+        .reset_svg_math
         .svg_path_length
         .filter(|l| !matches!(l, Len::Px(_) | Len::Auto))
     {
         let font = c.font_cx(vcx);
         length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
         if let Some(value) = length.to_px(None, font, vcx) {
-            c.svg_path_length = Some(Len::Px(value.max(0.0)));
+            c.reset_svg_math.svg_path_length = Some(Len::Px(value.max(0.0)));
         }
     }
     // Вычисленный стиль несёт значения, а не каскадные слова.
-    c.inherit_longhands = Default::default();
+    c.reset_cascade.inherit_longhands = Default::default();
     // Те же наследуемые значения, что у родителя, — его же группа: дети без
     // своих наследуемых значений делят её, и сравнение по указателю решает
     // повторное использование (Blink: общие группы `ComputedStyle`).
@@ -150,7 +160,7 @@ pub fn parent_font_px(parent: &Computed) -> f32 {
 
 /// Собственный вычисленный кегль после разрешения относительных единиц.
 pub fn own_font_px(c: &Computed, parent_px: f32) -> f32 {
-    match c.font_size {
+    match c.inh.font.font_size {
         Some(Len::Px(px)) => px,
         _ => parent_px,
     }

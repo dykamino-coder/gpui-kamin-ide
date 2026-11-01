@@ -32,6 +32,6 @@ pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
         }
     };
     style.accept_declaration();
-    style.mask_size = size;
-    style.mask_fit = Some(fit);
+    style.reset_mask.mask_size = size;
+    style.reset_mask.mask_fit = Some(fit);
 }

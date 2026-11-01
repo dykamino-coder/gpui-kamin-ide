@@ -5,9 +5,14 @@ mod continuation;
 #[test]
 fn definite_and_indefinite_cb_have_distinct_percentage_rules() {
     let original = Computed {
-        height: Some(Len::Pct(0.5)),
-        min_height: Some(Len::Pct(0.25)),
-        max_height: Some(Len::Pct(0.75)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                height: Some(Len::Pct(0.5)),
+                min_height: Some(Len::Pct(0.25)),
+                max_height: Some(Len::Pct(0.75)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let mut definite = original.clone();

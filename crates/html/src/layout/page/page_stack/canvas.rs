@@ -23,17 +23,22 @@ pub(crate) fn image_layers(s: &Computed) -> Option<Computed> {
         return None;
     }
     Some(Computed {
-        background_color: s.background_color.clone(),
-        gradient: s.gradient.clone(),
-        gradient_raw: s.gradient_raw.clone(),
-        bg_image: s.bg_image.clone(),
-        bg_size: s.bg_size,
-        bg_pos: s.bg_pos,
-        bg_repeat: s.bg_repeat,
-        bg_clip: s.bg_clip,
-        bg_origin: s.bg_origin,
-        bg_fixed: s.bg_fixed,
-        bg_lists: s.bg_lists.clone(),
+        reset_background: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBackground {
+                background_color: s.background_color.clone(),
+                gradient: s.gradient.clone(),
+                gradient_raw: s.gradient_raw.clone(),
+                bg_image: s.bg_image.clone(),
+                bg_size: s.bg_size,
+                bg_pos: s.bg_pos,
+                bg_repeat: s.bg_repeat,
+                bg_clip: s.bg_clip,
+                bg_origin: s.bg_origin,
+                bg_fixed: s.bg_fixed,
+                bg_lists: s.bg_lists.clone(),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     })
 }

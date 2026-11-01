@@ -83,9 +83,10 @@ pub fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) ->
 pub fn inherit_unwrapped(wrapper: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> Computed {
     let mut merged = inherit_unpainted(wrapper, own, vcx).into_computed();
     let neutral = crate::style::computed::Filter::neutral();
-    if merged.filter.is_none_or(|f| f == neutral) {
-        merged.filter = wrapper.filter;
-        merged.scrollbar_filter_ops = wrapper.scrollbar_filter_ops.clone();
+    if merged.reset_effects.filter.is_none_or(|f| f == neutral) {
+        merged.reset_effects.filter = wrapper.reset_effects.filter;
+        merged.reset_effects.scrollbar_filter_ops =
+            wrapper.reset_effects.scrollbar_filter_ops.clone();
     }
     merged
 }

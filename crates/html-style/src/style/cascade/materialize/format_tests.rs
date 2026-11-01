@@ -22,15 +22,18 @@ fn inline_projection_stops_at_atomic_and_positioned_boxes() {
         let div = element(&parsed.nodes, "div");
         let mut parent = box_style(&BoxStyle::default(), &div.style, vcx);
         parent.inline_format = Some(format);
-        parent.flat_mode = parent.writing_mode;
-        parent.writing_mode = None;
+        parent.inh.writing.flat_mode = parent.inh.writing.writing_mode;
+        parent.inh.writing.writing_mode = None;
         let span = element(&parsed.nodes, "span");
         let inline = box_style(&parent, &span.style, vcx);
         assert!(!inline.wm().vertical());
         assert!(span.style.computed().wm().vertical());
-        assert_eq!(span.style.computed().line_height, Some(Len::Pct(2.0)));
+        assert_eq!(
+            span.style.computed().inh.font.line_height,
+            Some(Len::Pct(2.0))
+        );
         if format != InlineFormat::Turned {
-            assert_eq!(inline.line_height, Some(Len::Px(20.0)));
+            assert_eq!(inline.inh.font.line_height, Some(Len::Px(20.0)));
         }
         for tag in ["b", "i"] {
             let own = element(&parsed.nodes, tag);
@@ -51,15 +54,30 @@ fn ruby_text_indent_is_a_ua_default_and_author_values_still_cascade() {
         parsed.values(),
     );
     assert_eq!(
-        element(&parsed.nodes, "ruby").style.computed().text_indent,
+        element(&parsed.nodes, "ruby")
+            .style
+            .computed()
+            .inh
+            .text_flow
+            .text_indent,
         Some(Len::Px(0.0))
     );
     assert_eq!(
-        element(&parsed.nodes, "span").style.computed().text_indent,
+        element(&parsed.nodes, "span")
+            .style
+            .computed()
+            .inh
+            .text_flow
+            .text_indent,
         Some(Len::Px(0.0))
     );
     assert_eq!(
-        element(&parsed.nodes, "rb").style.computed().text_indent,
+        element(&parsed.nodes, "rb")
+            .style
+            .computed()
+            .inh
+            .text_flow
+            .text_indent,
         Some(Len::Px(7.0))
     );
 }
@@ -81,19 +99,25 @@ fn viewport_font_size_is_absolute_before_inheritance_and_resize_invalidates_it()
         );
         let section = element(&parsed.nodes, "section");
         let i = element(&parsed.nodes, "i");
-        assert_eq!(section.style.computed().font_size, Some(Len::Px(expected)));
-        assert_eq!(i.style.computed().font_size, Some(Len::Px(2.0 * expected)));
+        assert_eq!(
+            section.style.computed().inh.font.font_size,
+            Some(Len::Px(expected))
+        );
+        assert_eq!(
+            i.style.computed().inh.font.font_size,
+            Some(Len::Px(2.0 * expected))
+        );
         materialize(
             &parsed.nodes,
             &root,
             parsed.values().with_viewport((800.0, 800.0)),
         );
         assert_eq!(
-            section.style.computed().font_size,
+            section.style.computed().inh.font.font_size,
             Some(Len::Px(expected + 20.0))
         );
         assert_eq!(
-            i.style.computed().font_size,
+            i.style.computed().inh.font.font_size,
             Some(Len::Px(2.0 * (expected + 20.0)))
         );
     }

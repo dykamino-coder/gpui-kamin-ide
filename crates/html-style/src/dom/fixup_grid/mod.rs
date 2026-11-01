@@ -68,9 +68,11 @@ fn steal_placed(
         if let Some(mut node) = frame.remaining.next() {
             admission.work(1)?;
             if let Node::Element(el) = &mut node {
-                let placed = el.style.cascaded().grid_col.is_some()
-                    || el.style.cascaded().grid_row.is_some();
-                if el.style.cascaded().position == Some(Position::Absolute) && placed {
+                let placed = el.style.cascaded().reset_grid.grid_col.is_some()
+                    || el.style.cascaded().reset_grid.grid_row.is_some();
+                if el.style.cascaded().reset_positioned.position == Some(Position::Absolute)
+                    && placed
+                {
                     if frame.id != 0 {
                         el.marks.style_parent = Some(frame.id);
                         frame.lent = true;
@@ -79,7 +81,9 @@ fn steal_placed(
                     continue;
                 }
                 // Свой CB и подсетка замыкают область переноса (css-grid-2 §9).
-                if !own_containing_block(el.style.cascaded()) && !el.style.cascaded().subgrid {
+                if !own_containing_block(el.style.cascaded())
+                    && !el.style.cascaded().reset_grid.subgrid
+                {
                     let Node::Element(mut el) = node else {
                         unreachable!()
                     };
@@ -121,5 +125,8 @@ fn steal_placed(
 /// Контейнер сетки — это и `inline-grid`: разница только в том, как коробка
 /// встаёт в поток снаружи.
 fn is_grid(c: &Computed) -> bool {
-    matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid))
+    matches!(
+        c.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    )
 }

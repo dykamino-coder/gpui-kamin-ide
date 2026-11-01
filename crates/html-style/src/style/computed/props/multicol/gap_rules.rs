@@ -120,9 +120,18 @@ impl Computed {
     /// список — только когда значений больше одного или есть авто-повтор.
     pub fn set_gap_widths(&mut self, column: bool, l: &GapList<Len>) {
         let (scalar, list) = if column {
-            (&mut self.column_rule_width, &mut self.column_rule_widths)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (
+                    &mut group_0.column_rule_width,
+                    &mut group_0.column_rule_widths,
+                )
+            }
         } else {
-            (&mut self.row_rule_width, &mut self.row_rule_widths)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (&mut group_0.row_rule_width, &mut group_0.row_rule_widths)
+            }
         };
         *scalar = l.first().or(*scalar);
         *list = l.is_plural().then(|| l.clone());
@@ -130,9 +139,18 @@ impl Computed {
 
     pub fn set_gap_styles(&mut self, column: bool, l: &GapList<bool>) {
         let (scalar, list) = if column {
-            (&mut self.column_rule_visible, &mut self.column_rule_styles)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (
+                    &mut group_0.column_rule_visible,
+                    &mut group_0.column_rule_styles,
+                )
+            }
         } else {
-            (&mut self.row_rule_visible, &mut self.row_rule_styles)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (&mut group_0.row_rule_visible, &mut group_0.row_rule_styles)
+            }
         };
         *scalar = l.first().or(*scalar);
         *list = l.is_plural().then(|| l.clone());
@@ -140,9 +158,18 @@ impl Computed {
 
     pub fn set_gap_colors(&mut self, column: bool, l: &GapList<StyleColor>) {
         let (scalar, list) = if column {
-            (&mut self.column_rule_color, &mut self.column_rule_colors)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (
+                    &mut group_0.column_rule_color,
+                    &mut group_0.column_rule_colors,
+                )
+            }
         } else {
-            (&mut self.row_rule_color, &mut self.row_rule_colors)
+            {
+                let group_0 = &mut *self.reset_fragmentation;
+                (&mut group_0.row_rule_color, &mut group_0.row_rule_colors)
+            }
         };
         *scalar = l.first().unwrap_or_default();
         *list = l.is_plural().then(|| l.clone());
@@ -161,18 +188,20 @@ mod tests {
         c.apply_one("column-rule", "10px dotted pink", vcx);
         c.apply_one("row-rule-style", "dashed", vcx);
         let kind = |l: &Option<GapList<u8>>, k| l.as_ref().and_then(|l| l.at(k, 3));
-        assert_eq!(kind(&c.column_rule_kinds, 0), Some(2));
-        assert_eq!(kind(&c.row_rule_kinds, 0), Some(1));
+        assert_eq!(kind(&c.reset_fragmentation.column_rule_kinds, 0), Some(2));
+        assert_eq!(kind(&c.reset_fragmentation.row_rule_kinds, 0), Some(1));
         c.apply_one("rule-style", "solid", vcx);
-        assert_eq!(kind(&c.column_rule_kinds, 0), Some(0));
+        assert_eq!(kind(&c.reset_fragmentation.column_rule_kinds, 0), Some(0));
         c.apply_one("column-rule-style", "solid, dotted, double", vcx);
-        let got: Vec<_> = (0..3).map(|k| kind(&c.column_rule_kinds, k)).collect();
+        let got: Vec<_> = (0..3)
+            .map(|k| kind(&c.reset_fragmentation.column_rule_kinds, k))
+            .collect();
         assert_eq!(got, [Some(0), Some(2), Some(3)]);
         c.apply_one(
             "row-rule",
             "5px dashed red, repeat(2, blue 1px double)",
             vcx,
         );
-        assert_eq!(kind(&c.row_rule_kinds, 2), Some(3));
+        assert_eq!(kind(&c.reset_fragmentation.row_rule_kinds, 2), Some(3));
     }
 }

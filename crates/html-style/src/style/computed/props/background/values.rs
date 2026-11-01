@@ -19,11 +19,16 @@ pub fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {
         MaskBorderSource | MaskBorderSlice | MaskBorderWidth | MaskBorderOutset
         | MaskBorderRepeat => {
             let mut parser = Computed {
-                declaration_parse: ParseResult::Invalid,
+                reset_cascade: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetCascade {
+                        declaration_parse: ParseResult::Invalid,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             parser.set_mask_border(id, value, vcx);
-            parser.declaration_parse == ParseResult::Accepted
+            parser.reset_cascade.declaration_parse == ParseResult::Accepted
         }
         MaskBorderMode => matches!(value.trim(), "alpha" | "luminance"),
         _ => crate::style::css::layer_list(value)

@@ -107,7 +107,12 @@ pub(crate) fn band_flow_rest_lift(
         Node::Element(Element::synthetic(
             "div",
             Computed {
-                clear,
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        clear,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             },
             crate::dom::Marks {
@@ -126,7 +131,12 @@ pub(crate) fn band_flow_rest_lift(
             out.push(Node::Element(Element::synthetic(
                 "div",
                 Computed {
-                    clear,
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            clear,
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 },
                 crate::dom::Marks {

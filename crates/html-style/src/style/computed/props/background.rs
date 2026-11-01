@@ -27,11 +27,11 @@ impl Computed {
                 if !box_shadow_valid(v, vcx) {
                     return;
                 }
-                self.shadow_raw = accept_parsed!(self, Some(v.to_string()))
+                self.reset_effects.shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "box-shadow" => {
                 if v == "inherit" {
-                    self.shadow_inherit = true;
+                    self.reset_effects.shadow_inherit = true;
                     return;
                 }
                 // `inset` в записи означает тень ВНУТРИ фигуры: раньше такая
@@ -42,15 +42,16 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
-                self.shadow_raw = None;
+                self.reset_effects.shadow_raw = None;
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::style::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
-                self.shadows = parse_shadows(&outer.join(","), vcx);
-                self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "), vcx);
+                self.reset_effects.shadows = parse_shadows(&outer.join(","), vcx);
+                self.reset_effects.inset_shadows =
+                    parse_shadows(&inset.join(",").replace("inset", " "), vcx);
             }
             "object-fit" => {
-                self.object_fit = apply_parsed!(
+                self.reset_shapes.object_fit = apply_parsed!(
                     self,
                     matches!(v, "fill" | "contain" | "cover" | "none" | "scale-down")
                         .then(|| v.to_string())
@@ -83,10 +84,10 @@ impl Computed {
                 // вовсе, и заданный ранее адрес переживал отмену.
                 if v.trim().eq_ignore_ascii_case("none") {
                     self.accept_declaration();
-                    self.bg_image = None;
-                    self.gradient = None;
-                    self.gradient_raw = None;
-                    self.gradient_current = None;
+                    self.reset_background.bg_image = None;
+                    self.reset_background.gradient = None;
+                    self.reset_background.gradient_raw = None;
+                    self.reset_background.gradient_current = None;
                 } else if let Some(image) = ImageSource::parse(v, vcx) {
                     self.accept_declaration();
                     match image {
@@ -94,28 +95,29 @@ impl Computed {
                             ref value,
                             repeating: false,
                         } => {
-                            self.gradient = Some(*value.clone());
-                            self.gradient_current = self
+                            self.reset_background.gradient = Some(*value.clone());
+                            self.reset_background.gradient_current = self
+                                .reset_background
                                 .gradient
                                 .as_ref()
                                 .filter(|g| !g.colors.is_empty())
                                 .cloned();
-                            self.gradient_raw = Some(image);
+                            self.reset_background.gradient_raw = Some(image);
                         }
                         ImageSource::Invalid => {
-                            self.bg_image = None;
-                            self.gradient = None;
-                            self.gradient_raw = None;
-                            self.gradient_current = None;
+                            self.reset_background.bg_image = None;
+                            self.reset_background.gradient = None;
+                            self.reset_background.gradient_raw = None;
+                            self.reset_background.gradient_current = None;
                         }
                         other => {
                             if matches!(other, ImageSource::Color(_) | ImageSource::Fallback { .. })
                             {
-                                self.gradient = None;
-                                self.gradient_raw = None;
-                                self.gradient_current = None;
+                                self.reset_background.gradient = None;
+                                self.reset_background.gradient_raw = None;
+                                self.reset_background.gradient_current = None;
                             }
-                            self.bg_image = Some(other);
+                            self.reset_background.bg_image = Some(other);
                         }
                     }
                 }

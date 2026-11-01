@@ -100,15 +100,25 @@ mod tests {
         let fieldset =
             Element::synthetic("fieldset", Computed::default(), Default::default(), vec![]);
         let merged = BoxStyle::shared(std::rc::Rc::new(Computed {
-            border_width: Sides {
-                top: Some(Len::Px(5.0)),
-                ..Default::default()
-            },
-            border_visible: [Some(true); 4],
-            padding: Sides {
-                top: Some(Len::Px(2.0)),
-                ..Default::default()
-            },
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_width: Sides {
+                        top: Some(Len::Px(5.0)),
+                        ..Default::default()
+                    },
+                    border_visible: [Some(true); 4],
+                    ..Default::default()
+                },
+            ),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    padding: Sides {
+                        top: Some(Len::Px(2.0)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         }));
         let kids = with_rendered_legend(

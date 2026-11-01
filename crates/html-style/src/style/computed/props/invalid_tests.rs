@@ -35,7 +35,7 @@ fn one(css: &str) -> Computed {
 fn f04_invalid_width_keeps_fit_content_arg() {
     let c = one("width: fit-content(40px); width: garbage");
     assert!(
-        c.fit_arg[0].is_some(),
+        c.reset_context.fit_arg[0].is_some(),
         "fit-content(40px) потерян невалидным width"
     );
 }
@@ -44,7 +44,7 @@ fn f04_invalid_width_keeps_fit_content_arg() {
 fn f04_invalid_padding_keeps_previous_padding() {
     let c = one("padding: 10px; padding: garbage");
     assert_eq!(
-        c.padding.top,
+        c.reset_box_layout.padding.top,
         Some(Len::Px(10.0)),
         "invalid padding стёр padding"
     );
@@ -54,7 +54,7 @@ fn f04_invalid_padding_keeps_previous_padding() {
 fn f04_invalid_margin_keeps_previous_margin() {
     let c = one("margin: 10px; margin: garbage");
     assert_eq!(
-        c.margin.top,
+        c.reset_box_layout.margin.top,
         Some(Len::Px(10.0)),
         "invalid margin стёр margin"
     );
@@ -64,7 +64,7 @@ fn f04_invalid_margin_keeps_previous_margin() {
 fn f04_invalid_margin_side_keeps_previous_side() {
     let c = one("margin-top: 7px; margin-top: garbage");
     assert_eq!(
-        c.margin.top,
+        c.reset_box_layout.margin.top,
         Some(Len::Px(7.0)),
         "invalid margin-top стёр сторону"
     );
@@ -76,13 +76,17 @@ fn f04_invalid_padding_in_document() {
         "<div id=d style='padding:10px;padding:garbage'>x</div>",
         "d",
     );
-    assert_eq!(c.padding.top, Some(Len::Px(10.0)));
+    assert_eq!(c.reset_box_layout.padding.top, Some(Len::Px(10.0)));
 }
 
 #[test]
 fn f05_box_sizing_invalid_keyword_is_ignored() {
     let c = one("box-sizing: border-box; box-sizing: banana");
-    assert_eq!(c.border_box, Some(true), "banana сбросил border-box");
+    assert_eq!(
+        c.reset_border.border_box,
+        Some(true),
+        "banana сбросил border-box"
+    );
 }
 
 #[test]
@@ -102,7 +106,7 @@ fn f05_supports_rejects_invalid_box_sizing_in_stylesheet() {
         "<style>#d { width: 7px } @supports (box-sizing: banana) { #d { width: 99px } }</style><div id=d>x</div>",
         "d",
     );
-    assert_eq!(c.width, Some(Len::Px(7.0)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(7.0)));
     let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     assert_eq!(
         format!(
@@ -141,10 +145,10 @@ fn invalid_component_rejects_the_entire_shorthand() {
     ] {
         let mut c = Computed::default();
         c.apply_one(key, valid, st.values());
-        let seq = c.decl_order;
+        let seq = c.reset_cascade.decl_order;
         let before = format!("{c:?}");
         c.apply_one(key, invalid, st.values());
-        c.decl_order = seq;
+        c.reset_cascade.decl_order = seq;
         assert_eq!(format!("{c:?}"), before, "{key}: {invalid}");
         assert_ne!(
             Computed::declaration_result(key, invalid, st.values()),
@@ -156,13 +160,18 @@ fn invalid_component_rejects_the_entire_shorthand() {
 
 #[test]
 fn valid_reset_is_distinct_from_invalid_value() {
-    assert!(one("background: currentcolor").background_color.is_some());
+    assert!(
+        one("background: currentcolor")
+            .reset_background
+            .background_color
+            .is_some()
+    );
     let c = one(
         "margin: 9px; margin: auto; max-width: 20px; max-width: none; text-combine-upright: all; text-combine-upright: none",
     );
-    assert_eq!(c.margin.top, Some(Len::Auto));
-    assert!(c.max_width.is_none());
-    assert_eq!(c.combine_upright, Some(None));
+    assert_eq!(c.reset_box_layout.margin.top, Some(Len::Auto));
+    assert!(c.reset_box_layout.max_width.is_none());
+    assert_eq!(c.inh.writing.combine_upright, Some(None));
 }
 
 #[test]
@@ -170,14 +179,23 @@ fn valid_inherit_clears_local_inherited_lengths() {
     let c = one(
         "font-size: 20px; font-size: inherit; line-height: 1em; line-height: inherit; letter-spacing: 3px; letter-spacing: inherit; word-spacing: 3px; word-spacing: inherit",
     );
-    assert!(c.font_size.is_none() && c.line_height.is_none());
-    assert!(c.letter_spacing.is_none() && c.word_spacing.is_none());
+    assert!(c.inh.font.font_size.is_none() && c.inh.font.line_height.is_none());
+    assert!(c.inh.text_flow.letter_spacing.is_none() && c.inh.text_flow.word_spacing.is_none());
     let c = one(
         "top:3px;top:inherit;right:3px;right:inherit;bottom:3px;bottom:inherit;left:3px;left:inherit;left:invalid()",
     );
-    assert!((0..4).all(|i| c.inherit_longhands.contains(L::physical(G::Inset, i))));
+    assert!((0..4).all(|i| {
+        c.reset_cascade
+            .inherit_longhands
+            .contains(L::physical(G::Inset, i))
+    }));
     assert_eq!(
-        [c.inset.top, c.inset.right, c.inset.bottom, c.inset.left],
+        [
+            c.reset_positioned.inset.top,
+            c.reset_positioned.inset.right,
+            c.reset_positioned.inset.bottom,
+            c.reset_positioned.inset.left
+        ],
         [None; 4]
     );
 }
@@ -193,9 +211,9 @@ fn invalid_declaration_preserves_background_lists_and_flow_alignment() {
         let mut c = Computed::default();
         c.apply_one(key, valid, st.values());
         let before = format!("{c:?}");
-        let seq = c.decl_order;
+        let seq = c.reset_cascade.decl_order;
         c.apply_one(key, "invalid()", st.values());
-        c.decl_order = seq;
+        c.reset_cascade.decl_order = seq;
         assert_eq!(format!("{c:?}"), before, "{key}");
     }
 }
@@ -203,7 +221,10 @@ fn invalid_declaration_preserves_background_lists_and_flow_alignment() {
 #[test]
 fn valid_counter_inherit_remains_a_directive() {
     let c = one("counter-reset: inherit; counter-increment: inherit; counter-set: inherit");
-    assert_eq!(c.counter_reset.as_deref(), Some("inherit"));
-    assert_eq!(c.counter_increment.as_deref(), Some("inherit"));
-    assert_eq!(c.counter_set.as_deref(), Some("inherit"));
+    assert_eq!(c.reset_generated.counter_reset.as_deref(), Some("inherit"));
+    assert_eq!(
+        c.reset_generated.counter_increment.as_deref(),
+        Some("inherit")
+    );
+    assert_eq!(c.reset_generated.counter_set.as_deref(), Some("inherit"));
 }

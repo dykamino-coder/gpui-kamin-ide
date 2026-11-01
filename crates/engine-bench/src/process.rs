@@ -15,6 +15,7 @@ use windows::Win32::{
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Snapshot {
+    pub(super) allocations: super::allocations::Snapshot,
     pub(super) cpu_100ns: u64,
     pub(super) rss: u64,
     pub(super) commit: u64,
@@ -51,6 +52,7 @@ impl Snapshot {
         }
         let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
         Ok(Self {
+            allocations: super::allocations::Snapshot::read(),
             cpu_100ns: ticks(kernel) + ticks(user),
             rss: memory.WorkingSetSize as u64,
             commit: memory.PrivateUsage as u64,
@@ -59,7 +61,8 @@ impl Snapshot {
         })
     }
     pub(super) fn json(self) -> Value {
-        json!({"rss_bytes": self.rss, "private_commit_bytes": self.commit,
+        json!({"rust_allocations": self.allocations.json(),
+            "rss_bytes": self.rss, "private_commit_bytes": self.commit,
             "process_lifetime_peak_rss_bytes": self.peak_rss,
             "process_lifetime_peak_commit_bytes": self.peak_commit})
     }

@@ -7,7 +7,7 @@ impl Computed {
         // слово не понимала, и объявление пропадало
         // (`overflow-clip-margin-009`: поле 20 родителя не доезжало).
         if v.trim() == "inherit" {
-            self.inherit_bits |= inh::CLIP_MARGIN;
+            self.reset_cascade.inherit_bits |= inh::CLIP_MARGIN;
             return;
         }
         // `<visual-box> || <length>`: коробка отсчёта и поле, в любом
@@ -40,8 +40,8 @@ impl Computed {
             }
         }
         if margin.is_some() || bx.is_some() {
-            self.clip_margin = accept_parsed!(self, Some(margin.unwrap_or(0.0)));
-            self.clip_margin_box = bx;
+            self.reset_mask.clip_margin = accept_parsed!(self, Some(margin.unwrap_or(0.0)));
+            self.reset_mask.clip_margin_box = bx;
         }
     }
 }

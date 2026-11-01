@@ -5,7 +5,8 @@ use gpui::IntoElement;
 use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
 use crate::style::canvas_background::{CanvasBackground, CanvasBackgroundSource};
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
+mod clip;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
@@ -221,13 +222,7 @@ pub(crate) fn canvas_layer(
         || st.clip_inset.is_some()
         || st.clip_xywh.is_some()
     {
-        let clip = Computed {
-            clip_polygon: st.clip_polygon.clone(),
-            clip_shape: st.clip_shape.clone(),
-            clip_inset: st.clip_inset,
-            clip_xywh: st.clip_xywh,
-            ..Default::default()
-        };
+        let clip = clip::style(&st);
         layer = grouped(
             div()
                 .absolute()

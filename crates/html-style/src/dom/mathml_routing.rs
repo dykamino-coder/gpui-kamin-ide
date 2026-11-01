@@ -133,10 +133,13 @@ mod tests {
             for id in ["root", "space"] {
                 let e = find(&nodes, id).expect("MathML element");
                 assert!(
-                    e.style.cascaded().math_layout.is_none(),
+                    e.style.cascaded().reset_svg_math.math_layout.is_none(),
                     "{unsupported}: {id}"
                 );
-                assert!(!e.style.cascaded().math_font_size, "{unsupported}: {id}");
+                assert!(
+                    !e.style.cascaded().reset_svg_math.math_font_size,
+                    "{unsupported}: {id}"
+                );
             }
         }
     }
@@ -149,8 +152,8 @@ mod tests {
         );
         for id in ["root", "space"] {
             let e = find(&nodes, id).expect("MathML element");
-            assert!(e.style.cascaded().math_layout.is_some());
-            assert!(e.style.cascaded().math_font_size);
+            assert!(e.style.cascaded().reset_svg_math.math_layout.is_some());
+            assert!(e.style.cascaded().reset_svg_math.math_font_size);
         }
     }
 
@@ -158,8 +161,8 @@ mod tests {
     fn html_display_math_stays_on_the_original_path() {
         let nodes = parse("<span id=html style='display: inline math'>x</span>", "");
         let e = find(&nodes, "html").expect("HTML element");
-        assert!(e.style.cascaded().math_layout.is_none());
-        assert_eq!(e.style.cascaded().display, None);
+        assert!(e.style.cascaded().reset_svg_math.math_layout.is_none());
+        assert_eq!(e.style.cascaded().reset_box_layout.display, None);
     }
 
     #[test]
@@ -171,6 +174,7 @@ mod tests {
                     .unwrap()
                     .style
                     .cascaded()
+                    .reset_svg_math
                     .math_layout
                     .is_some()
             );

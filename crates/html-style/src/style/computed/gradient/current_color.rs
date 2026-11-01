@@ -30,19 +30,24 @@ pub fn parse_gradient_with_current(
 /// the descendant's color (CSS Color 4 §6.4), including relative colors.
 impl Computed {
     pub fn resolve_gradient_current_color(&mut self, _vcx: ValueCx<'_>) {
-        let current = self.color.unwrap_or(BLACK);
+        let current = self.inh.ui.color.unwrap_or(BLACK);
         for image in self.image_operands() {
             image.resolve_colors(current);
         }
-        if (self.gradient.is_some()
+        if (self.reset_background.gradient.is_some()
             || self
+                .reset_cascade
                 .inherit_longhands
                 .contains(crate::style::css::LonghandId::BackgroundImage))
-            && let Some(template) = self.gradient_current.as_ref()
+            && let Some(template) = self.reset_background.gradient_current.as_ref()
         {
-            let mut gradient = self.gradient.clone().unwrap_or_else(|| template.clone());
-            gradient.resolve_colors(self.color.unwrap_or(BLACK));
-            self.gradient = Some(gradient);
+            let mut gradient = self
+                .reset_background
+                .gradient
+                .clone()
+                .unwrap_or_else(|| template.clone());
+            gradient.resolve_colors(self.inh.ui.color.unwrap_or(BLACK));
+            self.reset_background.gradient = Some(gradient);
         }
     }
 }

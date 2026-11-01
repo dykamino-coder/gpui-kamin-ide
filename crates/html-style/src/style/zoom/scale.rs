@@ -47,67 +47,77 @@ pub fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
             mul(one);
         }
     };
-    for l in [
-        &mut c.width,
-        &mut c.height,
-        &mut c.min_width,
-        &mut c.min_height,
-        &mut c.max_width,
-        &mut c.max_height,
-        &mut c.flex_basis,
-        &mut c.column_width,
-        &mut c.column_gap,
-        &mut c.shape_margin,
-    ] {
+    for l in {
+        let group_0 = &mut *c.reset_box_layout;
+        let group_1 = &mut *c.reset_fragmentation;
+        [
+            &mut group_0.width,
+            &mut group_0.height,
+            &mut group_0.min_width,
+            &mut group_0.min_height,
+            &mut group_0.max_width,
+            &mut group_0.max_height,
+            &mut c.reset_flex.flex_basis,
+            &mut group_1.column_width,
+            &mut group_1.column_gap,
+            &mut c.reset_shapes.shape_margin,
+        ]
+    } {
         mul(l);
     }
-    let inh = &mut **c;
-    for l in [
-        &mut inh.letter_spacing,
-        &mut inh.word_spacing,
-        &mut inh.text_indent,
-        &mut inh.line_height,
-        &mut inh.tab_size_len,
-    ] {
+    let inh = &mut *c.inh;
+    for l in {
+        let group_0 = &mut *inh.text_flow;
+        [
+            &mut group_0.letter_spacing,
+            &mut group_0.word_spacing,
+            &mut group_0.text_indent,
+            &mut inh.font.line_height,
+            &mut group_0.tab_size_len,
+        ]
+    } {
         mul(l);
     }
-    sides(&mut c.padding);
-    sides(&mut c.margin);
-    sides(&mut c.border_width);
-    sides(&mut c.inset);
-    for corner in [
-        &mut c.radius.tl,
-        &mut c.radius.tr,
-        &mut c.radius.br,
-        &mut c.radius.bl,
-    ] {
+    sides(&mut c.reset_box_layout.padding);
+    sides(&mut c.reset_box_layout.margin);
+    sides(&mut c.reset_border.border_width);
+    sides(&mut c.reset_positioned.inset);
+    for corner in {
+        let group_0 = &mut *c.reset_border;
+        [
+            &mut group_0.radius.tl,
+            &mut group_0.radius.tr,
+            &mut group_0.radius.br,
+            &mut group_0.radius.bl,
+        ]
+    } {
         mul(corner);
     }
-    if let Some(pair) = c.gap.as_mut() {
+    if let Some(pair) = c.reset_flex.gap.as_mut() {
         mul(&mut pair.0);
         mul(&mut pair.1);
     }
-    if c.border_spacing.is_some()
-        && let Some(pair) = c.border_spacing.as_mut()
+    if c.inh.table_list.border_spacing.is_some()
+        && let Some(pair) = c.inh.table_list.border_spacing.as_mut()
     {
         mul(&mut pair.0);
         mul(&mut pair.1);
     }
-    if let Some(o) = c.outline.as_mut() {
+    if let Some(o) = c.reset_border.outline.as_mut() {
         mul(&mut o.width);
         mul(&mut o.offset);
     }
     // `background-size` в точках — тоже длина (§493; `zoom/background-size`);
     // `cover`/`contain` и доли зуму безразличны.
-    if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
+    if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.reset_background.bg_size {
         mul(w);
         mul(h);
     }
     // `contain-intrinsic-*` хранится точками (`zoom/contain-intrinsic-height`,
     // `-width`: `10rem` при кегле корня 1px и `zoom: 10` — сторона 100).
-    c.contain_intrinsic.0 = c.contain_intrinsic.0.map(|v| v * k);
-    c.contain_intrinsic.1 = c.contain_intrinsic.1.map(|v| v * k);
-    if let Some((x, y)) = c.translate.as_mut() {
+    c.reset_context.contain_intrinsic.0 = c.reset_context.contain_intrinsic.0.map(|v| v * k);
+    c.reset_context.contain_intrinsic.1 = c.reset_context.contain_intrinsic.1.map(|v| v * k);
+    if let Some((x, y)) = c.reset_transforms.translate.as_mut() {
         for t in [x, y] {
             if let Len::Px(v) = *t {
                 *t = Len::Px(v * k);
@@ -120,33 +130,43 @@ pub fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
     // линейная часть (`lin`, поворот, масштаб, скос) безразмерна, а доли
     // собственного размера (`translate_pct`, `m4_pct`) уже считаются от
     // домноженной коробки — их множитель лёг бы вторым.
-    if let Some(t) = c.transform.as_mut() {
+    if let Some(t) = c.reset_transforms.transform.as_mut() {
         scale_transform(t, k);
     }
     // `perspective` и точки отсчёта преобразования — тоже длины.
-    c.perspective = c.perspective.map(|d| d * k);
-    c.transform_origin_px.0 = c.transform_origin_px.0.map(|v| v * k);
-    c.transform_origin_px.1 = c.transform_origin_px.1.map(|v| v * k);
-    c.transform_origin_z = c.transform_origin_z.map(|v| v * k);
-    c.perspective_origin_px.0 = c.perspective_origin_px.0.map(|v| v * k);
-    c.perspective_origin_px.1 = c.perspective_origin_px.1.map(|v| v * k);
-    for sh in c.shadows.iter_mut().chain(c.inset_shadows.iter_mut()) {
+    c.reset_transforms.perspective = c.reset_transforms.perspective.map(|d| d * k);
+    c.reset_transforms.transform_origin_px.0 =
+        c.reset_transforms.transform_origin_px.0.map(|v| v * k);
+    c.reset_transforms.transform_origin_px.1 =
+        c.reset_transforms.transform_origin_px.1.map(|v| v * k);
+    c.reset_transforms.transform_origin_z = c.reset_transforms.transform_origin_z.map(|v| v * k);
+    c.reset_transforms.perspective_origin_px.0 =
+        c.reset_transforms.perspective_origin_px.0.map(|v| v * k);
+    c.reset_transforms.perspective_origin_px.1 =
+        c.reset_transforms.perspective_origin_px.1.map(|v| v * k);
+    for sh in {
+        let effects = &mut *c.reset_effects;
+        effects
+            .shadows
+            .iter_mut()
+            .chain(effects.inset_shadows.iter_mut())
+    } {
         scale_shadow(sh, k);
     }
-    if c.text_shadow.is_some() || !c.text_shadow_rest.is_empty() {
-        let inh = &mut **c;
-        for sh in inh
+    if c.inh.text_ink.text_shadow.is_some() || !c.inh.text_ink.text_shadow_rest.is_empty() {
+        let ink = &mut *c.inh.text_ink;
+        for sh in ink
             .text_shadow
             .iter_mut()
-            .chain(inh.text_shadow_rest.iter_mut())
+            .chain(ink.text_shadow_rest.iter_mut())
         {
             scale_shadow(sh, k);
         }
     }
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
-    c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
+    c.reset_text_box.vertical_shift_px = c.reset_text_box.vertical_shift_px.map(|v| v * k);
     structured::scale(c, k);
-    if let Some(s) = c.shape_outside.as_mut() {
+    if let Some(s) = c.reset_shapes.shape_outside.as_mut() {
         *s = shape_lengths::scale_px(s, k);
     }
     // Длины украшений текста (css-text-decor-4): толщина, смещение
@@ -157,13 +177,13 @@ pub fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
         }
         _ => {}
     };
-    if let Some(t) = c.td_thickness.as_mut() {
+    if let Some(t) = c.reset_text_box.td_thickness.as_mut() {
         dl(t);
     }
-    if let Some(o) = c.underline_offset.as_mut() {
+    if let Some(o) = c.inh.text_ink.underline_offset.as_mut() {
         dl(o);
     }
-    if let Some(Some(pair)) = c.td_inset.as_mut() {
+    if let Some(Some(pair)) = c.reset_text_box.td_inset.as_mut() {
         pair.iter_mut().for_each(dl);
     }
 }

@@ -18,7 +18,7 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
         vcx,
     );
     assert_eq!(
-        c.color,
+        c.inh.ui.color,
         crate::style::values::value::Color::parse("red", vcx)
     );
     // Незаданная переменная берёт запасное значение ЦЕЛИКОМ.
@@ -29,7 +29,7 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
         vcx,
     );
     assert_eq!(
-        c.color,
+        c.inh.ui.color,
         crate::style::values::value::Color::parse("rgba(0,0,0,1)", vcx)
     );
 }
@@ -65,7 +65,7 @@ fn important_survives_a_later_ordinary_rule() {
         vcx,
     );
     assert_eq!(
-        c.color,
+        c.inh.ui.color,
         crate::style::values::value::Color::parse("red", vcx)
     );
 }
@@ -101,7 +101,7 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
         vcx,
     );
     assert_eq!(
-        c.margin.top,
+        c.reset_box_layout.margin.top,
         Some(crate::style::values::value::Len::Px(0.0))
     );
 }
@@ -116,14 +116,14 @@ fn font_shorthand_takes_size_with_line_height_and_family() {
     let mut c = crate::style::computed::Computed::default();
     c.apply_one("font", "50px / 1 Ahem", vcx);
     assert_eq!(
-        c.font_size,
+        c.inh.font.font_size,
         Some(crate::style::values::value::Len::Px(50.0))
     );
     assert_eq!(
-        c.line_height,
+        c.inh.font.line_height,
         Some(crate::style::values::value::Len::Pct(1.0))
     );
-    assert_eq!(c.font_family.as_deref(), Some("Ahem"));
+    assert_eq!(c.inh.font.font_family.as_deref(), Some("Ahem"));
 }
 
 /// `apply_decls` — тот же проход, что и каскад правил: исход не зависит от
@@ -139,7 +139,7 @@ fn apply_decls_is_deterministic_and_takes_the_cascade_order() {
             &crate::style::css::parse_decls("inset: 1px; top: 5px"),
             doc.values(),
         );
-        seen.insert(format!("{:?}", c.inset.top));
+        seen.insert(format!("{:?}", c.reset_positioned.inset.top));
     }
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert!(
@@ -159,5 +159,5 @@ fn apply_decls_applies_important_after_normal() {
         &crate::style::css::parse_decls("top: 3px !important; top: 1px"),
         doc.values(),
     );
-    assert_eq!(c.inset.top, Some(Len::Px(3.0)));
+    assert_eq!(c.reset_positioned.inset.top, Some(Len::Px(3.0)));
 }

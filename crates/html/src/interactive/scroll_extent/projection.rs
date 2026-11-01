@@ -105,7 +105,12 @@ mod tests {
             frame.begin(Some(&root));
             let parent = {
                 let mut with_inherited = BoxStyle::from(Computed {
-                    position: Some(Position::Relative),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Relative),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 });
                 with_inherited.self_node = 7;
@@ -116,7 +121,12 @@ mod tests {
             let absolute = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
-                    position: Some(Position::Absolute),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Absolute),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 },
                 vcx,
@@ -125,7 +135,12 @@ mod tests {
             let fixed = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
-                    position: Some(Position::Fixed),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Fixed),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 },
                 vcx,
@@ -146,8 +161,13 @@ mod tests {
         let handle = ScrollHandle::default();
         let c = {
             let mut with_inherited = BoxStyle::from(Computed {
-                overflow_x: Some(Overflow::Scroll),
-                overflow_y: Some(Overflow::Scroll),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        overflow_x: Some(Overflow::Scroll),
+                        overflow_y: Some(Overflow::Scroll),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             });
             with_inherited.self_node = 7;

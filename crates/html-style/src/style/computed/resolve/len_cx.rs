@@ -45,14 +45,14 @@ impl ViewportCx {
         // (css-viewport-1 §zoom-property). Вход контейнера — размер в CSS px
         // без его зума (Blink AdjustForAbsoluteZoom); здесь применяется зум
         // потребителя, как для остальных его длин.
-        let zoom = style.zoom_eff.unwrap_or(1.0);
+        let zoom = style.inh.font.zoom_eff.unwrap_or(1.0);
         let size = (size.0 * zoom, size.1 * zoom);
         ViewportCx {
             size,
             vertical: style.wm().vertical(),
             container: Some((
-                style.cq_box.0.map_or(size.0, |v| v * zoom),
-                style.cq_box.1.map_or(size.1, |v| v * zoom),
+                style.reset_context.cq_box.0.map_or(size.0, |v| v * zoom),
+                style.reset_context.cq_box.1.map_or(size.1, |v| v * zoom),
             )),
         }
     }
@@ -185,7 +185,10 @@ impl Computed {
     /// (`viewport_unit_insets`), ось её письма, контейнер запросов размера
     /// (недостающая ось — окно).
     pub fn viewport_cx(&self, raw: (f32, f32)) -> ViewportCx {
-        let insets = self.viewport_unit_insets.unwrap_or_default();
+        let insets = self
+            .reset_positioned
+            .viewport_unit_insets
+            .unwrap_or_default();
         let size = ((raw.0 - insets[0]).max(0.0), (raw.1 - insets[1]).max(0.0));
         ViewportCx::for_box(size, self)
     }

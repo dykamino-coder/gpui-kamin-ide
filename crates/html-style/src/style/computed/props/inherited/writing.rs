@@ -93,19 +93,24 @@ impl Computed {
     pub(super) fn apply_writing(&mut self, id: LonghandId, v: &str) {
         use LonghandId::*;
         match id {
-            Direction => self.rtl = direction(v).or(self.rtl),
-            WritingMode => self.writing_mode = writing_mode(v).or(self.writing_mode),
+            Direction => self.inh.writing.rtl = direction(v).or(self.inh.writing.rtl),
+            WritingMode => {
+                self.inh.writing.writing_mode = writing_mode(v).or(self.inh.writing.writing_mode)
+            }
             TextOrientation => {
-                self.text_orientation = text_orientation(v).or(self.text_orientation)
+                self.inh.writing.text_orientation =
+                    text_orientation(v).or(self.inh.writing.text_orientation)
             }
             TextCombineUpright => {
                 if let Some(n) = combine_upright(v) {
-                    self.combine_upright = Some(n);
+                    self.inh.writing.combine_upright = Some(n);
                 }
             }
-            MathShift => self.math_shift = compact(v).or(self.math_shift),
-            MathStyle => self.math_compact = compact(v).or(self.math_compact),
-            MathDepth => self.math_depth = math_depth(v).or(self.math_depth),
+            MathShift => self.inh.ui.math_shift = compact(v).or(self.inh.ui.math_shift),
+            MathStyle => self.inh.ui.math_compact = compact(v).or(self.inh.ui.math_compact),
+            MathDepth => {
+                self.reset_svg_math.math_depth = math_depth(v).or(self.reset_svg_math.math_depth)
+            }
             _ => {}
         }
     }
@@ -113,13 +118,13 @@ impl Computed {
     pub(super) fn inherit_writing(&mut self, id: LonghandId) {
         use LonghandId::*;
         match id {
-            Direction => self.rtl = None,
-            WritingMode => self.writing_mode = None,
-            TextOrientation => self.text_orientation = None,
-            TextCombineUpright => self.combine_upright = None,
-            MathShift => self.math_shift = None,
-            MathStyle => self.math_compact = None,
-            MathDepth => self.math_depth = None,
+            Direction => self.inh.writing.rtl = None,
+            WritingMode => self.inh.writing.writing_mode = None,
+            TextOrientation => self.inh.writing.text_orientation = None,
+            TextCombineUpright => self.inh.writing.combine_upright = None,
+            MathShift => self.inh.ui.math_shift = None,
+            MathStyle => self.inh.ui.math_compact = None,
+            MathDepth => self.reset_svg_math.math_depth = None,
             _ => {}
         }
     }

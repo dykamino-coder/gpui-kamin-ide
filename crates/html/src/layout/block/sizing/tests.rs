@@ -5,9 +5,19 @@ use super::*;
 #[test]
 fn transferred_minimum_does_not_override_explicit_maximum() {
     let style = Computed {
-        aspect_ratio: Some(1.0),
-        min_height: Some(Len::Px(200.0)),
-        max_width: Some(Len::Px(100.0)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(1.0),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                min_height: Some(Len::Px(200.0)),
+                max_width: Some(Len::Px(100.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let resolved = BoxDimensions::from_computed(&style).transfer_ratio(&style);
@@ -18,10 +28,20 @@ fn transferred_minimum_does_not_override_explicit_maximum() {
 #[test]
 fn transferred_maximum_does_not_override_preferred_size() {
     let style = Computed {
-        aspect_ratio: Some(2.0),
-        width: Some(Len::Px(300.0)),
-        min_height: Some(Len::Px(0.0)),
-        max_height: Some(Len::Px(100.0)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.0),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(300.0)),
+                min_height: Some(Len::Px(0.0)),
+                max_height: Some(Len::Px(100.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     assert_eq!(
@@ -35,9 +55,19 @@ fn transferred_maximum_does_not_override_preferred_size() {
 #[test]
 fn transferred_maximum_does_not_cap_content_based_automatic_minimum() {
     let style = Computed {
-        aspect_ratio: Some(2.0),
-        width: Some(Len::Px(200.0)),
-        max_width: Some(Len::Px(100.0)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.0),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(200.0)),
+                max_width: Some(Len::Px(100.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let input = BoxDimensions::from_computed(&style);
@@ -47,8 +77,18 @@ fn transferred_maximum_does_not_cap_content_based_automatic_minimum() {
 #[test]
 fn transferred_constraint_preserves_content_box_units() {
     let mut style = Computed {
-        aspect_ratio: Some(1.25),
-        max_height: Some(Len::Px(80.0)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(1.25),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                max_height: Some(Len::Px(80.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     style.padding.bottom = Some(Len::Px(20.0));
@@ -63,11 +103,21 @@ fn transferred_constraint_preserves_content_box_units() {
 #[test]
 fn percentage_and_auto_inputs_survive_repeated_constraint_transfer() {
     let style = Computed {
-        aspect_ratio: Some(2.0),
-        width: Some(Len::Pct(0.5)),
-        height: Some(Len::Auto),
-        min_height: Some(Len::Px(20.0)),
-        max_height: Some(Len::Pct(0.75)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.0),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Pct(0.5)),
+                height: Some(Len::Auto),
+                min_height: Some(Len::Px(20.0)),
+                max_height: Some(Len::Pct(0.75)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let input = BoxDimensions::from_computed(&style);

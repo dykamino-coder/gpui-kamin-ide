@@ -24,7 +24,10 @@ fn first(html: &str, tag: &str) -> Computed {
 }
 
 fn green() -> Option<Color> {
-    first(r#"<b style="color: rgb(0, 128, 0)">x</b>"#, "b").color
+    first(r#"<b style="color: rgb(0, 128, 0)">x</b>"#, "b")
+        .inh
+        .ui
+        .color
 }
 
 #[test]
@@ -35,11 +38,11 @@ fn visited_rule_sets_only_visited_dependent_colors() {
         "a",
     );
     assert_eq!(
-        a.accent_color, None,
+        a.inh.ui.accent_color, None,
         "accent-color is not visited-dependent"
     );
-    assert_ne!(a.font_size, Some(Len::Px(40.0)));
-    assert_eq!(a.color, green());
+    assert_ne!(a.inh.font.font_size, Some(Len::Px(40.0)));
+    assert_eq!(a.inh.ui.color, green());
 }
 
 #[test]
@@ -49,8 +52,8 @@ fn link_rule_applies_to_a_visited_link_except_its_colors() {
         <a href="">x</a>"#,
         "a",
     );
-    assert_eq!(a.font_size, Some(Len::Px(30.0)));
-    assert_eq!(a.color, green());
+    assert_eq!(a.inh.font.font_size, Some(Len::Px(30.0)));
+    assert_eq!(a.inh.ui.color, green());
 }
 
 #[test]
@@ -60,8 +63,8 @@ fn visited_ancestor_is_the_relevant_link() {
         <a href=""><span>x</span></a>"#,
         "span",
     );
-    assert_eq!(span.color, green());
-    assert_ne!(span.font_size, Some(Len::Px(40.0)));
+    assert_eq!(span.inh.ui.color, green());
+    assert_ne!(span.inh.font.font_size, Some(Len::Px(40.0)));
 }
 
 #[test]
@@ -72,6 +75,10 @@ fn all_in_a_visited_rule_covers_only_visited_dependent_properties() {
         <a href="">x</a>"#,
         "a",
     );
-    assert_eq!(a.font_size, Some(Len::Px(20.0)), "all stays off font-size");
-    assert_eq!(a.color, None, "color: unset inherits");
+    assert_eq!(
+        a.inh.font.font_size,
+        Some(Len::Px(20.0)),
+        "all stays off font-size"
+    );
+    assert_eq!(a.inh.ui.color, None, "color: unset inherits");
 }

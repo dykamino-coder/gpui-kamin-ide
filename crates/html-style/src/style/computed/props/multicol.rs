@@ -23,20 +23,23 @@ impl Computed {
             // отбрасывает объявление целиком): `column-count: -1` после
             // `column-count: 2` оставляет двойку. Ноль и минус невалидны.
             "column-count" => {
-                self.column_count = parsed_value!(self, values::column_count(v));
+                self.reset_fragmentation.column_count =
+                    parsed_value!(self, values::column_count(v));
             }
             "column-width" => {
-                self.column_width = parsed_value!(self, values::column_width(v, vcx));
+                self.reset_fragmentation.column_width =
+                    parsed_value!(self, values::column_width(v, vcx));
             }
             // `column-height: auto | <length [0,∞]>` (css-multicol-2 §ch).
             "column-height" => {
-                self.column_height = parsed_value!(self, values::column_height(v, vcx));
+                self.reset_fragmentation.column_height =
+                    parsed_value!(self, values::column_height(v, vcx));
             }
             // `column-wrap: auto | nowrap | wrap` (css-multicol-2 §cwr);
             // `auto` — отсутствие значения, решается в укладке по
             // `column-height`.
             "column-wrap" => {
-                self.column_wrap = parsed_value!(self, values::column_wrap(v));
+                self.reset_fragmentation.column_wrap = parsed_value!(self, values::column_wrap(v));
             }
             // `page: auto | <custom-ident>` (css-page-3 §"Using named pages").
             // Имя регистрозависимо; `auto` — ключевое слово без регистра и
@@ -47,12 +50,12 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
-                self.page =
+                self.reset_fragmentation.page =
                     (!t.is_empty() && !t.eq_ignore_ascii_case("auto")).then(|| t.to_string());
             }
             // `column-fill`: балансировать ли колонки (дефолт balance).
             "column-fill" => {
-                self.column_fill_auto = apply_parsed!(
+                self.reset_fragmentation.column_fill_auto = apply_parsed!(
                     self,
                     match v {
                         "auto" => Some(true),
@@ -67,7 +70,7 @@ impl Computed {
                 if !matches!(v, "auto" | "none") {
                     return;
                 }
-                self.scroll_target_group =
+                self.reset_generated.scroll_target_group =
                     accept_parsed!(self, Some(v.trim().eq_ignore_ascii_case("auto")));
             }
             "scroll-marker-group" => {
@@ -79,7 +82,7 @@ impl Computed {
                 {
                     return;
                 }
-                self.scroll_marker_group = parsed_value!(
+                self.reset_generated.scroll_marker_group = parsed_value!(
                     self,
                     if v == "none" {
                         Some(None)
@@ -95,7 +98,7 @@ impl Computed {
 
             // `column-span: all` — растяжка на все колонки.
             "column-span" => {
-                self.column_span = apply_parsed!(
+                self.reset_fragmentation.column_span = apply_parsed!(
                     self,
                     match v {
                         "all" => Some(true),
@@ -115,16 +118,18 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.break_inside_avoid = accept_parsed!(self, v.trim().starts_with("avoid"))
+                self.reset_fragmentation.break_inside_avoid =
+                    accept_parsed!(self, v.trim().starts_with("avoid"))
             }
             // Префиксное написание — то же свойство (`border-image-000`,
             // `-webkit-box-decoration-break: clone`).
             "box-decoration-break" | "-webkit-box-decoration-break" => {
-                css_wide_reset!(self, bdb_clone);
+                css_wide_reset!(self, reset_fragmentation.bdb_clone);
                 if !matches!(v, "slice" | "clone") {
                     return;
                 }
-                self.bdb_clone = accept_parsed!(self, v.trim().eq_ignore_ascii_case("clone"))
+                self.reset_fragmentation.bdb_clone =
+                    accept_parsed!(self, v.trim().eq_ignore_ascii_case("clone"))
             }
             "break-before" | "page-break-before" => {
                 if !matches!(
@@ -146,7 +151,7 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.break_before_force = matches!(
+                self.reset_fragmentation.break_before_force = matches!(
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
                 );
@@ -156,7 +161,7 @@ impl Computed {
                 // (`fragmentation_utils.cc:108-121 IsAvoidBreakValue`:
                 // `avoid-page` в колонках не действует); упрощение осознанное
                 // и безопасное, пока страницы не раскладываются.
-                self.break_before_avoid = v.trim().starts_with("avoid");
+                self.reset_fragmentation.break_before_avoid = v.trim().starts_with("avoid");
                 self.accept_declaration();
             }
             "break-after" | "page-break-after" => {
@@ -179,11 +184,11 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.break_after_force = matches!(
+                self.reset_fragmentation.break_after_force = matches!(
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
                 );
-                self.break_after_avoid = v.trim().starts_with("avoid");
+                self.reset_fragmentation.break_after_avoid = v.trim().starts_with("avoid");
                 self.accept_declaration();
             }
             _ => self.apply_multicol_rules(key, v, hit, vcx),

@@ -16,7 +16,12 @@ fn natural(w: f32, h: f32) -> Option<Intrinsic> {
 #[test]
 fn authored_width_transfers_height_through_natural_ratio() {
     let style = Computed {
-        width: Some(Len::Px(200.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(200.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let sizing = PictureSizing::new(&style, natural(100.0, 50.0), None);
@@ -36,8 +41,13 @@ fn authored_width_transfers_height_through_natural_ratio() {
 fn a_limit_on_the_derived_side_narrows_the_box() {
     // CSS 2.1 §10.4: `width: 200px; max-height: 50px` over 100×50 is 100×50.
     let style = Computed {
-        width: Some(Len::Px(200.0)),
-        max_height: Some(Len::Px(50.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(200.0)),
+                max_height: Some(Len::Px(50.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let sizing = PictureSizing::new(&style, natural(100.0, 50.0), None);
@@ -56,8 +66,13 @@ fn a_limit_on_the_derived_side_narrows_the_box() {
 #[test]
 fn both_sides_authored_fill_a_flex_item() {
     let mut style = Computed {
-        width: Some(Len::Px(40.0)),
-        height: Some(Len::Px(30.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(40.0)),
+                height: Some(Len::Px(30.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let sizing = PictureSizing::new(&style, natural(10.0, 10.0), None);
@@ -103,13 +118,23 @@ fn auto_sides_with_only_a_ratio_take_the_containing_block_width() {
 #[test]
 fn border_box_limits_leave_the_content_size() {
     let style = Computed {
-        border_box: Some(true),
-        max_width: Some(Len::Px(60.0)),
-        padding: crate::style::computed::Sides {
-            left: Some(Len::Px(10.0)),
-            right: Some(Len::Px(10.0)),
-            ..Default::default()
-        },
+        reset_border: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBorder {
+                border_box: Some(true),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                max_width: Some(Len::Px(60.0)),
+                padding: crate::style::computed::Sides {
+                    left: Some(Len::Px(10.0)),
+                    right: Some(Len::Px(10.0)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let sizing = PictureSizing::new(&style, natural(80.0, 40.0), None);

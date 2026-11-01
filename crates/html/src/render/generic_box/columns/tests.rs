@@ -40,10 +40,20 @@ fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
 #[test]
 fn measured_inline_size_controls_count_and_percentage_gap_without_css_writes() {
     let style = Computed {
-        width: Some(Len::Pct(0.5)),
-        height: Some(Len::Px(100.)),
-        column_width: Some(Len::Px(40.)),
-        column_gap: Some(Len::Pct(0.1)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Pct(0.5)),
+                height: Some(Len::Px(100.)),
+                ..Default::default()
+            },
+        ),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                column_width: Some(Len::Px(40.)),
+                column_gap: Some(Len::Pct(0.1)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);

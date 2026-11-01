@@ -21,6 +21,7 @@ use std::rc::Rc;
 mod container_input;
 mod inherited;
 mod recompute;
+mod sharing;
 mod used;
 mod walk;
 pub use recompute::{recompute_onto, rematerialize};
@@ -97,11 +98,15 @@ impl ComputedSlot {
 
     /// Материализованный стиль каскадного `own`, годный под родителем `parent`.
     fn get(&self, own: &Computed, parent: &Computed, generation: Inputs) -> Option<Published> {
-        let explicit = !own.explicit_inherit.is_empty() || !own.inherit_longhands.is_empty();
+        let explicit = !own.reset_cascade.explicit_inherit.is_empty()
+            || !own.reset_cascade.inherit_longhands.is_empty();
         self.0
             .borrow()
             .as_ref()
-            .filter(|m| m.computed.cq_size == self.1.get() && m.fits(parent, generation, explicit))
+            .filter(|m| {
+                m.computed.reset_context.cq_size == self.1.get()
+                    && m.fits(parent, generation, explicit)
+            })
             .map(|m| m.computed.clone())
     }
 
@@ -200,7 +205,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         paint,
         vcx,
     );
-    if !boxed.position_try_fallbacks.is_empty() {
+    if !boxed.reset_positioned.position_try_fallbacks.is_empty() {
         // Варианты коробки, созданной раскладкой из стадии элемента, пересчитывают
         // каскад этого элемента под его родителем-элементом (css-anchor-position-1
         // §fallback-rule, css-cascade-5 §7.3.1), а не значения коробки под коробкой-родителем.

@@ -7,23 +7,23 @@ use crate::values::ValueCx;
 impl Computed {
     pub(super) fn reset_for_all(&mut self, initial: bool, vcx: ValueCx<'_>) {
         let keep = (
-            self.rtl,
-            self.bidi_override,
-            self.bidi_isolate,
-            self.bidi_plaintext,
-            self.bidi_embed,
-            self.bidi_inherit,
-            self.decl_order,
+            self.inh.writing.rtl,
+            self.reset_cascade.bidi_override,
+            self.reset_cascade.bidi_isolate,
+            self.reset_cascade.bidi_plaintext,
+            self.reset_cascade.bidi_embed,
+            self.reset_cascade.bidi_inherit,
+            self.reset_cascade.decl_order,
         );
         *self = Computed::default();
         (
-            self.rtl,
-            self.bidi_override,
-            self.bidi_isolate,
-            self.bidi_plaintext,
-            self.bidi_embed,
-            self.bidi_inherit,
-            self.decl_order,
+            self.inh.writing.rtl,
+            self.reset_cascade.bidi_override,
+            self.reset_cascade.bidi_isolate,
+            self.reset_cascade.bidi_plaintext,
+            self.reset_cascade.bidi_embed,
+            self.reset_cascade.bidi_inherit,
+            self.reset_cascade.decl_order,
         ) = keep;
         self.apply_one("display", "inline", vcx);
         if initial {

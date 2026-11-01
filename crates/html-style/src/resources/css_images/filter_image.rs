@@ -115,7 +115,13 @@ mod tests {
             .unwrap();
         assert_eq!(image.bytes.as_ref(), expected.bytes.as_ref());
         assert!(background.gradient.is_none());
-        assert_eq!(rendered.gradient, own.gradient);
-        assert_eq!(rendered.bg_image, own.bg_image);
+        assert_eq!(
+            rendered.reset_background.gradient,
+            own.reset_background.gradient
+        );
+        assert_eq!(
+            rendered.reset_background.bg_image,
+            own.reset_background.bg_image
+        );
     }
 }

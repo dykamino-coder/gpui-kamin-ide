@@ -18,7 +18,12 @@ mod tests {
         for display in [Display::Flex, Display::InlineFlex] {
             let mut c = {
                 let mut with_inherited = Computed {
-                    display: Some(display),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            display: Some(display),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 };
                 with_inherited.writing_mode = Some(

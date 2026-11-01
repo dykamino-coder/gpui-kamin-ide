@@ -118,8 +118,18 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed {
-            contain_paint: Some(true),
-            clip_margin: Some(10.0),
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    contain_paint: Some(true),
+                    ..Default::default()
+                },
+            ),
+            reset_mask: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetMask {
+                    clip_margin: Some(10.0),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let own = [0.0, 0.0, 100.0, 100.0];

@@ -46,7 +46,12 @@ mod tests {
     #[test]
     fn omitted_and_authored_auto_have_the_same_intrinsic_contract() {
         let container = Computed {
-            width: Some(Len::Px(400.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(400.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         for authored in [None, Some(Len::Auto)] {

@@ -78,19 +78,26 @@ pub(super) fn initial_letter_style(
     };
     let mut style = {
         let mut with_inherited = Computed {
-            // Сторона — начало строки: rtl отправляет буквицу вправо.
-            float: Some(if rtl { 1 } else { -1 }),
-            // Both sizes in points: the width carries the letter line's inner
-            // indent and leading spaces, and the bands shorten the lines by it.
-            width: Some(Len::Px(
-                crate::text::metrics::ch_ex_px(&letter_family, letter_px, fonts, vcx).0
-                    + indent
-                    + lead_w,
-            )),
-            height: Some(Len::Px(box_h)),
-            background: (first.background != inherited.background)
-                .then_some(first.background)
-                .flatten(),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(if rtl { 1 } else { -1 }),
+                    width: Some(Len::Px(
+                        crate::text::metrics::ch_ex_px(&letter_family, letter_px, fonts, vcx).0
+                            + indent
+                            + lead_w,
+                    )),
+                    height: Some(Len::Px(box_h)),
+                    ..Default::default()
+                },
+            ),
+            reset_background: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBackground {
+                    background: (first.background != inherited.background)
+                        .then_some(first.background)
+                        .flatten(),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         with_inherited.font_size = Some(Len::Px(letter_px));

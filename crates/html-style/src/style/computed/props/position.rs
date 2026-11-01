@@ -17,7 +17,7 @@ impl Computed {
     pub fn apply_position(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             "position" => {
-                self.position = apply_parsed!(
+                self.reset_positioned.position = apply_parsed!(
                     self,
                     match v {
                         "absolute" => Some(Position::Absolute),
@@ -44,12 +44,12 @@ impl Computed {
                     }
                     Some(names.into_iter().map(str::to_owned).collect())
                 };
-                self.anchor_name = accept_parsed!(self, names);
+                self.reset_positioned.anchor_name = accept_parsed!(self, names);
             }
             // §position-anchor: значение хранится как есть, решается при
             // сборке (`anchor::AnchorPlan::of`) и в `anchor::settle_static`.
             "position-anchor" => {
-                self.position_anchor = accept_parsed!(
+                self.reset_positioned.position_anchor = accept_parsed!(
                     self,
                     Some(match v {
                         "normal" => PositionAnchor::Normal,
@@ -64,7 +64,7 @@ impl Computed {
             // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
             // и физическое разрешение — в `anchor`.
             "position-area" => {
-                self.position_area = parsed_value!(
+                self.reset_positioned.position_area = parsed_value!(
                     self,
                     parse_area(v)
                         .map(Some)
@@ -80,15 +80,15 @@ impl Computed {
                 if parsed.is_empty() && v != "none" {
                     return;
                 }
-                self.position_try_fallbacks = parsed;
-                if !self.position_try_fallbacks.is_empty() || v == "none" {
+                self.reset_positioned.position_try_fallbacks = parsed;
+                if !self.reset_positioned.position_try_fallbacks.is_empty() || v == "none" {
                     self.accept_declaration();
                 }
             }
             // §position-try-order-property.
             "position-try-order" => {
                 if let Some(o) = parse_try_order(v.trim()) {
-                    self.position_try_order = accept_parsed!(self, o);
+                    self.reset_positioned.position_try_order = accept_parsed!(self, o);
                 }
             }
             // Сокращение `position-try: <order>? <fallbacks>` (§position-try-prop):
@@ -108,20 +108,20 @@ impl Computed {
                 if parsed.is_empty() && rest != "none" {
                     return;
                 }
-                self.position_try_order = order;
-                self.position_try_fallbacks = parsed;
-                if !self.position_try_fallbacks.is_empty() || rest == "none" {
+                self.reset_positioned.position_try_order = order;
+                self.reset_positioned.position_try_fallbacks = parsed;
+                if !self.reset_positioned.position_try_fallbacks.is_empty() || rest == "none" {
                     self.accept_declaration();
                 }
             }
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                css_wide_reset!(self, position_visibility);
+                css_wide_reset!(self, reset_positioned.position_visibility);
                 let Some(bits) = parse_visibility(v) else {
                     return;
                 };
-                self.position_visibility = accept_parsed!(self, bits);
+                self.reset_positioned.position_visibility = accept_parsed!(self, bits);
             }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности
@@ -135,22 +135,22 @@ impl Computed {
                     parse_overflow(words[0]).zip(parse_overflow(words[words.len() - 1]))
                 );
                 let (x, y) = (pair.map(|p| p.0), pair.map(|p| p.1));
-                self.scroll.forced = [
+                self.reset_box_layout.scroll.forced = [
                     v.split_whitespace().next() == Some("scroll"),
                     v.split_whitespace().nth(1).or(v.split_whitespace().next()) == Some("scroll"),
                 ];
-                self.overflow_x = x;
-                self.overflow_y = y;
+                self.reset_box_layout.overflow_x = x;
+                self.reset_box_layout.overflow_y = y;
             }
             "overflow-x" => {
-                self.overflow_x = apply_parsed!(self, parse_overflow(v));
-                self.scroll.forced[0] = v == "scroll";
+                self.reset_box_layout.overflow_x = apply_parsed!(self, parse_overflow(v));
+                self.reset_box_layout.scroll.forced[0] = v == "scroll";
             }
             "overflow-y" => {
-                self.overflow_y = apply_parsed!(self, parse_overflow(v));
-                self.scroll.forced[1] = v == "scroll";
+                self.reset_box_layout.overflow_y = apply_parsed!(self, parse_overflow(v));
+                self.reset_box_layout.scroll.forced[1] = v == "scroll";
             }
-            "opacity" => self.opacity = apply_parsed!(self, v.parse().ok()),
+            "opacity" => self.reset_effects.opacity = apply_parsed!(self, v.parse().ok()),
             // Поле обрезки: край, по которому режется вылезшее содержимое,
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
@@ -160,10 +160,10 @@ impl Computed {
 
             "z-index" => {
                 if v == "inherit" {
-                    self.inherit_bits |= inh::Z_INDEX;
+                    self.reset_cascade.inherit_bits |= inh::Z_INDEX;
                     return;
                 }
-                self.z_index = parsed_value!(
+                self.reset_positioned.z_index = parsed_value!(
                     self,
                     z_index::integer(v, vcx)
                         .map(Some)
@@ -174,7 +174,7 @@ impl Computed {
                 }
             }
             "float" => {
-                self.float = apply_parsed!(
+                self.reset_box_layout.float = apply_parsed!(
                     self,
                     match v {
                         "left" => Some(-1),
@@ -195,8 +195,8 @@ impl Computed {
                         _ => None,
                     }
                 );
-                self.clear_inherit = v == "inherit";
-                self.clear = parsed;
+                self.reset_context.clear_inherit = v == "inherit";
+                self.reset_box_layout.clear = parsed;
             }
             _ => *hit = false,
         }

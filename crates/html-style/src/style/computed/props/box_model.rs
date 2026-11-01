@@ -29,13 +29,13 @@ impl Computed {
         {
             // Место физического размера в каскаде: спор с логическим
             // размером решает `resolve_logical` (css-logical-1 §4).
-            self.side_order.size[i] = self.decl_order;
+            self.reset_cascade.side_order.size[i] = self.reset_cascade.decl_order;
             self.apply_physical_size(i, v, vcx);
             return;
         }
         match key {
             "box-sizing" => {
-                self.border_box = apply_parsed!(
+                self.reset_border.border_box = apply_parsed!(
                     self,
                     match v.to_ascii_lowercase().as_str() {
                         "border-box" => Some(true),

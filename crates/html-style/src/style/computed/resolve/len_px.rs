@@ -66,18 +66,19 @@ impl Computed {
     /// запасные 16), семейство (моноширинное — по языку), высота строки,
     /// если она уже в точках или кратна кеглю.
     pub fn font_cx(&self, vcx: ValueCx<'_>) -> FontCx<'_> {
-        let font_px = match self.font_size {
+        let font_px = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let family = match self.font_family.as_deref() {
+        let family = match self.inh.font.font_family.as_deref() {
             Some(f) => f,
-            None if self.monospace == Some(true) => {
-                vcx.doc.font_snapshot().mono_family(self.lang.as_deref())
-            }
+            None if self.inh.font.monospace == Some(true) => vcx
+                .doc
+                .font_snapshot()
+                .mono_family(self.inh.text_flow.lang.as_deref()),
             None => "",
         };
-        let line_px = match self.line_height {
+        let line_px = match self.inh.font.line_height {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(k * font_px),
             _ => None,
@@ -87,6 +88,8 @@ impl Computed {
             font_px,
             metric_px: self.used_font(font_px, vcx).size_px,
             units: self
+                .inh
+                .font
                 .font_size_adjust
                 .map(|_| self.glyph_units(family, font_px, vcx)),
             line_px,
@@ -211,9 +214,9 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Px(10.0));
-            with_inherited.font_family = Some("Ahem".into());
-            with_inherited.line_height = Some(Len::Pct(2.0));
+            with_inherited.inh.font.font_size = Some(Len::Px(10.0));
+            with_inherited.inh.font.font_family = Some("Ahem".into());
+            with_inherited.inh.font.line_height = Some(Len::Pct(2.0));
             with_inherited
         };
         let f = c.font_cx(vcx);

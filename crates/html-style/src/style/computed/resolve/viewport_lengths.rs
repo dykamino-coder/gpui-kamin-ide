@@ -20,42 +20,45 @@ impl Computed {
         };
         let sides = |s: &Sides| [&s.top, &s.right, &s.bottom, &s.left].into_iter().any(vp);
         [
-            &self.width,
-            &self.height,
-            &self.min_width,
-            &self.min_height,
-            &self.max_width,
-            &self.max_height,
-            &self.flex_basis,
-            &self.svg_path_length,
-            &self.font_size,
-            &self.radius.tl,
-            &self.radius.tr,
-            &self.radius.br,
-            &self.radius.bl,
+            &self.reset_box_layout.width,
+            &self.reset_box_layout.height,
+            &self.reset_box_layout.min_width,
+            &self.reset_box_layout.min_height,
+            &self.reset_box_layout.max_width,
+            &self.reset_box_layout.max_height,
+            &self.reset_flex.flex_basis,
+            &self.reset_svg_math.svg_path_length,
+            &self.inh.font.font_size,
+            &self.reset_border.radius.tl,
+            &self.reset_border.radius.tr,
+            &self.reset_border.radius.br,
+            &self.reset_border.radius.bl,
         ]
         .into_iter()
         .any(vp)
             || [
-                &self.padding,
-                &self.snap.padding,
-                &self.snap.margin,
-                &self.margin,
-                &self.border_width,
-                &self.inset,
+                &self.reset_box_layout.padding,
+                &self.reset_box_layout.snap.padding,
+                &self.reset_box_layout.snap.margin,
+                &self.reset_box_layout.margin,
+                &self.reset_border.border_width,
+                &self.reset_positioned.inset,
             ]
             .into_iter()
             .any(sides)
-            || self.gap.is_some_and(|(row, col)| vp(&row) || vp(&col))
+            || self
+                .reset_flex
+                .gap
+                .is_some_and(|(row, col)| vp(&row) || vp(&col))
             || self.has_decor_insets()
-            || self.radius_ell.is_some()
-            || self.gradient.is_some()
-            || self.gradient_current.is_some()
-            || self.bg_image.is_some()
-            || self.gradient_raw.is_some()
-            || self.bg_lists != Default::default()
-            || self.content.is_some()
-            || self.mask_image.is_some()
-            || self.border_image.is_some()
+            || self.reset_border.radius_ell.is_some()
+            || self.reset_background.gradient.is_some()
+            || self.reset_background.gradient_current.is_some()
+            || self.reset_background.bg_image.is_some()
+            || self.reset_background.gradient_raw.is_some()
+            || self.reset_background.bg_lists != Default::default()
+            || self.reset_generated.content.is_some()
+            || self.reset_mask.mask_image.is_some()
+            || self.reset_border.border_image.is_some()
     }
 }

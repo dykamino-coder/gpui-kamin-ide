@@ -15,11 +15,11 @@ impl Computed {
         // него самого единицы шрифта считаются от РОДИТЕЛЬСКОГО кегля.
         // Родовое `monospace` имени семейства не даёт, а меряться должно по
         // тому шрифту, которым текст в самом деле наберётся.
-        let family = self.font_family.clone().unwrap_or_else(|| {
-            if self.monospace == Some(true) {
+        let family = self.inh.font.font_family.clone().unwrap_or_else(|| {
+            if self.inh.font.monospace == Some(true) {
                 vcx.doc
                     .font_snapshot()
-                    .mono_family(self.lang.as_deref())
+                    .mono_family(self.inh.text_flow.lang.as_deref())
                     .to_string()
             } else {
                 String::new()
@@ -29,49 +29,49 @@ impl Computed {
         // с фазой шрифта корня, `computed_font_px`). Вычисленный кегль —
         // абсолютная длина, и шаг `larger`/`smaller` в нём уже учтён.
         if let Some(px) = self.computed_font_px(FontCx::new(&family, parent_font_px), vcx) {
-            self.font_size = Some(Len::Px(px));
-            self.font_size_step = 0;
+            self.inh.font.font_size = Some(Len::Px(px));
+            self.reset_cascade.font_size_step = 0;
         }
         self.compute_font_adjust(&family, vcx);
-        if self.font_size.is_none()
-            && (self.font_size_adjust.is_some()
+        if self.inh.font.font_size.is_none()
+            && (self.inh.font.font_size_adjust.is_some()
                 || self
                     .used_font_for(&family, parent_font_px, vcx)
                     .descriptor_scale
                     != 1.0)
         {
-            self.font_size = Some(Len::Px(parent_font_px));
+            self.inh.font.font_size = Some(Len::Px(parent_font_px));
         }
         // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля.
-        let own_px = match self.font_size {
+        let own_px = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => parent_font_px,
         };
         // Длины в единицах шрифта внутри transform/transform-origin: свой
         // кегль известен только теперь.
-        if self.transform_raw.is_some()
-            || self.transform_origin_raw.is_some()
-            || self.shadow_raw.is_some()
-            || self.text_shadow_raw.is_some()
+        if self.reset_transforms.transform_raw.is_some()
+            || self.reset_transforms.transform_origin_raw.is_some()
+            || self.reset_effects.shadow_raw.is_some()
+            || self.reset_text_box.text_shadow_raw.is_some()
         {
             let own_font = own_px;
             let [_, ch, ex, _] = self.glyph_units(&family, own_font, vcx);
-            if let Some(raw) = self.transform_raw.take() {
+            if let Some(raw) = self.reset_transforms.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform", &px, vcx);
             }
-            if let Some(raw) = self.transform_origin_raw.take() {
+            if let Some(raw) = self.reset_transforms.transform_origin_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform-origin", &px, vcx);
             }
-            if let Some(raw) = self.shadow_raw.take() {
+            if let Some(raw) = self.reset_effects.shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("box-shadow", &px, vcx);
             }
             // `text-shadow` наследуется ВЫЧИСЛЕННЫМ значением: `em` решается
             // кеглем того элемента, где тень объявлена, а потомки получают уже
             // точки (сырая запись есть только у своего стиля).
-            if let Some(raw) = self.text_shadow_raw.take() {
+            if let Some(raw) = self.reset_text_box.text_shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("text-shadow", &px, vcx);
             }
@@ -82,18 +82,23 @@ impl Computed {
             metric_px: self.used_font_for(&family, own_px, vcx).size_px,
             line_px: self.numeric_line_px(own_px),
             units: self
+                .inh
+                .font
                 .font_size_adjust
                 .map(|_| self.glyph_units(&family, own_px, vcx)),
         };
-        for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
-            .into_iter()
-            .flatten()
+        for list in {
+            let grid = &mut *self.reset_grid;
+            [grid.grid_tracks.as_mut(), grid.grid_rows.as_mut()]
+        }
+        .into_iter()
+        .flatten()
         {
             for t in list.iter_mut() {
                 t.resolve_font(grid_font, vcx);
             }
         }
-        let base = match self.font_size {
+        let base = match self.inh.font.font_size {
             Some(Len::Px(px)) => px,
             _ => parent_font_px,
         };
@@ -148,19 +153,23 @@ impl Computed {
                 to_px(one);
             }
         };
-        for l in [
-            &mut self.width,
-            &mut self.height,
-            &mut self.min_width,
-            &mut self.min_height,
-            &mut self.max_width,
-            &mut self.max_height,
-            &mut self.flex_basis,
-            &mut self.column_width,
-            &mut self.column_height,
-            &mut self.column_gap,
-            &mut self.svg_path_length,
-        ] {
+        for l in {
+            let group_0 = &mut *self.reset_box_layout;
+            let group_1 = &mut *self.reset_fragmentation;
+            [
+                &mut group_0.width,
+                &mut group_0.height,
+                &mut group_0.min_width,
+                &mut group_0.min_height,
+                &mut group_0.max_width,
+                &mut group_0.max_height,
+                &mut self.reset_flex.flex_basis,
+                &mut group_1.column_width,
+                &mut group_1.column_height,
+                &mut group_1.column_gap,
+                &mut self.reset_svg_math.svg_path_length,
+            ]
+        } {
             fix(l);
         }
         // Наследуемые длины — в общей группе: она копируется, только если
@@ -179,36 +188,39 @@ impl Computed {
             )
         };
         if [
-            &self.letter_spacing,
-            &self.word_spacing,
-            &self.text_indent,
-            &self.line_height,
+            &self.inh.text_flow.letter_spacing,
+            &self.inh.text_flow.word_spacing,
+            &self.inh.text_flow.text_indent,
+            &self.inh.font.line_height,
         ]
         .into_iter()
         .any(unresolved)
         {
-            let inh = &mut **self;
-            for l in [
-                &mut inh.letter_spacing,
-                &mut inh.word_spacing,
-                &mut inh.text_indent,
-                &mut inh.line_height,
-            ] {
+            let inh = &mut *self.inh;
+            for l in {
+                let group_0 = &mut *inh.text_flow;
+                [
+                    &mut group_0.letter_spacing,
+                    &mut group_0.word_spacing,
+                    &mut group_0.text_indent,
+                    &mut inh.font.line_height,
+                ]
+            } {
                 fix(l);
             }
         }
-        sides(&mut self.padding);
-        sides(&mut self.snap.padding);
-        sides(&mut self.snap.margin);
-        sides(&mut self.margin);
-        sides(&mut self.border_width);
-        sides(&mut self.inset);
+        sides(&mut self.reset_box_layout.padding);
+        sides(&mut self.reset_box_layout.snap.padding);
+        sides(&mut self.reset_box_layout.snap.margin);
+        sides(&mut self.reset_box_layout.margin);
+        sides(&mut self.reset_border.border_width);
+        sides(&mut self.reset_positioned.inset);
         self.resolve_radius_lengths(fix);
-        if let Some((row, col)) = self.gap.as_mut() {
+        if let Some((row, col)) = self.reset_flex.gap.as_mut() {
             fix(row);
             fix(col);
         }
-        if let Some(o) = self.outline.as_mut() {
+        if let Some(o) = self.reset_border.outline.as_mut() {
             fix(&mut o.width);
             fix(&mut o.offset);
         }

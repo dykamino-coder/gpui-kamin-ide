@@ -91,11 +91,16 @@ fn cascade_bookkeeping_does_not_accept_an_invalid_declaration() {
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parser = Computed {
-        declaration_parse: ParseResult::Invalid,
+        reset_cascade: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetCascade {
+                declaration_parse: ParseResult::Invalid,
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     parser.apply_one("color", "rainbow", vcx);
-    assert_eq!(parser.declaration_parse, ParseResult::Invalid);
+    assert_eq!(parser.reset_cascade.declaration_parse, ParseResult::Invalid);
     for value in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         assert_eq!(
             Computed::declaration_result("color", value, vcx),

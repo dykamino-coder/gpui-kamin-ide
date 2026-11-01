@@ -107,7 +107,7 @@ fn background_expression_inherits_with_the_child_color() {
     );
     let parent = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &parent, vcx);
     assert_eq!(
-        parent.background,
+        parent.reset_background.background,
         Some(Color {
             r: 0.0,
             g: 0.0,
@@ -120,7 +120,7 @@ fn background_expression_inherits_with_the_child_color() {
     child.apply_one("background-color", "inherit", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
     assert_eq!(
-        child.background,
+        child.reset_background.background,
         Some(Color {
             r: 1.0,
             g: 0.0,

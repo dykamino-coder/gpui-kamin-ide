@@ -17,25 +17,25 @@ fn layout_edits_do_not_change_a_shared_cascade() {
         .style;
     let mut copy = original.clone();
     assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
-    copy.used_mut().width = Some(Len::Px(100.0));
-    assert_eq!(original.used().width, Some(Len::Pct(0.5)));
-    assert_eq!(copy.used().width, Some(Len::Px(100.0)));
+    copy.used_mut().reset_box_layout.width = Some(Len::Px(100.0));
+    assert_eq!(original.used().reset_box_layout.width, Some(Len::Pct(0.5)));
+    assert_eq!(copy.used().reset_box_layout.width, Some(Len::Px(100.0)));
     // Вычисленная стадия хранит материализованный стиль без used-значения.
-    assert_eq!(copy.computed().width, Some(Len::Pct(0.5)));
+    assert_eq!(copy.computed().reset_box_layout.width, Some(Len::Pct(0.5)));
     // Каскадный и материализованный вычисленный стили не изменились.
     assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
     assert!(Rc::ptr_eq(
         &original.slot().any().unwrap(),
         &copy.slot().any().unwrap()
     ));
-    assert_eq!(copy.cascaded().width, Some(Len::Pct(0.5)));
+    assert_eq!(copy.cascaded().reset_box_layout.width, Some(Len::Pct(0.5)));
 }
 
 #[test]
 fn a_style_without_materialization_has_one_stage() {
     let mut style = SharedStyle::from(Computed::default());
-    style.used_mut().width = Some(Len::Px(10.0));
-    assert_eq!(style.cascaded().width, Some(Len::Px(10.0)));
+    style.used_mut().reset_box_layout.width = Some(Len::Px(10.0));
+    assert_eq!(style.cascaded().reset_box_layout.width, Some(Len::Px(10.0)));
     assert!(style.used.is_none());
 }
 
@@ -46,21 +46,41 @@ fn element_copies_share_pseudo_layers_and_keyframes() {
     node.first_letter = node.hover.clone();
     node.first_line = node.hover.clone();
     node.anim = Some(Rc::new(vec![(0.0, Computed::default())]));
-    node.style.cascaded_mut().width = Some(Len::Pct(0.5));
+    node.style.cascaded_mut().reset_box_layout.width = Some(Len::Pct(0.5));
     let mut copy = node.clone();
-    copy.style.used_mut().width = Some(Len::Px(100.0));
-    assert_eq!(node.style.used().width, Some(Len::Pct(0.5)));
+    copy.style.used_mut().reset_box_layout.width = Some(Len::Px(100.0));
+    assert_eq!(
+        node.style.used().reset_box_layout.width,
+        Some(Len::Pct(0.5))
+    );
     assert!(Rc::ptr_eq(
         node.anim.as_ref().unwrap(),
         copy.anim.as_ref().unwrap()
     ));
-    copy.hover.as_mut().unwrap().cascaded_mut().font_size = Some(Len::Px(32.0));
-    assert!(node.hover.as_ref().unwrap().cascaded().font_size.is_none());
+    copy.hover
+        .as_mut()
+        .unwrap()
+        .cascaded_mut()
+        .inh
+        .font
+        .font_size = Some(Len::Px(32.0));
+    assert!(
+        node.hover
+            .as_ref()
+            .unwrap()
+            .cascaded()
+            .inh
+            .font
+            .font_size
+            .is_none()
+    );
     assert!(
         copy.first_letter
             .as_ref()
             .unwrap()
             .cascaded()
+            .inh
+            .font
             .font_size
             .is_none()
     );
@@ -71,7 +91,12 @@ fn element_copies_share_pseudo_layers_and_keyframes() {
 fn layout_box_names_its_origin_and_keeps_the_box_values() {
     use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
     let boxed = crate::style::computed::BoxStyle::new(Computed {
-        width: Some(Len::Px(7.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(7.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     let mut moved = crate::dom::table_boxes::anon_element("div", vec![]);
@@ -82,7 +107,10 @@ fn layout_box_names_its_origin_and_keeps_the_box_values() {
     // The box values are shared, not copied, and publish no computed stage.
     assert!(Rc::ptr_eq(&moved.style.cascaded, boxed.style_rc()));
     assert!(moved.style.published().is_none());
-    assert_eq!(moved.style.used().width, Some(Len::Px(7.0)));
+    assert_eq!(
+        moved.style.used().reset_box_layout.width,
+        Some(Len::Px(7.0))
+    );
     // Copies of the element keep the origin; author elements have none.
     assert_eq!(moved.clone().marks.box_origin, Some(BoxOrigin::Marker));
     let parsed = crate::dom::parse("<p>a</p>", "");

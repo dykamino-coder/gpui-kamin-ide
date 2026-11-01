@@ -79,21 +79,27 @@ impl Gradient {
 
 impl Computed {
     pub fn resolve_gradient_lengths(&mut self, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
-        let size = match self.bg_size {
+        let size = match self.reset_background.bg_size {
             BgSize::Fixed(w, h) => [w, h],
             _ => [None, None],
         };
-        let uses_line = [self.bg_pos.x, self.bg_pos.y]
-            .into_iter()
-            .chain(size)
-            .flatten()
-            .any(|l| l.needs_line_height(vcx))
-            || self.bg_lists.needs_line_height(vcx)
+        let uses_line = [
+            self.reset_background.bg_pos.x,
+            self.reset_background.bg_pos.y,
+        ]
+        .into_iter()
+        .chain(size)
+        .flatten()
+        .any(|l| l.needs_line_height(vcx))
+            || self.reset_background.bg_lists.needs_line_height(vcx)
             || self.image_operands().any(|i| i.needs_line_height(vcx))
-            || [self.gradient.as_ref(), self.gradient_current.as_ref()]
-                .into_iter()
-                .flatten()
-                .any(|g| g.needs_line_height(vcx));
+            || [
+                self.reset_background.gradient.as_ref(),
+                self.reset_background.gradient_current.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|g| g.needs_line_height(vcx));
         let line = if uses_line {
             self.image_font_metrics(vcx).3
         } else {
@@ -105,21 +111,24 @@ impl Computed {
                 length.resolve_line_height(line, vcx);
             }
         };
-        for gradient in [self.gradient.as_mut(), self.gradient_current.as_mut()]
-            .into_iter()
-            .flatten()
+        for gradient in {
+            let group = &mut *self.reset_background;
+            [group.gradient.as_mut(), group.gradient_current.as_mut()]
+        }
+        .into_iter()
+        .flatten()
         {
             gradient.resolve_lengths(&fix, vcx);
         }
         // Позиция и размер вычисляются и без изображения (css-backgrounds-3
         // §2.6, §2.9); процент остаётся для области позиционирования.
-        fix(&mut self.bg_pos.x);
-        fix(&mut self.bg_pos.y);
-        if let BgSize::Fixed(w, h) = &mut self.bg_size {
+        fix(&mut self.reset_background.bg_pos.x);
+        fix(&mut self.reset_background.bg_pos.y);
+        if let BgSize::Fixed(w, h) = &mut self.reset_background.bg_size {
             fix(w);
             fix(h);
         }
-        self.bg_lists.resolve_lengths(&fix, vcx);
+        self.reset_background.bg_lists.resolve_lengths(&fix, vcx);
         for image in self.image_operands() {
             image.resolve_lengths(&fix, vcx);
         }

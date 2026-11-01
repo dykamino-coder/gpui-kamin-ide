@@ -128,7 +128,7 @@ fn disclosure_context_survives_extends_and_fallback() {
         let mut with_inherited = crate::style::computed::Computed {
             ..Default::default()
         };
-        with_inherited.rtl = Some(true);
+        with_inherited.inh.writing.rtl = Some(true);
         with_inherited
     };
     let rtl = Context::new(&style, Context::default());
@@ -154,11 +154,12 @@ fn disclosure_context_survives_extends_and_fallback() {
         .unwrap(),
         "◂"
     );
-    style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-        true,
-        style.wm().block_rl(),
-        style.wm().sideways(),
-    ));
+    style.inh.writing.writing_mode =
+        Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            style.wm().block_rl(),
+            style.wm().sideways(),
+        ));
     let vertical = Context::new(&style, Context::default());
     assert_eq!(
         super::generate(

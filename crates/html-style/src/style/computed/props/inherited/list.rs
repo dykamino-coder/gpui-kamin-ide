@@ -116,22 +116,22 @@ impl Computed {
         match id {
             LonghandId::ListStyleType => {
                 if let Some(kind) = marker_type(v) {
-                    self.list_style_type = Some(kind);
+                    self.inh.table_list.list_style_type = Some(kind);
                 }
             }
             LonghandId::ListStylePosition => {
                 if let Some(inside) = position(v) {
-                    self.list_style_inside = Some(inside);
+                    self.inh.table_list.list_style_inside = Some(inside);
                 }
             }
             LonghandId::ListStyleImage => {
                 if let Some(img) = image(v, vcx) {
-                    self.list_style_image = Some(img);
+                    self.inh.table_list.list_style_image = Some(img);
                 }
             }
             LonghandId::Quotes => {
                 if let Some(q) = quotes(v) {
-                    self.quotes = q;
+                    self.reset_generated.quotes = q;
                 }
             }
             _ => {}
@@ -141,11 +141,11 @@ impl Computed {
     pub(super) fn inherit_list(&mut self, id: LonghandId) {
         match id {
             LonghandId::ListStyleType => {
-                self.list_style_type = None;
+                self.inh.table_list.list_style_type = None;
             }
-            LonghandId::ListStylePosition => self.list_style_inside = None,
-            LonghandId::ListStyleImage => self.list_style_image = None,
-            LonghandId::Quotes => self.quotes = None,
+            LonghandId::ListStylePosition => self.inh.table_list.list_style_inside = None,
+            LonghandId::ListStyleImage => self.inh.table_list.list_style_image = None,
+            LonghandId::Quotes => self.reset_generated.quotes = None,
             _ => {}
         }
     }

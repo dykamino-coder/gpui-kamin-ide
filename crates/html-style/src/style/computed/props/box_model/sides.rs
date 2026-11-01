@@ -51,11 +51,20 @@ impl Computed {
         if !inherit && len.is_none() {
             return;
         }
-        let order = self.decl_order;
+        let order = self.reset_cascade.decl_order;
         let (sides, orders) = match group {
-            BoxGroup::Margin => (&mut self.margin, &mut self.side_order.margin),
-            BoxGroup::Padding => (&mut self.padding, &mut self.side_order.padding),
-            _ => (&mut self.inset, &mut self.side_order.inset),
+            BoxGroup::Margin => (
+                &mut self.reset_box_layout.margin,
+                &mut self.reset_cascade.side_order.margin,
+            ),
+            BoxGroup::Padding => (
+                &mut self.reset_box_layout.padding,
+                &mut self.reset_cascade.side_order.padding,
+            ),
+            _ => (
+                &mut self.reset_positioned.inset,
+                &mut self.reset_cascade.side_order.inset,
+            ),
         };
         orders[side] = order;
         if let Some(len) = len {
@@ -73,7 +82,7 @@ impl Computed {
         vcx: ValueCx<'_>,
     ) {
         let inherit = v == "inherit";
-        let order = self.decl_order;
+        let order = self.reset_cascade.decl_order;
         if group == BoxGroup::Size {
             let parsed = super::super::calc_size::ParsedSize::parse(v, i >= 4, vcx);
             let Some(parsed) = parsed

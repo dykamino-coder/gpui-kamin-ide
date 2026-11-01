@@ -53,7 +53,7 @@ impl WritingMode {
 
     pub fn of(style: &Computed) -> Self {
         Self {
-            turned: style.turned_line,
+            turned: style.reset_text_box.turned_line,
             ..WritingProps::of(style).wm()
         }
     }
@@ -191,13 +191,16 @@ impl Computed {
     /// The `writing-mode` this style typesets with, declared or laid flat (`None`: not
     /// declared anywhere up the merge chain).
     pub fn flow_mode(&self) -> Option<WritingModeKw> {
-        self.writing_mode.or(self.flat_mode)
+        self.inh.writing.writing_mode.or(self.inh.writing.flat_mode)
     }
 
     /// Whether a `writing-mode` applies to this style and is vertical (`None`: none declared
     /// on the own style, or up the merge chain of a merged one).
     pub fn vertical_decl(&self) -> Option<bool> {
-        self.writing_mode.map(WritingModeKw::is_vertical)
+        self.inh
+            .writing
+            .writing_mode
+            .map(WritingModeKw::is_vertical)
     }
 
     /// Like `vertical_decl`, for the block flow of the mode typeset (laid flat included).

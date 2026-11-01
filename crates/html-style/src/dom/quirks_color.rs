@@ -47,8 +47,8 @@ fn apply(
     color: Color,
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
-        if e.tag == "table" && e.style.cascaded().color_initial {
-            e.style.cascaded_mut().color = Some(color);
+        if e.tag == "table" && e.style.cascaded().reset_cascade.color_initial {
+            e.style.cascaded_mut().inh.ui.color = Some(color);
         }
         Some(())
     })

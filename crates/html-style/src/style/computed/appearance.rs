@@ -37,7 +37,7 @@ impl Appearance {
 impl crate::style::computed::Computed {
     /// `appearance: none` — the control is rendered as a primitive CSS box.
     pub fn appearance_none(&self) -> bool {
-        self.appearance == Some(Appearance::None)
+        self.reset_context.appearance == Some(Appearance::None)
     }
 }
 
@@ -74,7 +74,7 @@ mod tests {
         c.apply_one("appearance", "junk", vcx);
         assert!(c.appearance_none(), "invalid value keeps the previous one");
         c.apply_one("appearance", "auto", vcx);
-        assert_eq!(c.appearance, Some(Appearance::Auto));
+        assert_eq!(c.reset_context.appearance, Some(Appearance::Auto));
         assert!(!c.appearance_none());
     }
 }

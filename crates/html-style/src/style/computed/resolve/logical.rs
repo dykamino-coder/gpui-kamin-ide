@@ -21,7 +21,9 @@ impl Computed {
     /// Место под логические значения — заводится по первому обращению: у
     /// подавляющего большинства узлов их нет вовсе.
     pub fn logical(&mut self) -> &mut Logical {
-        self.logical.get_or_insert_with(Default::default)
+        self.reset_context
+            .logical
+            .get_or_insert_with(Default::default)
     }
 
     /// Разложить сохранённые логические значения по `wm` — унаследованному письму
@@ -35,7 +37,7 @@ impl Computed {
         is_cell: bool,
         vcx: ValueCx<'_>,
     ) {
-        let Some(logical) = self.logical.take() else {
+        let Some(logical) = self.reset_context.logical.take() else {
             return;
         };
         let set_ci = |slot: &mut Option<f32>, val: Option<f32>| {
@@ -44,11 +46,23 @@ impl Computed {
             }
         };
         if wm.vertical() {
-            set_ci(&mut self.contain_intrinsic.1, logical.ci_inline);
-            set_ci(&mut self.contain_intrinsic.0, logical.ci_block);
+            set_ci(
+                &mut self.reset_context.contain_intrinsic.1,
+                logical.ci_inline,
+            );
+            set_ci(
+                &mut self.reset_context.contain_intrinsic.0,
+                logical.ci_block,
+            );
         } else {
-            set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
-            set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
+            set_ci(
+                &mut self.reset_context.contain_intrinsic.0,
+                logical.ci_inline,
+            );
+            set_ci(
+                &mut self.reset_context.contain_intrinsic.1,
+                logical.ci_block,
+            );
         }
         // Логический размер i (inline, block, min-inline, min-block,
         // max-inline, max-block) → физический (width, height, min-width,
@@ -60,11 +74,11 @@ impl Computed {
                 continue;
             };
             let phys = if rotate { i ^ 1 } else { i };
-            if order < self.side_order.size[phys] {
+            if order < self.reset_cascade.side_order.size[phys] {
                 continue;
             }
             if i == 0 && wm.vertical() && !rotate {
-                self.width_from_inline = true;
+                self.reset_box_layout.width_from_inline = true;
             }
             let value = [
                 logical.inline_size,
@@ -90,14 +104,23 @@ impl Computed {
                     continue;
                 };
                 let (sides, orders) = match group {
-                    BoxGroup::Padding => (&mut self.padding, &self.side_order.padding),
-                    BoxGroup::Margin => (&mut self.margin, &self.side_order.margin),
-                    _ => (&mut self.inset, &self.side_order.inset),
+                    BoxGroup::Padding => (
+                        &mut self.reset_box_layout.padding,
+                        &self.reset_cascade.side_order.padding,
+                    ),
+                    BoxGroup::Margin => (
+                        &mut self.reset_box_layout.margin,
+                        &self.reset_cascade.side_order.margin,
+                    ),
+                    _ => (
+                        &mut self.reset_positioned.inset,
+                        &self.reset_cascade.side_order.inset,
+                    ),
                 };
                 if order < orders[side] {
                     continue;
                 }
-                self.inherit_longhands.set(
+                self.reset_cascade.inherit_longhands.set(
                     crate::style::css::LonghandId::physical(group, side),
                     from.inherit[lside],
                 );
@@ -128,21 +151,21 @@ impl Computed {
                 "border-left-color",
             ],
         ];
-        let current = self.decl_order;
+        let current = self.reset_cascade.decl_order;
         for (part, names) in NAMES.iter().enumerate() {
             for (lside, side) in [is, ie, bs, be].into_iter().enumerate() {
                 let side = side as usize;
                 let Some((order, value)) = &logical.border[part][lside] else {
                     continue;
                 };
-                if *order < self.side_order.border[part][side] {
+                if *order < self.reset_cascade.side_order.border[part][side] {
                     continue;
                 }
-                self.decl_order = *order;
+                self.reset_cascade.decl_order = *order;
                 self.apply_one(names[side], value, vcx);
             }
         }
-        self.decl_order = current;
+        self.reset_cascade.decl_order = current;
         self.settle_border_widths();
     }
 
@@ -151,19 +174,19 @@ impl Computed {
     /// пометки физического объявления (`stretch`, `fit-content(N)`,
     /// `calc-size()`, `inherit`) уходят вместе с ним.
     fn set_physical_size(&mut self, i: usize, value: Option<Len>, inherit: bool) {
-        self.stretch_size[[0, 1, 2, 4, 3, 5][i]] = false;
-        self.calc_size_basis[i] = None;
+        self.reset_box_layout.stretch_size[[0, 1, 2, 4, 3, 5][i]] = false;
+        self.reset_box_layout.calc_size_basis[i] = None;
         match i {
-            0..4 => self.calc_size[i] = None,
-            _ => self.calc_size_max[i - 4] = None,
+            0..4 => self.reset_box_layout.calc_size[i] = None,
+            _ => self.reset_box_layout.calc_size_max[i - 4] = None,
         }
         match i {
-            0 => self.fit_arg[0] = None,
-            2 => self.fit_arg[1] = None,
-            4 => self.fit_arg[2] = None,
+            0 => self.reset_context.fit_arg[0] = None,
+            2 => self.reset_context.fit_arg[1] = None,
+            4 => self.reset_context.fit_arg[2] = None,
             _ => {}
         }
-        self.inherit_longhands.set(
+        self.reset_cascade.inherit_longhands.set(
             crate::style::css::LonghandId::physical(BoxGroup::Size, i),
             inherit,
         );
@@ -171,12 +194,12 @@ impl Computed {
             return;
         }
         *match i {
-            0 => &mut self.width,
-            1 => &mut self.height,
-            2 => &mut self.min_width,
-            3 => &mut self.min_height,
-            4 => &mut self.max_width,
-            _ => &mut self.max_height,
+            0 => &mut self.reset_box_layout.width,
+            1 => &mut self.reset_box_layout.height,
+            2 => &mut self.reset_box_layout.min_width,
+            3 => &mut self.reset_box_layout.min_height,
+            4 => &mut self.reset_box_layout.max_width,
+            _ => &mut self.reset_box_layout.max_height,
         } = value;
     }
 }

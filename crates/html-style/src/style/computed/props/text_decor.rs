@@ -14,7 +14,7 @@ impl Computed {
                 let t = v.trim().to_ascii_lowercase();
                 if t == "auto" {
                     self.accept_declaration();
-                    self.td_inset = Some(None);
+                    self.reset_text_box.td_inset = Some(None);
                     return;
                 }
                 let words = crate::style::css::value_tokens::split_top(&t);
@@ -25,7 +25,7 @@ impl Computed {
                 if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {
                     return;
                 }
-                self.td_inset = accept_parsed!(
+                self.reset_text_box.td_inset = accept_parsed!(
                     self,
                     Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]))
                 );

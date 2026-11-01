@@ -11,7 +11,8 @@ use crate::style::computed::{Appearance, Computed};
 use crate::style::css::{Rule, Selector, parse_decls};
 
 pub(super) fn rule(tag: &str, attrs: &[(String, String)], style: &Computed) -> Option<Rule> {
-    if style.appearance != Some(Appearance::Base) || !matches!(tag, "input" | "textarea" | "button")
+    if style.reset_context.appearance != Some(Appearance::Base)
+        || !matches!(tag, "input" | "textarea" | "button")
     {
         return None;
     }
@@ -85,7 +86,12 @@ mod tests {
             "input",
             &[],
             &Computed {
-                appearance: Some(Appearance::Base),
+                reset_context: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetContext {
+                        appearance: Some(Appearance::Base),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             },
         )
@@ -101,11 +107,11 @@ mod tests {
         let rules = vec![&author, &base];
         let style = Computed::resolve_with_vars(&rules, &parse_decls(""), &Default::default(), vcx);
         assert_eq!(
-            style.color,
+            style.inh.ui.color,
             crate::style::values::value::Color::parse("red", vcx)
         );
         assert_eq!(
-            style.padding.left,
+            style.reset_box_layout.padding.left,
             Some(crate::style::values::value::Len::Px(7.))
         );
         assert!(rule("input", &[], &Computed::default()).is_none());

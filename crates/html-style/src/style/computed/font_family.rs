@@ -9,9 +9,9 @@ use super::{Computed, family_name_ok, generic_family, is_generic, is_quote};
 
 pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'_>) {
     if v.eq_ignore_ascii_case("inherit") {
-        style.font_family = None;
-        style.font_families = None;
-        style.monospace = None;
+        style.inh.font.font_family = None;
+        style.inh.font.font_families = None;
+        style.inh.font.monospace = None;
         return;
     }
     // Имя семейства — либо строка в кавычках, либо ряд
@@ -22,11 +22,11 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
     if !v.split(',').all(|part| family_name_ok(part.trim())) {
         return;
     }
-    style.font_families = accept_parsed!(style, Some(families(v, vcx)));
+    style.inh.font.font_families = accept_parsed!(style, Some(families(v, vcx)));
     let lower = v.to_ascii_lowercase();
     // Моноширинный запрос несёт смысл (код) и решает выбор
     // встроенного шрифта, если названного в системе нет.
-    style.monospace = Some(lower.contains("mono") || lower.contains("courier"));
+    style.inh.font.monospace = Some(lower.contains("mono") || lower.contains("courier"));
     // Родовое имя — не пустое место: браузер подставляет за него
     // конкретный системный шрифт, и без подстановки разметка
     // набиралась умолчанием движка, шире браузерного. Берётся то
@@ -97,7 +97,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
         .map(family_name)
         .collect();
     if let Some(found) = registry.first_available_named(named.iter().map(String::as_str)) {
-        style.font_family = Some(found.to_string());
+        style.inh.font.font_family = Some(found.to_string());
         return;
     }
     // Ни одно имя не доступно. Первое родовое имя списка — его
@@ -113,17 +113,17 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
     // Пока список установленных не снят (`fonts_known`), о
     // доступности судить нечем — ниже прежняя ветка.
     if registry.fonts_known() && lower.trim() != "inherit" {
-        style.font_family = match first_generic.as_deref() {
+        style.inh.font.font_family = match first_generic.as_deref() {
             Some("monospace" | "ui-monospace") => None,
             Some(_) => generic.map(str::to_string),
             None => {
-                style.monospace = Some(false);
+                style.inh.font.monospace = Some(false);
                 Some(String::new())
             }
         };
         return;
     }
-    style.font_family = v
+    style.inh.font.font_family = v
         .split(',')
         .map(|f| f.trim().trim_matches(is_quote))
         .find(|f| {
@@ -172,12 +172,16 @@ fn family_name(raw: &str) -> String {
 }
 
 pub fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) {
-    target.font_family = own
+    target.inh.font.font_family = own
+        .inh
+        .font
         .font_family
         .clone()
-        .or_else(|| parent.font_family.clone());
-    target.font_families = own
+        .or_else(|| parent.inh.font.font_family.clone());
+    target.inh.font.font_families = own
+        .inh
+        .font
         .font_families
         .clone()
-        .or_else(|| parent.font_families.clone());
+        .or_else(|| parent.inh.font.font_families.clone());
 }

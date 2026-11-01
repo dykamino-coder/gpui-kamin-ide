@@ -178,8 +178,13 @@ mod tests {
     #[test]
     fn a_stretched_vertical_flex_item_takes_the_row_height() {
         let row = Computed {
-            display: Some(Display::Flex),
-            height: Some(Len::Px(100.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    display: Some(Display::Flex),
+                    height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         let mut item = vertical();

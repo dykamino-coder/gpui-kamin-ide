@@ -196,18 +196,18 @@ pub(super) fn colors(
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
         // Любое авторское объявление `background-color` (в том числе
         // начальное `transparent`, которое хранится пустым) сильнее подсказки.
-        && !style.bg_explicit
-        && style.background.is_none()
-        && style.gradient.is_none()
+        && !style.reset_background.bg_explicit
+        && style.reset_background.background.is_none()
+        && style.reset_background.gradient.is_none()
         && let Some(c) = color_of("bgcolor")
     {
         style.set_background_color(Some(c.into()));
     }
     if tag == "body"
-        && style.color.is_none()
+        && style.inh.ui.color.is_none()
         && let Some(c) = color_of("text")
     {
-        style.color = Some(c);
+        style.inh.ui.color = Some(c);
     }
 }
 

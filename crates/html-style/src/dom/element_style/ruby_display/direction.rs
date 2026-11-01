@@ -19,7 +19,7 @@ use crate::style::select::Ancestor;
 pub fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     let Some((_, value)) = attrs.iter().find(|(k, _)| k == "dir") else {
         if tag == "bdo" {
-            style.bidi_override = Some(true);
+            style.reset_cascade.bidi_override = Some(true);
         }
         return;
     };
@@ -33,25 +33,28 @@ pub fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String
     // `<span dir=rtl>` в rtl-абзаце не перемешивается с соседним ltr-текстом
     // (`text-overflow-string-007/008-ref`). `auto` пока остаётся прежним
     // встраиванием: сторону ему выбирает отрисовка.
-    let explicit = style.bidi_embed.is_some() || style.bidi_isolate.is_some();
+    let explicit =
+        style.reset_cascade.bidi_embed.is_some() || style.reset_cascade.bidi_isolate.is_some();
     match value.to_ascii_lowercase().as_str() {
-        "rtl" | "ltr" if !explicit && tag != "bdo" => style.bidi_isolate = Some(true),
-        "rtl" | "ltr" | "auto" if style.bidi_embed.is_none() => style.bidi_embed = Some(true),
+        "rtl" | "ltr" if !explicit && tag != "bdo" => style.reset_cascade.bidi_isolate = Some(true),
+        "rtl" | "ltr" | "auto" if style.reset_cascade.bidi_embed.is_none() => {
+            style.reset_cascade.bidi_embed = Some(true)
+        }
         _ => {}
     }
     match value.to_ascii_lowercase().as_str() {
         "rtl" => {
-            if style.rtl.is_none() {
-                style.rtl = Some(true)
+            if style.inh.writing.rtl.is_none() {
+                style.inh.writing.rtl = Some(true)
             }
         }
-        "ltr" if style.rtl.is_none() => style.rtl = Some(false),
+        "ltr" if style.inh.writing.rtl.is_none() => style.inh.writing.rtl = Some(false),
         // `dir="auto"` — сторону выбирает первый сильный знак текста; это
         // делает разбор двунаправленности сам, поэтому здесь ничего не ставим.
         _ => {}
     }
     if tag == "bdo" {
-        style.bidi_override = Some(true);
+        style.reset_cascade.bidi_override = Some(true);
     }
 }
 
@@ -75,9 +78,9 @@ pub fn inlinify_in_ruby<'a>(
     ancestors: impl Iterator<Item = &'a Ancestor>,
 ) {
     // Вне потока коробка блокифицируется (§9.7) и инлайнизации не подлежит.
-    if style.float.is_some_and(|f| f != 0)
+    if style.reset_box_layout.float.is_some_and(|f| f != 0)
         || matches!(
-            style.position,
+            style.reset_positioned.position,
             Some(Position::Absolute) | Some(Position::Fixed)
         )
     {
@@ -96,7 +99,7 @@ pub fn inlinify_in_ruby<'a>(
     if !inside {
         return;
     }
-    style.display = match style.display {
+    style.reset_box_layout.display = match style.reset_box_layout.display {
         Some(Display::Block) | Some(Display::ListItem) => Some(Display::InlineBlock),
         Some(Display::Table) => Some(Display::InlineTable),
         Some(Display::Flex) => Some(Display::InlineFlex),

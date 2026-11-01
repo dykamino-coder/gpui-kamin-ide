@@ -12,7 +12,7 @@ pub(super) fn apply(
     f: Filter,
     operations: &[Filter],
 ) {
-    if own.gradient.is_none()
+    if own.reset_background.gradient.is_none()
         || c.layers.is_some()
         || operations.iter().all(|op| op.color_matrix().is_none()) && f.color_matrix().is_none()
     {

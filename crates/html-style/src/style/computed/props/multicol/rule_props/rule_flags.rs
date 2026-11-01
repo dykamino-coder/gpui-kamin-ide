@@ -17,24 +17,29 @@ impl Computed {
             "column-rule-visibility-items" | "row-rule-visibility-items" => {
                 let code = parsed_value!(self, super::super::values::visibility_items(v));
                 if key == "column-rule-visibility-items" {
-                    self.column_rule_visibility = Some(code);
+                    self.reset_fragmentation.column_rule_visibility = Some(code);
                 } else {
-                    self.row_rule_visibility = Some(code);
+                    self.reset_fragmentation.row_rule_visibility = Some(code);
                 }
             }
             // §overlap: порядок краски пересекающихся линеек.
             "rule-overlap" => match v.trim() {
-                "row-over-column" => self.rule_column_over_row = accept_parsed!(self, Some(false)),
-                "column-over-row" => self.rule_column_over_row = accept_parsed!(self, Some(true)),
+                "row-over-column" => {
+                    self.reset_fragmentation.rule_column_over_row =
+                        accept_parsed!(self, Some(false))
+                }
+                "column-over-row" => {
+                    self.reset_fragmentation.rule_column_over_row = accept_parsed!(self, Some(true))
+                }
                 _ => {}
             },
             // §break: `none` 0, `normal` 1, `intersection` 2.
             "column-rule-break" | "row-rule-break" => {
                 let code = parsed_value!(self, super::super::values::rule_break(v));
                 if key == "column-rule-break" {
-                    self.column_rule_break = Some(code);
+                    self.reset_fragmentation.column_rule_break = Some(code);
                 } else {
-                    self.row_rule_break = Some(code);
+                    self.reset_fragmentation.row_rule_break = Some(code);
                 }
             }
             // §margin-trim: `none | block | [ block-start || block-end ]`.
@@ -59,7 +64,7 @@ impl Computed {
                 }
                 if ok {
                     self.accept_declaration();
-                    self.margin_trim = bits;
+                    self.reset_fragmentation.margin_trim = bits;
                 }
             }
             _ => *hit = false,

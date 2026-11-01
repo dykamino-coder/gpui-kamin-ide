@@ -34,13 +34,16 @@ pub(super) fn resolve_display_inherit(
     parent: DisplayOf,
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::preorder(admission, nodes, parent, |el, parent| {
-        if el.style.cascaded().inherit_bits & crate::style::computed::inh::DISPLAY != 0 {
-            el.style.cascaded_mut().display = parent.0;
-            el.style.cascaded_mut().inline_display = parent.1;
-            el.style.cascaded_mut().row_group_kind = parent.2;
-            el.style.cascaded_mut().col_role = parent.3;
-            el.style.cascaded_mut().is_caption = parent.4;
-            el.style.cascaded_mut().inherit_bits &= !crate::style::computed::inh::DISPLAY;
+        if el.style.cascaded().reset_cascade.inherit_bits & crate::style::computed::inh::DISPLAY
+            != 0
+        {
+            el.style.cascaded_mut().reset_box_layout.display = parent.0;
+            el.style.cascaded_mut().reset_context.inline_display = parent.1;
+            el.style.cascaded_mut().reset_context.row_group_kind = parent.2;
+            el.style.cascaded_mut().reset_context.col_role = parent.3;
+            el.style.cascaded_mut().reset_context.is_caption = parent.4;
+            el.style.cascaded_mut().reset_cascade.inherit_bits &=
+                !crate::style::computed::inh::DISPLAY;
         }
         let own = display_of(el);
         Some(own)
@@ -50,13 +53,13 @@ pub(super) fn resolve_display_inherit(
 fn display_of(el: &Element) -> DisplayOf {
     let style = el.style.cascaded();
     let own = (
-        style.display,
-        style.inline_display,
-        style.row_group_kind,
-        style.col_role,
-        style.is_caption,
+        style.reset_box_layout.display,
+        style.reset_context.inline_display,
+        style.reset_context.row_group_kind,
+        style.reset_context.col_role,
+        style.reset_context.is_caption,
     );
-    if style.display.is_some() {
+    if style.reset_box_layout.display.is_some() {
         return own;
     }
     // CSS 2.1 section 6.2.1 inherits the computed value, not the absence

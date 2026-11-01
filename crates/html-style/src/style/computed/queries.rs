@@ -10,9 +10,11 @@ impl Computed {
     /// Активный кламп строк: стандартный `line-clamp` всегда, а
     /// `-webkit-line-clamp` — только в паре с `-webkit-box` по вертикали.
     pub fn clamp_lines(&self) -> Option<u32> {
-        let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
-        self.line_clamp
-            .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
+        let legacy_ok = self.reset_flex.webkit_box == Some(true)
+            && self.inh.text_flow.webkit_box_vertical == Some(true);
+        self.reset_fragmentation
+            .line_clamp
+            .filter(|_| self.inh.text_flow.clamp_legacy != Some(true) || legacy_ok)
             .filter(|_| self.clamp_block_container())
     }
 
@@ -21,7 +23,8 @@ impl Computed {
     /// vertical`; otherwise it lays its children out like a flex row
     /// (`line-clamp-029`).
     pub fn clamp_block_container(&self) -> bool {
-        self.webkit_box != Some(true) || self.webkit_box_vertical == Some(true)
+        self.reset_flex.webkit_box != Some(true)
+            || self.inh.text_flow.webkit_box_vertical == Some(true)
     }
 
     /// Обрезка по высоте коробки: `max-lines` с `auto` (начальное значение)
@@ -29,15 +32,17 @@ impl Computed {
     /// `-webkit-box` по вертикали (css-overflow-4 §5.3-5.4). `line-clamp: 4`
     /// режет только по строкам, `line-clamp: 4 auto` — и по высоте.
     pub fn clamp_by_height(&self) -> bool {
-        let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
-        self.clamp_auto != Some(false)
-            && (self.clamp_continue == Some(true) || (self.clamp_legacy == Some(true) && legacy_ok))
+        let legacy_ok = self.reset_flex.webkit_box == Some(true)
+            && self.inh.text_flow.webkit_box_vertical == Some(true);
+        self.reset_fragmentation.clamp_auto != Some(false)
+            && (self.reset_fragmentation.clamp_continue == Some(true)
+                || (self.inh.text_flow.clamp_legacy == Some(true) && legacy_ok))
     }
 
     /// Знак обрыва `block-ellipsis` для абзаца: `None` — `ellipsis` (U+2026),
     /// пустая строка — `no-ellipsis` (начальное значение у корня).
     pub fn used_block_ellipsis(&self) -> Option<String> {
-        match &self.clamp_mark {
+        match &self.inh.text_flow.clamp_mark {
             Some(mark) => mark.clone(),
             None => Some(String::new()),
         }
@@ -47,9 +52,9 @@ impl Computed {
     /// (css-backgrounds-3 §box-shadow). `inset` — внутренние.
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
         let list = if inset {
-            &self.inset_shadows
+            &self.reset_effects.inset_shadows
         } else {
-            &self.shadows
+            &self.reset_effects.shadows
         };
         list.iter()
             .map(|sh| (sh.clone(), sh.used_color(self.current_color())))
@@ -61,14 +66,14 @@ impl Computed {
     /// won't have any effect»). Такой угол уходит растровой маской контура,
     /// а рамка красится кольцом по контуру (`render::decorations`).
     pub fn corner_shaped(&self) -> bool {
-        let Some(k) = self.corner_shape else {
+        let Some(k) = self.reset_border.corner_shape else {
             return false;
         };
         let radii = [
-            self.radius.tl,
-            self.radius.tr,
-            self.radius.br,
-            self.radius.bl,
+            self.reset_border.radius.tl,
+            self.reset_border.radius.tr,
+            self.reset_border.radius.br,
+            self.reset_border.radius.bl,
         ];
         k.iter().zip(radii).any(|(k, r)| {
             let shaped = (*k - 1.0).abs() > 1e-3;
@@ -85,9 +90,9 @@ impl Computed {
     /// дорожки. Для SVG contain применим только при наличии CSS-коробки
     /// (css-contain-2 §2 и §size-containment).
     pub fn size_containment_applies(&self) -> bool {
-        !self.svg_no_css_box
+        !self.reset_svg_math.svg_no_css_box
             && !matches!(
-                self.display,
+                self.reset_box_layout.display,
                 Some(Display::Table) | Some(Display::InlineTable)
             )
     }
@@ -95,7 +100,7 @@ impl Computed {
     /// Повтор «сколько влезет» по оси РЯДОВ, если он задан и годен к
     /// передаче раскладке (есть размер дорожки).
     pub fn grid_rows_repeat(&self) -> Option<AutoRepeat> {
-        let r = self.auto_repeat_rows?;
+        let r = self.reset_grid.auto_repeat_rows?;
         (r.track.is_some() || r.track_pct.is_some()).then_some(r)
     }
 
@@ -103,12 +108,13 @@ impl Computed {
     /// только её (css-contain-2 §containment-types).
     pub fn contains_inline_size(&self) -> bool {
         self.size_containment_applies()
-            && (self.contain_size == Some(true) || self.contain_inline_size == Some(true))
+            && (self.reset_context.contain_size == Some(true)
+                || self.reset_context.contain_inline_size == Some(true))
     }
 
     /// Обособлена ли БЛОЧНАЯ ось.
     pub fn contains_block_size(&self) -> bool {
-        self.size_containment_applies() && self.contain_size == Some(true)
+        self.size_containment_applies() && self.reset_context.contain_size == Some(true)
     }
 
     /// То же по ФИЗИЧЕСКИМ осям: при вертикальном письме строчная ось идёт
@@ -136,13 +142,13 @@ impl Computed {
     /// (`settle_border_widths`); пустая толщина после него — рамки нет
     /// (раскладка так гасит сторону куска).
     pub fn borders(&self) -> Sides {
-        let vis = self.border_visible;
+        let vis = self.reset_border.border_visible;
         let keep = |w: Option<Len>, i: usize| if vis[i] == Some(true) { w } else { None };
         Sides {
-            top: keep(self.border_width.top, 0),
-            right: keep(self.border_width.right, 1),
-            bottom: keep(self.border_width.bottom, 2),
-            left: keep(self.border_width.left, 3),
+            top: keep(self.reset_border.border_width.top, 0),
+            right: keep(self.reset_border.border_width.right, 1),
+            bottom: keep(self.reset_border.border_width.bottom, 2),
+            left: keep(self.reset_border.border_width.left, 3),
         }
     }
 }

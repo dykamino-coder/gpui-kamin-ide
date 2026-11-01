@@ -59,7 +59,12 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
             k.style.used_mut().margin.bottom = None;
         }
         let mut style = crate::style::computed::Computed {
-            height: Some(Len::Px(grow)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(grow)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         style.margin.bottom = prev_mb;

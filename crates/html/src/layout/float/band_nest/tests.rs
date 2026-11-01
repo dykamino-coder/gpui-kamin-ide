@@ -64,7 +64,12 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
     let c = Element::synthetic(
         "div",
         Computed {
-            height: Some(Len::Pct(0.6)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.6)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),
@@ -99,7 +104,12 @@ fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
     let float = Element::synthetic(
         "div",
         Computed {
-            float: Some(-1),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(-1),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),
@@ -111,7 +121,12 @@ fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
         Element::synthetic(
             "div",
             Computed {
-                opacity: Some(0.5),
+                reset_effects: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetEffects {
+                        opacity: Some(0.5),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -124,7 +139,12 @@ fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
     let absolute = Element::synthetic(
         "div",
         Computed {
-            position: Some(crate::style::computed::Position::Absolute),
+            reset_positioned: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetPositioned {
+                    position: Some(crate::style::computed::Position::Absolute),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),

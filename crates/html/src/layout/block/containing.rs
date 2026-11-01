@@ -88,7 +88,12 @@ mod tests {
         });
         let style = {
             let mut with_inherited = Computed {
-                width: Some(Len::Pct(0.5)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        width: Some(Len::Pct(0.5)),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             };
             with_inherited.font_size = Some(Len::Em(2.0));

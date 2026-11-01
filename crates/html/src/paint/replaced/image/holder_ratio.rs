@@ -151,9 +151,19 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = BoxStyle::from(Computed {
-            height: Some(Len::Pct(1.0)),
-            max_height: Some(Len::Px(100.0)),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(1.0)),
+                    max_height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         });
         style.cb_height_def = true;
@@ -177,8 +187,13 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = BoxStyle::from(Computed {
-            height: Some(Len::Pct(1.0)),
-            max_height: Some(Len::Px(100.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(1.0)),
+                    max_height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         });
         style.cb_height_def = true;
@@ -199,8 +214,13 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let style = Computed {
-            width: Some(Len::Pct(1.0)),
-            max_height: Some(Len::Pct(0.5)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Pct(1.0)),
+                    max_height: Some(Len::Pct(0.5)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         let mut holder = crate::paint::apply::apply(div(), &BoxStyle::from(style.clone()), vcx);

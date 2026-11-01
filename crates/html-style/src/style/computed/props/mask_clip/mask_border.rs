@@ -35,17 +35,20 @@ pub fn initial_mask_border(vcx: ValueCx<'_>) -> BorderImage {
             s.set_border_image(part, id.initial(), vcx);
         }
     }
-    s.border_image.unwrap_or_else(|| BorderImage {
-        src: None,
-        slice: [crate::style::computed::BorderImageSlice::Px(0.0); 4],
-        fill: false,
-        width: [crate::style::computed::BorderImageWidth::Auto; 4],
-        outset: [crate::style::computed::BorderImageWidth::Px(0.0); 4],
-        repeat: (
-            crate::style::computed::Tiling::None,
-            crate::style::computed::Tiling::None,
-        ),
-    })
+    s.reset_border
+        .border_image
+        .take()
+        .unwrap_or_else(|| BorderImage {
+            src: None,
+            slice: [crate::style::computed::BorderImageSlice::Px(0.0); 4],
+            fill: false,
+            width: [crate::style::computed::BorderImageWidth::Auto; 4],
+            outset: [crate::style::computed::BorderImageWidth::Px(0.0); 4],
+            repeat: (
+                crate::style::computed::Tiling::None,
+                crate::style::computed::Tiling::None,
+            ),
+        })
 }
 
 impl Computed {
@@ -56,7 +59,7 @@ impl Computed {
             match v.trim() {
                 "luminance" | "alpha" => {
                     self.accept_declaration();
-                    self.mask_border_luminance = v.trim() == "luminance";
+                    self.reset_mask.mask_border_luminance = v.trim() == "luminance";
                 }
                 _ => {}
             }
@@ -65,20 +68,35 @@ impl Computed {
         let Some(part) = border_image_part(id) else {
             return;
         };
-        if self.mask_border.is_none() && v.trim() == id.initial() {
+        if self.reset_mask.mask_border.is_none() && v.trim() == id.initial() {
             self.accept_declaration();
             return;
         }
         let initial = initial_mask_border(vcx);
         let mut scratch = Computed {
-            border_image: Some(self.mask_border.clone().unwrap_or_else(|| initial.clone())),
-            declaration_parse: self.declaration_parse,
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_image: Some(
+                        self.reset_mask
+                            .mask_border
+                            .clone()
+                            .unwrap_or_else(|| initial.clone()),
+                    ),
+                    ..Default::default()
+                },
+            ),
+            reset_cascade: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetCascade {
+                    declaration_parse: self.reset_cascade.declaration_parse,
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         scratch.set_border_image(part, v, vcx);
-        self.declaration_parse = scratch.declaration_parse;
-        if let Some(image) = scratch.border_image {
-            self.mask_border = (image != initial).then_some(image);
+        self.reset_cascade.declaration_parse = scratch.reset_cascade.declaration_parse;
+        if let Some(image) = scratch.reset_border.border_image.take() {
+            self.reset_mask.mask_border = (image != initial).then_some(image);
         }
     }
 }

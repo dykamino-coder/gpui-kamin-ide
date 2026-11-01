@@ -34,11 +34,11 @@ impl Computed {
     /// `from-font` публикуется числом; потомок наследует пропорцию предка.
     /// Без сырой метрики вычисляется none: https://drafts.csswg.org/css-fonts-5/#font-size-adjust-prop
     pub fn compute_font_adjust(&mut self, family: &str, vcx: ValueCx<'_>) {
-        if let Some((metric, want)) = self.font_size_adjust
+        if let Some((metric, want)) = self.inh.font.font_size_adjust
             && want.is_nan()
         {
             let descriptor = self.font_descriptor_scale(family, vcx);
-            self.font_size_adjust = Some(
+            self.inh.font.font_size_adjust = Some(
                 self.font_aspect(family, metric, vcx)
                     .map_or((u8::MAX, 0.0), |ratio| (metric, ratio * descriptor)),
             );
@@ -47,10 +47,10 @@ impl Computed {
 
     fn font_descriptor_scale(&self, family: &str, vcx: ValueCx<'_>) -> f32 {
         let snapshot = vcx.doc.font_snapshot();
-        let slope = if self.oblique == Some(true) {
+        let slope = if self.inh.font.oblique == Some(true) {
             2
         } else {
-            u8::from(self.italic == Some(true))
+            u8::from(self.inh.font.italic == Some(true))
         };
         snapshot
             .matching_face(family, self.font_request(family, 1.0))
@@ -59,18 +59,19 @@ impl Computed {
 
     /// Результат для first available face; не изменяет CSS-значения элемента.
     pub fn used_font(&self, fallback_px: f32, vcx: ValueCx<'_>) -> UsedFont {
-        let family = match self.font_family.as_deref() {
+        let family = match self.inh.font.font_family.as_deref() {
             Some(f) => f,
-            None if self.monospace == Some(true) => {
-                vcx.doc.font_snapshot().mono_family(self.lang.as_deref())
-            }
+            None if self.inh.font.monospace == Some(true) => vcx
+                .doc
+                .font_snapshot()
+                .mono_family(self.inh.text_flow.lang.as_deref()),
             None => "",
         };
         self.used_font_for(family, fallback_px, vcx)
     }
 
     pub fn used_font_for(&self, family: &str, fallback_px: f32, vcx: ValueCx<'_>) -> UsedFont {
-        let computed_px = match self.font_size {
+        let computed_px = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * fallback_px,
             _ => fallback_px,
@@ -82,7 +83,7 @@ impl Computed {
             .select(self.font_request(family, computed_px), &snapshot)
             .ok();
         let descriptor = self.font_descriptor_scale(family, vcx);
-        let adjustment = self.font_size_adjust.and_then(|(metric, want)| {
+        let adjustment = self.inh.font.font_size_adjust.and_then(|(metric, want)| {
             if !want.is_finite() {
                 return None;
             }
@@ -113,17 +114,21 @@ impl Computed {
 
     /// Псевдоэлемент заменяет размер вместе с его независимой подгонкой.
     pub fn overlay_font_size(&mut self, pseudo: &Computed) {
-        self.font_size = pseudo.font_size.or(self.font_size);
-        self.font_size_adjust = pseudo.font_size_adjust.or(self.font_size_adjust);
+        self.inh.font.font_size = pseudo.inh.font.font_size.or(self.inh.font.font_size);
+        self.inh.font.font_size_adjust = pseudo
+            .inh
+            .font
+            .font_size_adjust
+            .or(self.inh.font.font_size_adjust);
     }
 
     /// Числовая высота строки относится к computed размеру, не к контурам.
     pub fn numeric_line_px(&self, fallback_px: f32) -> Option<f32> {
-        self.numeric_line_value_px(self.line_height, fallback_px)
+        self.numeric_line_value_px(self.inh.font.line_height, fallback_px)
     }
 
     pub fn numeric_line_value_px(&self, line: Option<Len>, fallback_px: f32) -> Option<f32> {
-        let computed = match self.font_size {
+        let computed = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * fallback_px,
             _ => fallback_px,

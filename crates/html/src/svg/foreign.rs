@@ -81,7 +81,12 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         )
         .into_any_element();
     let style = crate::style::computed::Computed {
-        blend,
+        reset_effects: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetEffects {
+                blend,
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     Some(crate::paint::effects::grouped::grouped(

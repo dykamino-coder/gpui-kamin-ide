@@ -14,7 +14,7 @@ fn document_snapshots_keep_registration_and_inheritance_isolated() {
     let c = parse("<!doctype html><p></p>", "p { width: var(--size, 3px) }");
     fn width(nodes: &[Node]) -> Option<Len> {
         nodes.iter().find_map(|node| match node {
-            Node::Element(e) if e.tag == "p" => e.style.cascaded().width,
+            Node::Element(e) if e.tag == "p" => e.style.cascaded().reset_box_layout.width,
             Node::Element(e) => width(&e.children),
             _ => None,
         })

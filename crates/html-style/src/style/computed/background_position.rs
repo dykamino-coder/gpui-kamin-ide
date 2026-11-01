@@ -37,11 +37,11 @@ impl Computed {
         let expression = math[axis].take();
         let value = [pos.x, pos.y][axis].filter(|v| *v != Len::Pct(0.0) || expression.is_some());
         if axis == 0 {
-            self.bg_pos.x = value;
+            self.reset_background.bg_pos.x = value;
         } else {
-            self.bg_pos.y = value;
+            self.reset_background.bg_pos.y = value;
         }
-        self.bg_position_math[axis] = expression;
+        self.reset_background.bg_position_math[axis] = expression;
         self.accept_declaration();
     }
 
@@ -55,7 +55,7 @@ impl Computed {
         free: (f32, f32),
         _vcx: ValueCx<'_>,
     ) -> (f32, f32) {
-        used(&self.bg_position_math, fallback, free)
+        used(&self.reset_background.bg_position_math, fallback, free)
     }
 }
 
@@ -141,15 +141,15 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_size = Some(Len::Px(20.0));
-            with_inherited.line_height = Some(Len::Pct(2.0));
+            with_inherited.inh.font.font_size = Some(Len::Px(20.0));
+            with_inherited.inh.font.line_height = Some(Len::Pct(2.0));
             with_inherited
         };
         parent.apply_one("background-position", "min(100%, 1em) max(100%, 1lh)", vcx);
         parent.resolve_image_lengths(vcx);
         let mut child = parent.clone();
-        child.font_size = Some(Len::Px(80.0));
-        child.line_height = Some(Len::Px(200.0));
+        child.inh.font.font_size = Some(Len::Px(80.0));
+        child.inh.font.line_height = Some(Len::Px(200.0));
         assert_eq!(
             child.background_position_used((0.0, 0.0), (50.0, 50.0), vcx),
             (20.0, 50.0)
@@ -164,8 +164,8 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_size = Some(Len::Px(30.0));
-            with_inherited.line_height = Some(Len::Px(80.0));
+            with_inherited.inh.font.font_size = Some(Len::Px(30.0));
+            with_inherited.inh.font.line_height = Some(Len::Px(80.0));
             with_inherited
         };
         c.apply_one("background-image", "url(a), url(b)", vcx);

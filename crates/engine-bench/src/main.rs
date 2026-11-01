@@ -9,6 +9,7 @@
 
 #[cfg(windows)]
 mod accounting;
+mod allocations;
 mod args;
 #[cfg(windows)]
 mod gpu;
@@ -32,7 +33,7 @@ mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
 #[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOC: allocations::Counted = allocations::Counted;
 
 fn main() {
     if let Err(error) = entry() {

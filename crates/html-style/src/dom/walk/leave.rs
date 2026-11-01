@@ -23,7 +23,7 @@ pub(super) fn leave(
     let vcx = p.visit.vcx;
     if p.hidden {
         children
-            .retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().col_role == Some(0)));
+            .retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role == Some(0)));
         counters.leave();
         *counter += 1;
         out.push(Node::Element(Element {
@@ -85,11 +85,14 @@ pub(super) fn leave(
         children.push(Node::Element(el));
     }
     let holds_columns = matches!(p.tag.as_str(), "table" | "colgroup")
-        || p.style.col_role == Some(1)
-        || matches!(p.style.display, Some(Display::Table | Display::InlineTable));
+        || p.style.reset_context.col_role == Some(1)
+        || matches!(
+            p.style.reset_box_layout.display,
+            Some(Display::Table | Display::InlineTable)
+        );
     if !holds_columns {
         children
-            .retain(|n| !matches!(n, Node::Element(c) if c.style.cascaded().col_role.is_some()));
+            .retain(|n| !matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role.is_some()));
     }
     if let Some(scope) = p.style_scope.take() {
         counters.leave_style_scope(scope);
@@ -102,7 +105,7 @@ pub(super) fn leave(
         if let Node::Element(c) = kid
             && c.tag.starts_with("::")
         {
-            c.style.cascaded_mut().implicit_anchor = Some(*counter);
+            c.style.cascaded_mut().reset_positioned.implicit_anchor = Some(*counter);
         }
     }
     if p.tag == "details" {

@@ -14,7 +14,12 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let float = Element::synthetic(
             "div",
             Computed {
-                float: Some(-1),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        float: Some(-1),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -23,7 +28,12 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let block = Element::synthetic(
             "div",
             Computed {
-                height,
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height,
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -45,7 +55,12 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         assert_eq!(painted.height, Some(Len::Px(0.0)));
         let mut child = {
             let mut with_inherited = Computed {
-                floated_box: true,
+                reset_context: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetContext {
+                        floated_box: true,
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             };
             with_inherited.writing_mode = Some(WritingModeKw::new(true, false, false));

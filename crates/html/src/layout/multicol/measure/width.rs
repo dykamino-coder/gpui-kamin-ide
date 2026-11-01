@@ -140,7 +140,12 @@ mod tests {
     #[test]
     fn continuation_column_uses_content_width_with_original_border_box_css() {
         let style = Computed {
-            border_box: Some(true),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut e = Element::synthetic("div", style.clone(), Default::default(), vec![]);

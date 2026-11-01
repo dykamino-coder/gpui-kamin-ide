@@ -12,7 +12,7 @@ pub fn geometry_property(c: &mut Computed, key: &str, v: &str, vcx: ValueCx<'_>)
     if key == "path-length" {
         if let Some(length) = path_length::parse(v, vcx) {
             c.accept_declaration();
-            c.svg_path_length = Some(length);
+            c.reset_svg_math.svg_path_length = Some(length);
         }
         return;
     }
@@ -29,8 +29,8 @@ pub fn geometry_property(c: &mut Computed, key: &str, v: &str, vcx: ValueCx<'_>)
         return;
     };
     c.accept_declaration();
-    c.svg_geometry.retain(|(n, _)| *n != name);
-    c.svg_geometry.push((name, value));
+    c.reset_svg_math.svg_geometry.retain(|(n, _)| *n != name);
+    c.reset_svg_math.svg_geometry.push((name, value));
 }
 
 /// `d: path("…")` carries the path data, `d: none` is an empty path; lengths

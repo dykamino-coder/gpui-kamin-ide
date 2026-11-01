@@ -64,12 +64,27 @@ mod tests {
         let host = Element::synthetic(
             "div",
             Computed {
-                height: Some(Len::Px(300.)),
-                min_height: Some(Len::Px(200.)),
-                max_height: Some(Len::Px(250.)),
-                min_width: Some(Len::Px(40.)),
-                border_box: Some(true),
-                column_span: Some(true),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(300.)),
+                        min_height: Some(Len::Px(200.)),
+                        max_height: Some(Len::Px(250.)),
+                        min_width: Some(Len::Px(40.)),
+                        ..Default::default()
+                    },
+                ),
+                reset_border: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBorder {
+                        border_box: Some(true),
+                        ..Default::default()
+                    },
+                ),
+                reset_fragmentation: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetFragmentation {
+                        column_span: Some(true),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

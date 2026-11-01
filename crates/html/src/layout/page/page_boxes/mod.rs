@@ -191,7 +191,12 @@ fn page_margin_boxes(
                 inline: false,
                 node_id: 0,
                 style: Computed {
-                    height: inline,
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            height: inline,
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 }
                 .into(),

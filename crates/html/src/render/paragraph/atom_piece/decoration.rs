@@ -32,7 +32,12 @@ pub(crate) fn decorate_atom(
     // применил бы их второй раз.
     let el = if replaced_tag(e) && e.style.used().blend.is_some_and(|b| b != 0) {
         let only = Computed {
-            blend: e.style.used().blend,
+            reset_effects: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetEffects {
+                    blend: e.style.used().blend,
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         grouped(el, &crate::style::computed::BoxStyle::new(only), frame)

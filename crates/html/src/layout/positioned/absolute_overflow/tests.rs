@@ -5,13 +5,26 @@ use crate::style::computed::{BoxStyle, Computed};
 #[test]
 fn static_cross_axis_tracks_parent_writing_mode_and_direction() {
     let own = Computed {
-        position: Some(Position::Absolute),
-        align_self: Some(Align::Center),
-        align_self_safe: true,
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
+        reset_flex: crate::style::computed::StyleGroup::new(crate::style::computed::ResetFlex {
+            align_self: Some(Align::Center),
+            align_self_safe: true,
+            ..Default::default()
+        }),
         ..Computed::default()
     };
     let mut parent = BoxStyle::from(Computed {
-        display: Some(Display::Flex),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                display: Some(Display::Flex),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     parent.self_node = 1;

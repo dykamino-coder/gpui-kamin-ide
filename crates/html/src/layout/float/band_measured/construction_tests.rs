@@ -31,7 +31,12 @@ fn measured_host_keeps_float_order_and_containing_width() {
     );
     let nodes = &find(&tree, "source").expect("source").children;
     let parent = crate::style::computed::Computed {
-        width: Some(Len::Px(200.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(200.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let (host, end, lifted) =

@@ -50,15 +50,18 @@ pub fn orthogonal_inlines_become_flow_roots(
             };
             if mode != parent
                 && !blockifying
-                && st.inline_display == Some(true)
-                && st.display == Some(Display::InlineBlock)
-                && st.ruby_role.is_none()
-                && st.float.is_none_or(|f| f == 0)
-                && !matches!(st.position, Some(Position::Absolute | Position::Fixed))
+                && st.reset_context.inline_display == Some(true)
+                && st.reset_box_layout.display == Some(Display::InlineBlock)
+                && st.reset_text_box.ruby_role.is_none()
+                && st.reset_box_layout.float.is_none_or(|f| f == 0)
+                && !matches!(
+                    st.reset_positioned.position,
+                    Some(Position::Absolute | Position::Fixed)
+                )
             {
-                st.inline_display = None;
+                st.reset_context.inline_display = None;
             }
-            let display = st.display;
+            let display = st.reset_box_layout.display;
             Some((mode, display))
         },
     )

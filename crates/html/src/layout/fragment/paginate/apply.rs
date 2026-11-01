@@ -144,8 +144,13 @@ fn spacer_box(id: u64, h: f32) -> Element {
         anim: None,
         tag: "div".to_string(),
         style: crate::style::computed::Computed {
-            display: Some(Display::Block),
-            height: Some(Len::Px(h)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    display: Some(Display::Block),
+                    height: Some(Len::Px(h)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         }
         .into(),

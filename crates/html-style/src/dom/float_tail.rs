@@ -23,7 +23,7 @@ pub(super) fn mark(
             .iter()
             .all(|w| matches!(w, None | Some(Len::Px(0.0))));
         if bare && block_like(root) {
-            root.style.cascaded_mut().float_tail = true;
+            root.style.cascaded_mut().reset_context.float_tail = true;
             let vertical = root.style.cascaded().wm().vertical();
             descend(admission, root, vertical)?;
         }
@@ -41,7 +41,7 @@ fn descend(
     loop {
         admission.work(parent.children.len())?;
         let item_parent = matches!(
-            parent.style.cascaded().display,
+            parent.style.cascaded().reset_box_layout.display,
             Some(
                 Display::Flex
                     | Display::InlineFlex
@@ -65,18 +65,23 @@ fn descend(
             || child_vertical != vertical
             || !block_like(child)
             || crate::style::computed::formatting_context::own_context_style(child.style.cascaded())
-            || child.style.cascaded().float.is_some_and(|f| f != 0)
+            || child
+                .style
+                .cascaded()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
         {
             return Ok(());
         }
-        child.style.cascaded_mut().float_tail = true;
+        child.style.cascaded_mut().reset_context.float_tail = true;
         parent = child;
         vertical = child_vertical;
     }
 }
 
 fn block_like(e: &crate::dom::Element) -> bool {
-    match e.style.cascaded().display {
+    match e.style.cascaded().reset_box_layout.display {
         Some(Display::Block | Display::ListItem) => true,
         Some(_) => false,
         None => !e.inline,

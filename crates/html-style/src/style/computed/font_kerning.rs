@@ -6,7 +6,7 @@ use super::Computed;
 
 impl Computed {
     pub(super) fn add_kerning_feature(&self, features: &mut Vec<(String, u32)>) {
-        if let Some(value @ 0..=1) = self.font_kerning {
+        if let Some(value @ 0..=1) = self.inh.font.font_kerning {
             features.push(("kern".into(), value as u32));
         }
     }
@@ -84,7 +84,14 @@ mod tests {
         let mut style = computed("font-kerning: normal", vcx);
         style.apply_one("font-kerning", "invalid", vcx);
         assert_eq!(kern(&style, vcx), Some(1));
-        assert!(!style.font_features.iter().any(|(tag, _)| tag == "kern"));
+        assert!(
+            !style
+                .inh
+                .font
+                .font_features
+                .iter()
+                .any(|(tag, _)| tag == "kern")
+        );
     }
 
     #[test]

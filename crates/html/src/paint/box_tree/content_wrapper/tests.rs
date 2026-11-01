@@ -4,7 +4,12 @@ use super::*;
 #[test]
 fn intrinsic_wrapper_preserves_keyword_without_duplicating_fit_argument() {
     let mut style = Computed {
-        width: Some(Len::FitContent),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::FitContent),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     assert_eq!(

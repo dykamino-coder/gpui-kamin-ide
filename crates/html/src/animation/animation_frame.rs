@@ -91,7 +91,12 @@ mod tests {
         element.style.used_mut().padding.left = Some(Len::Px(4.0));
         for height in [50.0, 75.0, 100.0] {
             let frame = Computed {
-                height: Some(Len::Px(height)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(height)),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             let sampled = sample(&element, &frame, false, test_vcx());
@@ -124,8 +129,18 @@ mod tests {
         element.style.used_mut().rotate_prop = Some(10.0);
         let frame = {
             let mut with_inherited = Computed {
-                width: Some(Len::Pct(0.5)),
-                rotate_prop: Some(20.0),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        width: Some(Len::Pct(0.5)),
+                        ..Default::default()
+                    },
+                ),
+                reset_transforms: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetTransforms {
+                        rotate_prop: Some(20.0),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.color = Some(Color {

@@ -112,9 +112,14 @@ mod tests {
             .chain((0..right).map(|_| 1))
             .map(|side| {
                 let style = Computed {
-                    float: Some(side),
-                    width: Some(Len::Px(10.0)),
-                    height: Some(Len::Px(if side < 0 { 20.0 } else { 30.0 })),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            float: Some(side),
+                            width: Some(Len::Px(10.0)),
+                            height: Some(Len::Px(if side < 0 { 20.0 } else { 30.0 })),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 };
                 Node::Element(Element::synthetic("div", style, Default::default(), vec![]))

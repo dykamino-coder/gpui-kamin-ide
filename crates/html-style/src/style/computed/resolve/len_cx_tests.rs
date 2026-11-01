@@ -89,8 +89,18 @@ fn fold_viewport_resolves_plain_and_calc_units() {
 #[test]
 fn viewport_cx_drops_scrollbars_and_reads_the_container() {
     let c = Computed {
-        viewport_unit_insets: Some([15.0, 0.0]),
-        cq_box: (Some(100.0), None),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                viewport_unit_insets: Some([15.0, 0.0]),
+                ..Default::default()
+            },
+        ),
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                cq_box: (Some(100.0), None),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let vp = c.viewport_cx((815.0, 600.0));
@@ -118,7 +128,7 @@ fn box_viewport_reads_the_writing_axis() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.writing_mode =
+        with_inherited.inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::VerticalRl);
         with_inherited
     };

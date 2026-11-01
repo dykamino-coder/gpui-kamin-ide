@@ -11,6 +11,9 @@ use std::{
 
 #[derive(Clone, Default)]
 struct PhaseUsage {
+    allocation_calls: u64,
+    allocated_bytes: u64,
+    freed_bytes: u64,
     cpu: u64,
     rss: u64,
     commit: u64,
@@ -57,6 +60,9 @@ impl State {
                     None
                 };
                 let usage = &mut self.phases[self.phase];
+                usage.allocation_calls += now.allocations.calls - self.last.allocations.calls;
+                usage.allocated_bytes += now.allocations.bytes - self.last.allocations.bytes;
+                usage.freed_bytes += now.allocations.freed - self.last.allocations.freed;
                 if let Some(delta) = now.cpu_100ns.checked_sub(self.last.cpu_100ns) {
                     usage.cpu += delta;
                 } else {
@@ -138,6 +144,9 @@ impl Capture {
                         Value::Null
                     } else {
                         json!({"process_cpu_100ns": usage.cpu,
+                    "rust_allocation_calls": usage.allocation_calls,
+                    "rust_allocated_bytes": usage.allocated_bytes,
+                    "rust_freed_bytes": usage.freed_bytes,
                     "sampled_peak_rss_bytes": usage.rss,
                     "sampled_peak_private_commit_bytes": usage.commit,
                     "end": usage.end.json(),

@@ -70,7 +70,12 @@ mod tests {
     fn auto_grid_tracks_claim_intrinsics_but_definite_tracks_keep_stretch() {
         let mut parent = {
             let mut with_inherited = Computed {
-                display: Some(Display::Grid),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        display: Some(Display::Grid),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.writing_mode = Some(

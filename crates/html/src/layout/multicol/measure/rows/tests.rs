@@ -98,8 +98,13 @@ fn measured_rows_keep_indefinite_own_height_and_relative_minimum() {
     let e = Element::synthetic(
         "div",
         Computed {
-            height: Some(Len::Pct(0.5)),
-            min_height: Some(Len::Em(2.)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.5)),
+                    min_height: Some(Len::Em(2.)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),

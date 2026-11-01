@@ -61,8 +61,13 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed {
-            width: Some(Len::FitContent),
-            height: Some(Len::Px(60.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::FitContent),
+                    height: Some(Len::Px(60.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         c.border_visible = [Some(true); 4];

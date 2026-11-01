@@ -18,36 +18,37 @@ pub fn inlinify(
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
         if matches!(
-            e.style.cascaded().position,
+            e.style.cascaded().reset_positioned.position,
             Some(Position::Absolute | Position::Fixed)
         ) {
             return None;
         }
-        e.style.cascaded_mut().float = None;
+        e.style.cascaded_mut().reset_box_layout.float = None;
         let role = super::ruby_boxes::ruby_box_role(&e.tag, e.style.cascaded());
         if role.is_some() {
-            if e.style.cascaded().display == Some(Display::Block) {
-                e.style.cascaded_mut().display = None;
-                e.style.cascaded_mut().inline_display = Some(true);
+            if e.style.cascaded().reset_box_layout.display == Some(Display::Block) {
+                e.style.cascaded_mut().reset_box_layout.display = None;
+                e.style.cascaded_mut().reset_context.inline_display = Some(true);
             }
             return Some(());
         }
-        let block = e.style.cascaded().display == Some(Display::Block)
-            || (e.style.cascaded().display.is_none()
-                && e.style.cascaded().inline_display != Some(true)
+        let block = e.style.cascaded().reset_box_layout.display == Some(Display::Block)
+            || (e.style.cascaded().reset_box_layout.display.is_none()
+                && e.style.cascaded().reset_context.inline_display != Some(true)
                 && BLOCK_TAGS.contains(&e.tag.as_str()));
-        e.style.cascaded_mut().display = match e.style.cascaded().display {
-            _ if block => Some(Display::InlineBlock),
-            Some(Display::Flex) => Some(Display::InlineFlex),
-            Some(Display::Grid) => Some(Display::InlineGrid),
-            Some(Display::Table) => Some(Display::InlineTable),
-            other => other,
-        };
+        e.style.cascaded_mut().reset_box_layout.display =
+            match e.style.cascaded().reset_box_layout.display {
+                _ if block => Some(Display::InlineBlock),
+                Some(Display::Flex) => Some(Display::InlineFlex),
+                Some(Display::Grid) => Some(Display::InlineGrid),
+                Some(Display::Table) => Some(Display::InlineTable),
+                other => other,
+            };
         if matches!(
-            e.style.cascaded().display,
+            e.style.cascaded().reset_box_layout.display,
             None | Some(Display::Contents | Display::ListItem)
         ) {
-            e.style.cascaded_mut().inline_display = Some(true);
+            e.style.cascaded_mut().reset_context.inline_display = Some(true);
             return Some(());
         }
         None

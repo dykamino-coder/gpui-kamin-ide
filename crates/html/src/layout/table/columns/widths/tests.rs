@@ -13,12 +13,17 @@ fn col(node_id: u64) -> Element {
         anim: None,
         tag: "col".into(),
         style: Computed {
-            background: Some(Color {
-                r: 0.0,
-                g: 0.5,
-                b: 0.0,
-                a: 1.0,
-            }),
+            reset_background: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBackground {
+                    background: Some(Color {
+                        r: 0.0,
+                        g: 0.5,
+                        b: 0.0,
+                        a: 1.0,
+                    }),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         }
         .into(),

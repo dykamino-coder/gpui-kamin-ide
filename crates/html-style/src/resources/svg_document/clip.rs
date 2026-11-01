@@ -45,12 +45,12 @@ fn clip_body(
         Len::Pct(p) => Some(p * side),
         _ => None,
     };
-    if let Some(points) = &c.clip_polygon {
+    if let Some(points) = &c.reset_mask.clip_polygon {
         let mut pts = String::new();
         for (x, y) in points {
             pts.push_str(&format!("{},{} ", bx + at(*x, bw)?, by + at(*y, bh)?));
         }
-        let rule = if c.clip_polygon_evenodd {
+        let rule = if c.reset_mask.clip_polygon_evenodd {
             "evenodd"
         } else {
             "nonzero"
@@ -60,22 +60,22 @@ fn clip_body(
             pts.trim_end()
         ));
     }
-    if let Some([t, r, b, l]) = c.clip_inset {
+    if let Some([t, r, b, l]) = c.reset_mask.clip_inset {
         let (t, r, b, l) = (at(t, bh)?, at(r, bw)?, at(b, bh)?, at(l, bw)?);
         let (w, h) = ((bw - l - r).max(0.0), (bh - t - b).max(0.0));
-        let round = c.clip_round.unwrap_or(0.0).max(0.0);
+        let round = c.reset_mask.clip_round.unwrap_or(0.0).max(0.0);
         return Some(format!(
             "<rect x=\"{}\" y=\"{}\" width=\"{w}\" height=\"{h}\" rx=\"{round}\" ry=\"{round}\"/>",
             bx + l,
             by + t
         ));
     }
-    if c.clip_bare_box {
+    if c.reset_mask.clip_bare_box {
         return Some(format!(
             "<rect x=\"{bx}\" y=\"{by}\" width=\"{bw}\" height=\"{bh}\"/>"
         ));
     }
-    let spec = c.clip_shape.as_deref()?;
+    let spec = c.reset_mask.clip_shape.as_deref()?;
     if let Some(raw) = spec.strip_prefix("shape:") {
         if !(raw.starts_with("circle(") || raw.starts_with("ellipse(")) {
             return None;
@@ -130,10 +130,10 @@ pub(super) fn synth_clip(
         return None;
     }
     let has = |c: &crate::style::computed::Computed| {
-        c.clip_polygon.is_some()
-            || c.clip_inset.is_some()
-            || c.clip_bare_box
-            || c.clip_shape.as_deref().is_some_and(|s| {
+        c.reset_mask.clip_polygon.is_some()
+            || c.reset_mask.clip_inset.is_some()
+            || c.reset_mask.clip_bare_box
+            || c.reset_mask.clip_shape.as_deref().is_some_and(|s| {
                 s.starts_with("shape:") || s.starts_with("pathdef:") || s.starts_with("shapedef:")
             })
     };
@@ -162,7 +162,7 @@ pub(super) fn synth_clip(
         let (w, h) = cx.view_box;
         (0.0, 0.0, w, h)
     } else {
-        shape_box(e, !matches!(c.clip_ref, Some(2) | Some(3)))?
+        shape_box(e, !matches!(c.reset_mask.clip_ref, Some(2) | Some(3)))?
     };
     let body = clip_body(c, rb, vcx)?;
     let mut hasher = DefaultHasher::new();

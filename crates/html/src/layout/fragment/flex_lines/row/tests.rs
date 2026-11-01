@@ -25,8 +25,13 @@ fn element(style: Computed, children: Vec<Element>) -> Element {
 fn item(width: f32, height: f32) -> Element {
     element(
         Computed {
-            width: Some(Len::Px(width)),
-            height: Some(Len::Px(height)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(width)),
+                    height: Some(Len::Px(height)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Vec::new(),
@@ -41,9 +46,19 @@ fn break_before_on_the_second_item_of_the_first_row_reaches_the_container() {
     second.style.used_mut().break_before_force = true;
     let c = element(
         Computed {
-            display: Some(Display::Flex),
-            flex_wrap: Some(true),
-            width: Some(Len::Px(50.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    display: Some(Display::Flex),
+                    width: Some(Len::Px(50.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_flex: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetFlex {
+                    flex_wrap: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         vec![item(25.0, 25.0), second, item(50.0, 25.0)],

@@ -57,8 +57,13 @@ mod tests {
         let vcx = doc.values();
         for kind in [None, Some(crate::style::computed::MarkerType::None)] {
             let mut item = Computed {
-                width: Some(Len::Px(120.)),
-                height: Some(Len::Px(160.)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        width: Some(Len::Px(120.)),
+                        height: Some(Len::Px(160.)),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             item.writing_mode = Some(WritingModeKw::VerticalLr);

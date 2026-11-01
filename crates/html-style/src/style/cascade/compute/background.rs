@@ -8,8 +8,12 @@ pub(super) fn inherit_background(own: &Computed, c: &mut Computed) {
     // `currentcolor` фона решается ЗДЕСЬ: только теперь известен цвет самого
     // элемента. Вычисленное значение остаётся словом — его унаследуют дети
     // (`background-color: inherit`) и решат своим цветом заново.
-    if own.inherit_longhands.contains(LonghandId::BackgroundColor)
-        || c.background_color
+    if own
+        .reset_cascade
+        .inherit_longhands
+        .contains(LonghandId::BackgroundColor)
+        || c.reset_background
+            .background_color
             .as_ref()
             .is_some_and(|value| value.depends_on_current())
     {

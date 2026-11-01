@@ -55,7 +55,12 @@ mod tests {
     fn flow(rotated: bool, ccw: bool) -> Computed {
         {
             let mut with_inherited = Computed {
-                turned_line: rotated,
+                reset_text_box: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetTextBox {
+                        turned_line: rotated,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.flat_mode = Some(

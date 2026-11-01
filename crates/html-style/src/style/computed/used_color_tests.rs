@@ -36,13 +36,13 @@ fn color_function_of_currentcolor_uses_the_parent_color_and_inherits_absolute() 
         b: 1.0,
         a: 1.0,
     };
-    let got = mixed.color.unwrap();
+    let got = mixed.inh.ui.color.unwrap();
     assert!((got.r - expected.r).abs() < 0.01 && (got.b - 1.0).abs() < 0.01);
     let child = merged(&mixed, &[("color", "inherit")]);
-    assert_eq!(child.color, mixed.color);
+    assert_eq!(child.inh.ui.color, mixed.inh.ui.color);
     // `currentcolor` in `color` is `inherit`.
     let child = merged(&parent, &[("color", "currentcolor")]);
-    assert_eq!(child.color, parent.color);
+    assert_eq!(child.inh.ui.color, parent.inh.ui.color);
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn inherited_border_currentcolor_resolves_with_the_child_color() {
         &parent,
         &[("color", "rgb(0, 128, 0)"), ("border-top-color", "inherit")],
     );
-    assert!(child.border_colors[0].is_current());
+    assert!(child.reset_border.border_colors[0].is_current());
     assert_eq!(child.used_border_color(0), rgb(0.0, 128.0 / 255.0, 0.0));
 }
 
@@ -66,10 +66,13 @@ fn background_inherit_keeps_the_keyword() {
         &Computed::default(),
         &[("color", "red"), ("background", "currentColor")],
     );
-    assert_eq!(parent.background, Some(rgb(1.0, 0.0, 0.0)));
+    assert_eq!(parent.reset_background.background, Some(rgb(1.0, 0.0, 0.0)));
     let child = merged(&parent, &[("color", "blue"), ("background", "inherit")]);
-    assert_eq!(child.background_color, Some(StyleColor::Current));
-    assert_eq!(child.background, Some(rgb(0.0, 0.0, 1.0)));
+    assert_eq!(
+        child.reset_background.background_color,
+        Some(StyleColor::Current)
+    );
+    assert_eq!(child.reset_background.background, Some(rgb(0.0, 0.0, 1.0)));
 }
 
 #[test]
@@ -81,7 +84,7 @@ fn light_dark_branch_may_be_currentcolor() {
             ("background-color", "light-dark(currentColor, currentColor)"),
         ],
     );
-    assert_eq!(c.background, Some(rgb(0.0, 0.0, 1.0)));
+    assert_eq!(c.reset_background.background, Some(rgb(0.0, 0.0, 1.0)));
 }
 
 #[test]
@@ -92,7 +95,7 @@ fn declared_currentcolor_overrides_an_inherited_emphasis_color() {
         &[("color", "blue"), ("text-emphasis-color", "currentcolor")],
     );
     let child = merged(&parent, &[("color", "rgb(0, 128, 0)")]);
-    let emphasis = child.emphasis_color.as_ref().unwrap();
+    let emphasis = child.inh.text_ink.emphasis_color.as_ref().unwrap();
     assert_eq!(child.used_color(emphasis), rgb(0.0, 128.0 / 255.0, 0.0));
 }
 
@@ -116,9 +119,9 @@ fn shadow_without_color_is_currentcolor() {
         &Computed::default(),
         &[("color", "blue"), ("box-shadow", "1px 1px")],
     );
-    assert!(c.shadows[0].color.is_current());
+    assert!(c.reset_effects.shadows[0].color.is_current());
     assert_eq!(
-        c.shadows[0].used_color(c.current_color()),
+        c.reset_effects.shadows[0].used_color(c.current_color()),
         rgb(0.0, 0.0, 1.0)
     );
 }
@@ -133,7 +136,7 @@ fn nested_color_mix_share_belongs_to_its_own_function() {
             "color-mix(in srgb, color-mix(in srgb, currentColor 50%, color(srgb 0 1 0)), white)",
         )],
     );
-    let got = c.color.unwrap();
+    let got = c.inh.ui.color.unwrap();
     // inner: (0, .5, .5); outer with white: (.5, .75, .75).
     assert!(
         (got.r - 0.5).abs() < 0.01 && (got.g - 0.75).abs() < 0.01 && (got.b - 0.75).abs() < 0.01

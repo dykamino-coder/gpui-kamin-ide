@@ -40,9 +40,19 @@ fn legacy_block_alignment_matches_normalized_input_without_style_writes() {
 fn transferred_constraints_reach_native_style_without_replacing_css_inputs() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let input = BoxStyle::from(Computed {
-        aspect_ratio: Some(2.0),
-        min_height: Some(Len::Px(20.0)),
-        max_width: Some(Len::Px(200.0)),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.0),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                min_height: Some(Len::Px(20.0)),
+                max_width: Some(Len::Px(200.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     let mut actual = apply_layout(gpui::div(), &input, doc.values());
@@ -56,11 +66,21 @@ fn transferred_constraints_reach_native_style_without_replacing_css_inputs() {
 fn natural_probe_drops_height_constraints_before_ratio_transfer() {
     let doc = crate::document::state::DocState::new(Default::default());
     let css = BoxStyle::from(Computed {
-        width: Some(Len::Px(80.)),
-        height: Some(Len::Px(100.)),
-        min_height: Some(Len::Px(40.)),
-        max_height: Some(Len::Px(200.)),
-        aspect_ratio: Some(2.),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(80.)),
+                height: Some(Len::Px(100.)),
+                min_height: Some(Len::Px(40.)),
+                max_height: Some(Len::Px(200.)),
+                ..Default::default()
+            },
+        ),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     let sizes = BoxDimensions::from_computed(&css).unconstrained_height();
@@ -82,9 +102,19 @@ fn natural_probe_drops_height_constraints_before_ratio_transfer() {
 fn explicit_content_dimensions_choose_compensation_and_native_percentages() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut css = BoxStyle::from(Computed {
-        height: Some(Len::Px(200.)),
-        min_height: Some(Len::Px(150.)),
-        border_box: Some(true),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                height: Some(Len::Px(200.)),
+                min_height: Some(Len::Px(150.)),
+                ..Default::default()
+            },
+        ),
+        reset_border: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBorder {
+                border_box: Some(true),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     css.padding.top = Some(Len::Px(4.));
@@ -106,11 +136,26 @@ fn explicit_content_dimensions_choose_compensation_and_native_percentages() {
 fn explicit_box_sizing_controls_ratio_minimum() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut css = BoxStyle::from(Computed {
-        width: Some(Len::Px(80.)),
-        height: Some(Len::Px(200.)),
-        min_height: Some(Len::Px(150.)),
-        aspect_ratio: Some(2.),
-        border_box: Some(true),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(80.)),
+                height: Some(Len::Px(200.)),
+                min_height: Some(Len::Px(150.)),
+                ..Default::default()
+            },
+        ),
+        reset_shapes: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetShapes {
+                aspect_ratio: Some(2.),
+                ..Default::default()
+            },
+        ),
+        reset_border: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBorder {
+                border_box: Some(true),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     css.padding.top = Some(Len::Px(4.));

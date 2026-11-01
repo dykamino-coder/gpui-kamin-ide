@@ -28,6 +28,14 @@ macro_rules! vocabulary {
 }
 
 vocabulary!(Counter {
+    StyleSharingHits => "style_sharing_hits",
+    MaterializedSharingHits => "materialized_sharing_hits",
+    StyleGroupClones => "style_group_clones",
+    StyleGroupCloneBytes => "style_group_clone_bytes",
+    ComputedClones => "computed_clones",
+    ComputedCloneBytes => "computed_clone_bytes",
+    InheritedStyleClones => "inherited_style_clones",
+    InheritedStyleCloneBytes => "inherited_style_clone_bytes",
     GradientRasters => "gradient_rasters",
     GradientRasterPixels => "gradient_raster_pixels",
     RoundedMaskRasters => "rounded_mask_rasters",

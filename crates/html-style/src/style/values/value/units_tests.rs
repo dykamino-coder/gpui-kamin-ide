@@ -134,18 +134,28 @@ fn container_units_resolve_against_the_container() {
 fn size_container_exposes_its_content_box() {
     use crate::style::computed::Computed;
     let mut c = Computed {
-        container_type: crate::style::computed::ContainerType::Size,
-        contain_size: Some(true),
-        width: Some(Len::Px(400.0)),
-        height: Some(Len::Px(300.0)),
-        cq_size: (Some(350.0), Some(250.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                container_type: crate::style::computed::ContainerType::Size,
+                width: Some(Len::Px(400.0)),
+                height: Some(Len::Px(300.0)),
+                ..Default::default()
+            },
+        ),
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                contain_size: Some(true),
+                cq_size: (Some(350.0), Some(250.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     assert_eq!(c.container_box_for_children(), (Some(350.0), Some(250.0)));
-    c.contain_size = None;
-    c.container_type = crate::style::computed::ContainerType::InlineSize;
-    c.contain_inline_size = Some(true);
+    c.reset_context.contain_size = None;
+    c.reset_box_layout.container_type = crate::style::computed::ContainerType::InlineSize;
+    c.reset_context.contain_inline_size = Some(true);
     assert_eq!(c.container_box_for_children(), (Some(350.0), None));
-    c.container_type = crate::style::computed::ContainerType::Normal;
+    c.reset_box_layout.container_type = crate::style::computed::ContainerType::Normal;
     assert_eq!(c.container_box_for_children(), (None, None));
 }

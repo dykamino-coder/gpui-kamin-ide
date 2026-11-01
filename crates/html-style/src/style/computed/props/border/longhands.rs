@@ -29,7 +29,7 @@ impl Computed {
             ) => {
                 // Логическая кромка ждёт письма: на физическую сторону её
                 // кладёт `resolve_logical` с местом объявления в каскаде.
-                let order = self.decl_order;
+                let order = self.reset_cascade.decl_order;
                 self.logical().border[part(group)][i] = Some((order, v.to_string()));
             }
             Slot::Single if id.grammar() == Grammar::BorderImage => {
@@ -62,7 +62,7 @@ impl Computed {
                     return;
                 }
                 if width.is_some() {
-                    *side_slot(&mut self.border_width, side) = width;
+                    *side_slot(&mut self.reset_border.border_width, side) = width;
                 }
             }
             1 => {
@@ -71,8 +71,8 @@ impl Computed {
                     return;
                 }
                 if let Some(rank) = rank {
-                    self.border_side_styles[side] = Some(rank);
-                    self.border_visible[side] = Some(rank >= 3);
+                    self.reset_border.border_side_styles[side] = Some(rank);
+                    self.reset_border.border_visible[side] = Some(rank >= 3);
                     self.sync_border_pattern();
                 }
             }
@@ -82,11 +82,11 @@ impl Computed {
                     return;
                 }
                 if let Some(color) = color {
-                    self.border_colors[side] = color;
+                    self.reset_border.border_colors[side] = color;
                 }
             }
         }
-        self.side_order.border[part][side] = self.decl_order;
+        self.reset_cascade.side_order.border[part][side] = self.reset_cascade.decl_order;
     }
 
     /// Вычисленное значение начальной толщины `medium` — 3px
@@ -94,10 +94,11 @@ impl Computed {
     /// толщины получает его явно (пустая толщина дальше значит «рамки нет»:
     /// так раскладка гасит сторону куска).
     pub fn settle_border_widths(&mut self) {
-        let w = &mut self.border_width;
+        let group = &mut *self.reset_border;
+        let w = &mut group.border_width;
         for (side, visible) in [&mut w.top, &mut w.right, &mut w.bottom, &mut w.left]
             .into_iter()
-            .zip(self.border_visible)
+            .zip(group.border_visible)
         {
             if visible == Some(true) {
                 side.get_or_insert(crate::style::values::value::Len::Px(3.0));
@@ -110,15 +111,16 @@ impl Computed {
     /// разных стилях — стиль верхней стороны.
     pub fn sync_border_pattern(&mut self) {
         let mut visible = self
+            .reset_border
             .border_side_styles
             .iter()
             .flatten()
             .filter(|r| **r >= 3);
         let first = visible.next().copied();
         let shared = first.filter(|f| visible.all(|r| r == f));
-        let rank = shared.or(self.border_side_styles[0]);
-        self.border_dashed = rank.map(|r| r == 8);
-        self.border_dotted = rank.map(|r| r == 7);
+        let rank = shared.or(self.reset_border.border_side_styles[0]);
+        self.reset_border.border_dashed = rank.map(|r| r == 8);
+        self.reset_border.border_dotted = rank.map(|r| r == 7);
     }
 
     /// `outline-width`, `-style`, `-color`, `-offset`: одна часть записи
@@ -127,7 +129,7 @@ impl Computed {
         if v.trim() == "inherit" {
             return;
         }
-        let mut o = self.outline.clone().unwrap_or_default();
+        let mut o = self.reset_border.outline.clone().unwrap_or_default();
         match id {
             LonghandId::OutlineWidth => match line_width(v, vcx) {
                 Some(w) => o.width = Some(w),
@@ -146,7 +148,7 @@ impl Computed {
                 None => return,
             },
         }
-        self.outline = Some(o);
+        self.reset_border.outline = Some(o);
     }
 }
 

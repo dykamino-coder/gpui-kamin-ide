@@ -17,18 +17,19 @@ macro_rules! properties {
             pub fn copy(self, p: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
                 match self {
                     $(Self::$id => { $(c.$field $(.$part)* = p.$field $(.$part)*.clone();)+ },)*
-                    Self::RowGap => c.gap.get_or_insert((None, None)).0 = p.gap.and_then(|g| g.0),
+                    Self::RowGap => c.reset_flex.gap.get_or_insert((None, None)).0 = p.reset_flex.gap.and_then(|g| g.0),
                     Self::ColumnGap => {
-                        c.column_gap = p.column_gap;
-                        c.gap.get_or_insert((None, None)).1 = p.gap.and_then(|g| g.1);
+                        c.reset_fragmentation.column_gap = p.reset_fragmentation.column_gap;
+                        c.reset_flex.gap.get_or_insert((None, None)).1 = p.reset_flex.gap.and_then(|g| g.1);
                     }
                     // Грань размещения сетки: своя половина линий и имён.
                     Self::GridLine(row, end) => {
                         let i = usize::from(end);
+        let group = &mut *c.reset_grid;
                         let (from, from_named, to, to_named) = if row {
-                            (p.grid_row, &p.grid_row_named, &mut c.grid_row, &mut c.grid_row_named)
+                            (p.reset_grid.grid_row, &p.reset_grid.grid_row_named, &mut group.grid_row, &mut group.grid_row_named)
                         } else {
-                            (p.grid_col, &p.grid_col_named, &mut c.grid_col, &mut c.grid_col_named)
+                            (p.reset_grid.grid_col, &p.reset_grid.grid_col_named, &mut group.grid_col, &mut group.grid_col_named)
                         };
                         let auto = crate::style::computed::Placement::Auto;
                         let mut pair = to.unwrap_or((auto, auto));
@@ -37,22 +38,22 @@ macro_rules! properties {
                         to_named[i] = from_named[i].clone();
                         let unset = pair.0 == auto && pair.1 == auto && to_named.iter().all(Option::is_none);
                         *to = (!unset).then_some(pair);
-                        c.grid_area_name = crate::style::computed::grid_area_name(&c.grid_row_named, &c.grid_col_named);
+                        group.grid_area_name = crate::style::computed::grid_area_name(&group.grid_row_named, &group.grid_col_named);
                     }
                     // Грань втяжки линейки (css-gaps-1 §inset).
                     Self::RuleInset(column, slot) => {
                         let (from, to) = if column {
-                            (p.column_rule_inset, &mut c.column_rule_inset)
+                            (p.reset_fragmentation.column_rule_inset, &mut c.reset_fragmentation.column_rule_inset)
                         } else {
-                            (p.row_rule_inset, &mut c.row_rule_inset)
+                            (p.reset_fragmentation.row_rule_inset, &mut c.reset_fragmentation.row_rule_inset)
                         };
                         let zero = crate::style::computed::GapInset::Len(crate::style::values::value::Len::Px(0.0));
                         to.get_or_insert([zero; 4])[usize::from(slot)] = from.map_or(zero, |f| f[usize::from(slot)]);
                     }
                     Self::MaskBorderPart(part) => {
                         let initial = crate::style::computed::initial_mask_border(vcx);
-                        let src = p.mask_border.clone().unwrap_or_else(|| initial.clone());
-                        let mut dst = c.mask_border.clone().unwrap_or_else(|| initial.clone());
+                        let src = p.reset_mask.mask_border.clone().unwrap_or_else(|| initial.clone());
+                        let mut dst = c.reset_mask.mask_border.clone().unwrap_or_else(|| initial.clone());
                         match part {
                             0 => dst.src = src.src,
                             1 => { dst.slice = src.slice; dst.fill = src.fill; }
@@ -60,7 +61,7 @@ macro_rules! properties {
                             3 => dst.outset = src.outset,
                             _ => dst.repeat = src.repeat,
                         }
-                        c.mask_border = (dst != initial).then_some(dst);
+                        c.reset_mask.mask_border = (dst != initial).then_some(dst);
                     }
                     Self::ImageSource | Self::ImageSlice | Self::ImageWidth | Self::ImageOutset | Self::ImageRepeat => {
                         // Initialise just this longhand; preserve source, slices and repeat.
@@ -72,7 +73,7 @@ macro_rules! properties {
                             _ => ("border-image-repeat", "stretch"),
                         };
                         c.set_border_image(key, initial, vcx);
-                        if let (Some(src), Some(dst)) = (&p.border_image, &mut c.border_image) {
+                        if let (Some(src), Some(dst)) = (&p.reset_border.border_image, &mut c.reset_border.border_image) {
                             match self {
                                 Self::ImageSource => dst.src.clone_from(&src.src),
                                 Self::ImageSlice => { dst.slice = src.slice; dst.fill = src.fill; }
@@ -88,20 +89,20 @@ macro_rules! properties {
                     Self::BottomRightRadius => Some(2), Self::BottomLeftRadius => Some(3),
                     _ => None,
                 };
-                if let Some(i) = corner.filter(|_| c.radius_ell.is_some() || p.radius_ell.is_some()) {
-                    c.radius_ell.get_or_insert([None; 4])[i] = p.radius_ell.and_then(|r| r[i]);
-                    if c.radius_ell.is_some_and(|r| r.iter().all(Option::is_none)) {
-                        c.radius_ell = None;
+                if let Some(i) = corner.filter(|_| c.reset_border.radius_ell.is_some() || p.reset_border.radius_ell.is_some()) {
+                    c.reset_border.radius_ell.get_or_insert([None; 4])[i] = p.reset_border.radius_ell.and_then(|r| r[i]);
+                    if c.reset_border.radius_ell.is_some_and(|r| r.iter().all(Option::is_none)) {
+                        c.reset_border.radius_ell = None;
                     }
                 }
                 if matches!(self, Self::Contain | Self::ContentVisibility | Self::ContainerType) {
                     c.refresh_containment();
                 }
                 if self == Self::Perspective {
-                    c.perspective_frame = c.perspective.map(|_| Default::default());
+                    c.reset_transforms.perspective_frame = c.reset_transforms.perspective.map(|_| Default::default());
                 }
                 if matches!(self, Self::GridColumns | Self::GridRows) {
-                    c.subgrid = c.subgrid_cols || c.subgrid_rows;
+                    c.reset_grid.subgrid = c.reset_grid.subgrid_cols || c.reset_grid.subgrid_rows;
                 }
             }
         }
@@ -149,63 +150,63 @@ macro_rules! properties {
 }
 
 properties! {
-    Contain: "contain" => [contain_value];
-    ContentVisibility: "content-visibility" => [content_visibility];
-    ContainerType: "container-type" => [container_type];
-    PathLength: "path-length" => [svg_path_length];
-    ColumnWidth: "column-width" => [column_width];
-    ColumnCount: "column-count" => [column_count];
-    ColumnRuleWidth: "column-rule-width" => [column_rule_width, column_rule_widths];
-    ColumnRuleStyle: "column-rule-style" => [column_rule_visible, column_rule_styles, column_rule_double, column_rule_kinds];
-    ColumnRuleColor: "column-rule-color" => [column_rule_color, column_rule_colors];
-    RowRuleWidth: "row-rule-width" => [row_rule_width, row_rule_widths];
-    RowRuleStyle: "row-rule-style" => [row_rule_visible, row_rule_styles, row_rule_double, row_rule_kinds];
-    ColumnRuleBreak: "column-rule-break" => [column_rule_break];
-    RowRuleBreak: "row-rule-break" => [row_rule_break];
-    ColumnRuleVisibility: "column-rule-visibility-items" => [column_rule_visibility];
-    RowRuleVisibility: "row-rule-visibility-items" => [row_rule_visibility];
-    ColumnHeight: "column-height" => [column_height];
-    ColumnWrap: "column-wrap" => [column_wrap];
-    FlexGrow: "flex-grow" => [flex_grow];
-    FlexShrink: "flex-shrink" => [flex_shrink];
-    FlexBasis: "flex-basis" => [flex_basis, basis_content];
-    FlexDirection: "flex-direction" => [flex_dir];
-    FlexWrap: "flex-wrap" => [flex_wrap, flex_wrap_reverse, flex_balance];
-    Perspective: "perspective" => [perspective, perspective_frame];
-    PerspectiveOrigin: "perspective-origin" => [perspective_origin, perspective_origin_px];
-    Transform: "transform" => [transform, transform_raw];
-    TransformOrigin: "transform-origin" => [transform_origin, transform_origin_px, transform_origin_z, transform_origin_raw];
-    Translate: "translate" => [translate];
-    Filter: "filter" => [filter, filter_ref];
-    ZIndex: "z-index" => [z_index];
-    VerticalAlign: "vertical-align" => [vertical_align, vertical_align_text, vertical_shift, vertical_shift_pct, vertical_shift_px, vertical_shift_len];
-    DecorationLine: "text-decoration-line" => [td_lines, underline, line_through];
-    DecorationStyle: "text-decoration-style" => [td_style];
-    DecorationColor: "text-decoration-color" => [td_color];
-    DecorationThickness: "text-decoration-thickness" => [td_thickness];
-    DecorationInset: "text-decoration-inset" => [td_inset];
-    TopLeftRadius: "border-top-left-radius" => [radius.tl];
-    TopRightRadius: "border-top-right-radius" => [radius.tr];
-    BottomRightRadius: "border-bottom-right-radius" => [radius.br];
-    BottomLeftRadius: "border-bottom-left-radius" => [radius.bl];
-    GridColumns: "grid-template-columns" => [grid_cols, grid_tracks, grid_col_line_names, grid_auto_fill_min, grid_auto_fill_tracks, subgrid_cols, auto_repeat_body_cols, auto_repeat_cols];
-    GridRows: "grid-template-rows" => [grid_rows, grid_row_line_names, grid_auto_fill_row, subgrid_rows, auto_repeat_body_rows, auto_repeat_rows];
-    GridAreas: "grid-template-areas" => [grid_areas];
-    GridAutoColumns: "grid-auto-columns" => [grid_auto_cols, grid_auto_cols_list];
-    GridAutoRows: "grid-auto-rows" => [grid_auto_rows, grid_auto_rows_list];
-    GridAutoFlow: "grid-auto-flow" => [grid_auto_flow];
-    ShapeOutside: "shape-outside" => [shape_outside];
-    MaskImage: "mask-image" => [mask_image];
-    MaskMode: "mask-mode" => [mask_luminance, mask_alpha_mode];
-    MaskPosition: "mask-position" => [mask_pos, mask_pos_far, mask_pos_list];
-    MaskSize: "mask-size" => [mask_size, mask_fit];
-    MaskRepeat: "mask-repeat" => [mask_no_repeat, mask_repeat_list, mask_repeat_modes];
-    MaskOrigin: "mask-origin" => [mask_origin];
-    MaskClip: "mask-clip" => [mask_clip];
-    MaskComposite: "mask-composite" => [mask_composite];
-    MaskBorderMode: "mask-border-mode" => [mask_border_luminance];
-    MaxLines: "max-lines" => [line_clamp, clamp_auto];
-    Continue: "continue" => [clamp_continue, clamp_legacy, clamp_discard];
-    TextBoxTrim: "text-box-trim" => [text_box_trim_start, text_box_trim_end];
-    UserSelect: "user-select" => [user_select];
+    Contain: "contain" => [reset_context.contain_value];
+    ContentVisibility: "content-visibility" => [reset_generated.content_visibility];
+    ContainerType: "container-type" => [reset_box_layout.container_type];
+    PathLength: "path-length" => [reset_svg_math.svg_path_length];
+    ColumnWidth: "column-width" => [reset_fragmentation.column_width];
+    ColumnCount: "column-count" => [reset_fragmentation.column_count];
+    ColumnRuleWidth: "column-rule-width" => [reset_fragmentation.column_rule_width, reset_fragmentation.column_rule_widths];
+    ColumnRuleStyle: "column-rule-style" => [reset_fragmentation.column_rule_visible, reset_fragmentation.column_rule_styles, reset_fragmentation.column_rule_double, reset_fragmentation.column_rule_kinds];
+    ColumnRuleColor: "column-rule-color" => [reset_fragmentation.column_rule_color, reset_fragmentation.column_rule_colors];
+    RowRuleWidth: "row-rule-width" => [reset_fragmentation.row_rule_width, reset_fragmentation.row_rule_widths];
+    RowRuleStyle: "row-rule-style" => [reset_fragmentation.row_rule_visible, reset_fragmentation.row_rule_styles, reset_fragmentation.row_rule_double, reset_fragmentation.row_rule_kinds];
+    ColumnRuleBreak: "column-rule-break" => [reset_fragmentation.column_rule_break];
+    RowRuleBreak: "row-rule-break" => [reset_fragmentation.row_rule_break];
+    ColumnRuleVisibility: "column-rule-visibility-items" => [reset_fragmentation.column_rule_visibility];
+    RowRuleVisibility: "row-rule-visibility-items" => [reset_fragmentation.row_rule_visibility];
+    ColumnHeight: "column-height" => [reset_fragmentation.column_height];
+    ColumnWrap: "column-wrap" => [reset_fragmentation.column_wrap];
+    FlexGrow: "flex-grow" => [reset_flex.flex_grow];
+    FlexShrink: "flex-shrink" => [reset_flex.flex_shrink];
+    FlexBasis: "flex-basis" => [reset_flex.flex_basis, reset_flex.basis_content];
+    FlexDirection: "flex-direction" => [reset_flex.flex_dir];
+    FlexWrap: "flex-wrap" => [reset_flex.flex_wrap, reset_flex.flex_wrap_reverse, reset_flex.flex_balance];
+    Perspective: "perspective" => [reset_transforms.perspective, reset_transforms.perspective_frame];
+    PerspectiveOrigin: "perspective-origin" => [reset_transforms.perspective_origin, reset_transforms.perspective_origin_px];
+    Transform: "transform" => [reset_transforms.transform, reset_transforms.transform_raw];
+    TransformOrigin: "transform-origin" => [reset_transforms.transform_origin, reset_transforms.transform_origin_px, reset_transforms.transform_origin_z, reset_transforms.transform_origin_raw];
+    Translate: "translate" => [reset_transforms.translate];
+    Filter: "filter" => [reset_effects.filter, reset_effects.filter_ref];
+    ZIndex: "z-index" => [reset_positioned.z_index];
+    VerticalAlign: "vertical-align" => [inh.text_flow.vertical_align, reset_text_box.vertical_align_text, reset_text_box.vertical_shift, reset_text_box.vertical_shift_pct, reset_text_box.vertical_shift_px, reset_text_box.vertical_shift_len];
+    DecorationLine: "text-decoration-line" => [reset_text_box.td_lines, reset_text_box.underline, reset_text_box.line_through];
+    DecorationStyle: "text-decoration-style" => [reset_text_box.td_style];
+    DecorationColor: "text-decoration-color" => [reset_text_box.td_color];
+    DecorationThickness: "text-decoration-thickness" => [reset_text_box.td_thickness];
+    DecorationInset: "text-decoration-inset" => [reset_text_box.td_inset];
+    TopLeftRadius: "border-top-left-radius" => [reset_border.radius.tl];
+    TopRightRadius: "border-top-right-radius" => [reset_border.radius.tr];
+    BottomRightRadius: "border-bottom-right-radius" => [reset_border.radius.br];
+    BottomLeftRadius: "border-bottom-left-radius" => [reset_border.radius.bl];
+    GridColumns: "grid-template-columns" => [reset_grid.grid_cols, reset_grid.grid_tracks, reset_grid.grid_col_line_names, reset_grid.grid_auto_fill_min, reset_grid.grid_auto_fill_tracks, reset_grid.subgrid_cols, reset_grid.auto_repeat_body_cols, reset_grid.auto_repeat_cols];
+    GridRows: "grid-template-rows" => [reset_grid.grid_rows, reset_grid.grid_row_line_names, reset_grid.grid_auto_fill_row, reset_grid.subgrid_rows, reset_grid.auto_repeat_body_rows, reset_grid.auto_repeat_rows];
+    GridAreas: "grid-template-areas" => [reset_grid.grid_areas];
+    GridAutoColumns: "grid-auto-columns" => [reset_grid.grid_auto_cols, reset_grid.grid_auto_cols_list];
+    GridAutoRows: "grid-auto-rows" => [reset_grid.grid_auto_rows, reset_grid.grid_auto_rows_list];
+    GridAutoFlow: "grid-auto-flow" => [reset_grid.grid_auto_flow];
+    ShapeOutside: "shape-outside" => [reset_shapes.shape_outside];
+    MaskImage: "mask-image" => [reset_mask.mask_image];
+    MaskMode: "mask-mode" => [reset_mask.mask_luminance, reset_mask.mask_alpha_mode];
+    MaskPosition: "mask-position" => [reset_mask.mask_pos, reset_mask.mask_pos_far, reset_mask.mask_pos_list];
+    MaskSize: "mask-size" => [reset_mask.mask_size, reset_mask.mask_fit];
+    MaskRepeat: "mask-repeat" => [reset_mask.mask_no_repeat, reset_mask.mask_repeat_list, reset_mask.mask_repeat_modes];
+    MaskOrigin: "mask-origin" => [reset_mask.mask_origin];
+    MaskClip: "mask-clip" => [reset_mask.mask_clip];
+    MaskComposite: "mask-composite" => [reset_mask.mask_composite];
+    MaskBorderMode: "mask-border-mode" => [reset_mask.mask_border_luminance];
+    MaxLines: "max-lines" => [reset_fragmentation.line_clamp, reset_fragmentation.clamp_auto];
+    Continue: "continue" => [reset_fragmentation.clamp_continue, inh.text_flow.clamp_legacy, reset_fragmentation.clamp_discard];
+    TextBoxTrim: "text-box-trim" => [reset_text_box.text_box_trim_start, reset_text_box.text_box_trim_end];
+    UserSelect: "user-select" => [reset_context.user_select];
 }

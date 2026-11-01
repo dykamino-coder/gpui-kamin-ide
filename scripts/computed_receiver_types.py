@@ -8,6 +8,8 @@ from rust_layer_paths import file_module, use_tree
 from computed_cargo_proofs import external_crates
 
 STYLE = {'Computed', 'InheritedStyle', 'SharedStyle', 'BoxStyle'}
+# COW payloads remain style state, including generic wrapper projections.
+STYLE.update('StyleGroup InheritedGroup ResetTextBox ResetCascade ResetBoxLayout ResetFlex ResetBorder ResetGrid ResetContext ResetGenerated ResetSvgMath ResetPositioned ResetEffects ResetBackground ResetMask ResetShapes ResetFragmentation ResetTransforms InheritedUi InheritedFont InheritedTextFlow InheritedTableList InheritedTextInk InheritedWriting'.split())
 PRIMITIVES = set('bool char str String usize isize u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64'.split())
 WRAPPERS = set('Rc Arc Box Pin Cell RefCell Ref RefMut Option Result Vec VecDeque HashMap HashSet BTreeMap BTreeSet SmallVec Cow Mutex RwLock'.split())
 STANDARD_PATHS = {('std', module, name): name for module, group in (

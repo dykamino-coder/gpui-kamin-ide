@@ -13,11 +13,29 @@ use crate::style::computed::{Computed, Display};
 /// CSS 2 sections 6.2.1 and 12.4: explicit inheritance copies the parent's
 /// computed declaration list; counter values and counter scopes are separate.
 pub fn inherit_counter_decls(style: &mut Computed, parent: Option<&[Option<String>; 3]>) {
-    for (i, value) in [
-        &mut style.counter_reset,
-        &mut style.counter_increment,
-        &mut style.counter_set,
+    if ![
+        &style.reset_generated.counter_reset,
+        &style.reset_generated.counter_increment,
+        &style.reset_generated.counter_set,
     ]
+    .into_iter()
+    .flatten()
+    .any(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "inherit" | "initial" | "unset"
+        )
+    }) {
+        return;
+    }
+    for (i, value) in {
+        let group_0 = &mut *style.reset_generated;
+        [
+            &mut group_0.counter_reset,
+            &mut group_0.counter_increment,
+            &mut group_0.counter_set,
+        ]
+    }
     .into_iter()
     .enumerate()
     {
@@ -40,14 +58,14 @@ pub fn inherit_counter_decls(style: &mut Computed, parent: Option<&[Option<Strin
 
 pub fn counter_snapshot(style: &Computed) -> [Option<String>; 3] {
     [
-        style.counter_reset.clone(),
-        style.counter_increment.clone(),
-        style.counter_set.clone(),
+        style.reset_generated.counter_reset.clone(),
+        style.reset_generated.counter_increment.clone(),
+        style.reset_generated.counter_set.clone(),
     ]
 }
 
 fn list_value_hint(style: &Computed, tag: &str, attrs: &[(String, String)]) -> Option<i64> {
-    if tag != "li" || style.counter_set.is_some() {
+    if tag != "li" || style.reset_generated.counter_set.is_some() {
         return None;
     }
     attrs
@@ -58,7 +76,7 @@ fn list_value_hint(style: &Computed, tag: &str, attrs: &[(String, String)]) -> O
 
 pub fn apply_value_hint(style: &mut Computed, node: &crate::style::select::Ancestor) {
     if let Some(value) = list_value_hint(style, &node.tag, &node.attrs) {
-        style.counter_set = Some(format!("list-item {value}"));
+        style.reset_generated.counter_set = Some(format!("list-item {value}"));
     }
 }
 
@@ -76,7 +94,7 @@ pub fn apply_counter_decls(
 ) {
     // CSS Lists 3 §4.5: display:contents has no box, so its directives
     // do not apply, while the flattened descendants still participate.
-    if style.display == Some(Display::Contents) {
+    if style.reset_box_layout.display == Some(Display::Contents) {
         *item_flag = false;
         return;
     }
@@ -93,7 +111,8 @@ pub fn apply_counter_decls(
     // живёт в общем каскаде: авторский `counter-reset` на том же узле его
     // ЗАМЕНЯЕТ целиком, а не дополняет.
     let reversed_list = tag == "ol" && attrs.iter().any(|(k, _)| k == "reversed");
-    if matches!(tag, "ol" | "ul" | "menu" | "dir") && style.counter_reset.is_none() {
+    if matches!(tag, "ol" | "ul" | "menu" | "dir") && style.reset_generated.counter_reset.is_none()
+    {
         // У обратного списка отсчёт идёт вниз и начинается на единицу ВЫШЕ
         // названного, у обычного — на единицу ниже (§ua-stylesheet).
         let start = match (tag, num_attr("start")) {
@@ -113,17 +132,18 @@ pub fn apply_counter_decls(
     // CSS Lists 3 §4.6: only a box with `display: list-item` increments
     // `list-item`; an `li` keeps that role only while no author display
     // replaces the UA `list-item` (`li { display: block }`).
-    let is_item =
-        (tag == "li" && style.display.is_none()) || style.display == Some(Display::ListItem);
+    let is_item = (tag == "li" && style.reset_box_layout.display.is_none())
+        || style.reset_box_layout.display == Some(Display::ListItem);
     *item_flag = is_item;
     let explicit_item = style
+        .reset_generated
         .counter_increment
         .as_deref()
         .is_some_and(|t| t.split_whitespace().any(|w| w == "list-item"));
     for (decl, kind) in [
-        (&style.counter_reset, 0u8),
-        (&style.counter_increment, 1),
-        (&style.counter_set, 2),
+        (&style.reset_generated.counter_reset, 0u8),
+        (&style.reset_generated.counter_increment, 1),
+        (&style.reset_generated.counter_set, 2),
     ] {
         if kind == 2 && is_item && !explicit_item {
             // Пункт обратного списка считает ВНИЗ (css-lists-3

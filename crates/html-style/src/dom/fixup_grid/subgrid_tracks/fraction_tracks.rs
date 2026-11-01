@@ -39,7 +39,11 @@ pub fn fr_tracks_to_px(
     if fr_sum <= 0.0 {
         return None;
     }
-    let size = match if row_dir { style.height } else { style.width } {
+    let size = match if row_dir {
+        style.reset_box_layout.height
+    } else {
+        style.reset_box_layout.width
+    } {
         Some(Len::Px(v)) => v,
         _ => return None,
     };
@@ -49,18 +53,28 @@ pub fn fr_tracks_to_px(
         _ => None,
     };
     // `box-sizing: border-box` — заданный размер включает поля и рамку.
-    let inner = if style.border_box == Some(true) {
+    let inner = if style.reset_border.border_box == Some(true) {
         let b = style.borders();
         let (p0, p1, b0, b1) = if row_dir {
-            (style.padding.top, style.padding.bottom, b.top, b.bottom)
+            (
+                style.reset_box_layout.padding.top,
+                style.reset_box_layout.padding.bottom,
+                b.top,
+                b.bottom,
+            )
         } else {
-            (style.padding.left, style.padding.right, b.left, b.right)
+            (
+                style.reset_box_layout.padding.left,
+                style.reset_box_layout.padding.right,
+                b.left,
+                b.right,
+            )
         };
         size - px(p0)? - px(p1)? - px(b0)? - px(b1)?
     } else {
         size
     };
-    let (grow, gcol) = style.gap.unwrap_or((None, None));
+    let (grow, gcol) = style.reset_flex.gap.unwrap_or((None, None));
     let gap = px(if row_dir { grow } else { gcol })?;
     let n = tracks.len() as f32;
     let leftover = (inner - px_sum - gap * (n - 1.0)).max(0.0);

@@ -54,7 +54,12 @@ mod tests {
             (Some(Align::End), false),
         ] {
             let mut c = BoxStyle::new(Computed {
-                align_content_baseline: Some(false),
+                reset_flex: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetFlex {
+                        align_content_baseline: Some(false),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             });
             c.context.parent_grid = 1;

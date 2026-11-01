@@ -51,8 +51,13 @@ fn descend<'a>(
 ) -> Result<(Buffer<Visit<'a>>, Restore), Error> {
     let admission = tree.admission();
     let restore = Restore::Truncate(path.len());
-    let keep = p.style.preserve_newlines.unwrap_or(p.visit.preserve);
-    if p.hidden && p.style.col_role != Some(1) {
+    let keep = p
+        .style
+        .inh
+        .text_flow
+        .preserve_newlines
+        .unwrap_or(p.visit.preserve);
+    if p.hidden && p.style.reset_context.col_role != Some(1) {
         return Ok((Buffer::default(), restore));
     }
     if !p.hidden {

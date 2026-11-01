@@ -23,24 +23,34 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         return None;
     }
     let style = Computed {
-        display: Some(Display::Block),
-        column_count: s.column_count,
-        column_width: s.column_width,
-        column_height: s.column_height,
-        column_wrap: s.column_wrap,
-        column_gap: s.column_gap,
-        column_fill_auto: s.column_fill_auto,
-        column_rule_width: s.column_rule_width,
-        column_rule_visible: s.column_rule_visible,
-        column_rule_color: s.column_rule_color.clone(),
-        column_rule_break: s.column_rule_break,
-        column_rule_widths: s.column_rule_widths.clone(),
-        column_rule_styles: s.column_rule_styles.clone(),
-        column_rule_double: s.column_rule_double,
-        column_rule_kinds: s.column_rule_kinds.clone(),
-        column_rule_colors: s.column_rule_colors.clone(),
-        column_rule_inset: s.column_rule_inset,
-        column_rule_visibility: s.column_rule_visibility,
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                display: Some(Display::Block),
+                ..Default::default()
+            },
+        ),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                column_count: s.column_count,
+                column_width: s.column_width,
+                column_height: s.column_height,
+                column_wrap: s.column_wrap,
+                column_gap: s.column_gap,
+                column_fill_auto: s.column_fill_auto,
+                column_rule_width: s.column_rule_width,
+                column_rule_visible: s.column_rule_visible,
+                column_rule_color: s.column_rule_color.clone(),
+                column_rule_break: s.column_rule_break,
+                column_rule_widths: s.column_rule_widths.clone(),
+                column_rule_styles: s.column_rule_styles.clone(),
+                column_rule_double: s.column_rule_double,
+                column_rule_kinds: s.column_rule_kinds.clone(),
+                column_rule_colors: s.column_rule_colors.clone(),
+                column_rule_inset: s.column_rule_inset,
+                column_rule_visibility: s.column_rule_visibility,
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let flow = Element {

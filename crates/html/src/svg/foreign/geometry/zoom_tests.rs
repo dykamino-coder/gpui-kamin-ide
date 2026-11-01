@@ -20,8 +20,13 @@ fn lengths_preserve_svg_units_for_css_attributes_and_percentages() {
 #[test]
 fn capture_maps_zoomed_css_back_to_svg_units_with_overflow() {
     let style = Computed {
-        overflow_x: Some(Overflow::Visible),
-        overflow_y: Some(Overflow::Hidden),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                overflow_x: Some(Overflow::Visible),
+                overflow_y: Some(Overflow::Hidden),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let (origin, size) = capture(&style, (50.0, 25.0), (100.0, 50.0), 4.0);

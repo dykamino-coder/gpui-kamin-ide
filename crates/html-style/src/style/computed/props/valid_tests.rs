@@ -49,7 +49,10 @@ fn rotated_transform_reaches_the_matrix() {
     let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = Computed::default();
     c.apply_one("transform", "rotate(180deg)", st.values());
-    let t = c.transform.expect("rotate(180deg) applied");
+    let t = c
+        .reset_transforms
+        .transform
+        .expect("rotate(180deg) applied");
     assert!((t.rotate_rad - std::f32::consts::PI).abs() < 1e-4);
 }
 
@@ -77,7 +80,8 @@ fn individual_rotate_and_offset_rotate_accept_full_angles() {
     let mut c = Computed::default();
     c.apply_one("rotate", "180deg", st.values());
     assert!(
-        c.rotate_prop
+        c.reset_transforms
+            .rotate_prop
             .is_some_and(|r| (r - std::f32::consts::PI).abs() < 1e-4)
     );
 }
@@ -155,7 +159,7 @@ fn place_shorthands_forward_inherit() {
         LonghandId::JustifyContent,
     ] {
         assert!(
-            c.inherit_longhands.contains(id),
+            c.reset_cascade.inherit_longhands.contains(id),
             "place-*: inherit lost {id:?}"
         );
     }

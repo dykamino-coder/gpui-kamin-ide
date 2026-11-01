@@ -38,7 +38,7 @@ pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: Value
     // §zoom): `viewBox` в незумленных единицах растягивает содержимое на
     // зумленную канву (`zoom/svg-path`, `zoom/svg`). С `viewBox` масштаб уже
     // задаёт он сам.
-    let z = e.style.used().zoom_eff.unwrap_or(1.0);
+    let z = e.style.used().inh.font.zoom_eff.unwrap_or(1.0);
     let shifted = nx > 0.0 || ny > 0.0;
     if ((z - 1.0).abs() > f32::EPSILON || shifted)
         && !e

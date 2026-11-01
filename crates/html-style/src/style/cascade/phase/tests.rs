@@ -69,9 +69,9 @@ fn logical_side_radius_maps_by_the_writing_phase_output() {
     let r = rule("border-inline-start-radius: 10px", "p");
     let inline = parse_decls_in("direction: rtl", vcx);
     let c = Computed::resolve(&[&r], &inline, vcx);
-    assert_eq!(c.radius.tr, Some(Len::Px(10.0)));
-    assert_eq!(c.radius.br, Some(Len::Px(10.0)));
-    assert_eq!(c.radius.tl, None);
+    assert_eq!(c.reset_border.radius.tr, Some(Len::Px(10.0)));
+    assert_eq!(c.reset_border.radius.br, Some(Len::Px(10.0)));
+    assert_eq!(c.reset_border.radius.tl, None);
 }
 
 /// `rem` на корне: в собственном `font-size` — от начального кегля (а не
@@ -85,15 +85,15 @@ fn root_rem_uses_the_root_font_phase() {
     let r = rule("font-size: 2rem; margin-left: 1rem", "html");
     for _ in 0..2 {
         let c = Computed::resolve_in(&[&r], &none, &VarMap::new(), ROOT, vcx);
-        assert_eq!(c.font_size, Some(Len::Px(32.0)));
-        assert_eq!(c.margin.left, Some(Len::Px(32.0)));
+        assert_eq!(c.inh.font.font_size, Some(Len::Px(32.0)));
+        assert_eq!(c.reset_box_layout.margin.left, Some(Len::Px(32.0)));
     }
     // `calc()` с единицами шрифта: родитель корня — начальные 16px.
     let r = rule("font-size: calc(1rem + 1em)", "html");
     Computed::resolve_in(&[&r], &none, &VarMap::new(), ROOT, vcx);
     let child = rule("width: 1rem", "div");
     let c = Computed::resolve(&[&child], &none, vcx);
-    assert_eq!(c.width, Some(Len::Px(32.0)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(32.0)));
 }
 
 /// `color-scheme` решается раньше цветов того же элемента: `light-dark()` в
@@ -110,12 +110,12 @@ fn color_scheme_decides_light_dark_of_the_same_element() {
     let r = rule("color-scheme: dark", "p");
     let inline = parse_decls_in("color: light-dark(rgb(255, 0, 0), rgb(0, 128, 0))", vcx);
     let c = Computed::resolve(&[&r], &inline, vcx);
-    assert_eq!(c.color_scheme.as_deref(), Some("dark"));
-    assert_eq!(c.color.map(|c| (c.r, c.g > 0.0)), Some((0.0, true)));
+    assert_eq!(c.inh.ui.color_scheme.as_deref(), Some("dark"));
+    assert_eq!(c.inh.ui.color.map(|c| (c.r, c.g > 0.0)), Some((0.0, true)));
     let light = rule("color-scheme: only light", "p");
     let c = Computed::resolve(&[&light], &inline, vcx);
-    assert_eq!(c.color_scheme.as_deref(), Some("only light"));
-    assert_eq!(c.color.map(|c| c.r), Some(1.0));
+    assert_eq!(c.inh.ui.color_scheme.as_deref(), Some("only light"));
+    assert_eq!(c.inh.ui.color.map(|c| c.r), Some(1.0));
     let none = parse_decls_in("color-scheme: only only light", vcx);
-    assert_eq!(Computed::resolve(&[], &none, vcx).color_scheme, None);
+    assert_eq!(Computed::resolve(&[], &none, vcx).inh.ui.color_scheme, None);
 }

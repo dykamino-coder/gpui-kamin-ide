@@ -65,11 +65,11 @@ fn background_lengths_use_computed_em_and_adjusted_font_facts() {
         ),
         vcx,
     );
-    assert_eq!(result.font_size, Some(Len::Px(20.0)));
-    assert_eq!(result.bg_pos.x, Some(Len::Px(20.0)));
-    assert_eq!(result.bg_pos.y, Some(Len::Px(16.0)));
+    assert_eq!(result.inh.font.font_size, Some(Len::Px(20.0)));
+    assert_eq!(result.reset_background.bg_pos.x, Some(Len::Px(20.0)));
+    assert_eq!(result.reset_background.bg_pos.y, Some(Len::Px(16.0)));
     assert_eq!(
-        result.bg_size,
+        result.reset_background.bg_size,
         BgSize::Fixed(Some(Len::Px(40.0)), Some(Len::Px(24.0)))
     );
 }
@@ -86,9 +86,9 @@ fn font_size_adjust_keeps_computed_em_and_numeric_line_height() {
         ),
         vcx,
     );
-    assert_eq!(parent.font_size, Some(Len::Px(20.0)));
-    assert_eq!(parent.width, Some(Len::Px(20.0)));
-    assert_eq!(parent.height, Some(Len::Px(16.0)));
+    assert_eq!(parent.inh.font.font_size, Some(Len::Px(20.0)));
+    assert_eq!(parent.reset_box_layout.width, Some(Len::Px(20.0)));
+    assert_eq!(parent.reset_box_layout.height, Some(Len::Px(16.0)));
     assert_eq!(parent.used_font(16.0, vcx).size_px, 40.0);
     assert_eq!(parent.numeric_line_px(16.0), Some(30.0));
     let child = inherit(
@@ -96,14 +96,14 @@ fn font_size_adjust_keeps_computed_em_and_numeric_line_height() {
         &styled("font-size:2em;width:1em;height:1ch", vcx),
         vcx,
     );
-    assert_eq!(child.font_size, Some(Len::Px(40.0)));
-    assert_eq!(child.width, Some(Len::Px(40.0)));
-    assert_eq!(child.height, Some(Len::Px(48.0)));
+    assert_eq!(child.inh.font.font_size, Some(Len::Px(40.0)));
+    assert_eq!(child.reset_box_layout.width, Some(Len::Px(40.0)));
+    assert_eq!(child.reset_box_layout.height, Some(Len::Px(48.0)));
     assert_eq!(child.numeric_line_px(16.0), Some(60.0));
     let ex_child = inherit(&parent, &styled("font-family:wide;font-size:2ex", vcx), vcx);
-    assert_eq!(ex_child.font_size, Some(Len::Px(32.0)));
+    assert_eq!(ex_child.inh.font.font_size, Some(Len::Px(32.0)));
     let calc_child = inherit(&parent, &styled("font-size:calc(1em + 2ex)", vcx), vcx);
-    assert_eq!(calc_child.font_size, Some(Len::Px(52.0)));
+    assert_eq!(calc_child.inh.font.font_size, Some(Len::Px(52.0)));
 }
 
 #[test]
@@ -118,11 +118,14 @@ fn font_size_adjust_from_font_is_numeric_before_inheriting_another_face() {
         ),
         vcx,
     );
-    assert_eq!(parent.font_size_adjust, Some((0, 0.4)));
+    assert_eq!(parent.inh.font.font_size_adjust, Some((0, 0.4)));
     assert_eq!(parent.used_font(16.0, vcx).size_px, 20.0);
     let child = inherit(&parent, &styled("font-family:wide", vcx), vcx);
-    assert_eq!(child.font_size_adjust, parent.font_size_adjust);
-    assert_eq!(child.font_size, Some(Len::Px(20.0)));
+    assert_eq!(
+        child.inh.font.font_size_adjust,
+        parent.inh.font.font_size_adjust
+    );
+    assert_eq!(child.inh.font.font_size, Some(Len::Px(20.0)));
     assert_eq!(child.used_font(16.0, vcx).size_px, 10.0);
     let missing = inherit(
         &parent,
@@ -130,13 +133,13 @@ fn font_size_adjust_from_font_is_numeric_before_inheriting_another_face() {
         vcx,
     );
     assert_eq!(missing.used_font(16.0, vcx).size_px, 20.0);
-    assert_eq!(missing.font_size_adjust, Some((u8::MAX, 0.0)));
+    assert_eq!(missing.inh.font.font_size_adjust, Some((u8::MAX, 0.0)));
     let vertical = inherit(
         &parent,
         &styled("font-size-adjust:ic-height from-font", vcx),
         vcx,
     );
-    assert_eq!(vertical.font_size_adjust, Some((u8::MAX, 0.0)));
+    assert_eq!(vertical.inh.font.font_size_adjust, Some((u8::MAX, 0.0)));
     assert_eq!(vertical.used_font(16.0, vcx).size_px, 20.0);
 }
 

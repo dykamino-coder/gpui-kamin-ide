@@ -45,7 +45,7 @@ pub fn apply(
 ) {
     // Кегль — первым и отдельно: от него стадия считает все `em` элемента,
     // и в `scale_own` он НЕ входит (иначе множитель лёг бы дважды).
-    c.font_size = match c.font_size {
+    c.inh.font.font_size = match c.inh.font.font_size {
         Some(Len::Px(v)) => Some(Len::Px(v * eff)),
         Some(Len::Em(k)) => Some(Len::Em(k * own)),
         Some(Len::Pct(k)) => Some(Len::Pct(k * own)),
@@ -65,7 +65,7 @@ pub fn apply(
     // и должен «still multiply by our own zoom» (relative-units-from-parent:
     // `zoom: 2; line-height: 2lh` ≡ `line-height: 4lh`). Точечная часть
     // `LhPx` уже домножена в `scale_own`.
-    c.line_height = match c.line_height {
+    c.inh.font.line_height = match c.inh.font.line_height {
         Some(Len::Lh(k)) => Some(Len::Lh(k * own)),
         Some(Len::LhPx(k, add)) => Some(Len::LhPx(k * own, add)),
         other => other,
@@ -85,32 +85,32 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
             *slot = Some(Len::Px(v * own));
         }
     };
-    put(&mut c.line_height, carried.line_height);
-    put(&mut c.letter_spacing, carried.letter_spacing);
-    put(&mut c.word_spacing, carried.word_spacing);
-    put(&mut c.text_indent, carried.text_indent);
-    put(&mut c.tab_size_len, carried.tab_size);
+    put(&mut c.inh.font.line_height, carried.line_height);
+    put(&mut c.inh.text_flow.letter_spacing, carried.letter_spacing);
+    put(&mut c.inh.text_flow.word_spacing, carried.word_spacing);
+    put(&mut c.inh.text_flow.text_indent, carried.text_indent);
+    put(&mut c.inh.text_flow.tab_size_len, carried.tab_size);
     // `text-shadow` is inherited as one list: the whole list is scaled.
-    if c.text_shadow.is_none()
-        && !c.text_shadow_none
+    if c.inh.text_ink.text_shadow.is_none()
+        && !c.reset_text_box.text_shadow_none
         && let Some(mut sh) = carried.text_shadow.clone()
     {
         scale_shadow(&mut sh, own);
-        c.text_shadow = Some(sh);
-        c.text_shadow_rest = carried.text_shadow_rest.clone();
-        for sh in &mut c.text_shadow_rest {
+        c.inh.text_ink.text_shadow = Some(sh);
+        c.inh.text_ink.text_shadow_rest = carried.text_shadow_rest.clone();
+        for sh in &mut c.inh.text_ink.text_shadow_rest {
             scale_shadow(sh, own);
         }
     }
-    if c.underline_offset.is_none()
+    if c.inh.text_ink.underline_offset.is_none()
         && let Some(v) = carried.underline_offset
     {
-        c.underline_offset = Some(crate::style::computed::DecorLen::Px(v * own));
+        c.inh.text_ink.underline_offset = Some(crate::style::computed::DecorLen::Px(v * own));
     }
-    if c.border_spacing.is_none()
+    if c.inh.table_list.border_spacing.is_none()
         && let Some((row, col)) = carried.border_spacing
     {
         let px = |v: Option<f32>| v.map(|v| Len::Px(v * own));
-        c.border_spacing = Some((px(row), px(col)));
+        c.inh.table_list.border_spacing = Some((px(row), px(col)));
     }
 }

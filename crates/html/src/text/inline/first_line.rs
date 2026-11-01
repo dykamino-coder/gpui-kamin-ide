@@ -124,7 +124,12 @@ mod tests {
         let piece = |text: &str, inline_control| Piece::Text {
             text: text.into(),
             style: BoxStyle::from(Computed {
-                inline_control,
+                reset_context: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetContext {
+                        inline_control,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             }),
         };

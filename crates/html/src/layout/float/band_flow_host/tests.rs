@@ -7,7 +7,12 @@ use crate::style::computed::BoxStyle;
 fn multicol_float_claims_the_used_content_width_only_after_intrinsic_measurement() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut style = Computed {
-        column_count: Some(2),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                column_count: Some(2),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     style.padding.left = Some(Len::Px(30.));
@@ -35,8 +40,18 @@ fn multicol_float_claims_the_used_content_width_only_after_intrinsic_measurement
 fn specified_multicol_width_is_not_replaced_by_the_probe_width() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut style = Computed {
-        column_count: Some(2),
-        width: Some(Len::Px(20.)),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                column_count: Some(2),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(20.)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     fit_own_layout(&mut style, &BoxStyle::default(), 100., 784., doc.values());
@@ -87,7 +102,12 @@ fn unknown_atomic_container_sizes_belong_to_the_paragraph() {
         let container = Element::synthetic(
             "div",
             Computed {
-                display: Some(display),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        display: Some(display),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -112,12 +132,17 @@ fn nested_lift_stops_at_the_absolute_containing_block() {
     let pinned = Element::synthetic(
         "div",
         Computed {
-            position: Some(Position::Absolute),
-            inset: crate::style::computed::Sides {
-                top: Some(Len::Px(10.)),
-                left: Some(Len::Px(20.)),
-                ..Default::default()
-            },
+            reset_positioned: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetPositioned {
+                    position: Some(Position::Absolute),
+                    inset: crate::style::computed::Sides {
+                        top: Some(Len::Px(10.)),
+                        left: Some(Len::Px(20.)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),
@@ -127,7 +152,12 @@ fn nested_lift_stops_at_the_absolute_containing_block() {
         let mut ancestor = Element::synthetic(
             "div",
             Computed {
-                position,
+                reset_positioned: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetPositioned {
+                        position,
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

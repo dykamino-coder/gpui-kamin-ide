@@ -77,10 +77,25 @@ mod tests {
     #[test]
     fn fragmentainer_uses_content_box_and_minimum_wins_over_maximum() {
         let mut style = Computed {
-            height: Some(Len::Px(100.0)),
-            width: Some(Len::Px(140.0)),
-            column_fill_auto: Some(true),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(100.0)),
+                    width: Some(Len::Px(140.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_fragmentation: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetFragmentation {
+                    column_fill_auto: Some(true),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         style.padding.top = Some(Len::Px(4.0));

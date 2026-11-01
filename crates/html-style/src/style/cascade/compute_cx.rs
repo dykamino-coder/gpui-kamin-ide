@@ -57,7 +57,7 @@ impl<'a> ComputeCx<'a> {
                 // Своё `color-scheme` — используемая схема элемента и его
                 // потомков; незаданное наследует схему родителя, с которой
                 // контекст пришёл.
-                if let Some(scheme) = &style.color_scheme {
+                if let Some(scheme) = &style.inh.ui.color_scheme {
                     self.vcx = crate::style::values::value::resolve_scheme(scheme, self.vcx);
                 }
             }
@@ -70,15 +70,15 @@ impl<'a> ComputeCx<'a> {
 /// Метрики корня по итогу его фазы шрифта: вычисленный кегль (родитель —
 /// начальные 16px), высота строки и семейство.
 fn set_root_from(style: &Computed, vcx: ValueCx<'_>) {
-    let family = style.font_family.clone().unwrap_or_default();
+    let family = style.inh.font.font_family.clone().unwrap_or_default();
     let font = style
         .computed_font_px(crate::style::computed::FontCx::new(&family, 16.0), vcx)
         .unwrap_or(16.0);
     let mut resolved = style.clone();
-    resolved.font_size = Some(Len::Px(font));
+    resolved.inh.font.font_size = Some(Len::Px(font));
     resolved.compute_font_adjust(&family, vcx);
     let used = resolved.used_font(font, vcx);
-    let line = match style.line_height {
+    let line = match style.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * font,
         _ => root_normal_line_px(&family, used.size_px, vcx),
@@ -86,7 +86,7 @@ fn set_root_from(style: &Computed, vcx: ValueCx<'_>) {
     set_root_metrics(vcx.doc, font, line);
     set_root_family(vcx.doc, &family);
     let mut request = resolved.font_request(&family, used.size_px);
-    if resolved.font_size_adjust.is_some() {
+    if resolved.inh.font.font_size_adjust.is_some() {
         request.metric_query = kamin_font_facts::font_facts::FontMetricQuery::Adjustment;
     }
     vcx.doc.root.borrow_mut().resolve_font_units(request, vcx);
@@ -94,7 +94,7 @@ fn set_root_from(style: &Computed, vcx: ValueCx<'_>) {
     // той же единицей окна.
     set_root_font_view(
         vcx.doc,
-        match style.font_size {
+        match style.inh.font.font_size {
             Some(Len::Vh(k)) => Some((true, k)),
             Some(Len::Vw(k)) => Some((false, k)),
             _ => None,

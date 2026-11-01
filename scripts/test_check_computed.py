@@ -25,6 +25,33 @@ def scan(source, path=LAYOUT):
 
 
 class AggregateTests(unittest.TestCase):
+    def test_grouped_properties_keep_ids_and_constructor_debt(self):
+        group = 'crates/html/src/style/computed/groups/'
+        sources = {
+            DEFINITIONS: 'pub struct Computed {\n    pub sizes: StyleGroup<ResetSizes>,\n}\n',
+            group + 'reset_sizes.rs': 'pub struct ResetSizes {\n    pub width: f32,\n}\n',
+            LAYOUT: 's.sizes.width = 1; ResetSizes { width: 2 }; f(&mut s.sizes.width);',
+        }
+        counts = aggregate(sources)
+        self.assertEqual(counts['Computed.width', 'layout', 'write'], 1)
+        self.assertEqual(counts['Computed.width', 'layout', 'initialize'], 1)
+        self.assertEqual(counts['Computed.width', 'layout', 'mutable'], 1)
+        self.assertNotIn(('Computed.sizes', 'layout', 'write'), counts)
+
+    def test_grouped_inheritance_counts_payload_and_whole_handle(self):
+        sources = {
+            DEFINITIONS: ('pub struct Computed {\n    pub inh: InheritedGroup,\n}\n'
+                          'pub struct InheritedStyle {\n    pub font: StyleGroup<InheritedFont>,\n}\n'),
+            'crates/html/src/style/computed/groups/inherited_font.rs':
+                'pub struct InheritedFont {\n    pub font_size: f32,\n}\n',
+            LAYOUT: 's.inh.font.font_size = 1; f(&mut s.inh.font.font_size); s.inh = other;',
+        }
+        counts = aggregate(sources)
+        self.assertEqual(counts['InheritedStyle.font_size', 'layout', 'write'], 1)
+        self.assertEqual(counts['InheritedStyle.font_size', 'layout', 'mutable'], 1)
+        self.assertEqual(counts['Computed.inh', 'layout', 'write'], 1)
+        self.assertEqual(counts['Computed.inh', 'layout', 'mutable'], 0)
+
     def test_whitespace_comments_literals_and_file_moves(self):
         old = scan('s.width = 1; s.used_mut();')
         new = scan('/* s.height = 2 */\n s\n .width\n = 1;\n s.used_mut();\n'

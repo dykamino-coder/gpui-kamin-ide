@@ -24,10 +24,10 @@ mod tests {
     fn relative_cb_does_not_replace_nearest_fixed_cb() {
         let mut outer = BoxStyle::default();
         outer.self_node = 10;
-        outer.contain_layout = Some(true);
+        outer.reset_context.contain_layout = Some(true);
         let mut relative = BoxStyle::default();
         relative.self_node = 20;
-        relative.position = Some(Position::Relative);
+        relative.reset_positioned.position = Some(Position::Relative);
         inherit(&outer, &mut relative);
         let mut fixed = BoxStyle::default();
         inherit(&relative, &mut fixed);
@@ -39,10 +39,10 @@ mod tests {
     fn nearest_fixed_cb_replaces_outer_and_viewport_has_zero_identity() {
         let mut outer = BoxStyle::default();
         outer.self_node = 10;
-        outer.contain_paint = Some(true);
+        outer.reset_context.contain_paint = Some(true);
         let mut inner = BoxStyle::default();
         inner.self_node = 20;
-        inner.will_change = crate::style::computed::wc::CB_FIXED;
+        inner.reset_effects.will_change = crate::style::computed::wc::CB_FIXED;
         inherit(&outer, &mut inner);
         let mut child = BoxStyle::default();
         inherit(&inner, &mut child);

@@ -30,7 +30,7 @@ pub(super) fn inherit_paint(
                     parent.foreground_paint()
                 } else {
                     crate::style::decoration_paint::ForegroundPaint {
-                        color: c.color,
+                        color: c.inh.ui.color,
                         ..Default::default()
                     }
                 },
@@ -52,12 +52,12 @@ pub(super) fn inherit_paint(
     if paint_filter && let Some(f) = paint.filter {
         let operations = paint.filter_ops.clone();
         let apply = |color| f.apply_operations(&operations, color);
-        if own.background.is_some() {
+        if own.reset_background.background.is_some() {
             paint.background.color = paint.background.color.map(&apply);
         }
         if input.element
             || input.declares_color
-            || own.filter.is_some() && input.parent.color.is_none()
+            || own.reset_effects.filter.is_some() && input.parent.color.is_none()
         {
             paint.foreground.color = paint.foreground.color.map(&apply);
         }
@@ -66,7 +66,7 @@ pub(super) fn inherit_paint(
                 *col = apply(*col);
             }
         }
-        if own.gradient.is_some()
+        if own.reset_background.gradient.is_some()
             && let Some(g) = &mut paint.background.gradient
         {
             g.from = apply(g.from);
@@ -76,12 +76,12 @@ pub(super) fn inherit_paint(
             }
         }
         gradient_filter::apply(&mut paint.background, own, f, &operations);
-        if own.bg_image.is_some()
+        if own.reset_background.bg_image.is_some()
             && let Some(image) = &mut paint.background.top.image
         {
             image.filter_stops(&f, &operations);
         }
-        if !own.shadows.is_empty() {
+        if !own.reset_effects.shadows.is_empty() {
             for sh in &mut paint.shadows {
                 if let crate::style::values::value::StyleColor::Absolute(col) = &mut sh.color {
                     *col = apply(*col);
@@ -91,7 +91,7 @@ pub(super) fn inherit_paint(
     }
     // У непрозрачной коробки силуэт filter drop-shadow совпадает с box-shadow;
     // размытие коробки равно двум sigma фильтра.
-    if let Some(sh) = c.drop_shadow.clone()
+    if let Some(sh) = c.reset_effects.drop_shadow.clone()
         && c.background_paint.paints()
         && paint.background.color.is_some_and(|b| b.a >= 1.0)
     {
@@ -107,7 +107,7 @@ pub(super) fn inherit_paint(
     if paint_filter && c.background_paint.paints() {
         crate::style::computed::flat_background::collapse_flat_stack(
             &mut paint.background,
-            c.image_orient_none != Some(true),
+            c.inh.ui.image_orient_none != Some(true),
             &images,
         );
     }
@@ -117,7 +117,7 @@ pub(super) fn inherit_paint(
             foreground: paint.foreground,
             element: input.element,
             declares_color: input.declares_color,
-            out_of_flow: crate::style::flow::absolutely_positioned(own.position),
+            out_of_flow: crate::style::flow::absolutely_positioned(own.reset_positioned.position),
             background: c.background_paint,
         },
         &paint.background,

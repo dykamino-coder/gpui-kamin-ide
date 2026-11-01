@@ -201,7 +201,12 @@ mod tests {
         for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
             frame.style.used_mut().height = height;
             let mut parent = BoxStyle::from(Computed {
-                height: Some(Len::Px(192.0)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(192.0)),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             });
             parent.cb_height_def = true;

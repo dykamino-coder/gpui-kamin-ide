@@ -16,21 +16,21 @@ pub(super) fn inherit_lh_units(
     // `font-size: 2lh` меряются строкой РОДИТЕЛЯ, а не своей: иначе
     // выходит круговая зависимость. Для всего остального (`height: 1lh`)
     // базой остаётся своя строка — та же оговорка, скобка в конце абзаца.
-    let parent_font = match parent.font_size {
+    let parent_font = match parent.inh.font.font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
         _ => 16.0,
     };
-    let parent_family = parent.font_family.clone().unwrap_or_else(|| {
-        if parent.monospace == Some(true) {
+    let parent_family = parent.inh.font.font_family.clone().unwrap_or_else(|| {
+        if parent.inh.font.monospace == Some(true) {
             vcx.doc
                 .font_snapshot()
-                .mono_family(parent.lang.as_deref())
+                .mono_family(parent.inh.text_flow.lang.as_deref())
                 .to_string()
         } else {
             String::new()
         }
     });
-    let parent_line = match parent.line_height {
+    let parent_line = match parent.inh.font.line_height {
         Some(crate::style::values::value::Len::Px(v)) => v,
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * parent_font,
@@ -48,14 +48,14 @@ pub(super) fn inherit_lh_units(
         }
         _ => {}
     };
-    from_parent(&mut c.line_height);
-    from_parent(&mut c.font_size);
+    from_parent(&mut c.inh.font.line_height);
+    from_parent(&mut c.inh.font.font_size);
     // `lh` — вычисленный `line-height` САМОГО элемента, а `line-height`
     // (как кегль и гарнитура) НАСЛЕДУЕТСЯ: незаданное на элементе берётся у
     // родителя. Ребёнок `height: 3lh` внутри `font: 16px / 32px` обязан
     // выйти 96, а не 3 × normal(16) ≈ 55 (`line-clamp-auto-035`: блок
     // с `height: 3lh` не доставал до потолка и не прятался).
-    let font = match c.font_size {
+    let font = match c.inh.font.font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
         None => parent_font,
         _ => 16.0,
@@ -64,20 +64,22 @@ pub(super) fn inherit_lh_units(
     // постоянные 1.2: у `lh`-единицы иначе выходила чужая высота строки
     // (`line-clamp-auto-*` меряют высоту в `lh`).
     let family = c
+        .inh
+        .font
         .font_family
         .clone()
-        .or_else(|| parent.font_family.clone())
+        .or_else(|| parent.inh.font.font_family.clone())
         .unwrap_or_else(|| {
-            if c.monospace.or(parent.monospace) == Some(true) {
+            if c.inh.font.monospace.or(parent.inh.font.monospace) == Some(true) {
                 vcx.doc
                     .font_snapshot()
-                    .mono_family(c.lang.as_deref())
+                    .mono_family(c.inh.text_flow.lang.as_deref())
                     .to_string()
             } else {
                 String::new()
             }
         });
-    let line = match c.line_height.or(parent.line_height) {
+    let line = match c.inh.font.line_height.or(parent.inh.font.line_height) {
         Some(crate::style::values::value::Len::Px(v)) => v,
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,
@@ -92,13 +94,16 @@ pub(super) fn inherit_lh_units(
         }
         _ => {}
     };
-    fix(&mut c.width);
-    fix(&mut c.height);
-    fix(&mut c.min_width);
-    fix(&mut c.min_height);
-    fix(&mut c.max_width);
-    fix(&mut c.max_height);
-    for sides in [&mut c.snap.padding, &mut c.snap.margin] {
+    fix(&mut c.reset_box_layout.width);
+    fix(&mut c.reset_box_layout.height);
+    fix(&mut c.reset_box_layout.min_width);
+    fix(&mut c.reset_box_layout.min_height);
+    fix(&mut c.reset_box_layout.max_width);
+    fix(&mut c.reset_box_layout.max_height);
+    for sides in {
+        let group_0 = &mut *c.reset_box_layout;
+        [&mut group_0.snap.padding, &mut group_0.snap.margin]
+    } {
         for value in [
             &mut sides.top,
             &mut sides.right,
@@ -121,7 +126,7 @@ pub(super) fn inherit_lh_units(
     // fallback here (`multicol-fill-auto-003`); the painter then resolves
     // against the computed size as before.
     let font_known = matches!(
-        c.font_size,
+        c.inh.font.font_size,
         None | Some(crate::style::values::value::Len::Px(_))
     );
     let em = |l: &mut Option<crate::style::values::value::Len>| {
@@ -132,12 +137,12 @@ pub(super) fn inherit_lh_units(
             *l = Some(crate::style::values::value::Len::Px(k * font));
         }
     };
-    if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
+    if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.reset_background.bg_size {
         fix(w);
         fix(h);
         em(w);
         em(h);
     }
-    em(&mut c.bg_pos.x);
-    em(&mut c.bg_pos.y);
+    em(&mut c.reset_background.bg_pos.x);
+    em(&mut c.reset_background.bg_pos.y);
 }

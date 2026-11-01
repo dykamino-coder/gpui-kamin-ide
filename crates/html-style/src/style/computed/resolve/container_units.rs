@@ -9,11 +9,21 @@ impl Computed {
     /// Кегль и строка разрешаются раньше зависимых от них em/lh.
     pub fn resolve_container_font_lengths(&mut self, vcx: ValueCx<'_>) {
         let vp = self.viewport_cx(vcx.viewport);
-        if let Some(value) = self.font_size.filter(|l| l.needs_container_context(vcx)) {
-            self.font_size = Some(value.fold_container(vp, vcx));
+        if let Some(value) = self
+            .inh
+            .font
+            .font_size
+            .filter(|l| l.needs_container_context(vcx))
+        {
+            self.inh.font.font_size = Some(value.fold_container(vp, vcx));
         }
-        if let Some(value) = self.line_height.filter(|l| l.needs_container_context(vcx)) {
-            self.line_height = Some(value.fold_container(vp, vcx));
+        if let Some(value) = self
+            .inh
+            .font
+            .line_height
+            .filter(|l| l.needs_container_context(vcx))
+        {
+            self.inh.font.line_height = Some(value.fold_container(vp, vcx));
         }
     }
 
@@ -27,41 +37,47 @@ impl Computed {
         };
         self.resolve_unit_lengths(fix, vcx);
         self.resolve_container_other_lengths(vp, vcx);
-        for length in [
-            &mut self.column_width,
-            &mut self.column_height,
-            &mut self.column_gap,
-        ] {
+        for length in {
+            let group_0 = &mut *self.reset_fragmentation;
+            [
+                &mut group_0.column_width,
+                &mut group_0.column_height,
+                &mut group_0.column_gap,
+            ]
+        } {
             fix(length);
         }
         // Без cq-слагаемых общую группу наследуемых копировать не нужно.
         if [
-            self.letter_spacing,
-            self.word_spacing,
-            self.text_indent,
-            self.line_height,
-            self.tab_size_len,
+            self.inh.text_flow.letter_spacing,
+            self.inh.text_flow.word_spacing,
+            self.inh.text_flow.text_indent,
+            self.inh.font.line_height,
+            self.inh.text_flow.tab_size_len,
         ]
         .into_iter()
         .flatten()
         .any(|l| l.needs_container_context(vcx))
         {
-            let inherited = &mut **self;
-            for length in [
-                &mut inherited.letter_spacing,
-                &mut inherited.word_spacing,
-                &mut inherited.text_indent,
-                &mut inherited.line_height,
-                &mut inherited.tab_size_len,
-            ] {
+            let inherited = &mut *self.inh;
+            for length in {
+                let group_0 = &mut *inherited.text_flow;
+                [
+                    &mut group_0.letter_spacing,
+                    &mut group_0.word_spacing,
+                    &mut group_0.text_indent,
+                    &mut inherited.font.line_height,
+                    &mut group_0.tab_size_len,
+                ]
+            } {
                 fix(length);
             }
         }
-        if let Some(outline) = self.outline.as_mut() {
+        if let Some(outline) = self.reset_border.outline.as_mut() {
             fix(&mut outline.width);
             fix(&mut outline.offset);
         }
-        if let Some((row, column)) = self.border_spacing
+        if let Some((row, column)) = self.inh.table_list.border_spacing
             && [row, column]
                 .into_iter()
                 .flatten()
@@ -70,7 +86,7 @@ impl Computed {
             let mut spacing = (row, column);
             fix(&mut spacing.0);
             fix(&mut spacing.1);
-            self.border_spacing = Some(spacing);
+            self.inh.table_list.border_spacing = Some(spacing);
         }
         self.resolve_decor_inset_lengths(fix, vcx);
     }
@@ -78,12 +94,15 @@ impl Computed {
     /// Поддерживаемые физические оси. Письмо здесь — контейнера, тогда как
     /// cqi/cqb выбирают логическую ось по письму самого потребителя.
     pub fn query_container_axes(&self) -> (bool, bool) {
-        if !self.container_type.is_size_query()
-            || matches!(self.display, Some(Display::None | Display::Contents))
+        if !self.reset_box_layout.container_type.is_size_query()
+            || matches!(
+                self.reset_box_layout.display,
+                Some(Display::None | Display::Contents)
+            )
         {
             return (false, false);
         }
-        let block = self.container_type == ContainerType::Size;
+        let block = self.reset_box_layout.container_type == ContainerType::Size;
         if self.wm().vertical() {
             (block && self.contains_width(), self.contains_height())
         } else {
@@ -97,11 +116,15 @@ impl Computed {
     pub fn container_box_for_children(&self) -> (Option<f32>, Option<f32>) {
         let (width, height) = self.query_container_axes();
         (
-            if width { self.cq_size.0 } else { self.cq_box.0 },
-            if height {
-                self.cq_size.1
+            if width {
+                self.reset_context.cq_size.0
             } else {
-                self.cq_box.1
+                self.reset_context.cq_box.0
+            },
+            if height {
+                self.reset_context.cq_size.1
+            } else {
+                self.reset_context.cq_box.1
             },
         )
     }

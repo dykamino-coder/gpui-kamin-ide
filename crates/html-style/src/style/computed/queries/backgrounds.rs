@@ -4,21 +4,21 @@ use super::*;
 
 impl Computed {
     pub fn background_color_clip(&self) -> Option<BgClip> {
-        let Some(clips) = self.bg_lists.get(BgListProp::Clip) else {
-            return self.bg_clip;
+        let Some(clips) = self.reset_background.bg_lists.get(BgListProp::Clip) else {
+            return self.reset_background.bg_clip;
         };
-        let Some(images) = self.bg_lists.get(BgListProp::Image) else {
-            return self.bg_clip;
+        let Some(images) = self.reset_background.bg_lists.get(BgListProp::Image) else {
+            return self.reset_background.bg_clip;
         };
         if images.len() < 2 || clips.is_empty() {
-            return self.bg_clip;
+            return self.reset_background.bg_clip;
         }
         clips[(images.len() - 1) % clips.len()].clip
     }
 
     /// Вычисленные фоновые компоненты, без копии геометрии и CSS элемента.
     pub fn background_layers(&self) -> Option<Vec<BgLayer>> {
-        let images = self.bg_lists.get(BgListProp::Image)?;
+        let images = self.reset_background.bg_lists.get(BgListProp::Image)?;
         if images.len() < 2 {
             return None;
         }
@@ -26,7 +26,7 @@ impl Computed {
             (0..images.len())
                 .map(|i| {
                     let mut layer = BgLayer::from_computed(self);
-                    for (prop, layers) in self.bg_lists.iter() {
+                    for (prop, layers) in self.reset_background.bg_lists.iter() {
                         layer.copy_component(prop, &layers[i % layers.len()]);
                     }
                     layer
@@ -70,7 +70,7 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_size = Some(Len::Px(30.0));
+            with_inherited.inh.font.font_size = Some(Len::Px(30.0));
             with_inherited
         };
         c.apply_one("background-image", "url(a), url(b)", vcx);

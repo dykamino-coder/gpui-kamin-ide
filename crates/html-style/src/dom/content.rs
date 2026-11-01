@@ -16,10 +16,10 @@ pub fn inherit_generated(
     parent: Option<&crate::style::select::Ancestor>,
 ) {
     super::inherit_counter_decls(style, parent.map(|p| &p.counter_style));
-    if style.content_inherit {
-        style.content = parent.and_then(|p| p.content_style.clone());
-        style.content_none = parent.and_then(|p| p.content_none);
-        style.content_inherit = false;
+    if style.reset_generated.content_inherit {
+        style.reset_generated.content = parent.and_then(|p| p.content_style.clone());
+        style.reset_generated.content_none = parent.and_then(|p| p.content_none);
+        style.reset_generated.content_inherit = false;
     }
 }
 
@@ -33,9 +33,9 @@ pub fn snapshot_generated(
         parent.map(|p| p.counter_context).unwrap_or_default(),
     );
     node.counter_style = super::counter_snapshot(style);
-    node.content_style = style.content.clone();
-    node.content_none = style.content_none;
-    node.target_group = (style.scroll_target_group == Some(true))
+    node.content_style = style.reset_generated.content.clone();
+    node.content_none = style.reset_generated.content_none;
+    node.target_group = (style.reset_generated.scroll_target_group == Some(true))
         .then(|| std::rc::Rc::new(std::cell::Cell::new(false)));
 }
 
@@ -79,7 +79,12 @@ pub fn host_content(
     host: &crate::style::select::Ancestor,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
-    resolve_content_attributes(style.content.as_ref()?, &host.attrs, host.html_attrs, vcx)
+    resolve_content_attributes(
+        style.reset_generated.content.as_ref()?,
+        &host.attrs,
+        host.html_attrs,
+        vcx,
+    )
 }
 
 /// CSS Values 5 §8.7.1 substitutes attributes before checking content's

@@ -19,9 +19,14 @@ pub fn uniform(s: crate::style::computed::Sides) -> Option<f32> {
 
 pub fn corner(c: &Computed, size: (f32, f32)) -> Option<(usize, f32)> {
     let mut found = None;
-    for (i, l) in [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
-        .into_iter()
-        .enumerate()
+    for (i, l) in [
+        c.reset_border.radius.tl,
+        c.reset_border.radius.tr,
+        c.reset_border.radius.br,
+        c.reset_border.radius.bl,
+    ]
+    .into_iter()
+    .enumerate()
     {
         let r = match l {
             Some(Len::Pct(p)) if p > 0.0 && (size.0 - size.1).abs() < 0.001 => p * size.0,
@@ -50,14 +55,17 @@ pub fn eligible_background(
     background: crate::style::background_paint::BackgroundPaint,
 ) -> bool {
     let special = background.paints()
-        && (c.gradient.is_some()
-            || c.bg_image.is_some()
-            || !c.bg_lists.is_empty()
-            || matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea)));
+        && (c.reset_background.gradient.is_some()
+            || c.reset_background.bg_image.is_some()
+            || !c.reset_background.bg_lists.is_empty()
+            || matches!(
+                c.reset_background.bg_clip,
+                Some(BgClip::Text | BgClip::BorderArea)
+            ));
     geometry_eligible(
         c,
         special,
-        !c.shadows.is_empty(),
+        !c.reset_effects.shadows.is_empty(),
         c.used_uniform_border_color().is_some(),
     )
 }
@@ -79,14 +87,14 @@ pub fn box_eligible(c: &super::BoxStyle) -> bool {
 
 fn geometry_eligible(c: &Computed, special: bool, shadows: bool, uniform_color: bool) -> bool {
     if special
-        || c.border_image.is_some()
-        || c.border_shape.is_some()
-        || c.corner_shape.is_some()
-        || c.radius_ell.is_some()
+        || c.reset_border.border_image.is_some()
+        || c.reset_border.border_shape.is_some()
+        || c.reset_border.corner_shape.is_some()
+        || c.reset_border.radius_ell.is_some()
         || shadows
-        || !c.inset_shadows.is_empty()
-        || c.contain_paint == Some(true)
-        || [c.overflow_x, c.overflow_y]
+        || !c.reset_effects.inset_shadows.is_empty()
+        || c.reset_context.contain_paint == Some(true)
+        || [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y]
             .into_iter()
             .any(|v| !matches!(v, None | Some(Overflow::Visible)))
     {
@@ -95,19 +103,26 @@ fn geometry_eligible(c: &Computed, special: bool, shadows: bool, uniform_color: 
     let Some(b) = uniform(c.borders()) else {
         return false;
     };
-    let Some(p) = uniform(c.padding) else {
+    let Some(p) = uniform(c.reset_box_layout.padding) else {
         return false;
     };
-    if b > 0.0 && c.border_side_styles.iter().any(|v| *v != Some(9)) {
+    if b > 0.0
+        && c.reset_border
+            .border_side_styles
+            .iter()
+            .any(|v| *v != Some(9))
+    {
         return false;
     }
     if !uniform_color {
         return false;
     }
-    let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height) else {
+    let (Some(Len::Px(w)), Some(Len::Px(h))) =
+        (c.reset_box_layout.width, c.reset_box_layout.height)
+    else {
         return false;
     };
-    let add = if c.border_box == Some(true) {
+    let add = if c.reset_border.border_box == Some(true) {
         0.0
     } else {
         2.0 * (p + b)

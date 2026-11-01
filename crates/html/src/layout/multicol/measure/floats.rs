@@ -167,8 +167,13 @@ mod tests {
         let mut tail = Element::synthetic(
             "div",
             Computed {
-                min_height: Some(Len::Px(150.)),
-                max_height: Some(Len::Px(180.)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        min_height: Some(Len::Px(150.)),
+                        max_height: Some(Len::Px(180.)),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
@@ -178,8 +183,13 @@ mod tests {
         let float = Element::synthetic(
             "div",
             Computed {
-                width: Some(Len::Px(100.)),
-                float: Some(1),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        width: Some(Len::Px(100.)),
+                        float: Some(1),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),

@@ -18,90 +18,104 @@ pub(super) fn decorate(
     vcx: ValueCx<'_>,
 ) {
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
-    let over_lang = c.lang.as_deref().is_some_and(|l| {
+    let over_lang = c.inh.text_flow.lang.as_deref().is_some_and(|l| {
         let l = l.to_ascii_lowercase();
         ["ja", "ko", "mn"]
             .iter()
             .any(|p| l == *p || l.starts_with(&format!("{p}-")))
     });
-    set!(c.decors, input.inherited.to_vec());
+    set!(c.reset_text_box.decors, input.inherited.to_vec());
     // Линии, пришедшие в блок, используют метрики его анонимной строчной коробки.
     if input.block {
         let font = DecorFont {
-            family: c.font_family.clone(),
-            monospace: c.monospace,
-            weight: c.font_weight,
-            italic: c.italic,
-            stretch: c.font_stretch,
+            family: c.inh.font.font_family.clone(),
+            monospace: c.inh.font.monospace,
+            weight: c.inh.font.font_weight,
+            italic: c.inh.font.italic,
+            stretch: c.inh.font.font_stretch,
             size: own_px,
         };
-        let position = c.underline_pos.unwrap_or(0);
-        if c.decors
+        let position = c.inh.text_ink.underline_pos.unwrap_or(0);
+        if c.reset_text_box
+            .decors
             .iter()
             .any(|d| d.font != font || d.position != position || d.over_lang != over_lang)
         {
-            for d in c.decors.iter_mut() {
+            for d in c.reset_text_box.decors.iter_mut() {
                 d.font = font.clone();
                 d.position = position;
                 d.over_lang = over_lang;
             }
         }
     }
-    if let Some(lines) = c.td_lines.filter(|l| *l != 0)
+    if let Some(lines) = c.reset_text_box.td_lines.filter(|l| *l != 0)
         && input.generates_box
     {
         let family = crate::style::cascade::compute::decor_family(c, vcx);
         let resolve =
             |l| crate::style::cascade::compute::resolve_decor_len(l, &family, own_px, vcx);
-        let thickness = match c.td_thickness.map(resolve).unwrap_or_default() {
+        let thickness = match c
+            .reset_text_box
+            .td_thickness
+            .map(resolve)
+            .unwrap_or_default()
+        {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             t => t,
         };
-        let offset = match c.underline_offset.unwrap_or_default() {
+        let offset = match c.inh.text_ink.underline_offset.unwrap_or_default() {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             DecorLen::Px(v) => DecorLen::Px(v),
             _ => DecorLen::Auto,
         };
-        let inset = match c.td_inset {
+        let inset = match c.reset_text_box.td_inset {
             Some(None) => None,
             Some(Some(pair)) => Some(pair),
             None => Some([DecorLen::Px(0.0); 2]),
         };
         let d = Decor {
             lines,
-            style: c.td_style.unwrap_or_default(),
-            color: c.used_color(&c.td_color),
+            style: c.reset_text_box.td_style.unwrap_or_default(),
+            color: c.used_color(&c.reset_text_box.td_color),
             thickness,
             offset,
-            position: c.underline_pos.unwrap_or(0),
+            position: c.inh.text_ink.underline_pos.unwrap_or(0),
             inset,
-            clone: own.bdb_clone,
+            clone: own.reset_fragmentation.bdb_clone,
             source: own.decor_box,
             rtl: c.wm().rtl(),
             over_lang,
             font: DecorFont {
-                family: c.font_family.clone(),
-                monospace: c.monospace,
-                weight: c.font_weight,
-                italic: c.italic,
-                stretch: c.font_stretch,
+                family: c.inh.font.font_family.clone(),
+                monospace: c.inh.font.monospace,
+                weight: c.inh.font.font_weight,
+                italic: c.inh.font.italic,
+                stretch: c.inh.font.font_stretch,
                 size: own_px,
             },
         };
         // Повторное слияние того же стиля (`inherit(merged, own)`) не должно
         // класть линию второй раз.
-        if c.decors.last() != Some(&d) {
-            c.decors.push(d);
+        if c.reset_text_box.decors.last() != Some(&d) {
+            c.reset_text_box.decors.push(d);
         }
     }
     // Отсутствие линии — `None` или `Some(false)`: равные по смыслу значения
     // стиль коробки не копируют.
-    let under = c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0);
-    if c.underline.unwrap_or(false) != under {
-        c.underline = Some(under);
+    let under = c
+        .reset_text_box
+        .decors
+        .iter()
+        .any(|d| d.lines & DECOR_UNDER != 0);
+    if c.reset_text_box.underline.unwrap_or(false) != under {
+        c.reset_text_box.underline = Some(under);
     }
-    let through = c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0);
-    if c.line_through.unwrap_or(false) != through {
-        c.line_through = Some(through);
+    let through = c
+        .reset_text_box
+        .decors
+        .iter()
+        .any(|d| d.lines & DECOR_THROUGH != 0);
+    if c.reset_text_box.line_through.unwrap_or(false) != through {
+        c.reset_text_box.line_through = Some(through);
     }
 }

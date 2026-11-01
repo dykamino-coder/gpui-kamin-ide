@@ -57,22 +57,24 @@ impl Computed {
         use LonghandId::*;
         match id {
             BorderCollapse => {
-                self.border_collapse =
-                    keyword_pair(v, "separate", "collapse").or(self.border_collapse)
+                self.inh.table_list.border_collapse =
+                    keyword_pair(v, "separate", "collapse").or(self.inh.table_list.border_collapse)
             }
             BorderSpacing => {
                 if let Some((h, v)) = border_spacing(v, vcx) {
-                    self.border_spacing = Some((Some(h), Some(v)));
+                    self.inh.table_list.border_spacing = Some((Some(h), Some(v)));
                 }
             }
             CaptionSide => {
-                self.caption_bottom = keyword_pair(v, "top", "bottom").or(self.caption_bottom)
+                self.inh.table_list.caption_bottom =
+                    keyword_pair(v, "top", "bottom").or(self.inh.table_list.caption_bottom)
             }
             EmptyCells => {
-                self.empty_cells_hide = keyword_pair(v, "show", "hide").or(self.empty_cells_hide)
+                self.inh.table_list.empty_cells_hide =
+                    keyword_pair(v, "show", "hide").or(self.inh.table_list.empty_cells_hide)
             }
-            Orphans => self.orphans = line_count(v).or(self.orphans),
-            Widows => self.widows = line_count(v).or(self.widows),
+            Orphans => self.inh.text_flow.orphans = line_count(v).or(self.inh.text_flow.orphans),
+            Widows => self.inh.text_flow.widows = line_count(v).or(self.inh.text_flow.widows),
             _ => {}
         }
     }
@@ -80,12 +82,12 @@ impl Computed {
     pub(super) fn inherit_table(&mut self, id: LonghandId) {
         use LonghandId::*;
         match id {
-            BorderCollapse => self.border_collapse = None,
-            BorderSpacing => self.border_spacing = None,
-            CaptionSide => self.caption_bottom = None,
-            EmptyCells => self.empty_cells_hide = None,
-            Orphans => self.orphans = None,
-            Widows => self.widows = None,
+            BorderCollapse => self.inh.table_list.border_collapse = None,
+            BorderSpacing => self.inh.table_list.border_spacing = None,
+            CaptionSide => self.inh.table_list.caption_bottom = None,
+            EmptyCells => self.inh.table_list.empty_cells_hide = None,
+            Orphans => self.inh.text_flow.orphans = None,
+            Widows => self.inh.text_flow.widows = None,
             _ => {}
         }
     }

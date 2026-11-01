@@ -42,7 +42,7 @@ impl Computed {
                 }
                 _ => ("nonzero", rest),
             };
-            self.clip_round_len = round.filter(|l| matches!(l, Len::Px(_)));
+            self.reset_mask.clip_round_len = round.filter(|l| matches!(l, Len::Px(_)));
             let points: Vec<(Len, Len)> = rest
                 .split(',')
                 .filter_map(|pair| {
@@ -54,8 +54,8 @@ impl Computed {
                 .collect();
             if points.len() >= 3 {
                 self.accept_declaration();
-                self.clip_polygon = Some(points);
-                self.clip_polygon_evenodd = rule == "evenodd";
+                self.reset_mask.clip_polygon = Some(points);
+                self.reset_mask.clip_polygon_evenodd = rule == "evenodd";
             }
         } else if v.starts_with("circle(") || v.starts_with("ellipse(") {
             // Форма растрируется маской: радиус и центр считаются от
@@ -70,7 +70,7 @@ impl Computed {
             // вместо вписанного круга. `shape_params` с пустым списком
             // радиусов даёт ровно `closest-side` (css-shapes-1
             // §3.1.1.3) от border-box — то, что и требуется.
-            self.clip_shape = accept_parsed!(self, Some(format!("shape:{}", v.trim())));
+            self.reset_mask.clip_shape = accept_parsed!(self, Some(format!("shape:{}", v.trim())));
         } else if let Some(rest) = v.strip_prefix("rect(") {
             // Края видимой области (css-shapes-1 §basic-shape):
             // top/right/bottom/left от верхнего-левого угла, auto —
@@ -89,12 +89,12 @@ impl Computed {
                 .collect();
             if vals.len() == 4 {
                 self.accept_declaration();
-                self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
-                self.clip_round_len = inner
+                self.reset_mask.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                self.reset_mask.clip_round_len = inner
                     .split("round")
                     .nth(1)
                     .and_then(|s| uniform_round(s, vcx));
-                self.clip_round = inner
+                self.reset_mask.clip_round = inner
                     .split("round")
                     .nth(1)
                     .and_then(|s| uniform_round(s, vcx))
@@ -102,7 +102,7 @@ impl Computed {
                         Len::Px(v) => Some(v),
                         _ => None,
                     })
-                    .or(self.clip_round);
+                    .or(self.reset_mask.clip_round);
             }
         } else if let Some(rest) = v.strip_prefix("xywh(") {
             let inner = rest.trim_end_matches(')');
@@ -113,12 +113,12 @@ impl Computed {
                 .collect();
             if vals.len() == 4 {
                 self.accept_declaration();
-                self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
-                self.clip_round_len = inner
+                self.reset_mask.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                self.reset_mask.clip_round_len = inner
                     .split("round")
                     .nth(1)
                     .and_then(|s| uniform_round(s, vcx));
-                self.clip_round = inner
+                self.reset_mask.clip_round = inner
                     .split("round")
                     .nth(1)
                     .and_then(|s| uniform_round(s, vcx))
@@ -126,7 +126,7 @@ impl Computed {
                         Len::Px(v) => Some(v),
                         _ => None,
                     })
-                    .or(self.clip_round);
+                    .or(self.reset_mask.clip_round);
             }
         } else if let Some(rest) = v.strip_prefix("inset(") {
             // Стороны вырезки (css-shapes-1 §3.1.1.1): 1-4 значения
@@ -152,10 +152,10 @@ impl Computed {
             };
             if !vals.is_empty() {
                 self.accept_declaration();
-                self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
+                self.reset_mask.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
             }
             let inner = rest.trim_end_matches(')');
-            self.clip_round_len = inner
+            self.reset_mask.clip_round_len = inner
                 .split("round")
                 .nth(1)
                 .and_then(|s| uniform_round(s, vcx));
@@ -168,7 +168,7 @@ impl Computed {
                     Len::Pct(p) => Some(p),
                     l => l.to_px(None, FontCx::FALLBACK, vcx),
                 });
-            self.clip_round = Some(radius.unwrap_or(0.0));
+            self.reset_mask.clip_round = Some(radius.unwrap_or(0.0));
         }
     }
 }

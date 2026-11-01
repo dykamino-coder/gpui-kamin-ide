@@ -13,15 +13,16 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // домножает («It also multiplies the natural size of all replaced
     // elements», css-viewport-1 §zoom; `zoom/svg-stroke-width`). CSS-размеры
     // ниже уже домножены проходом `zoom::resolve`.
-    let z = e.style.used().zoom_eff.unwrap_or(1.0);
+    let z = e.style.used().inh.font.zoom_eff.unwrap_or(1.0);
     let facts = SvgFacts::of(e);
     // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
     let css = |l: Option<crate::style::values::value::Len>| match l {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
-    let given_w = css(e.style.used().width).or_else(|| facts.width.map(|v| v * z));
-    let given_h = css(e.style.used().height).or_else(|| facts.height.map(|v| v * z));
+    let given_w = css(e.style.used().reset_box_layout.width).or_else(|| facts.width.map(|v| v * z));
+    let given_h =
+        css(e.style.used().reset_box_layout.height).or_else(|| facts.height.map(|v| v * z));
     // Обособление размера снимает у рисунка ПРИРОДНЫЕ стороны и природное
     // соотношение (`viewBox`), но не написанные автором: «All CSS properties
     // of the size containment box are taken into account as they would be
@@ -41,12 +42,12 @@ pub fn size_of(e: &Element) -> (f32, f32) {
             axis(
                 e.style.used().contains_width(),
                 given_w,
-                e.style.used().contain_intrinsic.0,
+                e.style.used().reset_context.contain_intrinsic.0,
             ),
             axis(
                 e.style.used().contains_height(),
                 given_h,
-                e.style.used().contain_intrinsic.1,
+                e.style.used().reset_context.contain_intrinsic.1,
             ),
         );
     }
@@ -59,8 +60,16 @@ pub fn size_of(e: &Element) -> (f32, f32) {
                 .max(css(lo).unwrap_or(0.0))
         };
         return (
-            clamp(w, e.style.used().min_width, e.style.used().max_width),
-            clamp(h, e.style.used().min_height, e.style.used().max_height),
+            clamp(
+                w,
+                e.style.used().reset_box_layout.min_width,
+                e.style.used().reset_box_layout.max_width,
+            ),
+            clamp(
+                h,
+                e.style.used().reset_box_layout.min_height,
+                e.style.used().reset_box_layout.max_height,
+            ),
         );
     }
     // Заявленное `aspect-ratio` СИЛЬНЕЕ соотношения из `viewBox`
@@ -72,11 +81,13 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     let fallback = e
         .style
         .used()
+        .reset_shapes
         .aspect_ratio_auto
         .filter(|_| facts.view_box.is_none());
     if let Some(r) = e
         .style
         .used()
+        .reset_shapes
         .aspect_ratio
         .or(fallback)
         .filter(|r| r.is_finite() && *r > 0.0)

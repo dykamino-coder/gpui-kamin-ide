@@ -16,14 +16,27 @@ pub(crate) fn inset_holder_box(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut holder = Computed {
-        position: e.style.used().position,
-        inset: e.style.used().inset,
-        z_index: e.style.used().z_index,
-        display: Some(Display::Flex),
-        flex_dir: Some(if block_axis {
-            crate::style::computed::FlexDir::Col
-        } else {
-            crate::style::computed::FlexDir::Row
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: e.style.used().position,
+                inset: e.style.used().inset,
+                z_index: e.style.used().z_index,
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                display: Some(Display::Flex),
+                ..Default::default()
+            },
+        ),
+        reset_flex: crate::style::computed::StyleGroup::new(crate::style::computed::ResetFlex {
+            flex_dir: Some(if block_axis {
+                crate::style::computed::FlexDir::Col
+            } else {
+                crate::style::computed::FlexDir::Row
+            }),
+            ..Default::default()
         }),
         ..Default::default()
     };

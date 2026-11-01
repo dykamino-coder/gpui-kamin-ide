@@ -57,9 +57,14 @@ mod tests {
     fn padding_and_percentage_sizes_keep_original_cb_in_both_builds() {
         let doc = crate::document::state::DocState::new(Default::default());
         let c = Computed {
-            width: Some(Len::Pct(0.5)),
-            height: Some(Len::Pct(0.5)),
-            min_height: Some(Len::Pct(0.25)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Pct(0.5)),
+                    height: Some(Len::Pct(0.5)),
+                    min_height: Some(Len::Pct(0.25)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let used = gpui::MeasuredBox {
@@ -74,9 +79,17 @@ mod tests {
         };
         let values = doc.frame_values();
         for border_box in [false, true] {
-            let c = Computed {
-                border_box: Some(border_box),
-                ..c.clone()
+            let c = {
+                let style_base = c.clone();
+                Computed {
+                    reset_border: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBorder {
+                            border_box: Some(border_box),
+                            ..(*style_base.reset_border).clone()
+                        },
+                    ),
+                    ..style_base
+                }
             };
             let frame = resolved_style(&BoxStyle::from(c.clone()), used, values);
             assert_eq!(frame.width, Some(Len::Px(150.)));

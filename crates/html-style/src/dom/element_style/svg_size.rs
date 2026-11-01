@@ -30,12 +30,12 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
         || style.contains_width()
         || style.contains_height()
         || ![
-            style.width,
-            style.min_width,
-            style.max_width,
-            style.height,
-            style.min_height,
-            style.max_height,
+            style.reset_box_layout.width,
+            style.reset_box_layout.min_width,
+            style.reset_box_layout.max_width,
+            style.reset_box_layout.height,
+            style.reset_box_layout.min_height,
+            style.reset_box_layout.max_height,
         ]
         .into_iter()
         .any(is_keyword)
@@ -61,26 +61,27 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
             _ => None,
         });
     let ratio = style
+        .reset_shapes
         .aspect_ratio
         .or(natural_ratio)
-        .or(style.aspect_ratio_auto)
+        .or(style.reset_shapes.aspect_ratio_auto)
         .filter(|r| r.is_finite() && *r > 0.0);
     let edges = style.borders();
     let sum = |a, b, c, d| {
         px(a).unwrap_or(0.0) + px(b).unwrap_or(0.0) + px(c).unwrap_or(0.0) + px(d).unwrap_or(0.0)
     };
     // Keywords are content sizes; under `border-box` the length carries the edges.
-    let (bx, by) = if style.border_box == Some(true) {
+    let (bx, by) = if style.reset_border.border_box == Some(true) {
         (
             sum(
-                style.padding.left,
-                style.padding.right,
+                style.reset_box_layout.padding.left,
+                style.reset_box_layout.padding.right,
                 edges.left,
                 edges.right,
             ),
             sum(
-                style.padding.top,
-                style.padding.bottom,
+                style.reset_box_layout.padding.top,
+                style.reset_box_layout.padding.bottom,
                 edges.top,
                 edges.bottom,
             ),
@@ -88,8 +89,8 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     } else {
         (0.0, 0.0)
     };
-    let given_w = px(style.width).map(|w| (w - bx).max(0.0));
-    let given_h = px(style.height).map(|h| (h - by).max(0.0));
+    let given_w = px(style.reset_box_layout.width).map(|w| (w - bx).max(0.0));
+    let given_h = px(style.reset_box_layout.height).map(|h| (h - by).max(0.0));
     let auto_h = match (given_w, ratio) {
         (Some(w), Some(r)) => w / r,
         _ => nat_h
@@ -102,20 +103,30 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
             .or_else(|| nat_h.zip(ratio).map(|(h, r)| h * r))
             .unwrap_or(DEFAULT_REPLACED_WIDTH_PX),
     };
-    for v in [
-        &mut style.height,
-        &mut style.min_height,
-        &mut style.max_height,
-    ] {
+    for v in {
+        let group_0 = &mut *style.reset_box_layout;
+        [
+            &mut group_0.height,
+            &mut group_0.min_height,
+            &mut group_0.max_height,
+        ]
+    } {
         if is_keyword(*v) {
             *v = Some(Len::Px(auto_h + by));
         }
     }
-    for (i, v) in [&mut style.width, &mut style.min_width, &mut style.max_width]
-        .into_iter()
-        .enumerate()
+    for (i, v) in {
+        let group_0 = &mut *style.reset_box_layout;
+        [
+            &mut group_0.width,
+            &mut group_0.min_width,
+            &mut group_0.max_width,
+        ]
+    }
+    .into_iter()
+    .enumerate()
     {
-        if is_keyword(*v) && style.fit_arg[i].is_none() {
+        if is_keyword(*v) && style.reset_context.fit_arg[i].is_none() {
             *v = Some(Len::Px(auto_w + bx));
         }
     }
@@ -134,27 +145,37 @@ mod tests {
     #[test]
     fn block_keywords_without_ratio_use_the_natural_height() {
         let mut s = Computed {
-            width: Some(Len::Px(100.0)),
-            height: Some(Len::Px(1000.0)),
-            max_height: Some(Len::MinContent),
-            min_height: Some(Len::MaxContent),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(100.0)),
+                    height: Some(Len::Px(1000.0)),
+                    max_height: Some(Len::MinContent),
+                    min_height: Some(Len::MaxContent),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         resolve(&mut s, "svg", &attrs(&[("width", "0"), ("height", "100")]));
-        assert_eq!(s.max_height, Some(Len::Px(100.0)));
-        assert_eq!(s.min_height, Some(Len::Px(100.0)));
-        assert_eq!(s.height, Some(Len::Px(1000.0)));
+        assert_eq!(s.reset_box_layout.max_height, Some(Len::Px(100.0)));
+        assert_eq!(s.reset_box_layout.min_height, Some(Len::Px(100.0)));
+        assert_eq!(s.reset_box_layout.height, Some(Len::Px(1000.0)));
     }
 
     #[test]
     fn keywords_transfer_through_the_view_box_ratio() {
         let mut s = Computed {
-            width: Some(Len::Px(80.0)),
-            height: Some(Len::MinContent),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(80.0)),
+                    height: Some(Len::MinContent),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         resolve(&mut s, "svg", &attrs(&[("viewBox", "0 0 2 1")]));
-        assert_eq!(s.height, Some(Len::Px(40.0)));
+        assert_eq!(s.reset_box_layout.height, Some(Len::Px(40.0)));
         assert_eq!(view_box("0,0, 4 3"), Some((4.0, 3.0)));
         assert_eq!(view_box("0 0 0 3"), None);
     }
@@ -162,10 +183,15 @@ mod tests {
     #[test]
     fn other_tags_are_untouched() {
         let mut s = Computed {
-            height: Some(Len::MinContent),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::MinContent),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         resolve(&mut s, "div", &attrs(&[("height", "10")]));
-        assert_eq!(s.height, Some(Len::MinContent));
+        assert_eq!(s.reset_box_layout.height, Some(Len::MinContent));
     }
 }

@@ -30,7 +30,7 @@ impl Computed {
         {
             return true;
         }
-        self.bg_lists.remove(prop);
+        self.reset_background.bg_lists.remove(prop);
         if top_level_comma(v).is_none() {
             return false;
         }
@@ -38,7 +38,7 @@ impl Computed {
         // слоя того же свойства его бы снял.
         let first = background_layers(v)[0].to_string();
         self.apply_one(prop.key(), &first, vcx);
-        self.bg_lists.set(prop, v.to_string(), vcx);
+        self.reset_background.bg_lists.set(prop, v.to_string(), vcx);
         true
     }
 
@@ -51,7 +51,7 @@ impl Computed {
         }
         if let Some(color) = StyleColor::parse_value(v, vcx) {
             self.accept_declaration();
-            self.bg_explicit = true;
+            self.reset_background.bg_explicit = true;
             // Начальное `transparent` хранится отсутствием цвета, как у
             // прочих длинных свойств фона: вычисленное значение то же.
             let initial = v.trim().eq_ignore_ascii_case("transparent");

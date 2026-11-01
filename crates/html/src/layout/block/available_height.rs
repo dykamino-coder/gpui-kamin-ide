@@ -110,12 +110,27 @@ mod tests {
     #[test]
     fn root_and_descendant_percentages_use_definite_content_height() {
         let root = Computed {
-            root_box: true,
-            height: Some(Len::Pct(1.0)),
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    root_box: true,
+                    ..Default::default()
+                },
+            ),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(1.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         let child = Computed {
-            height: Some(Len::Pct(0.5)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.5)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         assert_eq!(inner(&root, None, Some(800.0), 600.0), Some(600.0));
@@ -126,8 +141,18 @@ mod tests {
     #[test]
     fn border_box_subtracts_edges_but_min_height_does_not_make_auto_definite() {
         let mut st = Computed {
-            height: Some(Len::Px(100.0)),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         st.padding.top = Some(Len::Pct(0.1));

@@ -9,14 +9,14 @@ impl Computed {
         match key {
             "row-gap" => {
                 let parsed = parsed_value!(self, super::values::gap(v, vcx));
-                self.gap = Some((parsed, self.gap.and_then(|g| g.1)));
+                self.reset_flex.gap = Some((parsed, self.reset_flex.gap.and_then(|g| g.1)));
             }
             "column-gap" => {
                 let parsed = parsed_value!(self, super::values::gap(v, vcx));
-                self.gap = Some((self.gap.and_then(|g| g.0), parsed));
-                self.column_gap = parsed;
+                self.reset_flex.gap = Some((self.reset_flex.gap.and_then(|g| g.0), parsed));
+                self.reset_fragmentation.column_gap = parsed;
             }
-            "order" => self.order = apply_parsed!(self, v.parse().ok()),
+            "order" => self.reset_flex.order = apply_parsed!(self, v.parse().ok()),
             "align-content" => {
                 let parsed = parsed_value!(
                     self,
@@ -24,11 +24,12 @@ impl Computed {
                         || parse_align(v) == Some(Align::Baseline))
                     .then_some(None))
                 );
-                self.align_content = parsed;
-                self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
+                self.reset_flex.align_content = parsed;
+                self.reset_flex.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
-                self.align_content_safe = is_safe(v);
-                self.align_content_unsafe = v.split_whitespace().any(|word| word == "unsafe");
+                self.reset_flex.align_content_safe = is_safe(v);
+                self.reset_flex.align_content_unsafe =
+                    v.split_whitespace().any(|word| word == "unsafe");
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
                 // блочный контейнер корнем блочного контекста форматирования.
                 // `parse_justify` этого не покажет: `baseline`/`first`/`last`
@@ -38,9 +39,9 @@ impl Computed {
                     .split_whitespace()
                     .find(|w| !matches!(*w, "safe" | "unsafe"))
                     .unwrap_or("");
-                self.align_content_block =
-                    self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
-                if self.align_content_block || v == "normal" {
+                self.reset_flex.align_content_block = self.reset_flex.align_content.is_some()
+                    || matches!(word, "baseline" | "first" | "last");
+                if self.reset_flex.align_content_block || v == "normal" {
                     self.accept_declaration();
                 }
             }
@@ -54,12 +55,12 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (v == "normal" || legacy).then_some(None))
                 );
-                self.justify_items = parsed;
+                self.reset_flex.justify_items = parsed;
                 if v == "normal" || legacy {
                     self.accept_declaration();
                 }
-                self.justify_items_safe = is_safe(v);
-                self.justify_items_last = v.split_whitespace().any(|w| w == "last");
+                self.reset_flex.justify_items_safe = is_safe(v);
+                self.reset_flex.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             "justify-self" => {
                 let parsed = parsed_value!(
@@ -68,22 +69,22 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (matches!(v, "auto" | "normal")).then_some(None))
                 );
-                self.justify_self = parsed;
+                self.reset_flex.justify_self = parsed;
                 if matches!(v, "auto" | "normal") {
                     self.accept_declaration();
                 }
-                self.justify_self_physical = match v.split_whitespace().last() {
+                self.reset_flex.justify_self_physical = match v.split_whitespace().last() {
                     Some("left") => Some(false),
                     Some("right") => Some(true),
                     _ => None,
                 };
-                self.justify_self_normal = v.trim() == "normal";
-                self.justify_self_safe = is_safe(v);
-                self.justify_self_own_axis = matches!(
+                self.reset_flex.justify_self_normal = v.trim() == "normal";
+                self.reset_flex.justify_self_safe = is_safe(v);
+                self.reset_flex.justify_self_own_axis = matches!(
                     v.split_whitespace().last(),
                     Some("self-start") | Some("self-end")
                 );
-                self.justify_self_last = v.split_whitespace().any(|w| w == "last");
+                self.reset_flex.justify_self_last = v.split_whitespace().any(|w| w == "last");
             }
             _ => *hit = false,
         }

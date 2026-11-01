@@ -8,10 +8,25 @@ use crate::style::computed::Computed;
 #[test]
 fn embedded_root_is_a_clipped_block_without_host_effects() {
     let mut host = Computed {
-        opacity: Some(0.5),
-        position: Some(Position::Absolute),
-        display: Some(Display::InlineBlock),
-        overflow_y: Some(Overflow::Scroll),
+        reset_effects: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetEffects {
+                opacity: Some(0.5),
+                ..Default::default()
+            },
+        ),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                display: Some(Display::InlineBlock),
+                overflow_y: Some(Overflow::Scroll),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     host.font_size = Some(Len::Px(20.0));

@@ -27,18 +27,18 @@ impl Computed {
             "animation-timing-function" => {
                 if let Some(easing) = crate::style::animation::easing::Easing::parse(v) {
                     self.accept_declaration();
-                    self.animation_easing = Some(easing);
+                    self.reset_context.animation_easing = Some(easing);
                 }
             }
             "animation-fill-mode" => self.apply_animation(key, v),
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
                 // меняются, видно по разнице стилей.
-                self.transition =
+                self.reset_context.transition =
                     parsed_value!(self, transition_value(v, key == "transition-duration"));
             }
             "resize" => {
-                self.resize = parsed_value!(
+                self.reset_box_layout.resize = parsed_value!(
                     self,
                     match v {
                         "both" => Some(Some((true, true))),
@@ -105,7 +105,7 @@ impl Computed {
                     }
                 }
                 self.accept_declaration();
-                self.contain_value = Containment {
+                self.reset_context.contain_value = Containment {
                     size: bits.0,
                     inline_size: inline_only,
                     layout: bits.1,

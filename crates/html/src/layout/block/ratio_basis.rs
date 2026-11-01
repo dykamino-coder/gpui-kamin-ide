@@ -38,13 +38,28 @@ mod tests {
     #[test]
     fn ratio_parent_resolves_orthogonal_percentage_before_content_expands() {
         let parent = Computed {
-            width: Some(Len::Px(100.0)),
-            aspect_ratio: Some(1.0),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_shapes: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetShapes {
+                    aspect_ratio: Some(1.0),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         let mut child = {
             let mut with_inherited = Computed {
-                height: Some(Len::Pct(1.0)),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Pct(1.0)),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             with_inherited.writing_mode = Some(
@@ -60,9 +75,24 @@ mod tests {
     #[test]
     fn preferred_ratio_basis_transfers_border_box_edges_and_constraints() {
         let mut parent = Computed {
-            width: Some(Len::Px(140.0)),
-            aspect_ratio: Some(2.0),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(140.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_shapes: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetShapes {
+                    aspect_ratio: Some(2.0),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         parent.padding.left = Some(Len::Px(10.0));

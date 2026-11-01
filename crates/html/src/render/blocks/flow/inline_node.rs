@@ -186,7 +186,12 @@ mod tests {
     #[test]
     fn band_paragraph_admits_static_position_probes_but_not_floats_or_pinned_boxes() {
         let inherited = Computed {
-            band_kid: true,
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    band_kid: true,
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
@@ -212,7 +217,12 @@ mod tests {
             &[]
         ));
         *e.style.used_mut() = Computed {
-            float: Some(-1),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(-1),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         assert!(!inline_node(&Node::Element(e), &inherited, false, &[]));

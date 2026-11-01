@@ -20,7 +20,12 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
     let mut c = BoxStyle::from(Computed {
-        width: Some(Len::FitContent),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::FitContent),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     c.self_node = 7;
@@ -83,7 +88,12 @@ fn colored_numeric_scrollport_tracks_the_css_box() {
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
     let mut c = BoxStyle::from(Computed {
-        width: Some(Len::Px(100.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(100.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     c.self_node = 7;

@@ -17,10 +17,10 @@ fn an_animated_reset_value_reaches_explicit_inherit() {
     // A sampled animation frame is a cascade edit of a copy of the element
     // (`animation_frame::sample`); its inherited group stays the same.
     let mut copy = div.clone();
-    copy.style.cascaded_mut().width = Some(Len::Px(200.0));
+    copy.style.cascaded_mut().reset_box_layout.width = Some(Len::Px(200.0));
     let copy = rematerialize(&div.style, copy, vcx);
     let p = element(&copy.children, "p");
-    assert_eq!(p.style.used().width, Some(Len::Px(200.0)));
+    assert_eq!(p.style.used().reset_box_layout.width, Some(Len::Px(200.0)));
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn a_reused_computed_value_keeps_the_current_element_parent() {
     let div = element(&parsed.nodes, "div");
     let previous = element(&div.children, "p").style.computed();
     let mut copy = div.clone();
-    copy.style.cascaded_mut().width = Some(Len::Px(30.0));
+    copy.style.cascaded_mut().reset_box_layout.width = Some(Len::Px(30.0));
     let copy = rematerialize(&div.style, copy, vcx);
     let p = element(&copy.children, "p");
     assert!(Rc::ptr_eq(&previous, &p.style.computed()));
@@ -42,11 +42,11 @@ fn a_reused_computed_value_keeps_the_current_element_parent() {
     assert!(recompute_onto(
         &mut parent,
         &copy.style,
-        |c| c.font_size = Some(Len::Px(40.0)),
+        |c| c.inh.font.font_size = Some(Len::Px(40.0)),
         vcx
     ));
     assert_eq!(
-        box_style(&parent, &p.style, vcx).font_size,
+        box_style(&parent, &p.style, vcx).inh.font.font_size,
         Some(Len::Px(40.0))
     );
 }
@@ -61,13 +61,16 @@ fn an_own_zoom_scales_the_whole_inherited_text_shadow_list() {
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let div = element(&parsed.nodes, "div").style.used();
     let p = element(&parsed.nodes, "p").style.used();
-    assert_eq!(div.text_shadow_rest.len(), 1);
-    assert_eq!(p.text_shadow_rest.len(), 1);
+    assert_eq!(div.inh.text_ink.text_shadow_rest.len(), 1);
+    assert_eq!(p.inh.text_ink.text_shadow_rest.len(), 1);
     assert_eq!(
-        p.text_shadow.as_ref().unwrap().x,
-        2.0 * div.text_shadow.as_ref().unwrap().x
+        p.inh.text_ink.text_shadow.as_ref().unwrap().x,
+        2.0 * div.inh.text_ink.text_shadow.as_ref().unwrap().x
     );
-    assert_eq!(p.text_shadow_rest[0].x, 2.0 * div.text_shadow_rest[0].x);
+    assert_eq!(
+        p.inh.text_ink.text_shadow_rest[0].x,
+        2.0 * div.inh.text_ink.text_shadow_rest[0].x
+    );
 }
 
 #[test]
@@ -80,24 +83,24 @@ fn position_try_declarations_pass_the_computed_value_stage() {
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let div = element(&parsed.nodes, "div");
     let mut c = BoxStyle::shared(div.style.computed());
-    assert_eq!(c.width, Some(Len::Px(10.0)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(10.0)));
     // `@position-try { width: 10px }` under `zoom: 2` is 20px, like any author 10px.
     assert!(recompute_onto(
         &mut c,
         &div.style,
-        |declared| declared.width = Some(Len::Px(10.0)),
+        |declared| declared.reset_box_layout.width = Some(Len::Px(10.0)),
         vcx,
     ));
-    assert_eq!(c.width, Some(Len::Px(20.0)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(20.0)));
     // Следующий кандидат может вернуть исходное значение; сравнение с
     // исходной материализацией потеряло бы отмену предыдущего варианта.
     assert!(recompute_onto(
         &mut c,
         &div.style,
-        |declared| declared.width = Some(Len::Px(5.0)),
+        |declared| declared.reset_box_layout.width = Some(Len::Px(5.0)),
         vcx,
     ));
-    assert_eq!(c.width, Some(Len::Px(10.0)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(10.0)));
 }
 
 #[test]
@@ -111,8 +114,8 @@ fn zoom_scales_viewport_units_and_the_absolute_part_of_calc() {
     let mut div = (**element(&parsed.nodes, "div").style.used()).clone();
     div.resolve_viewport((1000.0, 800.0), vcx);
     // 1vw of a 1000px window is 10px, 20px under `zoom: 2`, like `10px` is.
-    assert_eq!(div.width, Some(Len::Px(20.0)));
-    assert_eq!(div.height, Some(Len::Px(40.0)));
+    assert_eq!(div.reset_box_layout.width, Some(Len::Px(20.0)));
+    assert_eq!(div.reset_box_layout.height, Some(Len::Px(40.0)));
 }
 
 #[test]
@@ -128,7 +131,7 @@ fn cascade_variant_crosses_an_anonymous_table_without_inheriting_its_used_size()
     assert!(recompute_onto(
         &mut parent,
         &span.style,
-        |c| c.width = Some(Len::Px(30.0)),
+        |c| c.reset_box_layout.width = Some(Len::Px(30.0)),
         vcx
     ));
     fn descend(nodes: &[Node], parent: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
@@ -143,11 +146,11 @@ fn cascade_variant_crosses_an_anonymous_table_without_inheriting_its_used_size()
         if node.tag == "b" {
             return boxed;
         }
-        boxed.width = Some(Len::Px(99.0));
+        boxed.reset_box_layout.width = Some(Len::Px(99.0));
         descend(&node.children, &boxed, vcx)
     }
     assert_eq!(
-        descend(&span.children, &parent, vcx).width,
+        descend(&span.children, &parent, vcx).reset_box_layout.width,
         Some(Len::Px(30.0))
     );
 }

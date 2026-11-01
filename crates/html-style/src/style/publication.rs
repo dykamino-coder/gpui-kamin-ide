@@ -77,14 +77,14 @@ mod tests {
     #[test]
     fn retained_publication_survives_legacy_used_cow() {
         let mut cascade = Computed::default();
-        cascade.font_size = Some(Len::Px(20.0));
-        cascade.width = Some(Len::Pct(0.5));
+        cascade.inh.font.font_size = Some(Len::Px(20.0));
+        cascade.reset_box_layout.width = Some(Len::Pct(0.5));
         let Published { handle, mut legacy } = ComputedBuilder::from_cascaded(&cascade).finish();
         let retained = handle.clone();
-        Rc::make_mut(&mut legacy).width = Some(Len::Px(70.0));
-        Rc::make_mut(&mut legacy).font_size = Some(Len::Px(7.0));
-        assert_eq!(handle.width, Some(Len::Pct(0.5)));
-        assert_eq!(retained.font_size, Some(Len::Px(20.0)));
+        Rc::make_mut(&mut legacy).reset_box_layout.width = Some(Len::Px(70.0));
+        Rc::make_mut(&mut legacy).inh.font.font_size = Some(Len::Px(7.0));
+        assert_eq!(handle.reset_box_layout.width, Some(Len::Pct(0.5)));
+        assert_eq!(retained.inh.font.font_size, Some(Len::Px(20.0)));
         assert!(handle.ptr_eq(&retained));
         assert!(!std::ptr::eq::<Computed>(&*handle, &*legacy));
     }

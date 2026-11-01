@@ -22,14 +22,14 @@ pub fn subgrid_takes_parent_tracks(
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::preorder(admission, nodes, (), |el, _| {
         if matches!(
-            el.style.cascaded().display,
+            el.style.cascaded().reset_box_layout.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             for row_dir in [false, true] {
                 let raw = if row_dir {
-                    el.style.cascaded().grid_rows.clone()
+                    el.style.cascaded().reset_grid.grid_rows.clone()
                 } else {
-                    el.style.cascaded().grid_tracks.clone()
+                    el.style.cascaded().reset_grid.grid_tracks.clone()
                 }
                 .unwrap_or_default();
                 // Доли `fr` при точечном размере родителя — в точки ДО нарезки
@@ -69,9 +69,9 @@ pub fn subgrid_takes_parent_tracks(
                         continue;
                     };
                     let place = if row_dir {
-                        &child.style.cascaded().grid_row
+                        &child.style.cascaded().reset_grid.grid_row
                     } else {
-                        &child.style.cascaded().grid_col
+                        &child.style.cascaded().reset_grid.grid_col
                     };
                     let slot = match subgrid_slot(place, tracks.len()) {
                         Some((at, span)) => {
@@ -88,7 +88,7 @@ pub fn subgrid_takes_parent_tracks(
                             (at + span <= tracks.len()).then_some((at, span))
                         }
                     };
-                    if !child.style.cascaded().subgrid {
+                    if !child.style.cascaded().reset_grid.subgrid {
                         continue;
                     }
                     // css-grid-2 §subgrid-listing: использованное значение у
@@ -98,10 +98,10 @@ pub fn subgrid_takes_parent_tracks(
                     // `count_tracks` считает его за одну.
                     if subgrid_inhibited(child.style.cascaded()) {
                         if row_dir {
-                            child.style.cascaded_mut().grid_rows = None;
+                            child.style.cascaded_mut().reset_grid.grid_rows = None;
                         } else {
-                            child.style.cascaded_mut().grid_tracks = None;
-                            child.style.cascaded_mut().grid_cols = None;
+                            child.style.cascaded_mut().reset_grid.grid_tracks = None;
+                            child.style.cascaded_mut().reset_grid.grid_cols = None;
                         }
                         continue;
                     }

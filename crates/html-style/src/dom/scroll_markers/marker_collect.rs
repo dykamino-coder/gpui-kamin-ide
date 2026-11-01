@@ -51,7 +51,7 @@ pub(super) fn collect_scroll_markers(
             if e.tag.starts_with("::") {
                 return Ok(None);
             }
-            let inside = match e.style.cascaded().position {
+            let inside = match e.style.cascaded().reset_positioned.position {
                 Some(Position::Absolute) => abs_ok,
                 Some(Position::Fixed) => fixed_ok,
                 _ => true,
@@ -73,21 +73,21 @@ pub(super) fn collect_scroll_markers(
                 return Ok(None);
             }
             let nested = matches!(
-                e.style.cascaded().overflow_x,
+                e.style.cascaded().reset_box_layout.overflow_x,
                 Some(Overflow::Scroll) | Some(Overflow::Hidden)
             ) || matches!(
-                e.style.cascaded().overflow_y,
+                e.style.cascaded().reset_box_layout.overflow_y,
                 Some(Overflow::Scroll) | Some(Overflow::Hidden)
             );
-            if nested || e.style.cascaded().display == Some(Display::None) {
+            if nested || e.style.cascaded().reset_box_layout.display == Some(Display::None) {
                 return Ok(None);
             }
             let abs2 = abs_ok
                 || crate::style::computed::box_predicates::establishes_cb(e.style.cascaded());
             let fixed2 = fixed_ok
-                || e.style.cascaded().transform.is_some()
-                || e.style.cascaded().contain_layout == Some(true)
-                || e.style.cascaded().contain_paint == Some(true);
+                || e.style.cascaded().reset_transforms.transform.is_some()
+                || e.style.cascaded().reset_context.contain_layout == Some(true)
+                || e.style.cascaded().reset_context.contain_paint == Some(true);
             Ok(Some((abs2, fixed2)))
         },
     )

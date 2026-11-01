@@ -129,9 +129,14 @@ pub(crate) fn clone_fragment(
         anim: None,
         tag: "div".to_string(),
         style: Computed {
-            display: Some(Display::Block),
-            height: Some(Len::Px(clip.max(0.0))),
-            overflow_y: Some(Overflow::Clip),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    display: Some(Display::Block),
+                    height: Some(Len::Px(clip.max(0.0))),
+                    overflow_y: Some(Overflow::Clip),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         }
         .into(),

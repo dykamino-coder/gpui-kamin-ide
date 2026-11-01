@@ -14,13 +14,13 @@ use crate::style::computed::Computed;
 /// Действующий зум родителя: произведение по всей цепочке предков,
 /// включая границы пространств имён SVG/HTML (css-viewport-1 §zoom-property).
 pub(super) fn parent_eff(parent: &Computed) -> f32 {
-    parent.zoom_eff.unwrap_or(1.0)
+    parent.inh.font.zoom_eff.unwrap_or(1.0)
 }
 
 /// Собственный множитель и действующий зум каскадного стиля `own`, если зум
 /// что-то меняет.
 pub(super) fn factors(parent: &Computed, own: &Computed) -> Option<(f32, f32)> {
-    let k = own.zoom.unwrap_or(1.0);
+    let k = own.reset_cascade.zoom.unwrap_or(1.0);
     let eff = parent_eff(parent) * k;
     let changes = (eff - 1.0).abs() > f32::EPSILON || (k - 1.0).abs() > f32::EPSILON;
     changes.then_some((k, eff))
@@ -34,7 +34,7 @@ pub(super) fn zoom_own(
     eff: f32,
     vcx: crate::values::ValueCx<'_>,
 ) {
-    own.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
+    own.inh.font.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
     crate::style::zoom::apply(own, Some(parent), eff, k, vcx);
 }
 

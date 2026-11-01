@@ -143,11 +143,11 @@ pub(super) fn subgrid_gap_slice(
 /// подсетки (`column-auto-placed-subgrid-inherited-tracks-001`,
 /// `-nested-subgrid-inherited-tracks-001`, `-inherited-tracks-003`).
 pub fn subgrid_inhibited(style: &Computed) -> bool {
-    style.contain_layout == Some(true)
-        || style.contain_paint == Some(true)
-        || style.container_type.is_size_query()
+    style.reset_context.contain_layout == Some(true)
+        || style.reset_context.contain_paint == Some(true)
+        || style.reset_box_layout.container_type.is_size_query()
         || matches!(
-            style.position,
+            style.reset_positioned.position,
             Some(Position::Absolute) | Some(Position::Fixed)
         )
 }

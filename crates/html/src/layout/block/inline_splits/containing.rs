@@ -32,7 +32,12 @@ mod tests {
     fn nested_inline_splits_keep_the_nearest_original_cb() {
         let block = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
         let style = Computed {
-            position: Some(Position::Relative),
+            reset_positioned: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetPositioned {
+                    position: Some(Position::Relative),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut inner = Element::synthetic(

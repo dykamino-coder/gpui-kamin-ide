@@ -15,8 +15,8 @@ fn find(nodes: &[Node], tag: &str) -> Option<Element> {
 
 fn translate_rects(e: &mut Element) {
     if e.tag == "rect" {
-        e.style.used_mut().transform = Some(Default::default());
-        e.style.used_mut().translate = Some((Len::Pct(0.5), Len::Pct(0.5)));
+        e.style.used_mut().reset_transforms.transform = Some(Default::default());
+        e.style.used_mut().reset_transforms.translate = Some((Len::Pct(0.5), Len::Pct(0.5)));
     }
     for child in &mut e.children {
         if let Node::Element(child) = child {

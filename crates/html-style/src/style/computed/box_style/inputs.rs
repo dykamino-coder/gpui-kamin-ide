@@ -7,9 +7,9 @@ use crate::style::computed::{BoxStyle, Computed, Decor, Display as D, Position a
 impl BoxStyle {
     pub fn applicability_inputs(&self) -> ApplicabilityInputs {
         ApplicabilityInputs {
-            flex: matches!(self.display, Some(D::Flex | D::InlineFlex)),
+            flex: matches!(self.reset_box_layout.display, Some(D::Flex | D::InlineFlex)),
             rtl: self.wm().rtl(),
-            wrap_reverse: self.flex_wrap_reverse == Some(true),
+            wrap_reverse: self.reset_flex.flex_wrap_reverse == Some(true),
         }
     }
 
@@ -17,24 +17,28 @@ impl BoxStyle {
         // Сохраняем тест применимости стадии коробки. Преобразование display
         // остаётся в вычисленной стадии (CSS Display 3 §2.7).
         let blockified = matches!(
-            self.display,
+            self.reset_box_layout.display,
             Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
         );
-        let blocked = matches!(own.position, Some(P::Absolute | P::Fixed))
-            || own.float.is_some_and(|f| f != 0)
+        let blocked = matches!(own.reset_positioned.position, Some(P::Absolute | P::Fixed))
+            || own.reset_box_layout.float.is_some_and(|f| f != 0)
             || (!blockified
                 && matches!(
-                    own.display,
+                    own.reset_box_layout.display,
                     Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
                 ));
         DecorationInputs {
-            inherited: if blocked { &[] } else { &self.decors },
-            block: match own.display {
-                None => own.block_tag && own.inline_display != Some(true),
+            inherited: if blocked {
+                &[]
+            } else {
+                &self.reset_text_box.decors
+            },
+            block: match own.reset_box_layout.display {
+                None => own.block_tag && own.reset_context.inline_display != Some(true),
                 Some(D::Contents) => false,
                 Some(_) => true,
             },
-            generates_box: own.display != Some(D::Contents),
+            generates_box: own.reset_box_layout.display != Some(D::Contents),
         }
     }
 }

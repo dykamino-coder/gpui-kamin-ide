@@ -61,6 +61,7 @@ pub(super) fn pseudo(
     path: &[Ancestor],
 ) {
     if style
+        .reset_generated
         .quotes
         .as_ref()
         .and_then(Option::as_ref)

@@ -10,9 +10,14 @@ use crate::style::values::value::Len;
 #[test]
 fn transformed_float_keeps_untransformed_margins() {
     let mut style = Computed {
-        float: Some(-1),
-        width: Some(Len::Px(40.0)),
-        height: Some(Len::Px(20.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                float: Some(-1),
+                width: Some(Len::Px(40.0)),
+                height: Some(Len::Px(20.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     style.margin.left = Some(Len::Em(2.0));
@@ -41,9 +46,14 @@ fn float_host_retains_a_preceding_invisible_inline_run() {
     let float = Element::synthetic(
         "div",
         Computed {
-            float: Some(-1),
-            width: Some(Len::Px(100.)),
-            height: Some(Len::Px(100.)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(-1),
+                    width: Some(Len::Px(100.)),
+                    height: Some(Len::Px(100.)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),
@@ -85,7 +95,12 @@ fn orthogonal_text_float_uses_the_shared_measured_host() {
             "div",
             {
                 let mut with_inherited = Computed {
-                    float: Some(-1),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            float: Some(-1),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 };
                 with_inherited.writing_mode = Some(WritingModeKw::new(false, false, false));

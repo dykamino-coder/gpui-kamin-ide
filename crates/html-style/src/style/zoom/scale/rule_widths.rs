@@ -12,10 +12,16 @@ pub(super) fn scale(c: &mut Computed, k: f32) {
         Len::Px(v) | Len::EmPx(_, v) | Len::LhPx(_, v) => *v *= k,
         _ => {}
     };
-    for (width, list) in [
-        (&mut c.column_rule_width, &mut c.column_rule_widths),
-        (&mut c.row_rule_width, &mut c.row_rule_widths),
-    ] {
+    for (width, list) in {
+        let group_0 = &mut *c.reset_fragmentation;
+        [
+            (
+                &mut group_0.column_rule_width,
+                &mut group_0.column_rule_widths,
+            ),
+            (&mut group_0.row_rule_width, &mut group_0.row_rule_widths),
+        ]
+    } {
         // CSS Multicol 1: medium computes to an absolute length even for
         // none/hidden rule styles. Materialize it before zoom, like Blink's
         // SetZoomedInitialLineWidths, rather than the late 3px layout fallback.
@@ -49,26 +55,41 @@ mod tests {
     fn initial_medium_is_zoomed_without_requiring_a_visible_rule() {
         let mut style = Computed::default();
         super::super::scale_own(&mut style, 2.0, test_vcx());
-        assert_eq!(style.column_rule_width, Some(Len::Px(6.0)));
-        assert_eq!(style.row_rule_width, Some(Len::Px(6.0)));
+        assert_eq!(
+            style.reset_fragmentation.column_rule_width,
+            Some(Len::Px(6.0))
+        );
+        assert_eq!(style.reset_fragmentation.row_rule_width, Some(Len::Px(6.0)));
     }
 
     #[test]
     fn lists_scale_absolute_lengths_once_and_keep_font_units() {
         let mut style = Computed {
-            column_rule_width: Some(Len::Px(2.0)),
-            column_rule_widths: Some(GapList {
-                lead: vec![Len::Px(2.0)],
-                auto: vec![Len::Em(3.0)],
-                tail: vec![Len::Px(4.0)],
-            }),
-            row_rule_width: Some(Len::Px(0.0)),
+            reset_fragmentation: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetFragmentation {
+                    column_rule_width: Some(Len::Px(2.0)),
+                    column_rule_widths: Some(GapList {
+                        lead: vec![Len::Px(2.0)],
+                        auto: vec![Len::Em(3.0)],
+                        tail: vec![Len::Px(4.0)],
+                    }),
+                    row_rule_width: Some(Len::Px(0.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         super::super::scale_own(&mut style, 2.0, test_vcx());
-        assert_eq!(style.column_rule_width, Some(Len::Px(4.0)));
-        assert_eq!(style.row_rule_width, Some(Len::Px(0.0)));
-        let widths = style.column_rule_widths.expect("rule list");
+        assert_eq!(
+            style.reset_fragmentation.column_rule_width,
+            Some(Len::Px(4.0))
+        );
+        assert_eq!(style.reset_fragmentation.row_rule_width, Some(Len::Px(0.0)));
+        let widths = style
+            .reset_fragmentation
+            .column_rule_widths
+            .clone()
+            .expect("rule list");
         assert_eq!(widths.lead, vec![Len::Px(4.0)]);
         assert_eq!(widths.auto, vec![Len::Em(3.0)]);
         assert_eq!(widths.tail, vec![Len::Px(8.0)]);

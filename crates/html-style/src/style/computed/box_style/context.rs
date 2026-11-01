@@ -5,7 +5,7 @@ use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Align, BoxStyle, Display as D};
 
 pub(super) fn child_of(parent: &BoxStyle) -> BoxContext<WritingMode, Align> {
-    let parent_grid = match parent.display {
+    let parent_grid = match parent.reset_box_layout.display {
         Some(D::Grid | D::InlineGrid) => match (parent.wm().vertical(), parent.wm().block_rl()) {
             (false, _) => 1,
             (true, false) => 2,
@@ -15,12 +15,12 @@ pub(super) fn child_of(parent: &BoxStyle) -> BoxContext<WritingMode, Align> {
     };
     BoxContext {
         parent_grid,
-        parent_grid_align_items: parent.align_items,
+        parent_grid_align_items: parent.reset_flex.align_items,
         parent_flex_grid: matches!(
-            parent.display,
+            parent.reset_box_layout.display,
             Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
         ),
-        parent_lanes: parent.display == Some(D::GridLanes),
+        parent_lanes: parent.reset_box_layout.display == Some(D::GridLanes),
         cb_wm: parent.wm().line(),
         applicability: parent.applicability_inputs(),
     }

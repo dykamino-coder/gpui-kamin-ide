@@ -4,13 +4,18 @@ use super::*;
 #[test]
 fn parallel_table_column_uses_its_track_measure() {
     let mut style = Computed {
-        ortho_col: true,
-        orthogonal_inline: Some(InlineConstraint {
-            available: 600.0,
-            fixed: None,
-            min: None,
-            max: None,
-        }),
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                ortho_col: true,
+                orthogonal_inline: Some(InlineConstraint {
+                    available: 600.0,
+                    fixed: None,
+                    min: None,
+                    max: None,
+                }),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     assert_eq!(flow_constraint(&style), None);
@@ -21,7 +26,12 @@ fn parallel_table_column_uses_its_track_measure() {
 fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
     let mut child = {
         let mut with_inherited = Computed {
-            height: Some(Len::Pct(0.5)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.5)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         with_inherited.writing_mode = Some(
@@ -32,7 +42,12 @@ fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
     resolve(&mut child, &Computed::default(), (800.0, 600.0), false);
     assert_eq!(child.height, Some(Len::Px(300.0)));
     let parent = Computed {
-        height: Some(Len::Px(720.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                height: Some(Len::Px(720.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     child.height = Some(Len::Pct(0.5));
@@ -43,17 +58,27 @@ fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
 #[test]
 fn nearest_indefinite_scroller_replaces_an_outer_fixed_scroller() {
     let outer = Computed {
-        orthogonal_scrollport: Some([
-            AxisSizes::default(),
-            AxisSizes {
-                size: Some(100.0),
-                ..AxisSizes::default()
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                orthogonal_scrollport: Some([
+                    AxisSizes::default(),
+                    AxisSizes {
+                        size: Some(100.0),
+                        ..AxisSizes::default()
+                    },
+                ]),
+                ..Default::default()
             },
-        ]),
+        ),
         ..Computed::default()
     };
     let mut inner = Computed {
-        overflow_y: Some(Overflow::Hidden),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                overflow_y: Some(Overflow::Hidden),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     resolve(&mut inner, &outer, (800.0, 600.0), false);
@@ -81,7 +106,12 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
     };
     let parent = {
         let mut with_inherited = Computed {
-            orthogonal_inline: Some(c),
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    orthogonal_inline: Some(c),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         with_inherited.writing_mode = Some(
@@ -111,8 +141,13 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
 #[test]
 fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
     let mut parent = Computed {
-        width: Some(Len::Px(500.0)),
-        height: Some(Len::Px(200.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(500.0)),
+                height: Some(Len::Px(200.0)),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let mut child = {
@@ -134,17 +169,27 @@ fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
     resolve(&mut child, &parent, (800.0, 600.0), false);
     assert_eq!(child.orthogonal_inline.unwrap().available, 104.0);
     let mut clipped = Computed {
-        overflow_y: Some(Overflow::Clip),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                overflow_y: Some(Overflow::Clip),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     };
     let outer = Computed {
-        orthogonal_scrollport: Some([
-            AxisSizes::default(),
-            AxisSizes {
-                size: Some(200.0),
-                ..AxisSizes::default()
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                orthogonal_scrollport: Some([
+                    AxisSizes::default(),
+                    AxisSizes {
+                        size: Some(200.0),
+                        ..AxisSizes::default()
+                    },
+                ]),
+                ..Default::default()
             },
-        ]),
+        ),
         ..Computed::default()
     };
     resolve(&mut clipped, &outer, (800.0, 600.0), false);

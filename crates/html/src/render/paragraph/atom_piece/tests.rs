@@ -24,7 +24,12 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
             &element,
             &BoxStyle::from(
                 (Computed {
-                    turned_line: turned,
+                    reset_text_box: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetTextBox {
+                            turned_line: turned,
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 })
                 .clone(),

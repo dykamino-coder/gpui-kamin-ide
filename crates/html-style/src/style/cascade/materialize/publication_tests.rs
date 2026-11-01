@@ -18,8 +18,8 @@ fn cache_hits_reuse_publication_after_used_sizing() {
     let (_, parent) = p.style.slot().with_parent().unwrap();
     let held = p.style.published().unwrap();
     let mut copy = p.clone();
-    copy.style.used_mut().width = Some(Len::Px(70.0));
-    copy.style.used_mut().height = Some(Len::Px(80.0));
+    copy.style.used_mut().reset_box_layout.width = Some(Len::Px(70.0));
+    copy.style.used_mut().reset_box_layout.height = Some(Len::Px(80.0));
     materialize(&parsed.nodes, &root, vcx);
     let hit = p
         .style
@@ -28,13 +28,13 @@ fn cache_hits_reuse_publication_after_used_sizing() {
         .unwrap();
     assert!(held.ptr_eq(&hit.handle));
     let mut boxed = box_style(&BoxStyle::shared(parent), &copy.style, vcx);
-    assert_eq!(boxed.width, Some(Len::Px(70.0)));
-    assert_eq!(boxed.height, Some(Len::Px(80.0)));
-    assert_eq!(boxed.margin.left, Some(Len::Px(3.0)));
-    assert_eq!(boxed.padding.left, Some(Len::Px(4.0)));
-    boxed.width = Some(Len::Px(90.0));
-    assert_eq!(held.width, Some(Len::Pct(0.5)));
-    assert_eq!(held.height, Some(Len::Px(40.0)));
+    assert_eq!(boxed.reset_box_layout.width, Some(Len::Px(70.0)));
+    assert_eq!(boxed.reset_box_layout.height, Some(Len::Px(80.0)));
+    assert_eq!(boxed.reset_box_layout.margin.left, Some(Len::Px(3.0)));
+    assert_eq!(boxed.reset_box_layout.padding.left, Some(Len::Px(4.0)));
+    boxed.reset_box_layout.width = Some(Len::Px(90.0));
+    assert_eq!(held.reset_box_layout.width, Some(Len::Pct(0.5)));
+    assert_eq!(held.reset_box_layout.height, Some(Len::Px(40.0)));
     assert!(std::ptr::eq::<Computed>(
         &*held,
         &*boxed.element_style.as_ref().unwrap().computed,
@@ -53,16 +53,16 @@ fn restyle_replaces_publication_and_preserves_retained_reader() {
     let (_, parent) = p.style.slot().with_parent().unwrap();
     let held = p.style.published().unwrap();
     let mut copy = p.clone();
-    copy.style.used_mut().width = Some(Len::Px(99.0));
-    copy.style.cascaded_mut().font_size = Some(Len::Px(30.0));
+    copy.style.used_mut().reset_box_layout.width = Some(Len::Px(99.0));
+    copy.style.cascaded_mut().inh.font.font_size = Some(Len::Px(30.0));
     assert!(copy.style.slot().with_parent().is_none());
     assert!(copy.style.used_rc().is_none());
     let nodes = [Node::Element(copy)];
     materialize(&nodes, &parent, vcx);
     let updated = element(&nodes, "p").style.published().unwrap();
     assert!(!held.ptr_eq(&updated));
-    assert_eq!(held.width, Some(Len::Px(40.0)));
-    assert_eq!(updated.width, Some(Len::Px(60.0)));
+    assert_eq!(held.reset_box_layout.width, Some(Len::Px(40.0)));
+    assert_eq!(updated.reset_box_layout.width, Some(Len::Px(60.0)));
     assert!(p.style.published().unwrap().ptr_eq(&held));
 }
 
@@ -79,7 +79,7 @@ fn inherited_explicit_and_environment_inputs_control_cache_misses() {
     let (_, parent) = p.style.slot().with_parent().unwrap();
     let held = p.style.published().unwrap();
     let mut other = (*parent).clone();
-    other.padding.left = Some(Len::Px(9.0));
+    other.reset_box_layout.padding.left = Some(Len::Px(9.0));
     let generation = inputs(vcx);
     let get = |style: &SharedStyle, parent: &Computed, generation| {
         style.slot().get(style.cascaded(), parent, generation)
@@ -91,15 +91,22 @@ fn inherited_explicit_and_environment_inputs_control_cache_misses() {
             .ptr_eq(&held)
     );
     assert!(get(&span.style, &other, generation).is_none());
-    other.font_size = Some(Len::Px(30.0));
+    other.inh.font.font_size = Some(Len::Px(30.0));
     assert!(get(&p.style, &other, generation).is_none());
     assert!(get(&p.style, &parent, (generation.0 + 1, generation.1)).is_none());
     let mut viewport = generation.1;
     viewport[0] = (vcx.viewport.0 + 1.0).to_bits();
     assert!(get(&p.style, &parent, (generation.0, viewport)).is_none());
-    assert_eq!(held.font_size, Some(Len::Px(20.0)));
+    assert_eq!(held.inh.font.font_size, Some(Len::Px(20.0)));
     assert_eq!(
-        span.style.slot().with_parent().unwrap().0.padding.left,
+        span.style
+            .slot()
+            .with_parent()
+            .unwrap()
+            .0
+            .reset_box_layout
+            .padding
+            .left,
         Some(Len::Px(3.0))
     );
 }
@@ -118,8 +125,8 @@ fn container_input_is_published_before_handle_and_legacy_are_shared() {
     let updated = p.style.published().unwrap();
     let legacy = p.style.computed();
     assert!(!held.ptr_eq(&updated));
-    assert_eq!(held.cq_size, (None, None));
-    assert_eq!(updated.cq_size, size);
+    assert_eq!(held.reset_context.cq_size, (None, None));
+    assert_eq!(updated.reset_context.cq_size, size);
     assert!(std::ptr::eq::<Computed>(&*updated, &*legacy));
     materialize(&parsed.nodes, &root, vcx);
     assert!(updated.ptr_eq(&p.style.published().unwrap()));

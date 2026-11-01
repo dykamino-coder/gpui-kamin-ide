@@ -96,7 +96,7 @@ impl Computed {
                 return self.apply_wide(id, wide, vcx);
             }
             // Значение заменяет прежнее каскадное `inherit` свойства.
-            self.inherit_longhands.set(id, false);
+            self.reset_cascade.inherit_longhands.set(id, false);
             // Наследуемые свойства вне шрифта и текста: один разбор на
             // свойство (`props::inherited`), обработчики по имени их не видят.
             if crate::style::computed::props::inherited::owns(id) {
@@ -133,17 +133,17 @@ impl Computed {
         // общее слово для свойств ВНЕ реестра: их грамматику проверяет
         // обработчик, а не разбор блока. Длинные свойства реестра пришли
         // проверенными и общее слово решили выше (`apply_wide`).
-        let observer = self.declaration_parse;
-        self.declaration_parse = ParseResult::Invalid;
+        let observer = self.reset_cascade.declaration_parse;
+        self.reset_cascade.declaration_parse = ParseResult::Invalid;
         // Каждое свойство принимает CSS-wide keyword (css-cascade-5 §7.3); не
         // покрытое таблицами выше слово сбрасывает поля свойства к пустому,
         // начальному представлению, а не отвергается грамматикой значения.
         let css_wide = css_wide_keyword(v);
-        let outer = std::mem::replace(&mut self.css_wide_value, css_wide);
+        let outer = std::mem::replace(&mut self.reset_cascade.css_wide_value, css_wide);
         self.apply_property(key, v, vcx);
-        self.css_wide_value = outer;
-        let accepted = self.declaration_parse == ParseResult::Accepted || css_wide;
-        self.declaration_parse = if observer == ParseResult::Inactive {
+        self.reset_cascade.css_wide_value = outer;
+        let accepted = self.reset_cascade.declaration_parse == ParseResult::Accepted || css_wide;
+        self.reset_cascade.declaration_parse = if observer == ParseResult::Inactive {
             observer
         } else if accepted {
             ParseResult::Accepted
@@ -174,7 +174,7 @@ impl Computed {
             // Ненаследуемое: вычисленное значение родителя скопирует стадия
             // вычисленных значений (`compute::longhands`). Обработчик видит
             // слово ради порядка сторон (логическое против физического).
-            self.inherit_longhands.set(id, true);
+            self.reset_cascade.inherit_longhands.set(id, true);
             if inherited_value::of_longhand(id).is_empty() {
                 self.apply_property(id.name(), "inherit", vcx);
             }
@@ -186,12 +186,12 @@ impl Computed {
                 self.apply_property(id.name(), "inherit", vcx);
             }
         } else {
-            self.inherit_longhands.set(id, false);
+            self.reset_cascade.inherit_longhands.set(id, false);
             self.apply_one(id.name(), id.initial(), vcx);
             // Quirks Mode §3.12: таблица с НАЧАЛЬНЫМ цветом из листа агента
             // берёт цвет `<body>` (`dom::quirks_color`).
             if id == LonghandId::Color {
-                self.color_initial = true;
+                self.reset_cascade.color_initial = true;
             }
         }
         // Откаченное объявление — уже не авторское: признак авторского фона
@@ -200,7 +200,7 @@ impl Computed {
         if matches!(wide, CssWide::Revert | CssWide::RevertLayer)
             && id == LonghandId::BackgroundColor
         {
-            self.bg_explicit = false;
+            self.reset_background.bg_explicit = false;
         }
     }
 
@@ -241,3 +241,5 @@ impl Computed {
         false
     }
 }
+
+pub(crate) mod sharing;

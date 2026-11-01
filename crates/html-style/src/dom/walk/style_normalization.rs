@@ -27,7 +27,7 @@ pub(super) fn normalize_style(
     // boxes and internal ruby or table boxes» (`aspect-ratio/table-element-001`).
     {
         use crate::style::computed::Display;
-        let internal_table = match style.display {
+        let internal_table = match style.reset_box_layout.display {
             Some(Display::TableRow | Display::TableRowGroup | Display::TableCell) => true,
             None => matches!(
                 tag,
@@ -36,17 +36,17 @@ pub(super) fn normalize_style(
             _ => false,
         };
         if internal_table {
-            style.aspect_ratio = None;
-            style.aspect_ratio_auto = None;
+            style.reset_shapes.aspect_ratio = None;
+            style.reset_shapes.aspect_ratio_auto = None;
         }
     }
     presentational_hints::colors(&mut style, &tag, &attrs, vcx);
     finish_inline_display(&mut style, &tag, &attrs, vcx);
     // HTML 15.4.1: audio without controls does not represent a rendered box.
     if tag == "audio" && !attrs.iter().any(|(name, _)| name == "controls") {
-        style.display = Some(crate::style::computed::Display::None);
+        style.reset_box_layout.display = Some(crate::style::computed::Display::None);
     }
-    style.plain_block_box = {
+    style.reset_context.plain_block_box = {
         use crate::style::computed::Display;
         let special = matches!(
             tag,
@@ -84,16 +84,16 @@ pub(super) fn normalize_style(
                 | "meter"
                 | "progress"
         );
-        let block = match style.display {
+        let block = match style.reset_box_layout.display {
             Some(Display::Block)
             | Some(Display::GridLanes)
             | Some(Display::ListItem)
             | Some(Display::Flex)
             | Some(Display::Grid) => true,
-            None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag),
+            None => style.reset_context.inline_display != Some(true) && BLOCK_TAGS.contains(&tag),
             _ => false,
         };
-        block && !special && style.float.is_none_or(|f| f == 0)
+        block && !special && style.reset_box_layout.float.is_none_or(|f| f == 0)
     };
     // css-will-change-1: обещанный `transform`/`contain` делает коробку
     // содержащим блоком и контекстом наложения лишь там, где само
@@ -101,7 +101,7 @@ pub(super) fn normalize_style(
     // (`will-change-transform-inline`: `fixed` внутри `<span>` стоит от
     // окна); замещаемые и вынесенные из потока — атомарны. Вид коробки
     // известен только здесь, после `finish_inline_display`.
-    if style.will_change & crate::style::computed::wc::BOX != 0 {
+    if style.reset_effects.will_change & crate::style::computed::wc::BOX != 0 {
         let out_of_flow = crate::style::flow::out_of_flow(style);
         let replaced = matches!(
             tag,
@@ -122,17 +122,18 @@ pub(super) fn normalize_style(
         let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let non_atomic = !out_of_flow
             && !replaced
-            && (style.inline_display == Some(true) || (style.display.is_none() && inline_tag));
+            && (style.reset_context.inline_display == Some(true)
+                || (style.reset_box_layout.display.is_none() && inline_tag));
         if !non_atomic {
             use crate::style::computed::wc;
-            style.will_change |= wc::CB_ABS | wc::CB_FIXED | wc::STACK;
+            style.reset_effects.will_change |= wc::CB_ABS | wc::CB_FIXED | wc::STACK;
         }
     }
     // `transform-style` applies only to transformable elements
     // (css-transforms-2): a non-atomic inline with `preserve-3d` is no
     // 3D context, stacking context or containing block
     // (`preserve-3d-flat-grouping-properties-containing-block-inline`).
-    if style.preserve_3d == Some(true) {
+    if style.reset_transforms.preserve_3d == Some(true) {
         let out_of_flow = crate::style::flow::out_of_flow(style);
         let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let replaced = matches!(
@@ -153,10 +154,11 @@ pub(super) fn normalize_style(
         );
         if !out_of_flow
             && !replaced
-            && (style.inline_display == Some(true) || (style.display.is_none() && inline_tag))
+            && (style.reset_context.inline_display == Some(true)
+                || (style.reset_box_layout.display.is_none() && inline_tag))
         {
-            style.preserve_3d = None;
-            style.frame_3d = None;
+            style.reset_transforms.preserve_3d = None;
+            style.reset_transforms.frame_3d = None;
         }
     }
     inlinify_in_ruby(&mut style, &tag, path.iter().rev());
@@ -166,14 +168,14 @@ pub(super) fn normalize_style(
     // отодвигать аннотацию от базы). Контейнер — по тегу или по роли.
     if matches!(tag, "rbc" | "rtc")
         || matches!(
-            style.ruby_role,
+            style.reset_text_box.ruby_role,
             Some(crate::style::computed::RubyRole::BaseContainer)
                 | Some(crate::style::computed::RubyRole::TextContainer)
         )
     {
-        style.margin = crate::style::computed::Sides::default();
-        style.padding = crate::style::computed::Sides::default();
-        style.border_width = crate::style::computed::Sides::default();
+        style.reset_box_layout.margin = crate::style::computed::Sides::default();
+        style.reset_box_layout.padding = crate::style::computed::Sides::default();
+        style.reset_border.border_width = crate::style::computed::Sides::default();
     }
     // motion-1: offset-трансформ считается НЕ здесь, а вторым проходом
     // по дереву коробок (`motion::settle`, зовётся из `document::logical_properties`).
@@ -189,7 +191,7 @@ pub(super) fn normalize_style(
         .find(|(k, _)| k.eq_ignore_ascii_case("xml:lang"))
         .or_else(|| attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("lang")))
     {
-        style.lang = Some(v.clone());
+        style.inh.text_flow.lang = Some(v.clone());
     }
     apply_direction(&mut style, &tag, &attrs);
 }

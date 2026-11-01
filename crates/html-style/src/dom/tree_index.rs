@@ -41,6 +41,7 @@ impl Hash for NodeKey {
 
 /// Everything the style walk reads about a node besides the node itself.
 pub struct TreeIndex {
+    pub(crate) style_sharing: crate::style::cascade::sharing::StyleSharing,
     pub matching: Rc<crate::style::select::cache::MatchCaches>,
     /// `:has()` marks: hashes of the arguments this node anchors a match for.
     pub has_marks: HashMap<NodeKey, Vec<u64>>,
@@ -70,6 +71,7 @@ impl TreeIndex {
 
     pub fn new(doc: Rc<crate::values::DocumentValues>, xhtml: bool) -> Self {
         TreeIndex {
+            style_sharing: Default::default(),
             matching: Rc::new(crate::style::select::cache::MatchCaches::new(doc.clone())),
             has_marks: Default::default(),
             has_leases: Default::default(),

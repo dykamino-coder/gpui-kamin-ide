@@ -35,7 +35,7 @@ pub fn colors(parent: &Colors, own: &SharedStyle, vcx: ValueCx<'_>) -> Colors {
         parent.foreground
     } else {
         crate::style::decoration_paint::ForegroundPaint {
-            color: css.color,
+            color: css.inh.ui.color,
             ..Default::default()
         }
     };
@@ -45,7 +45,7 @@ pub fn colors(parent: &Colors, own: &SharedStyle, vcx: ValueCx<'_>) -> Colors {
             foreground: input,
             element,
             declares_color: declared.declares_color(),
-            out_of_flow: crate::style::flow::absolutely_positioned(view.position),
+            out_of_flow: crate::style::flow::absolutely_positioned(view.reset_positioned.position),
             background: view.background_paint,
         },
         &crate::style::background_paint::BackgroundValues::from_computed(&css),

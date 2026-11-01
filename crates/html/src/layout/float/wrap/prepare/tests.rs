@@ -16,7 +16,12 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
     };
     let mut style = {
         let mut with_inherited = Computed {
-            float: Some(-1),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(-1),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         with_inherited.font_size = Some(Len::Pct(2.));
@@ -62,9 +67,19 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
         with_inherited
     };
     let mut style = Computed {
-        float: Some(-1),
-        line_clamp: Some(2),
-        width: Some(Len::Ch(8.5)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                float: Some(-1),
+                width: Some(Len::Ch(8.5)),
+                ..Default::default()
+            },
+        ),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                line_clamp: Some(2),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     style.margin.left = Some(Len::Ch(1.));
@@ -113,8 +128,13 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
                 Node::Element(Element::synthetic(
                     "span",
                     Computed {
-                        float: Some(-1),
-                        width: Some(Len::Pct(0.5)),
+                        reset_box_layout: crate::style::computed::StyleGroup::new(
+                            crate::style::computed::ResetBoxLayout {
+                                float: Some(-1),
+                                width: Some(Len::Pct(0.5)),
+                                ..Default::default()
+                            },
+                        ),
                         ..Default::default()
                     },
                     Default::default(),

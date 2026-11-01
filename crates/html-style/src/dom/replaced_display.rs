@@ -16,19 +16,23 @@ pub(super) fn normalize(style: &mut Computed, tag: &str, attrs: &[(String, Strin
         "img" | "svg" | "canvas" | "video" | "iframe" | "embed" | "input"
     ) || tag == "object" && attrs.iter().any(|(name, _)| name == "data");
     let internal = matches!(
-        style.display,
+        style.reset_box_layout.display,
         Some(Display::TableCell | Display::TableRow | Display::TableRowGroup)
-    ) || style.col_role.is_some() && style.display == Some(Display::None)
-        || style.is_caption == Some(true);
+    ) || style.reset_context.col_role.is_some()
+        && style.reset_box_layout.display == Some(Display::None)
+        || style.reset_context.is_caption == Some(true);
     if replaced && internal {
         // CSS 2 section 9.7 blockifies out-of-flow internal table boxes;
         // they no longer have an internal computed display to normalize.
-        let blockified = style.float.is_some_and(|value| value != 0)
-            || matches!(style.position, Some(Position::Absolute | Position::Fixed));
-        style.display = blockified.then_some(Display::Block);
-        style.col_role = None;
-        style.row_group_kind = None;
-        style.is_caption = None;
+        let blockified = style.reset_box_layout.float.is_some_and(|value| value != 0)
+            || matches!(
+                style.reset_positioned.position,
+                Some(Position::Absolute | Position::Fixed)
+            );
+        style.reset_box_layout.display = blockified.then_some(Display::Block);
+        style.reset_context.col_role = None;
+        style.reset_context.row_group_kind = None;
+        style.reset_context.is_caption = None;
     }
 }
 
@@ -53,10 +57,10 @@ mod tests {
             let mut style = Computed::default();
             style.apply_one("display", value, vcx);
             normalize(&mut style, "img", &[]);
-            assert_eq!(style.display, None, "{value}");
-            assert_eq!(style.col_role, None, "{value}");
-            assert_eq!(style.row_group_kind, None, "{value}");
-            assert_eq!(style.is_caption, None, "{value}");
+            assert_eq!(style.reset_box_layout.display, None, "{value}");
+            assert_eq!(style.reset_context.col_role, None, "{value}");
+            assert_eq!(style.reset_context.row_group_kind, None, "{value}");
+            assert_eq!(style.reset_context.is_caption, None, "{value}");
         }
     }
 
@@ -67,12 +71,12 @@ mod tests {
         let mut style = Computed::default();
         style.apply_one("display", "table-cell", vcx);
         normalize(&mut style, "span", &[]);
-        assert_eq!(style.display, Some(Display::TableCell));
+        assert_eq!(style.reset_box_layout.display, Some(Display::TableCell));
         normalize(&mut style, "object", &[]);
-        assert_eq!(style.display, Some(Display::TableCell));
+        assert_eq!(style.reset_box_layout.display, Some(Display::TableCell));
         style.apply_one("display", "none", vcx);
         normalize(&mut style, "img", &[]);
-        assert_eq!(style.display, Some(Display::None));
+        assert_eq!(style.reset_box_layout.display, Some(Display::None));
     }
 
     #[test]
@@ -82,10 +86,10 @@ mod tests {
         for position in [None, Some(Position::Absolute), Some(Position::Fixed)] {
             let mut style = Computed::default();
             style.apply_one("display", "table-cell", vcx);
-            style.position = position;
-            style.float = position.is_none().then_some(-1);
+            style.reset_positioned.position = position;
+            style.reset_box_layout.float = position.is_none().then_some(-1);
             normalize(&mut style, "img", &[]);
-            assert_eq!(style.display, Some(Display::Block));
+            assert_eq!(style.reset_box_layout.display, Some(Display::Block));
         }
     }
 }

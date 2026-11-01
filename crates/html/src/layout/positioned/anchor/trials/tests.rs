@@ -9,8 +9,13 @@ use crate::style::values::value::{AnchorSize, Len, anchor_get};
 
 fn base() -> BoxStyle {
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
-        position_try_fallbacks: parse_try_fallbacks("--missing, --fit, flip-start"),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                position_try_fallbacks: parse_try_fallbacks("--missing, --fit, flip-start"),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_key = 17;
@@ -92,10 +97,15 @@ fn all_overflow_keeps_current_and_sorting_keeps_source_order_on_ties() {
 fn flip_start_transposes_sizing_inputs_and_anchor_size_before_layout() {
     let doc = DocState::new(Default::default());
     let mut c = Computed {
-        width: Len::parse("anchor-size(--a width, 13px)", doc.values()),
-        height: Some(Len::Px(41.)),
-        min_width: Some(Len::Px(7.)),
-        max_height: Some(Len::Px(83.)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Len::parse("anchor-size(--a width, 13px)", doc.values()),
+                height: Some(Len::Px(41.)),
+                min_width: Some(Len::Px(7.)),
+                max_height: Some(Len::Px(83.)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     c.calc_size[0] = Some((1., 2., 3., 4.));
@@ -124,7 +134,12 @@ fn flip_start_transposes_sizing_inputs_and_anchor_size_before_layout() {
 fn candidate_style_changes_only_accepted_properties() {
     let mut raw = Computed::default();
     let mut computed = Computed {
-        width: Some(Len::Px(42.)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(42.)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     computed.font_size = Some(Len::Px(99.));
@@ -151,8 +166,13 @@ fn transposed_inherit_keeps_the_value_of_the_original_axis() {
     let mut c = base();
     c.position_try_fallbacks = parse_try_fallbacks("--fit flip-start");
     let parent = BoxStyle::new(Computed {
-        width: Some(Len::Px(73.)),
-        height: Some(Len::Px(19.)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(73.)),
+                height: Some(Len::Px(19.)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     let opts = Options::new(&c, &parent, doc.values(), &doc.layout);

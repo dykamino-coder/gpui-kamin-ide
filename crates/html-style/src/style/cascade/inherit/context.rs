@@ -13,41 +13,59 @@ pub(super) fn inherit_context(parents: super::BoxParents<'_>, own: &Computed, c:
         layout,
         tree: parent,
     } = parents;
-    c.inline_contents(parent, own.ruby_unit);
+    c.inline_contents(parent, own.reset_text_box.ruby_unit);
     set!(
-        c.text_shadow_ink,
-        own.text_shadow_ink.or(parent.text_shadow_ink)
+        c.reset_text_box.text_shadow_ink,
+        own.reset_text_box
+            .text_shadow_ink
+            .or(parent.reset_text_box.text_shadow_ink)
     );
-    set!(c.ruby_unit, own.ruby_unit || parent.ruby_unit);
     set!(
-        c.ruby_suppress_breaks,
-        own.ruby_suppress_breaks || parent.ruby_suppress_breaks
+        c.reset_text_box.ruby_unit,
+        own.reset_text_box.ruby_unit || parent.reset_text_box.ruby_unit
     );
-    set!(c.turned_line, own.turned_line || parent.turned_line);
-    set!(c.ortho_limit, own.ortho_limit.or(layout.ortho_limit));
-    set!(c.orthogonal_scrollport, layout.orthogonal_scrollport);
+    set!(
+        c.reset_text_box.ruby_suppress_breaks,
+        own.reset_text_box.ruby_suppress_breaks || parent.reset_text_box.ruby_suppress_breaks
+    );
+    set!(
+        c.reset_text_box.turned_line,
+        own.reset_text_box.turned_line || parent.reset_text_box.turned_line
+    );
+    set!(
+        c.reset_context.ortho_limit,
+        own.reset_context
+            .ortho_limit
+            .or(layout.reset_context.ortho_limit)
+    );
+    set!(
+        c.reset_context.orthogonal_scrollport,
+        layout.reset_context.orthogonal_scrollport
+    );
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
     // the in-flow inline measure of the paragraph it was written in.
     set!(
-        c.orthogonal_inline,
+        c.reset_context.orthogonal_inline,
         if matches!(
-            own.position,
+            own.reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         ) {
             None
         } else {
-            layout.orthogonal_inline
+            layout.reset_context.orthogonal_inline
         }
     );
     // A `-webkit-box` that is not a block container (no vertical orient)
     // is no line-clamp container and hands no clamp to its contents
     // (`line-clamp-029`).
     set!(
-        c.line_clamp,
-        c.line_clamp
-            .or(layout.line_clamp.filter(|_| layout.clamp_block_container()))
+        c.reset_fragmentation.line_clamp,
+        c.reset_fragmentation.line_clamp.or(layout
+            .reset_fragmentation
+            .line_clamp
+            .filter(|_| layout.clamp_block_container()))
     );
     c.inline_decoration = c.inline_decoration.under(parent.inline_decoration);
     // css-ui-4 §6.1: `user-select` не наследуется; используемое значение
@@ -55,11 +73,14 @@ pub(super) fn inherit_context(parents: super::BoxParents<'_>, own: &Computed, c:
     // (`all` родителя тоже выделяемо).
     use crate::style::computed::UserSelect as U;
     set!(
-        c.no_select,
-        match c.user_select {
+        c.reset_context.no_select,
+        match c.reset_context.user_select {
             Some(U::None) => Some(true),
             Some(U::Text | U::Contain | U::All) => Some(false),
-            Some(U::Auto) | None => own.no_select.or(parent.no_select),
+            Some(U::Auto) | None => own
+                .reset_context
+                .no_select
+                .or(parent.reset_context.no_select),
         }
     );
 }

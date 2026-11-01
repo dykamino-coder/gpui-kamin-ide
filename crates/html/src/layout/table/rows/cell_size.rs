@@ -35,7 +35,12 @@ mod tests {
         let metric_doc = crate::document::state::DocState::new(Default::default());
         let vcx = metric_doc.values();
         let mut cell = Computed {
-            width: Some(Len::Px(100.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         vertical_block_floor(&mut cell, 16.0, "", vcx);

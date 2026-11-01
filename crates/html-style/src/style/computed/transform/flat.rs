@@ -18,8 +18,14 @@ impl FlatTransform {
     /// The box's transform when it is flat (no 3D context, perspective or depth)
     /// and its linear part is not the identity; `None` for a pure translation.
     pub fn of(c: &Computed) -> Option<Self> {
-        let t = c.transform?.after_individual(c.rotate_prop, c.scale_prop);
-        if t.has_3d || c.perspective.is_some() || c.preserve_3d == Some(true) {
+        let t = c.reset_transforms.transform?.after_individual(
+            c.reset_transforms.rotate_prop,
+            c.reset_transforms.scale_prop,
+        );
+        if t.has_3d
+            || c.reset_transforms.perspective.is_some()
+            || c.reset_transforms.preserve_3d == Some(true)
+        {
             return None;
         }
         let [[a, b], [cc, d]] = t.lin;
@@ -38,8 +44,8 @@ impl FlatTransform {
         Some(Self {
             lin: t.lin,
             tr,
-            origin: c.transform_origin.unwrap_or((0.5, 0.5)),
-            origin_px: c.transform_origin_px,
+            origin: c.reset_transforms.transform_origin.unwrap_or((0.5, 0.5)),
+            origin_px: c.reset_transforms.transform_origin_px,
         })
     }
 

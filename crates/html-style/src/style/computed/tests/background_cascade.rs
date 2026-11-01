@@ -21,14 +21,23 @@ fn shorthand_resets_longhands_and_longhands_override_in_order() {
     let vcx = doc.values();
     let red = Color::parse("red", vcx);
     let reset = style("background-color: red; background: url(a) no-repeat", vcx);
-    assert_eq!(reset.background.filter(|c| c.a > 0.0), None);
-    assert_eq!(reset.bg_image, Some(ImageSource::Url("a".into())));
+    assert_eq!(
+        reset.reset_background.background.filter(|c| c.a > 0.0),
+        None
+    );
+    assert_eq!(
+        reset.reset_background.bg_image,
+        Some(ImageSource::Url("a".into()))
+    );
     let over = style("background: url(a) green; background-color: red", vcx);
-    assert_eq!(over.background, red);
-    assert_eq!(over.bg_image, Some(ImageSource::Url("a".into())));
+    assert_eq!(over.reset_background.background, red);
+    assert_eq!(
+        over.reset_background.bg_image,
+        Some(ImageSource::Url("a".into()))
+    );
     let invalid = style("background: red; background: url(a) bogus", vcx);
-    assert_eq!(invalid.background, red);
-    assert_eq!(invalid.bg_image, None);
+    assert_eq!(invalid.reset_background.background, red);
+    assert_eq!(invalid.reset_background.bg_image, None);
 }
 
 #[test]
@@ -36,13 +45,13 @@ fn initial_layer_values_compute_as_absent() {
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = style("background: url(a)", vcx);
-    assert_eq!(c.bg_repeat, None);
-    assert_eq!(c.bg_pos.x, None);
-    assert_eq!(c.bg_pos.y, None);
-    assert_eq!(c.bg_fixed, None);
-    assert_eq!(c.bg_origin, None);
-    assert_eq!(c.bg_clip, None);
-    assert!(c.bg_lists.is_empty());
+    assert_eq!(c.reset_background.bg_repeat, None);
+    assert_eq!(c.reset_background.bg_pos.x, None);
+    assert_eq!(c.reset_background.bg_pos.y, None);
+    assert_eq!(c.reset_background.bg_fixed, None);
+    assert_eq!(c.reset_background.bg_origin, None);
+    assert_eq!(c.reset_background.bg_clip, None);
+    assert!(c.reset_background.bg_lists.is_empty());
 }
 
 #[test]
@@ -75,8 +84,8 @@ fn invalid_substitution_in_the_shorthand_unsets_every_longhand() {
         &vars,
         vcx,
     );
-    assert_eq!(c.background.filter(|c| c.a > 0.0), None);
-    assert_eq!(c.bg_image, None);
+    assert_eq!(c.reset_background.background.filter(|c| c.a > 0.0), None);
+    assert_eq!(c.reset_background.bg_image, None);
     vars.insert("--c".into(), "green".into());
     let mut c = Computed::default();
     c.apply_decls_with_vars(
@@ -84,8 +93,11 @@ fn invalid_substitution_in_the_shorthand_unsets_every_longhand() {
         &vars,
         vcx,
     );
-    assert_eq!(c.background, Color::parse("green", vcx));
-    assert_eq!(c.bg_image, Some(ImageSource::Url("a".into())));
+    assert_eq!(c.reset_background.background, Color::parse("green", vcx));
+    assert_eq!(
+        c.reset_background.bg_image,
+        Some(ImageSource::Url("a".into()))
+    );
 }
 
 #[test]
@@ -98,15 +110,27 @@ fn inherit_shorthand_inherits_each_layer_longhand() {
     );
     let own = style("background: inherit", vcx);
     let c = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
-    assert_eq!(c.bg_image, parent.bg_image);
-    assert_eq!(c.bg_pos, parent.bg_pos);
-    assert_eq!(c.bg_repeat, parent.bg_repeat);
-    assert_eq!(c.bg_fixed, Some(true));
-    assert_eq!(c.bg_origin, parent.bg_origin);
+    assert_eq!(
+        c.reset_background.bg_image,
+        parent.reset_background.bg_image
+    );
+    assert_eq!(c.reset_background.bg_pos, parent.reset_background.bg_pos);
+    assert_eq!(
+        c.reset_background.bg_repeat,
+        parent.reset_background.bg_repeat
+    );
+    assert_eq!(c.reset_background.bg_fixed, Some(true));
+    assert_eq!(
+        c.reset_background.bg_origin,
+        parent.reset_background.bg_origin
+    );
     for prop in crate::style::computed::BgListProp::ALL {
-        assert_eq!(c.bg_lists.get(prop), parent.bg_lists.get(prop));
+        assert_eq!(
+            c.reset_background.bg_lists.get(prop),
+            parent.reset_background.bg_lists.get(prop)
+        );
     }
-    assert_eq!(c.background, Color::parse("red", vcx));
+    assert_eq!(c.reset_background.background, Color::parse("red", vcx));
 }
 
 #[test]
@@ -117,12 +141,15 @@ fn mask_shorthand_writes_its_longhands() {
         "mask: url(m.svg) no-repeat content-box luminance, url(n.svg)",
         vcx,
     );
-    assert_eq!(c.mask_image.as_ref().map(Vec::len), Some(2));
-    assert_eq!(c.mask_origin, Some(3));
-    assert_eq!(c.mask_luminance, Some(true));
-    assert_eq!(c.mask_repeat_list, Some(vec![(true, true), (false, false)]));
-    assert_eq!(c.mask_border, None);
+    assert_eq!(c.reset_mask.mask_image.as_ref().map(Vec::len), Some(2));
+    assert_eq!(c.reset_mask.mask_origin, Some(3));
+    assert_eq!(c.reset_mask.mask_luminance, Some(true));
+    assert_eq!(
+        c.reset_mask.mask_repeat_list,
+        Some(vec![(true, true), (false, false)])
+    );
+    assert_eq!(c.reset_mask.mask_border, None);
     let b = style("mask-border: url(b.png) 30 / 10px round", vcx);
-    assert!(b.mask_border.is_some());
-    assert!(!b.mask_border_luminance);
+    assert!(b.reset_mask.mask_border.is_some());
+    assert!(!b.reset_mask.mask_border_luminance);
 }

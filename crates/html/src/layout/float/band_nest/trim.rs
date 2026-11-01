@@ -52,13 +52,23 @@ mod tests {
         let line = anon(Computed::default(), vec![Node::Text("last line".into())]);
         let clear = anon(
             Computed {
-                clear: Some(0),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        clear: Some(0),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             vec![],
         );
         let inherited = Computed {
-            text_box_trim_end: true,
+            reset_text_box: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetTextBox {
+                    text_box_trim_end: true,
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut seq = vec![line.clone(), clear];

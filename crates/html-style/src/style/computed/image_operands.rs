@@ -3,12 +3,15 @@
 use super::{Computed, ImageSource};
 impl Computed {
     pub fn image_operands(&mut self) -> impl Iterator<Item = &mut ImageSource> {
-        self.bg_image
+        let group = &mut *self.reset_background;
+        group
+            .bg_image
             .iter_mut()
-            .chain(self.gradient_raw.iter_mut())
-            .chain(self.bg_lists.images())
+            .chain(group.gradient_raw.iter_mut())
+            .chain(group.bg_lists.images())
             .chain(
-                self.content
+                self.reset_generated
+                    .content
                     .iter_mut()
                     .flatten()
                     .filter_map(|item| match item {
@@ -16,8 +19,13 @@ impl Computed {
                         _ => None,
                     }),
             )
-            .chain(self.mask_image.iter_mut().flatten())
-            .chain(self.border_image.iter_mut().filter_map(|b| b.src.as_mut()))
-            .chain(self.shape_image.iter_mut())
+            .chain(self.reset_mask.mask_image.iter_mut().flatten())
+            .chain(
+                self.reset_border
+                    .border_image
+                    .iter_mut()
+                    .filter_map(|b| b.src.as_mut()),
+            )
+            .chain(self.reset_shapes.shape_image.iter_mut())
     }
 }

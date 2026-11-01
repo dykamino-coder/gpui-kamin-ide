@@ -107,7 +107,12 @@ mod tests {
         let float = Element::synthetic(
             "div",
             Computed {
-                shape_outside: Some("inset(2px 0 8px 0) border-box".into()),
+                reset_shapes: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetShapes {
+                        shape_outside: Some("inset(2px 0 8px 0) border-box".into()),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
