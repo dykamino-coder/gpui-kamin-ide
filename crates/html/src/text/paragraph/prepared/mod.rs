@@ -40,9 +40,11 @@ pub(super) struct Prepared {
     pub(super) split_key: OnceCell<u64>,
     pub(super) joined: OnceCell<bool>,
     pub(super) opportunities: justification::Opportunities,
-    bidi: OnceCell<ResolvedBidi>,
-    rtl_bidi: OnceCell<ResolvedBidi>,
-    neutral_bidi: OnceCell<(String, ResolvedBidi)>,
+    // Уровни UAX9 нужны только абзацам с переупорядочиванием: место под
+    // них занимает лишь разрешённый вариант.
+    bidi: OnceCell<Box<ResolvedBidi>>,
+    rtl_bidi: OnceCell<Box<ResolvedBidi>>,
+    neutral_bidi: OnceCell<Box<(String, ResolvedBidi)>>,
 }
 
 impl Prepared {
@@ -164,7 +166,7 @@ impl Paragraph {
     pub(super) fn resolved_rtl_visual(&self, range: &Range<usize>) -> Option<bidi::VisualRuns> {
         self.prepared()
             .rtl_bidi
-            .get_or_init(|| ResolvedBidi::new(&self.text, Some(Level::rtl())))
+            .get_or_init(|| Box::new(ResolvedBidi::new(&self.text, Some(Level::rtl()))))
             .visual(&self.text, range)
     }
 
@@ -184,7 +186,7 @@ impl Paragraph {
         };
         let prepared = self.prepared();
         if neutral {
-            let (text, bidi) = prepared.neutral_bidi.get_or_init(|| {
+            let (text, bidi) = &**prepared.neutral_bidi.get_or_init(|| {
                 let mut text = self.text.to_string();
                 for &at in &self.spacers {
                     if text.get(at..at + 3) == Some("\u{feff}") {
@@ -192,13 +194,13 @@ impl Paragraph {
                     }
                 }
                 let bidi = ResolvedBidi::new(&text, forced);
-                (text, bidi)
+                Box::new((text, bidi))
             });
             bidi.visual(text, range)
         } else {
             prepared
                 .bidi
-                .get_or_init(|| ResolvedBidi::new(&self.text, forced))
+                .get_or_init(|| Box::new(ResolvedBidi::new(&self.text, forced)))
                 .visual(&self.text, range)
         }
     }
