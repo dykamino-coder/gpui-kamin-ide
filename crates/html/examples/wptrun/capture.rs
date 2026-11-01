@@ -77,8 +77,8 @@ impl CaptureCursor {
     }
 
     pub(super) fn next(&mut self, hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
-        if self.seq.is_some() {
-            let frame = self.session.as_ref()?.latest()?;
+        if let Some(seq) = self.seq {
+            let frame = self.session.as_ref()?.take_latest_after(seq)?;
             return self.advance(frame.seq).then_some((
                 frame.pixels.width,
                 frame.pixels.height,

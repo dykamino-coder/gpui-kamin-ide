@@ -18,21 +18,49 @@ impl PageStack {
             let mut frags: Vec<_> = plan.iter().filter(|f| f.kid == index).collect();
             frags.sort_by_key(|f| f.copy);
             for f in frags {
+                let resumed_float_end =
+                    self.measured.get(&(index, f.copy + 1)).is_some_and(|m| {
+                        m.continued && (m.from - (f.from + f.h)).abs() < COORD_EPS
+                    }) && self
+                        .continuations
+                        .get(&(index, f.copy))
+                        .unwrap_or(r)
+                        .floats
+                        .iter()
+                        .any(|float| {
+                            (float.bottom + float.margins[1] - (f.from + f.h)).abs() < COORD_EPS
+                        });
                 if let Some(own) = self.continuations.get_mut(&(index, f.copy)) {
                     let Some(m) = self.measured.get(&(index, f.copy)) else {
                         continue;
                     };
-                    let mut local = growths(blocks, &m.kid, &own.laid, f, heights[f.col]);
+                    let mut local = growths(
+                        blocks,
+                        &m.kid,
+                        &own.laid,
+                        f,
+                        heights[f.col],
+                        resumed_float_end,
+                    );
                     local.extend(own.float_growths(
                         f.from,
+                        f.from + f.h,
                         f.from + heights[f.col] - f.y,
                         heights[f.col],
                     ));
                     dirty |= own.push_many(local);
                 } else if grows.is_empty() {
-                    grows = growths(blocks, &kids[index], &r.laid, f, heights[f.col]);
+                    grows = growths(
+                        blocks,
+                        &kids[index],
+                        &r.laid,
+                        f,
+                        heights[f.col],
+                        resumed_float_end,
+                    );
                     grows.extend(r.float_growths(
                         f.from,
+                        f.from + f.h,
                         f.from + heights[f.col] - f.y,
                         heights[f.col],
                     ));
@@ -57,6 +85,7 @@ pub(super) fn growths(
     laid: &Laid,
     f: &Frag,
     height: f32,
+    resumed_float_end: bool,
 ) -> Vec<crate::layout::fragment::push::Growth> {
     let end = f.from + f.h;
     let edge = f.from + height - f.y;
@@ -70,6 +99,10 @@ pub(super) fn growths(
     let forced = k.forced.iter().any(|v| (v - end).abs() < COORD_EPS);
     // Class B между строками тоже занимает неиспользованный остаток
     // фрагментаинера (css-break-3 §5.3): его сохраняет рекордер абзаца.
+    // Clear после завершённого параллельного float уже адресован независимым
+    // продолжением (§2.1). Неиспользованный хвост страницы не становится
+    // margin перед clear: clearance поглотил бы этот искусственный рост.
+    // Обычные границы и потоки flex по-прежнему занимают остаток страницы.
     if end < k.h.max(k.over) - COORD_EPS && edge > end + COORD_EPS {
         let at = k
             .cuts
@@ -84,12 +117,23 @@ pub(super) fn growths(
             forced && !solid,
         );
         grows.extend(growth.filter(|g| {
-            solid
-                || forced
-                || matches!(
-                    g.target,
-                    crate::layout::fragment::flow::blocks::Pushed::Line(_)
-                )
+            let cleared_box = match g.target {
+                crate::layout::fragment::flow::blocks::Pushed::Box(id) => {
+                    blocks.clears(id)
+                        && !laid
+                            .flexes
+                            .values()
+                            .any(|f| f.lines.iter().any(|l| l.items.contains(&id)))
+                }
+                _ => false,
+            };
+            !(resumed_float_end && cleared_box && !forced)
+                && (solid
+                    || forced
+                    || matches!(
+                        g.target,
+                        crate::layout::fragment::flow::blocks::Pushed::Line(_)
+                    ))
         }));
     }
     grows

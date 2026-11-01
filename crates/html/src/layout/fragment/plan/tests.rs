@@ -23,6 +23,34 @@ fn monolith_overflows_a_fragmentainer_it_starts() {
 }
 
 #[test]
+fn decorations_consume_fragments_without_monolithic_overflow() {
+    let mut kid = Kid {
+        h: 30.,
+        over: 30.,
+        solid: vec![(0., 20.)],
+        decorations: vec![(0., 20.)],
+        overflow_top: true,
+        ..Default::default()
+    };
+    let (_, _, plan) = fill_at(std::slice::from_ref(&kid), &|_| 10., Space::columns(4));
+    assert_eq!(
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        [(0, 0., 10.), (1, 10., 10.), (2, 20., 10.)]
+    );
+    // The same range representing actual unbreakable content still overflows.
+    kid.decorations.clear();
+    let (_, _, plan) = fill_at(&[kid], &|_| 10., Space::columns(4));
+    assert_eq!(
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        [(0, 0., 20.), (1, 20., 10.)]
+    );
+}
+
+#[test]
 fn monolith_is_pushed_from_a_fragmentainer_not_at_its_start() {
     let space = Space::columns(3).with_not_at_start(1);
     let (_, _, plan) = fill_at(&[monolith(80.0, 10.0)], &|_| 50.0, space);
