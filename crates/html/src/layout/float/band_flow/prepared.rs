@@ -55,6 +55,13 @@ impl Hooks for Child {
     type Layout = LayoutId;
     type Prepaint = ();
 
+    fn paint_boundary(&self) -> bool {
+        // This holder only transports layout ownership. The child's frame
+        // must enter the enclosing CSS pass before applying its own atomic
+        // float policy (CSS 2.1 Appendix E.2 step 5).
+        false
+    }
+
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
         let style = gpui::Style {
             size: size(self.size.width.into(), self.size.height.into()),

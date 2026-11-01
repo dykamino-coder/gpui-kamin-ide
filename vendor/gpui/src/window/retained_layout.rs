@@ -8,6 +8,15 @@ use std::{cell::RefCell, rc::Rc};
 #[derive(Clone)]
 pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
 
+/// Inputs inherited by an element constructed during deferred measurement.
+/// Paint geometry, clips and effects remain owned by the current traversal.
+#[derive(Clone)]
+pub struct ElementLayoutContext {
+    identity: ElementIdContext,
+    text: Vec<crate::TextStyleRefinement>,
+    rem_size: crate::Pixels,
+}
+
 /// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
 /// The owner must drop it before the frame arena is reset.
 #[derive(Clone)]
@@ -35,6 +44,34 @@ impl Window {
     /// Сохраняет цепочку до выхода отложенного измерения из своего view.
     pub fn element_id_context(&self) -> ElementIdContext {
         ElementIdContext(self.element_id_stack.clone())
+    }
+
+    /// Preserve inherited layout inputs before a measured callback leaves its ancestors.
+    pub fn element_layout_context(&self) -> ElementLayoutContext {
+        ElementLayoutContext {
+            identity: self.element_id_context(),
+            text: self.text_style_stack.clone(),
+            rem_size: self.rem_size(),
+        }
+    }
+
+    /// Construct a measured subtree with the inputs of its original ancestors.
+    pub fn with_element_layout_context<R>(
+        &mut self,
+        context: &ElementLayoutContext,
+        f: impl FnOnce(&mut Window) -> R,
+    ) -> R {
+        let outer = std::mem::replace(&mut self.text_style_stack, context.text.clone());
+        self.with_restore(
+            outer,
+            |window, outer| std::mem::swap(&mut window.text_style_stack, outer),
+            |window| {
+                window.with_rem_size(Some(context.rem_size), |window| {
+                    window.with_element_id_context(&context.identity, f)
+                })
+            },
+        )
+        .0
     }
 
     /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.

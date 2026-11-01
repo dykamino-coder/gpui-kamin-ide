@@ -70,7 +70,7 @@ impl Hooks for BandFlow {
         let build = self.build;
         let measured = Rc::new(RefCell::new(Default::default()));
         let output = measured.clone();
-        let identity = window.element_id_context();
+        let context = window.element_layout_context();
         let inline_up = self.inline_up;
         let style = gpui::Style {
             flex_shrink: 0.0,
@@ -85,7 +85,7 @@ impl Hooks for BandFlow {
                             geometry: gpui::MeasuredBox,
                             window: &mut Window,
                             cx: &mut App| {
-            window.with_element_id_context(&identity, |window| {
+            window.with_element_layout_context(&context, |window| {
                 let v = vert.is_some();
                 // Строчная ось — ширина в горизонтальном письме, высота в
                 // вертикальном; блочный размер плана уходит в другую ось.

@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred measurement preserves its original identity without replaying geometry or paint state.
+# 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state.
 # 2. Intrinsic measurement: expose size-only axis queries and their purpose to measured leaves without replacing completed layout geometry or metadata.
 # 3. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
 # 4. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
@@ -16161,7 +16161,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..5de90e38cdff81bff1def5323a6ff226f1962648
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..599c3d3b76593bb0dc899e068f883edc817eca2d
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -16194,7 +16194,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..5de90e38cdff81bff1def5323a6ff226
 +// KaminIDE patch: settle layout-dependent style inputs before painting.
 +mod layout_inputs;
 +mod retained_layout;
-+pub use retained_layout::{ElementIdContext, RetainedLayout};
++pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 +use layout_inputs::PrepaintRoots;
 +pub use layout_inputs::LayoutInputId;
 +pub use plane3d::PlaneSpec;
@@ -20496,10 +20496,10 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained_layout.rs b/vendor/gpui/src/window/retained_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..30a8fe2de31c9e2d2957a6b1363b3dc7185b6901
+index 0000000000000000000000000000000000000000..892ded8ec9800b3bf5dd87e6f722c40ab8fa84e7
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained_layout.rs
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,142 @@
 +//! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 +
 +use super::{TaffyLayoutEngine, Window};
@@ -20509,6 +20509,15 @@ index 0000000000000000000000000000000000000000..30a8fe2de31c9e2d2957a6b1363b3dc7
 +/// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
 +#[derive(Clone)]
 +pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
++
++/// Inputs inherited by an element constructed during deferred measurement.
++/// Paint geometry, clips and effects remain owned by the current traversal.
++#[derive(Clone)]
++pub struct ElementLayoutContext {
++    identity: ElementIdContext,
++    text: Vec<crate::TextStyleRefinement>,
++    rem_size: crate::Pixels,
++}
 +
 +/// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
 +/// The owner must drop it before the frame arena is reset.
@@ -20537,6 +20546,34 @@ index 0000000000000000000000000000000000000000..30a8fe2de31c9e2d2957a6b1363b3dc7
 +    /// Сохраняет цепочку до выхода отложенного измерения из своего view.
 +    pub fn element_id_context(&self) -> ElementIdContext {
 +        ElementIdContext(self.element_id_stack.clone())
++    }
++
++    /// Preserve inherited layout inputs before a measured callback leaves its ancestors.
++    pub fn element_layout_context(&self) -> ElementLayoutContext {
++        ElementLayoutContext {
++            identity: self.element_id_context(),
++            text: self.text_style_stack.clone(),
++            rem_size: self.rem_size(),
++        }
++    }
++
++    /// Construct a measured subtree with the inputs of its original ancestors.
++    pub fn with_element_layout_context<R>(
++        &mut self,
++        context: &ElementLayoutContext,
++        f: impl FnOnce(&mut Window) -> R,
++    ) -> R {
++        let outer = std::mem::replace(&mut self.text_style_stack, context.text.clone());
++        self.with_restore(
++            outer,
++            |window, outer| std::mem::swap(&mut window.text_style_stack, outer),
++            |window| {
++                window.with_rem_size(Some(context.rem_size), |window| {
++                    window.with_element_id_context(&context.identity, f)
++                })
++            },
++        )
++        .0
 +    }
 +
 +    /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.

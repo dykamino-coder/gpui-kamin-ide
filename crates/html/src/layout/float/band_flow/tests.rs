@@ -5,8 +5,10 @@ use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AvailableSpace, Bounds, ParentElement, Pixels, Styled, point, size};
 
 mod lifetime;
+mod painting;
 mod persistent;
 mod sizing;
+mod text_context;
 
 fn block_cx() -> crate::layout::cx::LayoutCx {
     let mut cx = crate::layout::cx::LayoutCx::default();
