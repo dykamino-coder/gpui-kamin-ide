@@ -19,7 +19,7 @@ struct Child {
     identity: ElementIdContext,
     space: Size<AvailableSpace>,
     size: Size<Pixels>,
-    position: Option<Point<Pixels>>,
+    offset: Option<Point<Pixels>>,
 }
 
 impl std::fmt::Debug for Prepared {
@@ -45,15 +45,15 @@ impl Prepared {
             identity,
             space,
             size,
-            position: None,
+            offset: None,
         }))))
     }
 
-    pub(super) fn take(&self, position: Option<Point<Pixels>>) -> Option<AnyElement> {
+    pub(super) fn take(&self, offset: Option<Point<Pixels>>) -> Option<AnyElement> {
         // План и его копии разделяют только право однократной передачи:
         // после take ребёнком целиком владеет держатель текущего дерева.
         self.0.take().map(|mut child| {
-            child.position = position;
+            child.offset = offset;
             child.hooked()
         })
     }
@@ -71,17 +71,25 @@ impl Hooks for Child {
     }
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
-        let mut style = gpui::Style {
+        // Сам держатель несёт offset; второй layout-узел не нужен.
+        let (position, inset) = match self.offset {
+            Some(offset) => (
+                gpui::Position::Absolute,
+                gpui::Edges {
+                    left: offset.x.into(),
+                    top: offset.y.into(),
+                    ..gpui::Edges::auto()
+                },
+            ),
+            None => (gpui::Position::Relative, gpui::Edges::auto()),
+        };
+        let style = gpui::Style {
             size: size(self.size.width.into(), self.size.height.into()),
             flex_shrink: 0.0,
+            position,
+            inset,
             ..Default::default()
         };
-        if let Some(position) = self.position {
-            // Сам держатель несёт offset; второй layout-узел не нужен.
-            style.position = gpui::Position::Absolute;
-            style.inset.left = position.x.into();
-            style.inset.top = position.y.into();
-        }
         let id = window.request_layout(style, [], cx);
         (id, id)
     }
