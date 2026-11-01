@@ -35,18 +35,17 @@ pub(super) fn resolved_style(c: &BoxStyle, used: gpui::MeasuredBox, vcx: ValueCx
             };
             *dimension = resolve(*dimension, basis);
         }
-        let (min, max) = if axis == 0 {
-            (
-                &mut frame.reset_box_layout.min_width,
-                &mut frame.reset_box_layout.max_width,
-            )
+        let min = if axis == 0 {
+            &mut frame.reset_box_layout.min_width
         } else {
-            (
-                &mut frame.reset_box_layout.min_height,
-                &mut frame.reset_box_layout.max_height,
-            )
+            &mut frame.reset_box_layout.min_height
         };
         *min = resolve(*min, basis);
+        let max = if axis == 0 {
+            &mut frame.reset_box_layout.max_width
+        } else {
+            &mut frame.reset_box_layout.max_height
+        };
         *max = resolve(*max, basis);
         frame.reset_context.fit_arg[axis] = resolve(frame.reset_context.fit_arg[axis], basis);
     }

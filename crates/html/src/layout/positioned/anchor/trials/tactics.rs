@@ -79,23 +79,46 @@ pub(in crate::layout::positioned::anchor) fn apply(
         }
         if transpose {
             super::sizing::transpose(c, vcx);
-            std::mem::swap(&mut c.reset_flex.align_self, &mut c.reset_flex.justify_self);
-            std::mem::swap(
-                &mut c.reset_flex.align_self_safe,
-                &mut c.reset_flex.justify_self_safe,
-            );
-            std::mem::swap(
-                &mut c.reset_flex.align_self_normal,
-                &mut c.reset_flex.justify_self_normal,
-            );
-            std::mem::swap(
-                &mut c.reset_flex.align_self_own_axis,
-                &mut c.reset_flex.justify_self_own_axis,
-            );
-            std::mem::swap(
-                &mut c.reset_flex.align_self_last,
-                &mut c.reset_flex.justify_self_last,
-            );
+            {
+                let first_value = c.reset_flex.align_self;
+                let second_value = c.reset_flex.justify_self;
+                let first = &mut c.reset_flex.align_self;
+                *first = second_value;
+                let second = &mut c.reset_flex.justify_self;
+                *second = first_value;
+            }
+            {
+                let first_value = c.reset_flex.align_self_safe;
+                let second_value = c.reset_flex.justify_self_safe;
+                let first = &mut c.reset_flex.align_self_safe;
+                *first = second_value;
+                let second = &mut c.reset_flex.justify_self_safe;
+                *second = first_value;
+            }
+            {
+                let first_value = c.reset_flex.align_self_normal;
+                let second_value = c.reset_flex.justify_self_normal;
+                let first = &mut c.reset_flex.align_self_normal;
+                *first = second_value;
+                let second = &mut c.reset_flex.justify_self_normal;
+                *second = first_value;
+            }
+            {
+                let first_value = c.reset_flex.align_self_own_axis;
+                let second_value = c.reset_flex.justify_self_own_axis;
+                let first = &mut c.reset_flex.align_self_own_axis;
+                *first = second_value;
+                let second = &mut c.reset_flex.justify_self_own_axis;
+                *second = first_value;
+            }
+            {
+                let first_value = c.reset_flex.align_self_last;
+                let second_value = c.reset_flex.justify_self_last;
+                let first = &mut c.reset_flex.align_self_last;
+                *first = second_value;
+                let second = &mut c.reset_flex.justify_self_last;
+                *second = first_value;
+            }
             c.reset_flex.align_self_decl = Some(c.reset_flex.align_self);
         } else {
             let y = map[0] == 2;

@@ -6,18 +6,30 @@ use crate::style::values::value::{AnchorFn, AnchorSize, Len, anchor_get, anchor_
 use crate::values::ValueCx;
 
 pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
-    std::mem::swap(
-        &mut c.reset_box_layout.width,
-        &mut c.reset_box_layout.height,
-    );
-    std::mem::swap(
-        &mut c.reset_box_layout.min_width,
-        &mut c.reset_box_layout.min_height,
-    );
-    std::mem::swap(
-        &mut c.reset_box_layout.max_width,
-        &mut c.reset_box_layout.max_height,
-    );
+    {
+        let first_value = c.reset_box_layout.width;
+        let second_value = c.reset_box_layout.height;
+        let first = &mut c.reset_box_layout.width;
+        *first = second_value;
+        let second = &mut c.reset_box_layout.height;
+        *second = first_value;
+    }
+    {
+        let first_value = c.reset_box_layout.min_width;
+        let second_value = c.reset_box_layout.min_height;
+        let first = &mut c.reset_box_layout.min_width;
+        *first = second_value;
+        let second = &mut c.reset_box_layout.min_height;
+        *second = first_value;
+    }
+    {
+        let first_value = c.reset_box_layout.max_width;
+        let second_value = c.reset_box_layout.max_height;
+        let first = &mut c.reset_box_layout.max_width;
+        *first = second_value;
+        let second = &mut c.reset_box_layout.max_height;
+        *second = first_value;
+    }
     for (a, b) in [
         (L::Width, L::Height),
         (L::MinWidth, L::MinHeight),

@@ -34,18 +34,30 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
     let mut t = c.clone();
     let source = c.style.used();
     let used = &mut *t.style.used_mut();
-    std::mem::swap(
-        &mut used.reset_box_layout.width,
-        &mut used.reset_box_layout.height,
-    );
-    std::mem::swap(
-        &mut used.reset_box_layout.min_width,
-        &mut used.reset_box_layout.min_height,
-    );
-    std::mem::swap(
-        &mut used.reset_box_layout.max_width,
-        &mut used.reset_box_layout.max_height,
-    );
+    {
+        let first_value = used.reset_box_layout.width;
+        let second_value = used.reset_box_layout.height;
+        let first = &mut used.reset_box_layout.width;
+        *first = second_value;
+        let second = &mut used.reset_box_layout.height;
+        *second = first_value;
+    }
+    {
+        let first_value = used.reset_box_layout.min_width;
+        let second_value = used.reset_box_layout.min_height;
+        let first = &mut used.reset_box_layout.min_width;
+        *first = second_value;
+        let second = &mut used.reset_box_layout.min_height;
+        *second = first_value;
+    }
+    {
+        let first_value = used.reset_box_layout.max_width;
+        let second_value = used.reset_box_layout.max_height;
+        let first = &mut used.reset_box_layout.max_width;
+        *first = second_value;
+        let second = &mut used.reset_box_layout.max_height;
+        *second = first_value;
+    }
     used.reset_box_layout.padding = turn(&source.reset_box_layout.padding);
     used.reset_box_layout.margin = turn(&source.reset_box_layout.margin);
     used.reset_border.border_width = turn(&source.reset_border.border_width);
