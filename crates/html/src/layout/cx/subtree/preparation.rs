@@ -58,7 +58,7 @@ impl Preparation {
                 let flags = facts.list_flags(&e.children);
                 facts
                     .children
-                    .insert(e.children.identity(), (e.children.clone(), flags));
+                    .insert(e.children.identity(), (e.children.mark(), flags));
                 // Конец поддерева исключает собственных потомков из проверки
                 // более позднего позиционированного (CSS2 Appendix E, шаг 8).
                 map.insert(e.node_id, at);
