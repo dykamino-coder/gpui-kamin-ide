@@ -132,3 +132,49 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
     };
     assert_eq!(original.style.used().float, Some(-1));
 }
+
+#[gpui::test]
+fn numeric_measurements_release_children_before_materializing_the_final_stack(
+    cx: &mut gpui::TestAppContext,
+) {
+    let cx = cx.add_empty_window();
+    cx.draw(
+        gpui::point(gpui::px(0.), gpui::px(0.)),
+        gpui::size(gpui::px(400.), gpui::px(400.)),
+        |window, app| {
+            let tree = crate::document::parsed::parse(
+                "<section style='column-count:2;column-gap:0'><div style='height:50px'></div><div style='height:50px'></div></section>",
+                "",
+            );
+            let mut opts = RenderOpts {
+                viewport: (400., 400.),
+                normal_line_height: 1.2,
+                text: Default::default(),
+                cx: Default::default(),
+                frag: Default::default(),
+            };
+            opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+            opts.cx.values.viewport = opts.viewport;
+            crate::style::cascade::materialize::materialize(
+                &tree, opts.root_style().style_rc(), opts.cx.vcx(),
+            );
+            let host = section(&tree);
+            let merged = crate::style::cascade::materialize::box_style(
+                &opts.root_style(), &host.style, opts.cx.vcx(),
+            );
+            let recipe = Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None)
+                .expect("deferred recipe");
+            let mut stack = ColumnStack::new(
+                Vec::new(), 2, 0., None, None, None, None, Default::default(),
+            );
+            for width in [200., 160., 200.] {
+                assert_eq!(recipe.measure(&mut stack, width, window, app).0, 50.);
+                assert!(stack.children.is_empty());
+            }
+            recipe.prepare(&mut stack, 100., window, app);
+            assert_eq!(stack.children.len(), 2);
+            assert_eq!(stack.balance(&stack.kid_geoms()).0, 50.);
+            gpui::div()
+        },
+    );
+}

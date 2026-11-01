@@ -51,7 +51,7 @@ pub(crate) struct Watched {
     ids: Rc<HashSet<u64>>,
     seen: Rc<RefCell<HashMap<u64, Node>>>,
     /// Block stack of the watched copy whose boundaries are read after layout.
-    blocks: Option<BlockBox>,
+    blocks: Option<Rc<BlockBox>>,
     /// Keys of the tables of `blocks` (`layout::table::grid_rows::table_key`).
     tables: Rc<HashSet<u64>>,
     /// Layout nodes of the watched tables' parts by the last layout.
@@ -146,7 +146,7 @@ impl Watched {
 
     /// Block stack watched by the recorder (`for_blocks`).
     pub(crate) fn blocks(&self) -> Option<&BlockBox> {
-        self.blocks.as_ref()
+        self.blocks.as_deref()
     }
 
     /// Recorder for the inside of a box whose line boxes are not lines of

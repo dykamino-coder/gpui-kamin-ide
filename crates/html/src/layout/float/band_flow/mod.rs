@@ -45,6 +45,7 @@ pub use element::BandFlow;
 mod tap;
 use tap::Tap;
 mod probe;
+mod temporary;
 use probe::{intrinsic, intrinsic_of, probe, probe_of};
 
 /// Вырезы обтекания для строк потокового ребёнка: левые и правые формы от

@@ -122,7 +122,12 @@ async fn sample(
         || after.frames.wrapping_sub(before.frames) != 1
         || phases.borrow().renders != 1
     {
-        return Err("unexpected extra/reused frame; refusing an ambiguous phase sample".into());
+        return Err(format!(
+            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, draws={}, renders={}; refusing an ambiguous phase sample",
+            frame.seq,
+            after.frames.wrapping_sub(before.frames),
+            phases.borrow().renders,
+        ).into());
     }
     let pixels = &frame.pixels;
     if (pixels.width, pixels.height) != args.viewport {

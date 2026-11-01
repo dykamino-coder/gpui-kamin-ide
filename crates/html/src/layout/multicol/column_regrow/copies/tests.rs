@@ -87,6 +87,15 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
     stack.children[0].over = 701.0;
     stack.children[1].h = 20.0;
     stack.children[1].over = 20.0;
+    let builds = std::rc::Rc::new(std::cell::Cell::new(0));
+    for r in stack.children.iter_mut().filter_map(|c| c.regrow.as_mut()) {
+        let original = r.build.clone();
+        let builds = builds.clone();
+        r.build = std::rc::Rc::new(move |dom, part, band, opts| {
+            builds.set(builds.get() + 1);
+            original(dom, part, band, opts)
+        });
+    }
     stack.reserve_row_copies();
     assert_eq!(stack.copies, 8);
     assert_eq!(stack.children[0].frags.len() + 1, 8);
@@ -101,6 +110,7 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
         crate::layout::fragment::plan::Completion::Complete
     );
     assert_eq!(plan.iter().map(|f| f.col).max(), Some(61));
+    assert_eq!(builds.get(), 0, "unused continuations stay unbuilt");
 }
 
 #[cfg(feature = "wpt-harness")]
