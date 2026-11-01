@@ -73,6 +73,9 @@ mod scene_capture;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
+/// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
+mod retained;
+pub use retained::{RetainedPaint, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -1331,6 +1334,8 @@ pub struct Window {
     /// Incremented every time focus moves. Used to invalidate a
     /// pending keyboard activation state when focus changes.
     pub(crate) focus_generation: u64,
+    /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
+    interaction_epoch: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -2249,6 +2254,7 @@ impl Window {
             focus_visible: false,
             focus_enabled: true,
             focus_generation: 0,
+            interaction_epoch: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -2474,6 +2480,7 @@ impl Window {
 
         self.focus = Some(handle.id);
         self.focus_generation = self.focus_generation.wrapping_add(1);
+        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
         self.clear_pending_keystrokes(cx);
 
         self.refresh();
@@ -2489,6 +2496,7 @@ impl Window {
 
         if self.focus.is_some() {
             self.focus_generation = self.focus_generation.wrapping_add(1);
+            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
         }
         self.focus = None;
         self.refresh();
@@ -6719,6 +6727,8 @@ impl Window {
         #[cfg(feature = "profiler")]
         self.window_profiler.begin_input(event.kind_name());
         let update_count_before = self.invalidator.update_count();
+        // KaminIDE patch: any input may change element state of retained subtrees.
+        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
         // Track input modality for focus-visible styling and hover suppression.
         // Hover is suppressed during keyboard modality so that keyboard navigation
         // doesn't show hover highlights on the item under the mouse cursor.

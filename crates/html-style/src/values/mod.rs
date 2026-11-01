@@ -140,7 +140,12 @@ impl DocumentValues {
     /// Начало сборки кадра: наблюдение готовности и перепроверка картинок.
     pub fn begin_frame_inputs(&self) {
         self.readiness.begin();
-        self.images.borrow_mut().revalidate();
+        self.revalidate_images();
+    }
+
+    /// Перезапросить картинки, чья ревизия у загрузчика сменилась; сколько.
+    fn revalidate_images(&self) -> usize {
+        self.images.borrow_mut().revalidate()
     }
 
     /// Область кадра прошлого, уже покрашенного кадра больше никто не читает —
