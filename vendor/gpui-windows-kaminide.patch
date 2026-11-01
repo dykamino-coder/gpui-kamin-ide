@@ -6564,7 +6564,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60830b08a0
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa818517f04e6f
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6607,7 +6607,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +91,271 @@
+@@ -56,0 +91,270 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -6627,7 +6627,6 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    copy: Option<BlurTexture>,
 +    blend_copy: Option<BlurTexture>,
 +    down: Vec<BlurTexture>,
-+    down_pool: texture_pool::Pool,
 +    globals: [Option<ID3D11Buffer>; 1],
 +    /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
 +    /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
@@ -6879,10 +6878,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +367,2 @@
+@@ -61,0 +366,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +377,11 @@
+@@ -69,0 +376,11 @@
 +/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
 +/// закрывается при пересоздании ресурсов (device lost).
 +struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
@@ -6894,29 +6893,29 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    }
 +}
 +
-@@ -72,0 +391,2 @@
+@@ -72,0 +390,2 @@
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +415,2 @@
+@@ -94,0 +414,2 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +423,2 @@
+@@ -100,0 +422,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +446 @@
+@@ -121,0 +445 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +459 @@
+@@ -133,0 +458 @@
 +            ..
-@@ -142,0 +469 @@
+@@ -142,0 +468 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +481,4 @@
+@@ -153,0 +480,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -192,0 +524 @@
+@@ -192,0 +523 @@
 +            disable_direct_composition,
-@@ -193,0 +526,8 @@
+@@ -193,0 +525,8 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -6925,9 +6924,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
-@@ -195,0 +536 @@
+@@ -195,0 +535 @@
 +            backdrop: None,
-@@ -199,0 +541,34 @@
+@@ -199,0 +540,34 @@
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
 +    /// общий handle текстуры от CEF.
 +    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -6962,13 +6961,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        self.atlas.unregister_external(id);
 +    }
 +
-@@ -204,0 +580 @@
+@@ -204,0 +579 @@
 +        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +596,2 @@
+@@ -220 +595,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -245,0 +623,7 @@
+@@ -245,0 +622,7 @@
 +        // KaminIDE patch (#76): БЕЗ dcomp-Commit и без ожиданий. dcomp-дерево
 +        // статично после set_swap_chain (underlay-эпоха WebView2 удалена как
 +        // мёртвая), а прежний пер-кадровый commit() делал
@@ -6976,7 +6975,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
 +        // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
 +        // ввода ~1.5с на слабой машине.
-@@ -263,65 +647,33 @@
+@@ -263,65 +646,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7075,7 +7074,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -339,0 +692,25 @@
+@@ -339,0 +691,25 @@
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
 +        // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -7101,16 +7100,16 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +                return Ok(());
 +            }
 +        }
-@@ -340,0 +718,5 @@
+@@ -340,0 +717,5 @@
 +        if self.capture.is_some() {
 +            if let Err(e) = self.capture_frame() {
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -353,0 +736,2 @@
+@@ -353,0 +735,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +742,33 @@
+@@ -357,0 +741,33 @@
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7144,9 +7143,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +783 @@
+@@ -365,0 +782 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +821,354 @@
+@@ -402,0 +820,350 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7392,15 +7391,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +                .zip(sizes.iter())
 +                .any(|(t, s)| t.width != s.0 || t.height != s.1)
 +        {
-+            // KaminIDE patch: обрезка у края кадра меняет размер каскада.
-+            // Сохраняем точный размер, переиспользуя освобождённые поверхности.
-+            for texture in self.blur.down.drain(..) {
-+                self.blur.down_pool.put(texture);
-+            }
++            self.blur.down.clear();
 +            for (w, h) in sizes {
 +                self.blur
 +                    .down
-+                    .push(self.blur.down_pool.take(&device, w, h)?);
++                    .push(create_blur_texture(&device, w, h, true)?);
 +            }
 +        }
 +        self.ensure_blur_globals(&device)?;
@@ -7501,13 +7496,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1183,0 @@
+@@ -412 +1178,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1259,2 @@
+@@ -488 +1254,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1266,21 @@
+@@ -494 +1261,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7530,7 +7525,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1292 @@
+@@ -500,19 +1287 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7551,7 +7546,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1374,7 @@
+@@ -599,0 +1369,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7559,28 +7554,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        } else {
 +            (start, len)
 +        };
-@@ -621,0 +1403,6 @@
+@@ -621,0 +1398,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1431,2 @@
+@@ -643,0 +1426,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1461,4 @@
+@@ -672 +1456,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1608,4 @@
+@@ -815,0 +1603,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1616,23 @@
+@@ -819,0 +1611,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7604,7 +7599,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1640,376 @@
+@@ -820,0 +1635,376 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7981,10 +7976,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2035 @@
+@@ -840 +2030 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2086,12 @@
+@@ -890,0 +2081,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7997,9 +7992,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2112 @@
+@@ -904,0 +2107 @@
 +            frame_gate,
-@@ -999,0 +2208,7 @@
+@@ -999,0 +2203,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -8007,22 +8002,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2225 @@
+@@ -1009,0 +2220 @@
 +            blur_pipeline,
-@@ -1018,0 +2235,4 @@
+@@ -1018,0 +2230,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2244 @@
+@@ -1023,0 +2239 @@
 +            comp_root,
-@@ -1030 +2251,2 @@
+@@ -1030 +2246,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2286 @@
+@@ -1063,0 +2281 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2299,16 @@
+@@ -1076 +2294,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -8040,10 +8035,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2328,2 @@
+@@ -1089,0 +2323,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2339,0 @@
+@@ -1100,30 +2334,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -8074,7 +8069,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 -        })
 -    }
 -
-@@ -1190,0 +2401,45 @@
+@@ -1190,0 +2396,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8120,21 +8115,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2452 @@
+@@ -1197 +2447 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2531,2 @@
+@@ -1275,0 +2526,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2576,2 @@
+@@ -1319 +2571,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2605,2 @@
+@@ -1347 +2600,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2752,33 @@
+@@ -1492,0 +2747,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8168,17 +8163,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..c54f1152bc9cc2b771bdf58131522f60
 +    }
 +}
 +
-@@ -1719,0 +3012,2 @@
+@@ -1719,0 +3007,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3091,4 @@
+@@ -1796,0 +3086,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3182 @@
+@@ -1883,0 +3177 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3353,33 @@
+@@ -2054,17 +3348,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9704,10 +9699,10 @@ index 0000000000000000000000000000000000000000..2d54819b1af8b85e736bea680f8520b8
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/texture_pool.rs b/vendor/gpui-windows/src/directx_renderer/texture_pool.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c4f31e30fd99e1770565b6a8bf0343bedd1ae00c
+index 0000000000000000000000000000000000000000..8f3fef6145a593898da552b70865bb366f7e36f7
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/texture_pool.rs
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,70 @@
 +//! KaminIDE patch: ограниченный пул текстур и адресация выборки обрезанных групп.
 +
 +use super::*;
@@ -9769,36 +9764,6 @@ index 0000000000000000000000000000000000000000..c4f31e30fd99e1770565b6a8bf0343be
 +#[cfg(test)]
 +mod tests {
 +    use super::sampler_index;
-+
-+    #[test]
-+    fn alternating_sizes_reuse_only_exact_texture_dimensions() -> anyhow::Result<()> {
-+        use super::Pool;
-+        use windows::{core::Interface, Win32::{Foundation::HMODULE, Graphics::{
-+            Direct3D::D3D_DRIVER_TYPE_WARP,
-+            Direct3D11::{D3D11CreateDevice, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION},
-+        }}};
-+        let mut device = None;
-+        unsafe {
-+            D3D11CreateDevice(None, D3D_DRIVER_TYPE_WARP, HMODULE::default(),
-+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, None, D3D11_SDK_VERSION,
-+                Some(&mut device), None, None)?;
-+        }
-+        let device = device.unwrap();
-+        let mut pool = Pool::default();
-+        let first = pool.take(&device, 71, 39)?;
-+        let retained = first.texture.clone();
-+        pool.put(first);
-+        let other = pool.take(&device, 70, 39)?;
-+        assert_eq!((other.width, other.height), (70, 39));
-+        assert_ne!(other.texture.as_raw(), retained.as_raw());
-+        pool.put(other);
-+        let reused = pool.take(&device, 71, 39)?;
-+        assert_eq!((reused.width, reused.height), (71, 39));
-+        assert_eq!(reused.texture.as_raw(), retained.as_raw());
-+        assert_eq!(pool.0.len(), 1);
-+        assert_eq!(pool.1, 70 * 39 * 4);
-+        Ok(())
-+    }
 +
 +    #[test]
 +    fn only_cropped_axes_use_transparent_borders() {

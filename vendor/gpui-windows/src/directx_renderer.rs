@@ -107,7 +107,6 @@ struct BlurScratch {
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
-    down_pool: texture_pool::Pool,
     globals: [Option<ID3D11Buffer>; 1],
     /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
     /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
@@ -1063,15 +1062,11 @@ impl DirectXRenderer {
                 .zip(sizes.iter())
                 .any(|(t, s)| t.width != s.0 || t.height != s.1)
         {
-            // KaminIDE patch: обрезка у края кадра меняет размер каскада.
-            // Сохраняем точный размер, переиспользуя освобождённые поверхности.
-            for texture in self.blur.down.drain(..) {
-                self.blur.down_pool.put(texture);
-            }
+            self.blur.down.clear();
             for (w, h) in sizes {
                 self.blur
                     .down
-                    .push(self.blur.down_pool.take(&device, w, h)?);
+                    .push(create_blur_texture(&device, w, h, true)?);
             }
         }
         self.ensure_blur_globals(&device)?;
