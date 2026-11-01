@@ -5,6 +5,8 @@
 mod enabled;
 #[cfg(feature = "work-counters")]
 pub use enabled::*;
+#[cfg(feature = "work-counters")]
+pub mod style_storage;
 
 /// Наблюдать работу без вычисления аргументов в обычной сборке.
 #[cfg(feature = "work-counters")]

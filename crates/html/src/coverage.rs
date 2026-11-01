@@ -17,6 +17,7 @@
 
 use crate::values::ValueCx;
 mod field_audit;
+mod field_sources;
 mod properties;
 #[cfg(test)]
 mod report {

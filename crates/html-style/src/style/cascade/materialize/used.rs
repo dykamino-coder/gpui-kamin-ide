@@ -13,6 +13,9 @@ pub(super) fn lay_used(base: &mut Computed, used: &Computed, computed: &Computed
     if used.decor_box != computed.decor_box {
         base.decor_box = used.decor_box;
     }
+    if used.plain_block_box != computed.plain_block_box {
+        base.plain_block_box = used.plain_block_box;
+    }
     if used.block_tag != computed.block_tag {
         base.block_tag = used.block_tag;
     }

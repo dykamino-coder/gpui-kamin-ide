@@ -98,8 +98,8 @@ pub(super) fn normalize_style(
         };
         block && !special && style.reset_box_layout.float.is_none_or(|f| f == 0)
     };
-    if style.reset_context.plain_block_box != plain_block_box {
-        style.reset_context.plain_block_box = plain_block_box;
+    if style.plain_block_box != plain_block_box {
+        style.plain_block_box = plain_block_box;
     }
     // css-will-change-1: обещанный `transform`/`contain` делает коробку
     // содержащим блоком и контекстом наложения лишь там, где само
@@ -211,7 +211,12 @@ mod tests {
         let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         for tag in ["span", "i", "td", "div"] {
             let mut first = Computed::default();
+            let initial_context = first.reset_context.clone();
             normalize_style(&mut first, tag, &[], &[], doc.values());
+            if tag == "div" {
+                assert!(first.plain_block_box);
+                assert!(first.reset_context.ptr_eq(&initial_context));
+            }
             let mut second = first.clone();
             normalize_style(&mut second, tag, &[], &[], doc.values());
             assert!(first.shares_storage(&second), "{tag}");

@@ -1,12 +1,14 @@
 //! Компактный набор разделяемых групп computed values (CSS Cascade §4).
 use super::*;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Computed {
     /// Идентичность украшающей коробки; не CSS и не часть разделяемых групп.
     pub decor_box: u64,
     /// Роль тега для анонимной строчной коробки, отдельно от CSS-операндов.
     pub block_tag: bool,
+    /// Применимость CSS-свойств к коробке; факт DOM, а не computed value.
+    pub plain_block_box: bool,
     pub clone_audit: CloneAudit<false>,
     pub reset_text_box: StyleGroup<ResetTextBox>,
     pub reset_cascade: StyleGroup<ResetCascade>,

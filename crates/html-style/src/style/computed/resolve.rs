@@ -44,7 +44,7 @@ impl Computed {
             || self.reset_transforms.scale_prop.is_some()
             || self.reset_context.animation.is_some()
             || self.reset_cascade.inherit_bits & inh::TRANSFORM != 0
-            || !self.reset_context.plain_block_box
+            || !self.plain_block_box
             // A fragmented box is shifted per fragment, but the column
             // layout places only its first fragment by the relative offset
             // (css-break-3 §box-splitting; `css-break/transform-000`): keep

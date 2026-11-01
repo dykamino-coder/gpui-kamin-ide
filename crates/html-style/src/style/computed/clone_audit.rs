@@ -2,8 +2,23 @@
 
 /// Нулевой по размеру маркер: derive(Clone) учитывает каждую копию владельца.
 /// Это счётчик копирования, а не оценка аллокаций вложенных строк и векторов.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct CloneAudit<const INHERITED: bool>;
+
+impl<const INHERITED: bool> Default for CloneAudit<INHERITED> {
+    fn default() -> Self {
+        #[cfg(feature = "work-counters")]
+        crate::work::style_storage::header::<INHERITED>(true);
+        Self
+    }
+}
+
+#[cfg(feature = "work-counters")]
+impl<const INHERITED: bool> Drop for CloneAudit<INHERITED> {
+    fn drop(&mut self) {
+        crate::work::style_storage::header::<INHERITED>(false);
+    }
+}
 
 impl<const INHERITED: bool> Clone for CloneAudit<INHERITED> {
     fn clone(&self) -> Self {
@@ -14,7 +29,7 @@ impl<const INHERITED: bool> Clone for CloneAudit<INHERITED> {
             crate::work::add!(ComputedClones, 1);
             crate::work::add!(ComputedCloneBytes, size_of::<super::Computed>());
         }
-        Self
+        Self::default()
     }
 }
 

@@ -4,6 +4,7 @@ use super::Computed;
 impl Computed {
     pub(crate) fn shares_storage(&self, other: &Self) -> bool {
         self.block_tag == other.block_tag
+            && self.plain_block_box == other.plain_block_box
             && std::rc::Rc::ptr_eq(&self.inh.0, &other.inh.0)
             && self.reset_text_box.ptr_eq(&other.reset_text_box)
             && self.reset_cascade.ptr_eq(&other.reset_cascade)

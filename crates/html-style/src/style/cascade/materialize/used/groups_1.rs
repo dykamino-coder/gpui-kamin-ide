@@ -97,7 +97,6 @@ overlay!(
     contain_inline_size,
     contain_layout,
     flow_root,
-    plain_block_box,
     inline_display,
     run_in,
     fragment_clip_ancestor,

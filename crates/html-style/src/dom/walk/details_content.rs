@@ -63,11 +63,10 @@ pub(super) fn wrap(
     // (`style_normalization`): a forced break on its first child propagates.
     {
         use crate::style::computed::Display;
-        style.reset_context.plain_block_box =
-            matches!(
-                style.reset_box_layout.display,
-                Some(Display::Block | Display::ListItem | Display::Flex | Display::Grid)
-            ) && style.reset_box_layout.float.is_none_or(|f| f == 0);
+        style.plain_block_box = matches!(
+            style.reset_box_layout.display,
+            Some(Display::Block | Display::ListItem | Display::Flex | Display::Grid)
+        ) && style.reset_box_layout.float.is_none_or(|f| f == 0);
     }
     let is_pseudo = |n: &Node| matches!(n, Node::Element(e) if e.tag.starts_with("::"));
     let lead = children.iter().take_while(|n| is_pseudo(n)).count();

@@ -8,6 +8,8 @@ pub struct StyleGroup<T>(Rc<T>);
 
 impl<T> StyleGroup<T> {
     pub fn new(value: T) -> Self {
+        #[cfg(feature = "work-counters")]
+        crate::work::style_storage::group::<T>(true);
         Self(Rc::new(value))
     }
 
@@ -39,10 +41,21 @@ impl<T> Deref for StyleGroup<T> {
 impl<T: Clone> DerefMut for StyleGroup<T> {
     fn deref_mut(&mut self) -> &mut T {
         if Rc::strong_count(&self.0) > 1 {
+            #[cfg(feature = "work-counters")]
+            crate::work::style_storage::group::<T>(true);
             crate::work::add!(StyleGroupClones, 1);
             crate::work::add!(StyleGroupCloneBytes, size_of::<T>());
         }
         Rc::make_mut(&mut self.0)
+    }
+}
+
+#[cfg(feature = "work-counters")]
+impl<T> Drop for StyleGroup<T> {
+    fn drop(&mut self) {
+        if Rc::strong_count(&self.0) == 1 {
+            crate::work::style_storage::group::<T>(false);
+        }
     }
 }
 

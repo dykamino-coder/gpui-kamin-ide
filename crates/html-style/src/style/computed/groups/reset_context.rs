@@ -149,10 +149,6 @@ pub struct ResetContext {
     pub contain_layout: Option<bool>,
     /// `display: flow-root` — свой контекст форматирования (коробка Block).
     pub flow_root: Option<bool>,
-    /// Статичная блочная коробка в потоке (не строчная, не таблица, не
-    /// поле формы, не float): её чистый px-`transform` раскладка берёт на
-    /// себя (`folded_shift`). Ставит `dom` после `finish_inline_display`.
-    pub plain_block_box: bool,
     /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
     /// после каскада — см. `dom::finish_inline_display`.
     pub inline_display: Option<bool>,

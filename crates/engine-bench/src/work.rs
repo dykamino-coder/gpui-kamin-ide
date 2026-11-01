@@ -27,7 +27,17 @@ impl Capture {
         #[cfg(feature = "work-counters")]
         {
             use kamin_html::work::{Counter, Phase};
-            let usage = self.usage.finish(cold);
+            let mut usage = self.usage.finish(cold);
+            let live = kamin_html::work::style_storage::snapshot();
+            usage["style_storage"] = serde_json::json!({
+                "scope": "document thread; nested buffers and Rc control blocks excluded",
+                "computed_headers": live.computed_headers,
+                "computed_header_bytes": live.computed_headers * size_of::<kamin_html::style::computed::Computed>() as u64,
+                "inherited_headers": live.inherited_headers,
+                "inherited_header_bytes": live.inherited_headers * size_of::<kamin_html::style::computed::InheritedStyle>() as u64,
+                "unique_group_allocations": live.group_allocations,
+                "unique_group_payload_bytes": live.group_payload_bytes,
+            });
             let snapshot = self.session.finish();
             let mut phases = serde_json::Map::new();
             for (index, name) in Phase::NAMES.iter().enumerate() {
