@@ -15,16 +15,10 @@ pub(super) fn section(nodes: &[Node]) -> &Element {
     find(nodes).expect("section")
 }
 
-#[test]
-fn deferred_children_resolve_percentages_from_original_content_box() {
-    let tree = crate::document::parsed::parse(
-        "<!doctype html><section style='height:400px;box-sizing:border-box;padding:20px;border:10px solid;column-count:2'><div style='height:50%;min-height:25%;max-height:75%'></div></section>",
-        "",
-    );
-    let host = section(&tree);
+fn materialized_opts(tree: &crate::document::parsed::Parsed, viewport: (f32, f32)) -> RenderOpts {
     let mut opts = RenderOpts {
         text: Default::default(),
-        viewport: (800.0, 600.0),
+        viewport,
         normal_line_height: 1.2,
         cx: Default::default(),
         frag: Default::default(),
@@ -32,10 +26,21 @@ fn deferred_children_resolve_percentages_from_original_content_box() {
     opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
     opts.cx.values.viewport = opts.viewport;
     crate::style::cascade::materialize::materialize(
-        &tree,
+        tree,
         opts.root_style().style_rc(),
         opts.cx.vcx(),
     );
+    opts
+}
+
+#[test]
+fn deferred_children_resolve_percentages_from_original_content_box() {
+    let tree = crate::document::parsed::parse(
+        "<!doctype html><section style='height:400px;box-sizing:border-box;padding:20px;border:10px solid;column-count:2'><div style='height:50%;min-height:25%;max-height:75%'></div></section>",
+        "",
+    );
+    let host = section(&tree);
+    let opts = materialized_opts(&tree, (800., 600.));
     let merged = crate::style::cascade::materialize::box_style(
         &opts.root_style(),
         &host.style,
@@ -81,20 +86,7 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
         "",
     );
     let host = section(&tree);
-    let mut opts = RenderOpts {
-        text: Default::default(),
-        viewport: (800.0, 600.0),
-        normal_line_height: 1.2,
-        cx: Default::default(),
-        frag: Default::default(),
-    };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
-    opts.cx.values.viewport = opts.viewport;
-    crate::style::cascade::materialize::materialize(
-        &tree,
-        opts.root_style().style_rc(),
-        opts.cx.vcx(),
-    );
+    let opts = materialized_opts(&tree, (800., 600.));
     let merged = crate::style::cascade::materialize::box_style(
         &opts.root_style(),
         &host.style,
@@ -146,18 +138,7 @@ fn numeric_measurements_release_children_before_materializing_the_final_stack(
                 "<section style='column-count:2;column-gap:0'><div style='height:50px'></div><div style='height:50px'></div></section>",
                 "",
             );
-            let mut opts = RenderOpts {
-                viewport: (400., 400.),
-                normal_line_height: 1.2,
-                text: Default::default(),
-                cx: Default::default(),
-                frag: Default::default(),
-            };
-            opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
-            opts.cx.values.viewport = opts.viewport;
-            crate::style::cascade::materialize::materialize(
-                &tree, opts.root_style().style_rc(), opts.cx.vcx(),
-            );
+            let opts = materialized_opts(&tree, (400., 400.));
             let host = section(&tree);
             let merged = crate::style::cascade::materialize::box_style(
                 &opts.root_style(), &host.style, opts.cx.vcx(),
