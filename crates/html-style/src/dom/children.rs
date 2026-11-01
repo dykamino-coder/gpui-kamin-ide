@@ -48,7 +48,11 @@ impl Children {
 }
 
 impl From<Vec<Node>> for Children {
-    fn from(nodes: Vec<Node>) -> Self {
+    fn from(mut nodes: Vec<Node>) -> Self {
+        // Опубликованный COW-снимок удерживается вместе с intrinsic-кэшем.
+        // Запас ёмкости построителя больше не нужен: при следующей правке
+        // Vec снова растёт обычным способом, а неизменённые копии делят снимок.
+        nodes.shrink_to_fit();
         Self(Rc::new(Snapshot {
             nodes,
             intrinsic: Default::default(),
