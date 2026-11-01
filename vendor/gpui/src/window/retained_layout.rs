@@ -2,6 +2,11 @@
 
 use super::{TaffyLayoutEngine, Window};
 
+/// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
+/// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
+#[derive(Clone)]
+pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
+
 /// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
 /// The owner must drop it before the frame arena is reset.
 pub struct RetainedLayout(Option<TaffyLayoutEngine>);
@@ -13,6 +18,26 @@ impl Default for RetainedLayout {
 }
 
 impl Window {
+    /// Сохраняет цепочку до выхода отложенного измерения из своего view.
+    pub fn element_id_context(&self) -> ElementIdContext {
+        ElementIdContext(self.element_id_stack.clone())
+    }
+
+    /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.
+    pub fn with_element_id_context<R>(
+        &mut self,
+        context: &ElementIdContext,
+        f: impl FnOnce(&mut Window) -> R,
+    ) -> R {
+        let outer = std::mem::replace(&mut self.element_id_stack, context.0.clone());
+        self.with_restore(
+            outer,
+            |window, outer| std::mem::swap(&mut window.element_id_stack, outer),
+            f,
+        )
+        .0
+    }
+
     /// Query a registered subtree's intrinsic axis without replacing its final layout.
     pub fn measure_layout_size(
         &mut self,
@@ -21,7 +46,10 @@ impl Window {
         axis: crate::Axis,
         cx: &mut crate::App,
     ) -> crate::Size<crate::Pixels> {
-        let mut engine = self.layout_engine.take().expect("layout engine during measurement");
+        let mut engine = self
+            .layout_engine
+            .take()
+            .expect("layout engine during measurement");
         let size = engine.measure_size(id, available, axis, self, cx);
         self.layout_engine = Some(engine);
         size

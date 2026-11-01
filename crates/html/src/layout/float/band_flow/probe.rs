@@ -96,7 +96,13 @@ pub(super) fn probe_of(
         _ => Default::default(),
     };
     p.last_prepared = p.engine.as_ref().map_or_else(Default::default, |engine| {
-        super::prepared::Prepared::new(el, engine.clone(), space, root_size)
+        super::prepared::Prepared::new(
+            el,
+            engine.clone(),
+            p.window.element_id_context(),
+            space,
+            root_size,
+        )
     });
     if vert { (h, w) } else { (w, h) }
 }
@@ -143,7 +149,7 @@ pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
     crate::work::add!(FloatChildBuilds, 1);
     let mut el = Tap {
         inner: build(0.0, 0.0, None, None, measure.clone()),
-        id: tap.clone(),
+        id: tap,
     }
     .hooked();
     let root = el.request_layout(p.window, p.cx);

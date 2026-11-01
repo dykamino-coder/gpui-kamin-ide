@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Measured subtrees: retain an independent layout engine through prepaint/paint and restore engine ownership on unwind, so a host can reuse prepared children at their final absolute origins.
+# 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred measurement preserves its original identity without replaying geometry or paint state.
 # 2. Intrinsic measurement: expose size-only axis queries and their purpose to measured leaves without replacing completed layout geometry or metadata.
 # 3. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
 # 4. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
@@ -16161,7 +16161,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..7b8b8c84900b3256a4ae25ad4b1f0d24a8bd4086
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..154cc13a9e48fc86cfca4cbfd75aea006bfa2121
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -16194,7 +16194,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..7b8b8c84900b3256a4ae25ad4b1f0d24
 +// KaminIDE patch: settle layout-dependent style inputs before painting.
 +mod layout_inputs;
 +mod retained_layout;
-+pub use retained_layout::RetainedLayout;
++pub use retained_layout::{ElementIdContext, RetainedLayout};
 +use layout_inputs::PrepaintRoots;
 +pub use layout_inputs::LayoutInputId;
 +pub use plane3d::PlaneSpec;
@@ -20458,13 +20458,18 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained_layout.rs b/vendor/gpui/src/window/retained_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..db9877825c611107394ac38b77c0107ffaafda49
+index 0000000000000000000000000000000000000000..d3ad40f8ed881c6abdfb6f37082aa7f792c412f2
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained_layout.rs
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,91 @@
 +//! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 +
 +use super::{TaffyLayoutEngine, Window};
++
++/// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
++/// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
++#[derive(Clone)]
++pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
 +
 +/// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
 +/// The owner must drop it before the frame arena is reset.
@@ -20477,6 +20482,26 @@ index 0000000000000000000000000000000000000000..db9877825c611107394ac38b77c0107f
 +}
 +
 +impl Window {
++    /// Сохраняет цепочку до выхода отложенного измерения из своего view.
++    pub fn element_id_context(&self) -> ElementIdContext {
++        ElementIdContext(self.element_id_stack.clone())
++    }
++
++    /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.
++    pub fn with_element_id_context<R>(
++        &mut self,
++        context: &ElementIdContext,
++        f: impl FnOnce(&mut Window) -> R,
++    ) -> R {
++        let outer = std::mem::replace(&mut self.element_id_stack, context.0.clone());
++        self.with_restore(
++            outer,
++            |window, outer| std::mem::swap(&mut window.element_id_stack, outer),
++            f,
++        )
++        .0
++    }
++
 +    /// Query a registered subtree's intrinsic axis without replacing its final layout.
 +    pub fn measure_layout_size(
 +        &mut self,
@@ -20485,7 +20510,10 @@ index 0000000000000000000000000000000000000000..db9877825c611107394ac38b77c0107f
 +        axis: crate::Axis,
 +        cx: &mut crate::App,
 +    ) -> crate::Size<crate::Pixels> {
-+        let mut engine = self.layout_engine.take().expect("layout engine during measurement");
++        let mut engine = self
++            .layout_engine
++            .take()
++            .expect("layout engine during measurement");
 +        let size = engine.measure_size(id, available, axis, self, cx);
 +        self.layout_engine = Some(engine);
 +        size

@@ -31,3 +31,44 @@ impl MeasureCache {
         self.fitted.borrow_mut().insert(key, k);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn document_and_render_advance_measurements_once_per_frame() {
+        let doc = crate::Document::builder("<p>text</p>", "").build().unwrap();
+        let opts = crate::RenderOpts {
+            text: Default::default(),
+            viewport: (800., 600.),
+            normal_line_height: 1.31,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let first = doc.frame_opts(&opts);
+        let cache = first.cx.paragraph().paragraphs.clone();
+        crate::interactive::frame::frame_sanitize(&first.cx);
+        cache.fitted.borrow_mut().insert(1, 16.);
+        for _ in 0..3 {
+            let next = doc.frame_opts(&opts);
+            crate::interactive::frame::frame_sanitize(&next.cx);
+            // Повторный render в одном кадре документа не меняет поколение.
+            crate::interactive::frame::frame_sanitize(&next.cx);
+            assert_eq!(cache.fitted.borrow_mut().get(&1), Some(&16.));
+        }
+        doc.frame_opts(&opts);
+        doc.frame_opts(&opts);
+        assert!(cache.fitted.borrow_mut().get(&1).is_none());
+    }
+
+    #[test]
+    fn low_level_render_without_document_still_ages_its_measurements() {
+        let cx = crate::layout::cx::LayoutCx::default();
+        let cache = &cx.paragraph().paragraphs;
+        cache.fitted.borrow_mut().insert(1, 16.);
+        crate::interactive::frame::frame_sanitize(&cx);
+        assert_eq!(cache.fitted.borrow_mut().get(&1), Some(&16.));
+        crate::interactive::frame::frame_sanitize(&cx);
+        crate::interactive::frame::frame_sanitize(&cx);
+        assert!(cache.fitted.borrow_mut().get(&1).is_none());
+    }
+}

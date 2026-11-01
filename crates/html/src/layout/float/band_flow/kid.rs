@@ -76,8 +76,8 @@ pub struct Nest {
 pub type GroupWrap = std::rc::Rc<dyn Fn(gpui::Div) -> gpui::AnyElement>;
 
 pub struct Kid {
-    /// Неизменяемое поколение построителя: новый DOM/style/context даёт новый кэш.
-    pub(crate) intrinsic: std::cell::Cell<Option<(f32, f32)>>,
+    /// Постоянный слот узла; смена входов и dirty-путь не зависят от кадра.
+    pub(crate) intrinsic: crate::dom::IntrinsicSizes,
     pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasure>>,
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     pub(crate) flow_key: usize,

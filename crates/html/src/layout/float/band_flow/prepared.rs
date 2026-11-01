@@ -2,8 +2,8 @@
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, RetainedLayout, Size, Window, point,
-    px, size,
+    AnyElement, App, AvailableSpace, Bounds, ElementIdContext, LayoutId, Pixels, RetainedLayout,
+    Size, Window, point, px, size,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,6 +16,7 @@ pub(super) struct Prepared(Rc<RefCell<Option<Child>>>);
 struct Child {
     element: AnyElement,
     engine: Engine,
+    identity: ElementIdContext,
     space: Size<AvailableSpace>,
     size: Size<Pixels>,
 }
@@ -32,12 +33,14 @@ impl Prepared {
     pub(super) fn new(
         element: AnyElement,
         engine: Engine,
+        identity: ElementIdContext,
         space: Size<AvailableSpace>,
         size: Size<Pixels>,
     ) -> Self {
         Self(Rc::new(RefCell::new(Some(Child {
             element,
             engine,
+            identity,
             space,
             size,
         }))))
@@ -71,10 +74,12 @@ impl Hooks for Child {
     ) {
         let origin = window.layout_origin_unrounded(*id);
         window.with_retained_layout(&mut self.engine.borrow_mut(), |window| {
-            self.element
-                .layout_as_root_at(origin, self.space, window, cx);
-            self.element
-                .prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            window.with_element_id_context(&self.identity, |window| {
+                self.element
+                    .layout_as_root_at(origin, self.space, window, cx);
+                self.element
+                    .prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            });
         });
     }
 
@@ -87,7 +92,7 @@ impl Hooks for Child {
         cx: &mut App,
     ) {
         window.with_retained_layout(&mut self.engine.borrow_mut(), |window| {
-            self.element.paint(window, cx)
+            window.with_element_id_context(&self.identity, |window| self.element.paint(window, cx))
         });
     }
 }

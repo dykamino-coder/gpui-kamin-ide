@@ -91,7 +91,7 @@ mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
 mod retained_layout;
-pub use retained_layout::RetainedLayout;
+pub use retained_layout::{ElementIdContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;

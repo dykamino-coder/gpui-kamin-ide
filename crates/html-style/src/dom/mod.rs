@@ -8,6 +8,8 @@
 
 mod anonymous;
 mod children;
+mod intrinsic;
+pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod traversal;
 pub use children::Children;
 mod direction;

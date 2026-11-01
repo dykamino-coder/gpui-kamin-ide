@@ -23,6 +23,7 @@ impl Document {
         opts.cx.clamp.input = None;
         opts.cx.values.inert_clear = false;
         opts.cx.contracts.document_root = Some((self.nodes.as_ptr() as usize, self.nodes.len()));
+        opts.cx.contracts.paragraph_frame_started = true;
         opts.cx.values.doc = crate::layout::cx::BuildDoc(self.state.clone());
         opts
     }

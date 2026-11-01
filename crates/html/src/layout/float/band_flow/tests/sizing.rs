@@ -6,6 +6,40 @@ use crate::style::computed::{Computed, Display, Position};
 
 struct IntrinsicBox;
 
+#[gpui::test]
+fn definite_axis_query_without_a_known_width_skips_block_intrinsics(cx: &mut gpui::TestAppContext) {
+    cx.add_empty_window().draw(
+        point(px(0.), px(0.)),
+        size(px(100.), px(100.)),
+        |window, app| {
+            for fill in [true, false] {
+                let mut context = block_cx();
+                context.constraints.avail_w = fill.then_some(100.);
+                let mut child = kid(Kind::Flow, Default::default(), Default::default());
+                let intrinsic = child.intrinsic.clone();
+                child.build = Rc::new(|_, _, _, _, _| IntrinsicBox.hooked());
+                let flow = BandFlow::new(vec![child], true, &context);
+                let plans = flow.plan.clone();
+                let mut element = flow.hooked();
+                let root = element.request_layout(window, app);
+                let actual = window.measure_layout_size(
+                    root,
+                    size(
+                        AvailableSpace::Definite(px(100.)),
+                        AvailableSpace::MaxContent,
+                    ),
+                    gpui::Axis::Horizontal,
+                    app,
+                );
+                assert_eq!(actual.width, px(if fill { 100. } else { 60. }));
+                assert_eq!(intrinsic.get().is_none(), fill);
+                assert!(plans.borrow().get(f32::from(actual.width)).is_none());
+            }
+            div()
+        },
+    );
+}
+
 impl Hooks for IntrinsicBox {
     type Layout = LayoutId;
     type Prepaint = ();
@@ -93,32 +127,49 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
             },
             false,
         ),
+        (
+            Computed {
+                flex_item: true,
+                ..Default::default()
+            },
+            false,
+        ),
     ];
-    cx.add_empty_window().draw(
-        point(px(0.), px(0.)),
-        size(px(100.), px(100.)),
-        |window, app| {
-            for (style, stretch) in roles {
+    for (style, stretch) in roles {
+        for (available, expected) in [(100., if stretch { 100. } else { 60. }), (40., 40.)] {
+            let bounds = Rc::new(Cell::new(None));
+            let intrinsic;
+            {
                 let mut context = block_cx();
-                context.constraints.avail_w =
-                    crate::layout::block::available_width::inner(&style, Some(100.));
+                context.constraints.avail_w = crate::layout::block::available_width::inner(
+                    &style,
+                    if style.flex_item { None } else { Some(100.) },
+                );
                 let mut child = kid(Kind::Flow, Default::default(), Default::default());
+                intrinsic = child.intrinsic.clone();
                 child.build = Rc::new(|_, _, _, _, _| IntrinsicBox.hooked());
-                let mut element = BandFlow::new(vec![child], true, &context).hooked();
-                for (available, expected) in [(100., if stretch { 100. } else { 60. }), (40., 40.)]
-                {
-                    let actual = element.layout_as_root(
-                        size(
-                            AvailableSpace::Definite(px(available)),
-                            AvailableSpace::MaxContent,
-                        ),
-                        window,
-                        app,
-                    );
-                    assert_eq!(actual, size(px(expected), px(10.)));
-                }
+                cx.add_empty_window().draw(
+                    point(px(0.), px(0.)),
+                    size(px(available), px(100.)),
+                    |_, _| {
+                        let owner = div().flex().flex_col();
+                        let owner = if stretch {
+                            owner.items_stretch()
+                        } else {
+                            owner.items_start()
+                        };
+                        owner.child(
+                            Capture {
+                                child: BandFlow::new(vec![child], true, &context).hooked(),
+                                bounds: bounds.clone(),
+                            }
+                            .hooked(),
+                        )
+                    },
+                );
             }
-            div()
-        },
-    );
+            assert_eq!(bounds.get().unwrap().size, size(px(expected), px(10.)));
+            assert_eq!(intrinsic.get().is_some(), !stretch);
+        }
+    }
 }

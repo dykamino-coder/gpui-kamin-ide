@@ -70,6 +70,7 @@ impl Hooks for BandFlow {
         let build = self.build;
         let measured = Rc::new(RefCell::new(Default::default()));
         let output = measured.clone();
+        let identity = window.element_id_context();
         let inline_up = self.inline_up;
         let style = gpui::Style {
             flex_shrink: 0.0,
@@ -84,84 +85,86 @@ impl Hooks for BandFlow {
                             geometry: gpui::MeasuredBox,
                             window: &mut Window,
                             cx: &mut App| {
-            let v = vert.is_some();
-            // Строчная ось — ширина в горизонтальном письме, высота в
-            // вертикальном; блочный размер плана уходит в другую ось.
-            let (known_inline, avail_inline) = if vert.is_some() {
-                (known.height, available.height)
-            } else {
-                (known.width, available.width)
-            };
-            let phys = |inline: f32, block: f32| {
-                if vert.is_some() {
-                    size(px(block), px(inline))
+            window.with_element_id_context(&identity, |window| {
+                let v = vert.is_some();
+                // Строчная ось — ширина в горизонтальном письме, высота в
+                // вертикальном; блочный размер плана уходит в другую ось.
+                let (known_inline, avail_inline) = if vert.is_some() {
+                    (known.height, available.height)
                 } else {
-                    size(px(inline), px(block))
-                }
-            };
-            let cb = match (known_inline, avail_inline) {
-                (Some(w), _) => f32::from(w),
-                (None, AvailableSpace::Definite(w)) if fill_inline => f32::from(w),
-                (None, a) => {
-                    let (min, max) = intrinsic.get().unwrap_or_else(|| {
-                        window.with_nested_layout(|window| {
-                            let p = &mut Probe::new(
-                                window,
-                                cx,
-                                v,
-                                fragment.as_ref(),
-                                paint.clone(),
-                                scopes.clone(),
-                                build,
-                            );
-                            let sizes = intrinsic_sizes(&kids, p);
-                            intrinsic.set(Some(sizes));
-                            sizes
-                        })
-                    });
-                    match a {
-                        AvailableSpace::Definite(w) => max.min(min.max(f32::from(w))),
-                        AvailableSpace::MaxContent => max,
-                        AvailableSpace::MinContent => min,
+                    (known.width, available.width)
+                };
+                let phys = |inline: f32, block: f32| {
+                    if vert.is_some() {
+                        size(px(block), px(inline))
+                    } else {
+                        size(px(inline), px(block))
                     }
+                };
+                let cb = match (known_inline, avail_inline) {
+                    (Some(w), _) => f32::from(w),
+                    (None, AvailableSpace::Definite(w)) if fill_inline => f32::from(w),
+                    (None, a) => {
+                        let (min, max) = intrinsic.get().unwrap_or_else(|| {
+                            window.with_nested_layout(|window| {
+                                let p = &mut Probe::new(
+                                    window,
+                                    cx,
+                                    v,
+                                    fragment.as_ref(),
+                                    paint.clone(),
+                                    scopes.clone(),
+                                    build,
+                                );
+                                let sizes = intrinsic_sizes(&kids, p);
+                                intrinsic.set(Some(sizes));
+                                sizes
+                            })
+                        });
+                        match a {
+                            AvailableSpace::Definite(w) => max.min(min.max(f32::from(w))),
+                            AvailableSpace::MaxContent => max,
+                            AvailableSpace::MinContent => min,
+                        }
+                    }
+                };
+                let axis = if v {
+                    gpui::Axis::Vertical
+                } else {
+                    gpui::Axis::Horizontal
+                };
+                if geometry.intrinsic_axis == Some(axis) {
+                    return phys(cb, 0.0);
                 }
-            };
-            let axis = if v {
-                gpui::Axis::Vertical
-            } else {
-                gpui::Axis::Horizontal
-            };
-            if geometry.intrinsic_axis == Some(axis) {
-                return phys(cb, 0.0);
-            }
-            if let Some(p) = cache.borrow().get(cb) {
+                if let Some(p) = cache.borrow().get(cb) {
+                    if let Some(f) = &fragment {
+                        f.publish(&p, &kids);
+                    }
+                    super::clamp::publish(&output, &p, vert, inline_up);
+                    return phys(cb, p.height);
+                }
+                let engine = Rc::new(RefCell::new(gpui::RetainedLayout::default()));
+                let p = window.with_retained_layout(&mut engine.borrow_mut(), |window| {
+                    let mut p = Probe::new(
+                        window,
+                        cx,
+                        v,
+                        fragment.as_ref(),
+                        paint.clone(),
+                        scopes.clone(),
+                        build,
+                    );
+                    p.engine = Some(engine.clone());
+                    plan(&kids, cb, contain_floats, &mut p)
+                });
                 if let Some(f) = &fragment {
                     f.publish(&p, &kids);
                 }
                 super::clamp::publish(&output, &p, vert, inline_up);
-                return phys(cb, p.height);
-            }
-            let engine = Rc::new(RefCell::new(gpui::RetainedLayout::default()));
-            let p = window.with_retained_layout(&mut engine.borrow_mut(), |window| {
-                let mut p = Probe::new(
-                    window,
-                    cx,
-                    v,
-                    fragment.as_ref(),
-                    paint.clone(),
-                    scopes.clone(),
-                    build,
-                );
-                p.engine = Some(engine.clone());
-                plan(&kids, cb, contain_floats, &mut p)
-            });
-            if let Some(f) = &fragment {
-                f.publish(&p, &kids);
-            }
-            super::clamp::publish(&output, &p, vert, inline_up);
-            let h = p.height;
-            cache.borrow_mut().insert(p);
-            phys(cb, h)
+                let h = p.height;
+                cache.borrow_mut().insert(p);
+                phys(cb, h)
+            })
         };
         let id = window.request_measured_layout_with_box(style, measure);
         if let Some((_, clamp)) = &self.clamp {

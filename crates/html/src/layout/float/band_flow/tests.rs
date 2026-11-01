@@ -4,6 +4,7 @@ use super::*;
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AvailableSpace, Bounds, ParentElement, Pixels, Styled, point, size};
 
+mod persistent;
 mod sizing;
 
 fn block_cx() -> crate::layout::cx::LayoutCx {
@@ -77,7 +78,9 @@ fn definite_block_prepares_each_child_once_through_prepaint(cx: &mut gpui::TestA
     ] {
         let builds = Rc::new(Cell::new(0));
         let bounds = Rc::new(Cell::new(None));
-        cx.add_empty_window().draw(
+        let window = cx.add_empty_window();
+        window.simulate_scale_factor_change(1.);
+        window.draw(
             point(px(0.25), px(0.25)),
             size(px(100.), px(100.)),
             |_, _| {
