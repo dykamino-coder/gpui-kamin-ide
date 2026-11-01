@@ -96,10 +96,9 @@ impl<'a> DocumentBuilder<'a> {
                 .transpose()?
                 .flatten(),
             self.xml,
-            self.media,
+            super::state::DocState::new(self.media),
             &self.fonts,
             revision,
-            None,
         )
     }
 }

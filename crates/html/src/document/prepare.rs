@@ -1,9 +1,9 @@
 //! Сборка ресурсов и viewport из единственного исходного DOM.
 
-use super::{DocState, Media, Node, Rc, base_url, viewport};
+use super::{DocState, Node, Rc, base_url, viewport};
 
-/// Разбор в СВЕЖЕЕ состояние документа носителем `media` (у следующей ревизии —
-/// с замерами абзацев прошлой, `DocState::continuing`): шрифты и
+/// Разбор в СВЕЖЕЕ состояние документа `state` (у следующей ревизии — с замерами
+/// абзацев прошлой, `DocState::continuing`): шрифты и
 /// `@color-profile` из листов страницы (до разбора: иначе первый же замер
 /// ширины пойдёт по подстановке), разметка (XML — своим разборщиком,
 /// `dom::xml`), правка адресов от действующей базы.
@@ -11,16 +11,12 @@ pub(super) fn parse_document(
     input: &crate::dom::input::Admitted,
     theme_css: &str,
     base: Option<&url::Url>,
-    media: Media,
+    state: Rc<DocState>,
     fonts: &crate::text::metrics::FontContext,
     revision: crate::budget::RevisionBudget,
-    previous: Option<&DocState>,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
-    let state = match previous {
-        Some(previous) => DocState::continuing(media, previous),
-        None => DocState::new(media),
-    };
+    let media = state.media();
     let admission = crate::budget::admission::Admission::new(revision.clone());
     state.values.admit_revision(revision, base);
     let vcx = state.values();

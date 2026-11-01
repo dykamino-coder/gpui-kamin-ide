@@ -53,10 +53,9 @@ impl Document {
             theme_css,
             self.base_url.clone(),
             self.xml,
-            media,
+            super::state::DocState::continuing(media, &self.state),
             &fonts,
             revision,
-            Some(&self.state),
         )
         .map_err(|mut failure| {
             failure.report.retained_revision = Some(self.key);

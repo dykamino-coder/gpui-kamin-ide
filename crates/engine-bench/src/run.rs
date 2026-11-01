@@ -226,9 +226,13 @@ pub(super) async fn run(
         modes.insert("relayout".into(), relayout);
     }
     for (name, cold) in [("cold", true), ("warm", false)] {
-        if (cold && args.mode != Mode::Cold && args.mode != Mode::Both)
-            || (!cold && args.mode != Mode::Warm && args.mode != Mode::Both)
-        {
+        let wanted = match args.mode {
+            Mode::Both => true,
+            Mode::Cold => cold,
+            Mode::Warm => !cold,
+            Mode::Relayout => false,
+        };
+        if !wanted {
             continue;
         }
         let step = if cold { Step::Cold(None) } else { Step::Warm };
