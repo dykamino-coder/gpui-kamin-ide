@@ -18,9 +18,9 @@ fn section(nodes: &[Node]) -> Option<&Element> {
 #[gpui::test]
 fn numeric_line_growth_matches_layout_without_trial_builds(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
-    for line_height in [10., 14.41] {
+    for (line_height, orphans, widows) in [(10., 2, 2), (14.41, 2, 2), (14.41, 3, 4)] {
         let contents = format!(
-            "<section><p style='font:10px/{line_height}px Ahem;margin:0'>{}</p></section>",
+            "<section><p style='font:10px/{line_height}px Ahem;margin:0;orphans:{orphans};widows:{widows}'>{}</p></section>",
             "aa aa aa aa ".repeat(12)
         );
         let tree = crate::document::parsed::parse(&contents, "");

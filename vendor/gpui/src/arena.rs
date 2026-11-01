@@ -151,7 +151,7 @@ impl Arena {
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
-        // Elements must be dropped before returning the memory they inhabit.
+        // KaminIDE patch: drop elements before returning their backing chunks.
         // Keep one normal frame chunk, rather than a permanent high-water mark.
         self.chunks.truncate(1);
         self.chunks.shrink_to_fit();

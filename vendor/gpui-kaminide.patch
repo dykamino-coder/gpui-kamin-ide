@@ -5543,14 +5543,14 @@ index e7a8c06fd5fbda341f1c91ae0c526ae85e53daec..d1883d27ad7110b19ff441946c5ceacf
 +                (request_layout_state, prepaint_state)
 +            })
 diff --git a/vendor/gpui/src/arena.rs b/vendor/gpui/src/arena.rs
-index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..db0cbfcec6da025d8b4586b7d27c8e2275c02af3
+index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..5ffee293732013dfaa6517866d186489e555b39f
 --- a/vendor/gpui/src/arena.rs
 +++ b/vendor/gpui/src/arena.rs
 @@ -154,3 +154,6 @@
 -        for chunk_index in 0..=self.current_chunk_index {
 -            self.chunks[chunk_index].reset();
 -        }
-+        // Elements must be dropped before returning the memory they inhabit.
++        // KaminIDE patch: drop elements before returning their backing chunks.
 +        // Keep one normal frame chunk, rather than a permanent high-water mark.
 +        self.chunks.truncate(1);
 +        self.chunks.shrink_to_fit();
@@ -16155,7 +16155,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08fcacc6cbe2c35ccdb4198cdb569920360abda6
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..dd77c767513be7ad2400ad74cd4e4472b2213134
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -16194,7 +16194,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08fcacc6cbe2c35ccdb4198cdb569920
 @@ -376,0 +406,13 @@
 +}
 +
-+/// Run a measurement with private element storage, released on return or unwind.
++/// KaminIDE patch: private measurement storage, released on return or unwind.
 +/// Returned values must not use elements allocated inside the closure: their
 +/// arena generation is invalidated before returning. Nested layout callbacks
 +/// must also finish inside the closure; numeric geometry may escape it.

@@ -147,8 +147,8 @@ impl Lines {
         child.over = base.over + total;
         let r = child.regrow.as_mut().expect("measured line model");
         let b = r.watched.blocks().expect("measured line scope");
-        if let Some(bounds) = r.laid.boxes.get_mut(&b.id) {
-            bounds.1 = bounds.0 + child.h;
+        if let Some(&(top, _)) = r.laid.boxes.get(&b.id) {
+            r.laid.boxes.insert(b.id, (top, top + child.h));
         }
         r.laid.lines.insert(b.id, pushes);
         let breaks = b.breaks(child.h, &r.laid).finish(flow, child.h);

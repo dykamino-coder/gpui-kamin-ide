@@ -9812,12 +9812,12 @@ index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf16015
 +    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 +}
 diff --git a/vendor/gpui-windows/src/events.rs b/vendor/gpui-windows/src/events.rs
-index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..052af97e41b0ce25bb60f92464c4c204a6199545
+index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..c760a3334f1ed05f86c0423fdc2a334d410435a2
 --- a/vendor/gpui-windows/src/events.rs
 +++ b/vendor/gpui-windows/src/events.rs
 @@ -33,0 +34,6 @@
 +
-+/// A forced callback also satisfies a previously deferred forced draw.
++/// KaminIDE patch: a forced callback also consumes a deferred forced draw.
 +fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
 +    let deferred = pending.take();
 +    incoming || deferred
@@ -9867,7 +9867,7 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..052af97e41b0ce25bb60f92464c4c204
 +
 +#[cfg(test)]
 +mod forced_frame_tests {
-+    use super::*;
++    use super::{Cell, consume_force_render};
 +
 +    #[test]
 +    fn forced_callback_consumes_deferred_request_once() {

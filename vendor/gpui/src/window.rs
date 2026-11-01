@@ -405,7 +405,7 @@ pub(crate) fn with_element_arena<R>(callback: impl FnOnce(&mut Arena) -> R) -> R
     result.expect("arena callback produces a result")
 }
 
-/// Run a measurement with private element storage, released on return or unwind.
+/// KaminIDE patch: private measurement storage, released on return or unwind.
 /// Returned values must not use elements allocated inside the closure: their
 /// arena generation is invalidated before returning. Nested layout callbacks
 /// must also finish inside the closure; numeric geometry may escape it.
