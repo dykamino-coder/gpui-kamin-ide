@@ -55,6 +55,20 @@ impl DocumentValues {
         })
     }
 
+    /// Ресурсы готового кадра не сменили ревизию: ни одна картинка этого и
+    /// вложенных документов не ждёт загрузки и не перезапрошена. Изменённая
+    /// ревизия ставит картинку в очередь, как в начале кадра.
+    pub fn resources_unchanged(&self) -> bool {
+        self.revalidate_images() == 0
+            && !self.images.borrow().has_pending()
+            && self
+                .readiness
+                .children
+                .borrow()
+                .iter()
+                .all(|child| child.resources_unchanged())
+    }
+
     pub fn frame_ready(&self) -> bool {
         self.painted.get()
             && !self.readiness.deferred.get()

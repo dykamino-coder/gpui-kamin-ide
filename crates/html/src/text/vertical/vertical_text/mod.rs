@@ -58,8 +58,9 @@ pub struct VerticalText {
     /// Первая строка для базовой по оси x: шрифт, кегль, высота строки
     /// (`None` — `normal`) и центральная ли доминантная базовая.
     pub(crate) first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
-    /// Document measurements selected by `keyed`: read at layout, recorded at prepaint.
-    pub(crate) measures: Option<std::rc::Rc<crate::text::vertical::VerticalMeasures>>,
+    /// Document selected by `keyed`: its measurements are read at layout and recorded at
+    /// prepaint, and a changed fact marks its frame unfinished.
+    pub(crate) doc: Option<std::rc::Rc<crate::document::state::DocState>>,
 }
 
 impl Wrap for VerticalText {
