@@ -71,6 +71,14 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
             });
             let spare = child.frags.len();
             rebuild(child);
+            assert!(seen.borrow().iter().all(|item| item.2));
+            for el in std::iter::once(&mut child.el).chain(&mut child.frags) {
+                el.layout_as_root(
+                    gpui::size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MaxContent),
+                    window,
+                    app,
+                );
+            }
             let seen = seen.borrow();
             assert!(seen.iter().all(|item| item.0 == Some(Len::Px(370.0))));
             assert_eq!(seen.iter().filter(|item| !item.2).count(), spare + 1);

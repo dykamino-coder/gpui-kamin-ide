@@ -151,9 +151,12 @@ impl Arena {
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
-        for chunk_index in 0..=self.current_chunk_index {
-            self.chunks[chunk_index].reset();
-        }
+        // KaminIDE patch: drop elements before returning their backing chunks.
+        // Keep one normal frame chunk, rather than a permanent high-water mark.
+        self.chunks.truncate(1);
+        self.chunks.shrink_to_fit();
+        self.elements.shrink_to(1024);
+        self.chunks[0].reset();
         self.current_chunk_index = 0;
     }
 
@@ -309,6 +312,36 @@ mod tests {
         arena.alloc(|| 4u32);
 
         assert_eq!(arena.capacity(), 24);
+    }
+
+    #[test]
+    fn test_clear_returns_overflow_chunks_after_dropping_elements() {
+        struct Value(Rc<Cell<usize>>);
+        impl Drop for Value {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        let drops = Rc::new(Cell::new(0));
+        let mut arena = Arena::new(std::mem::size_of::<Value>());
+        arena.begin_scope();
+        let first = arena.alloc(|| Value(drops.clone()));
+        arena.begin_scope();
+        let second = arena.alloc(|| Value(drops.clone()));
+        arena.end_scope();
+        arena.clear();
+        assert_eq!(arena.capacity(), 2 * std::mem::size_of::<Value>());
+        assert_eq!(drops.get(), 0);
+        assert!(first.valid.get() && second.valid.get());
+        arena.end_scope();
+        arena.clear();
+        assert_eq!(drops.get(), 2);
+        assert!(!first.valid.get() && !second.valid.get());
+        assert_eq!(arena.capacity(), std::mem::size_of::<Value>());
+        let next = arena.alloc(|| Value(drops.clone()));
+        assert!(next.valid.get());
+        arena.clear();
+        assert_eq!(drops.get(), 3);
     }
 
     #[test]
