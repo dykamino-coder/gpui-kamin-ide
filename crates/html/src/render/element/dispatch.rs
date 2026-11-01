@@ -33,7 +33,7 @@ pub(crate) async fn dispatch_element(
     built_iframe: Option<AnyElement>,
 ) -> AnyElement {
     let st = e.style.used();
-    let parent_geometry = &inherited.reset_box_layout;
+    let cb = &inherited.reset_box_layout;
     let geometry = &st.reset_box_layout;
     let vcx = opts.cx.vcx();
     if let Some(math) = stk
@@ -85,7 +85,7 @@ pub(crate) async fn dispatch_element(
             // Определённость блока (§10.5) берётся от слитого стиля, иначе
             // `apply` теряет `height: %`; ячейки и лунки ведут её сами.
             if !matches!(
-                parent_geometry.display,
+                cb.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
             ) {
                 used.reset_context.cb_height_def_hint = merged.cb_height_def;
@@ -119,7 +119,7 @@ pub(crate) async fn dispatch_element(
         // размеров с процентной базой (`float-replaced-height-005/007`).
         "iframe"
             if geometry.float.is_none_or(|f| f == 0)
-                && matches!(parent_geometry.display, None | Some(Display::Block))
+                && matches!(cb.display, None | Some(Display::Block))
                 && st.reset_context.flow_root != Some(true)
                 && !matches!(
                     geometry.width,
@@ -162,7 +162,7 @@ pub(crate) async fn dispatch_element(
             // Тот же stretch-fit, что у строчного атома (`atom_element`).
             // Содержащий блок — `inherited` (родитель), а не `merged`: это
             // уже собственный стиль рисунка.
-            let cb_w = match parent_geometry.width {
+            let cb_w = match cb.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
                 _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
             };
@@ -230,8 +230,7 @@ pub(crate) async fn dispatch_element(
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table_stack(stk, e, &merged, opts).await
         }
-        // Список с заданной раскладкой — это уже не список, а контейнер:
-        // на `ul` верстают навигацию и наборы чипов.
+        // `ul` с заданной раскладкой служит контейнером навигации или чипов.
         "ul" | "ol" if geometry.display.is_none() => list::render(stk, e, &merged, opts).await,
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана

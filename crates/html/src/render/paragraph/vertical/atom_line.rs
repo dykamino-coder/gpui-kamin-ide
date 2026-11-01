@@ -21,7 +21,7 @@ pub(super) fn turned_atom_line(nodes: &[Node], style: &BoxStyle) -> bool {
                 && !style.reset_flex.flex_line_wraps))
 }
 
-fn style_definite_inline(style: &Computed) -> bool {
+pub(super) fn style_definite_inline(style: &Computed) -> bool {
     matches!(
         style.reset_box_layout.height,
         Some(Len::Px(_)) | Some(Len::Pct(_))

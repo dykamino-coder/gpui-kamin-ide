@@ -234,4 +234,4 @@ pub(crate) fn vertical_paragraph(
 }
 
 mod atom_line;
-use atom_line::turned_atom_line;
+use atom_line::{style_definite_inline, turned_atom_line};
