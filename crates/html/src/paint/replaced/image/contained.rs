@@ -62,13 +62,14 @@ pub(super) fn contained_image(
             || e.style.used().reset_shapes.object_position.is_some()
         {
             let mut fitted = e.clone();
-            fitted.style.used_mut().reset_box_layout.width = Some(Len::Px(cw));
-            fitted.style.used_mut().reset_box_layout.height = Some(Len::Px(ch));
+            let style = fitted.style.used_mut();
+            style.reset_box_layout.width = Some(Len::Px(cw));
+            style.reset_box_layout.height = Some(Len::Px(ch));
             // `cw`/`ch` — размер СОДЕРЖИМОГО по построению, поэтому клон
             // меряется по содержимому независимо от `box-sizing` документа.
-            fitted.style.used_mut().reset_border.border_box = Some(false);
-            fitted.style.used_mut().reset_context.contain_size = Some(false);
-            fitted.style.used_mut().reset_context.contain_inline_size = Some(false);
+            style.reset_border.border_box = Some(false);
+            style.reset_context.contain_size = Some(false);
+            style.reset_context.contain_inline_size = Some(false);
             return Ok(image_with(&fitted, base_font, cx));
         }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);

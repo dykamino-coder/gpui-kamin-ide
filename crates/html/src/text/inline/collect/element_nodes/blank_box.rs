@@ -91,11 +91,12 @@ pub(super) fn blank_box(
         // строки, а полулидинг делит остаток поровну (§10.8).
         let dy = ((line - content) / 2.0 - top).max(-line);
         let mut copy = e.clone();
-        copy.style.used_mut().reset_box_layout.width = Some(Len::Px(0.0));
-        copy.style.used_mut().reset_box_layout.height = Some(Len::Px(content));
-        copy.style.used_mut().reset_box_layout.margin = Default::default();
-        copy.style.used_mut().reset_positioned.position = None;
-        copy.style.used_mut().reset_box_layout.display = None;
+        let style = copy.style.used_mut();
+        style.reset_box_layout.width = Some(Len::Px(0.0));
+        style.reset_box_layout.height = Some(Len::Px(content));
+        style.reset_box_layout.margin = Default::default();
+        style.reset_positioned.position = None;
+        style.reset_box_layout.display = None;
         // Размер коробки читается из СЛИТОГО стиля: без этого
         // заданные выше ширина и высота терялись, и коробка
         // выходила нулевой высоты — рамка `border-left` и фон

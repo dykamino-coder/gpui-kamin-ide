@@ -63,11 +63,12 @@ fn view_boxed(
         size: (bw, bh),
     } = view_box_size(&e.style.used(), vb, (w0, h0))?;
     let mut boxed = e.clone();
-    boxed.style.used_mut().reset_shapes.object_view_box = None;
-    boxed.style.used_mut().reset_box_layout.width = Some(Len::Px(bw));
-    boxed.style.used_mut().reset_box_layout.height = Some(Len::Px(bh));
-    boxed.style.used_mut().reset_context.contain_size = Some(false);
-    boxed.style.used_mut().reset_context.contain_inline_size = Some(false);
+    let style = boxed.style.used_mut();
+    style.reset_shapes.object_view_box = None;
+    style.reset_box_layout.width = Some(Len::Px(bw));
+    style.reset_box_layout.height = Some(Len::Px(bh));
+    style.reset_context.contain_size = Some(false);
+    style.reset_context.contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
     let ready = crate::paint::background::image_adapter::upload(&ready)?;
     let picture = gpui::img(ready)
