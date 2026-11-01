@@ -43,3 +43,11 @@ fn edge_containment_extrema_match_every_original_span() {
     assert_ne!(p.measure_key(), key);
     assert!(p.prepared().words.first(0).is_none());
 }
+
+#[test]
+fn frame_storage_of_paragraph_and_prepared_indexes_stays_bounded() {
+    // Абзацы и их индексы живут до конца кадра в каждой сборке ячейки и
+    // щупа: рост этих размеров умножается на число абзацев страницы.
+    assert!(size_of::<Prepared>() <= 512);
+    assert!(size_of::<Paragraph>() <= 1600);
+}
