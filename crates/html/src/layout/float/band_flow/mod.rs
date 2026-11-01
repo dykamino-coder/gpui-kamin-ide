@@ -40,9 +40,9 @@ use tap::Tap;
 mod cache;
 mod prepared;
 mod probe;
+mod temporary;
 #[cfg(test)]
 mod tests;
-mod temporary;
 use probe::{intrinsic, intrinsic_of, probe, probe_of};
 
 /// Вырезы обтекания для строк потокового ребёнка: левые и правые формы от
