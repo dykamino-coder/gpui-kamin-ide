@@ -176,17 +176,28 @@ impl Paragraph {
             probe.box_extents = box_extents.clone();
             probe
         };
-        let mut probe = make_probe();
+        // Узел раскладки держит замер до конца кадра: готовый щуп и поля для
+        // его пересборки не хранятся вместе, место берёт только один из них.
+        let mut source = if rebuild {
+            Probe::Rebuild(make_probe)
+        } else {
+            Probe::Built(make_probe())
+        };
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
                 // Заданная ширина сильнее доступной: раскладка уже решила, в
                 // какую коробку абзац ставится, и переносы считаются по ней.
-                if rebuild {
-                    probe = make_probe();
-                }
+                let mut fresh;
+                let probe = match &mut source {
+                    Probe::Built(probe) => probe,
+                    Probe::Rebuild(make_probe) => {
+                        fresh = make_probe();
+                        &mut fresh
+                    }
+                };
                 measured_layout(
-                    &mut probe,
+                    probe,
                     atom_fit.clone(),
                     known,
                     available,
@@ -202,4 +213,11 @@ impl Paragraph {
         }
         (id, id)
     }
+}
+
+/// Щуп замера: собран один раз либо пересобирается на каждый вызов.
+#[allow(clippy::large_enum_variant)] // вариант выбран на всю жизнь замыкания
+enum Probe<F> {
+    Built(Paragraph),
+    Rebuild(F),
 }
