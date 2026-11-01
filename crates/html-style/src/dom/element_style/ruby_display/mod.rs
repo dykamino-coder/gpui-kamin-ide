@@ -90,8 +90,12 @@ pub fn finish_inline_display(
         // и очищать нечего (§9.5.2 действует на поток).
         || crate::style::flow::absolutely_positioned(style.reset_positioned.position)
     {
-        style.reset_box_layout.clear = None;
-        style.reset_context.clear_inherit = false;
+        if style.reset_box_layout.clear.is_some() {
+            style.reset_box_layout.clear = None;
+        }
+        if style.reset_context.clear_inherit {
+            style.reset_context.clear_inherit = false;
+        }
     }
     //
     // Поля к внутренним табличным видам НЕ применяются (§8.3), `clear` — только
@@ -102,9 +106,15 @@ pub fn finish_inline_display(
         Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
     ) || style.reset_context.col_role.is_some()
     {
-        style.reset_box_layout.margin = Default::default();
-        style.reset_box_layout.clear = None;
-        style.reset_context.clear_inherit = false;
+        if style.reset_box_layout.margin != Default::default() {
+            style.reset_box_layout.margin = Default::default();
+        }
+        if style.reset_box_layout.clear.is_some() {
+            style.reset_box_layout.clear = None;
+        }
+        if style.reset_context.clear_inherit {
+            style.reset_context.clear_inherit = false;
+        }
     }
     // Боковые auto-поля ПЛАВАЮЩЕГО используются нулём (§10.3.5): распирать
     // флоат от его края им нечем. До taffy `auto` доезжало как есть и уводило
@@ -156,11 +166,23 @@ pub fn finish_inline_display(
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input"
     );
     if !replaced {
-        style.reset_box_layout.width = None;
-        style.reset_box_layout.height = None;
-        style.reset_box_layout.min_width = None;
-        style.reset_box_layout.min_height = None;
-        style.reset_box_layout.max_width = None;
-        style.reset_box_layout.max_height = None;
+        if style.reset_box_layout.width.is_some() {
+            style.reset_box_layout.width = None;
+        }
+        if style.reset_box_layout.height.is_some() {
+            style.reset_box_layout.height = None;
+        }
+        if style.reset_box_layout.min_width.is_some() {
+            style.reset_box_layout.min_width = None;
+        }
+        if style.reset_box_layout.min_height.is_some() {
+            style.reset_box_layout.min_height = None;
+        }
+        if style.reset_box_layout.max_width.is_some() {
+            style.reset_box_layout.max_width = None;
+        }
+        if style.reset_box_layout.max_height.is_some() {
+            style.reset_box_layout.max_height = None;
+        }
     }
 }

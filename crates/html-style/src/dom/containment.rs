@@ -51,8 +51,12 @@ pub(super) fn normalize(style: &mut Computed, tag: &str, out_of_flow: bool) {
             && matches!(tag, "td" | "th" | "tr" | "tbody" | "thead" | "tfoot"));
     // Size containment excludes all internal table boxes, including cells.
     if no_box || non_atomic_inline || internal_ruby || internal_table {
-        style.reset_context.contain_size = None;
-        style.reset_context.contain_inline_size = None;
+        if style.reset_context.contain_size.is_some() {
+            style.reset_context.contain_size = None;
+        }
+        if style.reset_context.contain_inline_size.is_some() {
+            style.reset_context.contain_inline_size = None;
+        }
     }
     // Layout/paint containment may apply to cells, unlike other internal boxes.
     if no_box
@@ -62,15 +66,20 @@ pub(super) fn normalize(style: &mut Computed, tag: &str, out_of_flow: bool) {
             && style.reset_box_layout.display != Some(Display::TableCell)
             && !(style.reset_box_layout.display.is_none() && matches!(tag, "td" | "th")))
     {
-        style.reset_context.contain_layout = None;
-        style.reset_context.contain_paint = None;
+        if style.reset_context.contain_layout.is_some() {
+            style.reset_context.contain_layout = None;
+        }
+        if style.reset_context.contain_paint.is_some() {
+            style.reset_context.contain_paint = None;
+        }
     }
-    if no_box {
+    if no_box && style.reset_context.contain_style.is_some() {
         style.reset_context.contain_style = None;
     }
     // CSS Containment 2 §4: content-visibility cannot skip contents of a
     // boxless element or a non-atomic inline/internal ruby box.
-    if no_box || non_atomic_inline || internal_ruby {
+    if (no_box || non_atomic_inline || internal_ruby) && style.reset_context.skip_content.is_some()
+    {
         style.reset_context.skip_content = None;
     }
 }

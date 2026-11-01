@@ -35,7 +35,10 @@ pub(super) fn normalize_style(
             ),
             _ => false,
         };
-        if internal_table {
+        if internal_table
+            && (style.reset_shapes.aspect_ratio.is_some()
+                || style.reset_shapes.aspect_ratio_auto.is_some())
+        {
             style.reset_shapes.aspect_ratio = None;
             style.reset_shapes.aspect_ratio_auto = None;
         }
@@ -46,7 +49,7 @@ pub(super) fn normalize_style(
     if tag == "audio" && !attrs.iter().any(|(name, _)| name == "controls") {
         style.reset_box_layout.display = Some(crate::style::computed::Display::None);
     }
-    style.reset_context.plain_block_box = {
+    let plain_block_box = {
         use crate::style::computed::Display;
         let special = matches!(
             tag,
@@ -95,6 +98,9 @@ pub(super) fn normalize_style(
         };
         block && !special && style.reset_box_layout.float.is_none_or(|f| f == 0)
     };
+    if style.reset_context.plain_block_box != plain_block_box {
+        style.reset_context.plain_block_box = plain_block_box;
+    }
     // css-will-change-1: обещанный `transform`/`contain` делает коробку
     // содержащим блоком и контекстом наложения лишь там, где само
     // свойство применимо. У строчной НЕатомарной коробки его нет
@@ -194,4 +200,22 @@ pub(super) fn normalize_style(
         style.inh.text_flow.lang = Some(v.clone());
     }
     apply_direction(&mut style, &tag, &attrs);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_normalization_preserves_shared_groups() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        for tag in ["span", "i", "td", "div"] {
+            let mut first = Computed::default();
+            normalize_style(&mut first, tag, &[], &[], doc.values());
+            let mut second = first.clone();
+            normalize_style(&mut second, tag, &[], &[], doc.values());
+            assert!(first.shares_storage(&second), "{tag}");
+            assert_eq!(first, second);
+        }
+    }
 }
