@@ -75,7 +75,7 @@ fn all_forced_breaks_are_regrown_before_accepting_pages() {
         };
         let (_, _, plan) = plan::fill_at(&[kid], &|_| 100.0, Space::pages(32));
         let growth = plan.iter().find_map(|f| {
-            super::super::regrow::growths(&blocks, &Kid::default(), &laid, f, 100.0)
+            super::super::regrow::growths(&blocks, &Kid::default(), &laid, f, 100.0, false)
                 .into_iter()
                 .next()
         });

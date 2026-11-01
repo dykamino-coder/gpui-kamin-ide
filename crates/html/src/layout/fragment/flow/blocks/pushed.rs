@@ -4,6 +4,13 @@ use super::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
 
 impl BlockBox {
+    /// Отсутствие clear не превращается в clearance от совпадения координат.
+    pub(crate) fn clears(&self, id: u64) -> bool {
+        self.kids
+            .iter()
+            .any(|k| (k.id == id && k.clears) || k.inner.as_ref().is_some_and(|b| b.clears(id)))
+    }
+
     /// Самая внешняя коробка стопки, чей разложенный border box начинается
     /// ровно в `a` (`laid` — разложенная копия в координатах потока): перед ней
     /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;

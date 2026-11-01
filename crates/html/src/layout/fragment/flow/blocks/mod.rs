@@ -15,6 +15,7 @@ pub(crate) mod leaf;
 mod registry;
 use collect::{collect, frame};
 mod column_avoid;
+mod decorations;
 mod finish;
 mod geometry;
 mod parallel;
@@ -111,6 +112,8 @@ pub(crate) struct BlockKid {
     /// Граница с предыдущим ребёнком — граница соседей-блоков (класс A).
     /// Ложно, если между ними строчное содержимое или коробка без записи.
     pub(crate) adjoins: bool,
+    /// CSS clear связывает начало normal box с окончанием параллельных floats.
+    pub(crate) clears: bool,
     /// Строчное содержимое (анонимный блок, CSS 2.1 §9.2.1.1) прямо перед
     /// ребёнком и прямо после него: граница с ним — точка класса A.
     pub(crate) lines_around: (bool, bool),

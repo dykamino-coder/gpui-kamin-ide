@@ -214,6 +214,18 @@ impl StackChild {
             avoid_after: self.avoid_after,
             forced: self.forced.clone(),
             solid: self.solid.clone(),
+            decorations: self
+                .watched
+                .as_ref()
+                .filter(|_| self.overflow_top)
+                .zip(self.regrow.as_ref())
+                .map_or_else(Vec::new, |(w, r)| {
+                    let mut ranges = Vec::new();
+                    if let Some(b) = w.blocks() {
+                        b.decorations(&r.laid, &mut ranges);
+                    }
+                    ranges
+                }),
             float_min: self.regrow.as_ref().map_or(0.0, |r| r.float_min()),
             avoid: self.avoid.clone(),
             keep: self.keep.clone(),
