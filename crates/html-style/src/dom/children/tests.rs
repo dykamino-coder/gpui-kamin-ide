@@ -51,3 +51,35 @@ fn deep_shared_subtrees_drop_on_a_small_stack() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn snapshot_marks_release_nodes_and_keep_deep_drop_iterative() {
+    std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(|| {
+            let mut marks = Vec::new();
+            let mut nodes: Children = vec![Node::Text("leaf".into())].into();
+            for _ in 0..10_000 {
+                marks.push(nodes.mark());
+                let mut e = crate::dom::Element::synthetic(
+                    "div",
+                    Default::default(),
+                    Default::default(),
+                    Vec::new(),
+                );
+                e.children = nodes;
+                nodes = vec![Node::Element(e)].into();
+            }
+            let identity = nodes.identity();
+            let mark = nodes.mark();
+            drop(nodes);
+            // Узлы освобождены, но адрес снимка не может достаться новому списку.
+            assert!(!mark.is_alive());
+            assert!(marks.iter().all(|m| !m.is_alive()));
+            let fresh: Children = vec![Node::Text("other".into())].into();
+            assert_ne!(fresh.identity(), identity);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

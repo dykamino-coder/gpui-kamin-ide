@@ -3,8 +3,13 @@
 
 use std::ops::Range;
 
+/// Индекс живёт в каждом подготовленном абзаце кадра: пустой набор
+/// диапазонов (обычный случай) не занимает ничего, кроме указателя.
 #[derive(Default)]
-pub(in crate::text::paragraph) struct Intervals {
+pub(in crate::text::paragraph) struct Intervals(Option<Box<Tree>>);
+
+#[derive(Default)]
+struct Tree {
     nodes: Vec<Node>,
     root: Option<usize>,
     first: Vec<(usize, Option<usize>)>,
@@ -21,8 +26,14 @@ struct Node {
 impl Intervals {
     pub(in crate::text::paragraph) fn new(ranges: impl Iterator<Item = Range<usize>>) -> Self {
         let mut entries: Vec<_> = ranges.enumerate().collect();
+        if entries.is_empty() {
+            return Self(None);
+        }
         entries.sort_unstable_by_key(|(i, r)| (r.start, *i));
-        let mut out = Self::default();
+        let mut out = Tree {
+            nodes: Vec::with_capacity(entries.len()),
+            ..Tree::default()
+        };
         out.root = out.build(&entries);
         let mut events: Vec<_> = entries
             .iter()
@@ -44,9 +55,29 @@ impl Intervals {
                 out.first.push((at, value));
             }
         }
+        out.first.shrink_to_fit();
+        Self(Some(Box::new(out)))
+    }
+
+    pub(in crate::text::paragraph) fn overlapping(&self, range: &Range<usize>) -> Vec<usize> {
+        let mut out = Vec::new();
+        if let Some(tree) = &self.0 {
+            // Прежняя проверка строгих краёв учитывает пустой диапазон,
+            // лежащий внутри другого: это влияет на надбавки пустых строк.
+            tree.visit(tree.root, range, &mut out);
+            out.sort_unstable();
+        }
         out
     }
 
+    pub(in crate::text::paragraph) fn first(&self, at: usize) -> Option<usize> {
+        let first = &self.0.as_ref()?.first;
+        let i = first.partition_point(|(start, _)| *start <= at);
+        i.checked_sub(1).and_then(|i| first[i].1)
+    }
+}
+
+impl Tree {
     fn build(&mut self, entries: &[(usize, Range<usize>)]) -> Option<usize> {
         if entries.is_empty() {
             return None;
@@ -70,15 +101,6 @@ impl Intervals {
         Some(i)
     }
 
-    pub(in crate::text::paragraph) fn overlapping(&self, range: &Range<usize>) -> Vec<usize> {
-        let mut out = Vec::new();
-        // Прежняя проверка строгих краёв учитывает пустой диапазон,
-        // лежащий внутри другого: это влияет на надбавки пустых строк.
-        self.visit(self.root, range, &mut out);
-        out.sort_unstable();
-        out
-    }
-
     fn visit(&self, node: Option<usize>, range: &Range<usize>, out: &mut Vec<usize>) {
         let Some(i) = node else {
             return;
@@ -95,11 +117,6 @@ impl Intervals {
             out.push(node.source);
         }
         self.visit(node.right, range, out);
-    }
-
-    pub(in crate::text::paragraph) fn first(&self, at: usize) -> Option<usize> {
-        let i = self.first.partition_point(|(start, _)| *start <= at);
-        i.checked_sub(1).and_then(|i| self.first[i].1)
     }
 }
 
@@ -126,5 +143,14 @@ mod tests {
                 ranges.iter().position(|r| r.contains(&start))
             );
         }
+    }
+
+    #[test]
+    fn empty_index_owns_no_storage_and_answers_nothing() {
+        let index = Intervals::new(std::iter::empty());
+        assert!(index.0.is_none());
+        assert!(index.overlapping(&(0..10)).is_empty());
+        assert_eq!(index.first(0), None);
+        assert_eq!(size_of::<Intervals>(), size_of::<usize>());
     }
 }

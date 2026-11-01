@@ -127,6 +127,20 @@ mod tests {
     }
 
     #[test]
+    fn weak_identity_mark_keeps_neither_intrinsic_entry_nor_nodes_alive() {
+        let children: Children = vec![Node::Text("leaf".into())].into();
+        let sizes = children.intrinsic_sizes(input());
+        let weak_sizes = Rc::downgrade(&sizes);
+        let mark = children.mark();
+        drop(sizes);
+        assert!(mark.is_alive());
+        assert!(weak_sizes.upgrade().is_some());
+        drop(children);
+        assert!(!mark.is_alive());
+        assert!(weak_sizes.upgrade().is_none());
+    }
+
+    #[test]
     fn text_and_list_mutations_detach_the_dirty_branch() {
         let mut children: Children = vec![Node::Text("old".into())].into();
         let copy = children.clone();

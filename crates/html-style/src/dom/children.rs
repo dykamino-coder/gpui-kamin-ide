@@ -8,6 +8,17 @@ use std::rc::Rc;
 #[derive(Clone, Debug, Default)]
 pub struct Children(Rc<Snapshot>);
 
+/// Метка идентичности снимка без владения узлами и intrinsic-результатом.
+#[derive(Clone, Debug)]
+pub struct ChildrenMark(std::rc::Weak<Snapshot>);
+
+impl ChildrenMark {
+    /// Последний владелец снимка ещё не освободил его содержимое.
+    pub fn is_alive(&self) -> bool {
+        self.0.strong_count() != 0
+    }
+}
+
 #[derive(Debug, Default)]
 struct Snapshot {
     nodes: Vec<Node>,
@@ -37,6 +48,12 @@ impl Children {
     /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
     pub fn identity(&self) -> usize {
         Rc::as_ptr(&self.0) as usize
+    }
+
+    /// Метка снимка без владения узлами: пока она жива, адрес `identity` не
+    /// достаётся другому списку, а поддерево освобождает последний владелец.
+    pub fn mark(&self) -> ChildrenMark {
+        ChildrenMark(Rc::downgrade(&self.0))
     }
 
     pub fn into_vec(mut self) -> Vec<Node> {
@@ -107,16 +124,30 @@ impl<'a> IntoIterator for &'a mut Children {
     }
 }
 
+/// Единственный владелец списка; слабые метки снимков отделяются от узлов
+/// без их копирования, чтобы drop оставался итеративным.
+fn sole(snapshot: &mut Rc<Snapshot>) -> Option<Vec<Node>> {
+    if let Some(snapshot) = Rc::get_mut(snapshot) {
+        return Some(std::mem::take(&mut snapshot.nodes));
+    }
+    (Rc::strong_count(snapshot) == 1)
+        .then(|| {
+            Rc::try_unwrap(std::mem::take(snapshot))
+                .ok()
+                .map(|s| s.nodes)
+        })
+        .flatten()
+}
+
 impl Drop for Children {
     fn drop(&mut self) {
-        let Some(nodes) = Rc::get_mut(&mut self.0) else {
+        let Some(mut pending) = sole(&mut self.0) else {
             return;
         };
-        let mut pending = std::mem::take(&mut nodes.nodes);
         while let Some(node) = pending.pop() {
             if let Node::Element(mut e) = node {
-                if let Some(children) = Rc::get_mut(&mut e.children.0) {
-                    pending.append(&mut children.nodes);
+                if let Some(mut children) = sole(&mut e.children.0) {
+                    pending.append(&mut children);
                 }
             }
         }
