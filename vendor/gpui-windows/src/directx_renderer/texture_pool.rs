@@ -61,6 +61,36 @@ mod tests {
     use super::sampler_index;
 
     #[test]
+    fn alternating_sizes_reuse_only_exact_texture_dimensions() -> anyhow::Result<()> {
+        use super::Pool;
+        use windows::{core::Interface, Win32::{Foundation::HMODULE, Graphics::{
+            Direct3D::D3D_DRIVER_TYPE_WARP,
+            Direct3D11::{D3D11CreateDevice, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION},
+        }}};
+        let mut device = None;
+        unsafe {
+            D3D11CreateDevice(None, D3D_DRIVER_TYPE_WARP, HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, None, D3D11_SDK_VERSION,
+                Some(&mut device), None, None)?;
+        }
+        let device = device.unwrap();
+        let mut pool = Pool::default();
+        let first = pool.take(&device, 71, 39)?;
+        let retained = first.texture.clone();
+        pool.put(first);
+        let other = pool.take(&device, 70, 39)?;
+        assert_eq!((other.width, other.height), (70, 39));
+        assert_ne!(other.texture.as_raw(), retained.as_raw());
+        pool.put(other);
+        let reused = pool.take(&device, 71, 39)?;
+        assert_eq!((reused.width, reused.height), (71, 39));
+        assert_eq!(reused.texture.as_raw(), retained.as_raw());
+        assert_eq!(pool.0.len(), 1);
+        assert_eq!(pool.1, 70 * 39 * 4);
+        Ok(())
+    }
+
+    #[test]
     fn only_cropped_axes_use_transparent_borders() {
         assert_eq!(sampler_index([0.0, 0.0, 800.0, 600.0], (800.0, 600.0)), 0);
         assert_eq!(sampler_index([12.0, 0.0, 200.0, 600.0], (800.0, 600.0)), 1);
