@@ -17,6 +17,12 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  # crates.io downloads failed twice on one PR with curl "[16] Error in the HTTP2 framing layer".
+  # More retries and HTTP/1.1 keep a transient registry hiccup from failing a 15-minute job.
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
 jobs:
   scope:
     name: scope and whitespace
