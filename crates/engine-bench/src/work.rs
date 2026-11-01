@@ -32,9 +32,9 @@ impl Capture {
             usage["style_storage"] = serde_json::json!({
                 "scope": "document thread; nested buffers and Rc control blocks excluded",
                 "computed_headers": live.computed_headers,
-                "computed_header_bytes": live.computed_headers * size_of::<kamin_html::style::computed::Computed>() as u64,
+                "computed_header_bytes": live.computed_header_bytes(),
                 "inherited_headers": live.inherited_headers,
-                "inherited_header_bytes": live.inherited_headers * size_of::<kamin_html::style::computed::InheritedStyle>() as u64,
+                "inherited_header_bytes": live.inherited_header_bytes(),
                 "unique_group_allocations": live.group_allocations,
                 "unique_group_payload_bytes": live.group_payload_bytes,
             });

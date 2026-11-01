@@ -10,6 +10,14 @@ pub struct Snapshot {
     pub group_allocations: u64,
     pub group_payload_bytes: u64,
 }
+impl Snapshot {
+    pub fn computed_header_bytes(self) -> u64 {
+        self.computed_headers * size_of::<crate::style::computed::Computed>() as u64
+    }
+    pub fn inherited_header_bytes(self) -> u64 {
+        self.inherited_headers * size_of::<crate::style::computed::InheritedStyle>() as u64
+    }
+}
 thread_local! {
     static LIVE: Cell<Snapshot> = const { Cell::new(Snapshot {
         computed_headers: 0, inherited_headers: 0,
@@ -82,6 +90,14 @@ mod tests {
             let copy = base.clone();
             let cloned = snapshot();
             assert_eq!(cloned.computed_headers, shared.computed_headers + 1);
+            assert_eq!(
+                cloned.computed_header_bytes() - shared.computed_header_bytes(),
+                size_of::<Computed>() as u64
+            );
+            assert_eq!(
+                cloned.inherited_header_bytes(),
+                shared.inherited_header_bytes()
+            );
             assert_eq!(cloned.inherited_headers, shared.inherited_headers);
             assert_eq!(cloned.group_allocations, shared.group_allocations);
             drop(copy);
