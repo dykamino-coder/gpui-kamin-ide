@@ -216,6 +216,7 @@ impl Paragraph {
 }
 
 /// Щуп замера: собран один раз либо пересобирается на каждый вызов.
+#[allow(clippy::large_enum_variant)] // вариант выбран на всю жизнь замыкания
 enum Probe<F> {
     Built(Paragraph),
     Rebuild(F),
