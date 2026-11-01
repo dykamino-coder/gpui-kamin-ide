@@ -144,7 +144,7 @@ impl Prepared {
 
 impl Paragraph {
     pub(super) fn prepared(&self) -> &Prepared {
-        self.prepared.get_or_init(|| Prepared::new(self))
+        self.prepared.get_or_init(|| Box::new(Prepared::new(self)))
     }
 
     pub(super) fn invalidate_prepared(&mut self) {
