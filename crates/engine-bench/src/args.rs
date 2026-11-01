@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
 
@@ -30,6 +30,25 @@ mod tests {
             assert!(error.to_string().contains("value") || error.to_string().contains("empty"));
         }
     }
+
+    #[test]
+    fn memory_audit_requires_five_warm_frames_and_a_bounded_hold() {
+        for options in [
+            vec!["--runs", "4", "--memory-settle-ms", "1"],
+            vec!["--mode", "cold", "--memory-settle-ms", "1"],
+            vec!["--memory-settle-ms", "0"],
+            vec!["--memory-settle-ms", "60001"],
+        ] {
+            let error = Args::parse(
+                std::iter::once("missing.html")
+                    .chain(options)
+                    .map(str::to_owned),
+            )
+            .err()
+            .unwrap();
+            assert!(error.to_string().contains("memory audit"));
+        }
+    }
 }
 
 pub(super) struct Args {
@@ -40,6 +59,7 @@ pub(super) struct Args {
     pub(super) mode: Mode,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
+    pub(super) memory_settle_ms: u64,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
 }
@@ -63,6 +83,7 @@ impl Args {
             mode: Mode::Both,
             json: false,
             trace_frames: false,
+            memory_settle_ms: 0,
             snapshot: None,
             frame_diff_dir: None,
         };
@@ -103,9 +124,18 @@ impl Args {
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),
+                "--memory-settle-ms" => {
+                    out.memory_settle_ms = value.parse()?;
+                    if !(1..=60_000).contains(&out.memory_settle_ms) {
+                        return Err("memory audit hold must be 1..60000 milliseconds".into());
+                    }
+                }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
+        }
+        if out.memory_settle_ms > 0 && (out.runs < 5 || out.mode == Mode::Cold) {
+            return Err("memory audit requires at least five warm frames".into());
         }
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()

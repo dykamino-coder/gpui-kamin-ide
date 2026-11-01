@@ -16,8 +16,10 @@ mod gpu;
 #[cfg(windows)]
 mod host;
 #[cfg(windows)]
+mod memory;
+#[cfg(windows)]
 mod pixels;
-#[cfg(all(windows, feature = "work-counters"))]
+#[cfg(windows)]
 mod process;
 mod report;
 mod resources;

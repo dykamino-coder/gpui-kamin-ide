@@ -53,7 +53,7 @@ async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<
     }
 }
 
-async fn sample(
+pub(super) async fn sample(
     cx: &mut AsyncApp,
     window: WindowHandle<View>,
     fonts: &FontContext,
@@ -184,6 +184,7 @@ pub(super) async fn run(
     gpu["vendor_id"] = json!(identity.vendor_id);
     gpu["device_id"] = json!(identity.device_id);
     let baseline_memory = host::peak_memory()?;
+    let startup = super::process::Snapshot::read()?;
     let mut modes = serde_json::Map::new();
     let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
     let mut snapshot_pending = args.snapshot.as_deref();
@@ -222,12 +223,21 @@ pub(super) async fn run(
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs, "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
+        "startup_process_memory": startup.json(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
     if let Some(fields) = pixels.report().as_object() {
         for (key, value) in fields {
             report[key] = value.clone();
         }
+    }
+    drop(pixels);
+    if args.memory_settle_ms > 0 {
+        if report["frame_pixels_changed"] != false {
+            return Err("memory audit requires an unchanged RGB frame sequence".into());
+        }
+        report["memory_audit"] =
+            super::memory::finish(cx, window, fonts, args, capture, luid).await?;
     }
     report::print(&report, args.json)?;
     Ok(())
