@@ -1009,6 +1009,7 @@ pub(crate) struct DeferredDraw {
     text_style_stack: Vec<TextStyleRefinement>,
     // KaminIDE patch: restore host scopes when drawing outside the original traversal.
     render_contexts: render_context::Snapshot,
+    layout_owner: RetainedLayout,
     content_mask: Option<ContentMask<Pixels>>,
     rem_size: Pixels,
     element: Option<AnyElement>,
@@ -1227,6 +1228,7 @@ pub struct Window {
     rem_size_override_stack: SmallVec<[Pixels; 8]>,
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
+    layout_owner: RetainedLayout,
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
@@ -2171,6 +2173,7 @@ impl Window {
             rem_size_override_stack: SmallVec::new(),
             viewport_size: content_size,
             layout_engine: Some(TaffyLayoutEngine::new()),
+            layout_owner: RetainedLayout::active(),
             root: None,
             element_id_stack: SmallVec::default(),
             text_style_stack: Vec::new(),
@@ -4016,10 +4019,14 @@ impl Window {
 
                 let prepaint_start = self.prepaint_index();
                 if let Some(mut element) = element {
-                    self.with_rendered_view(current_view, |window| {
-                        window.with_rem_size(Some(rem_size), |window| {
-                            window.with_absolute_element_offset(absolute_offset, |window| {
-                                element.prepaint(window, cx);
+                    let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
+                        .layout_owner.clone();
+                    self.with_retained_layout(&mut layout_owner, |window| {
+                        window.with_rendered_view(current_view, |window| {
+                            window.with_rem_size(Some(rem_size), |window| {
+                                window.with_absolute_element_offset(absolute_offset, |window| {
+                                    element.prepaint(window, cx);
+                                });
                             });
                         });
                     });
@@ -4062,11 +4069,13 @@ impl Window {
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
-                self.with_rendered_view(deferred_draw.current_view, |window| {
-                    window.with_content_mask(content_mask, |window| {
-                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
-                            element.paint(window, cx);
-                        });
+                self.with_retained_layout(&mut deferred_draw.layout_owner, |window| {
+                    window.with_rendered_view(deferred_draw.current_view, |window| {
+                        window.with_content_mask(content_mask, |window| {
+                            window.with_rem_size(Some(deferred_draw.rem_size), |window| {
+                                element.paint(window, cx);
+                            });
+                        })
                     })
                 })
             } else {
@@ -4150,6 +4159,7 @@ impl Window {
                     element_id_stack: deferred_draw.element_id_stack.clone(),
                     text_style_stack: deferred_draw.text_style_stack.clone(),
                     render_contexts: deferred_draw.render_contexts.clone(),
+                    layout_owner: deferred_draw.layout_owner.clone(),
                     content_mask: deferred_draw.content_mask,
                     rem_size: deferred_draw.rem_size,
                     priority: deferred_draw.priority,
@@ -4905,6 +4915,7 @@ impl Window {
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
             render_contexts: self.render_contexts.snapshot(),
+            layout_owner: self.retained_layout(),
             content_mask,
             rem_size: self.rem_size(),
             priority,

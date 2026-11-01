@@ -105,7 +105,21 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
     let roles = [
         (block, true),
         (float, false),
+        (
+            Computed {
+                floated_box: true,
+                ..Default::default()
+            },
+            false,
+        ),
         (absolute, false),
+        (
+            Computed {
+                display: Some(Display::TableCell),
+                ..Default::default()
+            },
+            false,
+        ),
         (
             Computed {
                 display: Some(Display::InlineBlock),

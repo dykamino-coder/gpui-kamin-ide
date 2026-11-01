@@ -1,6 +1,7 @@
 //! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 
 use super::{TaffyLayoutEngine, Window};
+use std::{cell::RefCell, rc::Rc};
 
 /// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
 /// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
@@ -9,15 +10,28 @@ pub struct ElementIdContext(smallvec::SmallVec<[crate::ElementId; 32]>);
 
 /// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
 /// The owner must drop it before the frame arena is reset.
-pub struct RetainedLayout(Option<TaffyLayoutEngine>);
+#[derive(Clone)]
+pub struct RetainedLayout(Rc<RefCell<Option<TaffyLayoutEngine>>>);
 
 impl Default for RetainedLayout {
     fn default() -> Self {
-        Self(Some(TaffyLayoutEngine::new()))
+        Self(Rc::new(RefCell::new(Some(TaffyLayoutEngine::new()))))
+    }
+}
+
+impl RetainedLayout {
+    pub(super) fn active() -> Self {
+        Self(Rc::new(RefCell::new(None)))
     }
 }
 
 impl Window {
+    /// Retain the arena owning the current traversal's layout IDs.
+    /// Deferred prepaint and paint must reactivate it before using those IDs.
+    pub fn retained_layout(&self) -> RetainedLayout {
+        self.layout_owner.clone()
+    }
+
     /// Сохраняет цепочку до выхода отложенного измерения из своего view.
     pub fn element_id_context(&self) -> ElementIdContext {
         ElementIdContext(self.element_id_stack.clone())
@@ -68,24 +82,24 @@ impl Window {
         retained: &mut RetainedLayout,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
+        if Rc::ptr_eq(&retained.0, &self.layout_owner.0) {
+            return f(self);
+        }
         struct Restore<'a> {
             window: &'a mut Window,
-            retained: &'a mut RetainedLayout,
-            outer: Option<TaffyLayoutEngine>,
+            outer: RetainedLayout,
         }
         impl Drop for Restore<'_> {
             fn drop(&mut self) {
-                self.retained.0 = self.window.layout_engine.take();
-                self.window.layout_engine = self.outer.take();
+                *self.window.layout_owner.0.borrow_mut() = self.window.layout_engine.take();
+                self.window.layout_engine = self.outer.0.borrow_mut().take();
+                self.window.layout_owner = self.outer.clone();
             }
         }
-        let outer = self.layout_engine.take();
-        self.layout_engine = retained.0.take();
-        let restore = Restore {
-            window: self,
-            retained,
-            outer,
-        };
+        let outer = std::mem::replace(&mut self.layout_owner, retained.clone());
+        *outer.0.borrow_mut() = self.layout_engine.take();
+        self.layout_engine = retained.0.borrow_mut().take();
+        let restore = Restore { window: self, outer };
         f(restore.window)
     }
 }
