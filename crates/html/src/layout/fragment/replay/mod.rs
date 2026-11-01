@@ -133,6 +133,7 @@ impl Routes {
                 slice: source_clip,
                 tail: px(g.gap_tail(f)),
                 admitted: false,
+                end_clipped: false,
             });
             // Возвращённые записи художников фрагмента стоят уже на месте куска.
             if src.effects {
