@@ -118,6 +118,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                             .expect("Windows GPU readback");
                         cx.new(|_| View {
                             doc: empty,
+                            viewport_override: None,
                             phases: Rc::new(RefCell::new(Phases::default())),
                         })
                     },

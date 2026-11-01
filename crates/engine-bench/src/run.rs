@@ -94,6 +94,13 @@ async fn sample(
                 }
                 timings = Some(doc.build_timings());
                 view.doc = doc;
+                view.viewport_override = None;
+            }
+            if !cold && args.relayout {
+                view.viewport_override = Some(super::view::relayout_viewport(
+                    args.viewport,
+                    view.viewport_override,
+                ));
             }
             view.phases = Rc::new(RefCell::new(Phases::default()));
             capture.arm_first();
@@ -213,13 +220,19 @@ pub(super) async fn run(
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
         mode["work_counters"] = serde_json::json!({"samples": work});
         mode["process_resources"] = serde_json::json!({"samples": usage});
+        let name = if !cold && args.relayout {
+            "relayout"
+        } else {
+            name
+        };
         modes.insert(name.into(), mode);
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
-        "runs_per_mode": args.runs, "modes": modes,
+        "runs_per_mode": args.runs,
+        "warm_behavior": if args.relayout { "CSS viewport width alternates by one pixel; framebuffer size fixed" } else { "unchanged document replay when eligible" }, "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
