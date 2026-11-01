@@ -76,7 +76,11 @@ pub(super) fn inline_start(x0: f32, x1: f32, width: f32, rtl: bool) -> f32 {
 /// заменяет флоат, если больше); min-content — максимум по детям, каждый на
 /// своей строке. Без обрыва на `clear` плавающий контейнер из дюжины
 /// абзацев с `clear: left` мерился суммой всех (`letter-spacing-206-ref`).
-pub(super) fn intrinsic_width(kids: &[Kid], max: bool, p: &mut Probe) -> f32 {
+pub(super) fn intrinsic_sizes(kids: &[Kid], p: &mut Probe) -> (f32, f32) {
+    intrinsic_sizes_with(kids, &mut |kid| intrinsic(kid, p))
+}
+
+fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f32)) -> (f32, f32) {
     let (mut fl, mut fr) = (0.0f32, 0.0f32);
     let (mut max_size, mut min_size) = (0.0f32, 0.0f32);
     for kid in kids {
@@ -89,12 +93,10 @@ pub(super) fn intrinsic_width(kids: &[Kid], max: bool, p: &mut Probe) -> f32 {
             // детей плюс рамка с отступом.
             Some(nest) => {
                 let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
-                (
-                    intrinsic_width(&nest.kids, false, p) + il + ir,
-                    intrinsic_width(&nest.kids, true, p) + il + ir,
-                )
+                let (mn, mx) = intrinsic_sizes_with(&nest.kids, measure);
+                (mn + il + ir, mx + il + ir)
             }
-            None => intrinsic(kid, p),
+            None => measure(kid),
         };
         let is_float = matches!(kid.kind, Kind::Float { .. });
         let is_fc = matches!(kid.kind, Kind::Piece { .. });
@@ -148,14 +150,8 @@ pub(super) fn intrinsic_width(kids: &[Kid], max: bool, p: &mut Probe) -> f32 {
             fr = 0.0;
         }
     }
-    if max { max_size } else { min_size }
+    (min_size, max_size)
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn narrow_boxes_stand_at_the_inline_start_of_their_containing_block() {
-        assert_eq!(super::inline_start(10., 400., 230., false), 10.);
-        assert_eq!(super::inline_start(10., 400., 230., true), 170.);
-    }
-}
+mod tests;
