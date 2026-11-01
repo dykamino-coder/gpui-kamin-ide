@@ -2,7 +2,7 @@
 
 use gpui::{
     AnyElement, App, Bounds, Context, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ParentElement, Pixels, Render, Styled, Window, div, px, rgb,
+    IntoElement, LayoutId, Pixels, Render, Window, px, rgb,
 };
 use kamin_html::{Document, RenderOpts};
 use std::{
@@ -46,14 +46,9 @@ impl Render for View {
             frag: Default::default(),
         };
         opts.cx.deferred.freeze_scrollbars = true;
-        let root = div()
-            .w(px(opts.viewport.0))
-            .h(px(opts.viewport.1))
-            .bg(rgb(0xffffff))
-            .text_size(px(16.))
-            .font_family(opts.text.font_family.clone())
-            .children(self.doc.render(&opts))
-            .into_any_element();
+        // Коробка области просмотра принадлежит документу: неизменный кадр
+        // он повторяет без сборки и раскладки (`Document::render_viewport`).
+        let root = self.doc.render_viewport(&opts);
         let mut phases = self.phases.borrow_mut();
         phases.build += started.elapsed();
         phases.renders += 1;

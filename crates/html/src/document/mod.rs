@@ -7,8 +7,10 @@
 //! не на кадр.
 //!
 //! Поэтому вызывающий держит у себя `Document`, а на кадре зовёт только
-//! `render`. Пересборка происходит лишь когда сменилась сама разметка — что
-//! проверяется по хэшу, а не по строке целиком.
+//! `render_viewport` (или `render` без коробки области просмотра).
+//! Пересборка происходит лишь когда сменилась сама разметка — что
+//! проверяется по хэшу, а не по строке целиком; кадр с прежними входами
+//! `render_viewport` повторяет без сборки и раскладки (`retained`).
 
 #[cfg(test)]
 mod admission_diagnostics_tests;
@@ -44,6 +46,7 @@ mod logical_properties;
 mod prepare;
 #[cfg(test)]
 mod resource_tests;
+mod retained;
 mod scope;
 mod source;
 use prepare::parse_document;
@@ -79,7 +82,11 @@ pub struct Document {
     /// Правила, метрики корня и режим документа (`state`): живут вместе с
     /// деревом и подменяются вместе с ним на `update`.
     state: Rc<DocState>,
-    nodes: Vec<Node>,
+    /// Дерево общее с элементом сохраняемого кадра (`retained`): тот
+    /// собирает кадр сам, когда повтор прошлого не подошёл.
+    nodes: Rc<Vec<Node>>,
+    /// Записи сохраняемого кадра этого дерева (`render_viewport`).
+    retained: Rc<retained::Slot>,
     /// Текстовый стиль `body`: им набирается текст верхнего уровня, у
     /// которого своего элемента нет.
     root: crate::style::computed::Computed,
@@ -158,7 +165,8 @@ impl Document {
         }
         Ok(Document {
             state,
-            nodes,
+            nodes: Rc::new(nodes),
+            retained: Default::default(),
             root,
             key,
             base_url,
