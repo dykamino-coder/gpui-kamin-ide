@@ -34,7 +34,8 @@ impl CaptureSession {
     /// Endpoint перемещается ровно в одно окно; его drop закрывает подписки.
     pub fn open() -> (Self, Box<dyn FrameCaptureSink>) {
         let session = Self(Rc::default());
-        (session.clone(), Box::new(Endpoint(session)))
+        let endpoint = Endpoint(session.0.clone());
+        (session, Box::new(endpoint))
     }
 
     pub fn sequence(&self) -> u64 {
@@ -85,11 +86,12 @@ impl CaptureSession {
     }
 }
 
-struct Endpoint(CaptureSession);
+// Endpoint владеет состоянием окна напрямую; потребительская сессия ему не нужна.
+struct Endpoint(Rc<RefCell<State>>);
 
 impl FrameCaptureSink for Endpoint {
     fn completed(&mut self, pixels: CapturedFrame, readback: Duration) {
-        let mut state = self.0.0.borrow_mut();
+        let mut state = self.0.borrow_mut();
         state.seq += 1;
         state.readback_us += readback.as_micros() as u64;
         let seq = state.seq;
@@ -112,7 +114,7 @@ impl FrameCaptureSink for Endpoint {
 
 impl Drop for Endpoint {
     fn drop(&mut self) {
-        let mut state = self.0.0.borrow_mut();
+        let mut state = self.0.borrow_mut();
         state.closed = true;
         state.latest = None;
         state.first = None;
