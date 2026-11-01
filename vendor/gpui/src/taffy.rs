@@ -95,7 +95,16 @@ const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by constructio
 
 impl TaffyLayoutEngine {
     pub fn new() -> Self {
-        let mut taffy = TaffyTree::new();
+        Self::with_capacity(16)
+    }
+
+    /// KaminIDE patch: retained probes are often tiny; reserve only actual nodes.
+    pub(crate) fn new_for_subtree() -> Self {
+        Self::with_capacity(0)
+    }
+
+    fn with_capacity(capacity: usize) -> Self {
+        let mut taffy = TaffyTree::with_capacity(capacity);
         // KaminIDE patch: округление считаем сами (см. `layout_bounds`).
         // Штатное округляет позицию КАЖДОГО узла отдельно относительно
         // родителя, поэтому на дробном масштабе дисплея одна и та же длина

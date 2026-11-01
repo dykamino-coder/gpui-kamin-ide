@@ -24,7 +24,7 @@ pub struct RetainedLayout(Rc<RefCell<Option<TaffyLayoutEngine>>>);
 
 impl Default for RetainedLayout {
     fn default() -> Self {
-        Self(Rc::new(RefCell::new(Some(TaffyLayoutEngine::new()))))
+        Self(Rc::new(RefCell::new(Some(TaffyLayoutEngine::new_for_subtree()))))
     }
 }
 

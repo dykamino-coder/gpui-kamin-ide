@@ -1,46 +1,42 @@
-//! Планы разных ограничений не вытесняют друг друга при измерении одного элемента.
+//! Ограниченный кэш планов по точной ширине для layout и prepaint.
 
 use super::Plan;
-use std::cell::OnceCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
-#[derive(Default)]
-pub(super) struct Plans(OnceCell<Entry>);
+const CAPACITY: usize = 4;
 
-struct Entry {
-    plan: Rc<Plan>,
-    next: Box<Plans>,
+#[derive(Default)]
+pub(super) struct Plans {
+    slots: [Cell<Option<Rc<Plan>>>; CAPACITY],
+    next: Cell<usize>,
 }
 
 impl Plans {
     pub(super) fn get(&self, width: f32) -> Option<Rc<Plan>> {
-        let mut slot = self;
-        while let Some(entry) = slot.0.get() {
-            if entry.plan.width == width {
-                return Some(entry.plan.clone());
+        for slot in &self.slots {
+            let plan = slot.take();
+            let found = plan.as_ref().filter(|p| p.width == width).cloned();
+            // Между take и set нет вызова пользовательского кода.
+            slot.set(plan);
+            if found.is_some() {
+                return found;
             }
-            slot = &entry.next;
         }
         None
     }
 
     pub(super) fn insert(&self, plan: Plan) -> Rc<Plan> {
-        // План публикуется один раз и больше не меняется. Layout и prepaint
-        // разделяют готовые записи; новая ширина занимает собственный слот.
-        let mut slot = self;
-        while let Some(entry) = slot.0.get() {
-            if entry.plan.width == plan.width {
-                return entry.plan.clone();
-            }
-            slot = &entry.next;
+        if let Some(cached) = self.get(plan.width) {
+            return cached;
         }
-        slot.0
-            .get_or_init(|| Entry {
-                plan: Rc::new(plan),
-                next: Box::default(),
-            })
-            .plan
-            .clone()
+        // FIFO ограничивает удержание больших подготовленных деревьев независимо
+        // от числа запросов ширины. Вытесненный план живёт у текущего потребителя.
+        let plan = Rc::new(plan);
+        let next = self.next.get();
+        self.slots[next].set(Some(plan.clone()));
+        self.next.set((next + 1) % CAPACITY);
+        plan
     }
 }
 
@@ -75,12 +71,6 @@ mod tests {
             height: 12.,
             ..Default::default()
         });
-        for width in 101..120 {
-            cache.insert(Plan {
-                width: width as f32,
-                ..Default::default()
-            });
-        }
         let duplicate = prepaint.insert(Plan {
             width: 100.,
             height: 99.,
@@ -88,6 +78,34 @@ mod tests {
         });
         assert!(Rc::ptr_eq(&first, &duplicate));
         assert_eq!(prepaint.get(100.).unwrap().height, 12.);
-        assert!(prepaint.get(119.).is_some());
+    }
+
+    #[test]
+    fn distinct_widths_evict_old_entries_without_invalidating_a_live_plan() {
+        let cache = Plans::default();
+        let live = cache.insert(Plan {
+            width: 0.,
+            height: 12.,
+            ..Default::default()
+        });
+        let old = Rc::downgrade(&cache.insert(Plan {
+            width: 1.,
+            ..Default::default()
+        }));
+        for width in 2..100 {
+            cache.insert(Plan {
+                width: width as f32,
+                ..Default::default()
+            });
+        }
+        assert!(cache.get(0.).is_none());
+        assert!(old.upgrade().is_none());
+        assert_eq!(live.height, 12.);
+        assert_eq!(Rc::strong_count(&live), 1);
+        let retained = (0..100).filter(|w| cache.get(*w as f32).is_some()).count();
+        assert_eq!(retained, CAPACITY);
+        for width in (100 - CAPACITY)..100 {
+            assert!(cache.get(width as f32).is_some());
+        }
     }
 }
