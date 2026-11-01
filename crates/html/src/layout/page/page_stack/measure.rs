@@ -158,6 +158,7 @@ pub(super) fn measure(
             avoid_after: k.measured_edge(true).1,
             forced,
             solid,
+            decorations: Vec::new(),
             avoid,
             keep,
             line_keep,

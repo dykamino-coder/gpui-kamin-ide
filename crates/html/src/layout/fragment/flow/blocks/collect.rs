@@ -155,6 +155,7 @@ pub(super) fn push_kids(
         out.push(BlockKid {
             id: k.node_id,
             adjoins: *adjoins,
+            clears: k.style.used().clear.is_some(),
             lines_around: (std::mem::take(lines), false),
             force_before: edge_break(k, false, vcx),
             force_after: edge_break(k, true, vcx),

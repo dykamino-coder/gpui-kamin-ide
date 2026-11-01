@@ -25,10 +25,10 @@ pub(super) fn manifest(list: &str, width: f32, height: f32) -> Result<Value, Box
         json!({"schema": 1, "complete": false, "run_id": format!("{}-{started}", std::process::id()),
             "pid": std::process::id(), "process_start_ms": started,
             "exe": {"path": exe, "basename": exe.file_name().and_then(|s| s.to_str()),
-                "sha256": super::hash(&std::fs::read(&exe)?)},
+                "sha256": super::hash_file(&exe)?},
             "source_revision": option_env!("WPT_SOURCE_REVISION").unwrap_or("unknown"),
             "boot_session": boot_session()?,
-            "list_sha256": super::hash(&std::fs::read(list)?),
+            "list_sha256": super::hash_file(std::path::Path::new(list))?,
             "capture": {"width": width, "height": height,
                 "scale_factor": std::env::var("KAMIN_FORCE_SCALE").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.),
                 "path": "gpu-readback", "stage": "before-present", "text_mode": "grayscale",
@@ -86,7 +86,7 @@ pub(super) fn drivers() -> Result<Value, Box<dyn Error>> {
             || name.starts_with("amdxx")
             || name == "d3d10warp.dll"
         {
-            rows.push(json!({"path": path, "name": name, "sha256": super::hash(&std::fs::read(&path)?), "version": file_version(&path)?}));
+            rows.push(json!({"path": path, "name": name, "sha256": super::hash_file(&path)?, "version": file_version(&path)?}));
         }
     }
     rows.sort_by_key(|v| v["name"].as_str().unwrap_or_default().to_owned());

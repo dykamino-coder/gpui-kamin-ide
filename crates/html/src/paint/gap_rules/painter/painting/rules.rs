@@ -40,7 +40,7 @@ pub(crate) fn draw_rule(
                 }),
             };
             if let Some(local) = gap_fragment_runs::local_run(run, gap_on_x, &scope) {
-                pieces::paint_unclipped(&all, p, window, |window| {
+                pieces::paint_unclipped(&all, p, gpui::px(scope.end), window, |window| {
                     paint_rule(window, gap_on_x, &local, rule, main_like, spec, bounds)
                 });
             }
