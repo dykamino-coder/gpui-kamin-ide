@@ -168,3 +168,51 @@ fn numeric_measurements_release_children_before_materializing_the_final_stack(
         },
     );
 }
+
+thread_local! {
+    /// Builds of the children measured for the stack's intrinsic size.
+    pub(super) static INTRINSIC_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[gpui::test]
+fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui::TestAppContext) {
+    use crate::layout::fragment::types::Intrinsic;
+    use gpui::{ParentElement, Styled};
+    let cx = cx.add_empty_window();
+    for (intrinsic, builds) in [(None, 0), (Some(Intrinsic(None)), 1)] {
+        INTRINSIC_BUILDS.with(|n| n.set(0));
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(400.), gpui::px(400.)),
+            |_, _| {
+                let tree = crate::document::parsed::parse(
+                    "<section style='column-count:2'><div style='height:50px'></div></section>",
+                    "",
+                );
+                let opts = materialized_opts(&tree, (400., 400.));
+                let host = section(&tree);
+                let merged = crate::style::cascade::materialize::box_style(
+                    &opts.root_style(),
+                    &host.style,
+                    opts.cx.vcx(),
+                );
+                let recipe =
+                    Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None)
+                        .expect("deferred recipe");
+                let stack = ColumnStack::new(
+                    Vec::new(),
+                    2,
+                    0.,
+                    None,
+                    None,
+                    None,
+                    intrinsic,
+                    Default::default(),
+                )
+                .with_deferred(Some(recipe));
+                gpui::div().w(gpui::px(200.)).child(stack)
+            },
+        );
+        assert_eq!(INTRINSIC_BUILDS.with(|n| n.get()), builds);
+    }
+}

@@ -64,6 +64,8 @@ impl Recipe {
     }
 
     pub(crate) fn intrinsic_children(&self) -> Vec<AnyElement> {
+        #[cfg(test)]
+        tests::INTRINSIC_BUILDS.with(|n| n.set(n.get() + 1));
         self.host
             .children
             .iter()
