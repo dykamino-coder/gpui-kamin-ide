@@ -33,6 +33,9 @@ pub(crate) struct Recipe {
         Vec<(usize, Element)>,
         Vec<crate::layout::positioned::containing_block::SpotCell>,
     )>,
+    /// Builds of the children measured for the stack's intrinsic size.
+    #[cfg(test)]
+    pub(crate) intrinsic_builds: std::cell::Cell<usize>,
 }
 
 impl Recipe {
@@ -60,12 +63,14 @@ impl Recipe {
             axis,
             rows,
             statics: Default::default(),
+            #[cfg(test)]
+            intrinsic_builds: Default::default(),
         }))
     }
 
     pub(crate) fn intrinsic_children(&self) -> Vec<AnyElement> {
         #[cfg(test)]
-        tests::INTRINSIC_BUILDS.with(|n| n.set(n.get() + 1));
+        self.intrinsic_builds.set(self.intrinsic_builds.get() + 1);
         self.host
             .children
             .iter()

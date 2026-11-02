@@ -169,11 +169,6 @@ fn numeric_measurements_release_children_before_materializing_the_final_stack(
     );
 }
 
-thread_local! {
-    /// Builds of the children measured for the stack's intrinsic size.
-    pub(super) static INTRINSIC_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
 #[gpui::test]
 fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui::TestAppContext) {
     use crate::hooks::IntoHooked;
@@ -181,11 +176,13 @@ fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui:
     use gpui::{ParentElement, Styled};
     let cx = cx.add_empty_window();
     for (intrinsic, builds) in [(None, 0), (Some(Intrinsic(None)), 1)] {
-        INTRINSIC_BUILDS.with(|n| n.set(0));
+        let drawn: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<Recipe>>>> =
+            Default::default();
+        let slot = drawn.clone();
         cx.draw(
             gpui::point(gpui::px(0.), gpui::px(0.)),
             gpui::size(gpui::px(400.), gpui::px(400.)),
-            |_, _| {
+            move |_, _| {
                 let tree = crate::document::parsed::parse(
                     "<section style='column-count:2'><div style='height:50px'></div></section>",
                     "",
@@ -197,9 +194,9 @@ fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui:
                     &host.style,
                     opts.cx.vcx(),
                 );
-                let recipe =
-                    Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None)
-                        .expect("deferred recipe");
+                let built = Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None)
+                    .expect("deferred recipe");
+                slot.replace(Some(built.clone()));
                 let stack = ColumnStack::new(
                     Vec::new(),
                     2,
@@ -210,10 +207,11 @@ fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui:
                     intrinsic,
                     Default::default(),
                 )
-                .with_deferred(Some(recipe));
+                .with_deferred(Some(built.clone()));
                 gpui::div().w(gpui::px(200.)).child(stack.into_hooked())
             },
         );
-        assert_eq!(INTRINSIC_BUILDS.with(|n| n.get()), builds);
+        let builds_seen = drawn.take().expect("drawn").intrinsic_builds.get();
+        assert_eq!(builds_seen, builds);
     }
 }
