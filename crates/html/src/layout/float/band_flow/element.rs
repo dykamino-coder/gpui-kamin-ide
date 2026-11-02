@@ -88,7 +88,7 @@ impl Hooks for BandFlow {
             // A final layout pass whose parent already fixed the inline size
             // lays the children out at that size: shrink-to-fit would only
             // re-derive it from min/max-content probes.
-            let fixed = window.measured_size_fixed();
+            let fixed = geometry.fixed;
             window.with_element_layout_context(&context, |window| {
                 let v = vert.is_some();
                 let fixed_inline = if v { fixed.height } else { fixed.width };
