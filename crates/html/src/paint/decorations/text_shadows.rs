@@ -99,7 +99,7 @@ pub(crate) fn with_text_shadow(
     let mut plain = String::new();
     gather_text(nodes, &mut plain);
     let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), style);
-    if plain.trim().is_empty() {
+    if crate::dom::whitespace::blank_text(&plain) {
         return el;
     }
     // Mixed inline styles and rotated paragraphs retain their existing route.
@@ -109,7 +109,7 @@ pub(crate) fn with_text_shadow(
         .iter()
         .rev()
         .chain(std::iter::once(shadow))
-        .map(|s| shadow_layer(plain.trim(), s, nodes, style, opts, same_paragraph));
+        .map(|s| shadow_layer(plain.trim_matches(crate::dom::whitespace::collapsible), s, nodes, style, opts, same_paragraph));
     div()
         .relative()
         .children(layers)

@@ -200,7 +200,7 @@ async fn collect_stack(
                 cx.ruby_space = if crate::text::ruby::ruby_role(e)
                     == Some(crate::style::computed::RubyRole::Container)
                 {
-                    matches!(e.children.last(), Some(Node::Text(t)) if t.ends_with(char::is_whitespace))
+                    matches!(e.children.last(), Some(Node::Text(t)) if t.ends_with(crate::dom::whitespace::collapsible))
                 } else {
                     cx.ruby_space && out.len() == from
                 };

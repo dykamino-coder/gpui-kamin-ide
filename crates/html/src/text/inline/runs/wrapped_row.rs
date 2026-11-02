@@ -85,7 +85,7 @@ pub fn as_wrapped_row(
         && pieces.iter().all(|p| match p {
             Piece::Atom(_) => true,
             Piece::Overlay(_, how) => how.line_probe.is_some(),
-            Piece::Text { text, .. } => text.chars().all(|c| c.is_whitespace() || c == '\u{200b}'),
+            Piece::Text { text, .. } => text.chars().all(|c| crate::dom::whitespace::collapsible(c) || c == '\u{200b}'),
         });
     let mut row = gpui::div().flex().max_w_full();
     // Ряд строки — не коробка CSS: доли высоты атомов считаются от блока,

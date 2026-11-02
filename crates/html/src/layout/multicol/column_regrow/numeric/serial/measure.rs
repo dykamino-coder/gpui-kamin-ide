@@ -120,7 +120,7 @@ impl Serial {
                 .collect();
             if e.children
                 .iter()
-                .any(|n| matches!(n, DomNode::Text(t) if !t.trim().is_empty()))
+                .any(|n| matches!(n, DomNode::Text(t) if !crate::dom::whitespace::blank_text(t)))
                 || elements.len() != f.items.len()
                 || f.items.len() != line.items.len()
             {

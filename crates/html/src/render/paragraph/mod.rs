@@ -53,7 +53,7 @@ fn paragraph_routed(
             &mut plain,
         );
         let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), inherited);
-        if !plain.trim().is_empty() {
+        if !crate::dom::whitespace::blank_text(&plain) {
             let size = own_size(&base, opts);
             let line = base.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
                 crate::text::metrics::normal_px(
@@ -105,11 +105,11 @@ fn paragraph_routed(
             let following = full
                 .split('\n')
                 .skip(1)
-                .map(|line| SharedString::from(normalize_for_shadow(line).trim().to_string()))
+                .map(|line| SharedString::from(normalize_for_shadow(line).trim_matches(crate::dom::whitespace::collapsible).to_string()))
                 .collect();
             return crate::layout::float::split_flow::FirstLine::new(
                 build,
-                SharedString::from(plain.trim().to_string()),
+                SharedString::from(plain.trim_matches(crate::dom::whitespace::collapsible).to_string()),
                 font,
                 measure_size,
                 line,

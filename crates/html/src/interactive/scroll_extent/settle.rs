@@ -118,7 +118,7 @@ impl Frame {
         if tree
             .children
             .iter()
-            .any(|n| matches!(n, Node::Text(t) if !t.trim().is_empty()))
+            .any(|n| matches!(n, Node::Text(t) if !crate::dom::whitespace::blank_text(t)))
             && let Some(marker) = handle.bounds_for_item(0)
         {
             for index in 1..handle.children_count() {
