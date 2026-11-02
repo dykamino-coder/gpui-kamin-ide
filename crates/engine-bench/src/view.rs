@@ -25,6 +25,7 @@ pub(super) struct Phases {
 pub(super) struct View {
     pub(super) doc: Document,
     pub(super) phases: Rc<RefCell<Phases>>,
+    pub(super) viewport: Option<(u32, u32)>,
 }
 
 impl Render for View {
@@ -36,9 +37,14 @@ impl Render for View {
         text.font_family = "Times New Roman".into();
         text.font_size = px(16.).into();
         let mut opts = RenderOpts {
-            viewport: (
-                window.viewport_size().width.into(),
-                window.viewport_size().height.into(),
+            viewport: self.viewport.map_or_else(
+                || {
+                    (
+                        window.viewport_size().width.into(),
+                        window.viewport_size().height.into(),
+                    )
+                },
+                |(w, h)| (w as f32, h as f32),
             ),
             text,
             normal_line_height: 1.31,

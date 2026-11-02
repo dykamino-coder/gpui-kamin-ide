@@ -1817,6 +1817,9 @@ impl Window {
             let input_rate_tracker = input_rate_tracker.clone();
             let mut deferred_force_render = false;
             move |request_frame_options| {
+                log::debug!(target: "gpui::frame", "request force={} deferred={} source={:?} dirty={} nested={}",
+                    request_frame_options.force_render, deferred_force_render,
+                    request_frame_options.signal_source, invalidator.is_dirty(), draw_in_progress());
                 #[cfg(feature = "profiler")]
                 let (_foreground_turn, window_id) = {
                     let foreground_turn = profiler::journal::foreground_turn();
@@ -1933,6 +1936,7 @@ impl Window {
                     || input_rate_tracker.borrow_mut().is_high_rate();
 
                 let should_draw = invalidator.is_dirty() || force_render;
+                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={needs_present}");
                 if should_draw {
                     measure("frame duration", || {
                         handle
@@ -1984,6 +1988,8 @@ impl Window {
                 if invalidator.is_dirty() || !next_frame_callbacks.borrow().is_empty() {
                     invalidator.wake_platform();
                 }
+                log::debug!(target: "gpui::frame", "complete dirty={} next={}",
+                    invalidator.is_dirty(), next_frame_callbacks.borrow().len());
                 #[cfg(feature = "profiler")]
                 if !should_draw {
                     profiler::journal::record_frame_skipped(

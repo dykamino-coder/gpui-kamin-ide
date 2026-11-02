@@ -21,6 +21,21 @@ macro_rules! count_work {
 }
 pub use crate::count_work as add;
 
+/// Измерить включённый диагностический участок; вложенные интервалы пересекаются.
+#[cfg(feature = "work-counters")]
+#[macro_export]
+macro_rules! time_work {
+    ($guard:ident, $counter:ident) => {
+        let $guard = $crate::work::time($crate::work::Counter::$counter);
+    };
+}
+#[cfg(not(feature = "work-counters"))]
+#[macro_export]
+macro_rules! time_work {
+    ($guard:ident, $counter:ident) => {};
+}
+pub use crate::time_work as time;
+
 /// Привязать вложенную работу к фазе, восстановив внешнюю при выходе.
 #[cfg(feature = "work-counters")]
 #[macro_export]
@@ -78,5 +93,6 @@ mod tests {
         crate::work::phase!(_phase, NotEvenAPhase);
         crate::work::switch!(NotEvenAPhase);
         crate::work::cache!(unresolved_value, NotAHit, NotAMiss);
+        crate::work::time!(_timer, NotEvenACounter);
     }
 }

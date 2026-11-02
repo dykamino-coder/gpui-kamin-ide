@@ -119,6 +119,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         cx.new(|_| View {
                             doc: empty,
                             phases: Rc::new(RefCell::new(Phases::default())),
+                            viewport: None,
                         })
                     },
                 )?;
