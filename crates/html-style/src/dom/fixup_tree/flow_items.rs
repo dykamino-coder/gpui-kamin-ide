@@ -52,9 +52,10 @@ pub fn fold_run_ins(
         if !frame.descended {
             frame.descended = true;
             if matches!(frame.nodes[frame.index], Node::Element(_)) {
-                let Node::Element(mut owner) =
-                    std::mem::replace(&mut frame.nodes[frame.index], Node::Text(String::new()))
-                else {
+                let Node::Element(mut owner) = std::mem::replace(
+                    &mut frame.nodes[frame.index],
+                    Node::Text(Default::default()),
+                ) else {
                     unreachable!()
                 };
                 let nodes = std::mem::take(&mut owner.children).into_vec();

@@ -55,7 +55,7 @@ pub(super) fn pseudo_texts(html: &str) -> Vec<String> {
             if let Node::Element(e) = n {
                 if e.tag.starts_with("::") {
                     let text = e.children.iter().find_map(|c| match c {
-                        Node::Text(t) => Some(t.clone()),
+                        Node::Text(t) => Some(t.to_string()),
                         _ => None,
                     });
                     out.push(text.unwrap_or_default());

@@ -9,19 +9,20 @@
 //! них не может отличить прежний текст от нового: оба непустые не из одних
 //! пробелов, с одинаковыми пробельными краями, без знаков письма справа
 //! налево и управляющих bidi, с сильным знаком слева направо в обоих или ни в
-//! одном, не склеенные с соседним текстом, у элемента с потоком текста. Тогда
-//! в дереве коробок меняется ровно один узел текста в коробках родителя.
+//! одном, у элемента с потоком текста. Тогда в дереве коробок меняются узлы,
+//! построенные из этого исходного текста (`dom::Text::source`), и только они;
+//! текст, склеенный обходом с соседним, номера не несёт и правкой не находится.
 
-use super::patch::{Path, apply, elements};
+use super::patch::{Path, apply};
 use super::shape::Edited;
-use crate::dom::Node;
+use crate::dom::{Node, TextId};
 use markup5ever_rcdom::NodeData;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-/// Правки текстов коробок одного исходного элемента.
-pub(super) struct Texts {
-    pub(super) tag: String,
-    pub(super) edits: Vec<(String, String)>,
+/// Прежнее и новое содержимое правленого исходного текста.
+pub(super) struct TextEdit {
+    pub(super) old: String,
+    pub(super) new: String,
 }
 
 /// Элементы, текст которых читают не как поток строк (или читают проходы
@@ -78,21 +79,18 @@ const OPAQUE: &[&str] = &[
     "slot",
 ];
 
-/// Тег элемента-родителя, если правка `edit` не меняет ни одного каскадного
-/// значения.
-pub(super) fn editable(edit: &Edited) -> Option<String> {
+/// Не меняет ли правка `edit` ни одного каскадного значения.
+pub(super) fn editable(edit: &Edited) -> bool {
     let NodeData::Element { name, attrs, .. } = &edit.parent.data else {
-        return None;
+        return false;
     };
-    let tag = name.local.to_string();
-    if name.ns != html5ever::ns!(html) || OPAQUE.contains(&tag.as_str()) || edit.merged {
-        return None;
+    if name.ns != html5ever::ns!(html) || OPAQUE.contains(&&*name.local) {
+        return false;
     }
     if attrs.borrow().iter().any(|a| &*a.name.local == "dir") {
-        return None;
+        return false;
     }
-    let (old, new) = (shape(&edit.old)?, shape(&edit.new)?);
-    (old == new).then_some(tag)
+    matches!((shape(&edit.old), shape(&edit.new)), (Some(old), Some(new)) if old == new)
 }
 
 /// Признаки текста, которые видит каскад: пробельные края и наличие сильного
@@ -118,63 +116,64 @@ fn shape(text: &str) -> Option<(&str, &str, bool)> {
     Some((start, end, strong))
 }
 
-/// Новые тексты в коробках адресуемых элементов: у каждой коробки с номером
-/// и тегом элемента ровно один узел текста с прежним содержимым среди её
-/// синтетических потомков (анонимные обёртки); псевдоэлементы и коробки
-/// других элементов не просматриваются. Иначе (текст разрезан первой буквой
-/// или фрагментацией, коробки нет) — `false`.
-pub(super) fn patch_texts(nodes: &mut Vec<Node>, targets: &HashMap<u64, Texts>) -> bool {
-    let mut paths: Vec<(Path, String)> = Vec::new();
-    let mut seen: HashMap<u64, usize> = HashMap::new();
-    let found = elements(nodes, |e, path| {
-        let Some(target) = targets.get(&e.node_id).filter(|t| t.tag == e.tag) else {
-            return true;
-        };
-        if e.first_letter.is_some() {
-            return false;
-        }
-        for (old, new) in &target.edits {
-            let mut found = Vec::new();
-            texts(&e.children, old, &mut path.to_vec(), &mut found);
-            let [one] = found.as_slice() else {
-                return false;
-            };
-            paths.push((one.clone(), new.clone()));
-        }
-        *seen.entry(e.node_id).or_default() += 1;
-        true
-    });
-    if !found {
+/// Новые тексты в узлах дерева коробок с номерами правленых исходных
+/// текстов. Куски и копии исходного текста несут его номер, поэтому правится
+/// каждый такой узел. Узел с номером правки, но другим содержимым (сборка
+/// разрезала или изменила текст), узел под первой буквой или в
+/// псевдоэлементе и правка без единого узла (текст склеен с соседом или
+/// выброшен) — `false`, дерево не меняется.
+pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &HashMap<TextId, TextEdit>) -> bool {
+    if edits.is_empty() {
+        return true;
+    }
+    let mut found: Vec<(Path, TextId)> = Vec::new();
+    if !collect(nodes, edits, false, &mut Vec::new(), &mut found) {
         return false;
     }
-    if targets.keys().any(|id| !seen.contains_key(id)) {
+    let seen: HashSet<TextId> = found.iter().map(|(_, id)| *id).collect();
+    if seen.len() != edits.len() {
         return false;
     }
-    for (path, new) in paths {
+    for (path, id) in found {
         match apply(nodes, &path) {
-            Some(Node::Text(text)) => *text = new,
+            Some(Node::Text(text)) => edits[&id].new.clone_into(&mut **text),
             _ => return false,
         }
     }
     true
 }
 
-/// Пути к узлам текста `old` среди детей коробки и её синтетических потомков.
-fn texts(children: &[Node], old: &str, path: &mut Vec<usize>, found: &mut Vec<Path>) {
+/// Пути к узлам текста с номерами `edits` среди `children`; `lettered` —
+/// текст здесь режет первая буква блока или он внутри псевдоэлемента.
+fn collect(
+    children: &[Node],
+    edits: &HashMap<TextId, TextEdit>,
+    lettered: bool,
+    path: &mut Vec<usize>,
+    found: &mut Vec<(Path, TextId)>,
+) -> bool {
     for (i, child) in children.iter().enumerate() {
         path.push(i);
-        match child {
-            Node::Text(text) if text == old => found.push(path.clone()),
-            Node::Element(e) if e.node_id == 0 && !e.tag.starts_with("::") => {
-                if e.first_letter.is_some() {
-                    found.push(path.clone());
-                    found.push(path.clone());
-                } else {
-                    texts(&e.children, old, path, found);
+        let ok = match child {
+            Node::Text(text) => match text.source().and_then(|id| Some((id, edits.get(&id)?))) {
+                Some((id, edit)) if !lettered && text.as_str() == edit.old => {
+                    found.push((path.clone(), id));
+                    true
                 }
+                Some(_) => false,
+                None => true,
+            },
+            Node::Element(e) => {
+                let pseudo = e.tag.starts_with("::");
+                let synthetic = e.node_id == 0 && !pseudo;
+                let lettered = pseudo || e.first_letter.is_some() || (synthetic && lettered);
+                collect(&e.children, edits, lettered, path, found)
             }
-            _ => {}
-        }
+        };
         path.pop();
+        if !ok {
+            return false;
+        }
     }
+    true
 }

@@ -77,8 +77,8 @@ pub(crate) async fn render_with_style(
     let marker_nodes = match image {
         Some(image) => vec![image, Node::Text("\u{a0}".into())],
         None => vec![Node::Text(match marker.strip_suffix(' ') {
-            Some(head) => format!("{head}\u{a0}"),
-            None => marker,
+            Some(head) => format!("{head}\u{a0}").into(),
+            None => marker.into(),
         })],
     };
     // Без строк внешний маркер выровнен по верху пункта, высота которого

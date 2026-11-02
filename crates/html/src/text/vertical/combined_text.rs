@@ -64,11 +64,11 @@ pub(crate) fn piece(
         let text = transformed
             .chars()
             .map(|ch| if multiple { narrow(ch) } else { ch })
-            .collect();
+            .collect::<String>();
         // Width normalization follows text-transform; do not reapply full-width during shaping.
         merged.inh.text_flow.text_transform = Some(TextTransform::None);
         merged.inh.text_flow.text_transform_flags = 0;
-        composed = vec![Node::Text(text)];
+        composed = vec![Node::Text(text.into())];
         composed.as_slice()
     } else {
         element.children.as_slice()

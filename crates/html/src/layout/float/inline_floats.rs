@@ -171,7 +171,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     }
     if let Some(text) = nowrap_text {
         let floats = output.into_iter().filter(floated);
-        return std::iter::once(fragment(vec![Node::Text(text)]))
+        return std::iter::once(fragment(vec![Node::Text(text.into())]))
             .chain(floats)
             .collect();
     }

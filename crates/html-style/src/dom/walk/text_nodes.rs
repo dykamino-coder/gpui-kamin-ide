@@ -11,7 +11,7 @@ use crate::dom::*;
 use markup5ever_rcdom::{Handle, NodeData};
 
 pub(super) fn walk_text(
-    text: String,
+    text: Text,
     preserve: bool,
     level: &[Handle],
     level_pos: usize,
@@ -49,7 +49,7 @@ pub(super) fn walk_text(
                 _ => false,
             });
     let text = if between_inline {
-        " ".to_string()
+        Text::from_source(" ".to_string(), text.source())
     } else {
         text
     };
@@ -58,7 +58,7 @@ pub(super) fn walk_text(
         // работает по одному узлу — выходило два пробела подряд.
         // Соседние текстовые узлы склеиваются в один отрезок.
         match out.last_mut() {
-            Some(Node::Text(prev)) if !preserve => prev.push_str(&text),
+            Some(Node::Text(prev)) if !preserve => prev.append(&text),
             _ => out.push(Node::Text(text)),
         }
     }
