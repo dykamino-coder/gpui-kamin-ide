@@ -134,7 +134,7 @@ pub(super) fn pseudo_box_named(
                 crate::style::generated::counter_style::Context::new(&style, me.counter_context),
                 vcx,
             );
-            children.push(Node::Text(t));
+            children.push(Node::Text(t.into()));
             run.clear();
         }
     };
@@ -172,7 +172,7 @@ pub(super) fn pseudo_box_named(
     }
     flush(&mut run, &mut children, counters);
     if children.is_empty() {
-        children.push(Node::Text(String::new()));
+        children.push(Node::Text(Default::default()));
     }
     let list_item = (style.reset_box_layout.display == Some(Display::ListItem))
         .then(|| counters.value_of("list-item"));

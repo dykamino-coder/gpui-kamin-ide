@@ -126,7 +126,7 @@ pub(crate) fn inline_marker(
 pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     let children = match marker.image {
         Some(image) => vec![image, Node::Text(" ".into())],
-        None => vec![Node::Text(marker.text)],
+        None => vec![Node::Text(marker.text.into())],
     };
     let mut span = anon_element("::marker", children);
     span.inline = true;

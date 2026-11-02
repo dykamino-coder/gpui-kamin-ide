@@ -38,7 +38,7 @@ fn preserved_line_breaks_nowrap_and_first_letter_leave_the_text_path() {
         let doc = crate::document::state::DocState::new(Default::default());
         let (mut only, _) = styled(
             child.trim_start_matches(':'),
-            vec![Node::Text(lines.join("\n"))],
+            vec![Node::Text(lines.join("\n").into())],
         );
         // `::first-letter` styles part of the first line: the text path paints raw text.
         if child.starts_with(':') {

@@ -39,7 +39,7 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
             other => {
                 if !cur.is_empty() {
                     runs.push(std::mem::take(&mut cur));
-                    rest.push((usize::MAX, Node::Text(String::new())));
+                    rest.push((usize::MAX, Node::Text(Default::default())));
                 }
                 rest.push((0, other));
             }
@@ -47,7 +47,7 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     if !cur.is_empty() {
         runs.push(cur);
-        rest.push((usize::MAX, Node::Text(String::new())));
+        rest.push((usize::MAX, Node::Text(Default::default())));
     }
     let solid = runs
         .iter()

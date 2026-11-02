@@ -79,7 +79,7 @@ pub fn postorder_inherited<C: Clone>(
         if !matches!(root, Node::Element(_)) {
             continue;
         }
-        let Node::Element(element) = std::mem::replace(root, Node::Text(String::new())) else {
+        let Node::Element(element) = std::mem::replace(root, Node::Text(Default::default())) else {
             unreachable!();
         };
         let children = enter(&element, &inherited);
@@ -100,7 +100,7 @@ pub fn postorder_inherited<C: Clone>(
                 let child = &mut frame.element.children[at];
                 if matches!(child, Node::Element(_)) {
                     let Node::Element(element) =
-                        std::mem::replace(child, Node::Text(String::new()))
+                        std::mem::replace(child, Node::Text(Default::default()))
                     else {
                         unreachable!();
                     };
