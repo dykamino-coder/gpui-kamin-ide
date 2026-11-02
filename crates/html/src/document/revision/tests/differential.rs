@@ -86,3 +86,14 @@ fn random_text_edits_match_a_fresh_build() {
     // Прогон проверяет обе ветви: часть правок принимается без каскада.
     assert!(adopted > 10, "{adopted}");
 }
+
+#[test]
+fn equal_texts_are_told_apart_by_their_source() {
+    // Номер исходного текста, а не содержимое, находит правленый узел.
+    let page = |a: &str, b: &str| format!("<body><p>{a}<br>{b}</p><p>{a}</p></body>");
+    assert!(update(&page("x", "x"), &page("x", "y"), ""));
+    assert!(update(&page("x", "y"), &page("y", "y"), ""));
+    // Обход склеивает тексты через комментарий: у склеенного нет номера.
+    let merged = |a: &str| format!("<body><p>{a}<!-- c -->b</p></body>");
+    assert!(!update(&merged("a"), &merged("c"), ""));
+}

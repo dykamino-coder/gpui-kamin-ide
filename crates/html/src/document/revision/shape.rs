@@ -20,10 +20,10 @@ pub(super) struct Changed {
 pub(super) struct Edited {
     /// Родитель в прежнем DOM.
     pub(super) parent: Handle,
+    /// Адрес текстового узла в прежнем DOM.
+    pub(super) node: usize,
     pub(super) old: String,
     pub(super) new: String,
-    /// Соседний узел (без комментариев) — тоже текст: обход склеивает их.
-    pub(super) merged: bool,
 }
 
 /// Отличия ревизии той же формы.
@@ -71,7 +71,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                         return None;
                     };
                     shape.texts.push(Edited {
-                        merged: merged(&parent, &a),
+                        node: Rc::as_ptr(&a) as usize,
                         parent,
                         old: contents.borrow().to_string(),
                         new: c.borrow().to_string(),
@@ -145,17 +145,6 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         }
     }
     Some(shape)
-}
-
-/// Соседствует ли текст `node` (через комментарии) с другим текстом у `parent`.
-fn merged(parent: &Handle, node: &Handle) -> bool {
-    let kids = parent.children.borrow();
-    let Some(at) = kids.iter().position(|k| Rc::ptr_eq(k, node)) else {
-        return true;
-    };
-    let text = |k: &&Handle| !matches!(k.data, NodeData::Comment { .. });
-    let is_text = |k: Option<&Handle>| matches!(k.map(|k| &k.data), Some(NodeData::Text { .. }));
-    is_text(kids[..at].iter().rev().find(text)) || is_text(kids[at + 1..].iter().find(text))
 }
 
 fn text_of(node: &Handle) -> String {
