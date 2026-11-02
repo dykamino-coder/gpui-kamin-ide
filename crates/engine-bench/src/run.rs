@@ -3,6 +3,7 @@
 use super::{
     accounting::{self, Input, Measured},
     args::{Args, Mode},
+    frames::Frames,
     host, pixels, report, resources,
     view::{Phases, View},
     work,
@@ -29,8 +30,6 @@ pub(super) enum Step<'a> {
     Warm,
     /// `Document::update` данной разметкой (локальная правка).
     Update(&'a str),
-    /// Новая ширина области просмотра (`None` — ширина окна).
-    Resize(Option<f32>),
 }
 
 impl Step<'_> {
@@ -94,9 +93,6 @@ pub(super) async fn sample(
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
-            if let Step::Resize(width) = step {
-                view.width = width;
-            }
             if let Step::Update(html) = step {
                 let t = Instant::now();
                 kamin_html::work::phase!(_document, DocumentOther);
@@ -155,8 +151,9 @@ pub(super) async fn sample(
         || phases.borrow().renders != 1
     {
         return Err(format!(
-            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, draws={}, renders={}; refusing an ambiguous phase sample",
+            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, renders={}; refusing an ambiguous phase sample",
             frame.seq,
+            capture.sequence(),
             after.frames.wrapping_sub(before.frames),
             phases.borrow().renders,
         ).into());
@@ -215,32 +212,25 @@ pub(super) async fn run(
     gpu["vendor_id"] = json!(identity.vendor_id);
     gpu["device_id"] = json!(identity.device_id);
     let baseline_memory = host::peak_memory()?;
+    let startup = super::process::Snapshot::read()?;
     let mut modes = serde_json::Map::new();
-    let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
+    let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
-    if matches!(args.mode, Mode::Warm | Mode::Relayout) {
+    if matches!(args.mode, Mode::Warm | Mode::Relayout | Mode::Edit) {
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
     }
-    if args.mode == Mode::Relayout {
-        let relayout = super::relayout::run(cx, window, fonts, args, capture, luid).await?;
-        modes.insert("relayout".into(), relayout);
+    if args.mode == Mode::Edit {
+        let edits = super::edits::run(cx, window, fonts, args, capture, luid).await?;
+        modes.insert("edit".into(), edits);
     }
-    for (name, cold) in [("cold", true), ("warm", false)] {
-        let wanted = match args.mode {
-            Mode::Both => true,
-            Mode::Cold => cold,
-            Mode::Warm => !cold,
-            Mode::Relayout => false,
-        };
-        if !wanted {
-            continue;
-        }
-        let step = if cold { Step::Cold(None) } else { Step::Warm };
+    for &(name, cold) in args.mode.phases() {
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
         let mut usage = Vec::with_capacity(args.runs);
+        let step = if cold { Step::Cold(None) } else { Step::Warm };
         for index in 1..=args.runs {
+            frames.prepare(cx, window, index)?;
             let (sample, frame, (counts, resources)) =
                 sample(cx, window, fonts, args, step, capture, luid).await?;
             work.push(counts);
@@ -248,7 +238,7 @@ pub(super) async fn run(
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
-            pixels.observe(frame.pixels, frame.seq, name, index)?;
+            frames.observe(cx, window, frame, name, index)?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
@@ -264,12 +254,21 @@ pub(super) async fn run(
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs, "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
+        "startup_process_memory": startup.json(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
-    if let Some(fields) = pixels.report().as_object() {
+    if let Some(fields) = frames.report().as_object() {
         for (key, value) in fields {
             report[key] = value.clone();
         }
+    }
+    drop(frames);
+    if args.memory_settle_ms > 0 {
+        if report["frame_pixels_changed"] != false {
+            return Err("memory audit requires an unchanged RGB frame sequence".into());
+        }
+        report["memory_audit"] =
+            super::memory::finish(cx, window, fonts, args, capture, luid).await?;
     }
     report::print(&report, args.json)?;
     Ok(())

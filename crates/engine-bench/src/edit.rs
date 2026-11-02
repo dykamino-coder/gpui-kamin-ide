@@ -1,6 +1,6 @@
-//! Локальная правка входа для режима `relayout`: вариант разметки или ширина
-//! области просмотра. Правка детерминирована и не зависит от страницы, кроме
-//! места: первый подходящий узел после середины разметки.
+//! Локальная правка разметки для режима `edit` (ширину меняет режим `relayout`).
+//! Правка детерминирована и не зависит от страницы, кроме места: первый
+//! подходящий узел после середины разметки.
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -12,8 +12,6 @@ pub(crate) enum Edit {
     Attr,
     /// Класс `alt` у корневого `html` (так переключают стиль пробы браузеров).
     Class,
-    /// Ширина области просмотра на 1 px меньше (`html { width }` у пробы браузеров).
-    Resize,
 }
 
 impl Edit {
@@ -22,22 +20,18 @@ impl Edit {
             "text" => Self::Text,
             "attr" => Self::Attr,
             "class" => Self::Class,
-            "resize" => Self::Resize,
-            _ => return Err("edit must be text, attr, class or resize".into()),
+            _ => return Err("edit must be text, attr or class".into()),
         })
     }
 
-    /// Разметка второго варианта; `None` — правка меняет не разметку, а ширину.
-    pub(crate) fn markup(self, html: &str) -> Result<Option<String>> {
+    /// Разметка второго варианта.
+    pub(crate) fn markup(self, html: &str) -> Result<String> {
         let edited = match self {
             Self::Text => text(html),
             Self::Attr => attr(html),
             Self::Class => class(html),
-            Self::Resize => return Ok(None),
         };
-        edited
-            .map(Some)
-            .ok_or_else(|| format!("no place for a {self:?} edit in the input").into())
+        edited.ok_or_else(|| format!("no place for a {self:?} edit in the input").into())
     }
 }
 
@@ -123,7 +117,7 @@ mod tests {
     #[test]
     fn text_edit_changes_one_letter_of_rendered_text_after_the_middle() {
         let page = page();
-        let edited = Edit::Text.markup(&page).unwrap().unwrap();
+        let edited = Edit::Text.markup(&page).unwrap();
         assert_eq!(edited.len(), page.len());
         assert_eq!(edited.matches("<p>olpha</p>").count(), 1, "{edited}");
         assert!(edited.contains("var a"));
@@ -132,20 +126,20 @@ mod tests {
     #[test]
     fn attribute_and_class_edits_add_one_attribute() {
         let page = page();
-        let edited = Edit::Attr.markup(&page).unwrap().unwrap();
+        let edited = Edit::Attr.markup(&page).unwrap();
         assert_eq!(
             edited.matches("<p data-edit=\"1\">alpha").count(),
             1,
             "{edited}"
         );
-        let edited = Edit::Class.markup(&page).unwrap().unwrap();
+        let edited = Edit::Class.markup(&page).unwrap();
         assert!(edited.starts_with("<html class=\"alt\">"), "{edited}");
         assert!(Edit::Class.markup("<html class=x>").is_err());
     }
 
     #[test]
-    fn resize_keeps_the_markup_and_unknown_edits_are_rejected() {
-        assert!(Edit::Resize.markup(&page()).unwrap().is_none());
+    fn unknown_edits_are_rejected() {
+        assert!(Edit::parse("resize").is_err());
         assert!(Edit::parse("nope").is_err());
         assert_eq!(Edit::parse("attr").unwrap(), Edit::Attr);
     }

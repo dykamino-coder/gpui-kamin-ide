@@ -3,19 +3,34 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout] [--edit text|attr|class|resize] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
-    relayout: one cold frame, then N frames alternating the input and its local edit\n\
-    (--edit, default text), then every variant once more cold to check pixel identity.";
+    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
+    Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
+    then checks each variant pixel-for-pixel against a fresh document.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
     Cold,
     Warm,
     Both,
-    /// Локальная правка между кадрами (`relayout::Edit`).
     Relayout,
+    /// Локальная правка разметки между кадрами (`edit::Edit`, `edits`).
+    Edit,
+}
+
+#[cfg(windows)]
+impl Mode {
+    pub(super) fn phases(self) -> &'static [(&'static str, bool)] {
+        match self {
+            Self::Cold => &[("cold", true)],
+            Self::Warm => &[("warm", false)],
+            Self::Both => &[("cold", true), ("warm", false)],
+            Self::Relayout => &[("relayout", false)],
+            Self::Edit => &[],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -34,6 +49,26 @@ mod tests {
             assert!(error.to_string().contains("value") || error.to_string().contains("empty"));
         }
     }
+
+    #[test]
+    fn memory_audit_requires_five_warm_frames_and_a_bounded_hold() {
+        for options in [
+            vec!["--runs", "4", "--memory-settle-ms", "1"],
+            vec!["--mode", "cold", "--memory-settle-ms", "1"],
+            vec!["--mode", "relayout", "--memory-settle-ms", "1"],
+            vec!["--memory-settle-ms", "0"],
+            vec!["--memory-settle-ms", "60001"],
+        ] {
+            let error = Args::parse(
+                std::iter::once("missing.html")
+                    .chain(options)
+                    .map(str::to_owned),
+            )
+            .err()
+            .unwrap();
+            assert!(error.to_string().contains("memory audit"));
+        }
+    }
 }
 
 pub(super) struct Args {
@@ -44,6 +79,8 @@ pub(super) struct Args {
     pub(super) mode: Mode,
     pub(super) edit: super::edit::Edit,
     pub(super) json: bool,
+    pub(super) trace_frames: bool,
+    pub(super) memory_settle_ms: u64,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
 }
@@ -67,12 +104,18 @@ impl Args {
             mode: Mode::Both,
             edit: super::edit::Edit::Text,
             json: false,
+            trace_frames: false,
+            memory_settle_ms: 0,
             snapshot: None,
             frame_diff_dir: None,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
                 out.json = true;
+                continue;
+            }
+            if flag == "--trace-frames" {
+                out.trace_frames = true;
                 continue;
             }
             let value = args.next().ok_or("missing option value")?;
@@ -98,16 +141,28 @@ impl Args {
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
                         "relayout" => Mode::Relayout,
-                        _ => return Err("mode must be cold, warm, both or relayout".into()),
+                        "edit" => Mode::Edit,
+                        _ => return Err("mode must be cold, warm, both, relayout or edit".into()),
                     };
                 }
                 "--edit" => out.edit = super::edit::Edit::parse(&value)?,
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),
+                "--memory-settle-ms" => {
+                    out.memory_settle_ms = value.parse()?;
+                    if !(1..=60_000).contains(&out.memory_settle_ms) {
+                        return Err("memory audit hold must be 1..60000 milliseconds".into());
+                    }
+                }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
+        }
+        if out.memory_settle_ms > 0
+            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout | Mode::Edit))
+        {
+            return Err("memory audit requires at least five unchanged warm frames".into());
         }
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()

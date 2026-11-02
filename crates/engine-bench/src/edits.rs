@@ -1,6 +1,6 @@
-//! Режим `relayout`: кадры после локальной правки входа (`edit::Edit`), по
-//! очереди правка и возврат, затем проверка, что каждый вариант после правки
-//! совпадает по пикселям со свежим документом той же разметки и ширины.
+//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`) через
+//! `Document::update`, по очереди правка и возврат, затем проверка, что каждый
+//! вариант совпадает по пикселям со свежим документом той же разметки.
 
 use super::{
     args::Args,
@@ -25,21 +25,23 @@ pub(super) async fn run(
 ) -> Result<Value> {
     let base = resources::read(&args.path)?;
     let edited = args.edit.markup(&base)?;
-    let narrow = Some(args.viewport.0 as f32 - 1.0);
     // Вариант 0 — вход, 1 — правка; первый замер идёт после холодного кадра входа.
-    let step = |variant: usize| match (&edited, variant) {
-        (Some(html), 1) => Step::Update(html),
-        (Some(_), _) => Step::Update(&base),
-        (None, 1) => Step::Resize(narrow),
-        (None, _) => Step::Resize(None),
-    };
+    let variants = [base.as_str(), edited.as_str()];
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut last = [None, None];
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, _) =
-            sample(cx, window, fonts, args, step(variant), capture, luid).await?;
+        let (measured, frame, _) = sample(
+            cx,
+            window,
+            fonts,
+            args,
+            Step::Update(variants[variant]),
+            capture,
+            luid,
+        )
+        .await?;
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         last[variant] = Some(frame.pixels);
@@ -49,16 +51,7 @@ pub(super) async fn run(
         let Some(incremental) = incremental else {
             continue;
         };
-        let width = if edited.is_none() && variant == 1 {
-            narrow
-        } else {
-            None
-        };
-        window.update(cx, |view, _, _| view.width = width)?;
-        let markup = match (&edited, variant) {
-            (Some(html), 1) => html.as_str(),
-            _ => base.as_str(),
-        };
+        let markup = variants[variant];
         let (_, fresh, _) = sample(
             cx,
             window,
@@ -72,7 +65,6 @@ pub(super) async fn run(
         checks.push(json!({"variant": variant,
             "different_rgb_pixels": pixels::differing(incremental, &fresh.pixels)?}));
     }
-    window.update(cx, |view, _, _| view.width = None)?;
     let mut mode = report::mode(&samples);
     mode["diagnostic_scopes"] = report::mode(&diagnostics);
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
