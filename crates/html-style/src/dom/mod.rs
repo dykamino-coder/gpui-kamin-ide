@@ -10,6 +10,8 @@ mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
 mod children;
+mod same_tree;
+pub use same_tree::{same_box, same_tree};
 pub mod traversal;
 pub use children::Children;
 mod direction;

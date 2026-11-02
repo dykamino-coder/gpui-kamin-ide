@@ -41,6 +41,9 @@ pub(crate) async fn paint_element(
     below: &mut BelowRun,
 ) {
     let vcx = opts.cx.vcx();
+    if let Some(reuse) = &opts.cx.contracts.reuse {
+        reuse.observe(e, &opts.cx);
+    }
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
     let paint_key = opts.cx.paint_key_for(e);
     // CSS2 Appendix E: descendants paint within their nearest stacking context.

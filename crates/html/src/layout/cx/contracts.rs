@@ -18,4 +18,6 @@ pub(crate) struct BuildContext {
     pub(crate) subtrees: std::rc::Rc<std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts>>,
     pub(crate) lengths:
         std::rc::Rc<std::cell::RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
+    /// Повтор устоявшихся блоков корневого потока этой сборки (layout::reuse).
+    pub(crate) reuse: Option<std::rc::Rc<crate::layout::reuse::FlowReuse>>,
 }

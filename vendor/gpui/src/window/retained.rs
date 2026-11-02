@@ -117,3 +117,178 @@ impl Window {
         RetainedPaint { range: start..self.paint_index(), replayable: true }
     }
 }
+
+/// KaminIDE patch: placed bounds of everything a retained subtree offered to
+/// the scene in one frame, culled primitives included, in device pixels.
+///
+/// A host that skips a settled subtree may do so only where every primitive
+/// of the subtree would be culled; the sink measures that ink while the
+/// subtree paints. Paint deferred past the subtree (`Window::paint_ctx`
+/// snapshots) keeps feeding the sinks open at capture. A sink is tainted when
+/// a scope it observes does more than offer primitives: input state, element
+/// state, composition groups, a non-root paint environment, accessibility.
+#[derive(Default)]
+pub struct InkSink {
+    bounds: std::cell::Cell<Option<Bounds<ScaledPixels>>>,
+    tainted: std::cell::Cell<bool>,
+}
+
+impl InkSink {
+    pub(crate) fn add(&self, bounds: Bounds<ScaledPixels>) {
+        self.bounds.set(Some(match self.bounds.get() {
+            Some(ink) => ink.union(&bounds),
+            None => bounds,
+        }));
+    }
+
+    /// Union of the placed bounds offered so far; `None` when nothing painted.
+    pub fn bounds(&self) -> Option<Bounds<ScaledPixels>> {
+        self.bounds.get()
+    }
+
+    /// Whether an observed scope had effects beyond offering primitives.
+    pub fn tainted(&self) -> bool {
+        self.tainted.get()
+    }
+}
+
+/// Paint effects of a scope observed by open ink sinks.
+pub(crate) struct InkProbe {
+    start: PaintIndex,
+    groups: usize,
+    callbacks: usize,
+    allowed: (usize, usize),
+    clean: bool,
+}
+
+impl InkProbe {
+    pub(crate) fn open(window: &Window) -> Option<Self> {
+        (!window.next_frame.scene.ink.is_empty()).then(|| Self {
+            start: window.paint_index(),
+            groups: window.next_frame.scene.groups.len(),
+            callbacks: window.next_frame_callback_count(),
+            allowed: window.next_frame.scene.ink_allowed,
+            clean: window.retained_root_environment() && !window.a11y.is_active(),
+        })
+    }
+
+    pub(crate) fn close(self, window: &Window) {
+        let end = window.paint_index();
+        let start = &self.start;
+        let allowed = window.next_frame.scene.ink_allowed;
+        let quiet = self.clean
+            && end.mouse_listeners_index - start.mouse_listeners_index == allowed.0 - self.allowed.0
+            && start.input_handlers_index == end.input_handlers_index
+            && start.cursor_styles_index == end.cursor_styles_index
+            && end.accessed_element_states_index - start.accessed_element_states_index
+                == allowed.1 - self.allowed.1
+            && start.tab_handle_index == end.tab_handle_index
+            && self.groups == window.next_frame.scene.groups.len()
+            && self.callbacks == window.next_frame_callback_count();
+        if !quiet {
+            for sink in &window.next_frame.scene.ink {
+                sink.tainted.set(true);
+            }
+        }
+    }
+}
+
+impl RetainedPrepaint {
+    /// Whether the recorded prepaint registered nothing a later frame could
+    /// miss: no tooltips, deferred draws or element state, and only plain
+    /// hitboxes. Returns the union of those hitboxes (`Some(None)` for none):
+    /// a frame that skips the subtree misses them only where they lie outside
+    /// the content mask, where they could not be hit.
+    pub fn quiet(&self, window: &Window) -> Option<Option<Bounds<Pixels>>> {
+        let (start, end) = (&self.0.start, &self.0.end);
+        let frame = &window.next_frame;
+        let hitboxes = frame.hitboxes.get(start.hitboxes_index..end.hitboxes_index)?;
+        let plain = hitboxes.iter().zip(start.hitboxes_index..).all(|(hitbox, index)| {
+            hitbox.behavior == crate::HitboxBehavior::Normal
+                && !frame.hitbox_scopes.contains_key(&hitbox.id)
+                && !frame.hitbox_entry_scopes.contains_key(&index)
+        });
+        let quiet = plain
+            && start.tooltips_index == end.tooltips_index
+            && start.deferred_draws_index == end.deferred_draws_index
+            && start.accessed_element_states_index == end.accessed_element_states_index;
+        quiet.then(|| {
+            hitboxes
+                .iter()
+                .map(|hitbox| hitbox.bounds)
+                .reduce(|a, b| a.union(&b))
+        })
+    }
+}
+
+/// KaminIDE patch: an exact layout leaf standing in for a laid out subtree
+/// (`Window::layout_snapshot`), valid at the device scale it was taken at.
+#[derive(Clone)]
+pub struct LayoutSnapshot {
+    style: taffy::Style,
+    scale: f32,
+}
+
+impl LayoutSnapshot {
+    /// Device scale of the layout the snapshot was taken from.
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+}
+
+impl Window {
+    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
+    pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.next_frame.scene.ink.push(sink);
+        let probe = InkProbe::open(self);
+        let result = f(self);
+        if let Some(probe) = probe {
+            probe.close(self);
+        }
+        self.next_frame.scene.ink.pop();
+        result
+    }
+
+    /// Run paint `f`, which reports whether its mouse listeners and element
+    /// state reads are inert while nothing it guards is visible: listeners
+    /// that act only on a hit of a hitbox under the mouse or on a gesture the
+    /// state records, and state that is at its default. Open ink sinks then
+    /// allow those effects; otherwise they are tainted.
+    pub fn offscreen_inert<R>(&mut self, f: impl FnOnce(&mut Self) -> (R, bool)) -> R {
+        if self.next_frame.scene.ink.is_empty() {
+            return f(self).0;
+        }
+        let start = self.paint_index();
+        let (result, inert) = f(self);
+        let end = self.paint_index();
+        let scene = &mut self.next_frame.scene;
+        if inert {
+            scene.ink_allowed.0 += end.mouse_listeners_index - start.mouse_listeners_index;
+            scene.ink_allowed.1 +=
+                end.accessed_element_states_index - start.accessed_element_states_index;
+        } else {
+            for sink in &scene.ink {
+                sink.tainted.set(true);
+            }
+        }
+        result
+    }
+
+    /// The exact leaf of the laid out node `id`: an inflexible normal-flow item
+    /// of a single-line column flex container whose overflow stays inside its
+    /// border box. `None` when the node does not qualify.
+    pub fn layout_snapshot(&self, id: LayoutId) -> Option<LayoutSnapshot> {
+        let style = self.layout_engine.as_ref()?.exact_leaf(id)?;
+        Some(LayoutSnapshot { style, scale: self.scale_factor() })
+    }
+
+    /// Request the leaf of `snapshot` in this frame's layout. The caller
+    /// guarantees the device scale and the parent are those of the snapshot.
+    pub fn request_snapshot_layout(&mut self, snapshot: &LayoutSnapshot) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+        self.layout_engine
+            .as_mut()
+            .expect("layout engine during request_layout")
+            .request_exact_leaf(snapshot.style.clone())
+    }
+}
