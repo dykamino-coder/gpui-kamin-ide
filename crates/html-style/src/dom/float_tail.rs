@@ -51,7 +51,7 @@ fn descend(
             )
         );
         let last = parent.children.iter().rposition(|n| match n {
-            Node::Text(t) => !t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')),
+            Node::Text(t) => !crate::dom::whitespace::blank_text(t),
             Node::Element(_) => true,
         });
         let Some(last) = last else { return Ok(()) };

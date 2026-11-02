@@ -173,6 +173,21 @@ fn section_snapshot(
 }
 
 #[gpui::test]
+fn float_only_columns_build_no_source_layout(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        let geometry = section_snapshot(
+            "<section style='columns:2;height:100px'><div style='float:left;width:20px;height:30px'></div><p>text</p></section>",
+            window, app,
+        );
+        // A float continues in its owner's flow: no source, no recorded boxes.
+        assert!(geometry.native.is_none() && geometry.normal.is_empty());
+        assert!(geometry.flows.is_empty() && geometry.positioned.is_empty());
+        gpui::div()
+    });
+}
+
+#[gpui::test]
 fn anchor_positioned_box_is_settled_at_its_anchor_before_the_snapshot(
     cx: &mut gpui::TestAppContext,
 ) {
