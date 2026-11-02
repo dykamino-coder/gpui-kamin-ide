@@ -24,6 +24,10 @@ pub struct TraversalState {
 impl TraversalState {
     pub fn retain(&self, source: Admitted) {
         self.source.replace(Some(source));
+        // Обход наращивал адреса удвоением: удерживаемая копия — один точный
+        // блок, выделенный после обхода, а промежуточные блоки освобождаются.
+        let exact = self.elements.borrow().as_slice().to_vec();
+        self.elements.replace(exact);
     }
 
     /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
