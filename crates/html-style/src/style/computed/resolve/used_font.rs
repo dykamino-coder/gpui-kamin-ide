@@ -61,7 +61,7 @@ impl Computed {
     /// `none` (и `from-font` без метрики) хранится как `(u8::MAX, 0.0)`, чтобы
     /// перебить унаследованное значение, но ничего не подгоняет.
     pub fn font_adjustment(&self) -> Option<(u8, f32)> {
-        self.font_size_adjust.filter(|(metric, _)| *metric < 5)
+        self.inh.font.font_size_adjust.filter(|(metric, _)| *metric < 5)
     }
 
     /// Результат для first available face; не изменяет CSS-значения элемента.
@@ -90,11 +90,7 @@ impl Computed {
             .select(self.font_request(family, computed_px), &snapshot)
             .ok();
         let descriptor = self.font_descriptor_scale(family, vcx);
-<<<<<<< HEAD
-        let adjustment = self.inh.font.font_size_adjust.and_then(|(metric, want)| {
-=======
         let adjustment = self.font_adjustment().and_then(|(metric, want)| {
->>>>>>> origin/main
             if !want.is_finite() {
                 return None;
             }
