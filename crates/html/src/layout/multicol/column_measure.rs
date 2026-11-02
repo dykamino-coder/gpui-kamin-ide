@@ -71,16 +71,18 @@ impl ColumnStack {
         // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
         // блочному контейнеру её даёт родитель, и второй проход раскладки там
         // ничего не даст, кроме времени.
-        let mut intrinsic_children = self
-            .deferred
-            .as_ref()
-            .map(|r| r.intrinsic_children())
-            .unwrap_or_default();
         let deferred_intrinsic = self.deferred.is_some();
         let intrinsic = self
             .intrinsic
             .filter(|_| !axis.is_vertical())
             .map(|Intrinsic(col_w)| {
+                // A deferred stack builds its children for this only: an
+                // unmeasured container never needs them.
+                let mut intrinsic_children = self
+                    .deferred
+                    .as_ref()
+                    .map(|r| r.intrinsic_children())
+                    .unwrap_or_default();
                 let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
                 let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
                 for (el, span) in self
