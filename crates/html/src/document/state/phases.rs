@@ -37,6 +37,22 @@ impl DocState {
         )
     }
 
+    /// Ревизия той же формы без перерасчёта стиля (`Document::adopt`): тот же
+    /// документ в смысле HTML, поэтому значения (арены каскадных стилей, шрифты,
+    /// at-правила, картинки) и текстовый бэкенд остаются прежними, а факты
+    /// прошлого дерева (раскладка прошлого кадра, размеры повёрнутых поддеревьев)
+    /// начинаются заново, как у полной сборки.
+    pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
+        Rc::new(Self {
+            values: previous.values.clone(),
+            layout: Default::default(),
+            text: previous.text.clone(),
+            paragraph: crate::text::paragraph_state::ParagraphState::continuing(
+                &previous.paragraph,
+            ),
+        })
+    }
+
     fn with_paragraphs(
         media: Media,
         paragraph: crate::text::paragraph_state::ParagraphState,

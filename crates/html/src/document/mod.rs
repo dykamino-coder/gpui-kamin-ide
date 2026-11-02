@@ -91,6 +91,8 @@ pub struct Document {
     root: crate::style::computed::Computed,
     /// Хэш разметки и темы: по нему видно, нужен ли повторный разбор.
     key: u64,
+    /// Тема ревизии: следующая ревизия без перерасчёта стиля требует ту же.
+    theme_css: Rc<str>,
     base_url: Option<url::Url>,
     /// An XML document (`image/svg+xml`, `crate::dom::xml`).
     xml: bool,
@@ -103,77 +105,6 @@ impl Document {
     /// Настроить источник и носитель до единственного разбора документа.
     pub fn builder<'a>(html: &'a str, theme_css: &'a str) -> DocumentBuilder<'a> {
         DocumentBuilder::new(html, theme_css)
-    }
-
-    fn build(
-        html: &str,
-        theme_css: &str,
-        base_url: Option<url::Url>,
-        xml: bool,
-        state: Rc<DocState>,
-        fonts: &crate::text::metrics::FontContext,
-        revision: crate::budget::RevisionBudget,
-    ) -> Result<Self, DocumentFailure> {
-        let key = base_url::key(html, theme_css, base_url.as_ref());
-        #[cfg(feature = "engine-bench")]
-        let parse_started = std::time::Instant::now();
-        let input = {
-            crate::work::phase!(_phase, Parse);
-            crate::dom::input::Admitted::with_budget(html, xml, revision.clone()).map_err(
-                |mut failure| {
-                    failure.report.revision = Some(key);
-                    failure
-                },
-            )?
-        };
-        #[cfg(feature = "engine-bench")]
-        let mut timings = BuildTimings {
-            parse: parse_started.elapsed(),
-            ..Default::default()
-        };
-        let effective_base = if xml {
-            base_url.clone()
-        } else {
-            base_url::document_base(
-                &input.dom.document,
-                base_url.as_ref(),
-                &crate::budget::admission::Admission::new(revision.clone()),
-            )?
-        };
-        crate::dom::early_admission::admit_sources(&input, theme_css)?;
-        let (state, nodes, root) = parse_document(
-            &input,
-            theme_css,
-            effective_base.as_ref(),
-            state,
-            fonts,
-            revision,
-            #[cfg(feature = "engine-bench")]
-            &mut timings,
-        )
-        .map_err(|mut failure| {
-            failure.report.revision = Some(key);
-            failure
-        })?;
-        state.values.traversal.retain(input);
-        // Исчерпание aggregate ревизии в ранних проходах (ресурсы, подстановки) терминально:
-        // кандидат не публикуется, даже если операции вернули штатный fallback.
-        if let Some(mut failure) = state.values.revision_budget().failure() {
-            failure.report.revision = Some(key);
-            return Err(failure);
-        }
-        Ok(Document {
-            state,
-            nodes: Rc::new(nodes),
-            retained: Default::default(),
-            root,
-            key,
-            base_url,
-            xml,
-            last_failure: None,
-            #[cfg(feature = "engine-bench")]
-            timings,
-        })
     }
 
     /// Платформенная конфигурация для нового документа того же хоста.
