@@ -42,7 +42,7 @@ pub(super) async fn finish(
     // GPUI держит предыдущий и текущий кадры. Два пустых кадра сменяют оба,
     // сохраняя тот же HWND, GPU-устройство и системные кэши процесса.
     for _ in 0..2 {
-        run::sample(cx, window, fonts, args, false, capture, luid).await?;
+        run::sample(cx, window, fonts, args, run::Step::Warm, capture, luid).await?;
     }
     let empty = idle(cx, capture, args.memory_settle_ms).await?;
     Ok(json!({"stable_warm_frames": args.runs, "page": page,

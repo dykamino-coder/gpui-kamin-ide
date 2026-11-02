@@ -60,6 +60,14 @@ fn difference(first: &CapturedFrame, frame: &CapturedFrame) -> Option<Difference
     })
 }
 
+/// Число различающихся RGB-пикселей двух захватов одного размера.
+pub(super) fn differing(a: &CapturedFrame, b: &CapturedFrame) -> Result<u64> {
+    if (a.width, a.height) != (b.width, b.height) {
+        return Err("pixel comparison requires matching capture dimensions".into());
+    }
+    Ok(difference(a, b).map_or(0, |d| d.pixels))
+}
+
 pub(super) struct Recorder {
     first: Option<CapturedFrame>,
     first_hash: Option<String>,

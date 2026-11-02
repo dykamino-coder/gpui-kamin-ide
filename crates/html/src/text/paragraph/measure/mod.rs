@@ -18,6 +18,9 @@ pub(crate) struct MeasureCache {
     pub(in crate::text::paragraph) splits: RefCell<FrameCache<Rc<Vec<Line>>>>,
     pub(in crate::text::paragraph) fitted: RefCell<FrameCache<f32>>,
     pub(in crate::text::paragraph) measured: RefCell<FrameCache<Vec<Seg>>>,
+    /// Line splits computed because the cache had no entry (observation for tests).
+    #[cfg(test)]
+    pub(crate) split_misses: std::cell::Cell<usize>,
 }
 
 impl MeasureCache {

@@ -63,3 +63,31 @@ fn update_preserves_xml_parsing() {
         .unwrap();
     assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
 }
+
+#[test]
+fn update_carries_paragraph_measurements_but_not_tree_facts() {
+    let mut doc = Document::builder("<p>one</p><p>two</p>", "")
+        .build()
+        .unwrap();
+    let measures = doc.state.paragraph.paragraphs.clone();
+    let vertical = doc.state.paragraph.vertical.clone();
+    assert!(doc.update("<p>one</p><p>tw0</p>", "").unwrap().changed());
+    // The value-keyed paragraph cache is the same one; rotated-subtree sizes of the
+    // previous tree are not, and everything else is a fresh revision.
+    assert!(std::rc::Rc::ptr_eq(
+        &measures,
+        &doc.state.paragraph.paragraphs
+    ));
+    assert!(!std::rc::Rc::ptr_eq(
+        &vertical,
+        &doc.state.paragraph.vertical
+    ));
+    let fresh = Document::builder("<p>one</p><p>tw0</p>", "")
+        .build()
+        .unwrap();
+    assert!(!std::rc::Rc::ptr_eq(
+        &measures,
+        &fresh.state.paragraph.paragraphs
+    ));
+    assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
+}

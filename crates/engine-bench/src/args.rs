@@ -3,10 +3,12 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
-    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.";
+    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
+    Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
+    then checks each variant pixel-for-pixel against a fresh document.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
@@ -14,6 +16,8 @@ pub(super) enum Mode {
     Warm,
     Both,
     Relayout,
+    /// Локальная правка разметки между кадрами (`edit::Edit`, `edits`).
+    Edit,
 }
 
 #[cfg(windows)]
@@ -24,6 +28,7 @@ impl Mode {
             Self::Warm => &[("warm", false)],
             Self::Both => &[("cold", true), ("warm", false)],
             Self::Relayout => &[("relayout", false)],
+            Self::Edit => &[],
         }
     }
 }
@@ -72,6 +77,7 @@ pub(super) struct Args {
     pub(super) viewport: (u32, u32),
     pub(super) runs: usize,
     pub(super) mode: Mode,
+    pub(super) edit: super::edit::Edit,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
     pub(super) memory_settle_ms: u64,
@@ -96,6 +102,7 @@ impl Args {
             viewport: (800, 600),
             runs: 30,
             mode: Mode::Both,
+            edit: super::edit::Edit::Text,
             json: false,
             trace_frames: false,
             memory_settle_ms: 0,
@@ -134,9 +141,11 @@ impl Args {
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
                         "relayout" => Mode::Relayout,
-                        _ => return Err("mode must be cold, warm, both or relayout".into()),
+                        "edit" => Mode::Edit,
+                        _ => return Err("mode must be cold, warm, both, relayout or edit".into()),
                     };
                 }
+                "--edit" => out.edit = super::edit::Edit::parse(&value)?,
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),
@@ -151,7 +160,7 @@ impl Args {
             }
         }
         if out.memory_settle_ms > 0
-            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout))
+            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout | Mode::Edit))
         {
             return Err("memory audit requires at least five unchanged warm frames".into());
         }

@@ -18,8 +18,18 @@ pub(crate) struct ParagraphState {
 }
 
 impl ParagraphState {
-    /// Start of a document build: occurrence counters restart, recorded sizes stay
-    /// as the next frame's fallback.
+    /// Measurements of the next revision of the same document: the value-keyed paragraph
+    /// cache carries over; rotated-subtree sizes are facts of the previous tree and do not.
+    pub(crate) fn continuing(previous: &Self) -> Self {
+        Self {
+            vertical: Default::default(),
+            paragraphs: previous.paragraphs.clone(),
+        }
+    }
+
+    /// Start of a frame by the host: occurrence counters restart, recorded sizes stay
+    /// as the next frame's fallback, and the measurement cache keeps exactly the
+    /// previous frame's entries.
     pub(crate) fn begin_frame(&self) {
         self.vertical.begin_frame();
         self.paragraphs.begin_frame();

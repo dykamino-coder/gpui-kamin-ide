@@ -34,6 +34,10 @@ impl Paragraph {
             crate::work::add!(LayoutCacheHits, 1);
             return (*hit).clone();
         }
+        #[cfg(test)]
+        self.measures
+            .split_misses
+            .set(self.measures.split_misses.get() + 1);
         let lines = self.split_uncached(limit, window);
         self.measures
             .splits
