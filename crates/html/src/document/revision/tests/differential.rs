@@ -1,20 +1,26 @@
 //! Правки текста знаками, которые CSS не схлопывает (U+00A0, U+3000, U+2003,
-//! перевод страницы), письмом справа налево и цифрами: принятая без каскада
-//! ревизия равна свежей сборке и деревом коробок, и состоянием документа.
+//! перевод страницы), письмом справа налево, цифрами и управляющими bidi:
+//! принятая без каскада ревизия равна свежей сборке и деревом коробок, и
+//! номерами текстов, и состоянием документа (с прочитанными сборкой текстами).
 
 use super::update;
 
 /// Страница с местами правки `@N`: единственный текст коробки под
 /// `filter: url()`, текст между run-in и блоком, абзац с `::first-line`,
 /// строчный элемент, ячейка, `pre`, пункт списка, `dir=auto`, текст рядом с
-/// блоком в анонимной обёртке.
+/// блоком в анонимной обёртке, руби, `<bdi>`, абзац с `::first-letter`, лист
+/// `<style>`, текст `dir=auto` перед и после первого сильного знака и внутри
+/// своего `dir`, абзац `dir=rtl`.
 const SITES: &str = "<!doctype html><html><head><style>.f{filter:url(#f)}\
-    .r{display:run-in}p::first-line{color:#321}</style></head><body>\
+    .r{display:run-in}p::first-line{color:#321}.l::first-letter{color:#123}</style>\
+    <style>i{}@12</style></head><body>\
     <div class=f>@0</div><span class=r>r</span>@1<div>b</div><p>@2<span>@3</span></p>\
     <table><tr><td>@4</td></tr></table><pre>@5</pre><ul><li>@6</li></ul>\
-    <p dir=auto>@7</p><div><p>q</p>@8</div><p><rt>x</rt>@9<rt>y</rt></p></body></html>";
+    <p dir=auto>@7</p><div><p>q</p>@8</div><p><rt>x</rt>@9<rt>y</rt></p>\
+    <p>@10<bdi>@11</bdi></p><p class=l>@13</p>\
+    <div dir=auto><i>@14</i>x<span dir=ltr>@15</span>@16</div><p dir=rtl>@17</p></body></html>";
 
-const PLACES: usize = 10;
+const PLACES: usize = 18;
 
 fn page(texts: &[String]) -> String {
     let mut out = SITES.to_string();
@@ -52,8 +58,9 @@ fn text_that_is_not_collapsible_space_keeps_boxes_like_a_fresh_build() {
 #[test]
 fn random_text_edits_match_a_fresh_build() {
     const ALPHABET: &[&str] = &[
-        "a", "Z", "1", ".", " ", "\n", "\t", "\u{a0}", "\u{3000}", "\u{2003}", "\u{c}", "\u{5d0}",
-        "\u{663}", "&nbsp;", "&#x3000;",
+        "a", "Z", "1", "7", ".", " ", "\n", "\t", "\u{a0}", "\u{3000}", "\u{2003}", "\u{c}",
+        "\u{5d0}", "\u{627}", "\u{663}", "\u{200f}", "\u{202b}", "\u{2067}", "&nbsp;", "&#x3000;",
+        "&#x5d1;",
     ];
     // xorshift64: воспроизводимая последовательность без внешнего генератора.
     let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
@@ -69,7 +76,7 @@ fn random_text_edits_match_a_fresh_build() {
             .collect()
     };
     let mut adopted = 0;
-    for _ in 0..160 {
+    for _ in 0..400 {
         let texts: Vec<String> = (0..PLACES).map(|_| word(&mut next)).collect();
         let mut edited = texts.clone();
         for _ in 0..1 + next(2) {
@@ -84,7 +91,7 @@ fn random_text_edits_match_a_fresh_build() {
         }
     }
     // Прогон проверяет обе ветви: часть правок принимается без каскада.
-    assert!(adopted > 10, "{adopted}");
+    assert!(adopted > 40, "{adopted}");
 }
 
 #[test]
