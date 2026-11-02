@@ -158,7 +158,7 @@ pub(super) fn upright_central(
                 .top_0()
                 .left(px(left))
                 .w(px(wide))
-                .child(paragraph(&[Node::Text(g.text)], &style, opts)),
+                .child(paragraph(&[Node::Text(g.text.into())], &style, opts)),
         )
     });
     Some(

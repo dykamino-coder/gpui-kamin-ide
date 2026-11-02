@@ -7,6 +7,8 @@
 //! ничего не рисуют.
 
 mod anonymous;
+mod box_text;
+pub use box_text::{Text, TextId};
 mod children;
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
@@ -113,7 +115,7 @@ pub use crate::dom::pseudo::*;
 // Keep tree metadata inline; computed styles already live behind pointers.
 #[allow(clippy::large_enum_variant)]
 pub enum Node {
-    Text(String),
+    Text(Text),
     Element(Element),
 }
 

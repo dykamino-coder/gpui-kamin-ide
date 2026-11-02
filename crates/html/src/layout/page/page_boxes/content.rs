@@ -19,15 +19,18 @@ pub(super) fn content_nodes(
                  children: &mut Vec<Node>,
                  counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
-            children.push(Node::Text(crate::dom::content_text(
-                run,
-                counters,
-                &[],
-                style.reset_generated.quotes.as_ref(),
-                false,
-                crate::style::generated::counter_style::Context::new(style, Default::default()),
-                vcx,
-            )));
+            children.push(Node::Text(
+                crate::dom::content_text(
+                    run,
+                    counters,
+                    &[],
+                    style.reset_generated.quotes.as_ref(),
+                    false,
+                    crate::style::generated::counter_style::Context::new(style, Default::default()),
+                    vcx,
+                )
+                .into(),
+            ));
             run.clear();
         }
     };

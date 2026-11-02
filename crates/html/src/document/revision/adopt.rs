@@ -16,7 +16,7 @@ use super::build::Source;
 use super::mentions::mentions;
 use super::patch::{Attrs, Target, patch};
 use super::shape::{self, Changed};
-use super::text::{Texts, editable, patch_texts};
+use super::text::{TextEdit, editable, patch_texts};
 use crate::document::{Document, state::DocState};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -72,18 +72,23 @@ impl Document {
                 _ => return Err(Box::new(source)),
             }
         }
-        let mut texts: HashMap<u64, Texts> = HashMap::new();
+        let text_ids = source_ids(&values.traversal.texts());
+        let mut texts: HashMap<crate::dom::TextId, TextEdit> = HashMap::new();
         for edit in &shape.texts {
-            let id = ids.get(&(Rc::as_ptr(&edit.parent) as usize)).copied();
-            match (id.filter(|id| *id != AMBIGUOUS), editable(edit)) {
-                (Some(id), Some(tag)) => texts
-                    .entry(id)
-                    .or_insert_with(|| Texts {
-                        tag,
-                        edits: Vec::new(),
-                    })
-                    .edits
-                    .push((edit.old.clone(), edit.new.clone())),
+            let id = text_ids
+                .get(&edit.node)
+                .copied()
+                .filter(|id| *id != AMBIGUOUS)
+                .and_then(|id| u32::try_from(id).ok())
+                .and_then(crate::dom::TextId::new);
+            match id {
+                Some(id) if editable(edit) => {
+                    let edit = TextEdit {
+                        old: edit.old.clone(),
+                        new: edit.new.clone(),
+                    };
+                    texts.insert(id, edit);
+                }
                 _ => return Err(Box::new(source)),
             }
         }
@@ -91,18 +96,22 @@ impl Document {
         if !patch(&mut nodes, &targets) || !patch_texts(&mut nodes, &texts) {
             return Err(Box::new(source));
         }
-        let moved: HashMap<usize, usize> = shape.elements.iter().copied().collect();
-        let elements = values
-            .traversal
-            .elements()
-            .iter()
-            .map(|old| moved.get(old).copied().unwrap_or(0))
-            .collect();
+        let moved: HashMap<usize, usize> = shape.nodes.iter().copied().collect();
+        let remap = |old: &[usize]| -> Vec<usize> {
+            old.iter()
+                .map(|old| moved.get(old).copied().unwrap_or(0))
+                .collect()
+        };
+        let elements = remap(&values.traversal.elements());
+        let source_texts = remap(&values.traversal.texts());
         let state = DocState::adopting(&self.state);
         state
             .values
             .admit_revision(revision.clone(), source.base.as_ref());
-        state.values.traversal.readopt(source.input, elements);
+        state
+            .values
+            .traversal
+            .readopt(source.input, elements, source_texts);
         Ok(Document {
             state,
             nodes: Rc::new(nodes),
@@ -122,7 +131,7 @@ impl Document {
     }
 }
 
-/// Один адрес у двух узлов коробок: такой элемент правкой не адресуется.
+/// Один адрес у двух узлов коробок: такой узел правкой не адресуется.
 const AMBIGUOUS: u64 = u64::MAX;
 
 fn source_ids(elements: &[usize]) -> HashMap<usize, u64> {

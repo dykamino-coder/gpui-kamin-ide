@@ -48,7 +48,7 @@ pub(super) fn textarea(
     let gutter = gutters(style);
     let nodes = if text.is_empty() {
         vec![crate::dom::Node::Text(
-            e.attr("placeholder").unwrap_or("").to_owned(),
+            e.attr("placeholder").unwrap_or("").to_owned().into(),
         )]
     } else {
         e.children.to_vec()
