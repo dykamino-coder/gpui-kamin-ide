@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 pub(super) fn only_mixed_text(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
     fn visit(nodes: &[Node], style: &BoxStyle, seen: &mut bool, vcx: ValueCx<'_>) -> bool {
         nodes.iter().all(|node| match node {
-            Node::Text(text) if !text.trim().is_empty() => {
+            Node::Text(text) if !crate::dom::whitespace::blank_text(text) => {
                 *seen = true;
                 !style.wm().upright()
             }

@@ -95,7 +95,7 @@ pub(crate) fn inline_node(
             if e.style.used().reset_positioned.abs_inline_level
                 && !ordered_context
                 && pending.iter().any(|p| match p {
-                    Node::Text(t) => !t.trim().is_empty(),
+                    Node::Text(t) => !crate::dom::whitespace::blank_text(t),
                     Node::Element(x) => !matches!(
                         x.style.used().reset_positioned.position,
                         Some(crate::style::computed::Position::Absolute)
