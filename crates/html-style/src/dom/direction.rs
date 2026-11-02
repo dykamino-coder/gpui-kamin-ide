@@ -10,8 +10,15 @@ use super::Node;
 
 /// Первый СИЛЬНЫЙ знак содержимого: `true` — справа налево, `None` — сильных
 /// знаков нет вовсе и сторона остаётся унаследованной.
+///
+/// Каждый просмотренный текст (до первого сильного знака включительно)
+/// отмечается в `traversal` прочитанным: от его содержимого зависит сторона
+/// элемента. Тексты после найденного знака и в пропущенных кусках сторону не
+/// задают и не отмечаются (так Blink по флагу `dir=auto` предка пересчитывает
+/// сторону лишь при правке текста, который её решает).
 pub(super) fn first_strong(
     admission: &crate::budget::admission::Admission,
+    traversal: &crate::values::traversal::TraversalState,
     nodes: &[Node],
 ) -> Result<Option<bool>, crate::budget::admission::Error> {
     use unicode_bidi::BidiClass::*;
@@ -23,6 +30,9 @@ pub(super) fn first_strong(
     }) {
         match node? {
             Node::Text(t) => {
+                if let Some(id) = t.source() {
+                    traversal.read_text(id);
+                }
                 for ch in t.chars() {
                     match unicode_bidi::bidi_class(ch) {
                         L => return Ok(Some(false)),

@@ -8,7 +8,7 @@
 //! лунки, подсетки, подъёмы, run-in, флоаты.
 
 use super::input::Admitted;
-use super::style_sources::try_collect_style_tags;
+use super::style_sources::document_style_tags;
 use super::{Node, user_agent_css};
 use crate::dom::outcome::DocumentFailure;
 use crate::dom::shadow::*;
@@ -102,7 +102,7 @@ pub fn convert(
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
-    let sheets = try_collect_style_tags(&dom.document, &admission)?;
+    let sheets = document_style_tags(&dom.document, &admission, &doc.traversal)?;
     for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)?

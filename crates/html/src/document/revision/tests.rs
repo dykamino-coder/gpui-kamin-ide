@@ -32,18 +32,26 @@ fn update(old: &str, new: &str, theme: &str) -> bool {
 }
 
 /// Факты `DocState`, которые пишет сборка дерева: режим, метрики корня,
-/// at-правила `@page`, диагностики и число адресуемых исходных элементов.
+/// at-правила `@page`, диагностики, число адресуемых исходных элементов и
+/// номера прочитанных сборкой исходных текстов.
 fn state(doc: &Document) -> String {
     let values = &doc.state.values;
     let elements = values.traversal.elements();
+    let texts = values.traversal.texts();
+    let read = values.traversal.read_texts();
+    let read: Vec<usize> = (0..texts.len())
+        .filter(|&i| read.contains(&texts[i]))
+        .collect();
     format!(
-        "{} {:?} {} {:?} {} {}",
+        "{} {:?} {} {:?} {} {} {:?} {}",
         values.quirks(),
         values.root.borrow(),
         values.page_rules().len(),
         values.diagnostics_snapshot(),
         elements.len(),
         elements.iter().filter(|&&a| a != 0).count(),
+        read,
+        values.traversal.read_texts().len(),
     )
 }
 
@@ -186,22 +194,69 @@ fn flow_text_edits_keep_the_cascade() {
 #[test]
 fn text_edits_the_cascade_can_see_rebuild_it() {
     let auto = PAGE.replace("<p>d", "<p dir=auto>d");
-    let lettered = PAGE.replace("p{color:#123}", "p::first-letter{color:red}");
     let rebuilt = [
-        // Пустой текст, пробельные края, письмо справа налево, лист.
+        // Пустой по CSS текст и текст листа `<style>`.
         (PAGE.to_string(), PAGE.replace(">d<", "><")),
         (PAGE.to_string(), PAGE.replace(">d<", "> <")),
-        (PAGE.to_string(), PAGE.replace(">d<", "> d<")),
-        (PAGE.to_string(), PAGE.replace(">d<", ">\u{5d0}<")),
+        (PAGE.to_string(), PAGE.replace(">d<", ">\n\t<")),
         (
             PAGE.to_string(),
             PAGE.replace("p{color:#123}", "p{color:#124}"),
         ),
-        // Сторона `dir=auto` и первая буква, режущая текст.
+        // Текст, в котором `dir=auto` и `<bdi>` нашли первый сильный знак, и
+        // текст перед ним без сильных знаков.
         (auto.clone(), auto.replace(">d<", ">e<")),
-        (lettered.clone(), lettered.replace(">d<", ">e<")),
+        (auto.clone(), auto.replace(">d<", ">\u{5d0}<")),
+        (
+            PAGE.replace("<p>d", "<p>1<bdi>d</bdi>"),
+            PAGE.replace("<p>d", "<p>1<bdi>\u{627}</bdi>"),
+        ),
+        (
+            PAGE.replace("<p>d", "<p dir=auto><span>1.</span>d"),
+            PAGE.replace("<p>d", "<p dir=auto><span>\u{5d0}.</span>d"),
+        ),
     ];
     for (old, new) in &rebuilt {
         assert!(!update(old, new, ""), "{new}");
     }
+}
+
+#[test]
+fn text_edits_nothing_reads_keep_the_cascade() {
+    // Письмо справа налево, цифры и управляющие bidi вне `dir=auto` сторону
+    // элемента не меняют: её решает раскладка строк.
+    for to in [
+        "\u{5d0}\u{5d1}",
+        "\u{627}1",
+        "\u{663}",
+        "a\u{202b}b\u{202c}",
+        " d",
+    ] {
+        let new = PAGE.replace(">d<", &format!(">{to}<"));
+        assert!(update(PAGE, &new, ""), "{to:?}");
+        assert!(update(&new, PAGE, ""), "{to:?}");
+    }
+    let rtl = PAGE.replace("<p>d", "<p dir=rtl>d");
+    assert!(update(&rtl, &rtl.replace(">d<", ">\u{5d0}<"), ""));
+    // `dir=auto` читает текст лишь до первого сильного знака; текст после
+    // него и внутри своего `dir` сторону предка не задаёт (а текст `<bdi>`
+    // задаёт сторону самого `<bdi>`).
+    let auto = |a: &str, b: &str, c: &str| {
+        PAGE.replace(
+            "<p>d",
+            &format!("<p dir=auto>x <b>{a}</b><bdi>{b}</bdi><span dir=ltr>{c}</span>d"),
+        )
+    };
+    assert!(update(&auto("y", "z", "w"), &auto("\u{5d0}", "z", "w"), ""));
+    let skipped = |b: &str, c: &str| {
+        PAGE.replace(
+            "<p>d",
+            &format!("<p dir=auto><bdi>{b}</bdi><span dir=ltr>{c}</span>d"),
+        )
+    };
+    assert!(update(&skipped("z", "w"), &skipped("z", "\u{5d0}"), ""));
+    assert!(!update(&skipped("z", "w"), &skipped("\u{5d0}", "w"), ""));
+    // Первую букву режет раскладка, сборка её текст не читает.
+    let lettered = PAGE.replace("p{color:#123}", "p::first-letter{color:red}");
+    assert!(update(&lettered, &lettered.replace(">d<", ">e<"), ""));
 }
