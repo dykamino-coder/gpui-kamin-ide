@@ -87,7 +87,7 @@ impl Computed {
             font_px,
             metric_px: self.used_font(font_px, vcx).size_px,
             units: self
-                .font_size_adjust
+                .font_adjustment()
                 .map(|_| self.glyph_units(family, font_px, vcx)),
             line_px,
         }
