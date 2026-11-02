@@ -66,17 +66,18 @@ impl Paragraph {
         // `line-break: loose` в китайском/японском письме снимает запрет и
         // после ШИРОКИХ префиксов (css-text-3 §5.2: «breaks after prefixes
         // (PR) with East Asian Width A/F/W», `line-break-loose-018`).
+        // Распорка атома (U+FEFF, класс WJ) здесь не запрет: за атомом
+        // точку ставит `linebreaks`. Принадлежность — по индексу коробок,
+        // а не перебором всех атомов на каждую точку.
+        let atoms = &self.prepared().atoms;
+        let atom_at = |at: usize| atoms.first(at).is_some();
         out.retain(|s| {
             let w = self.wrap_at(s.at);
-            // Распорка атома (U+FEFF, класс WJ) здесь не запрет: за атомом
-            // точку ставит `linebreaks`.
             s.mandatory
                 || w.anywhere
                 || w.wrap_anywhere
-                || self
-                    .atom_boxes
-                    .iter()
-                    .any(|b| b.at + 3 == s.at || b.at == s.at)
+                || atom_at(s.at)
+                || s.at.checked_sub(3).is_some_and(atom_at)
                 || self.text[..s.at].chars().next_back().is_none_or(|c| {
                     !no_break_after(c) || (w.loose >= 2 && w.cjk_lang && wide_prefix(c))
                 })
@@ -84,5 +85,50 @@ impl Paragraph {
         out.sort_by_key(|s| (s.at, !s.mandatory));
         out.dedup_by_key(|s| s.at);
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn paragraph(text: &str, atoms: &[usize]) -> Paragraph {
+        let mut p = Paragraph::new(
+            text.to_owned().into(),
+            vec![],
+            gpui::px(16.),
+            gpui::px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        p.atom_boxes = atoms
+            .iter()
+            .map(|&at| AtomBox {
+                at,
+                h: 8.,
+                base: 8.,
+                align: AtomAlign::Shift(0.),
+                over: 0.,
+                under: 0.,
+                shift: 0.,
+            })
+            .collect();
+        p
+    }
+
+    /// The opportunity right after an atom carrier (U+FEFF, class WJ) stays,
+    /// whatever the order of the atom boxes; after a carrier that is not an
+    /// atom the word joiner keeps forbidding it.
+    #[test]
+    fn opportunities_after_atom_carriers_follow_box_index_in_any_order() {
+        let text = "x\u{feff}x\u{feff}x\u{feff}x";
+        let at = |p: &Paragraph| -> Vec<usize> { p.opportunities().iter().map(|s| s.at).collect() };
+        let all = at(&paragraph(text, &[9, 1, 5, 5]));
+        for expected in [4, 8, 12] {
+            assert!(all.contains(&expected), "{expected} in {all:?}");
+        }
+        let some = at(&paragraph(text, &[5]));
+        assert!(some.contains(&8), "{some:?}");
+        assert!(!some.contains(&4) && !some.contains(&12), "{some:?}");
     }
 }
