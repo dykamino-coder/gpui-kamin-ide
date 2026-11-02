@@ -13,7 +13,13 @@ pub fn is_blank(n: &Node) -> bool {
 /// U+00A0) считался пустым: строка из них пропадала целиком, а абзац рвался
 /// там, где рваться не должен (`trailing-ideographic-space-017`).
 pub fn blank_text(t: &str) -> bool {
-    t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+    t.chars().all(collapsible)
+}
+
+/// Схлопываемый ли знак пробела по CSS Text 3 §4.1.1: `space`, `tab`, `CR`,
+/// `LF`; прочий юникодный пробел — обычный знак текста.
+pub fn collapsible(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
 /// Сохраняет ли CSS пробелы с возможностью переноса после каждого из них.

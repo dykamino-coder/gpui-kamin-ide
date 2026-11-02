@@ -82,7 +82,7 @@ pub(super) fn filter_ref_only_empty(
         if el.style.cascaded().reset_effects.filter_ref.is_some()
             && el.children.iter().any(|c| match c {
                 Node::Element(_) => true,
-                Node::Text(t) => !t.trim().is_empty(),
+                Node::Text(t) => !crate::dom::whitespace::blank_text(t),
             })
         {
             el.style.cascaded_mut().reset_effects.filter_ref = None;
