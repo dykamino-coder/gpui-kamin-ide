@@ -16,6 +16,7 @@ use super::build::Source;
 use super::mentions::mentions;
 use super::patch::{Attrs, Target, patch};
 use super::shape::{self, Changed};
+use super::text::{Texts, editable, patch_texts};
 use crate::document::{Document, state::DocState};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -71,8 +72,23 @@ impl Document {
                 _ => return Err(Box::new(source)),
             }
         }
+        let mut texts: HashMap<u64, Texts> = HashMap::new();
+        for edit in &shape.texts {
+            let id = ids.get(&(Rc::as_ptr(&edit.parent) as usize)).copied();
+            match (id.filter(|id| *id != AMBIGUOUS), editable(edit)) {
+                (Some(id), Some(tag)) => texts
+                    .entry(id)
+                    .or_insert_with(|| Texts {
+                        tag,
+                        edits: Vec::new(),
+                    })
+                    .edits
+                    .push((edit.old.clone(), edit.new.clone())),
+                _ => return Err(Box::new(source)),
+            }
+        }
         let mut nodes = (*self.nodes).clone();
-        if !patch(&mut nodes, &targets) {
+        if !patch(&mut nodes, &targets) || !patch_texts(&mut nodes, &texts) {
             return Err(Box::new(source));
         }
         let moved: HashMap<usize, usize> = shape.elements.iter().copied().collect();

@@ -85,8 +85,13 @@ impl Hooks for BandFlow {
                             geometry: gpui::MeasuredBox,
                             window: &mut Window,
                             cx: &mut App| {
+            // A final layout pass whose parent already fixed the inline size
+            // lays the children out at that size: shrink-to-fit would only
+            // re-derive it from min/max-content probes.
+            let fixed = window.measured_size_fixed();
             window.with_element_layout_context(&context, |window| {
                 let v = vert.is_some();
+                let fixed_inline = if v { fixed.height } else { fixed.width };
                 // Строчная ось — ширина в горизонтальном письме, высота в
                 // вертикальном; блочный размер плана уходит в другую ось.
                 let (known_inline, avail_inline) = if vert.is_some() {
@@ -103,7 +108,9 @@ impl Hooks for BandFlow {
                 };
                 let cb = match (known_inline, avail_inline) {
                     (Some(w), _) => f32::from(w),
-                    (None, AvailableSpace::Definite(w)) if fill_inline => f32::from(w),
+                    (None, AvailableSpace::Definite(w)) if fill_inline || fixed_inline => {
+                        f32::from(w)
+                    }
                     (None, a) => {
                         let (min, max) = intrinsic.get().unwrap_or_else(|| {
                             window.with_nested_layout(|window| {
@@ -206,3 +213,7 @@ impl Hooks for BandFlow {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "element_tests.rs"]
+mod tests;
