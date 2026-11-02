@@ -29,7 +29,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                         .map(|n| match n {
                             // Голый текст стиля не несёт: наследуемое от
                             // растворённого доносит строчная обёртка.
-                            Node::Text(t) if !t.trim().is_empty() => {
+                            Node::Text(t) if !crate::dom::whitespace::blank_text(&t) => {
                                 let mut span = anon_element("span", vec![Node::Text(t)]);
                                 span.style = el.style.clone();
                                 // Сам растворённый display не переносится —
@@ -78,7 +78,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                 )
                 || !is_cell(el)
         }
-        Node::Text(t) => !t.trim().is_empty(),
+        Node::Text(t) => !crate::dom::whitespace::blank_text(t),
     });
     if !needs_fix {
         return vec![Node::Element(row.clone())];
@@ -161,7 +161,7 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
                     stray.push(child.clone());
                 }
             }
-            Node::Text(t) if !t.trim().is_empty() => stray.push(child.clone()),
+            Node::Text(t) if !crate::dom::whitespace::blank_text(&t) => stray.push(child.clone()),
             // CSS 2.1 §17.2.1 step 1.3: white space is dropped only when each
             // existing immediate sibling is an internal table box or caption.
             // Next to an inline (`<span>a</span> <span>b</span>`) it belongs
@@ -218,7 +218,7 @@ fn flatten_contents(children: &[Node]) -> Vec<Node> {
         // inherited values; the table part around becomes their box parent.
         for g in flatten_contents(&el.children) {
             match g {
-                Node::Text(t) if !t.trim().is_empty() => {
+                Node::Text(t) if !crate::dom::whitespace::blank_text(&t) => {
                     let mut span = anon_element("span", vec![Node::Text(t)]);
                     span.style = el.style.clone();
                     span.style.used_mut().reset_box_layout.display = None;

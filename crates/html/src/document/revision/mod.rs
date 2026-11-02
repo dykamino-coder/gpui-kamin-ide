@@ -1,5 +1,14 @@
 //! Транзакционная смена committed revision и постоянный исход отклонённого update.
 
+mod adopt;
+mod build;
+mod mentions;
+mod patch;
+mod shape;
+#[cfg(test)]
+mod tests;
+mod text;
+
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
 
 impl Document {
@@ -46,22 +55,37 @@ impl Document {
                 degradation: self.traversal_limit(),
             });
         }
+        let record = |mut failure: DocumentFailure, this: &mut Self| {
+            failure.report.retained_revision = Some(this.key);
+            this.last_failure = Some(failure);
+            failure
+        };
+        let source = match Self::admit(html, theme_css, self.base_url.as_ref(), self.xml, &revision)
+        {
+            Ok(source) => source,
+            Err(failure) => return Err(record(failure, self)),
+        };
+        let source = match self.adopt(source, theme_css, &revision) {
+            Ok(next) => {
+                *self = next;
+                return Ok(self.report());
+            }
+            Err(source) => *source,
+        };
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
-        let candidate = Self::build(
-            html,
+        let candidate = match Self::from_source(
+            source,
             theme_css,
             self.base_url.clone(),
             self.xml,
             super::state::DocState::continuing(media, &self.state),
             &fonts,
             revision,
-        )
-        .map_err(|mut failure| {
-            failure.report.retained_revision = Some(self.key);
-            self.last_failure = Some(failure);
-            failure
-        })?;
+        ) {
+            Ok(candidate) => candidate,
+            Err(failure) => return Err(record(failure, self)),
+        };
         *self = candidate;
         Ok(self.report())
     }

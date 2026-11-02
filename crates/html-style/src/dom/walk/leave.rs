@@ -26,6 +26,7 @@ pub(super) fn leave(
             .retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role == Some(0)));
         counters.leave();
         *counter += 1;
+        vcx.doc.traversal.record_element(p.visit.handle(), *counter);
         out.push(Node::Element(Element {
             marks: Default::default(),
             list_item: None,
@@ -101,6 +102,7 @@ pub(super) fn leave(
         counters.leave();
     }
     *counter += 1;
+    vcx.doc.traversal.record_element(p.visit.handle(), *counter);
     for kid in &mut children {
         if let Node::Element(c) = kid
             && c.tag.starts_with("::")

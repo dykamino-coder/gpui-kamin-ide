@@ -26,7 +26,7 @@ pub(crate) fn style_pieces(
         || (inherited.reset_cascade.bidi_isolate == Some(true)
             && pieces
                 .iter()
-                .any(|p| matches!(p, inline::Piece::Text { text, .. } if !text.trim().is_empty())));
+                .any(|p| matches!(p, inline::Piece::Text { text, .. } if !crate::dom::whitespace::blank_text(text))));
     let marks = if own_bidi {
         inline::bidi_marks(inherited, inherited)
     } else {

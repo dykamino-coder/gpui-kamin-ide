@@ -68,13 +68,16 @@ fn collect(
     let vcx = opts.cx.vcx();
     for node in nodes {
         match node {
-            Node::Text(t) if t.trim().is_empty() => {}
+            Node::Text(t) if crate::dom::whitespace::blank_text(t) => {}
             Node::Text(t) => {
-                if t.trim().chars().any(char::is_whitespace) {
+                if t.trim_matches(crate::dom::whitespace::collapsible)
+                    .chars()
+                    .any(char::is_whitespace)
+                {
                     return None;
                 }
                 let size = own_size(style, opts);
-                for ch in t.trim().chars() {
+                for ch in t.trim_matches(crate::dom::whitespace::collapsible).chars() {
                     out.glyphs.push(Glyph {
                         text: ch.to_string(),
                         style: style.clone(),
@@ -155,7 +158,7 @@ pub(super) fn upright_central(
                 .top_0()
                 .left(px(left))
                 .w(px(wide))
-                .child(paragraph(&[Node::Text(g.text)], &style, opts)),
+                .child(paragraph(&[Node::Text(g.text.into())], &style, opts)),
         )
     });
     Some(

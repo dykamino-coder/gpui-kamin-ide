@@ -37,7 +37,7 @@ pub(crate) fn vertical_paragraph(
     let kids_upright = !nodes.is_empty()
         && nodes.iter().all(|n| match n {
             Node::Element(e) => e.style.cascaded().wm().upright(),
-            Node::Text(t) => t.trim().is_empty(),
+            Node::Text(t) => crate::dom::whitespace::blank_text(t),
         });
     let upright = (inherited.wm().upright() || kids_upright)
         && !upright::only_mixed_text(nodes, inherited, vcx);
@@ -73,7 +73,7 @@ pub(crate) fn vertical_paragraph(
     gather_text(nodes, &mut plain);
     // Неразрывный пробел — ТЕКСТ: он даёт строку и её толщину
     // (`<td>&nbsp;</td>` в вертикальном ряду, ch-units-vrl-005).
-    if plain.trim().is_empty() && !plain.contains('\u{a0}') && !turned_atom_line(nodes, inherited) {
+    if crate::dom::whitespace::blank_text(&plain) && !turned_atom_line(nodes, inherited) {
         // A single atom cannot wrap, and an orthogonal box with an automatic
         // inline size gets its line length from the parent's layout, which the
         // turned paragraph cannot query; both keep the physical row.
@@ -96,7 +96,7 @@ pub(crate) fn vertical_paragraph(
     // A line of atoms only in a box whose inline size its parent decides
     // (stretch, track) wraps at the length prepaint lays it out with
     // (`VerticalText::prepaint`), not at a fixed fallback width.
-    let atom_line = plain.trim().is_empty() && !plain.contains('\u{a0}');
+    let atom_line = crate::dom::whitespace::blank_text(&plain);
     let mut flow = horizontal.clone();
     flow.reset_context.para_vertical = Some(inherited.wm().block_rl());
     let fallback = inherited

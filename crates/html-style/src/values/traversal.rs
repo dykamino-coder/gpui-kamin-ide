@@ -1,4 +1,5 @@
-//! Защита рекурсивных проходов представления; исходный DOM принадлежит revision.
+//! Защита рекурсивных проходов представления; исходный DOM принадлежит revision,
+//! как и соответствие его элементов узлам дерева коробок (`Element::node_id`).
 
 use super::DocumentValues;
 use crate::dom::input::Admitted;
@@ -13,6 +14,11 @@ pub const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
 #[derive(Default)]
 pub struct TraversalState {
     source: RefCell<Option<Admitted>>,
+    /// Адрес исходного узла элемента по его `node_id - 1`; ноль — не записан.
+    /// Адреса узлов удерживаемого `source` устойчивы, пока он удерживается.
+    elements: RefCell<Vec<usize>>,
+    /// Адрес исходного текстового узла по его `TextId - 1`.
+    texts: RefCell<Vec<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
 }
@@ -20,6 +26,54 @@ pub struct TraversalState {
 impl TraversalState {
     pub fn retain(&self, source: Admitted) {
         self.source.replace(Some(source));
+        // Обход наращивал адреса удвоением: удерживаемая копия — один точный
+        // блок, выделенный после обхода, а промежуточные блоки освобождаются.
+        let exact = self.elements.borrow().as_slice().to_vec();
+        self.elements.replace(exact);
+        let exact = self.texts.borrow().as_slice().to_vec();
+        self.texts.replace(exact);
+    }
+
+    /// Обход дошёл до исходного текста `handle`: его номер, следующий по
+    /// порядку обхода (`None` после `u32::MAX` текстов).
+    pub fn record_text(&self, handle: &Handle) -> Option<crate::dom::TextId> {
+        let mut texts = self.texts.borrow_mut();
+        let id = u32::try_from(texts.len() + 1).ok()?;
+        texts.push(std::rc::Rc::as_ptr(handle) as usize);
+        crate::dom::TextId::new(id)
+    }
+
+    /// Адреса исходных текстов удерживаемого DOM по `TextId - 1`.
+    pub fn texts(&self) -> std::cell::Ref<'_, Vec<usize>> {
+        self.texts.borrow()
+    }
+
+    /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
+    pub fn record_element(&self, handle: &Handle, node_id: u64) {
+        let Some(slot) = usize::try_from(node_id)
+            .ok()
+            .and_then(|id| id.checked_sub(1))
+        else {
+            return;
+        };
+        let mut elements = self.elements.borrow_mut();
+        if elements.len() <= slot {
+            elements.resize(slot + 1, 0);
+        }
+        elements[slot] = std::rc::Rc::as_ptr(handle) as usize;
+    }
+
+    /// Адреса исходных элементов удерживаемого DOM по `node_id - 1`.
+    pub fn elements(&self) -> std::cell::Ref<'_, Vec<usize>> {
+        self.elements.borrow()
+    }
+
+    /// Следующая ревизия с тем же деревом коробок: её исходный DOM и адреса его
+    /// элементов и текстов по тем же `node_id` и `TextId`.
+    pub fn readopt(&self, source: Admitted, elements: Vec<usize>, texts: Vec<usize>) {
+        self.source.replace(Some(source));
+        self.elements.replace(elements);
+        self.texts.replace(texts);
     }
 
     pub fn set_embedded(&self) {

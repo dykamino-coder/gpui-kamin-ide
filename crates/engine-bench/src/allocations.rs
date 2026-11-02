@@ -1,5 +1,5 @@
-//! Точные счётчики запросов глобальному Rust-аллокатору процесса стенда.
-//! Native/D3D allocations в них не входят; WS/private commit измеряются отдельно.
+//! РўРѕС‡РЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё Р·Р°РїСЂРѕСЃРѕРІ РіР»РѕР±Р°Р»СЊРЅРѕРјСѓ Rust-Р°Р»Р»РѕРєР°С‚РѕСЂСѓ РїСЂРѕС†РµСЃСЃР° СЃС‚РµРЅРґР°.
+//! Native/D3D allocations РІ РЅРёС… РЅРµ РІС…РѕРґСЏС‚; WS/private commit РёР·РјРµСЂСЏСЋС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ.
 
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
@@ -28,8 +28,8 @@ mod counted {
         LIVE.fetch_sub(bytes as u64, Relaxed);
     }
 
-    // Контракт GlobalAlloc передаётся MiMalloc без изменения layout/указателей.
-    // Счётчики не выделяют память и не входят повторно в аллокатор.
+    // РљРѕРЅС‚СЂР°РєС‚ GlobalAlloc РїРµСЂРµРґР°С‘С‚СЃСЏ MiMalloc Р±РµР· РёР·РјРµРЅРµРЅРёСЏ layout/СѓРєР°Р·Р°С‚РµР»РµР№.
+    // РЎС‡С‘С‚С‡РёРєРё РЅРµ РІС‹РґРµР»СЏСЋС‚ РїР°РјСЏС‚СЊ Рё РЅРµ РІС…РѕРґСЏС‚ РїРѕРІС‚РѕСЂРЅРѕ РІ Р°Р»Р»РѕРєР°С‚РѕСЂ.
     unsafe impl GlobalAlloc for Counted {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             let pointer = unsafe { mimalloc::MiMalloc.alloc(layout) };
@@ -52,7 +52,7 @@ mod counted {
         unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
             let next = unsafe { mimalloc::MiMalloc.realloc(pointer, layout, size) };
             if !next.is_null() {
-                // Размеры realloc учитываются полностью; failed realloc оставляет старый блок.
+                // Р Р°Р·РјРµСЂС‹ realloc СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ; failed realloc РѕСЃС‚Р°РІР»СЏРµС‚ СЃС‚Р°СЂС‹Р№ Р±Р»РѕРє.
                 freed(layout.size());
                 allocated(size);
             }
@@ -68,6 +68,23 @@ mod counted {
             live: LIVE.load(Relaxed),
             peak: PEAK.load(Relaxed),
         }
+    }
+}
+
+// SVG-интервалы читают тот же opt-in аудит, что и снимки памяти фаз.
+// В timing-сборке нет ни callback, ни атомарных операций в аллокаторе.
+#[cfg(feature = "work-counters")]
+pub(super) fn svg_observer() -> Option<fn() -> (u64, u64)> {
+    #[cfg(feature = "allocation-audit")]
+    {
+        Some(|| {
+            let snapshot = Snapshot::read();
+            (snapshot.calls, snapshot.bytes)
+        })
+    }
+    #[cfg(not(feature = "allocation-audit"))]
+    {
+        None
     }
 }
 
@@ -106,6 +123,17 @@ mod tests {
     use std::alloc::{GlobalAlloc, Layout};
 
     #[test]
+    fn svg_intervals_use_the_opt_in_allocation_audit() {
+        let observer = svg_observer().expect("allocation-audit provides SVG samples");
+        let before = observer();
+        let allocation = std::hint::black_box(vec![0u8; 1024]);
+        let after = observer();
+        assert!(after.0 > before.0);
+        assert!(after.1 >= before.1 + 1024);
+        drop(allocation);
+    }
+
+    #[test]
     fn forwards_alignment_zeroing_and_reallocation() {
         let layout = Layout::from_size_align(31, 64).unwrap();
         unsafe {
@@ -131,5 +159,7 @@ mod timing_tests {
     #[test]
     fn disabled_audit_reports_absence_instead_of_zero_allocations() {
         assert!(super::Snapshot::read().json().is_null());
+        #[cfg(feature = "work-counters")]
+        assert!(super::svg_observer().is_none());
     }
 }

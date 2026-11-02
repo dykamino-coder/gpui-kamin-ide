@@ -3,6 +3,8 @@
 
 mod measure;
 mod record;
+#[cfg(test)]
+mod scope_tests;
 use gpui::{AnyElement, Bounds, Pixels, Window};
 pub(crate) use measure::{Measure, MeasureScope};
 pub(crate) use record::{Geometry, full_box};
