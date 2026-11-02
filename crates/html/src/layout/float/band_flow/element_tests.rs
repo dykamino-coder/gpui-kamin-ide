@@ -7,6 +7,10 @@ use gpui::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(feature = "work-counters")]
+#[path = "stretch_tests.rs"]
+mod stretch;
+
 type Calls = Rc<RefCell<Vec<(Size<bool>, AvailableSpace)>>>;
 
 fn column(window: &mut gpui::Window, app: &mut gpui::App, align: Option<AlignItems>) -> Calls {
