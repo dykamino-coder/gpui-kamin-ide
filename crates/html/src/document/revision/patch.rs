@@ -1,7 +1,7 @@
 //! Правка атрибутов коробок адресуемых элементов в разделяемом дереве: копия
 //! пути (`Children` копируется при записи) только до каждой правки.
 
-use crate::dom::Node;
+use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
 pub(super) type Attrs = Vec<(String, String)>;
@@ -51,9 +51,22 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
     list.iter_mut().nth(*last)
 }
 
-/// Пути ко всем коробкам адресуемых элементов (обход без рекурсии: глубина
-/// дерева коробок ограничена только пределом представления).
+/// Пути ко всем коробкам адресуемых элементов.
 fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u64)>) -> bool {
+    elements(nodes, |e, path| match targets.get(&e.node_id) {
+        Some(target) if e.tag == target.tag && e.attrs == target.old => {
+            paths.push((path.to_vec(), e.node_id));
+            true
+        }
+        Some(target) => e.tag != target.tag && e.attrs.is_empty(),
+        None => true,
+    })
+}
+
+/// Обход коробок в прямом порядке с путём к каждой (без рекурсии: глубина
+/// дерева коробок ограничена только пределом представления); `false` от
+/// `visit` прерывает обход, и тогда результат — `false`.
+pub(super) fn elements(nodes: &[Node], mut visit: impl FnMut(&Element, &[usize]) -> bool) -> bool {
     let mut stack: Vec<(&[Node], usize)> = vec![(nodes, 0)];
     let mut path = Vec::new();
     while let Some((list, next)) = stack.last_mut() {
@@ -67,12 +80,8 @@ fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u
         *next += 1;
         let Node::Element(e) = node else { continue };
         path.push(index);
-        if let Some(target) = targets.get(&e.node_id) {
-            if e.tag == target.tag && e.attrs == target.old {
-                paths.push((path.clone(), e.node_id));
-            } else if e.tag == target.tag || !e.attrs.is_empty() {
-                return false;
-            }
+        if !visit(e, &path) {
+            return false;
         }
         stack.push((&e.children, 0));
     }

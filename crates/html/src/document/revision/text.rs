@@ -12,7 +12,7 @@
 //! одном, не склеенные с соседним текстом, у элемента с потоком текста. Тогда
 //! в дереве коробок меняется ровно один узел текста в коробках родителя.
 
-use super::patch::{Path, apply};
+use super::patch::{Path, apply, elements};
 use super::shape::Edited;
 use crate::dom::Node;
 use markup5ever_rcdom::NodeData;
@@ -126,34 +126,26 @@ fn shape(text: &str) -> Option<(&str, &str, bool)> {
 pub(super) fn patch_texts(nodes: &mut Vec<Node>, targets: &HashMap<u64, Texts>) -> bool {
     let mut paths: Vec<(Path, String)> = Vec::new();
     let mut seen: HashMap<u64, usize> = HashMap::new();
-    let mut stack: Vec<(&[Node], usize)> = vec![(nodes, 0)];
-    let mut path = Vec::new();
-    while let Some((list, next)) = stack.last_mut() {
-        let list: &[Node] = list;
-        let Some(node) = list.get(*next) else {
-            stack.pop();
-            path.pop();
-            continue;
+    let found = elements(nodes, |e, path| {
+        let Some(target) = targets.get(&e.node_id).filter(|t| t.tag == e.tag) else {
+            return true;
         };
-        let index = *next;
-        *next += 1;
-        let Node::Element(e) = node else { continue };
-        path.push(index);
-        if let Some(target) = targets.get(&e.node_id).filter(|t| t.tag == e.tag) {
-            if e.first_letter.is_some() {
-                return false;
-            }
-            for (old, new) in &target.edits {
-                let mut found = Vec::new();
-                texts(&e.children, old, &mut path.clone(), &mut found);
-                let [one] = found.as_slice() else {
-                    return false;
-                };
-                paths.push((one.clone(), new.clone()));
-            }
-            *seen.entry(e.node_id).or_default() += 1;
+        if e.first_letter.is_some() {
+            return false;
         }
-        stack.push((&e.children, 0));
+        for (old, new) in &target.edits {
+            let mut found = Vec::new();
+            texts(&e.children, old, &mut path.to_vec(), &mut found);
+            let [one] = found.as_slice() else {
+                return false;
+            };
+            paths.push((one.clone(), new.clone()));
+        }
+        *seen.entry(e.node_id).or_default() += 1;
+        true
+    });
+    if !found {
+        return false;
     }
     if targets.keys().any(|id| !seen.contains_key(id)) {
         return false;
