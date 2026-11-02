@@ -70,13 +70,22 @@ pub fn rasterize(
             .then(|| super::pixels::bgra(pw, ph, pixmap.take()))
             .flatten();
     }
-    let tree = usvg::Tree::from_str(markup, &options).ok()?;
+    let tree = {
+        crate::work::add!(SvgParseCalls, 1);
+        crate::work::time!(_svg_time, SvgParseNs);
+        usvg::Tree::from_str(markup, &options).ok()?
+    };
     let size = tree.size();
-    resvg::render(
-        &tree,
-        Transform::from_scale(w as f32 / size.width(), h as f32 / size.height()),
-        &mut pixmap.as_mut(),
-    );
+    {
+        crate::work::add!(SvgRenderCalls, 1);
+        crate::work::add!(SvgRenderPixels, u64::from(pw) * u64::from(ph));
+        crate::work::time!(_svg_time, SvgRenderNs);
+        resvg::render(
+            &tree,
+            Transform::from_scale(w as f32 / size.width(), h as f32 / size.height()),
+            &mut pixmap.as_mut(),
+        );
+    }
     if request.pad > 0
         && !(0..ph as usize).any(|y| {
             (0..pw as usize).any(|x| {

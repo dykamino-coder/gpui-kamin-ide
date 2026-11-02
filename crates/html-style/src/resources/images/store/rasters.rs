@@ -10,6 +10,10 @@ use crate::resources::images::{
 use crate::resources::loader::{ResourceUrl, Revision, fetch};
 use resvg::usvg::fontdb::Database;
 use std::sync::{Arc, Mutex};
+mod identity;
+use identity::Identity;
+#[cfg(test)]
+mod static_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -21,12 +25,13 @@ struct ExternalResource {
     revision: Revision,
     bytes: Option<Arc<Vec<u8>>>,
 }
-type SourceKey = (String, RasterRequest);
-type RasterKey = (String, RasterRequest, Vec<ExternalResource>);
+type SourceKey = (Identity, RasterRequest);
+type RasterKey = (Identity, RasterRequest, Vec<ExternalResource>);
 type BytesKey = (ResourceUrl, Revision);
 
 pub(super) struct Rasters {
     fonts: Arc<Database>,
+    identities: BoundedCache<String, Identity>,
     cache: BoundedCache<RasterKey, Option<Arc<CpuRaster>>>,
     external: BoundedCache<BytesKey, Option<Arc<Vec<u8>>>>,
     dependencies: BoundedCache<SourceKey, Vec<String>>,
@@ -37,8 +42,10 @@ impl Default for Rasters {
         // подключаются только явным решением владельца документа.
         Self {
             fonts: Arc::new(Database::new()),
+            identities: BoundedCache::new(4 * MIB, |id: &Identity| id.markup.len())
+                .with_key_weight(String::len),
             cache: BoundedCache::new(128 * MIB, optional_bytes).with_key_weight(|k: &RasterKey| {
-                k.0.len()
+                k.0.markup.len()
                     + k.2
                         .iter()
                         .map(|d| d.href.len() + d.bytes.as_ref().map_or(0, |b| b.len()))
@@ -51,7 +58,7 @@ impl Default for Rasters {
             dependencies: BoundedCache::new(4 * MIB, |urls: &Vec<String>| {
                 urls.iter().map(|url| url.len() + size_of::<String>()).sum()
             })
-            .with_key_weight(|k: &SourceKey| k.0.len()),
+            .with_key_weight(|k: &SourceKey| k.0.markup.len()),
         }
     }
 }
@@ -103,7 +110,14 @@ impl ImageStore {
         }
     }
     pub fn rasterize_svg(&self, markup: &str, request: RasterRequest) -> Option<Arc<CpuRaster>> {
-        let source = (markup.to_string(), request);
+        let identity = self.rasters.identities.get(markup).unwrap_or_else(|| {
+            let identity = Identity::new(markup);
+            self.rasters
+                .identities
+                .insert(markup.to_owned(), identity.clone());
+            identity
+        });
+        let source = (identity, request);
         if let Some(hrefs) = self.rasters.dependencies.get(&source) {
             let resources = hrefs
                 .iter()
@@ -114,9 +128,11 @@ impl ImageStore {
                 .cache
                 .get(&(source.0.clone(), request, resources))
             {
+                crate::work::add!(SvgRasterCacheHits, 1);
                 return hit;
             }
         }
+        crate::work::add!(SvgRasterCacheMisses, 1);
         // Только парсер знает фактически запрошенные вложенные use/image.
         // Сохраняем и отказы: появившийся файл должен инвалидировать fallback.
         let resources = Mutex::new(Vec::<ExternalResource>::new());

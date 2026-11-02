@@ -70,7 +70,7 @@ fn injected_font_database_changes_pixels_and_invalidates_rasters() {
     );
     let family = fonts.faces().next().unwrap().families[0].0.clone();
     let markup = format!(
-        "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='30'><text x='0' y='22' font-family='{family}' font-size='20'>SVG</text></svg>"
+        "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='30'><text id='text' x='0' y='22' font-family='{family}' font-size='20'>SVG</text></svg>"
     );
     let empty = store.rasterize_svg(&markup, req).unwrap();
     assert!(empty.bytes.chunks_exact(4).all(|p| p[3] == 0));
