@@ -65,7 +65,7 @@ pub fn wrap_misparented_ruby(
     if !children.iter().any(internal) {
         return children;
     }
-    let blank = |n: &Node| matches!(n, Node::Text(t) if t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n' | '\x0c')));
+    let blank = crate::dom::whitespace::is_blank;
     let mut out: Vec<Node> = Vec::with_capacity(children.len());
     let mut run: Vec<Node> = Vec::new();
     // Пробелы после последней руби-коробки серии: войдут в серию, только

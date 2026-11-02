@@ -99,8 +99,8 @@ pub(super) fn editable(edit: &Edited) -> Option<String> {
 /// знака слева направо; `None` — текст пустой по CSS или с письмом справа
 /// налево.
 fn shape(text: &str) -> Option<(&str, &str, bool)> {
+    use crate::dom::whitespace::collapsible;
     use unicode_bidi::BidiClass::*;
-    let collapsible = |c: char| matches!(c, ' ' | '\t' | '\r' | '\n');
     let body = text.trim_matches(collapsible);
     if body.is_empty() {
         return None;
