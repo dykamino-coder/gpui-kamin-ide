@@ -1,11 +1,11 @@
 //! Сравнение исходных DOM двух ревизий одной формы.
 //!
-//! Форма — всё, кроме атрибутов элементов HTML вне шаблонов и чужого
-//! содержимого: виды узлов, имена, тексты, комментарии, DOCTYPE, порядок и
+//! Форма — всё, кроме атрибутов элементов HTML и текстов вне шаблонов и
+//! чужого содержимого: виды узлов, имена, комментарии, DOCTYPE, порядок и
 //! число детей, содержимое шаблонов. Ревизия той же формы отличается только
-//! такими атрибутами; их и перечисляет `Shape`. Любое другое отличие (текст,
-//! дети, атрибут SVG/MathML или внутри `<template>`) — `None`: такая ревизия
-//! собирается заново.
+//! такими атрибутами и текстами; их и перечисляет `Shape`. Любое другое
+//! отличие (дети, атрибут или текст SVG/MathML или внутри `<template>`) —
+//! `None`: такая ревизия собирается заново.
 
 use markup5ever_rcdom::{Handle, NodeData};
 use std::rc::Rc;
@@ -16,9 +16,20 @@ pub(super) struct Changed {
     pub(super) new: Handle,
 }
 
+/// Текстовый узел, содержимое которого в новой ревизии другое.
+pub(super) struct Edited {
+    /// Родитель в прежнем DOM.
+    pub(super) parent: Handle,
+    pub(super) old: String,
+    pub(super) new: String,
+    /// Соседний узел (без комментариев) — тоже текст: обход склеивает их.
+    pub(super) merged: bool,
+}
+
 /// Отличия ревизии той же формы.
 pub(super) struct Shape {
     pub(super) changed: Vec<Changed>,
+    pub(super) texts: Vec<Edited>,
     /// Адреса элементов прежнего и нового DOM в одном порядке обхода.
     pub(super) elements: Vec<(usize, usize)>,
     /// Тексты всех `<style>` нового DOM, включая содержимое шаблонов.
@@ -29,12 +40,14 @@ pub(super) struct Shape {
 pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
     let mut shape = Shape {
         changed: Vec::new(),
+        texts: Vec::new(),
         elements: Vec::new(),
         sheets: Vec::new(),
     };
-    // Узел, его пара и признак «атрибуты здесь — часть формы».
-    let mut stack = vec![(old.clone(), new.clone(), false)];
-    while let Some((a, b, frozen)) = stack.pop() {
+    // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
+    // прежний родитель.
+    let mut stack = vec![(old.clone(), new.clone(), false, None::<Handle>)];
+    while let Some((a, b, frozen, parent)) = stack.pop() {
         let frozen = match (&a.data, &b.data) {
             (NodeData::Document, NodeData::Document) => frozen,
             (
@@ -49,9 +62,18 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                     system_id: s,
                 },
             ) if name == n && public_id == p && system_id == s => frozen,
-            (NodeData::Text { contents }, NodeData::Text { contents: c })
-                if *contents.borrow() == *c.borrow() =>
-            {
+            (NodeData::Text { contents }, NodeData::Text { contents: c }) => {
+                if *contents.borrow() != *c.borrow() {
+                    let Some(parent) = parent.filter(|_| !frozen) else {
+                        return None;
+                    };
+                    shape.texts.push(Edited {
+                        merged: merged(&parent, &a),
+                        parent,
+                        old: contents.borrow().to_string(),
+                        new: c.borrow().to_string(),
+                    });
+                }
                 frozen
             }
             (NodeData::Comment { contents }, NodeData::Comment { contents: c })
@@ -104,7 +126,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 match (&*template_contents.borrow(), &*t.borrow()) {
                     (None, None) => {}
-                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true)),
+                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true, None)),
                     _ => return None,
                 }
                 frozen
@@ -116,10 +138,21 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
             return None;
         }
         for (x, y) in ka.iter().zip(kb.iter()).rev() {
-            stack.push((x.clone(), y.clone(), frozen));
+            stack.push((x.clone(), y.clone(), frozen, Some(a.clone())));
         }
     }
     Some(shape)
+}
+
+/// Соседствует ли текст `node` (через комментарии) с другим текстом у `parent`.
+fn merged(parent: &Handle, node: &Handle) -> bool {
+    let kids = parent.children.borrow();
+    let Some(at) = kids.iter().position(|k| Rc::ptr_eq(k, node)) else {
+        return true;
+    };
+    let text = |k: &&Handle| !matches!(k.data, NodeData::Comment { .. });
+    let is_text = |k: Option<&Handle>| matches!(k.map(|k| &k.data), Some(NodeData::Text { .. }));
+    is_text(kids[..at].iter().rev().find(text)) || is_text(kids[at + 1..].iter().find(text))
 }
 
 fn text_of(node: &Handle) -> String {
