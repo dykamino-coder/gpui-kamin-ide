@@ -1,4 +1,4 @@
-//! Снимок работы одного завершённого кадра; целые значения сохраняются без округления.
+//! РЎРЅРёРјРѕРє СЂР°Р±РѕС‚С‹ РѕРґРЅРѕРіРѕ Р·Р°РІРµСЂС€С‘РЅРЅРѕРіРѕ РєР°РґСЂР°; С†РµР»С‹Рµ Р·РЅР°С‡РµРЅРёСЏ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ Р±РµР· РѕРєСЂСѓРіР»РµРЅРёСЏ.
 
 use serde_json::Value;
 
@@ -17,7 +17,10 @@ impl Capture {
         let _ = luid;
         Ok(Self {
             #[cfg(feature = "work-counters")]
-            session: kamin_html::work::Session::begin_observed(Some(usage.observer())),
+            session: kamin_html::work::Session::begin_measured(
+                Some(usage.observer()),
+                super::allocations::svg_observer(),
+            ),
             #[cfg(feature = "work-counters")]
             usage,
         })
@@ -28,6 +31,7 @@ impl Capture {
         {
             use kamin_html::work::{Counter, Phase};
             let mut usage = self.usage.finish(cold);
+            usage["svg_allocation_audit_enabled"] = cfg!(feature = "allocation-audit").into();
             let live = doc.values().doc.style_storage();
             usage["style_storage"] = serde_json::json!({
                 "scope": "document initial descendants; nested buffers and Rc control blocks excluded",
