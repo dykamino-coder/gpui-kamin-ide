@@ -2,20 +2,22 @@
 
 use super::flow_kid::intrinsic_sizes;
 use super::kid::Kid;
-use super::{COORD_EPS, Plan, Probe, plan};
+use super::{Probe, plan};
 use crate::hooks::Hooks;
 use crate::layout::build_contracts::ChildBuild;
 use crate::layout::cx::LayoutCx;
 use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Window, px, size};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct BandFlow {
     pub(super) paint: Rc<Deferred>,
     pub(super) build: ChildBuild,
     pub(super) kids: Rc<Vec<Kid>>,
-    pub(super) plan: Rc<RefCell<Option<Plan>>>,
+    pub(super) plan: Rc<super::cache::Plans>,
+    intrinsic: Rc<std::cell::Cell<Option<(f32, f32)>>>,
+    pub(super) fill_inline: bool,
     pub(super) built: Vec<AnyElement>,
     /// Письмо хоста: `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr`.
     pub(super) vert: Option<bool>,
@@ -32,7 +34,9 @@ impl BandFlow {
             paint: cx.deferred.paint.clone(),
             build: cx.contracts.build,
             kids: Rc::new(kids),
-            plan: Rc::new(RefCell::new(None)),
+            plan: Default::default(),
+            intrinsic: Default::default(),
+            fill_inline: cx.constraints.avail_w.is_some(),
             built: Vec::new(),
             vert: None,
             inline_up: false,
@@ -58,75 +62,98 @@ impl Hooks for BandFlow {
     fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
+        let intrinsic = self.intrinsic.clone();
+        let fill_inline = self.fill_inline;
         let fragment = self.fragment.clone();
         let paint = self.paint.clone();
         let scopes = self.probe_scopes();
         let build = self.build;
         let measured = Rc::new(RefCell::new(Default::default()));
         let output = measured.clone();
+        let context = window.element_layout_context();
         let inline_up = self.inline_up;
         let style = gpui::Style {
             flex_shrink: 0.0,
             ..Default::default()
         };
-        // Auto inline size stretches when layout supplies known.width; float,
-        // inline-block and cell hosts use their children's shrink-to-fit sizes
-        // (CSS 2.1 §10.3.5). A percentage width would instead fill all available
-        // space even during intrinsic measurement: the floating .contain in
-        // letter-spacing-206-ref must fit its widest floated paragraph.
-        // Height follows the owner's float-containment policy independently
-        // of this inline-size calculation (§§10.6.3, 10.6.7).
+        // BoxConstraints даёт definite stretch-fit только блочному потоку
+        // (§10.3.3). Float/inline-block/abspos и flex/grid/table оставляют
+        // размер неизвестным до своего алгоритма; их fit-content сохраняется.
         let (vert, contain_floats) = (self.vert, self.contain_floats);
-        // Intrinsic sizes depend only on the children, never on the measure
-        // inputs (CSS Sizing 3 §5): one probe pair per element instance.
-        let intrinsic = Rc::new(Cell::new(None));
-        // Probes run during the root's layout, outside this element's text
-        // style scopes; they build the children with the inherited text style
-        // that `prepaint` sees, so both phases plan the same boxes.
-        let text = window.text_style_scope();
-        let id = window.request_measured_layout(style, move |known, available, window, cx| {
-            let v = vert.is_some();
+        let measure = move |known: gpui::Size<Option<Pixels>>,
+                            available: gpui::Size<AvailableSpace>,
+                            geometry: gpui::MeasuredBox,
+                            window: &mut Window,
+                            cx: &mut App| {
             // A final layout pass whose parent already fixed the inline size
             // lays the children out at that size: shrink-to-fit would only
             // re-derive it from min/max-content probes.
             let fixed = window.measured_size_fixed();
-            let fixed_inline = if v { fixed.height } else { fixed.width };
-            // Строчная ось — ширина в горизонтальном письме, высота в
-            // вертикальном; блочный размер плана уходит в другую ось.
-            let (known_inline, avail_inline) = if vert.is_some() {
-                (known.height, available.height)
-            } else {
-                (known.width, available.width)
-            };
-            let phys = |inline: f32, block: f32| {
-                if vert.is_some() {
-                    size(px(block), px(inline))
+            window.with_element_layout_context(&context, |window| {
+                let v = vert.is_some();
+                let fixed_inline = if v { fixed.height } else { fixed.width };
+                // Строчная ось — ширина в горизонтальном письме, высота в
+                // вертикальном; блочный размер плана уходит в другую ось.
+                let (known_inline, avail_inline) = if vert.is_some() {
+                    (known.height, available.height)
                 } else {
-                    size(px(inline), px(block))
+                    (known.width, available.width)
+                };
+                let phys = |inline: f32, block: f32| {
+                    if vert.is_some() {
+                        size(px(block), px(inline))
+                    } else {
+                        size(px(inline), px(block))
+                    }
+                };
+                let cb = match (known_inline, avail_inline) {
+                    (Some(w), _) => f32::from(w),
+                    (None, AvailableSpace::Definite(w)) if fill_inline || fixed_inline => {
+                        f32::from(w)
+                    }
+                    (None, a) => {
+                        let (min, max) = intrinsic.get().unwrap_or_else(|| {
+                            window.with_nested_layout(|window| {
+                                let p = &mut Probe::new(
+                                    window,
+                                    cx,
+                                    v,
+                                    fragment.as_ref(),
+                                    paint.clone(),
+                                    scopes.clone(),
+                                    build,
+                                );
+                                let sizes = intrinsic_sizes(&kids, p);
+                                intrinsic.set(Some(sizes));
+                                sizes
+                            })
+                        });
+                        match a {
+                            AvailableSpace::Definite(w) => max.min(min.max(f32::from(w))),
+                            AvailableSpace::MaxContent => max,
+                            AvailableSpace::MinContent => min,
+                        }
+                    }
+                };
+                let axis = if v {
+                    gpui::Axis::Vertical
+                } else {
+                    gpui::Axis::Horizontal
+                };
+                if geometry.intrinsic_axis == Some(axis) {
+                    return phys(cb, 0.0);
                 }
-            };
-            let cb = match (known_inline, avail_inline) {
-                (Some(w), _) => f32::from(w),
-                (None, AvailableSpace::Definite(w)) if fixed_inline => f32::from(w),
-                (None, AvailableSpace::Definite(w)) => {
-                    let w = f32::from(w);
-                    let (mn, mx) = nested(window, &text, |window| {
-                        let p = &mut Probe::new(
-                            window,
-                            cx,
-                            v,
-                            fragment.as_ref(),
-                            paint.clone(),
-                            scopes.clone(),
-                            build,
-                        );
-                        memo_intrinsic(&intrinsic, &kids, p)
-                    });
-                    // §10.3.5: `min(max(min-content, available), max-content)`.
-                    mx.max(mn).min(mn.max(w))
+                if let Some(p) = cache.get(cb) {
+                    if let Some(f) = &fragment {
+                        f.publish(&p, &kids);
+                    }
+                    super::clamp::publish(&output, &p, vert, inline_up);
+                    return phys(cb, p.height);
                 }
-                (None, a) => nested(window, &text, |window| {
-                    let p = &mut Probe::new(
+                let mut engine = gpui::RetainedLayout::default();
+                let retained = engine.clone();
+                let p = window.with_retained_layout(&mut engine, |window| {
+                    let mut p = Probe::new(
                         window,
                         cx,
                         v,
@@ -135,47 +162,19 @@ impl Hooks for BandFlow {
                         scopes.clone(),
                         build,
                     );
-                    let (mn, mx) = memo_intrinsic(&intrinsic, &kids, p);
-                    if matches!(a, AvailableSpace::MaxContent) {
-                        mx
-                    } else {
-                        mn
-                    }
-                }),
-            };
-            if let Some(p) = cache.borrow().as_ref()
-                && (p.width - cb).abs() < COORD_EPS
-            {
+                    p.engine = Some(retained);
+                    plan(&kids, cb, contain_floats, &mut p)
+                });
                 if let Some(f) = &fragment {
-                    f.publish(p, &kids);
+                    f.publish(&p, &kids);
                 }
-                super::clamp::publish(&output, p, vert, inline_up);
-                return phys(cb, p.height);
-            }
-            let p = nested(window, &text, |window| {
-                plan(
-                    &kids,
-                    cb,
-                    contain_floats,
-                    &mut Probe::new(
-                        window,
-                        cx,
-                        v,
-                        fragment.as_ref(),
-                        paint.clone(),
-                        scopes.clone(),
-                        build,
-                    ),
-                )
-            });
-            if let Some(f) = &fragment {
-                f.publish(&p, &kids);
-            }
-            super::clamp::publish(&output, &p, vert, inline_up);
-            let h = p.height;
-            *cache.borrow_mut() = Some(p);
-            phys(cb, h)
-        });
+                super::clamp::publish(&output, &p, vert, inline_up);
+                let h = p.height;
+                cache.insert(p);
+                phys(cb, h)
+            })
+        };
+        let id = window.request_measured_layout_with_box(style, measure);
         if let Some((_, clamp)) = &self.clamp {
             clamp.lift(id, measured);
         }
@@ -213,25 +212,6 @@ impl Hooks for BandFlow {
             }
         });
     }
-}
-
-/// A probe layout under the requesting element's inherited text style.
-fn nested<R>(
-    window: &mut Window,
-    text: &gpui::TextStyleScope,
-    f: impl FnOnce(&mut Window) -> R,
-) -> R {
-    window.with_text_style_scope(text, |window| window.with_nested_layout(f))
-}
-
-/// Min-content and max-content of the children, probed once per element instance.
-fn memo_intrinsic(memo: &Cell<Option<(f32, f32)>>, kids: &[Kid], p: &mut Probe) -> (f32, f32) {
-    if let Some(sizes) = memo.get() {
-        return sizes;
-    }
-    let sizes = intrinsic_sizes(kids, p);
-    memo.set(Some(sizes));
-    sizes
 }
 
 #[cfg(test)]

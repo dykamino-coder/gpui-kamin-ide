@@ -122,12 +122,9 @@ impl Paragraph {
     /// Есть ли между `start` и `end` кусок с разрешённым аварийным разрывом
     /// (см. `emergency_ok`).
     pub(crate) fn emergency_inside(&self, start: usize, end: usize) -> bool {
-        self.spans.iter().any(|(r, w)| {
-            r.start < end
-                && r.end > start
-                && !w.nowrap
-                && (w.anywhere || w.break_word || w.wrap_anywhere)
-        })
+        self.spans
+            .overlapping(start, end)
+            .any(|(_, w)| !w.nowrap && (w.anywhere || w.break_word || w.wrap_anywhere))
     }
 }
 

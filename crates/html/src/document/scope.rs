@@ -62,6 +62,7 @@ pub(super) fn frame_opts(
     opts.cx.clamp.input = None;
     opts.cx.values.inert_clear = false;
     opts.cx.contracts.document_root = Some((nodes.as_ptr() as usize, nodes.len()));
+    opts.cx.contracts.paragraph_frame_started = true;
     opts.cx.values.doc = crate::layout::cx::BuildDoc(state.clone());
     opts
 }

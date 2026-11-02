@@ -6,6 +6,8 @@ use taffy::util::ResolveOrZero;
 /// Used edges share Taffy's percentage basis, independently of the leaf's own width.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MeasuredBox {
+    /// A size-only query for this axis; absent when both dimensions or final layout are needed.
+    pub intrinsic_axis: Option<crate::Axis>,
     /// Containing block dimensions, before resolving this leaf's preferred size.
     pub parent_size: Size<Option<Pixels>>,
     /// Used padding, resolved against the containing block inline size.
@@ -27,6 +29,7 @@ impl MeasuredBox {
             left: Pixels(rect.left / scale),
         };
         Self {
+            intrinsic_axis: None,
             parent_size: size(
                 parent.width.map(|v| Pixels(v / scale)),
                 parent.height.map(|v| Pixels(v / scale)),
