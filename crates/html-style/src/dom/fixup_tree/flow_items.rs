@@ -102,7 +102,7 @@ fn fold_at(
     // run-in, не строчный. Плавающие и позиционированные соседи
     // ПРОЗРАЧНЫ: они вне потока и вбеганию не мешают (§9.2.3).
     let Some(j) = (i + 1..nodes.len()).find(|&j| {
-            !matches!(&nodes[j], Node::Text(t) if t.is_empty() || (!keep && t.trim().is_empty())) && !matches!(&nodes[j], Node::Element(t) if crate::style::flow::has_float_or_absolute_position(t.style.cascaded()))
+            !matches!(&nodes[j], Node::Text(t) if t.is_empty() || (!keep && crate::dom::whitespace::blank_text(t))) && !matches!(&nodes[j], Node::Element(t) if crate::style::flow::has_float_or_absolute_position(t.style.cascaded()))
         }) else {
             return Ok(i + 1);
         };
