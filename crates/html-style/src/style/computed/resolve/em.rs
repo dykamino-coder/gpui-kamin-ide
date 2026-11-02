@@ -82,7 +82,7 @@ impl Computed {
             metric_px: self.used_font_for(&family, own_px, vcx).size_px,
             line_px: self.numeric_line_px(own_px),
             units: self
-                .font_size_adjust
+                .font_adjustment()
                 .map(|_| self.glyph_units(&family, own_px, vcx)),
         };
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
