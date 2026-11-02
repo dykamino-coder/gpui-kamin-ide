@@ -5,7 +5,7 @@
 //! конкретной строки в точках (`text-indent`, доля от ширины строки) и
 //! свисающая пунктуация в начале и в конце строки (css-text-3 §9.2).
 
-use crate::text::paragraph::*;
+use crate::{dom::whitespace::blank_text, text::paragraph::*};
 use gpui::{Pixels, px};
 
 impl Paragraph {
@@ -41,9 +41,7 @@ impl Paragraph {
                 // strut of the root inline box and the ellipsis only, no
                 // box of the inlines open there (css-overflow-4
                 // §block-ellipsis; `block-ellipsis-036`, `-quirk-002`).
-                if line.clamped
-                    && crate::dom::whitespace::blank_text(&self.text[line.range.clone()])
-                {
+                if line.clamped && blank_text(&self.text[line.range.clone()]) {
                     return (f32::from(line.clearance), 0.0);
                 }
                 let (mut above, mut below) = (0.0f32, 0.0f32);
