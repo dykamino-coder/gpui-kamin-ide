@@ -5,12 +5,14 @@ use crate::layout::fragment::{flow::blocks::Laid, plan, token::Error, types::Kid
 use crate::layout::multicol::column_stack::balance::search::{Trial, min_shortage, search};
 use gpui::{App, Window};
 mod lines;
-use lines::Lines;
+mod model;
+mod serial;
+use model::Model;
 
 struct Input {
     geometry: Kid,
     laid: Option<Laid>,
-    lines: Option<Lines>,
+    lines: Option<Model>,
 }
 
 impl ColumnStack {
@@ -29,7 +31,7 @@ impl ColumnStack {
             .map(|c| Input {
                 geometry: c.kid(),
                 laid: c.regrow.as_ref().map(|r| r.laid.clone()),
-                lines: Lines::measure(c, self.axis, window),
+                lines: Model::measure(c, self.axis, window),
             })
             .collect();
         if input.iter().all(|i| i.lines.is_none()) {
@@ -87,7 +89,11 @@ impl ColumnStack {
             if let (Some(r), Some(laid)) = (&mut self.children[index].regrow, &entry.laid) {
                 r.laid.clone_from(laid);
             }
-            if entry.lines.as_ref().is_some_and(Lines::commit) {
+            if entry
+                .lines
+                .as_ref()
+                .is_some_and(|m| m.commit(&self.children[index]))
+            {
                 copies::rebuild(&mut self.children[index]);
                 self.lay_out_main(index, window, cx);
             }
@@ -123,7 +129,7 @@ impl ColumnStack {
             let state: Vec<_> = input
                 .iter()
                 .filter_map(|i| i.lines.as_ref())
-                .flat_map(|l| l.extra.iter().map(|v| v.to_bits()))
+                .flat_map(Model::state)
                 .collect();
             let grows = self.growth_requests();
             if grows.iter().all(Vec::is_empty) {
