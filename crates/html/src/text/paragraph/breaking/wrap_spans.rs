@@ -104,7 +104,14 @@ mod tests {
             assert_eq!(spans.index_of(at), linear(&list, at), "byte {at}");
         }
         let hit: Vec<_> = spans.overlapping(3, 9).map(|(r, _)| r.clone()).collect();
-        assert_eq!(hit, vec![2..4, 4..7]);
+        // The same predicate as the former linear scan, empty pieces included.
+        let old: Vec<_> = list
+            .iter()
+            .filter(|(r, _)| r.start < 9 && r.end > 3)
+            .map(|(r, _)| r.clone())
+            .collect();
+        assert_eq!(hit, old);
+        assert_eq!(hit, vec![2..4, 4..4, 4..7]);
     }
 
     #[test]
