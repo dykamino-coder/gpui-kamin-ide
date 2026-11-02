@@ -73,7 +73,6 @@ use crate::document::writing_mode::propagate_writing_mode;
 mod box_style;
 
 use crate::dom::Node;
-use crate::style::css::Media;
 use state::DocState;
 use std::rc::Rc;
 
@@ -111,7 +110,7 @@ impl Document {
         theme_css: &str,
         base_url: Option<url::Url>,
         xml: bool,
-        media: Media,
+        state: Rc<DocState>,
         fonts: &crate::text::metrics::FontContext,
         revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
@@ -146,7 +145,7 @@ impl Document {
             &input,
             theme_css,
             effective_base.as_ref(),
-            media,
+            state,
             fonts,
             revision,
             #[cfg(feature = "engine-bench")]

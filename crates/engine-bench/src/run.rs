@@ -21,6 +21,23 @@ use std::{
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// Что меняется перед кадром замера.
+#[derive(Clone, Copy)]
+pub(super) enum Step<'a> {
+    /// Новый документ: из файла входа или из данной разметки.
+    Cold(Option<&'a str>),
+    /// Тот же документ, принудительная перерисовка.
+    Warm,
+    /// `Document::update` данной разметкой (локальная правка).
+    Update(&'a str),
+}
+
+impl Step<'_> {
+    fn cold(self) -> bool {
+        matches!(self, Self::Cold(_))
+    }
+}
+
 struct Counters {
     draw: u32,
     present: u32,
@@ -59,7 +76,7 @@ pub(super) async fn sample(
     window: WindowHandle<View>,
     fonts: &FontContext,
     args: &Args,
-    cold: bool,
+    step: Step<'_>,
     capture: &CaptureSession,
     luid: (i32, u32),
 ) -> Result<(
@@ -76,11 +93,21 @@ pub(super) async fn sample(
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
-            if cold {
+            if let Step::Update(html) = step {
+                let t = Instant::now();
+                kamin_html::work::phase!(_document, DocumentOther);
+                view.doc.update(html, BROWSER_CSS)?;
+                build_time = Some(t.elapsed());
+                timings = Some(view.doc.build_timings());
+            }
+            if let Step::Cold(markup) = step {
                 let t = Instant::now();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
-                    resources::read(&args.path)?
+                    match markup {
+                        Some(html) => html.to_owned(),
+                        None => resources::read(&args.path)?,
+                    }
                 };
                 resources_time = Some(t.elapsed());
                 let t = Instant::now();
@@ -113,7 +140,7 @@ pub(super) async fn sample(
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let work = window.read_with(cx, |view, _| work.finish(cold, &view.doc))?;
+    let work = window.read_with(cx, |view, _| work.finish(step.cold(), &view.doc))?;
     let after = Counters::read(capture);
     let frame = capture
         .take_first()
@@ -189,18 +216,23 @@ pub(super) async fn run(
     let mut modes = serde_json::Map::new();
     let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
-    if matches!(args.mode, Mode::Warm | Mode::Relayout) {
-        sample(cx, window, fonts, args, true, capture, luid).await?;
+    if matches!(args.mode, Mode::Warm | Mode::Relayout | Mode::Edit) {
+        sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
+    }
+    if args.mode == Mode::Edit {
+        let edits = super::edits::run(cx, window, fonts, args, capture, luid).await?;
+        modes.insert("edit".into(), edits);
     }
     for &(name, cold) in args.mode.phases() {
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
         let mut usage = Vec::with_capacity(args.runs);
+        let step = if cold { Step::Cold(None) } else { Step::Warm };
         for index in 1..=args.runs {
             frames.prepare(cx, window, index)?;
             let (sample, frame, (counts, resources)) =
-                sample(cx, window, fonts, args, cold, capture, luid).await?;
+                sample(cx, window, fonts, args, step, capture, luid).await?;
             work.push(counts);
             usage.push(resources);
             if let Some(path) = snapshot_pending.take() {

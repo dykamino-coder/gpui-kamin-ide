@@ -53,7 +53,7 @@ impl Document {
             theme_css,
             self.base_url.clone(),
             self.xml,
-            media,
+            super::state::DocState::continuing(media, &self.state),
             &fonts,
             revision,
         )

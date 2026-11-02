@@ -22,6 +22,25 @@ impl DocState {
     /// Пустое состояние документа, разбираемого носителем `media`. Провайдер
     /// шрифтовых фактов по умолчанию — бэкенд text этого документа.
     pub fn new(media: Media) -> Rc<Self> {
+        Self::with_paragraphs(media, Default::default())
+    }
+
+    /// Состояние следующей ревизии того же документа (`Document::update`): замеры
+    /// абзацев (`MeasureCache`) переходят к ней. Их ключи — значения всех входов
+    /// разреза и подбора (текст, шрифты, ширина, правила переноса), а не узлы или
+    /// записи арен, поэтому попадание в новой ревизии точно так же, как в
+    /// следующем кадре; кэш хранит только записи прошлого кадра.
+    pub(crate) fn continuing(media: Media, previous: &Self) -> Rc<Self> {
+        Self::with_paragraphs(
+            media,
+            crate::text::paragraph_state::ParagraphState::continuing(&previous.paragraph),
+        )
+    }
+
+    fn with_paragraphs(
+        media: Media,
+        paragraph: crate::text::paragraph_state::ParagraphState,
+    ) -> Rc<Self> {
         let text = Rc::<crate::text::text_fonts::TextFonts>::default();
         let fonts = text.clone();
         let values = DocumentValues::new(media, move |values| {
@@ -31,7 +50,7 @@ impl DocState {
             values,
             layout: Default::default(),
             text,
-            paragraph: Default::default(),
+            paragraph,
         })
     }
 
