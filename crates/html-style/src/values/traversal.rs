@@ -19,6 +19,10 @@ pub struct TraversalState {
     elements: RefCell<Vec<usize>>,
     /// Адрес исходного текстового узла по его `TextId - 1`.
     texts: RefCell<Vec<usize>>,
+    /// Адреса исходных текстов, содержимое которых прочитала сборка сверх
+    /// «пустой ли узел по CSS»: первый сильный знак для `dir=auto`/`<bdi>`,
+    /// текст листа `<style>`. Правка такого текста может изменить стиль.
+    read: RefCell<std::collections::HashSet<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
 }
@@ -48,6 +52,26 @@ impl TraversalState {
         self.texts.borrow()
     }
 
+    /// Сборка прочитала содержимое исходного текста `handle`.
+    pub fn read_source_text(&self, handle: &Handle) {
+        self.read
+            .borrow_mut()
+            .insert(std::rc::Rc::as_ptr(handle) as usize);
+    }
+
+    /// Сборка прочитала содержимое текста коробок с номером `id`.
+    pub fn read_text(&self, id: crate::dom::TextId) {
+        let address = self.texts.borrow().get(id.get() as usize - 1).copied();
+        if let Some(address) = address {
+            self.read.borrow_mut().insert(address);
+        }
+    }
+
+    /// Адреса исходных текстов, содержимое которых прочитала сборка.
+    pub fn read_texts(&self) -> std::cell::Ref<'_, std::collections::HashSet<usize>> {
+        self.read.borrow()
+    }
+
     /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
     pub fn record_element(&self, handle: &Handle, node_id: u64) {
         let Some(slot) = usize::try_from(node_id)
@@ -69,11 +93,19 @@ impl TraversalState {
     }
 
     /// Следующая ревизия с тем же деревом коробок: её исходный DOM и адреса его
-    /// элементов и текстов по тем же `node_id` и `TextId`.
-    pub fn readopt(&self, source: Admitted, elements: Vec<usize>, texts: Vec<usize>) {
+    /// элементов и текстов по тем же `node_id` и `TextId` и прочитанных сборкой
+    /// текстов.
+    pub fn readopt(
+        &self,
+        source: Admitted,
+        elements: Vec<usize>,
+        texts: Vec<usize>,
+        read: std::collections::HashSet<usize>,
+    ) {
         self.source.replace(Some(source));
         self.elements.replace(elements);
         self.texts.replace(texts);
+        self.read.replace(read);
     }
 
     pub fn set_embedded(&self) {

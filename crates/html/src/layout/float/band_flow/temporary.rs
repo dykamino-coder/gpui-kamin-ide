@@ -15,6 +15,8 @@ impl Probe<'_> {
             positioning,
             last_geometry,
             last_clamp,
+            engine: _,
+            last_prepared: _,
         } = self;
         let (result, geometry, clamped) = gpui::with_temporary_element_arena(|| {
             window.with_nested_layout(|window| {
