@@ -105,11 +105,21 @@ fn paragraph_routed(
             let following = full
                 .split('\n')
                 .skip(1)
-                .map(|line| SharedString::from(normalize_for_shadow(line).trim_matches(crate::dom::whitespace::collapsible).to_string()))
+                .map(|line| {
+                    SharedString::from(
+                        normalize_for_shadow(line)
+                            .trim_matches(crate::dom::whitespace::collapsible)
+                            .to_string(),
+                    )
+                })
                 .collect();
             return crate::layout::float::split_flow::FirstLine::new(
                 build,
-                SharedString::from(plain.trim_matches(crate::dom::whitespace::collapsible).to_string()),
+                SharedString::from(
+                    plain
+                        .trim_matches(crate::dom::whitespace::collapsible)
+                        .to_string(),
+                ),
                 font,
                 measure_size,
                 line,

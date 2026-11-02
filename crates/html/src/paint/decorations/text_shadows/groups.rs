@@ -71,7 +71,10 @@ pub(super) fn collect_groups(
     for node in nodes {
         match node {
             Node::Text(text) => {
-                if !resolved.is_empty() && !crate::dom::whitespace::blank_text(text) && !out.contains(&resolved) {
+                if !resolved.is_empty()
+                    && !crate::dom::whitespace::blank_text(text)
+                    && !out.contains(&resolved)
+                {
                     out.push(resolved.clone());
                 }
             }

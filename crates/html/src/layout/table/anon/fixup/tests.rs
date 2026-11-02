@@ -62,7 +62,14 @@ fn row_text_of_uncollapsible_spaces_gets_an_anonymous_cell() {
             })
         }
         let fixed = fixup_row_children(row(&parsed.nodes).expect("row"));
-        fixed.iter().filter(|n| matches!(n, Node::Element(_))).count()
+        let [Node::Element(fixed)] = fixed.as_slice() else {
+            panic!("one row");
+        };
+        fixed
+            .children
+            .iter()
+            .filter(|n| matches!(n, Node::Element(_)))
+            .count()
     };
     for content in ["\u{a0}", "\u{3000}", "\u{c}", "x"] {
         assert_eq!(cells(content), 2, "{content:?}");

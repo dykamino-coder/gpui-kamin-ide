@@ -105,11 +105,16 @@ pub(crate) fn with_text_shadow(
     // Mixed inline styles and rotated paragraphs retain their existing route.
     let same_paragraph = all_text && flat;
     // CSS Text Decoration 3 §4: first shadow is on top, all below the text.
-    let layers = rest
-        .iter()
-        .rev()
-        .chain(std::iter::once(shadow))
-        .map(|s| shadow_layer(plain.trim_matches(crate::dom::whitespace::collapsible), s, nodes, style, opts, same_paragraph));
+    let layers = rest.iter().rev().chain(std::iter::once(shadow)).map(|s| {
+        shadow_layer(
+            plain.trim_matches(crate::dom::whitespace::collapsible),
+            s,
+            nodes,
+            style,
+            opts,
+            same_paragraph,
+        )
+    });
     div()
         .relative()
         .children(layers)

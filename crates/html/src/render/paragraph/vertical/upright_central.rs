@@ -70,7 +70,10 @@ fn collect(
         match node {
             Node::Text(t) if crate::dom::whitespace::blank_text(t) => {}
             Node::Text(t) => {
-                if t.trim_matches(crate::dom::whitespace::collapsible).chars().any(char::is_whitespace) {
+                if t.trim_matches(crate::dom::whitespace::collapsible)
+                    .chars()
+                    .any(char::is_whitespace)
+                {
                     return None;
                 }
                 let size = own_size(style, opts);
