@@ -23,6 +23,8 @@ mod soft_opportunities;
 mod split_lines;
 mod unicode_breaks;
 mod wrap_policy;
+mod wrap_spans;
+pub(crate) use wrap_spans::WrapSpans;
 
 use crate::text::paragraph::*;
 
@@ -107,13 +109,13 @@ mod tests {
     fn break_all_tailoring_is_scoped_and_does_not_enable_emergency_breaks() {
         let mut p = paragraph("aabbcc");
         p.wrap = Wrap::default();
-        p.spans = vec![(
+        p.spans = WrapSpans::from(vec![(
             2..4,
             Wrap {
                 break_all: true,
                 ..Default::default()
             },
-        )];
+        )]);
         assert_eq!(stops(&p), vec![2, 3, 4]);
         assert!(!p.emergency_ok(2));
         assert!(!p.emergency_inside(0, 6));

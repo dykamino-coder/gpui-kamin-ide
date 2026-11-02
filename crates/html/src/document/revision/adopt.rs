@@ -73,6 +73,7 @@ impl Document {
             }
         }
         let text_ids = source_ids(&values.traversal.texts());
+        let read = values.traversal.read_texts();
         let mut texts: HashMap<crate::dom::TextId, TextEdit> = HashMap::new();
         for edit in &shape.texts {
             let id = text_ids
@@ -82,7 +83,7 @@ impl Document {
                 .and_then(|id| u32::try_from(id).ok())
                 .and_then(crate::dom::TextId::new);
             match id {
-                Some(id) if editable(edit) => {
+                Some(id) if editable(edit, &read) => {
                     let edit = TextEdit {
                         old: edit.old.clone(),
                         new: edit.new.clone(),
@@ -104,6 +105,11 @@ impl Document {
         };
         let elements = remap(&values.traversal.elements());
         let source_texts = remap(&values.traversal.texts());
+        let read_next = read
+            .iter()
+            .filter_map(|old| moved.get(old).copied())
+            .collect();
+        drop(read);
         let state = DocState::adopting(&self.state);
         state
             .values
@@ -111,7 +117,7 @@ impl Document {
         state
             .values
             .traversal
-            .readopt(source.input, elements, source_texts);
+            .readopt(source.input, elements, source_texts, read_next);
         Ok(Document {
             state,
             nodes: Rc::new(nodes),

@@ -12,6 +12,8 @@ pub(crate) struct BuildContext {
     pub(crate) in_render: bool,
     /// Корневой список, неизменность которого гарантирует Document.
     pub(crate) document_root: Option<(usize, usize)>,
+    /// Document::frame_opts уже начал кадр измерений текста этого документа.
+    pub(crate) paragraph_frame_started: bool,
     /// Семантические коробки на пути сборки; не число служебных обёрток GPUI.
     pub(crate) reflow_depth: usize,
     /// Факты неизменяемых поддеревьев живут только в пределах одной сборки.

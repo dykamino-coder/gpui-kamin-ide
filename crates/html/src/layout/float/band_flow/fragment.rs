@@ -40,6 +40,8 @@ impl<'a> super::Probe<'a> {
     ) -> Self {
         let ProbeScopes { clamp, positioning } = scopes;
         Self {
+            engine: None,
+            last_prepared: Default::default(),
             paint,
             build,
             clamp,
@@ -147,6 +149,7 @@ mod tests {
     #[test]
     fn unused_block_size_is_fragmentable_unless_the_box_is_monolithic() {
         let mut kid = Kid {
+            intrinsic: Default::default(),
             flow: None,
             watched: None,
             flow_key: 0,

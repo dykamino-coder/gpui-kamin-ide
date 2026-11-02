@@ -110,11 +110,13 @@ fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContex
                 ..Default::default()
             };
             let leaf = window.with_text_style(Some(big), |window| {
-                let scope = window.text_style_scope();
+                let scope = window.element_layout_context();
                 window.request_measured_layout(Style::default(), move |_, _, window, _| {
                     let outer = window.text_style().font_size;
-                    let (probe, fixed) = super::nested(window, &scope, |window| {
-                        (window.text_style().font_size, window.measured_size_fixed())
+                    let (probe, fixed) = window.with_element_layout_context(&scope, |window| {
+                        window.with_nested_layout(|window| {
+                            (window.text_style().font_size, window.measured_size_fixed())
+                        })
                     });
                     let mut calls = record.take();
                     calls.push((outer, probe, fixed));

@@ -7,6 +7,7 @@ use super::*;
 #[derive(Clone)]
 pub struct PaintCtx {
     identity: paint_scope::Identity,
+    layout_owner: RetainedLayout,
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: TextStyleScope,
     render_contexts: render_context::Snapshot,
@@ -77,6 +78,7 @@ impl Window {
     pub fn paint_ctx(&self) -> PaintCtx {
         PaintCtx {
             identity: paint_scope::Identity::capture(self),
+            layout_owner: self.retained_layout(),
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
             render_contexts: self.render_contexts.snapshot(),
@@ -145,6 +147,7 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
         state.base.identity.check(self)?;
+        let mut layout_owner = state.base.layout_owner.clone();
         // Keep retained vectors outside recursive paint frames.
         let mut state = Box::new(state);
         let _contexts = self.render_contexts.enter_snapshot(mem::take(&mut state.base.render_contexts));
@@ -158,6 +161,8 @@ impl Window {
             }
             result
         };
-        Ok(self.with_restore(state, |window, state| state.restore(window), f).0)
+        Ok(self.with_retained_layout(&mut layout_owner, |window| {
+            window.with_restore(state, |window, state| state.restore(window), f).0
+        }))
     }
 }

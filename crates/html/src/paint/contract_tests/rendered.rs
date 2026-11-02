@@ -179,4 +179,5 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
 
 mod collect;
 mod continuations;
+mod floats;
 use collect::collect;
