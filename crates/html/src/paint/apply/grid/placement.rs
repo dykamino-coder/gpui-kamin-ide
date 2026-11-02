@@ -11,12 +11,21 @@ use super::*;
 /// элемента идут той же осью, что и его числовые (`grid_location`).
 pub(in crate::paint::apply) fn grid_line_names(c: &BoxStyle) -> Option<gpui::GridLineNames> {
     let mut out = gpui::GridLineNames::default();
-    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    let grid = matches!(
+        c.reset_box_layout.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    );
     if grid {
         let flip = c.wm().vertical();
         let subgrid_ok = !crate::dom::subgrid_inhibited(c);
-        let (cols, rows) = (c.grid_col_line_names.clone(), c.grid_row_line_names.clone());
-        let (cols_sub, rows_sub) = (c.subgrid_cols && subgrid_ok, c.subgrid_rows && subgrid_ok);
+        let (cols, rows) = (
+            c.reset_grid.grid_col_line_names.clone(),
+            c.reset_grid.grid_row_line_names.clone(),
+        );
+        let (cols_sub, rows_sub) = (
+            c.reset_grid.subgrid_cols && subgrid_ok,
+            c.reset_grid.subgrid_rows && subgrid_ok,
+        );
         // Логическая ось → (шаблон, подсетка) физической оси.
         let mut put = |names: Option<gpui::GridAxisLineNames>, sub: bool, physical_cols: bool| {
             let Some(names) = names else { return };
@@ -34,7 +43,7 @@ pub(in crate::paint::apply) fn grid_line_names(c: &BoxStyle) -> Option<gpui::Gri
         // `A-start -1` при `[A-start]` и области `A` видел лишь явную линию,
         // а `B -1`/`span B` уходили за явную сетку. Прямоугольник области —
         // по её ячейкам (шаблон уже проверен на прямоугольность разбором).
-        if let Some(areas) = c.grid_areas.as_ref() {
+        if let Some(areas) = c.reset_grid.grid_areas.as_ref() {
             let mut rects: Vec<(String, u16, u16, u16, u16)> = vec![];
             for (r, cells) in areas.iter().enumerate() {
                 for (k, cell) in cells.iter().enumerate() {
@@ -69,11 +78,11 @@ pub(in crate::paint::apply) fn grid_line_names(c: &BoxStyle) -> Option<gpui::Gri
         }
     }
     if placement_flip(c) {
-        out.column = c.grid_row_named.clone();
-        out.row = c.grid_col_named.clone();
+        out.column = c.reset_grid.grid_row_named.clone();
+        out.row = c.reset_grid.grid_col_named.clone();
     } else {
-        out.column = c.grid_col_named.clone();
-        out.row = c.grid_row_named.clone();
+        out.column = c.reset_grid.grid_col_named.clone();
+        out.row = c.reset_grid.grid_row_named.clone();
     }
     let empty = out.columns.is_none()
         && out.rows.is_none()
@@ -93,32 +102,40 @@ pub(crate) fn grid_item_placement(
     input: crate::style::box_input::BoxStyleInput,
 ) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
     let c = BoxStyle::shared(input);
-    let location = (c.grid_col.is_some() || c.grid_row.is_some()).then(|| {
-        let span = |p: Option<(Placement, Placement)>| {
-            let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
-            to_placement(a)..to_placement(b)
-        };
-        if placement_flip(&c) {
-            gpui::GridLocation {
-                row: span(c.grid_col),
-                column: span(c.grid_row),
+    let location =
+        (c.reset_grid.grid_col.is_some() || c.reset_grid.grid_row.is_some()).then(|| {
+            let span = |p: Option<(Placement, Placement)>| {
+                let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
+                to_placement(a)..to_placement(b)
+            };
+            if placement_flip(&c) {
+                gpui::GridLocation {
+                    row: span(c.reset_grid.grid_col),
+                    column: span(c.reset_grid.grid_row),
+                }
+            } else {
+                gpui::GridLocation {
+                    row: span(c.reset_grid.grid_row),
+                    column: span(c.reset_grid.grid_col),
+                }
             }
-        } else {
-            gpui::GridLocation {
-                row: span(c.grid_row),
-                column: span(c.grid_col),
-            }
-        }
-    });
+        });
     let named = c
+        .reset_grid
         .grid_col_named
         .iter()
-        .chain(c.grid_row_named.iter())
+        .chain(c.reset_grid.grid_row_named.iter())
         .any(Option::is_some);
     let (column, row) = if placement_flip(&c) {
-        (c.grid_row_named.clone(), c.grid_col_named.clone())
+        (
+            c.reset_grid.grid_row_named.clone(),
+            c.reset_grid.grid_col_named.clone(),
+        )
     } else {
-        (c.grid_col_named.clone(), c.grid_row_named.clone())
+        (
+            c.reset_grid.grid_col_named.clone(),
+            c.reset_grid.grid_row_named.clone(),
+        )
     };
     let names = named.then(|| gpui::GridLineNames {
         column,

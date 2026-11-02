@@ -65,7 +65,7 @@ impl Computed {
                 // Тип query container отделён от contain: size: последнее
                 // само по себе не отменяет subgrid (css-grid-2 §subgrid-listing)
                 // и не разрешает запросы размера по block-оси inline-size.
-                self.container_type = if size {
+                self.reset_box_layout.container_type = if size {
                     ContainerType::Size
                 } else if inline {
                     ContainerType::InlineSize
@@ -82,7 +82,7 @@ impl Computed {
                     _ => return,
                 };
                 self.accept_declaration();
-                self.content_visibility = visibility;
+                self.reset_generated.content_visibility = visibility;
                 self.refresh_containment();
             }
             "contain-intrinsic-size"
@@ -99,16 +99,19 @@ impl Computed {
                 self.accept_declaration();
                 match key {
                     "contain-intrinsic-size" => {
-                        self.contain_intrinsic = (values[0], *values.get(1).unwrap_or(&values[0]))
+                        self.reset_context.contain_intrinsic =
+                            (values[0], *values.get(1).unwrap_or(&values[0]))
                     }
-                    "contain-intrinsic-width" => self.contain_intrinsic.0 = values[0],
-                    "contain-intrinsic-height" => self.contain_intrinsic.1 = values[0],
+                    "contain-intrinsic-width" => self.reset_context.contain_intrinsic.0 = values[0],
+                    "contain-intrinsic-height" => {
+                        self.reset_context.contain_intrinsic.1 = values[0]
+                    }
                     "contain-intrinsic-block-size" => self.logical().ci_block = values[0],
                     _ => self.logical().ci_inline = values[0],
                 }
             }
             "mix-blend-mode" => {
-                css_wide_reset!(self, blend);
+                css_wide_reset!(self, reset_effects.blend);
                 if v != "plus-lighter"
                     && BlendMode::parse(v)
                         .filter(|mode| *mode != BlendMode::Inherit)
@@ -119,7 +122,7 @@ impl Computed {
                 // Номера совпадают с формулами в шейдере: смешивание считается
                 // при сборке буфера группы, поэтому доступны все режимы CSS,
                 // включая те, где цвет берётся целиком (тон, насыщенность).
-                self.blend = accept_parsed!(
+                self.reset_effects.blend = accept_parsed!(
                     self,
                     Some(if v == "plus-lighter" {
                         16
@@ -131,14 +134,15 @@ impl Computed {
                 )
             }
             "isolation" => {
-                self.isolate = apply_parsed!(
+                self.reset_effects.isolate = apply_parsed!(
                     self,
                     matches!(v, "auto" | "isolate").then_some(v == "isolate")
                 )
             }
             "user-select" | "-webkit-user-select" => {
-                css_wide_reset!(self, user_select);
-                self.user_select = apply_parsed!(self, crate::style::computed::UserSelect::parse(v))
+                css_wide_reset!(self, reset_context.user_select);
+                self.reset_context.user_select =
+                    apply_parsed!(self, crate::style::computed::UserSelect::parse(v))
             }
             _ => *hit = false,
         }

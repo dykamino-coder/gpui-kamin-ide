@@ -20,7 +20,10 @@ pub(crate) fn native_content_box_with(
 ) -> bool {
     !sizes.border_box
         && ((sizes.preferred[0] == Some(Len::FitContent)
-            && matches!(style.fit_arg[0], Some(Len::Px(_) | Len::Pct(_))))
+            && matches!(
+                style.reset_context.fit_arg[0],
+                Some(Len::Px(_) | Len::Pct(_))
+            ))
             || [
                 sizes.preferred[0],
                 sizes.preferred[1],
@@ -30,13 +33,13 @@ pub(crate) fn native_content_box_with(
                 sizes.maximum[1],
             ]
             .into_iter()
-            .zip(style.stretch_size)
+            .zip(style.reset_box_layout.stretch_size)
             .any(|(size, stretch)| !stretch && matches!(size, Some(Len::Pct(_))))
             || [
-                style.padding.left,
-                style.padding.right,
-                style.padding.top,
-                style.padding.bottom,
+                style.reset_box_layout.padding.left,
+                style.reset_box_layout.padding.right,
+                style.reset_box_layout.padding.top,
+                style.reset_box_layout.padding.bottom,
             ]
             .into_iter()
             .any(|side| matches!(side, Some(Len::Pct(_)))))

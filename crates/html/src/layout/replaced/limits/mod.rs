@@ -37,41 +37,49 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
     };
     let unset = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let c = &*e.style.used();
-    let Some(w @ Len::Px(_)) = c.width else {
+    let Some(w @ Len::Px(_)) = c.reset_box_layout.width else {
         return None;
     };
-    if (c.flex_item
-        && !matches!(c.min_width, Some(Len::FitContent))
-        && !matches!(c.max_width, Some(Len::FitContent)))
+    if (c.reset_flex.flex_item
+        && !matches!(c.reset_box_layout.min_width, Some(Len::FitContent))
+        && !matches!(c.reset_box_layout.max_width, Some(Len::FitContent)))
         || replaced_tag(e)
         || e.tag == "table"
-        || matches!(c.display, Some(Display::Table) | Some(Display::InlineTable))
+        || matches!(
+            c.reset_box_layout.display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        )
     {
         return None;
     }
     let mut copy = e.clone();
-    if kw(c.min_width) && unset(c.max_width) {
-        copy.style.used_mut().width = c.min_width;
-        copy.style.used_mut().min_width = Some(w);
+    if kw(c.reset_box_layout.min_width) && unset(c.reset_box_layout.max_width) {
+        copy.style.used_mut().reset_box_layout.width = c.reset_box_layout.min_width;
+        copy.style.used_mut().reset_box_layout.min_width = Some(w);
         // Довод `fit-content(N)` едет вместе с ключевым словом.
-        copy.style.used_mut().fit_arg[0] = c.fit_arg[1];
-    } else if kw(c.max_width) && unset(c.min_width) {
+        copy.style.used_mut().reset_context.fit_arg[0] = c.reset_context.fit_arg[1];
+    } else if kw(c.reset_box_layout.max_width) && unset(c.reset_box_layout.min_width) {
         // `max-width: fit-content(<доля>)`: во вкладе доля циклична, и предел
         // ведёт себя как `fit-content(none)` = `max-content` (комментарий
         // `fit-content-length-percentage-013/016`: «the result max-width is
         // equal to max-content size»). При определённом блоке это ближе к
         // `max-content`, чем к истине (`-010`: 124 вместо 100, как и без
         // довода), но обёртка-сетка определённость базы не различает.
-        copy.style.used_mut().width = match (c.max_width, c.fit_arg[2]) {
-            (Some(Len::FitContent), Some(Len::Pct(_))) => Some(Len::MaxContent),
-            _ => c.max_width,
-        };
-        copy.style.used_mut().max_width = Some(w);
-        copy.style.used_mut().fit_arg[0] = c.fit_arg[2].filter(|a| !matches!(a, Len::Pct(_)));
+        copy.style.used_mut().reset_box_layout.width =
+            match (c.reset_box_layout.max_width, c.reset_context.fit_arg[2]) {
+                (Some(Len::FitContent), Some(Len::Pct(_))) => Some(Len::MaxContent),
+                _ => c.reset_box_layout.max_width,
+            };
+        copy.style.used_mut().reset_box_layout.max_width = Some(w);
+        copy.style.used_mut().reset_context.fit_arg[0] =
+            c.reset_context.fit_arg[2].filter(|a| !matches!(a, Len::Pct(_)));
     } else {
         return None;
     }
-    copy.style.used_mut().intrinsic_wrapper_required = true;
+    copy.style
+        .used_mut()
+        .reset_context
+        .intrinsic_wrapper_required = true;
     Some(copy)
 }
 
@@ -83,12 +91,12 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
 /// `min-height` и `max-height`). Бесконечный размер — точки нет.
 pub(crate) fn auto_clamp_limit(m: &Computed) -> Option<f32> {
     let px = px_strict;
-    let max_h = px(m.max_height);
-    let base = match px(m.height) {
+    let max_h = px(m.reset_box_layout.max_height);
+    let base = match px(m.reset_box_layout.height) {
         Some(h) => Some(max_h.map_or(h, |mx| h.min(mx))),
         None => max_h,
     }?;
-    Some(px(m.min_height).map_or(base, |mn| base.max(mn)))
+    Some(px(m.reset_box_layout.min_height).map_or(base, |mn| base.max(mn)))
 }
 
 /// Флаг «responsive embedded sizing» документа (css-sizing-4

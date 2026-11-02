@@ -25,12 +25,12 @@ use crate::style::values::value::Len;
 /// сквозь себя не пропускают; внепоточный первым цепочку не начинает.
 pub(super) fn strip_through_top(c: &mut Element, depth: u8) {
     if depth == 0
-        || c.style.used().height.is_some()
+        || c.style.used().reset_box_layout.height.is_some()
         || table_box(c)
         || multicol_container(&c.style.used())
-        || c.style.used().webkit_box == Some(true)
+        || c.style.used().reset_flex.webkit_box == Some(true)
         || !matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
     {
@@ -38,7 +38,7 @@ pub(super) fn strip_through_top(c: &mut Element, depth: u8) {
     }
     let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
     let b = c.style.used().borders();
-    if px(&c.style.used().padding.top) + px(&b.top) != 0.0 {
+    if px(&c.style.used().reset_box_layout.padding.top) + px(&b.top) != 0.0 {
         return;
     }
     let Some(Node::Element(k)) = c.children.iter_mut().find(|n| !is_blank(n)) else {
@@ -47,12 +47,12 @@ pub(super) fn strip_through_top(c: &mut Element, depth: u8) {
     if k.inline
         || out_of_flow(&k.style.used())
         || !matches!(
-            k.style.used().position,
+            k.style.used().reset_positioned.position,
             None | Some(crate::style::computed::Position::Relative)
         )
     {
         return;
     }
-    k.style.used_mut().margin.top = None;
+    k.style.used_mut().reset_box_layout.margin.top = None;
     strip_through_top(k, depth - 1);
 }

@@ -9,7 +9,6 @@
 
 #[cfg(windows)]
 mod accounting;
-#[cfg(feature = "work-counters")]
 mod allocations;
 mod args;
 mod diagnostics;
@@ -42,11 +41,11 @@ mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
 #[global_allocator]
-#[cfg(not(feature = "work-counters"))]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+#[cfg(feature = "allocation-audit")]
+static ALLOC: allocations::Counted = allocations::Counted;
 #[global_allocator]
-#[cfg(feature = "work-counters")]
-static ALLOC: allocations::Allocator = allocations::Allocator;
+#[cfg(not(feature = "allocation-audit"))]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
     diagnostics::init();

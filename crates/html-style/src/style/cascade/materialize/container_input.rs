@@ -18,7 +18,11 @@ impl ComputedSlot {
         vcx: crate::values::ValueCx<'_>,
     ) -> crate::style::publication::Published {
         let mut computed = super::super::compute::build(parent, own, vcx);
-        computed.cq_size = self.1.get();
+        if super::sharing::size_key(computed.reset_context.cq_size)
+            != super::sharing::size_key(self.1.get())
+        {
+            computed.reset_context.cq_size = self.1.get();
+        }
         computed.finish()
     }
 

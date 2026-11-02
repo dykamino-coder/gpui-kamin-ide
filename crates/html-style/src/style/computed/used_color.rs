@@ -9,7 +9,7 @@ use crate::style::values::value::{Color, ColorOrAuto, StyleColor};
 impl Computed {
     /// Значение `currentcolor` элемента: его вычисленный `color`.
     pub fn current_color(&self) -> Color {
-        self.color.unwrap_or(Color::BLACK)
+        self.inh.ui.color.unwrap_or(Color::BLACK)
     }
 
     /// Используемый цвет вычисленного значения на этом элементе.
@@ -19,7 +19,12 @@ impl Computed {
 
     /// `accent-color`; `None` — `auto` (цвет акцента платформы).
     pub fn used_accent_color(&self) -> Option<Color> {
-        let color = self.accent_color.as_ref().and_then(ColorOrAuto::color)?;
+        let color = self
+            .inh
+            .ui
+            .accent_color
+            .as_ref()
+            .and_then(ColorOrAuto::color)?;
         Some(self.used_color(color))
     }
 
@@ -36,7 +41,7 @@ impl Computed {
 
     /// Используемый цвет стороны рамки `side` (top, right, bottom, left).
     pub fn used_border_color(&self, side: usize) -> Color {
-        self.used_color(&self.border_colors[side])
+        self.used_color(&self.reset_border.border_colors[side])
     }
 
     /// Общий используемый цвет четырёх сторон рамки; `None` — цвета разные.
@@ -49,12 +54,16 @@ impl Computed {
 
     /// Задан ли хоть одной стороне цвет, отличный от начального `currentcolor`.
     pub fn border_color_declared(&self) -> bool {
-        !self.border_colors.iter().all(StyleColor::is_current)
+        !self
+            .reset_border
+            .border_colors
+            .iter()
+            .all(StyleColor::is_current)
     }
 
     /// `scrollbar-color` ползунка и дорожки; `None` — `auto`.
     pub fn used_scrollbar_colors(&self) -> Option<[Color; 2]> {
-        let colors = self.scroll.colors.as_ref()?.as_ref()?;
+        let colors = self.reset_box_layout.scroll.colors.as_ref()?.as_ref()?;
         Some(colors.each_ref().map(|c| self.used_color(c)))
     }
 
@@ -62,7 +71,7 @@ impl Computed {
     /// `background_color`. `current` is the element's color, known only at
     /// the merge; without it a `currentcolor`-dependent value stays unpainted.
     pub fn derive_background(&mut self, current: Option<Color>) {
-        self.background = match &self.background_color {
+        self.reset_background.background = match &self.reset_background.background_color {
             None => None,
             Some(StyleColor::Absolute(color)) => Some(*color),
             Some(value) => current.map(|current| value.resolve(current)),
@@ -71,12 +80,12 @@ impl Computed {
 
     /// Set the computed `background-color` and its used value.
     pub fn set_background_color(&mut self, value: Option<StyleColor>) {
-        self.background_color = value;
+        self.reset_background.background_color = value;
         self.derive_background(None);
     }
 
     /// Задал ли элемент свой `color` (значение или функцию от родительского).
     pub fn declares_color(&self) -> bool {
-        self.color.is_some() || self.color_function.is_some()
+        self.inh.ui.color.is_some() || self.reset_cascade.color_function.is_some()
     }
 }

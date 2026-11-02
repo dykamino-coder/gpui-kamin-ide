@@ -35,13 +35,13 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32, vcx: crate::values::ValueC
     // `<span>` становился атомарной коробкой — вместе с ней уезжали
     // сохранённые пробелы и перенос (`white-space-pre-005`).
     let atomic = (matches!(
-        c.display,
+        c.reset_box_layout.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && c.inline_display != Some(true))
-        || (c.display == Some(Display::GridLanes) && c.lanes_inline);
+    ) && c.reset_context.inline_display != Some(true))
+        || (c.reset_box_layout.display == Some(Display::GridLanes) && c.reset_grid.lanes_inline);
     // Позиционированный кусок — тем же порядком: его коробку двигают края, а
     // краёв у прогона нет.
     // Не считать коробкой и `position: relative`, хотя по CSS относительный
@@ -49,7 +49,7 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32, vcx: crate::values::ValueC
     // css-grid ломается. Вернуть можно только с настоящей коробкой строчного
     // фрагмента.
     let positioned = matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
@@ -88,23 +88,24 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32, vcx: crate::values::ValueC
     // the box paints, its border and background included. A text run applies
     // none of them, so the box is needed even when the run could paint the
     // border itself (`clip-path-inline-006`: the red border stayed unclipped).
-    if c.opacity.is_some() || c.mask_image.is_some() {
+    if c.reset_effects.opacity.is_some() || c.reset_mask.mask_image.is_some() {
         return true;
     }
     // `clip-path` режет коробку элемента, у строчного — его фрагменты
     // (css-masking-1 §3.1): прогон текста обрезки не умеет, нужна своя
     // коробка (`clip-path-inline-007-ref`: `<span style="clip-path:
     // circle(50%)">` рисовался без обрезки).
-    if c.clip_polygon.is_some()
-        || c.clip_shape.is_some()
-        || c.clip_inset.is_some()
-        || c.clip_edges.is_some()
-        || c.clip_xywh.is_some()
-        || c.clip_bare_box
+    if c.reset_mask.clip_polygon.is_some()
+        || c.reset_mask.clip_shape.is_some()
+        || c.reset_mask.clip_inset.is_some()
+        || c.reset_mask.clip_edges.is_some()
+        || c.reset_mask.clip_xywh.is_some()
+        || c.reset_mask.clip_bare_box
     {
         return true;
     }
-    let inline_level = c.display.is_none() || c.inline_display == Some(true);
+    let inline_level =
+        c.reset_box_layout.display.is_none() || c.reset_context.inline_display == Some(true);
     if inline_level
         && (crate::text::inline::uniform_border(c, font_px, vcx).is_some()
             || crate::text::inline::sided_border(c, font_px, vcx).is_some())
@@ -121,8 +122,8 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32, vcx: crate::values::ValueC
         && (0..4).any(|i| wide[i] && visible(&Some(c.used_border_color(i))))
         // Цвет не задан вовсе — рамка красится цветом текста, то есть видна.
         || (!colored && any(&c.borders()));
-    c.gradient.is_some()
-        || c.bg_image.is_some()
+    c.reset_background.gradient.is_some()
+        || c.reset_background.bg_image.is_some()
         || border_paints
         // Отступ и поле СТРОЧНОЙ коробки рисуют пустоту: место под них
         // держит знак-распорка внутри строки (`inline_sides`). Пока они
@@ -130,18 +131,18 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32, vcx: crate::values::ValueC
         // расходились по разным строкам, а коробки выходили разной ширины
         // (`word-space-transform-010`).
         // Скругление подсветки рисует прогон вместе с её фоном.
-        || (c.background.is_none()
-            && (set(&c.radius.tl)
-                || set(&c.radius.tr)
-                || set(&c.radius.br)
-                || set(&c.radius.bl)))
-        || !c.shadows.is_empty()
-        || c.opacity.is_some()
+        || (c.reset_background.background.is_none()
+            && (set(&c.reset_border.radius.tl)
+                || set(&c.reset_border.radius.tr)
+                || set(&c.reset_border.radius.br)
+                || set(&c.reset_border.radius.bl)))
+        || !c.reset_effects.shadows.is_empty()
+        || c.reset_effects.opacity.is_some()
         // Контур на раскладку не влияет ВООБЩЕ (css-ui §2): он рисуется за
         // краем коробки и места не занимает. Строчному куску коробку он
         // поэтому не заводит — иначе `<span>` с контуром переставал
         // переноситься вместе с абзацем и уезжал одной строкой за край
         // (`text-autospace-break-001`). Рисует его прогон строки, как и
         // ровную рамку (см. `inline::uniform_border`).
-        || (!inline_level && c.outline.is_some())
+        || (!inline_level && c.reset_border.outline.is_some())
 }

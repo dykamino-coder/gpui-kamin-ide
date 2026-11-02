@@ -19,9 +19,12 @@ pub(crate) struct Model {
 }
 impl Model {
     pub(crate) fn new(c: &Computed, bars: [bool; 2]) -> Self {
-        let width = c.scroll.thickness();
+        let width = c.reset_box_layout.scroll.thickness();
         let left = on_left(c);
-        let grid = matches!(c.display, Some(Display::Grid | Display::InlineGrid));
+        let grid = matches!(
+            c.reset_box_layout.display,
+            Some(Display::Grid | Display::InlineGrid)
+        );
         let native_left = grid && reversed(c)[0];
         let mut model = Self {
             bars,
@@ -37,9 +40,13 @@ impl Model {
             model.native[if native_left { 0 } else { 2 }] = width;
         }
         let vertical = c.wm().vertical();
-        let overflow = if vertical { c.overflow_x } else { c.overflow_y };
-        if !c.scroll.viewport_root
-            && c.scroll.gutter.is_some_and(|v| v != 0)
+        let overflow = if vertical {
+            c.reset_box_layout.overflow_x
+        } else {
+            c.reset_box_layout.overflow_y
+        };
+        if !c.reset_box_layout.scroll.viewport_root
+            && c.reset_box_layout.scroll.gutter.is_some_and(|v| v != 0)
             && matches!(overflow, Some(Overflow::Hidden | Overflow::Scroll))
         {
             let side = if vertical {
@@ -50,7 +57,7 @@ impl Model {
                 2
             };
             model.used[side] = width;
-            if c.scroll.gutter == Some(2) {
+            if c.reset_box_layout.scroll.gutter == Some(2) {
                 model.used[(side + 2) % 4] = width;
             }
         }
@@ -85,13 +92,15 @@ fn subtract(value: &mut Option<Length>, extra: f32, vcx: ValueCx<'_>) {
 pub(crate) fn apply(mut div: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Rendered boxes carry the model resolved with their explicit scroll owner.
     // Standalone adapters still reserve CSS stable gutters without native bars.
-    let model = if c.scroll.used == [0.0; 4] && c.scroll.native == [0.0; 4] {
+    let model = if c.reset_box_layout.scroll.used == [0.0; 4]
+        && c.reset_box_layout.scroll.native == [0.0; 4]
+    {
         Model::new(c, [false; 2])
     } else {
         Model {
             bars: [false; 2],
-            used: c.scroll.used,
-            native: c.scroll.native,
+            used: c.reset_box_layout.scroll.used,
+            native: c.reset_box_layout.scroll.native,
         }
     };
     let style = div.style();

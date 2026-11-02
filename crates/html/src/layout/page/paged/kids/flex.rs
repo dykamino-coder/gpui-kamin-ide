@@ -58,7 +58,13 @@ pub(super) fn regrow(
     blocks.flexes(&mut flexes);
     let independent = match vertical {
         Some(rl) => crate::layout::fragment::flow::vertical_copy(dom, rl),
-        None if dom.style.used().float.is_some_and(|f| f != 0) => {
+        None if dom
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|f| f != 0) =>
+        {
             crate::layout::fragment::flow::page_copy(dom, true)
         }
         None => crate::layout::fragment::flow::regrow_copy(dom),
@@ -98,7 +104,7 @@ pub(super) fn regrow(
             crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
         let mut wrap = super::frame::wrap(padding, ah, first, vertical);
         if matches!(dom.tag.as_str(), "html" | "body")
-            && matches!(dom.style.used().height, Some(Len::Pct(_)))
+            && matches!(dom.style.used().reset_box_layout.height, Some(Len::Pct(_)))
         {
             wrap = wrap.h(px(ah));
         }

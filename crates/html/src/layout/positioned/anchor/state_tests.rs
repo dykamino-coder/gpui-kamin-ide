@@ -10,7 +10,12 @@ fn frame_keeps_only_last_success_for_boxes_seen_in_the_previous_frame() {
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_key = 7;

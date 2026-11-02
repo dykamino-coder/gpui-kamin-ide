@@ -33,12 +33,12 @@ fn shadow_slots_and_inert_templates_keep_order_and_inheritance() {
     );
     for (_, e) in &elements[..5] {
         assert_eq!(
-            e.style.computed().color,
+            e.style.computed().inh.ui.color,
             Color::parse("green", parsed.values())
         );
     }
     assert_eq!(
-        elements[5].1.style.computed().color,
+        elements[5].1.style.computed().inh.ui.color,
         Color::parse("blue", parsed.values())
     );
 }

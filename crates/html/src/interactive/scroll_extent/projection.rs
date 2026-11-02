@@ -34,8 +34,9 @@ pub(crate) fn projection(
         return None;
     }
     if c.is_some_and(|c| {
-        c.position == Some(Position::Fixed) && !c.transform_ancestor
-            || c.position == Some(Position::Absolute) && c.cb_node != parent
+        c.reset_positioned.position == Some(Position::Fixed)
+            && !c.reset_transforms.transform_ancestor
+            || c.reset_positioned.position == Some(Position::Absolute) && c.cb_node != parent
     }) {
         return None;
     }
@@ -105,18 +106,28 @@ mod tests {
             frame.begin(Some(&root));
             let parent = {
                 let mut with_inherited = BoxStyle::from(Computed {
-                    position: Some(Position::Relative),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Relative),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 });
                 with_inherited.self_node = 7;
-                with_inherited.rtl = Some(true);
+                with_inherited.inh.writing.rtl = Some(true);
                 with_inherited
             };
             classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
-                    position: Some(Position::Absolute),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Absolute),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 },
                 vcx,
@@ -125,7 +136,12 @@ mod tests {
             let fixed = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
-                    position: Some(Position::Fixed),
+                    reset_positioned: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetPositioned {
+                            position: Some(Position::Fixed),
+                            ..Default::default()
+                        },
+                    ),
                     ..Computed::default()
                 },
                 vcx,
@@ -146,12 +162,17 @@ mod tests {
         let handle = ScrollHandle::default();
         let c = {
             let mut with_inherited = BoxStyle::from(Computed {
-                overflow_x: Some(Overflow::Scroll),
-                overflow_y: Some(Overflow::Scroll),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        overflow_x: Some(Overflow::Scroll),
+                        overflow_y: Some(Overflow::Scroll),
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             });
             with_inherited.self_node = 7;
-            with_inherited.rtl = Some(true);
+            with_inherited.inh.writing.rtl = Some(true);
             with_inherited
         };
         {

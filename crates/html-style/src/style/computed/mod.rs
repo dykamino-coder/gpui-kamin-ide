@@ -64,6 +64,11 @@ pub use resolve::{FontCx, LenCx, ViewportCx};
 use crate::style::values::value::Len;
 mod box_style;
 mod fields;
+mod groups;
+mod initial;
+pub use groups::*;
+mod clone_audit;
+pub use clone_audit::CloneAudit;
 pub mod scroll;
 pub mod snap;
 mod used_color;
@@ -168,10 +173,10 @@ pub mod inh {
 /// `ComputedStyle::CanContainFixedPositionObjects` (`HasNonInitialFilter`,
 /// `HasNonInitialBackdropFilter`).
 pub fn filter_contains_fixed(c: &Computed) -> bool {
-    c.filter.is_some()
-        || c.filter_ref.is_some()
-        || c.backdrop_blur.is_some()
-        || c.backdrop_color.is_some()
+    c.reset_effects.filter.is_some()
+        || c.reset_effects.filter_ref.is_some()
+        || c.reset_effects.backdrop_blur.is_some()
+        || c.reset_effects.backdrop_color.is_some()
 }
 
 pub mod wc {
@@ -200,3 +205,5 @@ mod gradient_tests;
 mod tests;
 #[cfg(test)]
 mod used_color_tests;
+
+mod identity;

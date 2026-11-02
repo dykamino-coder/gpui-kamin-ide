@@ -1,4 +1,4 @@
-//! Снимок работы одного завершённого кадра; целые значения сохраняются без округления.
+//! РЎРЅРёРјРѕРє СЂР°Р±РѕС‚С‹ РѕРґРЅРѕРіРѕ Р·Р°РІРµСЂС€С‘РЅРЅРѕРіРѕ РєР°РґСЂР°; С†РµР»С‹Рµ Р·РЅР°С‡РµРЅРёСЏ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ Р±РµР· РѕРєСЂСѓРіР»РµРЅРёСЏ.
 
 use serde_json::Value;
 
@@ -19,18 +19,29 @@ impl Capture {
             #[cfg(feature = "work-counters")]
             session: kamin_html::work::Session::begin_measured(
                 Some(usage.observer()),
-                Some(super::allocations::snapshot),
+                super::allocations::svg_observer(),
             ),
             #[cfg(feature = "work-counters")]
             usage,
         })
     }
 
-    pub(super) fn finish(self, cold: bool) -> (Value, Value) {
+    pub(super) fn finish(self, cold: bool, doc: &kamin_html::Document) -> (Value, Value) {
         #[cfg(feature = "work-counters")]
         {
             use kamin_html::work::{Counter, Phase};
-            let usage = self.usage.finish(cold);
+            let mut usage = self.usage.finish(cold);
+            usage["svg_allocation_audit_enabled"] = cfg!(feature = "allocation-audit").into();
+            let live = doc.values().doc.style_storage();
+            usage["style_storage"] = serde_json::json!({
+                "scope": "document initial descendants; nested buffers and Rc control blocks excluded",
+                "computed_headers": live.computed_headers,
+                "computed_header_bytes": live.computed_header_bytes(),
+                "inherited_headers": live.inherited_headers,
+                "inherited_header_bytes": live.inherited_header_bytes(),
+                "unique_group_allocations": live.group_allocations,
+                "unique_group_payload_bytes": live.group_payload_bytes,
+            });
             let snapshot = self.session.finish();
             let mut phases = serde_json::Map::new();
             for (index, name) in Phase::NAMES.iter().enumerate() {
@@ -52,7 +63,7 @@ impl Capture {
         }
         #[cfg(not(feature = "work-counters"))]
         {
-            let _ = cold;
+            let _ = (cold, doc);
             (Value::Null, Value::Null)
         }
     }
@@ -63,9 +74,10 @@ mod tests {
     use super::*;
     #[test]
     fn warm_absence_is_distinct_from_zero_work_and_integers_are_exact() {
+        let doc = kamin_html::Document::builder("", "").build().unwrap();
         let capture = Capture::begin((0, 0)).unwrap();
         kamin_html::work::add!(RebuiltNodes, 9_007_199_254_740_993u64);
-        let (out, usage) = capture.finish(false);
+        let (out, usage) = capture.finish(false, &doc);
         assert!(usage["phases"]["parse"].is_null());
         assert!(out["parse"].is_null());
         assert_eq!(out["paint"]["rebuilt_nodes"], 0);

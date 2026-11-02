@@ -17,7 +17,9 @@ fn dissolved_contents_hand_down_their_computed_font_size() {
     );
     fn table(nodes: &[Node]) -> Option<&Element> {
         nodes.iter().find_map(|n| match n {
-            Node::Element(e) if e.style.used().display == Some(Display::Table) => Some(e),
+            Node::Element(e) if e.style.used().reset_box_layout.display == Some(Display::Table) => {
+                Some(e)
+            }
             Node::Element(e) => table(&e.children),
             _ => None,
         })
@@ -31,5 +33,5 @@ fn dissolved_contents_hand_down_their_computed_font_size() {
             _ => None,
         })
         .expect("row");
-    assert_eq!(row.style.used().font_size, Some(Len::Px(30.0)));
+    assert_eq!(row.style.used().inh.font.font_size, Some(Len::Px(30.0)));
 }

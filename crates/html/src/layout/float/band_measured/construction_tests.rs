@@ -31,14 +31,19 @@ fn measured_host_keeps_float_order_and_containing_width() {
     );
     let nodes = &find(&tree, "source").expect("source").children;
     let parent = crate::style::computed::Computed {
-        width: Some(Len::Px(200.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Px(200.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let (host, end, lifted) =
         band_host_m(nodes, 0, 16.0, &[], FloatCb::of(&parent), vcx).expect("measured host");
     assert_eq!(end, nodes.len());
     assert!(lifted.is_empty());
-    assert_eq!(host.style.used().width, None);
+    assert_eq!(host.style.used().reset_box_layout.width, None);
     let shape = host.marks.shape_flow.expect("band marks");
     assert_eq!(shape.cbw, Some(200.0));
     assert_eq!(shape.count, 2);
@@ -140,6 +145,7 @@ fn nested_percentage_width_keeps_one_shared_float_context() {
             .expect("nested")
             .style
             .used()
+            .reset_box_layout
             .width,
         Some(Len::Pct(2.))
     );

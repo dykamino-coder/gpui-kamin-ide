@@ -4,6 +4,19 @@
 //! Тексты включаются `include_str!` и склеиваются в `sources::CONSUMERS`.
 
 pub(super) const SOURCES: &[&str] = &[
+    include_str!("../../../../html-style/src/style/computed/resolve.rs"),
+    include_str!("../../../../html-style/src/style/computed/font_request.rs"),
+    include_str!("../../../../html-style/src/style/computed/queries.rs"),
+    include_str!("../../../../html-style/src/style/computed/math_style.rs"),
+    include_str!("../../../../html-style/src/style/computed/box_style/paint.rs"),
+    include_str!("../../../../html-style/src/style/computed/types/bg_layer.rs"),
+    include_str!("../../../../html-style/src/style/cascade/compute/text/inherit.rs"),
+    include_str!("../../text/fonts/fallbacks.rs"),
+    include_str!("../../text/inline/emphasis.rs"),
+    include_str!("../../text/inline/hyphenate/automatic.rs"),
+    include_str!("../../layout/list/list_item/marker.rs"),
+    include_str!("../../layout/list/list_item/marker/image.rs"),
+    include_str!("../../text/ruby/ruby_hiding.rs"),
     include_str!("../../../../html-style/src/style/computed/containment.rs"),
     include_str!("../../../../html-style/src/style/computed/image_source.rs"),
     include_str!("../../../../html-style/src/style/computed/flat_background.rs"),

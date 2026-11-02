@@ -164,6 +164,7 @@ fn table_wrapper_preserves_caption_and_cell_line_geometry() {
     let table = find(&tree).unwrap();
     assert!(flow_lines(table));
     let mut atomic = table.clone();
-    atomic.style.used_mut().display = Some(crate::style::computed::Display::InlineTable);
+    atomic.style.used_mut().reset_box_layout.display =
+        Some(crate::style::computed::Display::InlineTable);
     assert!(!flow_lines(&atomic));
 }

@@ -25,7 +25,7 @@ pub(super) async fn table_rows_with_bands(
     // половину в сросшейся модели.
     // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
     // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
-    geom.table_em = match inherited.font_size {
+    geom.table_em = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
@@ -101,7 +101,7 @@ pub(super) fn column_bands<'a>(
         groups: bands(groups, under),
         columns: bands(columns, under),
         group_of: Default::default(),
-        paint_layers: e.style.cascaded().border_collapse == Some(true),
+        paint_layers: e.style.cascaded().inh.table_list.border_collapse == Some(true),
         rules_groups: false,
     }
 }

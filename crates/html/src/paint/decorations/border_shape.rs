@@ -17,7 +17,7 @@ pub(super) fn border_shape_layer(
     // полосы разных сторон не рисуются (ниже). Слой — растр типизированной `Scene`
     // на border-box плюс вынос (`Computed::border_shape_ext`) — тот же
     // контур, что у маски группы (`background::border_shape_path`).
-    if let Some(bs) = c.border_shape.clone() {
+    if let Some(bs) = c.reset_border.border_shape.clone() {
         let (stroke, colour) = c.border_shape_stroke();
         let colour = crate::paint::background::border_paint(c, colour, vcx);
         let outer_out = c.geometry_outsets(bs.outer_box);

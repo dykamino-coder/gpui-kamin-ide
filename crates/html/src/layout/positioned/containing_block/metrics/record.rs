@@ -180,23 +180,32 @@ pub(crate) fn capture(id: u64, style: &BoxStyle, opts: &RenderOpts) -> Option<Bo
     let b = style.borders();
     Some(Box::new(Recording {
         id,
-        cb: if style.position == Some(crate::style::computed::Position::Fixed) {
+        cb: if style.reset_positioned.position == Some(crate::style::computed::Position::Fixed) {
             style.fixed_cb_node
         } else {
             style.cb_node
         },
         positioned: crate::layout::box_kind::out_of_flow(style),
         border: [b.top, b.right, b.bottom, b.left].map(px_lossy_zero),
-        clone_edges: style.bdb_clone.then(|| {
+        clone_edges: style.reset_fragmentation.bdb_clone.then(|| {
             let axis = crate::layout::fragment::types::StackAxis::of(style.wm());
             let (head, tail) = if axis.is_vertical() {
                 if axis == crate::layout::fragment::types::StackAxis::VerticalRl {
-                    ((style.padding.right, b.right), (style.padding.left, b.left))
+                    (
+                        (style.reset_box_layout.padding.right, b.right),
+                        (style.reset_box_layout.padding.left, b.left),
+                    )
                 } else {
-                    ((style.padding.left, b.left), (style.padding.right, b.right))
+                    (
+                        (style.reset_box_layout.padding.left, b.left),
+                        (style.reset_box_layout.padding.right, b.right),
+                    )
                 }
             } else {
-                ((style.padding.top, b.top), (style.padding.bottom, b.bottom))
+                (
+                    (style.reset_box_layout.padding.top, b.top),
+                    (style.reset_box_layout.padding.bottom, b.bottom),
+                )
             };
             (
                 axis,

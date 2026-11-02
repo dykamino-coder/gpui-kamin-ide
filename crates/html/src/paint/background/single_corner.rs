@@ -66,15 +66,20 @@ pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
     if !eligible(c) {
         return None;
     }
-    let (i, radius) = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
-        .into_iter()
-        .enumerate()
-        .find_map(|(i, r)| match r {
-            Some(r @ Len::Px(v)) | Some(r @ Len::Pct(v)) if v > 0.0 => Some((i, r)),
-            _ => None,
-        })?;
+    let (i, radius) = [
+        c.reset_border.radius.tl,
+        c.reset_border.radius.tr,
+        c.reset_border.radius.br,
+        c.reset_border.radius.bl,
+    ]
+    .into_iter()
+    .enumerate()
+    .find_map(|(i, r)| match r {
+        Some(r @ Len::Px(v)) | Some(r @ Len::Pct(v)) if v > 0.0 => Some((i, r)),
+        _ => None,
+    })?;
     let b = uniform(c.borders())?;
-    let p = uniform(c.padding)?;
+    let p = uniform(c.reset_box_layout.padding)?;
     let background = c
         .paint_background()
         .color

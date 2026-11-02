@@ -35,8 +35,8 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     // — прежний путь `size_of`, здесь ничего не меняется.
     if e.style.used().contains_width()
         || e.style.used().contains_height()
-        || !auto(e.style.used().width)
-        || !auto(e.style.used().height)
+        || !auto(e.style.used().reset_box_layout.width)
+        || !auto(e.style.used().reset_box_layout.height)
         || facts.width.is_some()
         || facts.height.is_some()
     {
@@ -50,22 +50,25 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     let ratio = e
         .style
         .used()
+        .reset_shapes
         .aspect_ratio
         .filter(|r| r.is_finite() && *r > 0.0)
         .unwrap_or(vw / vh);
     let side = |l: Option<Len>| px(l).unwrap_or(0.0);
     let b = e.style.used().borders();
-    let pb_x = side(e.style.used().padding.left)
-        + side(e.style.used().padding.right)
+    let pb_x = side(e.style.used().reset_box_layout.padding.left)
+        + side(e.style.used().reset_box_layout.padding.right)
         + side(b.left)
         + side(b.right);
-    let pb_y = side(e.style.used().padding.top)
-        + side(e.style.used().padding.bottom)
+    let pb_y = side(e.style.used().reset_box_layout.padding.top)
+        + side(e.style.used().reset_box_layout.padding.bottom)
         + side(b.top)
         + side(b.bottom);
     // Внешний размер = содержимое + паддинг + рамка + поля (css-sizing-3
     // §5.1 «outer size»); `size_of` отдаёт размер СОДЕРЖИМОГО.
-    let outer_x = side(e.style.used().margin.left) + side(e.style.used().margin.right) + pb_x;
+    let outer_x = side(e.style.used().reset_box_layout.margin.left)
+        + side(e.style.used().reset_box_layout.margin.right)
+        + pb_x;
     let (mut w, mut h) = match cb_width {
         Some(cb) if cb > 0.0 => {
             let w = (cb - outer_x).max(0.0);
@@ -78,25 +81,25 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     };
     // При `box-sizing: border-box` предел включает паддинг и рамку —
     // содержимому остаётся остальное (как `sub_w`/`sub_h` в `image_with`).
-    let (sub_x, sub_y) = if e.style.used().border_box == Some(true) {
+    let (sub_x, sub_y) = if e.style.used().reset_border.border_box == Some(true) {
         (pb_x, pb_y)
     } else {
         (0.0, 0.0)
     };
-    if let Some(m) = px(e.style.used().max_width).map(|m| (m - sub_x).max(0.0))
+    if let Some(m) = px(e.style.used().reset_box_layout.max_width).map(|m| (m - sub_x).max(0.0))
         && w > m
     {
         w = m;
         h = w / ratio;
     }
-    if let Some(m) = px(e.style.used().max_height).map(|m| (m - sub_y).max(0.0))
+    if let Some(m) = px(e.style.used().reset_box_layout.max_height).map(|m| (m - sub_y).max(0.0))
         && h > m
     {
         h = m;
         w = h * ratio;
     }
     let mut copy = e.clone();
-    copy.style.used_mut().width = Some(Len::Px(w));
-    copy.style.used_mut().height = Some(Len::Px(h));
+    copy.style.used_mut().reset_box_layout.width = Some(Len::Px(w));
+    copy.style.used_mut().reset_box_layout.height = Some(Len::Px(h));
     copy
 }

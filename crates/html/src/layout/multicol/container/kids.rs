@@ -34,9 +34,10 @@ pub(in crate::layout::multicol) fn column_kids(
     let mut kid_par = kid_par;
     for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
         if p.group == 0 {
-            p.avoid_only = c.style.used().break_inside_avoid && avoid_only_monolith(c);
+            p.avoid_only =
+                c.style.used().reset_fragmentation.break_inside_avoid && avoid_only_monolith(c);
             p.float = c.marks.float_block;
-            p.clears = clearance_possible && c.style.used().clear.is_some();
+            p.clears = clearance_possible && c.style.used().reset_box_layout.clear.is_some();
         }
     }
     (kid_parent, kid_starts, kid_par, kids)
@@ -137,7 +138,7 @@ pub(in crate::layout::multicol) fn stack_children(
             let margins = (s.margin_top, s.margin_bottom);
             let candidate = nest_candidate(ix, &shared.kid_par, col_vert, &c)
                 && if balanced {
-                    matches!(c.style.used().height, Some(Len::Px(_)))
+                    matches!(c.style.used().reset_box_layout.height, Some(Len::Px(_)))
                         && s.margin_top.abs() < COORD_EPS
                 } else {
                     fragmentainer_extent(fixed, rows).is_some()

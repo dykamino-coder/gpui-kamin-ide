@@ -21,17 +21,21 @@ fn inset_rejects_an_entire_invalid_declaration() {
             vcx,
         );
         assert_eq!(
-            c.td_inset,
+            c.reset_text_box.td_inset,
             Some(Some([DecorLen::Px(7.0), DecorLen::Px(-9.0)])),
             "{invalid}"
         );
     }
     assert_eq!(
-        computed("text-decoration-inset: 3px", vcx).td_inset,
+        computed("text-decoration-inset: 3px", vcx)
+            .reset_text_box
+            .td_inset,
         Some(Some([DecorLen::Px(3.0); 2]))
     );
     assert_eq!(
-        computed("text-decoration-inset: auto", vcx).td_inset,
+        computed("text-decoration-inset: auto", vcx)
+            .reset_text_box
+            .td_inset,
         Some(None)
     );
 }
@@ -46,7 +50,7 @@ fn inset_computes_font_lengths_without_resolving_percentages() {
     );
     c.resolve_em(16.0, vcx);
     assert_eq!(
-        c.td_inset,
+        c.reset_text_box.td_inset,
         Some(Some([DecorLen::Mix(0.1, 20.0), DecorLen::Px(20.0)]))
     );
 }
@@ -66,7 +70,10 @@ fn inset_explicitly_inherits_the_computed_parent_value() {
         &computed("font-size:20px;text-decoration-inset:inherit", vcx),
         vcx,
     );
-    assert_eq!(child.td_inset, Some(Some([DecorLen::Px(40.0); 2])));
+    assert_eq!(
+        child.reset_text_box.td_inset,
+        Some(Some([DecorLen::Px(40.0); 2]))
+    );
     let initial = inherit_unpainted(&parent, &computed("text-decoration-inset:unset", vcx), vcx);
-    assert_eq!(initial.td_inset, None);
+    assert_eq!(initial.reset_text_box.td_inset, None);
 }

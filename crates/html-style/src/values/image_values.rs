@@ -51,10 +51,10 @@ fn collect(nodes: &[Node], urls: &mut HashSet<String>) {
 }
 
 fn style(c: &Computed, urls: &mut HashSet<String>) {
-    if let Some(Some(image)) = &c.list_style_image {
+    if let Some(Some(image)) = &c.inh.table_list.list_style_image {
         operand(image, urls);
     }
-    if let Some(image) = &c.bg_image {
+    if let Some(image) = &c.reset_background.bg_image {
         operand(image, urls);
     }
     if let Some(layers) = c.background_layers() {
@@ -65,11 +65,11 @@ fn style(c: &Computed, urls: &mut HashSet<String>) {
         }
     }
     for c in [
-        c.marker_layer.as_deref(),
-        c.first_line.as_deref(),
-        c.first_line_own.as_deref(),
-        c.first_letter.as_deref(),
-        c.first_letter_own.as_deref(),
+        c.reset_generated.marker_layer.as_deref(),
+        c.reset_text_box.first_line.as_deref(),
+        c.reset_text_box.first_line_own.as_deref(),
+        c.reset_text_box.first_letter.as_deref(),
+        c.reset_text_box.first_letter_own.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -122,7 +122,7 @@ pub mod inventory_cases {
         let pending = vcx.background_images();
         let revision = doc.images.borrow().snapshot().revision();
         let before = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
-        assert_eq!(before.bg_image.as_ref(), Some(&image));
+        assert_eq!(before.reset_background.bg_image.as_ref(), Some(&image));
         assert_eq!(doc.images.borrow().snapshot().revision(), revision);
         assert!(doc.images.borrow_mut().take_jobs().is_empty());
 
@@ -140,13 +140,13 @@ pub mod inventory_cases {
         let revision = doc.images.borrow().snapshot().revision();
         let after = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
         assert!(after.paint_background().top.image.is_none());
-        assert_eq!(after.bg_image.as_ref(), Some(&image));
+        assert_eq!(after.reset_background.bg_image.as_ref(), Some(&image));
         assert_eq!(
             after.paint_background().flat.map(|v| v[1]),
             ready.uniform_image_color(&image)
         );
         assert_eq!(doc.images.borrow().snapshot().revision(), revision);
-        assert_eq!(own.bg_image.as_ref(), Some(&image));
+        assert_eq!(own.reset_background.bg_image.as_ref(), Some(&image));
     }
 
     pub fn prepare_visits_layers_pseudo_styles_animation_and_nested_operands() {
@@ -154,7 +154,12 @@ pub mod inventory_cases {
         let vcx = doc.values();
         let raw = |n| format!("data:,invalid-{n}");
         let with_url = |n| Computed {
-            bg_image: Some(ImageSource::Url(raw(n))),
+            reset_background: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBackground {
+                    bg_image: Some(ImageSource::Url(raw(n))),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut own = with_url(0);
@@ -163,29 +168,34 @@ pub mod inventory_cases {
             &format!("url('{}'), url('{}')", raw(1), raw(2)),
             vcx,
         );
-        own.first_letter_own = Some(Box::new(with_url(3)));
-        own.marker_layer = Some(Box::new(with_url(9)));
+        own.reset_text_box.first_letter_own = Some(Box::new(with_url(3)));
+        own.reset_generated.marker_layer = Some(Box::new(with_url(9)));
         let mut node = crate::dom::Element::synthetic("div", own, Default::default(), vec![]);
         node.hover = Some(with_url(4).into());
         node.first_line = Some(with_url(5).into());
         node.anim = Some(Rc::new(vec![(0.0, with_url(6))]));
         let nested = Computed {
-            bg_image: Some(ImageSource::CrossFade(vec![
-                (
-                    ImageSource::Fallback {
-                        url: raw(7),
-                        color: None,
-                    },
-                    0.5,
-                ),
-                (
-                    ImageSource::Filter {
-                        image: Box::new(ImageSource::Url(raw(8))),
-                        program: Default::default(),
-                    },
-                    0.5,
-                ),
-            ])),
+            reset_background: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBackground {
+                    bg_image: Some(ImageSource::CrossFade(vec![
+                        (
+                            ImageSource::Fallback {
+                                url: raw(7),
+                                color: None,
+                            },
+                            0.5,
+                        ),
+                        (
+                            ImageSource::Filter {
+                                image: Box::new(ImageSource::Url(raw(8))),
+                                program: Default::default(),
+                            },
+                            0.5,
+                        ),
+                    ])),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         node.children
@@ -216,7 +226,12 @@ pub mod inventory_cases {
         let doc = DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let own = Computed {
-            bg_image: Some(image.clone()),
+            reset_background: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBackground {
+                    bg_image: Some(image.clone()),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let node = crate::dom::Element::synthetic("div", own, Default::default(), vec![]);

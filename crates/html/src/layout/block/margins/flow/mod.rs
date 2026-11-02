@@ -47,9 +47,14 @@ pub(super) fn collapse_flow_kids(
             _ => continue,
         };
         // Out-of-flow boxes neither collapse nor interrupt adjacent block margins.
-        if child.style.used().float.is_some_and(|f| f != 0)
+        if child
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|f| f != 0)
             || matches!(
-                child.style.used().position,
+                child.style.used().reset_positioned.position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
@@ -77,19 +82,19 @@ pub(super) fn collapse_flow_kids(
         // список, что у `lead_margin` в `element()`; текст перед первым
         // блоком — строка, и она поля разделяет.
         let own_context = child.inline
-            || child.style.used().display.is_some()
+            || child.style.used().reset_box_layout.display.is_some()
             || !matches!(
-                child.style.used().overflow_x,
+                child.style.used().reset_box_layout.overflow_x,
                 None | Some(crate::style::computed::Overflow::Visible)
             )
             || !matches!(
-                child.style.used().overflow_y,
+                child.style.used().reset_box_layout.overflow_y,
                 None | Some(crate::style::computed::Overflow::Visible)
             )
-            || child.style.used().flow_root == Some(true)
-            || child.style.used().align_content_block
-            || child.style.used().contain_layout == Some(true)
-            || child.style.used().contain_paint == Some(true);
+            || child.style.used().reset_context.flow_root == Some(true)
+            || child.style.used().reset_flex.align_content_block
+            || child.style.used().reset_context.contain_layout == Some(true)
+            || child.style.used().reset_context.contain_paint == Some(true);
         let text_first = child
             .children
             .iter()
@@ -100,9 +105,9 @@ pub(super) fn collapse_flow_kids(
         }
         // В обратном потоке ведущая сторона — правая.
         let lead = if reverse {
-            child.style.used().margin.right
+            child.style.used().reset_box_layout.margin.right
         } else {
-            child.style.used().margin.left
+            child.style.used().reset_box_layout.margin.left
         };
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
@@ -119,9 +124,9 @@ pub(super) fn collapse_flow_kids(
         // `-vlr-023` — пустой `widthless-static` перед абсолютом) не должен
         // получить новый `trailing`. Отрицательные поля — прежним путём.
         let tail = if reverse {
-            child.style.used().margin.left
+            child.style.used().reset_box_layout.margin.left
         } else {
-            child.style.used().margin.right
+            child.style.used().reset_box_layout.margin.right
         };
         let tail_px = margin_px_in(tail, &child.style.used(), vcx).unwrap_or(0.0);
         let prev = trailing.unwrap_or(0.0);
@@ -129,11 +134,11 @@ pub(super) fn collapse_flow_kids(
             let combined = prev.max(lead_px).max(tail_px);
             let kept = combined - prev;
             if reverse {
-                child.style.used_mut().margin.right = Some(Len::Px(kept));
-                child.style.used_mut().margin.left = Some(Len::Px(0.0));
+                child.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(kept));
+                child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(0.0));
             } else {
-                child.style.used_mut().margin.left = Some(Len::Px(kept));
-                child.style.used_mut().margin.right = Some(Len::Px(0.0));
+                child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(kept));
+                child.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(0.0));
             }
             trailing = Some(combined);
             continue;
@@ -141,9 +146,9 @@ pub(super) fn collapse_flow_kids(
         if let Some(prev) = trailing {
             let kept = (lead_px - prev).max(0.0);
             if reverse {
-                child.style.used_mut().margin.right = Some(Len::Px(kept));
+                child.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(kept));
             } else {
-                child.style.used_mut().margin.left = Some(Len::Px(kept));
+                child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(kept));
             }
         }
         trailing = Some(absorb_margin(child, true, reverse, vcx));

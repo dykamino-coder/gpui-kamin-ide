@@ -16,7 +16,7 @@ fn multicol_wrapper(c: &Element) -> bool {
     // Сам многоколоночник требует специализированного пути с внешним
     // фрагментаинером; обычная обёртка сохраняет этот контекст в потомке.
     matches!(
-        c.style.used().display,
+        c.style.used().reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem)
     ) && !crate::layout::multicol::spanner::multicol_container(&c.style.used())
         && crate::layout::multicol::spanner::multicol_inside(c, 4)
@@ -28,9 +28,12 @@ fn multicol_wrapper(c: &Element) -> bool {
 pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
     fits && line_col_w.is_some()
         && !c.inline
-        && c.style.used().column_span != Some(true)
-        && matches!(c.style.used().position, None | Some(Position::Relative))
-        && c.style.used().float.unwrap_or(0) == 0
+        && c.style.used().reset_fragmentation.column_span != Some(true)
+        && matches!(
+            c.style.used().reset_positioned.position,
+            None | Some(Position::Relative)
+        )
+        && c.style.used().reset_box_layout.float.unwrap_or(0) == 0
         && (crate::layout::fragment::flow::blocks::grid_tree(c)
             || crate::layout::fragment::flow::blocks::flex_tree(c)
             || crate::layout::fragment::flow::blocks::table_tree(c)

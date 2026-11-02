@@ -65,7 +65,7 @@ fn br_clear_is_a_presentational_hint() {
         for node in nodes {
             if let super::Node::Element(element) = node {
                 if element.tag == "br" {
-                    return element.style.cascaded().clear;
+                    return element.style.cascaded().reset_box_layout.clear;
                 }
                 if let Some(value) = clear(&element.children) {
                     return Some(value);

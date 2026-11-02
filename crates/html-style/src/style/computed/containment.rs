@@ -24,18 +24,23 @@ impl Computed {
     /// CSS Containment 2: auto всегда изолирует layout/style/paint; пропуск
     /// нерелевантного содержимого — отдельное решение, добавляющее size.
     pub(crate) fn refresh_containment(&mut self) {
-        let value = self.contain_value;
-        let hidden = self.content_visibility == ContentVisibility::Hidden;
-        let isolated = self.content_visibility != ContentVisibility::Visible;
-        self.contain_size =
-            Some(value.size || self.container_type == ContainerType::Size || hidden);
-        self.contain_inline_size =
-            Some(value.inline_size || self.container_type == ContainerType::InlineSize);
-        self.contain_layout = Some(value.layout || isolated);
-        self.contain_paint = Some(value.paint || isolated);
-        self.contain_style =
-            Some(value.style || self.container_type != ContainerType::Normal || isolated);
-        self.skip_content = Some(hidden);
+        let value = self.reset_context.contain_value;
+        let hidden = self.reset_generated.content_visibility == ContentVisibility::Hidden;
+        let isolated = self.reset_generated.content_visibility != ContentVisibility::Visible;
+        self.reset_context.contain_size = Some(
+            value.size || self.reset_box_layout.container_type == ContainerType::Size || hidden,
+        );
+        self.reset_context.contain_inline_size = Some(
+            value.inline_size || self.reset_box_layout.container_type == ContainerType::InlineSize,
+        );
+        self.reset_context.contain_layout = Some(value.layout || isolated);
+        self.reset_context.contain_paint = Some(value.paint || isolated);
+        self.reset_context.contain_style = Some(
+            value.style
+                || self.reset_box_layout.container_type != ContainerType::Normal
+                || isolated,
+        );
+        self.reset_context.skip_content = Some(hidden);
     }
 }
 
@@ -59,11 +64,11 @@ mod tests {
             [("contain", "none"), ("content-visibility", "auto")],
         ] {
             let c = declarations(&values);
-            assert_eq!(c.contain_layout, Some(true));
-            assert_eq!(c.contain_style, Some(true));
-            assert_eq!(c.contain_paint, Some(true));
-            assert_eq!(c.contain_size, Some(false));
-            assert_eq!(c.skip_content, Some(false));
+            assert_eq!(c.reset_context.contain_layout, Some(true));
+            assert_eq!(c.reset_context.contain_style, Some(true));
+            assert_eq!(c.reset_context.contain_paint, Some(true));
+            assert_eq!(c.reset_context.contain_size, Some(false));
+            assert_eq!(c.reset_context.skip_content, Some(false));
             assert!(super::super::box_predicates::establishes_cb(&c));
         }
     }
@@ -75,18 +80,18 @@ mod tests {
             ("content-visibility", "hidden"),
             ("content-visibility", "visible"),
         ]);
-        assert_eq!(c.contain_paint, Some(true));
-        assert_eq!(c.contain_layout, Some(false));
-        assert_eq!(c.contain_style, Some(false));
-        assert_eq!(c.contain_size, Some(false));
-        assert_eq!(c.skip_content, Some(false));
+        assert_eq!(c.reset_context.contain_paint, Some(true));
+        assert_eq!(c.reset_context.contain_layout, Some(false));
+        assert_eq!(c.reset_context.contain_style, Some(false));
+        assert_eq!(c.reset_context.contain_size, Some(false));
+        assert_eq!(c.reset_context.skip_content, Some(false));
         let c = declarations(&[
             ("content-visibility", "hidden"),
             ("content-visibility", "auto"),
         ]);
-        assert_eq!(c.contain_layout, Some(true));
-        assert_eq!(c.contain_size, Some(false));
-        assert_eq!(c.skip_content, Some(false));
+        assert_eq!(c.reset_context.contain_layout, Some(true));
+        assert_eq!(c.reset_context.contain_size, Some(false));
+        assert_eq!(c.reset_context.skip_content, Some(false));
     }
 
     #[test]
@@ -96,17 +101,17 @@ mod tests {
             [("contain", "none"), ("container-type", "size")],
         ] {
             let c = declarations(&values);
-            assert_eq!(c.contain_size, Some(true));
-            assert_eq!(c.contain_style, Some(true));
-            assert_eq!(c.contain_layout, Some(false));
+            assert_eq!(c.reset_context.contain_size, Some(true));
+            assert_eq!(c.reset_context.contain_style, Some(true));
+            assert_eq!(c.reset_context.contain_layout, Some(false));
         }
         let c = declarations(&[
             ("contain", "layout"),
             ("container-type", "size"),
             ("container-type", "normal"),
         ]);
-        assert_eq!(c.contain_layout, Some(true));
-        assert_eq!(c.contain_size, Some(false));
+        assert_eq!(c.reset_context.contain_layout, Some(true));
+        assert_eq!(c.reset_context.contain_size, Some(false));
     }
 
     #[test]
@@ -123,8 +128,8 @@ mod tests {
         for position in ["absolute", "fixed"] {
             let child = inherit_unpainted(&parent, &declarations(&[("position", position)]), vcx);
             assert!(child.cb_ancestor, "{position}");
-            assert!(child.transform_ancestor, "{position}");
-            assert!(child.fragment_clip_ancestor, "{position}");
+            assert!(child.reset_transforms.transform_ancestor, "{position}");
+            assert!(child.reset_context.fragment_clip_ancestor, "{position}");
         }
     }
 
@@ -144,16 +149,22 @@ mod tests {
             &declarations(&[("content-visibility", "inherit"), ("contain", "size")]),
             vcx,
         );
-        assert_eq!(child.content_visibility, ContentVisibility::Auto);
-        assert_eq!(child.contain_size, Some(true));
-        assert_eq!(child.contain_paint, Some(true));
+        assert_eq!(
+            child.reset_generated.content_visibility,
+            ContentVisibility::Auto
+        );
+        assert_eq!(child.reset_context.contain_size, Some(true));
+        assert_eq!(child.reset_context.contain_paint, Some(true));
         for keyword in ["initial", "unset"] {
             let c = declarations(&[
                 ("content-visibility", "auto"),
                 ("content-visibility", keyword),
             ]);
-            assert_eq!(c.content_visibility, ContentVisibility::Visible);
-            assert_eq!(c.contain_paint, Some(false));
+            assert_eq!(
+                c.reset_generated.content_visibility,
+                ContentVisibility::Visible
+            );
+            assert_eq!(c.reset_context.contain_paint, Some(false));
         }
     }
 
@@ -163,7 +174,10 @@ mod tests {
             ("content-visibility", "auto"),
             ("content-visibility", "invalid"),
         ]);
-        assert_eq!(c.content_visibility, ContentVisibility::Auto);
-        assert_eq!(c.contain_paint, Some(true));
+        assert_eq!(
+            c.reset_generated.content_visibility,
+            ContentVisibility::Auto
+        );
+        assert_eq!(c.reset_context.contain_paint, Some(true));
     }
 }

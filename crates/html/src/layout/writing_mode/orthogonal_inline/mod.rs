@@ -12,28 +12,46 @@ use crate::style::values::value::{Len, px_strict};
 pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     let b = style.borders();
     let sides = if vertical {
-        [b.top, b.bottom, style.padding.top, style.padding.bottom]
+        [
+            b.top,
+            b.bottom,
+            style.reset_box_layout.padding.top,
+            style.reset_box_layout.padding.bottom,
+        ]
     } else {
-        [b.left, b.right, style.padding.left, style.padding.right]
+        [
+            b.left,
+            b.right,
+            style.reset_box_layout.padding.left,
+            style.reset_box_layout.padding.right,
+        ]
     };
     sides.into_iter().filter_map(px_strict).sum()
 }
 
 pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     let (size, min, max) = if vertical {
-        (style.height, style.min_height, style.max_height)
+        (
+            style.reset_box_layout.height,
+            style.reset_box_layout.min_height,
+            style.reset_box_layout.max_height,
+        )
     } else {
-        (style.width, style.min_width, style.max_width)
+        (
+            style.reset_box_layout.width,
+            style.reset_box_layout.min_width,
+            style.reset_box_layout.max_width,
+        )
     };
-    let adjustment = if style.border_box == Some(true) {
+    let adjustment = if style.reset_border.border_box == Some(true) {
         edges(style, vertical)
     } else {
         0.0
     };
     let gutters = if vertical {
-        style.scroll.used[1] + style.scroll.used[3]
+        style.reset_box_layout.scroll.used[1] + style.reset_box_layout.scroll.used[3]
     } else {
-        style.scroll.used[0] + style.scroll.used[2]
+        style.reset_box_layout.scroll.used[0] + style.reset_box_layout.scroll.used[2]
     };
     let inner = |value| px_strict(value).map(|v| (v - adjustment - gutters).max(0.0));
     AxisSizes {
@@ -44,17 +62,20 @@ pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
 }
 
 fn ordinary(style: &Computed) -> bool {
-    matches!(style.display, None | Some(Display::Block))
-        && !matches!(style.position, Some(Position::Absolute | Position::Fixed))
-        && style.float.is_none_or(|v| v == 0)
-        && !style.ortho_col
+    matches!(style.reset_box_layout.display, None | Some(Display::Block))
+        && !matches!(
+            style.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
+        && style.reset_box_layout.float.is_none_or(|v| v == 0)
+        && !style.reset_context.ortho_col
 }
 
 pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
     // Parallel table cells receive their inline measure from the column track.
     // A containing-block fallback must not override that intrinsic probe.
-    (!style.ortho_col)
-        .then_some(style.orthogonal_inline)
+    (!style.reset_context.ortho_col)
+        .then_some(style.reset_context.orthogonal_inline)
         .flatten()
 }
 
@@ -64,17 +85,20 @@ pub(crate) fn resolve(
     viewport: (f32, f32),
     principal: bool,
 ) {
-    style.orthogonal_scrollport = if [style.overflow_x, style.overflow_y]
-        .into_iter()
-        .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
+    style.reset_context.orthogonal_scrollport = if [
+        style.reset_box_layout.overflow_x,
+        style.reset_box_layout.overflow_y,
+    ]
+    .into_iter()
+    .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
     {
         Some([axis(style, false), axis(style, true)])
     } else {
-        parent.orthogonal_scrollport
+        parent.reset_context.orthogonal_scrollport
     };
     let vertical = style.wm().vertical();
     let parent_vertical = parent.wm().vertical();
-    style.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
+    style.reset_context.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
         crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent).map(
             |constraint| {
                 crate::layout::writing_mode::orthogonal_fixed_child::inherit(style, constraint)
@@ -88,11 +112,11 @@ pub(crate) fn resolve(
     }
     // Normal block flow may overflow its containing block. The flex column
     // used by the adapter must not compress this child's physical height.
-    style.flex_shrink = Some(0.0);
+    style.reset_flex.flex_shrink = Some(0.0);
     let parent_axis = ratio_basis::block_axis(parent);
     let fallback = available(
         parent_axis,
-        parent.orthogonal_scrollport.map(|s| s[1]),
+        parent.reset_context.orthogonal_scrollport.map(|s| s[1]),
         viewport.1,
     );
     let basis = parent_axis
@@ -100,20 +124,23 @@ pub(crate) fn resolve(
         .map(|v| parent_axis.clamp(v))
         .unwrap_or(fallback);
     let own_edges = edges(style, true);
-    if let Some(Len::Pct(k)) = style.height {
-        style.height = Some(Len::Px(k * basis));
+    if let Some(Len::Pct(k)) = style.reset_box_layout.height {
+        style.reset_box_layout.height = Some(Len::Px(k * basis));
     }
     let own = axis(style, true);
-    if [style.overflow_x, style.overflow_y]
-        .into_iter()
-        .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
+    if [
+        style.reset_box_layout.overflow_x,
+        style.reset_box_layout.overflow_y,
+    ]
+    .into_iter()
+    .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
     {
-        style.orthogonal_scrollport = Some([axis(style, false), own]);
+        style.reset_context.orthogonal_scrollport = Some([axis(style, false), own]);
     }
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
     // available space for the box's MARGIN box).
-    let em = px_strict(style.font_size).unwrap_or(MEDIUM_FONT_SIZE_PX);
+    let em = px_strict(style.inh.font.font_size).unwrap_or(MEDIUM_FONT_SIZE_PX);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
         Some(Len::Em(k)) => k * em,
@@ -121,21 +148,24 @@ pub(crate) fn resolve(
     };
     // Collapsing may move these margins onto an ancestor, but they still take
     // their room out of the stretch-fit inline size.
-    let authored = style.own_margin.unwrap_or(style.margin);
+    let authored = style
+        .reset_box_layout
+        .own_margin
+        .unwrap_or(style.reset_box_layout.margin);
     let margins = margin(authored.top) + margin(authored.bottom);
     // A definite containing block size IS the available inline space; the
     // fallback (smallest of max size, scrollport and ICB) only stands in for an
     // indefinite one (css-writing-modes-4 §7.3.1, `available-size-020`: a
     // `height: 120vh` parent is not capped by the ICB).
     let space = basis;
-    style.orthogonal_inline = Some(InlineConstraint {
+    style.reset_context.orthogonal_inline = Some(InlineConstraint {
         available: (space - own_edges - margins).max(0.0),
         fixed: own.size,
         min: own.min,
         max: own.max,
     });
     // A wrapping cap is not a percentage basis or a used inline size.
-    style.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
+    style.reset_context.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
 }
 
 #[cfg(test)]

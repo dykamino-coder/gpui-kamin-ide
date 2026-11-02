@@ -33,14 +33,16 @@ pub(crate) fn keywords_with_dimensions(
     // the margin box (and, when positioned, the inset-modified containing
     // block), which no percentage expresses. It does not measure content, so
     // containment does not affect it.
-    let stretch = |axis: usize| style.stretch_size[axis].then_some(CssSizingKeyword::Stretch);
+    let stretch = |axis: usize| {
+        style.reset_box_layout.stretch_size[axis].then_some(CssSizingKeyword::Stretch)
+    };
     // CSS Containment 2 §3.1: apply_box already supplied the empty-box
     // intrinsic size. Native keywords must not measure the real children again.
     [
         stretch(0).or(if style.contains_width() {
             None
         } else {
-            keyword(sizes.preferred[0], style.fit_arg[0])
+            keyword(sizes.preferred[0], style.reset_context.fit_arg[0])
         }),
         stretch(1).or(if style.contains_height() {
             None
@@ -61,27 +63,32 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed {
-            width: Some(Len::FitContent),
-            height: Some(Len::Px(60.0)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    width: Some(Len::FitContent),
+                    height: Some(Len::Px(60.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
-        c.border_visible = [Some(true); 4];
-        c.border_width.left = Some(Len::Px(3.0));
-        c.border_width.right = Some(Len::Px(3.0));
+        c.reset_border.border_visible = [Some(true); 4];
+        c.reset_border.border_width.left = Some(Len::Px(3.0));
+        c.reset_border.border_width.right = Some(Len::Px(3.0));
         for argument in [Len::Px(394.0), Len::Pct(0.5)] {
-            c.fit_arg[0] = Some(argument);
+            c.reset_context.fit_arg[0] = Some(argument);
             assert!(native_content_box(&c));
             let mut d = super::super::apply(div(), &BoxStyle::from(c.clone()), vcx);
             assert_eq!(d.style().content_box, Some(true));
             assert_eq!(d.style().size.height, Some(px(60.0).into()));
         }
-        c.border_box = Some(true);
+        c.reset_border.border_box = Some(true);
         assert!(!native_content_box(&c));
-        c.border_box = None;
-        c.fit_arg[0] = None;
+        c.reset_border.border_box = None;
+        c.reset_context.fit_arg[0] = None;
         assert!(!native_content_box(&c));
-        c.width = Some(Len::Px(100.0));
-        c.padding.left = Some(Len::Pct(0.1));
+        c.reset_box_layout.width = Some(Len::Px(100.0));
+        c.reset_box_layout.padding.left = Some(Len::Pct(0.1));
         assert!(native_content_box(&c));
     }
 }

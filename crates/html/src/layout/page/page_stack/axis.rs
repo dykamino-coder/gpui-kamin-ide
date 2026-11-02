@@ -21,7 +21,7 @@ impl PageStack {
         if crate::layout::fragment::types::StackAxis::of(self.principal) != axis {
             use crate::style::computed::{Computed, writing_mode::WritingModeKw};
             let mut style = Computed::default();
-            style.writing_mode = Some(match axis {
+            style.inh.writing.writing_mode = Some(match axis {
                 StackAxis::Horizontal => WritingModeKw::HorizontalTb,
                 StackAxis::VerticalRl => WritingModeKw::VerticalRl,
                 StackAxis::VerticalLr => WritingModeKw::VerticalLr,

@@ -11,10 +11,11 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.
     if let Some(round) = c
+        .reset_mask
         .clip_round
         .filter(|_| !crate::paint::effects::grouped::rounded_rect_clip(c))
     {
-        let base = match (c.width, c.height) {
+        let base = match (c.reset_box_layout.width, c.reset_box_layout.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,
             (_, Some(Len::Px(h))) => h,
@@ -34,7 +35,7 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
         };
         // Обрезка НЕ отменяет собственное скругление: берётся более сильное
         // из двух, иначе `border-radius` рядом с `clip-path` пропадал.
-        let own = px_lossy_zero(c.radius.tl);
+        let own = px_lossy_zero(c.reset_border.radius.tl);
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.
@@ -43,10 +44,10 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
     // Родитель — строка, flex, grid — синтезирует её от края коробки. Прежде
     // базовая линия текста внутри уходила наружу: `inline-block` с «a»
     // вставал выше пустого соседа (`contain-layout-baseline-001..003`).
-    if c.contain_layout == Some(true) {
+    if c.reset_context.contain_layout == Some(true) {
         d.style().hides_baseline = Some(true);
     }
-    if c.contain_paint == Some(true) {
+    if c.reset_context.contain_paint == Some(true) {
         // Обрезка по краю БЕЗ контейнера прокрутки (css-contain-2 §3.3
         // paint containment: «contents … clipped to the overflow clip
         // edge»; вычисленный `overflow` остаётся `visible`) — это `clip`, а
@@ -64,7 +65,7 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
         }
     }
 
-    match c.position {
+    match c.reset_positioned.position {
         // Слой окна для `fixed` создаёт сборщик дерева; внутри него элемент
         // размещается так же, как абсолютный.
         Some(Position::Fixed) | Some(Position::Absolute) => {
@@ -75,8 +76,9 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
             // элемент занимает ширину содержимого без переносов; повторяем это.
             // Явный `auto` краем не считается (CSS 2.1 §9.3.2).
             let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-            let horizontal = edge(c.inset.left) && edge(c.inset.right);
-            if !horizontal && c.width.is_none() {
+            let horizontal =
+                edge(c.reset_positioned.inset.left) && edge(c.reset_positioned.inset.right);
+            if !horizontal && c.reset_box_layout.width.is_none() {
                 d = d.flex_shrink_0().whitespace_nowrap();
             }
         }

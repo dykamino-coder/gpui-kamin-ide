@@ -59,23 +59,28 @@ impl Serial {
             || !b.kids.is_empty()
             || b.table.is_some()
             || b.grid.is_some()
-            || s.height.is_some()
-            || s.min_height.is_some()
-            || s.max_height.is_some()
-            || s.aspect_ratio.is_some()
-            || s.contain_size == Some(true)
-            || s.contain_inline_size == Some(true)
-            || s.writing_mode.is_some_and(|w| w.is_vertical())
-            || s.position.is_some_and(|p| p != Position::Static)
-            || s.flex_grow.is_some_and(|v| v != 0.)
-            || s.flex_basis.is_some()
-            || s.basis_content == Some(true)
-            || s.float.is_some_and(|v| v != 0)
-            || s.clear.is_some_and(|v| v != 0)
-            || s.margin_trim != 0
-            || ![s.margin.top, s.margin.bottom]
-                .iter()
-                .all(|v| matches!(v, None | Some(Len::Px(0.))))
+            || s.reset_box_layout.height.is_some()
+            || s.reset_box_layout.min_height.is_some()
+            || s.reset_box_layout.max_height.is_some()
+            || s.reset_shapes.aspect_ratio.is_some()
+            || s.reset_context.contain_size == Some(true)
+            || s.reset_context.contain_inline_size == Some(true)
+            || s.inh.writing.writing_mode.is_some_and(|w| w.is_vertical())
+            || s.reset_positioned
+                .position
+                .is_some_and(|p| p != Position::Static)
+            || s.reset_flex.flex_grow.is_some_and(|v| v != 0.)
+            || s.reset_flex.flex_basis.is_some()
+            || s.reset_flex.basis_content == Some(true)
+            || s.reset_box_layout.float.is_some_and(|v| v != 0)
+            || s.reset_box_layout.clear.is_some_and(|v| v != 0)
+            || s.reset_fragmentation.margin_trim != 0
+            || ![
+                s.reset_box_layout.margin.top,
+                s.reset_box_layout.margin.bottom,
+            ]
+            .iter()
+            .all(|v| matches!(v, None | Some(Len::Px(0.))))
             || crate::layout::box_kind::clamp_host(e, &s)
         {
             return None;
@@ -85,13 +90,13 @@ impl Serial {
             return None;
         }
         let kind = if let Some(f) = &b.flex {
-            if s.flex_dir != Some(FlexDir::Col)
-                || s.flex_wrap == Some(true)
-                || s.flex_balance == Some(true)
-                || s.flex_wrap_reverse == Some(true)
-                || s.flex_line_count.is_some_and(|n| n > 1)
-                || !matches!(s.justify_content, None | Some(Justify::Start))
-                || !matches!(s.gap, None | Some((None | Some(Len::Px(_)), _)))
+            if s.reset_flex.flex_dir != Some(FlexDir::Col)
+                || s.reset_flex.flex_wrap == Some(true)
+                || s.reset_flex.flex_balance == Some(true)
+                || s.reset_flex.flex_wrap_reverse == Some(true)
+                || s.reset_flex.flex_line_count.is_some_and(|n| n > 1)
+                || !matches!(s.reset_flex.justify_content, None | Some(Justify::Start))
+                || !matches!(s.reset_flex.gap, None | Some((None | Some(Len::Px(_)), _)))
             {
                 return None;
             }
@@ -146,7 +151,7 @@ impl Serial {
             }
             Kind::Column(kids)
         } else {
-            if !matches!(s.display, None | Some(Display::Block))
+            if !matches!(s.reset_box_layout.display, None | Some(Display::Block))
                 || !e.children.iter().all(|n| matches!(n, DomNode::Text(_)))
             {
                 return None;

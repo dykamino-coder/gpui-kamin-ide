@@ -20,22 +20,22 @@ pub(super) fn prepare_cell_box(
     // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
     // где `style::cascade::inherit` уже разрешил значения родителя.
     use crate::style::css::{BoxGroup as G, LonghandId as L};
-    let marked = cell.style.cascaded().inherit_longhands;
+    let marked = cell.style.cascaded().reset_cascade.inherit_longhands;
     let inherits = |group: G| (0..4).any(|i| marked.contains(L::physical(group, i)));
     if inherits(G::Padding) {
-        cell.style.used_mut().padding = cm.padding;
+        cell.style.used_mut().reset_box_layout.padding = cm.reset_box_layout.padding;
     }
-    if cell.style.used().border_inherit
+    if cell.style.used().reset_border.border_inherit
         || inherits(G::BorderWidth)
         || inherits(G::BorderStyle)
         || inherits(G::BorderColor)
     {
-        cell.style.used_mut().border_width = cm.border_width;
-        cell.style.used_mut().border_visible = cm.border_visible;
-        cell.style.used_mut().border_side_styles = cm.border_side_styles;
-        cell.style.used_mut().border_colors = cm.border_colors.clone();
-        cell.style.used_mut().border_dashed = cm.border_dashed;
-        cell.style.used_mut().border_dotted = cm.border_dotted;
+        cell.style.used_mut().reset_border.border_width = cm.reset_border.border_width;
+        cell.style.used_mut().reset_border.border_visible = cm.reset_border.border_visible;
+        cell.style.used_mut().reset_border.border_side_styles = cm.reset_border.border_side_styles;
+        cell.style.used_mut().reset_border.border_colors = cm.reset_border.border_colors.clone();
+        cell.style.used_mut().reset_border.border_dashed = cm.reset_border.border_dashed;
+        cell.style.used_mut().reset_border.border_dotted = cm.reset_border.border_dotted;
     }
     // Не держать внутри ячейки ПОЛОВИНУ её кромки прозрачной рамкой, а
     // внутри таблицы — половину своей (§17.6.2: «row-width = (0.5 *
@@ -55,8 +55,8 @@ pub(super) fn prepare_cell_box(
         None
     };
     if spans.clipped {
-        cell.style.used_mut().overflow_x = None;
-        cell.style.used_mut().overflow_y = None;
+        cell.style.used_mut().reset_box_layout.overflow_x = None;
+        cell.style.used_mut().reset_box_layout.overflow_y = None;
     }
     // Ячейка схлопнутой колонки не рисуется: колонка выброшена
     // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
@@ -64,19 +64,19 @@ pub(super) fn prepare_cell_box(
     if (cursor.col_ix..cursor.col_ix + spans.span_cols as usize)
         .all(|i| geom.cols_collapsed.get(i).copied().unwrap_or(false))
     {
-        cell.style.used_mut().hidden = Some(true);
+        cell.style.used_mut().inh.ui.hidden = Some(true);
     }
     table_spanning_size::preserve(
         cell.style.used_mut(),
         cm,
         spans.span_cols,
-        geom.e.style.used().table_fixed == Some(true),
+        geom.e.style.used().reset_context.table_fixed == Some(true),
         geom.table_is_vertical,
         spans.spans_collapsed,
     );
     let orthogonal_inline = cell.style.used().wm().vertical()
         && !geom.e.style.used().wm().vertical()
-        && cell.style.used().width_from_inline;
+        && cell.style.used().reset_box_layout.width_from_inline;
     if !geom.table_is_vertical
         && !orthogonal_inline
         // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
@@ -84,11 +84,11 @@ pub(super) fn prepare_cell_box(
         // are treated as auto); left on the box it widened the table alone
         // (`calc-width-table-auto-1` row 4).
         && matches!(
-            cell.style.used().width,
+            cell.style.used().reset_box_layout.width,
             Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
         )
     {
-        cell.style.used_mut().width = None;
+        cell.style.used_mut().reset_box_layout.width = None;
     }
     // Кегльная ширина уходит с коробки, как Px и доля: колонка
     // разрешает её сама (Em-ветка col_widths), а на коробке она
@@ -99,28 +99,30 @@ pub(super) fn prepare_cell_box(
     // высоту.
     if !(cell.style.used().wm().vertical()
         && !geom.e.style.used().wm().vertical()
-        && cell.style.used().width_from_inline
+        && cell.style.used().reset_box_layout.width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
         || geom.table_is_vertical)
         && matches!(
-            cell.style.used().width,
+            cell.style.used().reset_box_layout.width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
         )
     {
-        cell.style.used_mut().width = None;
+        cell.style.used_mut().reset_box_layout.width = None;
     }
     // The row's logical block size is physical width in a vertical table.
     // Preserve authored cell width as a minimum, then stretch to the row.
     if geom.table_is_vertical {
         let size = crate::layout::table::col_measure::cell_font_px(
-            cell.style.used().font_size,
-            row_state.row.style.used().font_size,
+            cell.style.used().inh.font.font_size,
+            row_state.row.style.used().inh.font.font_size,
             geom.table_font,
         );
         let family = cell
             .style
             .cascaded()
+            .inh
+            .font
             .font_family
             .clone()
             .unwrap_or_else(|| geom.table_family.to_string());

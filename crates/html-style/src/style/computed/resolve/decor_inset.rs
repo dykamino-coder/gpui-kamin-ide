@@ -33,12 +33,15 @@ impl Computed {
         font: f32,
         vcx: ValueCx<'_>,
     ) {
-        let line = match self.line_height {
+        if !matches!(self.reset_text_box.td_inset, Some(Some(_))) {
+            return;
+        }
+        let line = match self.inh.font.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * font,
             _ => crate::style::font_metrics::normal_height(family, font, vcx),
         };
-        if let Some(Some(pair)) = &mut self.td_inset {
+        if let Some(Some(pair)) = &mut self.reset_text_box.td_inset {
             for value in pair {
                 *value = map_length(
                     *value,
@@ -58,7 +61,8 @@ impl Computed {
     /// decoration's outstanding viewport terms are resolved there.
     /// Отступы линий оформления, которые решает `resolve_decor_inset_viewport`.
     pub fn has_decor_insets(&self) -> bool {
-        matches!(self.td_inset, Some(Some(_))) || self.decors.iter().any(|d| d.inset.is_some())
+        matches!(self.reset_text_box.td_inset, Some(Some(_)))
+            || self.reset_text_box.decors.iter().any(|d| d.inset.is_some())
     }
 
     pub fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
@@ -76,17 +80,35 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
-        if let Some(Some(pair)) = &mut self.td_inset {
+        if !self.has_decor_insets() {
+            return;
+        }
+        if let Some(Some(pair)) = &mut self.reset_text_box.td_inset {
             for value in pair {
                 *value = map_length(*value, fix, vcx);
             }
         }
-        for decor in &mut self.decors {
+        for decor in &mut self.reset_text_box.decors {
             if let Some(pair) = &mut decor.inset {
                 for value in pair {
                     *value = map_length(*value, fix, vcx);
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absent_insets_do_not_detach_text_group() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let base = Computed::default();
+        let mut value = base.clone();
+        value.resolve_decor_inset_font(|_| {}, "", 16.0, doc.values());
+        value.resolve_decor_inset_viewport((800.0, 600.0), doc.values());
+        assert!(base.shares_storage(&value));
     }
 }

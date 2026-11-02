@@ -12,21 +12,29 @@ use crate::values::ValueCx;
 /// Скопировать в `c` вычисленные значения родителя `p` у свойств множества
 /// `c.inherit_longhands`.
 pub(super) fn inherit_longhands(c: &mut Computed, p: &Computed, vcx: ValueCx<'_>) {
-    for id in c.inherit_longhands.iter() {
+    for id in c.reset_cascade.inherit_longhands.iter() {
         match id.slot() {
-            Slot::Physical(G::Margin, i) => *side(&mut c.margin, i) = of(&p.margin, i),
-            Slot::Physical(G::Padding, i) => *side(&mut c.padding, i) = of(&p.padding, i),
-            Slot::Physical(G::Inset, i) => *side(&mut c.inset, i) = of(&p.inset, i),
+            Slot::Physical(G::Margin, i) => {
+                *side(&mut c.reset_box_layout.margin, i) = of(&p.reset_box_layout.margin, i)
+            }
+            Slot::Physical(G::Padding, i) => {
+                *side(&mut c.reset_box_layout.padding, i) = of(&p.reset_box_layout.padding, i)
+            }
+            Slot::Physical(G::Inset, i) => {
+                *side(&mut c.reset_positioned.inset, i) = of(&p.reset_positioned.inset, i)
+            }
             Slot::Physical(G::Size, i) => size(c, p, i),
             Slot::Physical(G::BorderWidth, i) => {
-                *side(&mut c.border_width, i) = of(&p.border_width, i)
+                *side(&mut c.reset_border.border_width, i) = of(&p.reset_border.border_width, i)
             }
             Slot::Physical(G::BorderStyle, i) => {
-                c.border_visible[i] = p.border_visible[i];
-                c.border_side_styles[i] = p.border_side_styles[i];
+                c.reset_border.border_visible[i] = p.reset_border.border_visible[i];
+                c.reset_border.border_side_styles[i] = p.reset_border.border_side_styles[i];
                 c.sync_border_pattern();
             }
-            Slot::Physical(G::BorderColor, i) => c.border_colors[i] = p.border_colors[i].clone(),
+            Slot::Physical(G::BorderColor, i) => {
+                c.reset_border.border_colors[i] = p.reset_border.border_colors[i].clone()
+            }
             // Логическое свойство ложится на физическое по письму
             // (`resolve_logical`) вместе со своим `inherit`.
             Slot::Logical(..) => {}
@@ -52,33 +60,35 @@ fn side(s: &mut Sides, i: usize) -> &mut Option<Len> {
 /// Размер `i` (width, height, min-width, min-height, max-width, max-height)
 /// вместе с выражением `calc-size()` и его основой.
 fn size(c: &mut Computed, p: &Computed, i: usize) {
-    c.calc_size_basis[i] = p.calc_size_basis[i];
+    c.reset_box_layout.calc_size_basis[i] = p.reset_box_layout.calc_size_basis[i];
     if i < 4 {
-        c.calc_size[i] = p.calc_size[i];
+        c.reset_box_layout.calc_size[i] = p.reset_box_layout.calc_size[i];
     } else {
-        c.calc_size_max[i - 4] = p.calc_size_max[i - 4];
+        c.reset_box_layout.calc_size_max[i - 4] = p.reset_box_layout.calc_size_max[i - 4];
     }
     match i {
-        0 => c.width = p.width,
-        1 => c.height = p.height,
-        2 => c.min_width = p.min_width,
-        3 => c.min_height = p.min_height,
-        4 => c.max_width = p.max_width,
-        _ => c.max_height = p.max_height,
+        0 => c.reset_box_layout.width = p.reset_box_layout.width,
+        1 => c.reset_box_layout.height = p.reset_box_layout.height,
+        2 => c.reset_box_layout.min_width = p.reset_box_layout.min_width,
+        3 => c.reset_box_layout.min_height = p.reset_box_layout.min_height,
+        4 => c.reset_box_layout.max_width = p.reset_box_layout.max_width,
+        _ => c.reset_box_layout.max_height = p.reset_box_layout.max_height,
     }
 }
 
 fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
     let bg_list = |c: &mut Computed, prop: BgListProp| {
-        c.bg_lists.remove(prop);
-        if let Some(layers) = p.bg_lists.get(prop) {
-            c.bg_lists.set_layers(prop, layers.to_vec());
+        c.reset_background.bg_lists.remove(prop);
+        if let Some(layers) = p.reset_background.bg_lists.get(prop) {
+            c.reset_background
+                .bg_lists
+                .set_layers(prop, layers.to_vec());
         }
     };
     match id {
         L::OutlineWidth | L::OutlineStyle | L::OutlineColor | L::OutlineOffset => {
-            let from = p.outline.clone().unwrap_or_default();
-            let mut o = c.outline.clone().unwrap_or_default();
+            let from = p.reset_border.outline.clone().unwrap_or_default();
+            let mut o = c.reset_border.outline.clone().unwrap_or_default();
             match id {
                 L::OutlineWidth => o.width = from.width,
                 L::OutlineStyle => o.style = from.style,
@@ -88,77 +98,79 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
                 // Метка `inset` — часть значения сдвига.
                 _ => (o.offset, o.inset) = (from.offset, from.inset),
             }
-            c.outline = Some(o);
+            c.reset_border.outline = Some(o);
         }
-        L::BackgroundColor => c.background_color = p.background_color.clone(),
+        L::BackgroundColor => {
+            c.reset_background.background_color = p.reset_background.background_color.clone()
+        }
         L::BackgroundImage => {
-            c.bg_image = p.bg_image.clone();
-            c.gradient = p.gradient.clone();
-            c.gradient_raw = p.gradient_raw.clone();
-            c.gradient_current = p.gradient_current.clone();
+            c.reset_background.bg_image = p.reset_background.bg_image.clone();
+            c.reset_background.gradient = p.reset_background.gradient.clone();
+            c.reset_background.gradient_raw = p.reset_background.gradient_raw.clone();
+            c.reset_background.gradient_current = p.reset_background.gradient_current.clone();
             bg_list(c, BgListProp::Image);
         }
         L::BackgroundPositionX => {
-            c.bg_pos.x = p.bg_pos.x;
-            c.bg_position_math[0] = p.bg_position_math[0].clone();
+            c.reset_background.bg_pos.x = p.reset_background.bg_pos.x;
+            c.reset_background.bg_position_math[0] = p.reset_background.bg_position_math[0].clone();
             bg_list(c, BgListProp::PositionX);
         }
         L::BackgroundPositionY => {
-            c.bg_pos.y = p.bg_pos.y;
-            c.bg_position_math[1] = p.bg_position_math[1].clone();
+            c.reset_background.bg_pos.y = p.reset_background.bg_pos.y;
+            c.reset_background.bg_position_math[1] = p.reset_background.bg_position_math[1].clone();
             bg_list(c, BgListProp::PositionY);
         }
         L::BackgroundRepeat => {
-            c.bg_repeat = p.bg_repeat;
+            c.reset_background.bg_repeat = p.reset_background.bg_repeat;
             bg_list(c, BgListProp::Repeat);
         }
         L::BackgroundOrigin => {
-            c.bg_origin = p.bg_origin;
+            c.reset_background.bg_origin = p.reset_background.bg_origin;
             bg_list(c, BgListProp::Origin);
         }
         L::BackgroundClip => {
-            c.bg_clip = p.bg_clip;
+            c.reset_background.bg_clip = p.reset_background.bg_clip;
             bg_list(c, BgListProp::Clip);
         }
         L::BackgroundSize => {
-            c.bg_size = p.bg_size;
+            c.reset_background.bg_size = p.reset_background.bg_size;
             bg_list(c, BgListProp::Size);
         }
         L::BackgroundAttachment => {
-            c.bg_fixed = p.bg_fixed;
+            c.reset_background.bg_fixed = p.reset_background.bg_fixed;
             bg_list(c, BgListProp::Attachment);
         }
         // Значение родителя целиком, с его `safe`/`last` (`place-items:
         // inherit` во вложенной сетке —
         // `grid-self-alignment-baseline-with-grid-001`).
         L::AlignItems => {
-            c.align_items = p.align_items;
-            c.align_items_safe = p.align_items_safe;
-            c.align_items_last = p.align_items_last;
+            c.reset_flex.align_items = p.reset_flex.align_items;
+            c.reset_flex.align_items_safe = p.reset_flex.align_items_safe;
+            c.reset_flex.align_items_last = p.reset_flex.align_items_last;
         }
         L::JustifyItems => {
-            c.justify_items = p.justify_items;
-            c.justify_items_safe = p.justify_items_safe;
-            c.justify_items_last = p.justify_items_last;
+            c.reset_flex.justify_items = p.reset_flex.justify_items;
+            c.reset_flex.justify_items_safe = p.reset_flex.justify_items_safe;
+            c.reset_flex.justify_items_last = p.reset_flex.justify_items_last;
         }
         L::AlignContent => {
-            c.align_content = p.align_content;
-            c.align_content_baseline = p.align_content_baseline;
-            c.align_content_safe = p.align_content_safe;
-            c.align_content_unsafe = p.align_content_unsafe;
-            c.align_content_block = p.align_content_block;
+            c.reset_flex.align_content = p.reset_flex.align_content;
+            c.reset_flex.align_content_baseline = p.reset_flex.align_content_baseline;
+            c.reset_flex.align_content_safe = p.reset_flex.align_content_safe;
+            c.reset_flex.align_content_unsafe = p.reset_flex.align_content_unsafe;
+            c.reset_flex.align_content_block = p.reset_flex.align_content_block;
         }
         L::JustifyContent => {
-            c.justify_content = p.justify_content;
-            c.justify_content_safe = p.justify_content_safe;
+            c.reset_flex.justify_content = p.reset_flex.justify_content;
+            c.reset_flex.justify_content_safe = p.reset_flex.justify_content_safe;
         }
         L::JustifySelf => {
-            c.justify_self = p.justify_self;
-            c.justify_self_safe = p.justify_self_safe;
-            c.justify_self_last = p.justify_self_last;
-            c.justify_self_physical = p.justify_self_physical;
-            c.justify_self_normal = p.justify_self_normal;
-            c.justify_self_own_axis = p.justify_self_own_axis;
+            c.reset_flex.justify_self = p.reset_flex.justify_self;
+            c.reset_flex.justify_self_safe = p.reset_flex.justify_self_safe;
+            c.reset_flex.justify_self_last = p.reset_flex.justify_self_last;
+            c.reset_flex.justify_self_physical = p.reset_flex.justify_self_physical;
+            c.reset_flex.justify_self_normal = p.reset_flex.justify_self_normal;
+            c.reset_flex.justify_self_own_axis = p.reset_flex.justify_self_own_axis;
         }
         // `align-self: inherit` (css-cascade-5 §7.3.1) — вычисленное значение
         // родителя: его авторское слово, даже когда у самого родителя оно
@@ -166,42 +178,50 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
         // про используемое значение). Ребёнку блочного контейнера свойство
         // неприменимо (css-align-3 §6.1) — то же гашение и здесь.
         L::AlignSelf => {
-            let value = p.align_self_decl.unwrap_or(p.align_self);
-            c.align_self = value;
-            c.align_self_decl = Some(value);
-            c.align_self_safe = p.align_self_safe;
-            c.align_self_normal = p.align_self_normal;
-            c.align_self_own_axis = p.align_self_own_axis;
-            c.align_self_flex_kw = p.align_self_flex_kw;
-            c.align_self_last = p.align_self_last;
+            let value = p
+                .reset_flex
+                .align_self_decl
+                .unwrap_or(p.reset_flex.align_self);
+            c.reset_flex.align_self = value;
+            c.reset_flex.align_self_decl = Some(value);
+            c.reset_flex.align_self_safe = p.reset_flex.align_self_safe;
+            c.reset_flex.align_self_normal = p.reset_flex.align_self_normal;
+            c.reset_flex.align_self_own_axis = p.reset_flex.align_self_own_axis;
+            c.reset_flex.align_self_flex_kw = p.reset_flex.align_self_flex_kw;
+            c.reset_flex.align_self_last = p.reset_flex.align_self_last;
             // TRANSITIONAL(cascade-7b-R06): Явный inherit align-self гасится для block parent в computed стадии; удалить гашение после сохранения computed значения и проверки применимости в used block layout.
             use crate::style::computed::{Display as D, Position as P};
             let block_parent = matches!(
-                p.display,
+                p.reset_box_layout.display,
                 None | Some(D::Block)
                     | Some(D::ListItem)
                     | Some(D::InlineBlock)
                     | Some(D::TableCell)
-            ) && p.webkit_box != Some(true);
+            ) && p.reset_flex.webkit_box != Some(true);
             if block_parent
-                && c.align_self.is_some()
-                && !matches!(c.position, Some(P::Absolute) | Some(P::Fixed))
+                && c.reset_flex.align_self.is_some()
+                && !matches!(
+                    c.reset_positioned.position,
+                    Some(P::Absolute) | Some(P::Fixed)
+                )
             {
-                c.align_self = None;
-                c.align_self_normal = false;
+                c.reset_flex.align_self = None;
+                c.reset_flex.align_self_normal = false;
             }
         }
         // Цвет линейки родителя целиком, не `currentcolor` своего текста
         // (`multicol-rule-color-inherit-001/002`).
         L::ColumnRuleColor => {
-            c.column_rule_color = p.column_rule_color.clone();
-            c.column_rule_colors = p.column_rule_colors.clone();
+            c.reset_fragmentation.column_rule_color =
+                p.reset_fragmentation.column_rule_color.clone();
+            c.reset_fragmentation.column_rule_colors =
+                p.reset_fragmentation.column_rule_colors.clone();
         }
         L::RowRuleColor => {
-            c.row_rule_color = p.row_rule_color.clone();
-            c.row_rule_colors = p.row_rule_colors.clone();
+            c.reset_fragmentation.row_rule_color = p.reset_fragmentation.row_rule_color.clone();
+            c.reset_fragmentation.row_rule_colors = p.reset_fragmentation.row_rule_colors.clone();
         }
-        L::GridTemplateAreas => c.grid_areas = p.grid_areas.clone(),
+        L::GridTemplateAreas => c.reset_grid.grid_areas = p.reset_grid.grid_areas.clone(),
         _ => {
             for property in crate::style::cascade::inherited_value::of_longhand(id) {
                 property.copy(p, c, vcx);

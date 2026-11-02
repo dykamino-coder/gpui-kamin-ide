@@ -9,7 +9,9 @@ use crate::style::computed::{Computed, Display, inh};
 pub(crate) fn used(e: &Element) -> Option<Element> {
     // A block ruby principal box remains transformable. Author display changes
     // that remove a ruby role likewise retain ordinary transform behavior.
-    if crate::text::ruby::ruby_role(e).is_none() || e.style.used().display == Some(Display::Block) {
+    if crate::text::ruby::ruby_role(e).is_none()
+        || e.style.used().reset_box_layout.display == Some(Display::Block)
+    {
         return None;
     }
     let mut e = e.clone();
@@ -18,12 +20,12 @@ pub(crate) fn used(e: &Element) -> Option<Element> {
 }
 
 pub(super) fn clear(style: &mut Computed) {
-    style.transform = None;
-    style.transform_raw = None;
-    style.translate = None;
-    style.rotate_prop = None;
-    style.scale_prop = None;
-    style.perspective = None;
-    style.preserve_3d = None;
-    style.inherit_bits &= !(inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
+    style.reset_transforms.transform = None;
+    style.reset_transforms.transform_raw = None;
+    style.reset_transforms.translate = None;
+    style.reset_transforms.rotate_prop = None;
+    style.reset_transforms.scale_prop = None;
+    style.reset_transforms.perspective = None;
+    style.reset_transforms.preserve_3d = None;
+    style.reset_cascade.inherit_bits &= !(inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
 }

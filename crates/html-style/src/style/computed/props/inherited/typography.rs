@@ -139,18 +139,21 @@ impl Computed {
         use LonghandId::*;
         match id {
             WordSpaceTransform => {
-                self.word_space_char = word_space_transform(v).or(self.word_space_char)
+                self.inh.text_flow.word_space_char =
+                    word_space_transform(v).or(self.inh.text_flow.word_space_char)
             }
             TextAutospace => {
                 if let Some((alpha, numeric)) = autospace(v) {
-                    self.autospace_alpha = Some(alpha);
-                    self.autospace_numeric = Some(numeric);
+                    self.inh.text_flow.autospace_alpha = Some(alpha);
+                    self.inh.text_flow.autospace_numeric = Some(numeric);
                 }
             }
-            HangingPunctuation => self.hanging = hanging(v).or(self.hanging),
+            HangingPunctuation => {
+                self.inh.text_flow.hanging = hanging(v).or(self.inh.text_flow.hanging)
+            }
             TextFit => {
                 if let Some(fit) = text_fit(v) {
-                    self.text_fit = Some(fit);
+                    self.inh.text_flow.text_fit = Some(fit);
                 }
             }
             _ => return false,
@@ -161,10 +164,15 @@ impl Computed {
     pub(super) fn inherit_typography(&mut self, id: LonghandId) -> bool {
         use LonghandId::*;
         match id {
-            WordSpaceTransform => self.word_space_char = None,
-            TextAutospace => (self.autospace_alpha, self.autospace_numeric) = (None, None),
-            HangingPunctuation => self.hanging = None,
-            TextFit => self.text_fit = None,
+            WordSpaceTransform => self.inh.text_flow.word_space_char = None,
+            TextAutospace => {
+                (
+                    self.inh.text_flow.autospace_alpha,
+                    self.inh.text_flow.autospace_numeric,
+                ) = (None, None)
+            }
+            HangingPunctuation => self.inh.text_flow.hanging = None,
+            TextFit => self.inh.text_flow.text_fit = None,
             _ => return false,
         }
         true

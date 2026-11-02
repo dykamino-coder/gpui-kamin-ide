@@ -36,7 +36,7 @@ impl Computed {
         order
             .iter()
             .copied()
-            .find(|i| self.border_visible[*i] == Some(true))
+            .find(|i| self.reset_border.border_visible[*i] == Some(true))
             .unwrap_or(block_start)
     }
 
@@ -49,16 +49,16 @@ impl Computed {
         let b = self.borders();
         let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
         let pd = [
-            px(self.padding.top),
-            px(self.padding.right),
-            px(self.padding.bottom),
-            px(self.padding.left),
+            px(self.reset_box_layout.padding.top),
+            px(self.reset_box_layout.padding.right),
+            px(self.reset_box_layout.padding.bottom),
+            px(self.reset_box_layout.padding.left),
         ];
         let mg = [
-            px(self.margin.top),
-            px(self.margin.right),
-            px(self.margin.bottom),
-            px(self.margin.left),
+            px(self.reset_box_layout.margin.top),
+            px(self.reset_box_layout.margin.right),
+            px(self.reset_box_layout.margin.bottom),
+            px(self.reset_box_layout.margin.left),
         ];
         let mut out = [0.0f32; 4];
         for i in 0..4 {
@@ -79,7 +79,11 @@ impl Computed {
     /// у polygon, шип длиной w/sin(θ/2); 5w покрывает углы от ~23°
     /// (border-shape-polygon-miter-limit: шип ~80 px при w=20).
     pub fn border_shape_ext(&self) -> [f32; 4] {
-        self.border_shape_ext_with(&self.shadows, &self.inset_shadows, self.shaped_outline())
+        self.border_shape_ext_with(
+            &self.reset_effects.shadows,
+            &self.reset_effects.inset_shadows,
+            self.shaped_outline(),
+        )
     }
 
     pub fn border_shape_ext_with(
@@ -88,7 +92,7 @@ impl Computed {
         inset_shadows: &[Shadow],
         outline: Option<(f32, f32, Color)>,
     ) -> [f32; 4] {
-        let Some(bs) = &self.border_shape else {
+        let Some(bs) = &self.reset_border.border_shape else {
             return [0.0; 4];
         };
         let out = self.geometry_outsets(bs.outer_box);
@@ -142,18 +146,18 @@ impl Computed {
     /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
     /// минус толщина. Шрифтовые единицы — своим кеглем.
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
-        self.border_shape.as_ref()?;
+        self.reset_border.border_shape.as_ref()?;
         self.contour_outline_params()
     }
 
     /// Толщина, сдвиг и цвет сплошного/`auto`/`double` контура по форме
     /// (`border-shape` либо `corner-shape`).
     pub fn contour_outline_params(&self) -> Option<(f32, f32, Color)> {
-        let o = self.outline.as_ref()?;
+        let o = self.reset_border.outline.as_ref()?;
         if !matches!(o.style, Some(1) | Some(2) | Some(OUTLINE_DOUBLE)) {
             return None;
         }
-        let em = match self.font_size {
+        let em = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
@@ -180,12 +184,12 @@ impl Computed {
     /// группы берёт внутренний контур, а кольцо рамки ложится НАД буфером
     /// (`Grouped::over`). `scroll`/`auto` идут лентой прокрутки мимо группы.
     pub fn border_shape_clips(&self) -> bool {
-        self.border_shape.is_some()
+        self.reset_border.border_shape.is_some()
             && (matches!(
-                self.overflow_x,
+                self.reset_box_layout.overflow_x,
                 Some(Overflow::Hidden) | Some(Overflow::Clip)
             ) || matches!(
-                self.overflow_y,
+                self.reset_box_layout.overflow_y,
                 Some(Overflow::Hidden) | Some(Overflow::Clip)
             ))
     }

@@ -17,9 +17,13 @@ use crate::style::computed::{Computed, Display};
 /// трогает — их судьбу решает прежний путь.
 fn anon_role(n: &Node) -> Option<bool> {
     let Node::Element(e) = n else { return None };
-    if e.style.used().float.is_some_and(|f| f != 0)
+    if e.style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0)
         || matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -32,7 +36,7 @@ fn anon_role(n: &Node) -> Option<bool> {
     if is_cell(e) {
         return Some(false);
     }
-    match e.style.used().display {
+    match e.style.used().reset_box_layout.display {
         Some(Display::TableRow) | Some(Display::TableRowGroup) => Some(true),
         _ => match e.tag.as_str() {
             "tr" | "thead" | "tbody" | "tfoot" => Some(true),
@@ -61,7 +65,7 @@ pub fn inline_anon_tables(
     nodes: &mut [Node],
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::postorder(admission, nodes, |e| {
-        if e.style.used().display.is_none()
+        if e.style.used().reset_box_layout.display.is_none()
             && e.inline
             && e.children.iter().any(|c| anon_role(c).is_some())
         {
@@ -79,7 +83,7 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
             return;
         }
         let mut t = anon_element("table", std::mem::take(run));
-        t.style.cascaded_mut().display = Some(display);
+        t.style.cascaded_mut().reset_box_layout.display = Some(display);
         t.marks.anonymous_wrapper = true;
         // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
         // всех анонимных узлов общий, и две таблицы делили бы один буфер —
@@ -142,7 +146,7 @@ pub fn col_role(el: &Element) -> Option<bool> {
     match el.tag.as_str() {
         "col" => Some(false),
         "colgroup" => Some(true),
-        _ => match el.style.used().col_role {
+        _ => match el.style.used().reset_context.col_role {
             Some(0) => Some(false),
             Some(1) => Some(true),
             _ => None,
@@ -154,11 +158,11 @@ pub fn col_role(el: &Element) -> Option<bool> {
 /// значение `caption-side` подписи (CSS 2.2 §17.4.1). Свойство наследуемое:
 /// подпись, ребёнок таблицы, получает его от таблицы и её предков каскадом.
 pub fn caption_at_bottom(caption: &Element) -> bool {
-    caption.style.used().caption_bottom == Some(true)
+    caption.style.used().inh.table_list.caption_bottom == Some(true)
 }
 
 pub fn is_cell(element: &Element) -> bool {
-    match element.style.used().display {
+    match element.style.used().reset_box_layout.display {
         Some(Display::TableCell) => true,
         None => matches!(element.tag.as_str(), "td" | "th"),
         _ => false,

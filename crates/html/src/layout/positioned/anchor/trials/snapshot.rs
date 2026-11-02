@@ -51,31 +51,37 @@ impl Accepted {
     pub(super) fn of(c: &Computed) -> Self {
         Self {
             sizes: [
-                c.width,
-                c.height,
-                c.min_width,
-                c.min_height,
-                c.max_width,
-                c.max_height,
+                c.reset_box_layout.width,
+                c.reset_box_layout.height,
+                c.reset_box_layout.min_width,
+                c.reset_box_layout.min_height,
+                c.reset_box_layout.max_width,
+                c.reset_box_layout.max_height,
             ],
-            inset: c.inset,
-            margin: c.margin,
-            align: [c.align_self, c.justify_self],
-            safe: [c.align_self_safe, c.justify_self_safe],
-            normal: [c.align_self_normal, c.justify_self_normal],
-            anchor: c.position_anchor.clone(),
-            area: c.position_area,
-            calc: c.calc_size,
-            calc_max: c.calc_size_max,
-            basis: c.calc_size_basis,
-            stretch: c.stretch_size,
-            fit: c.fit_arg,
-            own_axis: [c.align_self_own_axis, c.justify_self_own_axis],
-            last: [c.align_self_last, c.justify_self_last],
-            flex_kw: c.align_self_flex_kw,
-            physical: c.justify_self_physical,
-            align_decl: c.align_self_decl,
-            inherit: INHERITED.map(|id| c.inherit_longhands.contains(id)),
+            inset: c.reset_positioned.inset,
+            margin: c.reset_box_layout.margin,
+            align: [c.reset_flex.align_self, c.reset_flex.justify_self],
+            safe: [c.reset_flex.align_self_safe, c.reset_flex.justify_self_safe],
+            normal: [
+                c.reset_flex.align_self_normal,
+                c.reset_flex.justify_self_normal,
+            ],
+            anchor: c.reset_positioned.position_anchor.clone(),
+            area: c.reset_positioned.position_area,
+            calc: c.reset_box_layout.calc_size,
+            calc_max: c.reset_box_layout.calc_size_max,
+            basis: c.reset_box_layout.calc_size_basis,
+            stretch: c.reset_box_layout.stretch_size,
+            fit: c.reset_context.fit_arg,
+            own_axis: [
+                c.reset_flex.align_self_own_axis,
+                c.reset_flex.justify_self_own_axis,
+            ],
+            last: [c.reset_flex.align_self_last, c.reset_flex.justify_self_last],
+            flex_kw: c.reset_flex.align_self_flex_kw,
+            physical: c.reset_flex.justify_self_physical,
+            align_decl: c.reset_flex.align_self_decl,
+            inherit: INHERITED.map(|id| c.reset_cascade.inherit_longhands.contains(id)),
         }
     }
 
@@ -100,32 +106,38 @@ impl Accepted {
 
     pub(super) fn apply(&self, c: &mut Computed) {
         [
-            c.width,
-            c.height,
-            c.min_width,
-            c.min_height,
-            c.max_width,
-            c.max_height,
+            c.reset_box_layout.width,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.max_height,
         ] = self.sizes;
-        c.inset = self.inset;
-        c.margin = self.margin;
-        [c.align_self, c.justify_self] = self.align;
-        [c.align_self_safe, c.justify_self_safe] = self.safe;
-        [c.align_self_normal, c.justify_self_normal] = self.normal;
-        c.position_anchor = self.anchor.clone();
-        c.position_area = self.area;
-        c.calc_size = self.calc;
-        c.calc_size_max = self.calc_max;
-        c.calc_size_basis = self.basis;
-        c.stretch_size = self.stretch;
-        c.fit_arg = self.fit;
-        [c.align_self_own_axis, c.justify_self_own_axis] = self.own_axis;
-        [c.align_self_last, c.justify_self_last] = self.last;
-        c.align_self_flex_kw = self.flex_kw;
-        c.justify_self_physical = self.physical;
-        c.align_self_decl = self.align_decl;
+        c.reset_positioned.inset = self.inset;
+        c.reset_box_layout.margin = self.margin;
+        [c.reset_flex.align_self, c.reset_flex.justify_self] = self.align;
+        [c.reset_flex.align_self_safe, c.reset_flex.justify_self_safe] = self.safe;
+        [
+            c.reset_flex.align_self_normal,
+            c.reset_flex.justify_self_normal,
+        ] = self.normal;
+        c.reset_positioned.position_anchor = self.anchor.clone();
+        c.reset_positioned.position_area = self.area;
+        c.reset_box_layout.calc_size = self.calc;
+        c.reset_box_layout.calc_size_max = self.calc_max;
+        c.reset_box_layout.calc_size_basis = self.basis;
+        c.reset_box_layout.stretch_size = self.stretch;
+        c.reset_context.fit_arg = self.fit;
+        [
+            c.reset_flex.align_self_own_axis,
+            c.reset_flex.justify_self_own_axis,
+        ] = self.own_axis;
+        [c.reset_flex.align_self_last, c.reset_flex.justify_self_last] = self.last;
+        c.reset_flex.align_self_flex_kw = self.flex_kw;
+        c.reset_flex.justify_self_physical = self.physical;
+        c.reset_flex.align_self_decl = self.align_decl;
         for (id, on) in INHERITED.into_iter().zip(self.inherit) {
-            c.inherit_longhands.set(id, on);
+            c.reset_cascade.inherit_longhands.set(id, on);
         }
     }
 }
@@ -135,6 +147,6 @@ pub(crate) fn apply_style(target: &mut Computed, computed: &Computed) {
     Accepted::of(computed).apply(target);
     // Значения уже вычислены до тактики: повторное inherit выбрало бы новую ось.
     for id in INHERITED {
-        target.inherit_longhands.set(id, false);
+        target.reset_cascade.inherit_longhands.set(id, false);
     }
 }

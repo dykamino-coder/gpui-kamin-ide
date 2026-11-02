@@ -44,8 +44,8 @@ pub(crate) fn styled_div_with_dimensions(
     // Скрытая коробка с `filter: url()`: исходная картинка прозрачна, но
     // примитивы без источника (`feFlood`) свой выход дают — фильтр остаётся
     // (`visibility-hidden-element-with-filter-001`: зелёная заливка видна).
-    let c = if style.hidden == Some(true)
-        && (shows_inside(&e.children) || style.filter_ref.is_some())
+    let c = if style.inh.ui.hidden == Some(true)
+        && (shows_inside(&e.children) || style.reset_effects.filter_ref.is_some())
     {
         bare = style.without_own_decorations();
         &bare
@@ -65,9 +65,10 @@ pub(crate) fn styled_div_with_dimensions(
     let unfilled;
     let paint = if c.background_paint.paints()
         && c.paint_background().color.is_some()
-        && !c.transform_ancestor
-        && c.transform.is_none()
-        && c.filter_ref
+        && !c.reset_transforms.transform_ancestor
+        && c.reset_transforms.transform.is_none()
+        && c.reset_effects
+            .filter_ref
             .as_deref()
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
@@ -102,9 +103,12 @@ pub(crate) fn styled_div_with_dimensions(
     // `anchor-position-005`), и держатели. Подавление собственной краски
     // сохраняет исходный `visibility: hidden` якоря
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
-    if let Some(probe) =
-        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true), cx.layout())
-    {
+    if let Some(probe) = crate::layout::positioned::anchor::probe_for(
+        e,
+        c,
+        style.inh.ui.hidden == Some(true),
+        cx.layout(),
+    ) {
         d = d.child(probe);
     }
     if let Some(probe) = absolute_overflow::probe(c, &cx.position.state, vcx, cx.contracts.build) {
@@ -112,7 +116,7 @@ pub(crate) fn styled_div_with_dimensions(
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.
-    if c.pointer_events_none != Some(true)
+    if c.inh.ui.pointer_events_none != Some(true)
         && let Some(h) = &e.hover
     {
         d = apply_hover(d, h.cascaded(), c);
@@ -123,10 +127,10 @@ pub(crate) fn styled_div_with_dimensions(
     // §BackdropRoot): под ним фильтровать нечего, а холст с фоном корня лежит
     // СОСЕДОМ коробки и попал бы в копию кадра (`backdrop-filter-root-element`).
     let rootless;
-    let c = if e.tag == "html" && c.backdrop_color.is_some() {
+    let c = if e.tag == "html" && c.reset_effects.backdrop_color.is_some() {
         rootless = {
             let mut rootless = c.clone();
-            rootless.backdrop_color = None;
+            rootless.reset_effects.backdrop_color = None;
             rootless
         };
         &rootless
@@ -138,7 +142,7 @@ pub(crate) fn styled_div_with_dimensions(
             c.self_node,
         ));
         d = d.child(crate::paint::decorations::fragment_layer(c, empty, cx));
-    } else if c.bdb_clone {
+    } else if c.reset_fragmentation.bdb_clone {
         // Фрагменты clone рисуют свои украшения сами (`decorations::clone_hidden`).
         use crate::paint::decorations::clone_hidden;
         d = d.paint_box_with(clone_hidden::box_painter(e.node_id));

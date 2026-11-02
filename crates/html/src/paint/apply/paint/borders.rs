@@ -28,8 +28,9 @@ pub(crate) fn border_layer(
     // `backdrop-filter`: the filtered backdrop is a child layer, so a quad
     // border would lie under it and get filtered; the element's border
     // belongs above the backdrop (Filter Effects 2 §backdrop-filter).
-    let backdrop =
-        (c.backdrop_color.is_some() || c.backdrop_ref.is_some()) && !c.backdrop_root_above;
+    let backdrop = (c.reset_effects.backdrop_color.is_some()
+        || c.reset_effects.backdrop_ref.is_some())
+        && !c.reset_effects.backdrop_root_above;
     if (!c.background_paint.paints()
         || c.paint_background().top.image.is_none() && !c.gradient_as_tile())
         && !backdrop
@@ -38,9 +39,12 @@ pub(crate) fn border_layer(
     }
     // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
     // всё это уже лежит над плитками (`apply_paint` о них знает).
-    if c.border_image.as_ref().is_some_and(|bi| bi.src.is_some())
+    if c.reset_border
+        .border_image
+        .as_ref()
+        .is_some_and(|bi| bi.src.is_some())
         || c.corner_shaped()
-        || c.border_shape.is_some()
+        || c.reset_border.border_shape.is_some()
     {
         return None;
     }
@@ -48,10 +52,10 @@ pub(crate) fn border_layer(
     // отрицательных отступах (`css3-background-size-contain`: пунктирная
     // рамка исчезала при `overflow: hidden`). Такие коробки красит квад.
     if !matches!(
-        c.overflow_x,
+        c.reset_box_layout.overflow_x,
         None | Some(crate::style::computed::Overflow::Visible)
     ) || !matches!(
-        c.overflow_y,
+        c.reset_box_layout.overflow_y,
         None | Some(crate::style::computed::Overflow::Visible)
     ) {
         return None;
@@ -84,9 +88,12 @@ pub(crate) fn double_border(
     c: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<(crate::style::values::value::Color, [f32; 4])> {
-    if c.border_image.as_ref().is_some_and(|bi| bi.src.is_some())
+    if c.reset_border
+        .border_image
+        .as_ref()
+        .is_some_and(|bi| bi.src.is_some())
         || c.corner_shaped()
-        || c.border_shape.is_some()
+        || c.reset_border.border_shape.is_some()
     {
         return None;
     }
@@ -103,7 +110,7 @@ pub(crate) fn double_border(
         if *width <= 0.0 {
             continue;
         }
-        if c.border_side_styles[i] != Some(10) || *width < 3.0 {
+        if c.reset_border.border_side_styles[i] != Some(10) || *width < 3.0 {
             return None;
         }
         any = true;
@@ -139,7 +146,11 @@ pub(super) fn paint_border_colors(
     // проступала из-под картинки (`border-image-00*`: «no red», а красная
     // рамка видна).
     let uniform = c.used_uniform_border_color();
-    let border_image_on = c.border_image.as_ref().is_some_and(|bi| bi.src.is_some());
+    let border_image_on = c
+        .reset_border
+        .border_image
+        .as_ref()
+        .is_some_and(|bi| bi.src.is_some());
     // При РАЗНЫХ цветах сторон квад не красится вовсе: его рамка рисуется
     // поверх детей, и красная полоса накрывала цветную
     // (clip-path-polygon-007: `border: red` + `border-left: lime`).
@@ -158,13 +169,13 @@ pub(super) fn paint_border_colors(
     // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
     // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
-    let strips = mixed && c.border_shape.is_none();
+    let strips = mixed && c.reset_border.border_shape.is_none();
     if !border_image_on
         && !crate::paint::background::single_corner::eligible(c)
         && !mixed
         && !strips
         && !c.corner_shaped()
-        && c.border_shape.is_none()
+        && c.reset_border.border_shape.is_none()
         && border_layer(c, vcx).is_none()
         && double_border(c, vcx).is_none()
         && let Some(bc) = uniform

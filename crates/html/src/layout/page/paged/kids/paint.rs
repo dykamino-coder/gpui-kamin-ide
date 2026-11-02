@@ -48,7 +48,7 @@ impl Paint<'_> {
         let mut wrap = super::frame::wrap(self.padding, self.height, self.first, self.vertical);
         if let [Node::Element(r)] = self.group
             && matches!(r.tag.as_str(), "html" | "body")
-            && matches!(r.style.used().height, Some(Len::Pct(_)))
+            && matches!(r.style.used().reset_box_layout.height, Some(Len::Pct(_)))
         {
             wrap = wrap.h(px(self.height));
         }

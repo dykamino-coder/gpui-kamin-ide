@@ -20,11 +20,13 @@ use crate::style::computed::{Computed, Display};
 /// Без явного `grid-lanes-direction` направление выдаёт ТА ОСЬ, по которой
 /// объявлены дорожки — то же правило, что у `render::lanes`.
 pub fn lanes_row_dir(s: &Computed) -> bool {
-    let row_tracks =
-        s.grid_rows.is_some() || s.auto_repeat_rows.is_some() || s.grid_auto_fill_row.is_some();
-    let col_tracks =
-        s.grid_tracks.is_some() || s.auto_repeat_cols.is_some() || s.grid_auto_fill_min.is_some();
-    s.lanes_row.unwrap_or(row_tracks && !col_tracks)
+    let row_tracks = s.reset_grid.grid_rows.is_some()
+        || s.reset_grid.auto_repeat_rows.is_some()
+        || s.reset_grid.grid_auto_fill_row.is_some();
+    let col_tracks = s.reset_grid.grid_tracks.is_some()
+        || s.reset_grid.auto_repeat_cols.is_some()
+        || s.reset_grid.grid_auto_fill_min.is_some();
+    s.reset_grid.lanes_row.unwrap_or(row_tracks && !col_tracks)
 }
 
 /// Контейнер лунок — на путь СЕТКИ, раскладку лунками делает taffy
@@ -51,7 +53,7 @@ pub fn lanes_as_grid(
     nodes: &mut [Node],
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::postorder(admission, nodes, |el| {
-        if el.style.cascaded().display != Some(Display::GridLanes) {
+        if el.style.cascaded().reset_box_layout.display != Some(Display::GridLanes) {
             return;
         }
         lanes_to_grid(el.style.cascaded_mut());
@@ -60,10 +62,10 @@ pub fn lanes_as_grid(
 
 /// Перевод контейнера лунок на путь сетки (см. `lanes_as_grid`).
 pub fn lanes_to_grid(style: &mut Computed) {
-    style.display = Some(if style.lanes_inline {
+    style.reset_box_layout.display = Some(if style.reset_grid.lanes_inline {
         Display::InlineGrid
     } else {
         Display::Grid
     });
-    style.lanes_taffy = true;
+    style.reset_grid.lanes_taffy = true;
 }

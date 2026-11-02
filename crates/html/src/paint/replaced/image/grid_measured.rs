@@ -23,22 +23,22 @@ pub(super) fn measured(
     // Keep the existing growing-image path: exposing its natural ratio on a
     // measured leaf also changes Taffy's cross-size calculation after flexing.
     // This adapter handles intrinsic contributions and shrinking items only.
-    if (style.context.parent_grid == 0 && !style.flex_item)
-        || (style.flex_item && style.flex_grow.is_some_and(|grow| grow > 0.0))
-        || style.position.is_some()
-        || style.gradient.is_some()
-        || style.bg_image.is_some()
-        || style.outline.is_some()
-        || !style.shadows.is_empty()
-        || !style.inset_shadows.is_empty()
+    if (style.context.parent_grid == 0 && !style.reset_flex.flex_item)
+        || (style.reset_flex.flex_item && style.reset_flex.flex_grow.is_some_and(|grow| grow > 0.0))
+        || style.reset_positioned.position.is_some()
+        || style.reset_background.gradient.is_some()
+        || style.reset_background.bg_image.is_some()
+        || style.reset_border.outline.is_some()
+        || !style.reset_effects.shadows.is_empty()
+        || !style.reset_effects.inset_shadows.is_empty()
         || style.paint_filter().is_some()
-        || style.mask_image.is_some()
-        || style.clip_ref.is_some()
+        || style.reset_mask.mask_image.is_some()
+        || style.reset_mask.clip_ref.is_some()
         || ![
-            style.radius.tl,
-            style.radius.tr,
-            style.radius.br,
-            style.radius.bl,
+            style.reset_border.radius.tl,
+            style.reset_border.radius.tr,
+            style.reset_border.radius.br,
+            style.reset_border.radius.bl,
         ]
         .into_iter()
         .all(zero_length)
@@ -48,12 +48,12 @@ pub(super) fn measured(
     // Decorated content boxes retain the existing holder/painting pipeline.
     let zero = |value| matches!(value, None | Some(Len::Px(0.0)));
     let border = style.borders();
-    if !style.flex_item
+    if !style.reset_flex.flex_item
         && ![
-            style.padding.left,
-            style.padding.right,
-            style.padding.top,
-            style.padding.bottom,
+            style.reset_box_layout.padding.left,
+            style.reset_box_layout.padding.right,
+            style.reset_box_layout.padding.top,
+            style.reset_box_layout.padding.bottom,
             border.left,
             border.right,
             border.top,
@@ -73,12 +73,12 @@ pub(super) fn measured(
     if !matches!(
         source,
         crate::paint::background::Source::Image(CpuSource::Raster(_))
-    ) && (!style.flex_item
+    ) && (!style.reset_flex.flex_item
         || [
-            style.padding.left,
-            style.padding.right,
-            style.padding.top,
-            style.padding.bottom,
+            style.reset_box_layout.padding.left,
+            style.reset_box_layout.padding.right,
+            style.reset_box_layout.padding.top,
+            style.reset_box_layout.padding.bottom,
             border.left,
             border.right,
             border.top,
@@ -94,13 +94,14 @@ pub(super) fn measured(
     // definite percentage bases, rather than freezing the natural size early.
     let ready = source.raster((natural.w?, natural.h?), vcx)?;
     let ratio = style
+        .reset_shapes
         .aspect_ratio
         .or(natural.ratio)
         .or_else(|| Some(natural.w? / natural.h?.max(f32::MIN_POSITIVE)));
     let mut image = gpui::img(ready)
         .preserve_natural_pixels(true)
-        .pixelated(style.image_pixelated == Some(true));
-    if !style.flex_item {
+        .pixelated(style.inh.ui.image_pixelated == Some(true));
+    if !style.reset_flex.flex_item {
         *image.style() = holder.style().clone();
     }
     let mut native = gpui::Style::default();
@@ -116,8 +117,8 @@ pub(super) fn measured(
     // CSS Align 3 #align-grid/#justify-grid: normal on a replaced item with
     // a natural ratio is start; explicit stretch still uses the area size.
     let (mut align_start, mut justify_start) = (
-        style.align_self.is_none() || style.align_self_normal,
-        style.justify_self.is_none() || style.justify_self_normal,
+        style.reset_flex.align_self.is_none() || style.reset_flex.align_self_normal,
+        style.reset_flex.justify_self.is_none() || style.reset_flex.justify_self_normal,
     );
     if style.context.parent_grid >= 2 {
         std::mem::swap(&mut align_start, &mut justify_start);
@@ -138,7 +139,7 @@ pub(super) fn measured(
     // Keep decoration on the painted box, but make its dimensions follow the
     // measured flex item. An inner fixed-size image is not its min-content size:
     // the flex algorithm must be able to measure it with a known cross size.
-    let picture = if style.flex_item {
+    let picture = if style.reset_flex.flex_item {
         let mut painted = std::mem::replace(holder, gpui::div()).size_full();
         painted.style().margin = Default::default();
         painted.style().min_size = Default::default();

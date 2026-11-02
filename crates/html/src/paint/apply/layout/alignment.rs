@@ -12,7 +12,7 @@ pub(super) fn layout_alignment(
 ) -> Div {
     // Прежняя нормализация legacy-box применяется как контекст, не правит Computed.
     let block = legacy_block(c);
-    match c.align_items.filter(|_| !block) {
+    match c.reset_flex.align_items.filter(|_| !block) {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
@@ -21,8 +21,8 @@ pub(super) fn layout_alignment(
         // лунки целиком (`row-grid-lanes-item-baseline-001/003`,
         // `column-fill-reverse-justify-items-002`).
         Some(Align::Baseline)
-            if c.align_items_last
-                && c.display != Some(Display::GridLanes)
+            if c.reset_flex.align_items_last
+                && c.reset_box_layout.display != Some(Display::GridLanes)
                 && !c.context.parent_lanes =>
         {
             d.style().align_items = Some(gpui::AlignItems::LastBaseline);
@@ -37,33 +37,36 @@ pub(super) fn layout_alignment(
     // (`flexbox-safe-overflow-position-*`).
     // Лунки решают `safe` сами: раздача не ставится, когда лунка переполнена
     // (`grid-lanes-justify-content-001`).
-    if c.display != Some(Display::GridLanes)
-        && (c.align_items_safe
-            || c.align_self_safe
-            || c.align_content_safe
-            || c.justify_content_safe
-            || c.justify_items_safe
-            || c.justify_self_safe)
+    if c.reset_box_layout.display != Some(Display::GridLanes)
+        && (c.reset_flex.align_items_safe
+            || c.reset_flex.align_self_safe
+            || c.reset_flex.align_content_safe
+            || c.reset_flex.justify_content_safe
+            || c.reset_flex.justify_items_safe
+            || c.reset_flex.justify_self_safe)
     {
         d.style().safe_alignment = Some((
-            c.align_items_safe,
-            c.align_self_safe,
-            c.align_content_safe,
-            c.justify_content_safe,
+            c.reset_flex.align_items_safe,
+            c.reset_flex.align_self_safe,
+            c.reset_flex.align_content_safe,
+            c.reset_flex.justify_content_safe,
         ));
-        d.style().safe_justify_alignment = Some((c.justify_items_safe, c.justify_self_safe));
+        d.style().safe_justify_alignment = Some((
+            c.reset_flex.justify_items_safe,
+            c.reset_flex.justify_self_safe,
+        ));
     }
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
-    if let Some(a) = c.align_self {
-        d.style().align_self = Some(self_align(a, c.align_self_last));
+    if let Some(a) = c.reset_flex.align_self {
+        d.style().align_self = Some(self_align(a, c.reset_flex.align_self_last));
     }
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.
-    if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
+    if let Some(b) = c.reset_flex.flex_basis.filter(|b| *b != Len::Auto) {
         d = d.flex_basis(len_to_gpui(b, vcx));
     }
-    if let Some(j) = c.justify_content.filter(|_| !block) {
+    if let Some(j) = c.reset_flex.justify_content.filter(|_| !block) {
         // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
         // `start`/`end` письма (в ряду); «if the property's axis is not
         // parallel with the inline axis, this value behaves as start» —
@@ -71,7 +74,7 @@ pub(super) fn layout_alignment(
         // Только горизонтальное письмо: в вертикальном оси уже переставлены
         // поворотом, и `left/right` там держит прежний путь (без этой
         // отсечки ломается `flexbox-justify-content-wmvert-001`).
-        let main_vertical = c.writing_mode.is_none()
+        let main_vertical = c.inh.writing.writing_mode.is_none()
             && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
         let j = match j {
             // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
@@ -102,7 +105,7 @@ pub(super) fn layout_alignment(
     }
     // `align-content` — распределение СТРОК, когда их несколько: без него
     // перенесённые строки прижимались к началу вместо заданного распределения.
-    if let Some(a) = c.align_content {
+    if let Some(a) = c.reset_flex.align_content {
         d.style().align_content = Some(to_content(a));
     }
     d

@@ -34,12 +34,23 @@ mod tests {
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one("animation", "a 1s -1e16s infinite paused", vcx);
-        assert_eq!(style.animation.as_ref().unwrap().frozen_t(), 0.0);
+        assert_eq!(
+            style.reset_context.animation.as_ref().unwrap().frozen_t(),
+            0.0
+        );
         style.apply_one("animation", "a 1s 2s paused", vcx);
         let frames = vec![(0.0, style.clone()), (1.0, style.clone())];
-        assert!(sample_at(&frames, style.animation.as_ref().unwrap(), 0.0, vcx).is_none());
+        assert!(
+            sample_at(
+                &frames,
+                style.reset_context.animation.as_ref().unwrap(),
+                0.0,
+                vcx
+            )
+            .is_none()
+        );
         style.apply_one("animation-fill-mode", "both", vcx);
-        let spec = style.animation.as_ref().unwrap();
+        let spec = style.reset_context.animation.as_ref().unwrap();
         assert_eq!(spec.progress_at(0.0), Some(0.0));
         assert_eq!(spec.progress_at(3.0), Some(1.0));
     }

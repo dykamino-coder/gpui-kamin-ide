@@ -16,7 +16,9 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
     fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>) {
         for child in nodes {
             match child {
-                Node::Element(el) if el.style.used().display == Some(Display::Contents) => {
+                Node::Element(el)
+                    if el.style.used().reset_box_layout.display == Some(Display::Contents) =>
+                {
                     // Дети растворённого наследуют от него по дереву элементов
                     // (css-display-3 §2.5): их вычисленный стиль уже несёт его
                     // наследуемое; коробкой-родителем им становится ряд или ячейка.
@@ -32,7 +34,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                                 span.style = el.style.clone();
                                 // Сам растворённый display не переносится —
                                 // иначе обёртка растворилась бы следом.
-                                span.style.used_mut().display = None;
+                                span.style.used_mut().reset_box_layout.display = None;
                                 span.inline = true;
                                 Node::Element(span)
                             }
@@ -48,7 +50,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                 Node::Element(el)
                     if el.tag == "tr"
                         || matches!(
-                            el.style.used().display,
+                            el.style.used().reset_box_layout.display,
                             Some(Display::TableRow) | Some(Display::TableRowGroup)
                         ) =>
                 {
@@ -68,10 +70,10 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
     }
     let needs_fix = row.children.iter().any(|c| match c {
         Node::Element(el) => {
-            el.style.used().display == Some(Display::Contents)
+            el.style.used().reset_box_layout.display == Some(Display::Contents)
                 || el.tag == "tr"
                 || matches!(
-                    el.style.used().display,
+                    el.style.used().reset_box_layout.display,
                     Some(Display::TableRow) | Some(Display::TableRowGroup)
                 )
                 || !is_cell(el)
@@ -135,10 +137,13 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
                 if !in_group && col_role(el).is_some() {
                     continue;
                 }
-                let group = el.style.used().display == Some(Display::TableRowGroup)
+                let group = el.style.used().reset_box_layout.display
+                    == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
-                let row = el.tag == "tr" || el.style.used().display == Some(Display::TableRow);
-                let is_cap = el.tag == "caption" || el.style.used().is_caption == Some(true);
+                let row = el.tag == "tr"
+                    || el.style.used().reset_box_layout.display == Some(Display::TableRow);
+                let is_cap =
+                    el.tag == "caption" || el.style.used().reset_context.is_caption == Some(true);
                 if group && !in_group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
@@ -169,15 +174,15 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
                 let inline_like = |n: Option<&Node>| match n {
                     Some(Node::Text(t)) => !t.trim().is_empty(),
                     Some(Node::Element(el)) => {
-                        el.style.used().display != Some(Display::Contents)
+                        el.style.used().reset_box_layout.display != Some(Display::Contents)
                             && col_role(el).is_none()
                             && !is_cell(el)
                             && el.tag != "caption"
-                            && el.style.used().is_caption != Some(true)
+                            && el.style.used().reset_context.is_caption != Some(true)
                             && el.tag != "tr"
                             && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
                             && !matches!(
-                                el.style.used().display,
+                                el.style.used().reset_box_layout.display,
                                 Some(Display::TableRow) | Some(Display::TableRowGroup)
                             )
                     }
@@ -204,7 +209,7 @@ fn flatten_contents(children: &[Node]) -> Vec<Node> {
             out.push(n.clone());
             continue;
         };
-        if el.style.used().display != Some(Display::Contents) {
+        if el.style.used().reset_box_layout.display != Some(Display::Contents) {
             out.push(n.clone());
             continue;
         }
@@ -216,7 +221,7 @@ fn flatten_contents(children: &[Node]) -> Vec<Node> {
                 Node::Text(t) if !t.trim().is_empty() => {
                     let mut span = anon_element("span", vec![Node::Text(t)]);
                     span.style = el.style.clone();
-                    span.style.used_mut().display = None;
+                    span.style.used_mut().reset_box_layout.display = None;
                     span.inline = true;
                     out.push(Node::Element(span));
                 }

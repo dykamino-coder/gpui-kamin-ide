@@ -19,15 +19,15 @@ pub struct BgLayer {
 impl BgLayer {
     pub fn from_computed(c: &Computed) -> Self {
         Self {
-            image: c.bg_image.clone(),
-            size: c.bg_size,
-            position: c.bg_pos,
-            position_math: c.bg_position_math.clone(),
-            repeat: c.bg_repeat,
-            origin: c.bg_origin,
-            clip: c.bg_clip,
-            fixed: c.bg_fixed,
-            blend: c.background_blend,
+            image: c.reset_background.bg_image.clone(),
+            size: c.reset_background.bg_size,
+            position: c.reset_background.bg_pos,
+            position_math: c.reset_background.bg_position_math.clone(),
+            repeat: c.reset_background.bg_repeat,
+            origin: c.reset_background.bg_origin,
+            clip: c.reset_background.bg_clip,
+            fixed: c.reset_background.bg_fixed,
+            blend: c.reset_background.background_blend,
         }
     }
 
@@ -59,22 +59,26 @@ impl BgLayer {
     pub(super) fn parse(prop: BgListProp, raw: &str, vcx: ValueCx<'_>) -> Self {
         let mut c = Computed::default();
         c.apply_one(prop.key(), raw, vcx);
-        if c.bg_image.is_none() {
-            c.bg_image = c.gradient.map(|value| ImageSource::Gradient {
-                value: Box::new(value),
-                repeating: false,
-            });
+        if c.reset_background.bg_image.is_none() {
+            c.reset_background.bg_image =
+                c.reset_background
+                    .gradient
+                    .take()
+                    .map(|value| ImageSource::Gradient {
+                        value: Box::new(value),
+                        repeating: false,
+                    });
         }
         Self {
-            image: c.bg_image,
-            size: c.bg_size,
-            position: c.bg_pos,
-            position_math: c.bg_position_math,
-            repeat: c.bg_repeat,
-            origin: c.bg_origin,
-            clip: c.bg_clip,
-            fixed: c.bg_fixed,
-            blend: c.background_blend,
+            image: c.reset_background.bg_image.take(),
+            size: c.reset_background.bg_size,
+            position: c.reset_background.bg_pos,
+            position_math: std::mem::take(&mut c.reset_background.bg_position_math),
+            repeat: c.reset_background.bg_repeat,
+            origin: c.reset_background.bg_origin,
+            clip: c.reset_background.bg_clip,
+            fixed: c.reset_background.bg_fixed,
+            blend: c.reset_background.background_blend,
         }
     }
 

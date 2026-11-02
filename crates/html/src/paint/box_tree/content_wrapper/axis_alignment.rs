@@ -6,11 +6,11 @@ use crate::style::values::value::Len;
 
 pub(super) fn fills_width(style: &Computed) -> bool {
     !style.wm().vertical()
-        && style.inline_display != Some(true)
-        && style.float.unwrap_or(0) == 0
-        && matches!(style.width, None | Some(Len::Auto))
+        && style.reset_context.inline_display != Some(true)
+        && style.reset_box_layout.float.unwrap_or(0) == 0
+        && matches!(style.reset_box_layout.width, None | Some(Len::Auto))
         && matches!(
-            style.display,
+            style.reset_box_layout.display,
             None | Some(Display::Block | Display::Flex | Display::Grid | Display::GridLanes)
         )
 }

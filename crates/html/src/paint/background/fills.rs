@@ -58,7 +58,7 @@ pub fn paint_area(
     // обычной коробки (`layer`). Без неё полоса ряда и группы клала плитку от
     // своего верха и уезжала вниз на всю свою высоту
     // (`background-attachment-applies-to-004/005/006`).
-    if c.bg_fixed == Some(true) {
+    if c.reset_background.bg_fixed == Some(true) {
         let view = Bounds {
             origin: gpui::point(px(0.0), px(0.0)),
             size: window.viewport_size(),

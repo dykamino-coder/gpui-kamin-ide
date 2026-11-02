@@ -5,22 +5,22 @@ use crate::style::computed::{BoxStyle, Computed};
 /// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
 pub fn stacking_context(c: &Computed) -> bool {
     // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
-    c.will_change & crate::style::computed::wc::STACK != 0
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
-        || c.transform.is_some()
+    c.reset_effects.will_change & crate::style::computed::wc::STACK != 0
+        || c.reset_context.contain_layout == Some(true)
+        || c.reset_context.contain_paint == Some(true)
+        || c.reset_transforms.transform.is_some()
         // css-transforms-2 §transform-style-property: `preserve-3d` establishes
         // a stacking context (`transform-style-stacking-context`).
-        || c.preserve_3d == Some(true)
-        || c.translate.is_some()
-        || c.opacity.is_some_and(|o| o < 1.0)
+        || c.reset_transforms.preserve_3d == Some(true)
+        || c.reset_transforms.translate.is_some()
+        || c.reset_effects.opacity.is_some_and(|o| o < 1.0)
         // Compositing 1 §mix-blend-mode: non-normal blending creates a context.
-        || c.blend.is_some_and(|b| b != 0)
-        || c.isolate == Some(true)
-        || c.filter.is_some()
-        || (c.z_index.is_some()
+        || c.reset_effects.blend.is_some_and(|b| b != 0)
+        || c.reset_effects.isolate == Some(true)
+        || c.reset_effects.filter.is_some()
+        || (c.reset_positioned.z_index.is_some()
             && matches!(
-                c.position,
+                c.reset_positioned.position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
@@ -39,11 +39,11 @@ pub fn stacking_context(c: &Computed) -> bool {
 /// `fixed`/`sticky` образуют контекст и с `z-index: auto` (css-position-3 §3).
 pub fn nested_context(parent: &BoxStyle) -> bool {
     parent.sc_ancestor
-        || (!parent.root_box
+        || (!parent.reset_context.root_box
             && (stacking_context(parent)
-                || (parent.z_index.is_some() && parent.context.parent_flex_grid)
+                || (parent.reset_positioned.z_index.is_some() && parent.context.parent_flex_grid)
                 || matches!(
-                    parent.position,
+                    parent.reset_positioned.position,
                     Some(crate::style::computed::Position::Fixed)
                         | Some(crate::style::computed::Position::Sticky)
                 )))
@@ -54,11 +54,11 @@ pub fn nested_context(parent: &BoxStyle) -> bool {
 pub fn fixed_cb_layer_box(c: &Computed) -> bool {
     // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
     // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
-    (c.backface_hidden == Some(true) && c.transform_ancestor)
-        || c.transform.is_some()
-        || c.preserve_3d == Some(true)
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
+    (c.reset_transforms.backface_hidden == Some(true) && c.reset_transforms.transform_ancestor)
+        || c.reset_transforms.transform.is_some()
+        || c.reset_transforms.preserve_3d == Some(true)
+        || c.reset_context.contain_layout == Some(true)
+        || c.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(c)
-        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
+        || c.reset_effects.will_change & crate::style::computed::wc::CB_FIXED != 0
 }

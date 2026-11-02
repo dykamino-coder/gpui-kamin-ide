@@ -17,13 +17,13 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
     // абсолютный слой с отрицательным отступом ровно на её толщину.
     // У `border-shape` сплошной контур повторяет фигуру слоем НАД группой
     // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
-    if let Some(o) = c
-        .outline
-        .clone()
-        .filter(|_| c.shaped_outline().is_none() && !super::shaped_outset::shapes_outline(c, vcx))
+    if let Some(o) =
+        c.reset_border.outline.clone().filter(|_| {
+            c.shaped_outline().is_none() && !super::shaped_outset::shapes_outline(c, vcx)
+        })
     {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
-        let em = match c.font_size {
+        let em = match c.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
@@ -65,7 +65,10 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
                     Some(Len::Em(k)) => Some(k * em / 2.0),
                     _ => None,
                 };
-                match (half(c.width), half(c.height)) {
+                match (
+                    half(c.reset_box_layout.width),
+                    half(c.reset_box_layout.height),
+                ) {
                     (Some(hw), Some(hh)) => raw.max(-hw.min(hh)),
                     (Some(hw), None) => raw.max(-hw),
                     (None, Some(hh)) => raw.max(-hh),
@@ -75,7 +78,7 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
             // Угол контура повторяет угол коробки, раздвинутый сдвигом и
             // толщиной (css-ui-4 §outline): доля решается так же, как у
             // рамки, — прежде она читалась нулём (`outline-005`).
-            let corner = crate::paint::apply::radius_px(c, c.radius.tl, vcx)
+            let corner = crate::paint::apply::radius_px(c, c.reset_border.radius.tl, vcx)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
             // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1

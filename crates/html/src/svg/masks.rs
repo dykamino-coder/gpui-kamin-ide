@@ -77,7 +77,7 @@ pub(super) fn masked_layers(
         }
     }
     let mut root = gpui::div().w(gpui::px(w)).h(gpui::px(h)).flex_shrink_0();
-    if let Some(bg) = e.style.used().background {
+    if let Some(bg) = e.style.used().reset_background.background {
         root = root.bg(bg.to_hsla());
     }
     let mut run: Vec<Unit> = Vec::new();
@@ -113,9 +113,10 @@ pub(super) fn masked_layers(
             continue;
         }
         let mut style = style.clone();
-        style.mask_box_override = Some((
-            edges(style.mask_origin, *layer_box, *fill_box),
+        style.reset_mask.mask_box_override = Some((
+            edges(style.reset_mask.mask_origin, *layer_box, *fill_box),
             style
+                .reset_mask
                 .mask_clip
                 .filter(|k| *k != 255)
                 .map(|k| edges(Some(k), *layer_box, *fill_box)),
@@ -132,10 +133,16 @@ pub(super) fn masked_layers(
                 }
                 other => other,
             };
-            style.mask_user_scale = s;
-            style.mask_size = style.mask_size.map(|(x, y)| (scale_len(x), scale_len(y)));
-            style.mask_pos = style.mask_pos.map(|(x, y)| (scale_len(x), scale_len(y)));
-            if let Some(list) = style.mask_pos_list.as_mut() {
+            style.reset_mask.mask_user_scale = s;
+            style.reset_mask.mask_size = style
+                .reset_mask
+                .mask_size
+                .map(|(x, y)| (scale_len(x), scale_len(y)));
+            style.reset_mask.mask_pos = style
+                .reset_mask
+                .mask_pos
+                .map(|(x, y)| (scale_len(x), scale_len(y)));
+            if let Some(list) = style.reset_mask.mask_pos_list.as_mut() {
                 for (x, y, _, _) in list.iter_mut() {
                     *x = scale_len(*x);
                     *y = scale_len(*y);

@@ -23,13 +23,13 @@ type Flags = [Option<bool>; 7];
 
 fn flags(c: &Computed) -> Flags {
     [
-        c.break_word,
-        c.wrap_anywhere,
-        c.break_anywhere,
-        c.keep_all,
-        c.nowrap,
-        c.keep_spaces,
-        c.preserve_newlines,
+        c.inh.text_flow.break_word,
+        c.inh.text_flow.wrap_anywhere,
+        c.inh.text_flow.break_anywhere,
+        c.inh.text_flow.keep_all,
+        c.inh.text_flow.nowrap,
+        c.inh.text_flow.keep_spaces,
+        c.inh.text_flow.preserve_newlines,
     ]
 }
 
@@ -74,10 +74,10 @@ fn textarea_pre_wrap_block_does_not_depend_on_order_or_the_ua_font() {
             );
             // Четыре `initial` — `normal`/`auto`: перенос внутри слова выключен.
             assert_eq!(&got[..4], &[Some(false); 4], "first={first}");
-            assert_eq!(c.font_size, Some(Len::Px(20.0)));
-            assert_eq!(c.line_height, Some(Len::Em(1.0)));
+            assert_eq!(c.inh.font.font_size, Some(Len::Px(20.0)));
+            assert_eq!(c.inh.font.line_height, Some(Len::Em(1.0)));
             assert_eq!(
-                c.monospace,
+                c.inh.font.monospace,
                 Some(false),
                 "author family wins over the UA font"
             );
@@ -97,19 +97,38 @@ fn white_space_and_its_longhands_cascade_by_position() {
         )
     };
     let c = style("white-space: pre; text-wrap-mode: wrap");
-    assert_eq!((c.nowrap, c.keep_spaces), (Some(false), Some(true)));
+    assert_eq!(
+        (c.inh.text_flow.nowrap, c.inh.text_flow.keep_spaces),
+        (Some(false), Some(true))
+    );
     let c = style("text-wrap-mode: wrap; white-space: pre");
-    assert_eq!((c.nowrap, c.keep_spaces), (Some(true), Some(true)));
+    assert_eq!(
+        (c.inh.text_flow.nowrap, c.inh.text_flow.keep_spaces),
+        (Some(true), Some(true))
+    );
     let c = style("white-space: nowrap");
-    assert_eq!((c.nowrap, c.keep_spaces), (Some(true), Some(false)));
+    assert_eq!(
+        (c.inh.text_flow.nowrap, c.inh.text_flow.keep_spaces),
+        (Some(true), Some(false))
+    );
     let c = style("white-space: break-spaces");
-    assert_eq!(c.break_after_spaces, Some(true));
+    assert_eq!(c.inh.text_flow.break_after_spaces, Some(true));
     let c = style("white-space: pre; white-space: pre pre");
-    assert_eq!(c.nowrap, Some(true), "invalid shorthand dropped whole");
+    assert_eq!(
+        c.inh.text_flow.nowrap,
+        Some(true),
+        "invalid shorthand dropped whole"
+    );
     let c = style("text-wrap: balance nowrap");
-    assert_eq!((c.nowrap, c.balance_lines), (Some(true), Some(true)));
+    assert_eq!(
+        (c.inh.text_flow.nowrap, c.inh.text_flow.balance_lines),
+        (Some(true), Some(true))
+    );
     let c = style("text-wrap: balance; text-wrap: nowrap");
-    assert_eq!((c.nowrap, c.balance_lines), (Some(true), Some(false)));
+    assert_eq!(
+        (c.inh.text_flow.nowrap, c.inh.text_flow.balance_lines),
+        (Some(true), Some(false))
+    );
 }
 
 #[test]
@@ -124,13 +143,19 @@ fn text_decoration_shorthand_resets_and_validates_whole() {
         )
     };
     let c = style("text-decoration-style: wavy; text-decoration: underline red");
-    assert_eq!(c.td_style, Some(crate::style::computed::DecorStyle::Solid));
-    assert_eq!(c.underline, Some(true));
+    assert_eq!(
+        c.reset_text_box.td_style,
+        Some(crate::style::computed::DecorStyle::Solid)
+    );
+    assert_eq!(c.reset_text_box.underline, Some(true));
     let c = style("text-decoration: underline; text-decoration: diagonal");
-    assert_eq!(c.underline, Some(true));
+    assert_eq!(c.reset_text_box.underline, Some(true));
     let c = style("text-decoration: underline red overline");
-    assert_eq!(c.underline, None, "line words must be contiguous");
+    assert_eq!(
+        c.reset_text_box.underline, None,
+        "line words must be contiguous"
+    );
     let c = style("text-emphasis: open red; text-emphasis-color: blue");
-    assert_eq!(c.text_emphasis.as_deref(), Some("\u{25CB}"));
-    assert!(c.emphasis_color.is_some());
+    assert_eq!(c.inh.text_ink.text_emphasis.as_deref(), Some("\u{25CB}"));
+    assert!(c.inh.text_ink.emphasis_color.is_some());
 }

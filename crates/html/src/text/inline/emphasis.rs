@@ -28,7 +28,12 @@ pub(crate) fn emphasis_spans(
             continue;
         };
         let end = at + text.len();
-        if let Some(mark) = style.text_emphasis.as_deref().filter(|m| !m.is_empty())
+        if let Some(mark) = style
+            .inh
+            .text_ink
+            .text_emphasis
+            .as_deref()
+            .filter(|m| !m.is_empty())
             && text.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
         {
             let size = style.used_font(base_size, vcx).size_px;
@@ -44,21 +49,21 @@ pub(crate) fn emphasis_spans(
                 // знака задают `right`/`left` (css-text-decor-3 §5.4), а
                 // `over`/`under` — только в горизонтальном.
                 under: match rotated {
-                    Some(ccw) => style.emphasis_left != ccw,
-                    None if style.emphasis_position_auto == Some(true) => {
-                        style.lang.as_deref().is_some_and(|lang| {
+                    Some(ccw) => style.inh.text_ink.emphasis_left != ccw,
+                    None if style.inh.text_ink.emphasis_position_auto == Some(true) => {
+                        style.inh.text_flow.lang.as_deref().is_some_and(|lang| {
                             lang.split('-')
                                 .next()
                                 .is_some_and(|lang| lang.eq_ignore_ascii_case("zh"))
                         })
                     }
-                    None => style.emphasis_under,
+                    None => style.inh.text_ink.emphasis_under,
                 },
                 size: size * 0.5,
                 line_height,
                 // CSS Text Decoration 4: an omitted shape follows the used
                 // typographic mode, including inherited emphasis on a child.
-                mark: if style.emphasis_auto_shape
+                mark: if style.inh.text_ink.emphasis_auto_shape
                     && rotated.is_some()
                     && !style.wm().sideways()
                     && !style.wm().text_sideways()
@@ -76,19 +81,28 @@ pub(crate) fn emphasis_spans(
                 // geometry regardless of the mark's foreground transparency.
                 // CurrentColor already carries the composited text fill;
                 // explicit emphasis colors need the same composition here.
-                color: style.text_shadow_ink.map(Color::to_hsla).or_else(|| {
-                    let color = style.emphasis_color.as_ref().filter(|c| !c.is_current());
-                    color.map(|color| {
-                        let color = style.used_color(color);
-                        style
-                            .foreground_paint()
-                            .fill
-                            .map_or(color, |fill| {
-                                crate::style::values::composite::over(color, fill)
-                            })
-                            .to_hsla()
-                    })
-                }),
+                color: style
+                    .reset_text_box
+                    .text_shadow_ink
+                    .map(Color::to_hsla)
+                    .or_else(|| {
+                        let color = style
+                            .inh
+                            .text_ink
+                            .emphasis_color
+                            .as_ref()
+                            .filter(|c| !c.is_current());
+                        color.map(|color| {
+                            let color = style.used_color(color);
+                            style
+                                .foreground_paint()
+                                .fill
+                                .map_or(color, |fill| {
+                                    crate::style::values::composite::over(color, fill)
+                                })
+                                .to_hsla()
+                        })
+                    }),
             });
         }
         if let Some(span) = out.last().filter(|span| span.range.end == end)

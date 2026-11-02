@@ -23,16 +23,20 @@ pub(crate) fn serial_table_parallel(
     let mut nested = false;
     for n in fixed.iter().filter(|n| !is_blank(n)) {
         let Node::Element(part) = n else { return None };
-        if part.tag == "caption" || part.style.used().is_caption == Some(true) {
+        if part.tag == "caption" || part.style.used().reset_context.is_caption == Some(true) {
             nested |= parallel(part, depth - 1);
-        } else if part.tag == "tr" || part.style.used().display == Some(Display::TableRow) {
+        } else if part.tag == "tr"
+            || part.style.used().reset_box_layout.display == Some(Display::TableRow)
+        {
             rows.push(part);
         } else if matches!(part.tag.as_str(), "thead" | "tbody" | "tfoot")
-            || part.style.used().row_group_kind.is_some()
+            || part.style.used().reset_context.row_group_kind.is_some()
         {
             for n in part.children.iter().filter(|n| !is_blank(n)) {
                 let Node::Element(row) = n else { return None };
-                if row.tag != "tr" && row.style.used().display != Some(Display::TableRow) {
+                if row.tag != "tr"
+                    && row.style.used().reset_box_layout.display != Some(Display::TableRow)
+                {
                     return None;
                 }
                 rows.push(row);
@@ -78,14 +82,14 @@ mod tests {
 
     fn block() -> Node {
         let mut block = anon_element("div", vec![]);
-        block.style.used_mut().height = Some(Len::Px(100.0));
-        block.style.used_mut().contain_size = Some(true);
+        block.style.used_mut().reset_box_layout.height = Some(Len::Px(100.0));
+        block.style.used_mut().reset_context.contain_size = Some(true);
         Node::Element(block)
     }
 
     fn table(children: Vec<Node>) -> Element {
         let mut table = anon_element("div", children);
-        table.style.used_mut().display = Some(Display::Table);
+        table.style.used_mut().reset_box_layout.display = Some(Display::Table);
         table
     }
 
@@ -118,10 +122,10 @@ mod tests {
     #[test]
     fn parallel_descendants_of_a_serial_cell_still_block_shared_overflow() {
         let mut grid = anon_element("div", vec![]);
-        grid.style.used_mut().display = Some(Display::Grid);
+        grid.style.used_mut().reset_box_layout.display = Some(Display::Grid);
         let table = table(vec![Node::Element(grid)]);
         assert_eq!(
-            serial_table_parallel(&table, 4, |e, _| e.style.used().display
+            serial_table_parallel(&table, 4, |e, _| e.style.used().reset_box_layout.display
                 == Some(Display::Grid),),
             Some(true)
         );

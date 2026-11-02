@@ -21,14 +21,14 @@ pub(crate) fn content_sized_wraps(element: &Element) -> bool {
     // Обособленная ось содержимого не видит: размер по нему заменяется
     // `contain-intrinsic-size` (css-contain-2 §size-containment), и мерить
     // дорожкой сетки больше нечего.
-    let contained =
-        (keyword(c.width) && c.contains_width()) || (keyword(c.height) && c.contains_height());
+    let contained = (keyword(c.reset_box_layout.width) && c.contains_width())
+        || (keyword(c.reset_box_layout.height) && c.contains_height());
     if contained {
         return false;
     }
-    (keyword(c.width) || keyword(c.height))
+    (keyword(c.reset_box_layout.width) || keyword(c.reset_box_layout.height))
         && !matches!(
-            c.position,
+            c.reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )

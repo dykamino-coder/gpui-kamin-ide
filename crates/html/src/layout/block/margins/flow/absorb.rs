@@ -19,9 +19,17 @@ pub(crate) fn absorb_margin(
     vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> f32 {
     let own = if tail_side == reverse {
-        margin_px_in(e.style.used().margin.left, &e.style.used(), vcx)
+        margin_px_in(
+            e.style.used().reset_box_layout.margin.left,
+            &e.style.used(),
+            vcx,
+        )
     } else {
-        margin_px_in(e.style.used().margin.right, &e.style.used(), vcx)
+        margin_px_in(
+            e.style.used().reset_box_layout.margin.right,
+            &e.style.used(),
+            vcx,
+        )
     }
     .unwrap_or(0.0);
     // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
@@ -32,9 +40,9 @@ pub(crate) fn absorb_margin(
     }
     let b = e.style.used().borders();
     let (border, pad) = if tail_side == reverse {
-        (b.left, e.style.used().padding.left)
+        (b.left, e.style.used().reset_box_layout.padding.left)
     } else {
-        (b.right, e.style.used().padding.right)
+        (b.right, e.style.used().reset_box_layout.padding.right)
     };
     let sealed = margin_px_in(border, &e.style.used(), vcx).unwrap_or(0.0) > 0.0
         || margin_px_in(pad, &e.style.used(), vcx).unwrap_or(0.0) > 0.0;
@@ -45,10 +53,10 @@ pub(crate) fn absorb_margin(
         let mut it = e.children.iter_mut().filter_map(|n| match n {
             Node::Element(c)
                 if !matches!(
-                    c.style.used().position,
+                    c.style.used().reset_positioned.position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
-                ) && c.style.used().display.is_none() =>
+                ) && c.style.used().reset_box_layout.display.is_none() =>
             {
                 Some(c)
             }
@@ -62,7 +70,8 @@ pub(crate) fn absorb_margin(
     // between the two (`available-size-020`: an orthogonal `article` after a
     // `p` lost the `p`'s block-end margin).
     .filter(|c| {
-        c.style.cascaded().writing_mode.is_none() && c.style.cascaded().flow_mode().is_none()
+        c.style.cascaded().inh.writing.writing_mode.is_none()
+            && c.style.cascaded().flow_mode().is_none()
     });
     match edge_child {
         Some(c) => {
@@ -75,15 +84,15 @@ pub(crate) fn absorb_margin(
                 return own;
             }
             if tail_side == reverse {
-                c.style.used_mut().margin.left = Some(Len::Px(0.0));
+                c.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(0.0));
             } else {
-                c.style.used_mut().margin.right = Some(Len::Px(0.0));
+                c.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(0.0));
             }
             let total = own.max(inner);
             if tail_side == reverse {
-                e.style.used_mut().margin.left = Some(Len::Px(total));
+                e.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(total));
             } else {
-                e.style.used_mut().margin.right = Some(Len::Px(total));
+                e.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(total));
             }
             total
         }
@@ -119,30 +128,30 @@ pub(crate) fn collapses_through(e: &Element) -> bool {
         _ => false,
     };
     let b = e.style.used().borders();
-    e.style.used().display.is_none()
-        && e.style.cascaded().writing_mode.is_none()
+    e.style.used().reset_box_layout.display.is_none()
+        && e.style.cascaded().inh.writing.writing_mode.is_none()
         && e.style.cascaded().flow_mode().is_none()
         && !matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
         && matches!(
-            e.style.used().overflow_x,
+            e.style.used().reset_box_layout.overflow_x,
             None | Some(crate::style::computed::Overflow::Visible)
         )
         && matches!(
-            e.style.used().overflow_y,
+            e.style.used().reset_box_layout.overflow_y,
             None | Some(crate::style::computed::Overflow::Visible)
         )
-        && e.style.used().flow_root != Some(true)
-        && e.style.used().contain_layout != Some(true)
-        && e.style.used().contain_paint != Some(true)
-        && none_or_zero(e.style.used().width)
-        && none_or_zero(e.style.used().min_width)
+        && e.style.used().reset_context.flow_root != Some(true)
+        && e.style.used().reset_context.contain_layout != Some(true)
+        && e.style.used().reset_context.contain_paint != Some(true)
+        && none_or_zero(e.style.used().reset_box_layout.width)
+        && none_or_zero(e.style.used().reset_box_layout.min_width)
         && none_or_zero(b.left)
         && none_or_zero(b.right)
-        && none_or_zero(e.style.used().padding.left)
-        && none_or_zero(e.style.used().padding.right)
+        && none_or_zero(e.style.used().reset_box_layout.padding.left)
+        && none_or_zero(e.style.used().reset_box_layout.padding.right)
         && e.children.iter().all(is_blank)
 }

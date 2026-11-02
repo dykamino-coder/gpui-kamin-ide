@@ -40,9 +40,9 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     // а он известен прямо здесь: `25%` в трёхстах точках — четыре дорожки по
     // 75. Пока доля отбрасывалась, сетка не получала дорожек вовсе
     // (`column-auto-repeat-002` и родня).
-    let auto_fill = c.grid_auto_fill_min.or_else(|| {
-        let k = c.auto_repeat_cols?.track_pct?;
-        match c.width {
+    let auto_fill = c.reset_grid.grid_auto_fill_min.or_else(|| {
+        let k = c.reset_grid.auto_repeat_cols?.track_pct?;
+        match c.reset_box_layout.width {
             Some(Len::Px(w)) => Some(k * w),
             _ => None,
         }
@@ -62,7 +62,7 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     // считалась от шаблона (`subgrid/abs-pos-001`: `3 / -1` абсолюта во внешней
     // сетке кончался на линии 11, а не 12). Список `grid-auto-*` из нескольких
     // значений и повтор `auto-fill/fit` не трогаем: там счёт другой.
-    let (area_rows, area_cols) = c.grid_areas.as_ref().map_or((0, 0), |a| {
+    let (area_rows, area_cols) = c.reset_grid.grid_areas.as_ref().map_or((0, 0), |a| {
         (a.len(), a.iter().map(|r| r.len()).max().unwrap_or(0))
     });
     let with_areas =
@@ -77,11 +77,16 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
             }
             out
         };
-    match (&c.grid_tracks, c.grid_cols, auto_fill) {
+    match (&c.reset_grid.grid_tracks, c.reset_grid.grid_cols, auto_fill) {
         (Some(tracks), _, _) => {
             d = along_line(
                 d,
-                with_areas(tracks, area_cols, &c.grid_auto_cols, &c.grid_auto_cols_list),
+                with_areas(
+                    tracks,
+                    area_cols,
+                    &c.reset_grid.grid_auto_cols,
+                    &c.reset_grid.grid_auto_cols_list,
+                ),
             )
         }
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
@@ -96,18 +101,19 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         // у лунок.
         (None, _, None)
             if !flip
-                && c.grid_auto_fill_tracks.len() > 1
+                && c.reset_grid.grid_auto_fill_tracks.len() > 1
                 // Поток ЛУНОК доходит сюда уже с `display: grid` (печать
                 // `KAMIN_REPEAT_DIAG` показала `Some(Grid)`), поэтому вид его
                 // не отсекает: `column-auto-repeat-013` (лунки) с этой
                 // ветвью ломается — известная цена.
-                && !matches!(c.display, Some(crate::style::computed::Display::GridLanes)) =>
+                && !matches!(c.reset_box_layout.display, Some(crate::style::computed::Display::GridLanes)) =>
         {
             d = along_line(
                 d,
                 vec![gpui::GridTrack::AutoRepeat {
-                    fit: c.auto_repeat_cols.is_some_and(|r| r.fit),
+                    fit: c.reset_grid.auto_repeat_cols.is_some_and(|r| r.fit),
                     tracks: c
+                        .reset_grid
                         .grid_auto_fill_tracks
                         .iter()
                         .map(|v| gpui::GridTrack::Pixels(px(*v)))
@@ -121,7 +127,7 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
             // (css-grid-2 §auto-repeat). Прежняя короткая форма подменяла
             // дорожку растяжкой `minmax(min, 1fr)`, и уцелевшие дорожки
             // забирали весь остаток — раздавать было нечего.
-            let r = c.auto_repeat_cols;
+            let r = c.reset_grid.auto_repeat_cols;
             // Тело повтора бывает из НЕСКОЛЬКИХ дорожек
             // (`repeat(auto-fill, 50px 50px)`) — раскладка это уже умеет,
             // список идёт в неё как есть.
@@ -157,9 +163,14 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         _ => {}
     }
     d = grid_rows_repeat(d, c, flip);
-    if let Some(rows) = &c.grid_rows {
+    if let Some(rows) = &c.reset_grid.grid_rows {
         // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
-        let tracks = with_areas(rows, area_rows, &c.grid_auto_rows, &c.grid_auto_rows_list);
+        let tracks = with_areas(
+            rows,
+            area_rows,
+            &c.reset_grid.grid_auto_rows,
+            &c.reset_grid.grid_auto_rows_list,
+        );
         d = if flip {
             d.grid_template_cols(tracks)
         } else {

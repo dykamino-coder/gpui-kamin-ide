@@ -70,13 +70,13 @@ pub fn hide_box_after_point(
     use gpui::Styled;
     super::close_clamp_span(span.clone(), cx);
     let first = span.as_ref().map(|s| s.get().0);
-    let in_flow = style.float.is_none_or(|f| f == 0)
+    let in_flow = style.reset_box_layout.float.is_none_or(|f| f == 0)
         && !matches!(
-            style.position,
+            style.reset_positioned.position,
             Some(Position::Absolute) | Some(Position::Fixed)
         )
         && !matches!(
-            style.display,
+            style.reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)

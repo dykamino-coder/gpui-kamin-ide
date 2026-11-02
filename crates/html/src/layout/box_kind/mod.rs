@@ -34,10 +34,10 @@ pub(crate) fn real_inline(e: &Element) -> bool {
     if ATOMIC.contains(&e.tag.as_str()) {
         return false;
     }
-    if e.style.used().inline_display == Some(true) {
+    if e.style.used().reset_context.inline_display == Some(true) {
         return true;
     }
-    match e.style.used().display {
+    match e.style.used().reset_box_layout.display {
         Some(_) => false,
         None => e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()),
     }
@@ -60,9 +60,9 @@ pub(crate) fn block_level_in_flow(e: &Element) -> bool {
     // Рвут строку только НАСТОЯЩИЕ блочные виды. Внутренние части таблицы
     // (ряд, ячейка, группа) сами по себе разрыва не вызывают: вокруг них
     // сборщик строит анонимную таблицу, и её судьба решается отдельно.
-    match e.style.used().display {
+    match e.style.used().reset_box_layout.display {
         // Строчные лунки строку НЕ рвут — внешний вид у них `inline`.
-        Some(Display::GridLanes) => !e.style.used().lanes_inline,
+        Some(Display::GridLanes) => !e.style.used().reset_grid.lanes_inline,
         Some(Display::Block)
         | Some(Display::Flex)
         | Some(Display::Grid)
@@ -83,7 +83,8 @@ pub(crate) fn contains_block(children: &[Node]) -> bool {
         for node in children {
             match node {
                 Node::Element(e)
-                    if real_inline(e) || e.style.used().display == Some(Display::Contents) =>
+                    if real_inline(e)
+                        || e.style.used().reset_box_layout.display == Some(Display::Contents) =>
                 {
                     if !out_of_flow(&e.style.used()) {
                         pending.push(&e.children);
@@ -107,10 +108,10 @@ pub(crate) use crate::dom::whitespace::is_blank;
 /// наружу и поднимало родителя, а ряд строчных коробок терял поля у всех,
 /// кроме первой.
 pub(crate) fn in_flow(c: &Computed) -> bool {
-    c.float.is_none()
-        && !crate::style::flow::absolutely_positioned(c.position)
+    c.reset_box_layout.float.is_none()
+        && !crate::style::flow::absolutely_positioned(c.reset_positioned.position)
         && !matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
 }
@@ -138,11 +139,11 @@ pub(crate) fn replaced_inline(tag: &str) -> bool {
 /// Разбор держит `display: inline` как `InlineBlock` с пометкой
 /// `inline_display`, поэтому одного взгляда на `display` мало.
 pub(crate) fn atomic_inline(c: &Computed) -> bool {
-    c.float.is_none()
-        && !crate::style::flow::absolutely_positioned(c.position)
-        && c.inline_display != Some(true)
+    c.reset_box_layout.float.is_none()
+        && !crate::style::flow::absolutely_positioned(c.reset_positioned.position)
+        && c.reset_context.inline_display != Some(true)
         && matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
@@ -158,9 +159,9 @@ pub(crate) fn atomic_inline(c: &Computed) -> bool {
 /// родителя вместо примыкания к его верху (`phantom-line-boxes-001…006`).
 pub(crate) fn inline_marked_block(e: &Element) -> bool {
     e.inline
-        && e.style.used().inline_display != Some(true)
+        && e.style.used().reset_context.inline_display != Some(true)
         && matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::Block)
                 | Some(Display::ListItem)
                 | Some(Display::Flex)

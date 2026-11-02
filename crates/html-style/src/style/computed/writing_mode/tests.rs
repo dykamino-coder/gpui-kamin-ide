@@ -34,12 +34,17 @@ fn block_start_follows_block_flow_direction() {
 fn turned_line_clone_keeps_its_vertical_mode() {
     let clone = {
         let mut with_inherited = Computed {
-            turned_line: true,
+            reset_text_box: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetTextBox {
+                    turned_line: true,
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
-        with_inherited.flat_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, true,
-        ));
+        with_inherited.inh.writing.flat_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, true),
+        );
         with_inherited
     };
     assert!(clone.wm().turned() && clone.wm().sideways());
@@ -69,9 +74,9 @@ fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
         let mut with_inherited = Computed {
             ..Computed::default()
         };
-        with_inherited.flat_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, true, true,
-        ));
+        with_inherited.inh.writing.flat_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, true, true),
+        );
         with_inherited
     };
     let wm = flat.wm();
@@ -80,7 +85,7 @@ fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
         let mut with_inherited = Computed {
             ..Computed::default()
         };
-        with_inherited.writing_mode = Some(
+        with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited

@@ -32,14 +32,14 @@ impl DecorationPaint {
             decorations: true,
             preparation: None,
             foreground: ForegroundPaint {
-                color: c.color,
+                color: c.inh.ui.color,
                 ..Default::default()
             },
-            filter: c.filter,
-            filter_ops: c.scrollbar_filter_ops.clone(),
+            filter: c.reset_effects.filter,
+            filter_ops: c.reset_effects.scrollbar_filter_ops.clone(),
             background: BackgroundValues::from_computed(c),
-            border_colors: c.border_colors.clone(),
-            shadows: c.shadows.clone(),
+            border_colors: c.reset_border.border_colors.clone(),
+            shadows: c.reset_effects.shadows.clone(),
         }
     }
 }
