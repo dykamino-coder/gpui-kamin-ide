@@ -218,7 +218,7 @@ impl Hooks for BandFlow {
 /// A probe layout under the requesting element's inherited text style.
 fn nested<R>(
     window: &mut Window,
-    text: &[gpui::TextStyleRefinement],
+    text: &gpui::TextStyleScope,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
     window.with_text_style_scope(text, |window| window.with_nested_layout(f))
