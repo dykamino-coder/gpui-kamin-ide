@@ -6,7 +6,9 @@
 use super::slot_grid::TableGrid;
 use crate::dom::Element;
 use crate::style::values::value::Len;
+mod neighbors;
 mod structural;
+use neighbors::{Side, Span};
 use std::collections::HashMap;
 
 pub(super) fn resolve(
@@ -81,25 +83,31 @@ pub(super) fn resolve(
             }
         }
         let rows_n = grid.rows.len();
-        for a in cels.iter() {
+        let spans: Vec<Span> = cels
+            .iter()
+            .map(|a| Span {
+                r: a.r,
+                c: a.c,
+                sr: a.sr,
+                sc: a.sc,
+            })
+            .collect();
+        let lines = neighbors::Lines::new(&spans);
+        for (a, span) in cels.iter().zip(&spans) {
             let mut w = a.w;
-            for b in cels.iter() {
-                if b.id == a.id {
-                    continue;
-                }
-                let cols_over = a.c < b.c + b.sc && b.c < a.c + a.sc;
-                let rows_over = a.r < b.r + b.sr && b.r < a.r + a.sr;
-                if cols_over && b.r + b.sr == a.r {
-                    w[0] = w[0].max(b.w[2]);
-                }
-                if cols_over && a.r + a.sr == b.r {
-                    w[2] = w[2].max(b.w[0]);
-                }
-                if rows_over && b.c + b.sc == a.c {
-                    w[3] = w[3].max(b.w[1]);
-                }
-                if rows_over && a.c + a.sc == b.c {
-                    w[1] = w[1].max(b.w[3]);
+            // Сторона ячейки спорит с противоположными сторонами соседей на той же
+            // линии сетки; `max` не зависит от порядка и повторов.
+            for side in [Side::Top, Side::Right, Side::Bottom, Side::Left] {
+                let (mine, theirs) = match side {
+                    Side::Top => (0, 2),
+                    Side::Right => (1, 3),
+                    Side::Bottom => (2, 0),
+                    Side::Left => (3, 1),
+                };
+                for b in lines.facing(*span, side).map(|j| &cels[j]) {
+                    if b.id != a.id {
+                        w[mine] = w[mine].max(b.w[theirs]);
+                    }
                 }
             }
             // Внешние линии спорят с рамкой самой таблицы.
