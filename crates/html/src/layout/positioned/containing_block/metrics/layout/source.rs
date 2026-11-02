@@ -111,7 +111,11 @@ fn collect_in(
     window: &mut Window,
     cx: &mut App,
 ) -> Rc<Snapshot> {
-    if !kids.elements().any(contains_positioned) {
+    // Only absolutely positioned boxes take their containing block from this
+    // normal layout (CSS 2.1 §10.1) and continue as independent flows; a float
+    // stays in its owner's flow (`Recorder::for_fragments`), so a float-only
+    // subtree needs no source layout.
+    if !kids.elements().any(contains_oof_box) {
         return Rc::default();
     }
     let is_page = page.is_some();
