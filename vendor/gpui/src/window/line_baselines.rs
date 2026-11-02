@@ -20,11 +20,12 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
         self.layout_engine.as_mut().unwrap().request_measured_layout_with_box(
             style, rem_size, scale_factor,
-            move |known, available, geometry, window, cx| crate::MeasuredContent::new(
-                measure(known, available, geometry, window, cx)
-            ),
+            move |known, available, geometry, window, cx| scope.enter(window, |window| {
+                crate::MeasuredContent::new(measure(known, available, geometry, window, cx))
+            }),
         )
     }
 
@@ -40,7 +41,7 @@ impl Window {
     pub fn request_measured_layout_with_line_baselines(
         &mut self,
         style: Style,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>,
             Size<AvailableSpace>,
             &mut Window,
@@ -51,25 +52,31 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout_with_line_baselines(style, rem_size, scale_factor, measure)
+            .request_measured_layout_with_line_baselines(style, rem_size, scale_factor, move |known, available, window, cx| {
+                scope.enter(window, |window| measure(known, available, window, cx))
+            })
     }
 
     /// Measure actual first/last content baselines on both physical axes.
     pub fn request_measured_layout_with_physical_baselines(
         &mut self,
         style: Style,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App,
         ) -> crate::MeasuredContent + 'static,
     ) -> LayoutId {
         self.invalidator.debug_assert_prepaint();
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
         self.layout_engine.as_mut().unwrap()
-            .request_measured_layout_with_physical_baselines(style, rem_size, scale_factor, measure)
+            .request_measured_layout_with_physical_baselines(style, rem_size, scale_factor, move |known, available, window, cx| {
+                scope.enter(window, |window| measure(known, available, window, cx))
+            })
     }
 
 }

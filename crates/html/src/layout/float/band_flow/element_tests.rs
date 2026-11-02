@@ -7,6 +7,10 @@ use gpui::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(feature = "work-counters")]
+#[path = "stretch_tests.rs"]
+mod stretch;
+
 type Calls = Rc<RefCell<Vec<(Size<bool>, AvailableSpace)>>>;
 
 fn column(window: &mut gpui::Window, app: &mut gpui::App, align: Option<AlignItems>) -> Calls {
@@ -90,9 +94,8 @@ fn start_aligned_column_item_is_fixed_at_its_fit_content_size(cx: &mut gpui::Tes
     );
 }
 
-/// A measure callback runs after the requesting element's text-style scopes
-/// were popped; a probe under the captured scope sees them again, while the
-/// nested layout leaves no fixed axes of the outer leaf behind.
+/// A measure callback and its probes see the requesting element's text
+/// style, while the nested layout leaves no fixed axes of the outer leaf behind.
 #[gpui::test]
 fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
@@ -137,7 +140,7 @@ fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContex
             let seen = seen.take();
             assert!(!seen.is_empty());
             for (outer, probe, fixed) in seen.iter() {
-                assert_ne!(*outer, px(31.).into(), "{seen:?}");
+                assert_eq!(*outer, px(31.).into(), "{seen:?}");
                 assert_eq!(*probe, px(31.).into(), "{seen:?}");
                 assert_eq!(*fixed, Size::default(), "{seen:?}");
             }

@@ -81,6 +81,8 @@ pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
     PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
+mod text_style_scope;
+pub use text_style_scope::TextStyleScope;
 mod raster_frame;
 mod scoped;
 pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
@@ -1020,7 +1022,7 @@ pub(crate) struct DeferredDraw {
     priority: usize,
     parent_node: DispatchNodeId,
     element_id_stack: SmallVec<[ElementId; 32]>,
-    text_style_stack: Vec<TextStyleRefinement>,
+    text_style_stack: TextStyleScope,
     // KaminIDE patch: restore host scopes when drawing outside the original traversal.
     render_contexts: render_context::Snapshot,
     content_mask: Option<ContentMask<Pixels>>,
@@ -1247,7 +1249,7 @@ pub struct Window {
     pub(crate) measured_size_fixed: Size<bool>,
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
-    pub(crate) text_style_stack: Vec<TextStyleRefinement>,
+    pub(crate) text_style_stack: TextStyleScope,
     // KaminIDE patch: typed host context belongs to this window and traversal.
     render_contexts: render_context::RenderContexts,
     paint_window: Rc<()>,
@@ -2200,7 +2202,7 @@ impl Window {
             measured_size_fixed: Size::default(),
             root: None,
             element_id_stack: SmallVec::default(),
-            text_style_stack: Vec::new(),
+            text_style_stack: TextStyleScope::default(),
             render_contexts: Default::default(),
             paint_window: Rc::new(()),
             paint_pass: PaintPassId::default(),
@@ -2558,9 +2560,7 @@ impl Window {
     /// The current text style. Which is composed of all the style refinements provided to `with_text_style`.
     pub fn text_style(&self) -> TextStyle {
         let mut style = TextStyle::default();
-        for refinement in &self.text_style_stack {
-            style.refine(refinement);
-        }
+        self.text_style_stack.refine(&mut style);
         style
     }
 
@@ -4031,8 +4031,7 @@ impl Window {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
                         .clone_from(&deferred_draw.element_id_stack);
-                    self.text_style_stack
-                        .clone_from(&deferred_draw.text_style_stack);
+                    self.text_style_stack = deferred_draw.text_style_stack.clone();
                     (
                         deferred_draw.element.take(),
                         deferred_draw.parent_node,
@@ -4063,7 +4062,7 @@ impl Window {
             }
 
             self.element_id_stack.clear();
-            self.text_style_stack.clear();
+            self.text_style_stack = TextStyleScope::default();
             round_start = round_end;
         }
     }
@@ -4279,9 +4278,9 @@ impl Window {
     {
         self.invalidator.debug_assert_paint_or_prepaint();
         if let Some(style) = style {
-            let depth = self.text_style_stack.len();
-            self.text_style_stack.push(style);
-            self.with_restore(depth, |window, depth| window.text_style_stack.truncate(*depth), f).0
+            let inner = self.text_style_stack.push(style);
+            let outer = std::mem::replace(&mut self.text_style_stack, inner);
+            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
         } else {
             f(self)
         }
@@ -4295,20 +4294,20 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
-        let depth = (self.text_style_stack.len(), self.content_mask_stack.len());
+        let depth = (self.text_style_stack.clone(), self.content_mask_stack.len());
         if let Some(text) = style.text_style() {
             self.push_text_style_ref(text);
         }
         let _clip_scope = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
         self.with_restore(depth, |window, depth| {
-            window.text_style_stack.truncate(depth.0);
+            window.text_style_stack = std::mem::take(&mut depth.0);
             window.content_mask_stack.truncate(depth.1);
         }, f).0
     }
 
     #[inline(never)]
     fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
-        self.text_style_stack.push(style.clone());
+        self.text_style_stack = self.text_style_stack.push(style.clone());
     }
 
     /// Updates the cursor style at the platform level. This method should only be called
@@ -6082,10 +6081,13 @@ impl Window {
 
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout(style, rem_size, scale_factor, measure)
+            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
+                scope.enter(window, |window| measure(known, available, window, cx))
+            })
     }
 
     /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
@@ -6111,10 +6113,14 @@ impl Window {
 
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
+        let mut measure = measure;
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
+            .request_measured_layout_with_baseline(style, rem_size, scale_factor, move |known, available, window, cx| {
+                scope.enter(window, |window| measure(known, available, window, cx))
+            })
     }
 
     /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
@@ -6137,14 +6143,16 @@ impl Window {
 
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
+        let mut measure = measure;
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
+            .request_measured_layout_with_baselines(style, rem_size, scale_factor, move |known, available, window, cx| {
+                scope.enter(window, |window| measure(known, available, window, cx))
+            })
     }
 
-    /// Compute the layout for the given id within the given available space.
-    /// This method is called for its side effect, typically by the framework prior to painting.
     /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
     ///
     /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -6157,6 +6165,17 @@ impl Window {
     /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
     /// в основное дерево не годится — его надо строить заново (так делает и
     /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
+    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
+        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
+        // KaminIDE patch: a nested tree is laid out independently; the outer
+        // measure callback's fixed axes do not apply to its nodes.
+        let fixed = std::mem::take(&mut self.measured_size_fixed);
+        let r = f(self);
+        self.measured_size_fixed = fixed;
+        self.layout_engine = outer;
+        r
+    }
+
     /// KaminIDE patch: inside a measure callback, the axes whose border-box
     /// size the parent already fixed for this final layout pass. Taffy passes
     /// no known dimensions to measure functions when performing layout (only
@@ -6167,37 +6186,22 @@ impl Window {
         self.measured_size_fixed
     }
 
-    /// KaminIDE patch: the inherited text style refinements in force now. A
-    /// measure callback runs during the root's layout, after the ancestors'
-    /// text-style scopes were popped; elements it builds for probing must
-    /// see the scopes of the element that requested the measured layout.
-    pub fn text_style_scope(&self) -> Rc<[TextStyleRefinement]> {
-        self.text_style_stack.iter().cloned().collect()
+    /// KaminIDE patch: the inherited text style refinements in force now,
+    /// shared (one `Rc` clone). Measure callbacks already run in the scope of
+    /// the element that requested them (`request_measured_layout`).
+    pub fn text_style_scope(&self) -> TextStyleScope {
+        self.text_style_stack.clone()
     }
 
     /// KaminIDE patch: run `f` with the inherited text style replaced by
     /// `scope` (see [`Window::text_style_scope`]), then restore it.
     pub fn with_text_style_scope<R>(
         &mut self,
-        scope: &[TextStyleRefinement],
+        scope: &TextStyleScope,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.text_style_stack, scope.to_vec());
-        let r = f(self);
-        self.text_style_stack = outer;
-        r
-    }
-
-    /// Lay out an independent element tree on a fresh layout engine.
-    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
-        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
-        // KaminIDE patch: a nested tree is laid out independently; the outer
-        // measure callback's fixed axes do not apply to its nodes.
-        let fixed = std::mem::take(&mut self.measured_size_fixed);
-        let r = f(self);
-        self.measured_size_fixed = fixed;
-        self.layout_engine = outer;
-        r
+        let outer = std::mem::replace(&mut self.text_style_stack, scope.clone());
+        self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
     }
 
     /// KaminIDE patch: размер узла без округления к физической точке (см.
@@ -6361,6 +6365,8 @@ impl Window {
         Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
     }
 
+    /// Compute the layout for the given id within the given available space.
+    /// This method is called for its side effect, typically by the framework prior to painting.
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
