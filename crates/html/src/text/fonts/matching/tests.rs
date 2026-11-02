@@ -40,7 +40,7 @@ fn non_finite_request_has_a_total_order_and_equal_faces_keep_last() {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_stretch = Some(stretch);
+            with_inherited.inh.font.font_stretch = Some(stretch);
             with_inherited
         };
         assert_eq!(
@@ -62,9 +62,9 @@ fn width_precedes_style_and_weight() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.font_stretch = Some(90.0);
-        with_inherited.italic = Some(true);
-        with_inherited.font_weight = Some(700);
+        with_inherited.inh.font.font_stretch = Some(90.0);
+        with_inherited.inh.font.italic = Some(true);
+        with_inherited.inh.font.font_weight = Some(700);
         with_inherited
     };
     assert_eq!(
@@ -85,7 +85,7 @@ fn middle_weights_search_up_to_500_before_searching_down() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.font_weight = Some(450);
+        with_inherited.inh.font.font_weight = Some(450);
         with_inherited
     };
     assert_eq!(
@@ -107,8 +107,8 @@ fn italic_oblique_only_uses_upright_fallback() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.italic = Some(true);
-        with_inherited.font_oblique_only = Some(true);
+        with_inherited.inh.font.italic = Some(true);
+        with_inherited.inh.font.font_oblique_only = Some(true);
         with_inherited
     };
     assert_eq!(
@@ -130,9 +130,9 @@ fn oblique_search_direction_changes_at_eleven_degrees() {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.italic = Some(true);
-            with_inherited.oblique = Some(true);
-            with_inherited.font_oblique_angle = Some(angle);
+            with_inherited.inh.font.italic = Some(true);
+            with_inherited.inh.font.oblique = Some(true);
+            with_inherited.inh.font.font_oblique_angle = Some(angle);
             with_inherited
         };
         assert_eq!(
@@ -154,9 +154,9 @@ fn oblique_prefers_upright_to_italic_even_without_synthesis() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.italic = Some(true);
-        with_inherited.oblique = Some(true);
-        with_inherited.font_synth = (Some(false), Some(false), Some(false));
+        with_inherited.inh.font.italic = Some(true);
+        with_inherited.inh.font.oblique = Some(true);
+        with_inherited.inh.font.font_synth = (Some(false), Some(false), Some(false));
         with_inherited
     };
     assert_eq!(
@@ -185,7 +185,7 @@ fn regular_face_keeps_features_equal_across_synthesized_weight_runs() {
         let mut with_inherited = Computed {
             ..Default::default()
         };
-        with_inherited.font_weight = Some(700);
+        with_inherited.inh.font.font_weight = Some(700);
         with_inherited
     };
     assert_eq!(

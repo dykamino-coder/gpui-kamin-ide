@@ -26,10 +26,10 @@ fn invalid_value_preserves_computed_for_every_registered_property() {
             for mut c in [Computed::default(), seed.clone()] {
                 c.apply_one(prop.name, prop.sample, st.values());
                 let before = format!("{c:?}");
-                let seq = c.decl_order;
+                let seq = c.reset_cascade.decl_order;
                 c.apply_one(prop.name, invalid, st.values());
                 // Счётчик входных деклараций сам по себе не является значением свойства.
-                c.decl_order = seq;
+                c.reset_cascade.decl_order = seq;
                 if before != format!("{c:?}") {
                     failures.push(format!("{}: {invalid}", prop.name));
                     break;

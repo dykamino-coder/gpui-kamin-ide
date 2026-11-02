@@ -42,20 +42,20 @@ fn materialized_style_is_the_computed_value_stage() {
     let body = element(&parsed.nodes, "body");
     let p = element(&parsed.nodes, "p");
     let parent = slot_parent(&p.style).expect("p is materialized");
-    assert_eq!(parent.font_size, Some(Len::Px(20.0)));
+    assert_eq!(parent.inh.font.font_size, Some(Len::Px(20.0)));
     let computed = p
         .style
         .slot()
         .get(p.style.cascaded(), &parent, generation(vcx))
         .unwrap();
-    assert_eq!(computed.font_size, Some(Len::Px(40.0)));
-    assert_eq!(computed.text_indent, Some(Len::Px(40.0)));
-    assert_eq!(computed.color, parent.color);
+    assert_eq!(computed.inh.font.font_size, Some(Len::Px(40.0)));
+    assert_eq!(computed.inh.text_flow.text_indent, Some(Len::Px(40.0)));
+    assert_eq!(computed.inh.ui.color, parent.inh.ui.color);
     // The box style reuses it under a parent box with the same inherited data.
     let mut used_parent = BoxStyle::new((*parent).clone());
     used_parent.cb_height_def = !used_parent.cb_height_def;
     let used = box_style(&used_parent, &p.style, vcx);
-    assert_eq!(used.font_size, Some(Len::Px(40.0)));
+    assert_eq!(used.inh.font.font_size, Some(Len::Px(40.0)));
     assert!(body.style.slot().0.borrow().is_some());
 }
 
@@ -68,7 +68,7 @@ fn only_a_cascade_edit_invalidates_the_element_style() {
     let parent = slot_parent(&p.style).unwrap();
     // Размер шрифта коробки не является входом наследования элемента.
     let mut bigger = (*parent).clone();
-    bigger.font_size = Some(Len::Px(30.0));
+    bigger.inh.font.font_size = Some(Len::Px(30.0));
     assert!(
         p.style
             .slot()
@@ -76,7 +76,10 @@ fn only_a_cascade_edit_invalidates_the_element_style() {
             .is_none()
     );
     assert_eq!(
-        box_style(&BoxStyle::from(bigger.clone()), &p.style, vcx).font_size,
+        box_style(&BoxStyle::from(bigger.clone()), &p.style, vcx)
+            .inh
+            .font
+            .font_size,
         Some(Len::Px(40.0))
     );
     // A layout copy that edits the cascaded style drops its materialized style.
@@ -87,7 +90,7 @@ fn only_a_cascade_edit_invalidates_the_element_style() {
             .get(copy.style.cascaded(), &parent, generation(vcx))
             .is_some()
     );
-    copy.style.cascaded_mut().text_indent = Some(Len::Px(5.0));
+    copy.style.cascaded_mut().inh.text_flow.text_indent = Some(Len::Px(5.0));
     assert!(
         copy.style
             .slot()
@@ -110,7 +113,7 @@ fn used_values_lie_over_the_shared_computed_style() {
     let p = element(&parsed.nodes, "p");
     let parent = slot_parent(&p.style).unwrap();
     let mut copy = p.clone();
-    copy.style.used_mut().margin.top = Some(Len::Px(7.0));
+    copy.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(7.0));
     // The materialization stays valid and shared; the box takes the used value.
     assert!(
         copy.style
@@ -123,15 +126,18 @@ fn used_values_lie_over_the_shared_computed_style() {
         &copy.style,
         vcx,
     );
-    assert_eq!(used.margin.top, Some(Len::Px(7.0)));
-    assert_eq!(used.text_indent, Some(Len::Px(40.0)));
+    assert_eq!(used.reset_box_layout.margin.top, Some(Len::Px(7.0)));
+    assert_eq!(used.inh.text_flow.text_indent, Some(Len::Px(40.0)));
     // Used-правка сохраняется и под другой коробкой без смены computed-стадии.
     let mut bigger = (*parent).clone();
-    bigger.font_size = Some(Len::Px(30.0));
+    bigger.inh.font.font_size = Some(Len::Px(30.0));
     let other = box_style(&BoxStyle::from(bigger.clone()), &copy.style, vcx);
-    assert_eq!(other.margin.top, Some(Len::Px(7.0)));
-    assert_eq!(other.text_indent, Some(Len::Px(40.0)));
-    assert_ne!(p.style.used().margin.top, Some(Len::Px(7.0)));
+    assert_eq!(other.reset_box_layout.margin.top, Some(Len::Px(7.0)));
+    assert_eq!(other.inh.text_flow.text_indent, Some(Len::Px(40.0)));
+    assert_ne!(
+        p.style.used().reset_box_layout.margin.top,
+        Some(Len::Px(7.0))
+    );
 }
 
 #[test]
@@ -151,7 +157,7 @@ fn cascaded_inherit_takes_the_parent_element_value() {
     // other box values (a split inline, a hoisted block's new parent) is no hit,
     // and the box still takes the element parent's value.
     let mut sibling_box = (*parent).clone();
-    sibling_box.padding.left = Some(Len::Px(99.0));
+    sibling_box.reset_box_layout.padding.left = Some(Len::Px(99.0));
     assert!(
         span.style
             .slot()
@@ -160,15 +166,19 @@ fn cascaded_inherit_takes_the_parent_element_value() {
     );
     assert_eq!(
         box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx)
+            .reset_box_layout
             .padding
             .left,
-        parent.padding.left
+        parent.reset_box_layout.padding.left
     );
     // Все наследуемые значения берутся от элемента, включая неявное наследование.
-    sibling_box.font_size = Some(Len::Px(30.0));
+    sibling_box.inh.font.font_size = Some(Len::Px(30.0));
     assert_eq!(
-        box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx).font_size,
-        parent.font_size
+        box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx)
+            .inh
+            .font
+            .font_size,
+        parent.inh.font.font_size
     );
     assert!(
         span.style
@@ -178,9 +188,10 @@ fn cascaded_inherit_takes_the_parent_element_value() {
     );
     assert_eq!(
         box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx)
+            .reset_box_layout
             .padding
             .left,
-        parent.padding.left
+        parent.reset_box_layout.padding.left
     );
 }
 
@@ -201,9 +212,9 @@ fn inherited_values_are_one_shared_group() {
     // A copy of the style (a box style) shares it too, until an inherited value changes.
     let mut copy = (*span_style).clone();
     assert!(Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
-    copy.margin.top = Some(Len::Px(1.0));
+    copy.reset_box_layout.margin.top = Some(Len::Px(1.0));
     assert!(Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
-    copy.font_size = Some(Len::Px(9.0));
+    copy.inh.font.font_size = Some(Len::Px(9.0));
     assert!(!Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
-    assert_eq!(span_style.font_size, Some(Len::Px(20.0)));
+    assert_eq!(span_style.inh.font.font_size, Some(Len::Px(20.0)));
 }

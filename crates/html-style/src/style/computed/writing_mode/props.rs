@@ -16,10 +16,10 @@ pub struct WritingProps {
 impl WritingProps {
     pub fn of(style: &Computed) -> Self {
         Self {
-            writing_mode: style.writing_mode,
-            flat_mode: style.flat_mode,
-            rtl: style.rtl,
-            text_orientation: style.text_orientation,
+            writing_mode: style.inh.writing.writing_mode,
+            flat_mode: style.inh.writing.flat_mode,
+            rtl: style.inh.writing.rtl,
+            text_orientation: style.inh.writing.text_orientation,
         }
     }
 

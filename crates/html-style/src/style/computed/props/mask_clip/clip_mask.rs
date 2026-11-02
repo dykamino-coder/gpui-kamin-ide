@@ -22,7 +22,7 @@ impl Computed {
         // (clip-path-polygon-008: margin-box).
         // У элемента с CSS-коробкой `fill-box` = content-box,
         // `stroke-box`/`view-box` = border-box (css-masking-1 §1.3.1.1).
-        self.clip_ref = if v.contains("margin-box") {
+        self.reset_mask.clip_ref = if v.contains("margin-box") {
             Some(1)
         } else if v.contains("padding-box") {
             Some(2)
@@ -31,13 +31,13 @@ impl Computed {
         } else if v.contains("border-box") || v.contains("stroke-box") || v.contains("view-box") {
             Some(0)
         } else {
-            self.clip_ref
+            self.reset_mask.clip_ref
         };
         if key == "clip-path" {
-            self.clip_bare_box = !v.is_empty()
+            self.reset_mask.clip_bare_box = !v.is_empty()
                 && !v.contains('(')
                 && v.split_whitespace().all(|w| w.ends_with("-box"));
-            if self.clip_bare_box {
+            if self.reset_mask.clip_bare_box {
                 self.accept_declaration();
             }
         }
@@ -58,7 +58,7 @@ impl Computed {
                 Some((r @ ("nonzero" | "evenodd"), b)) => (r, b),
                 _ => ("nonzero", rest),
             };
-            self.clip_shape = accept_parsed!(
+            self.reset_mask.clip_shape = accept_parsed!(
                 self,
                 Some(format!("shapedef:{rule}:{}", body.replace(',', ";")))
             );
@@ -87,10 +87,10 @@ impl Computed {
             // многоугольником, а её эталон пишет `path()`).
             match line_polygon(&d) {
                 Some(points) if rule == "nonzero" && (3..=8).contains(&points.len()) => {
-                    self.clip_polygon = Some(points);
-                    self.clip_polygon_evenodd = false;
+                    self.reset_mask.clip_polygon = Some(points);
+                    self.reset_mask.clip_polygon_evenodd = false;
                 }
-                _ => self.clip_shape = Some(format!("pathdef:{rule}:{d}")),
+                _ => self.reset_mask.clip_shape = Some(format!("pathdef:{rule}:{d}")),
             }
         }
         // `clip-path: url(#id)` — ссылка на <clipPath>: форма
@@ -99,7 +99,7 @@ impl Computed {
             && let Some(url) = parse_url(v)
             && let Some(id) = url.strip_prefix('#')
         {
-            self.clip_shape = accept_parsed!(self, Some(format!("clipref:{id}")));
+            self.reset_mask.clip_shape = accept_parsed!(self, Some(format!("clipref:{id}")));
         }
         self.clip_basic_shape(v, vcx);
     }

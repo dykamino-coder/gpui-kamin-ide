@@ -42,12 +42,12 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         return None;
     };
     if matches!(
-        c.style.used().position,
+        c.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
-    ) || c.style.used().float.is_some_and(|f| f != 0)
-        || (c.style.used().clear.is_some() && !band_clear_supported(c))
+    ) || c.style.used().reset_box_layout.float.is_some_and(|f| f != 0)
+        || (c.style.used().reset_box_layout.clear.is_some() && !band_clear_supported(c))
         || matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
@@ -57,7 +57,7 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         )
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
-        || (c.inline && c.style.used().display.is_none())
+        || (c.inline && c.style.used().reset_box_layout.display.is_none())
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
@@ -106,7 +106,13 @@ pub(super) fn band_host_m(
         let Node::Element(next) = &nodes[j] else {
             break;
         };
-        if next.style.used().float.is_none_or(|f| f == 0) {
+        if next
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_none_or(|f| f == 0)
+        {
             break;
         }
         band_float_m(next, em)?;
@@ -128,8 +134,14 @@ pub(super) fn band_host_m(
         // С шагом F6 очищающая коробка остаётся в хосте: clearance считают
         // полосы (`band_flow::plan`), а не распорка флекс-ряда.
         if let Node::Element(next) = &nodes[j]
-            && (next.style.used().float.is_some_and(|f| f != 0)
-                || (next.style.used().clear.is_some() && !band_clear_supported(next)))
+            && (next
+                .style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+                || (next.style.used().reset_box_layout.clear.is_some()
+                    && !band_clear_supported(next)))
         {
             // Флоат дальше по той же строке прогона («BEF<float>Inner
             // <float>AFTER», `::after { float: right }` за текстом): пока
@@ -145,14 +157,21 @@ pub(super) fn band_host_m(
                 Node::Text(_) => true,
                 // A `<br clear>` moves what follows below the floats: a
                 // float after it starts a run of its own.
-                Node::Element(c) if c.tag == "br" => c.style.used().clear.is_none(),
+                Node::Element(c) if c.tag == "br" => {
+                    c.style.used().reset_box_layout.clear.is_none()
+                }
                 Node::Element(c) => {
                     !block_level_in_flow(c)
                         && !out_of_flow(&c.style.used())
                         && band_piece(n) != Some(BandPiece::Atom)
                 }
             });
-            if next.style.used().float.is_some_and(|f| f != 0)
+            if next
+                .style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
                 && inline_only
                 && rest.iter().any(|n| !is_blank(n))
                 && band_float_m(next, em).is_some()
@@ -195,7 +214,12 @@ fn has_flow_float(c: &Element) -> bool {
     while let Some(children) = pending.pop() {
         for node in children {
             let Node::Element(k) = node else { continue };
-            if k.style.used().float.is_some_and(|f| f != 0) {
+            if k.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 return true;
             }
             if block_level_in_flow(k) && !own_context(k) {

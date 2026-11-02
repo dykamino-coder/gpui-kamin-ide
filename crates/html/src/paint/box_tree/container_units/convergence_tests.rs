@@ -59,11 +59,11 @@ fn foreign_object_cannot_create_a_new_style_input_on_each_prepaint(cx: &mut gpui
         |doc, _, renders, _| {
             let foreign = element(doc.nodes(), "foreign").style.computed();
             assert_eq!(foreign.query_container_axes(), (false, false));
-            assert_eq!(foreign.cq_size, (None, None));
+            assert_eq!(foreign.reset_context.cq_size, (None, None));
             assert_eq!(content(doc, "inner"), (150., 100.));
             let leaf = element(doc.nodes(), "leaf").style.computed();
-            assert_eq!(leaf.width, Some(Len::Px(75.)));
-            assert_eq!(leaf.height, Some(Len::Px(50.)));
+            assert_eq!(leaf.reset_box_layout.width, Some(Len::Px(75.)));
+            assert_eq!(leaf.reset_box_layout.height, Some(Len::Px(50.)));
             assert!(renders.get() <= 3, "initial renders: {}", renders.get());
         },
     );

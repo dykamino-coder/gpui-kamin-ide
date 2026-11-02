@@ -126,14 +126,14 @@ impl Computed {
         raw: &str,
         vcx: ValueCx<'_>,
     ) -> ImageFilter {
-        let Some(parsed) = ParsedFilter::parse(raw, self.filter, vcx) else {
+        let Some(parsed) = ParsedFilter::parse(raw, self.reset_effects.filter, vcx) else {
             return ImageFilter::default();
         };
         self.accept_declaration();
-        self.filter = parsed.program.filter;
-        self.drop_shadow = parsed.program.shadow.clone();
-        self.filter_ref = parsed.reference;
-        self.scrollbar_filter_ops = parsed.program.operations.clone();
+        self.reset_effects.filter = parsed.program.filter;
+        self.reset_effects.drop_shadow = parsed.program.shadow.clone();
+        self.reset_effects.filter_ref = parsed.reference;
+        self.reset_effects.scrollbar_filter_ops = parsed.program.operations.clone();
         let mut program = parsed.program;
         // `currentcolor` is resolved per element by `resolve_colors`.
         program.resolve_colors(crate::style::values::value::Color::BLACK);
@@ -143,7 +143,7 @@ impl Computed {
     /// Анимированный `filter` входит в каскад сводным значением и функциями
     /// в порядке списка (Filter Effects 1 §5).
     pub fn set_animated_filter(&mut self, frame: &Computed) {
-        self.filter = frame.filter;
-        self.scrollbar_filter_ops = frame.scrollbar_filter_ops.clone();
+        self.reset_effects.filter = frame.reset_effects.filter;
+        self.reset_effects.scrollbar_filter_ops = frame.reset_effects.scrollbar_filter_ops.clone();
     }
 }

@@ -99,38 +99,41 @@ impl Computed {
         match id {
             OverflowWrap => {
                 if let Some((word, anywhere)) = overflow_wrap(v) {
-                    self.break_word = Some(word);
-                    self.wrap_anywhere = Some(anywhere);
+                    self.inh.text_flow.break_word = Some(word);
+                    self.inh.text_flow.wrap_anywhere = Some(anywhere);
                 }
             }
             WordBreak => {
                 if let Some(kind) = word_break(v) {
-                    self.break_anywhere = Some(kind == WordBreakKind::BreakAll);
-                    self.keep_all = Some(kind == WordBreakKind::KeepAll);
-                    self.auto_phrase = Some(kind == WordBreakKind::AutoPhrase);
-                    self.word_break_word = Some(kind == WordBreakKind::BreakWord);
+                    self.inh.text_flow.break_anywhere = Some(kind == WordBreakKind::BreakAll);
+                    self.inh.text_flow.keep_all = Some(kind == WordBreakKind::KeepAll);
+                    self.inh.text_flow.auto_phrase = Some(kind == WordBreakKind::AutoPhrase);
+                    self.inh.text_flow.word_break_word = Some(kind == WordBreakKind::BreakWord);
                 }
             }
             LineBreak => {
                 if let Some((anywhere, loose)) = line_break(v) {
-                    self.break_anywhere_strict = Some(anywhere);
-                    self.line_break_loose = Some(loose);
+                    self.inh.text_flow.break_anywhere_strict = Some(anywhere);
+                    self.inh.text_flow.line_break_loose = Some(loose);
                 }
             }
             Hyphens => {
                 if let Some((on, auto)) = hyphens(v) {
-                    self.hyphenate = Some(on);
-                    self.hyphens_auto = Some(auto);
+                    self.inh.text_flow.hyphenate = Some(on);
+                    self.inh.text_flow.hyphens_auto = Some(auto);
                 }
             }
             HyphenateCharacter => {
-                self.hyphen_char = hyphenate_character(v).or(self.hyphen_char.take())
+                self.inh.text_flow.hyphen_char =
+                    hyphenate_character(v).or(self.inh.text_flow.hyphen_char.take())
             }
             HyphenateLimitChars => {
-                self.hyphen_limit_chars = parse_hyphenate_limit_chars(v).or(self.hyphen_limit_chars)
+                self.inh.text_flow.hyphen_limit_chars =
+                    parse_hyphenate_limit_chars(v).or(self.inh.text_flow.hyphen_limit_chars)
             }
             HyphenateLimitLines => {
-                self.hyphen_limit_lines = limit_lines(v).or(self.hyphen_limit_lines)
+                self.inh.text_flow.hyphen_limit_lines =
+                    limit_lines(v).or(self.inh.text_flow.hyphen_limit_lines)
             }
             _ => return false,
         }
@@ -140,18 +143,33 @@ impl Computed {
     pub(super) fn inherit_breaking(&mut self, id: LonghandId) -> bool {
         use LonghandId::*;
         match id {
-            OverflowWrap => (self.break_word, self.wrap_anywhere) = (None, None),
-            WordBreak => {
-                self.break_anywhere = None;
-                self.keep_all = None;
-                self.auto_phrase = None;
-                self.word_break_word = None;
+            OverflowWrap => {
+                (
+                    self.inh.text_flow.break_word,
+                    self.inh.text_flow.wrap_anywhere,
+                ) = (None, None)
             }
-            LineBreak => (self.break_anywhere_strict, self.line_break_loose) = (None, None),
-            Hyphens => (self.hyphenate, self.hyphens_auto) = (None, None),
-            HyphenateCharacter => self.hyphen_char = None,
-            HyphenateLimitChars => self.hyphen_limit_chars = None,
-            HyphenateLimitLines => self.hyphen_limit_lines = None,
+            WordBreak => {
+                self.inh.text_flow.break_anywhere = None;
+                self.inh.text_flow.keep_all = None;
+                self.inh.text_flow.auto_phrase = None;
+                self.inh.text_flow.word_break_word = None;
+            }
+            LineBreak => {
+                (
+                    self.inh.text_flow.break_anywhere_strict,
+                    self.inh.text_flow.line_break_loose,
+                ) = (None, None)
+            }
+            Hyphens => {
+                (
+                    self.inh.text_flow.hyphenate,
+                    self.inh.text_flow.hyphens_auto,
+                ) = (None, None)
+            }
+            HyphenateCharacter => self.inh.text_flow.hyphen_char = None,
+            HyphenateLimitChars => self.inh.text_flow.hyphen_limit_chars = None,
+            HyphenateLimitLines => self.inh.text_flow.hyphen_limit_lines = None,
             _ => return false,
         }
         true

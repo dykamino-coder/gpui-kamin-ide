@@ -25,8 +25,14 @@ fn filtered_content_replaces_children_and_preserves_size() {
     assert_eq!(program.filter.unwrap().invert, 1.0);
     assert_eq!(program.calls, 1);
     assert!(element.children.is_empty());
-    assert_eq!(element.style.cascaded().width, Some(Len::Px(100.0)));
-    assert_eq!(element.style.cascaded().height, Some(Len::Px(50.0)));
+    assert_eq!(
+        element.style.cascaded().reset_box_layout.width,
+        Some(Len::Px(100.0))
+    );
+    assert_eq!(
+        element.style.cascaded().reset_box_layout.height,
+        Some(Len::Px(50.0))
+    );
 }
 
 #[test]

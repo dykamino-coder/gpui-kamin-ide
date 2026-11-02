@@ -19,7 +19,7 @@ fn table(html: &str) -> (BlockBox, Vec<u64>) {
 fn collected(doc: &crate::document::parsed::Parsed) -> (BlockBox, Vec<u64>) {
     fn find(n: &Node) -> Option<&Element> {
         let Node::Element(e) = n else { return None };
-        if e.style.used().display == Some(Display::Table) {
+        if e.style.used().reset_box_layout.display == Some(Display::Table) {
             return Some(e);
         }
         e.children.iter().find_map(find)

@@ -52,11 +52,11 @@ fn lifted_float_keeps_its_element_inline_values_and_block_facts() {
     };
     let span_box = box_style(&block_box, &span.style, vcx);
     let lifted_box = box_style(&block_box, &lifted.style, vcx);
-    assert_eq!(lifted_box.color, span_box.color);
-    assert_ne!(lifted_box.color, block_box.color);
+    assert_eq!(lifted_box.inh.ui.color, span_box.inh.ui.color);
+    assert_ne!(lifted_box.inh.ui.color, block_box.inh.ui.color);
     // Its cascade holds only its own declarations: the inline's colour is
     // inherited, not declared on the float (CSS Cascade 5 §4.2).
-    assert!(lifted.style.cascaded().color.is_none());
+    assert!(lifted.style.cascaded().inh.ui.color.is_none());
 }
 
 #[test]
@@ -84,10 +84,13 @@ fn lifted_float_takes_tree_values_from_the_inline_and_box_facts_from_the_block()
         .unwrap();
     let lifted_box = box_style(&block_box, &lifted.style, vcx);
     // css-ui-4 §6.1: the used `user-select` follows the parent element.
-    assert_eq!(in_place.no_select, Some(true));
-    assert_eq!(lifted_box.no_select, in_place.no_select);
+    assert_eq!(in_place.reset_context.no_select, Some(true));
+    assert_eq!(
+        lifted_box.reset_context.no_select,
+        in_place.reset_context.no_select
+    );
     // CSS 2 §9.5, §10.1: the block is the box parent; its clip encloses the float.
-    assert!(lifted_box.fragment_clip_ancestor);
+    assert!(lifted_box.reset_context.fragment_clip_ancestor);
 }
 
 #[test]

@@ -7,9 +7,9 @@ use crate::style::computed::Computed;
 pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> bool {
     let parallel = parent.wm().vertical() == child.wm().vertical();
     if parent_rows == parallel {
-        child.subgrid_rows
+        child.reset_grid.subgrid_rows
     } else {
-        child.subgrid_cols
+        child.reset_grid.subgrid_cols
     }
 }
 
@@ -47,9 +47,9 @@ mod tests {
             let nodes = parse(&html, "");
             let style = target(&nodes).unwrap();
             let tracks = if rows {
-                &style.grid_tracks
+                &style.reset_grid.grid_tracks
             } else {
-                &style.grid_rows
+                &style.reset_grid.grid_rows
             };
             let tracks = tracks.as_ref().unwrap();
             assert_eq!(tracks.len(), 4, "row_subgrid={rows} tracks={tracks:?}");
@@ -68,7 +68,7 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Computed::default()
                 };
-                with_inherited.writing_mode =
+                with_inherited.inh.writing.writing_mode =
                     Some(crate::style::computed::writing_mode::WritingModeKw::new(
                         vertical, false, false,
                     ));
@@ -77,10 +77,15 @@ mod tests {
             for orthogonal in [false, true] {
                 let child = {
                     let mut with_inherited = Computed {
-                        subgrid_cols: true,
+                        reset_grid: crate::style::computed::StyleGroup::new(
+                            crate::style::computed::ResetGrid {
+                                subgrid_cols: true,
+                                ..Default::default()
+                            },
+                        ),
                         ..Computed::default()
                     };
-                    with_inherited.writing_mode =
+                    with_inherited.inh.writing.writing_mode =
                         Some(crate::style::computed::writing_mode::WritingModeKw::new(
                             vertical != orthogonal,
                             false,

@@ -18,10 +18,12 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
     if style.wm().vertical() || style.contains_width() {
         return None;
     }
-    match style.width {
+    match style.reset_box_layout.width {
         Some(Len::MinContent) => Some(CssSizingKeyword::MinContent),
         Some(Len::MaxContent) => Some(CssSizingKeyword::MaxContent),
-        Some(Len::FitContent) if style.fit_arg[0].is_none() => Some(CssSizingKeyword::FitContent),
+        Some(Len::FitContent) if style.reset_context.fit_arg[0].is_none() => {
+            Some(CssSizingKeyword::FitContent)
+        }
         // Functional arguments remain owned by the existing wrapper-width path.
         _ => None,
     }
@@ -64,8 +66,12 @@ fn wrapper_tracks(c: &Computed) -> Option<(Option<gpui::GridTrack>, Option<gpui:
         _ => None,
     };
     let (col, row) = (
-        (!c.contains_width()).then(|| track(c.width)).flatten(),
-        (!c.contains_height()).then(|| track(c.height)).flatten(),
+        (!c.contains_width())
+            .then(|| track(c.reset_box_layout.width))
+            .flatten(),
+        (!c.contains_height())
+            .then(|| track(c.reset_box_layout.height))
+            .flatten(),
     );
     if col.is_none() && row.is_none() {
         return None;
@@ -74,7 +80,7 @@ fn wrapper_tracks(c: &Computed) -> Option<(Option<gpui::GridTrack>, Option<gpui:
     // содержащим блоком, и края отсчитывались бы от неё. Он и так не
     // растягивается — размер по содержимому получается сам.
     if matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -112,8 +118,8 @@ pub(crate) fn content_sized(
     // taffy её не решает и меряет обёртку содержимым, как велит §5.2.1
     // (`fit-content-length-percentage-011/012/014`). Это НЕ пара «max-width =
     // N» из отката в `value.rs`: там довод был потолком, здесь — место.
-    if matches!(c.width, Some(Len::FitContent)) && !c.wm().vertical() {
-        match c.fit_arg[0] {
+    if matches!(c.reset_box_layout.width, Some(Len::FitContent)) && !c.wm().vertical() {
+        match c.reset_context.fit_arg[0] {
             Some(Len::Px(v)) => wrap = wrap.w(px(v)),
             Some(Len::Pct(k)) => wrap = wrap.w(gpui::relative(k)),
             _ => {}
@@ -124,11 +130,11 @@ pub(crate) fn content_sized(
     // отдельный держатель менял раскладку соседей
     // (`text-transform-fullwidth-008`).
     let side = |l: Option<Len>| -> Option<f32> {
-        let size = match c.font_size {
+        let size = match c.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
-        let family = c.font_family.clone().unwrap_or_default();
+        let family = c.inh.font.font_family.clone().unwrap_or_default();
         match l {
             Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_)) => {
                 let v = crate::text::metrics::spacing_px(l, &family, size, vcx);
@@ -137,10 +143,10 @@ pub(crate) fn content_sized(
             _ => None,
         }
     };
-    if let Some(v) = side(c.margin.left) {
+    if let Some(v) = side(c.reset_box_layout.margin.left) {
         wrap = wrap.ml(px(v));
     }
-    if let Some(v) = side(c.margin.right) {
+    if let Some(v) = side(c.reset_box_layout.margin.right) {
         wrap = wrap.mr(px(v));
     }
     // Intrinsic widths keep their shrink-wrapped box; a height-only wrapper
@@ -152,7 +158,10 @@ pub(crate) fn content_sized(
     wrap.style().justify_items = Some(if axis_alignment::fills_width(c) {
         gpui::AlignItems::Stretch
     } else {
-        match (auto(c.margin.left), auto(c.margin.right)) {
+        match (
+            auto(c.reset_box_layout.margin.left),
+            auto(c.reset_box_layout.margin.right),
+        ) {
             (true, false) => gpui::AlignItems::FlexEnd,
             (true, true) => gpui::AlignItems::Center,
             _ => gpui::AlignItems::FlexStart,
@@ -163,7 +172,10 @@ pub(crate) fn content_sized(
     // свободное место — между ДОРОЖКОЙ и краем сетки. Его делит
     // `justify-content` (css-grid-1 §10.5); без него `margin-left: auto;
     // width: max-content` оставался у левого края (`align-baseline-ref`).
-    match (auto(c.margin.left), auto(c.margin.right)) {
+    match (
+        auto(c.reset_box_layout.margin.left),
+        auto(c.reset_box_layout.margin.right),
+    ) {
         (true, false) => wrap.style().justify_content = Some(gpui::AlignContent::FlexEnd),
         (true, true) => wrap.style().justify_content = Some(gpui::AlignContent::Center),
         _ => {}
@@ -174,9 +186,12 @@ pub(crate) fn content_sized(
     // (column-fill-reverse-justify-items-001). В вертикальном письме
     // align-self несёт ось самого движка — перенос ломал ортогональные
     // потоки (three-levels-of-orthogonal-flows).
-    if let Some(a) = c.align_self.filter(|_| !c.wm().vertical()) {
+    if let Some(a) = c.reset_flex.align_self.filter(|_| !c.wm().vertical()) {
         // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-        wrap.style().align_self = Some(crate::paint::apply::self_align(a, c.align_self_last));
+        wrap.style().align_self = Some(crate::paint::apply::self_align(
+            a,
+            c.reset_flex.align_self_last,
+        ));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);

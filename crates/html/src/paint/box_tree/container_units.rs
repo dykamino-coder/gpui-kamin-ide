@@ -27,7 +27,7 @@ pub(super) fn observe(div: Div, element: &Element, style: &BoxStyle) -> Div {
     div.observe_layout(ContainerInput {
         slot: element.style.slot().clone(),
         axes,
-        zoom: style.zoom_eff.unwrap_or(1.0),
+        zoom: style.inh.font.zoom_eff.unwrap_or(1.0),
         node: None,
     })
 }

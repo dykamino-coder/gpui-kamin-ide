@@ -21,7 +21,7 @@ pub(crate) fn group_margins(
 ) -> (f32, f32, f32) {
     let positioned = |e: &Element| {
         matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -29,7 +29,12 @@ pub(crate) fn group_margins(
     match n {
         _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => (0.0, 0.0, 0.0),
         Node::Element(e) if !e.inline && !positioned(e) => {
-            if e.style.used().float.is_some_and(|f| f != 0) {
+            if e.style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 return (0.0, 0.0, 0.0);
             }
             let e = crate::layout::fragment::line_shape::resolved_lengths(e, root, vcx);

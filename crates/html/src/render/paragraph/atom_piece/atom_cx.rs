@@ -32,7 +32,7 @@ impl AtomRuby {
             }))),
             independent: replaced_tag(e)
                 || matches!(
-                    e.style.used().display,
+                    e.style.used().reset_box_layout.display,
                     Some(
                         Display::InlineBlock
                             | Display::InlineFlex

@@ -3,8 +3,7 @@
 
 use crate::dom::Element;
 use crate::layout::positioned::relative::relative_shift;
-use crate::layout::table::anon::html_cell;
-use crate::style::computed::{Align, BoxStyle, Computed};
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
 
@@ -33,35 +32,68 @@ pub(super) fn cell_box_div(
             Some(Len::Px(_)) | None => own,
             _ => merged,
         };
-        c.used_mut().padding = crate::style::computed::Sides {
-            top: fixup(c.used().padding.top, cm.padding.top),
-            right: fixup(c.used().padding.right, cm.padding.right),
-            bottom: fixup(c.used().padding.bottom, cm.padding.bottom),
-            left: fixup(c.used().padding.left, cm.padding.left),
+        c.used_mut().reset_box_layout.padding = crate::style::computed::Sides {
+            top: fixup(
+                c.used().reset_box_layout.padding.top,
+                cm.reset_box_layout.padding.top,
+            ),
+            right: fixup(
+                c.used().reset_box_layout.padding.right,
+                cm.reset_box_layout.padding.right,
+            ),
+            bottom: fixup(
+                c.used().reset_box_layout.padding.bottom,
+                cm.reset_box_layout.padding.bottom,
+            ),
+            left: fixup(
+                c.used().reset_box_layout.padding.left,
+                cm.reset_box_layout.padding.left,
+            ),
         };
-        c.used_mut().height = fixup(c.used().height, cm.height);
+        c.used_mut().reset_box_layout.height =
+            fixup(c.used().reset_box_layout.height, cm.reset_box_layout.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        c.used_mut().border_width = crate::style::computed::Sides {
-            top: fixup(c.used().border_width.top, cm.border_width.top),
-            right: fixup(c.used().border_width.right, cm.border_width.right),
-            bottom: fixup(c.used().border_width.bottom, cm.border_width.bottom),
-            left: fixup(c.used().border_width.left, cm.border_width.left),
+        c.used_mut().reset_border.border_width = crate::style::computed::Sides {
+            top: fixup(
+                c.used().reset_border.border_width.top,
+                cm.reset_border.border_width.top,
+            ),
+            right: fixup(
+                c.used().reset_border.border_width.right,
+                cm.reset_border.border_width.right,
+            ),
+            bottom: fixup(
+                c.used().reset_border.border_width.bottom,
+                cm.reset_border.border_width.bottom,
+            ),
+            left: fixup(
+                c.used().reset_border.border_width.left,
+                cm.reset_border.border_width.left,
+            ),
         };
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.used_mut().bg_pos.x = fixup(c.used().bg_pos.x, cm.bg_pos.x);
-        c.used_mut().bg_pos.y = fixup(c.used().bg_pos.y, cm.bg_pos.y);
+        c.used_mut().reset_background.bg_pos.x = fixup(
+            c.used().reset_background.bg_pos.x,
+            cm.reset_background.bg_pos.x,
+        );
+        c.used_mut().reset_background.bg_pos.y = fixup(
+            c.used().reset_background.bg_pos.y,
+            cm.reset_background.bg_pos.y,
+        );
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (c.used().bg_size, cm.bg_size)
-        {
-            c.used_mut().bg_size =
+        ) = (
+            c.used().reset_background.bg_size,
+            cm.reset_background.bg_size,
+        ) {
+            c.used_mut().reset_background.bg_size =
                 crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
         }
         c
@@ -74,18 +106,22 @@ pub(super) fn cell_box_div(
     let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
-        && box_style.used().bg_clip.is_none()
-        && box_style.used().gradient.is_none()
-        && box_style.used().bg_image.is_none()
-        && box_style.cascaded().hidden != Some(true)
-        && box_style.used().opacity.is_none_or(|o| o >= 1.0)
-        && box_style.used().transform.is_none()
-        && box_style.used().translate.is_none()
-        && box_style.used().filter.is_none();
+        && box_style.used().reset_background.bg_clip.is_none()
+        && box_style.used().reset_background.gradient.is_none()
+        && box_style.used().reset_background.bg_image.is_none()
+        && box_style.cascaded().inh.ui.hidden != Some(true)
+        && box_style
+            .used()
+            .reset_effects
+            .opacity
+            .is_none_or(|o| o >= 1.0)
+        && box_style.used().reset_transforms.transform.is_none()
+        && box_style.used().reset_transforms.translate.is_none()
+        && box_style.used().reset_effects.filter.is_none();
     let mut box_style = box_style;
-    let own_bg = box_style.used().background;
+    let own_bg = box_style.used().reset_background.background;
     if bg_layered {
-        box_style.used_mut().background = None;
+        box_style.used_mut().reset_background.background = None;
     }
     let mut d = cx
         .contracts
@@ -103,9 +139,10 @@ pub(super) fn cell_box_div(
         // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
-        let picture = row.style.used().bg_image.is_some()
-            || row.style.used().gradient_raw.is_some()
-            || (row.style.used().background.is_some() && row.style.used().bg_clip.is_some());
+        let picture = row.style.used().reset_background.bg_image.is_some()
+            || row.style.used().reset_background.gradient_raw.is_some()
+            || (row.style.used().reset_background.background.is_some()
+                && row.style.used().reset_background.bg_clip.is_some());
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -129,12 +166,13 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.used().position == Some(crate::style::computed::Position::Relative)
+    let own_pct = cell.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.used().inset.left,
-            cell.style.used().inset.right,
-            cell.style.used().inset.top,
-            cell.style.used().inset.bottom,
+            cell.style.used().reset_positioned.inset.left,
+            cell.style.used().reset_positioned.inset.right,
+            cell.style.used().reset_positioned.inset.top,
+            cell.style.used().reset_positioned.inset.bottom,
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));
@@ -153,88 +191,5 @@ pub(super) fn cell_box_div(
     d
 }
 
-pub(super) fn ortho_cell_box(
-    e: &Element,
-    row: &Element,
-    cm: &Computed,
-    cell: &Element,
-    d: gpui::Div,
-) -> gpui::Div {
-    // Умолчание браузера для ячейки — `vertical-align: middle`: без
-    // него полоса высотой 10px в строке 22px стояла на 6 точек выше.
-    // Ортогональная ячейка заводит СВОЙ контекст форматирования и
-    // раскладывает содержимое в СВОЁМ письме (css-writing-modes-4
-    // §3.1: `writing-mode` применяется к `table-cell`; §7.1: правила
-    // горизонтальной оси переходят на вертикальную). Значит ось
-    // блочного потока внутри неё ГОРИЗОНТАЛЬНА: дети идут справа
-    // налево у `vertical-rl`/`sideways-rl` и слева направо у
-    // `vertical-lr`/`sideways-lr`, а не столбиком. Тот же приём, что
-    // у голого блока в `element()` (:14320). Blink строит место
-    // ячейки её собственным письмом —
-    // `table_layout_utils.cc:218`:
-    // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
-    //                         cell_writing_direction, /* is_new_fc */ true)`.
-    let ortho_cell = cm.wm().vertical() && !e.style.used().wm().vertical();
-    let mut d = if ortho_cell {
-        let d = d.flex();
-        if cm.wm().block_rl() {
-            d.flex_row_reverse()
-        } else {
-            d.flex_row()
-        }
-    } else {
-        d.flex().flex_col()
-    };
-    if ortho_cell {
-        // ОРТОГОНАЛЬНАЯ ячейка (вертикальный контент в горизонтальной
-        // таблице): строчная ось вертикальна — `text-align` правит
-        // ВЕРТИКАЛЬНОЕ положение строки (line-left = верх), а
-        // `vertical-align` уходит на поперечную ось
-        // (table-cell-align-005/006).
-        use crate::style::computed::TextAlign;
-        // `start`/`end` — края СТРОКИ: вертикальная строка идёт
-        // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
-        let rtl = cm.wm().rtl();
-        d = match cm.text_align {
-            Some(TextAlign::Right) => d.items_end(),
-            Some(TextAlign::Center) => d.items_center(),
-            Some(TextAlign::End) if !rtl => d.items_end(),
-            Some(TextAlign::Start) if rtl => d.items_end(),
-            _ => d.items_start(),
-        };
-        // Начальное значение `vertical-align` — `baseline` (§17.5.3),
-        // и у одиночного ряда это ВЕРХ ячейки, а не середина. Пока
-        // умолчанием стояла середина, содержимое опускалось на
-        // полразницы высот (`direction-applies-to-005`: квадрат на
-        // 30 точек ниже эталона).
-        d = match cm.vertical_align {
-            Some(Align::End) => d.justify_end(),
-            Some(Align::Center) => d.justify_center(),
-            _ => d.justify_start(),
-        };
-    } else {
-        d = match cm.vertical_align {
-            Some(Align::End) => d.justify_end(),
-            Some(Align::Center) => d.justify_center(),
-            _ => d.justify_start(),
-        };
-        // `vertical-align: baseline` (CSS 2.1 §17.5.3): первые
-        // базовые ячеек ряда совпадают, ряд растёт на сдвиг, а
-        // коробка ячейки по-прежнему заполняет ряд — сдвигается
-        // только содержимое (taffy `Style::table_cell_baseline`;
-        // Blink `table_layout_utils.cc` `ComputeRowBaseline`).
-        // Значение — СОБСТВЕННОЕ ячейки: `vertical-align` не
-        // наследуется, а слитый `cm` тянет его от любого предка.
-        // Только `td`/`th` берут значение ряда (UA-правило
-        // `td, th { vertical-align: inherit }`).
-        let own_va = cell.style.own_vertical_align().or(if html_cell(cell) {
-            row.style.own_vertical_align()
-        } else {
-            None
-        });
-        if own_va == Some(Align::Baseline) && !e.style.used().wm().vertical() {
-            d.style().table_cell_baseline = Some(true);
-        }
-    }
-    super::cell_alignment::apply(cm, d)
-}
+mod orthogonal;
+pub(super) use orthogonal::ortho_cell_box;

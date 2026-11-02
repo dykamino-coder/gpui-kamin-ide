@@ -38,7 +38,7 @@ pub(crate) fn ruby_container_atom(
     // — для всех уровней; начальное `alternate` (`None`) — первый
     // уровень над базой, следующий под, и так далее. `alternate
     // under` пока не различается (первый уровень над).
-    let level_under = |k: usize| match merged.ruby_under {
+    let level_under = |k: usize| match merged.inh.text_flow.ruby_under {
         Some(under) => under,
         None => k % 2 == 1,
     };
@@ -85,8 +85,8 @@ pub(crate) fn ruby_container_atom(
                     None => merged.clone(),
                 };
                 // Decorations propagated to a ruby container apply to bases.
-                if style.text_emphasis.is_some() {
-                    style.text_emphasis = None;
+                if style.inh.text_ink.text_emphasis.is_some() {
+                    style.inh.text_ink.text_emphasis = None;
                 }
                 style
             })
@@ -141,7 +141,7 @@ pub(crate) fn ruby_container_atom(
             let base_el = {
                 let opts = &*crate::text::ruby::layers::based(opts, layers.clone());
                 if segments.len() == 1 && columns == 1 && !seg.levels.is_empty() {
-                    let base_font = match merged.font_size {
+                    let base_font = match merged.inh.font.font_size {
                         Some(Len::Px(v)) => v,
                         _ => opts.base_size(),
                     };
@@ -151,7 +151,7 @@ pub(crate) fn ruby_container_atom(
                         .first()
                         .and_then(|l| l.units.first())
                         .and_then(|u| match u.as_slice() {
-                            [Node::Element(k)] => match k.style.used().font_size {
+                            [Node::Element(k)] => match k.style.used().inh.font.font_size {
                                 Some(Len::Px(v)) => Some(v),
                                 Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
                                 _ => None,
@@ -162,10 +162,13 @@ pub(crate) fn ruby_container_atom(
                     crate::text::paragraph::ruby_base_with_overhang(
                         opts,
                         merged
+                            .inh
+                            .text_flow
                             .ruby_overhang
                             .unwrap_or(crate::style::computed::RubyOverhang::Auto),
                         ann_font / 2.0,
-                        merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
+                        merged.inh.text_flow.ruby_align
+                            == Some(crate::style::computed::RubyAlign::Start),
                         base_font,
                         |opts| unit_box(base_nodes, &merged, opts),
                     )

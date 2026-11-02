@@ -29,19 +29,31 @@ pub(crate) fn run(
         let mut now = spot.get();
         use crate::layout::positioned::predicates::edge_set;
         now.fixed_axes = (
-            edge_set(style.inset.left) || edge_set(style.inset.right),
-            edge_set(style.inset.top) || edge_set(style.inset.bottom),
+            edge_set(style.reset_positioned.inset.left)
+                || edge_set(style.reset_positioned.inset.right),
+            edge_set(style.reset_positioned.inset.top)
+                || edge_set(style.reset_positioned.inset.bottom),
         );
         now.free_margin = (
             if now.fixed_axes.0 {
                 0.
             } else {
-                crate::layout::block::struts::margin_px(style.margin.left, style, vcx).unwrap_or(0.)
+                crate::layout::block::struts::margin_px(
+                    style.reset_box_layout.margin.left,
+                    style,
+                    vcx,
+                )
+                .unwrap_or(0.)
             },
             if now.fixed_axes.1 {
                 0.
             } else {
-                crate::layout::block::struts::margin_px(style.margin.top, style, vcx).unwrap_or(0.)
+                crate::layout::block::struts::margin_px(
+                    style.reset_box_layout.margin.top,
+                    style,
+                    vcx,
+                )
+                .unwrap_or(0.)
             },
         );
         now.self_align =

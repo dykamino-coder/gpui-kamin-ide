@@ -33,12 +33,12 @@ pub(super) async fn float_box_stack(
     merged.self_node = copy.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(copy);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(copy);
-    merged.margin = Default::default();
+    merged.reset_box_layout.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
     let table = copy.tag == "table"
         || matches!(
-            copy.style.used().display,
+            copy.style.used().reset_box_layout.display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
     let el = if table
@@ -80,15 +80,16 @@ pub(super) async fn float_box_stack(
         // CSS Overflow 4 section 5.3: its lines belong to an independent BFC,
         // but a float intersecting the clamp point keeps its border-box extent.
         let mut probed = merged.clone();
-        probed.float = source.style.used().float;
+        probed.reset_box_layout.float = source.style.used().reset_box_layout.float;
         // The host owns placement margins; the clamp probe still needs the
         // float's non-collapsing end margin for the containing BFC's extent.
-        probed.margin.bottom = match source.style.used().margin.bottom {
-            Some(crate::style::values::value::Len::Pct(k)) => {
-                Some(crate::style::values::value::Len::Px(k * cb))
-            }
-            margin => margin,
-        };
+        probed.reset_box_layout.margin.bottom =
+            match source.style.used().reset_box_layout.margin.bottom {
+                Some(crate::style::values::value::Len::Pct(k)) => {
+                    Some(crate::style::values::value::Len::Px(k * cb))
+                }
+                margin => margin,
+            };
         opts.cx
             .contracts
             .build

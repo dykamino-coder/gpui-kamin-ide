@@ -20,9 +20,9 @@ use sizing::layout_sizing;
 /// У legacy-блока flex-выравнивание неприменимо: прежний сброс свойств
 /// заменён чтением контекста, включая зависимые defaults и grid lanes.
 pub(super) fn legacy_block(c: &Computed) -> bool {
-    c.webkit_box == Some(true)
-        && c.webkit_box_vertical == Some(true)
-        && (c.line_clamp.is_some() || c.clamp_by_height())
+    c.reset_flex.webkit_box == Some(true)
+        && c.inh.text_flow.webkit_box_vertical == Some(true)
+        && (c.reset_fragmentation.line_clamp.is_some() || c.clamp_by_height())
 }
 
 pub(super) fn apply_layout(d: Div, c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Div {
@@ -40,7 +40,7 @@ pub(super) fn apply_layout_with_dimensions(
     // При вертикальном письме оси меняются местами: `row` — это ось СТРОКИ,
     // а она идёт сверху вниз; `column` — ось потока, справа налево
     // (`vertical-rl`) или слева направо (`vertical-lr`).
-    let dir = match (c.flex_dir, c.wm().vertical()) {
+    let dir = match (c.reset_flex.flex_dir, c.wm().vertical()) {
         // Ось СТРОКИ при вертикальном письме идёт сверху вниз, а
         // `direction: rtl` разворачивает её снизу вверх — как и в обычном
         // письме он разворачивает строку справа налево
@@ -59,7 +59,12 @@ pub(super) fn apply_layout_with_dimensions(
         // всё равно надо: в вертикальном письме строка идёт сверху вниз,
         // значит главная ось гибкого ряда — вертикальная даже без
         // явно заданного flex-direction.
-        (None, true) if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) => {
+        (None, true)
+            if matches!(
+                c.reset_box_layout.display,
+                Some(Display::Flex) | Some(Display::InlineFlex)
+            ) =>
+        {
             if c.wm().rtl() {
                 Some(FlexDir::ColReverse)
             } else {

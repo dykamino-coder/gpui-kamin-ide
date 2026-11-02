@@ -29,23 +29,24 @@ impl Computed {
                 // — ряды у подсетки СВОИ, а ИЛИ оставлял их подсеточными, и
                 // с настоящей подсеткой taffy ряд сжимался в один).
                 let tracks = parsed_value!(self, template_tracks(v, vcx));
-                self.subgrid_cols = super::subgrid::valid(v, vcx);
-                self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                self.grid_col_line_names = if self.subgrid_cols {
+                self.reset_grid.subgrid_cols = super::subgrid::valid(v, vcx);
+                self.reset_grid.subgrid =
+                    self.reset_grid.subgrid_cols || self.reset_grid.subgrid_rows;
+                self.reset_grid.grid_col_line_names = if self.reset_grid.subgrid_cols {
                     super::subgrid::parse(v, vcx)
                 } else {
                     parse_line_names(v)
                 };
                 // `none` — ни одной явной дорожки (начальное значение).
-                self.grid_cols = (v != "none").then(|| count_tracks(v)).flatten();
-                self.grid_tracks = tracks;
+                self.reset_grid.grid_cols = (v != "none").then(|| count_tracks(v)).flatten();
+                self.reset_grid.grid_tracks = tracks;
                 // Список без авто-повтора: поля повтора (ветвь `apply_grid`)
                 // принадлежат этому же свойству и сбрасываются.
-                self.grid_auto_fill_min = None;
-                self.grid_auto_fill_tracks = Vec::new();
-                self.auto_repeat_body_cols = None;
-                self.auto_repeat_cols = None;
-                if self.subgrid_cols || v == "none" {
+                self.reset_grid.grid_auto_fill_min = None;
+                self.reset_grid.grid_auto_fill_tracks = Vec::new();
+                self.reset_grid.auto_repeat_body_cols = None;
+                self.reset_grid.auto_repeat_cols = None;
+                if self.reset_grid.subgrid_cols || v == "none" {
                     self.accept_declaration();
                 }
             }
@@ -53,7 +54,7 @@ impl Computed {
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
             // таком тесте.
             "grid-lanes-pack" => {
-                self.lanes_dense = parsed_value!(
+                self.reset_grid.lanes_dense = parsed_value!(
                     self,
                     matches!(v, "pack" | "dense" | "next").then_some(v == "dense")
                 )
@@ -63,7 +64,7 @@ impl Computed {
             // ПОРЯДКЕ ДОКУМЕНТА. `normal` (дефолт!) = 1em, `infinite` —
             // строгий порядок укладки безотносительно высот.
             "flow-tolerance" | "item-tolerance" => {
-                self.lanes_tolerance = parsed_value!(
+                self.reset_grid.lanes_tolerance = parsed_value!(
                     self,
                     match v.trim() {
                         "normal" => Some(None),
@@ -89,9 +90,11 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
-                self.lanes_row = Some(v.split_whitespace().next() == Some("row"));
-                self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
-                self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
+                self.reset_grid.lanes_row = Some(v.split_whitespace().next() == Some("row"));
+                self.reset_grid.lanes_fill_reverse =
+                    v.split_whitespace().any(|w| w == "fill-reverse");
+                self.reset_grid.lanes_track_reverse =
+                    v.split_whitespace().any(|w| w == "track-reverse");
             }
             _ => self.apply_grid_placement(key, v, hit, vcx),
         }

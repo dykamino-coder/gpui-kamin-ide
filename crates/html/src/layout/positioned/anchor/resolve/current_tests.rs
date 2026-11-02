@@ -30,8 +30,18 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
         .borrow_mut()
         .push(("--a".into(), 1, record(40.)));
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
-        width: Len::parse("anchor-size(--a width, 9px)", vcx),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Len::parse("anchor-size(--a width, 9px)", vcx),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_seq = 2;
@@ -43,7 +53,7 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
         vcx,
         &doc.layout,
     );
-    assert_eq!(c.width, Some(Len::Px(40.)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(40.)));
     doc.layout.anchors.named_seq.borrow_mut().clear();
     c = original;
     resolve_current(
@@ -53,7 +63,7 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
         vcx,
         &doc.layout,
     );
-    assert_eq!(c.width, Some(Len::Px(9.)));
+    assert_eq!(c.reset_box_layout.width, Some(Len::Px(9.)));
 }
 
 #[test]
@@ -62,13 +72,20 @@ fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
     let vcx = doc.frame_values();
     for position_anchor in [None, Some(PositionAnchor::Named("--missing".into()))] {
         let mut c = BoxStyle::new(Computed {
-            position: Some(Position::Absolute),
-            position_anchor,
-            position_area: crate::style::values::position_area::parse_area("span-bottom right"),
+            reset_positioned: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetPositioned {
+                    position: Some(Position::Absolute),
+                    position_anchor,
+                    position_area: crate::style::values::position_area::parse_area(
+                        "span-bottom right",
+                    ),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         });
-        c.inset.top = Len::parse("anchor(--explicit bottom)", vcx);
-        c.inset.bottom = Some(Len::Px(0.));
+        c.reset_positioned.inset.top = Len::parse("anchor(--explicit bottom)", vcx);
+        c.reset_positioned.inset.bottom = Some(Len::Px(0.));
         resolve_current(
             &mut c,
             &BoxStyle::default(),
@@ -80,7 +97,7 @@ fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
             vcx,
             &doc.layout,
         );
-        assert_eq!(c.height, Some(Len::Px(67.)));
+        assert_eq!(c.reset_box_layout.height, Some(Len::Px(67.)));
     }
 }
 
@@ -92,7 +109,7 @@ fn trial_computed_parent_is_local_to_the_matching_frame_root() {
 
     let original = Rc::new(Computed::default());
     let mut trial = (*original).clone();
-    trial.width = Some(Len::Px(20.));
+    trial.reset_box_layout.width = Some(Len::Px(20.));
     let variant = Rc::new(trial);
     let mut cx = LayoutCx::default();
     cx.position.oof_computed = Some((
@@ -105,13 +122,13 @@ fn trial_computed_parent_is_local_to_the_matching_frame_root() {
     ));
     let mut root = BoxStyle::shared(original.clone());
     root.anchor_key = 7;
-    root.width = Some(Len::Px(999.));
+    root.reset_box_layout.width = Some(Len::Px(999.));
     super::prepare(&mut root, &BoxStyle::default(), &cx);
     assert!(Rc::ptr_eq(
         &root.element_style.as_ref().unwrap().computed,
         &variant
     ));
-    assert_eq!(root.width, Some(Len::Px(999.)));
+    assert_eq!(root.reset_box_layout.width, Some(Len::Px(999.)));
     let mut other = BoxStyle::shared(original);
     other.anchor_key = 8;
     super::prepare(&mut other, &root, &cx);

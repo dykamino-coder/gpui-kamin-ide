@@ -45,17 +45,17 @@ pub(crate) struct FlexPush {
 
 pub(crate) fn flex_container(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Flex | Display::InlineFlex)
     )
 }
 
 pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> FlexBox {
     let column = matches!(
-        e.style.used().flex_dir,
+        e.style.used().reset_flex.flex_dir,
         Some(crate::style::computed::FlexDir::Col | crate::style::computed::FlexDir::ColReverse)
     );
-    let main_gap = match e.style.used().gap {
+    let main_gap = match e.style.used().reset_flex.gap {
         Some((Some(crate::style::values::value::Len::Px(v)), _)) if column => v.max(0.0),
         _ => 0.0,
     };
@@ -64,7 +64,9 @@ pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> FlexBo
         items: children(&e.children)
             .filter_map(|n| {
                 let Node::Element(k) = n else { return None };
-                if out_of_flow(&k.style.used()) || k.style.used().display == Some(Display::None) {
+                if out_of_flow(&k.style.used())
+                    || k.style.used().reset_box_layout.display == Some(Display::None)
+                {
                     return None;
                 }
                 let monolith = content_monolith_blockified(k);

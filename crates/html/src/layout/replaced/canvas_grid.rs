@@ -19,32 +19,32 @@ pub(crate) fn render(
     let c = merged;
     let border = c.borders();
     if c.context.parent_grid == 0
-        || c.position.is_some()
+        || c.reset_positioned.position.is_some()
         || c.contains_width()
         || c.contains_height()
-        || c.transform.is_some()
-        || c.gradient.is_some()
-        || c.bg_image.is_some()
-        || c.outline.is_some()
-        || !c.shadows.is_empty()
-        || !c.inset_shadows.is_empty()
-        || c.filter.is_some()
-        || c.filter_ref.is_some()
-        || c.mask_image.is_some()
-        || c.clip_ref.is_some()
+        || c.reset_transforms.transform.is_some()
+        || c.reset_background.gradient.is_some()
+        || c.reset_background.bg_image.is_some()
+        || c.reset_border.outline.is_some()
+        || !c.reset_effects.shadows.is_empty()
+        || !c.reset_effects.inset_shadows.is_empty()
+        || c.reset_effects.filter.is_some()
+        || c.reset_effects.filter_ref.is_some()
+        || c.reset_mask.mask_image.is_some()
+        || c.reset_mask.clip_ref.is_some()
         || [
-            c.padding.left,
-            c.padding.right,
-            c.padding.top,
-            c.padding.bottom,
+            c.reset_box_layout.padding.left,
+            c.reset_box_layout.padding.right,
+            c.reset_box_layout.padding.top,
+            c.reset_box_layout.padding.bottom,
             border.left,
             border.right,
             border.top,
             border.bottom,
-            c.radius.tl,
-            c.radius.tr,
-            c.radius.br,
-            c.radius.bl,
+            c.reset_border.radius.tl,
+            c.reset_border.radius.tr,
+            c.reset_border.radius.br,
+            c.reset_border.radius.bl,
         ]
         .into_iter()
         .any(|v| !matches!(v, None | Some(Len::Px(0.0))))
@@ -55,10 +55,11 @@ pub(crate) fn render(
         Some(Len::Px(v)) => v,
         _ => default,
     };
-    let w = natural(c.attr_width, DEFAULT_CANVAS_SIZE_PX.0);
+    let w = natural(c.reset_box_layout.attr_width, DEFAULT_CANVAS_SIZE_PX.0);
     let ratio = c
+        .reset_shapes
         .aspect_ratio
-        .unwrap_or_else(|| w / natural(c.attr_height, DEFAULT_CANVAS_SIZE_PX.1));
+        .unwrap_or_else(|| w / natural(c.reset_box_layout.attr_height, DEFAULT_CANVAS_SIZE_PX.1));
     if !ratio.is_finite() || ratio <= 0.0 || w <= 0.0 {
         return None;
     }
@@ -67,13 +68,13 @@ pub(crate) fn render(
     let context = computed.context.clone();
     computed.context = super::image::inherit_item_metadata(&mut computed, context, merged, parent);
     // Canvas attributes describe its bitmap, not author preferred dimensions.
-    if computed.attr_sized.0 {
-        computed.width = None;
+    if computed.reset_box_layout.attr_sized.0 {
+        computed.reset_box_layout.width = None;
     }
-    if computed.attr_sized.1 {
-        computed.height = None;
+    if computed.reset_box_layout.attr_sized.1 {
+        computed.reset_box_layout.height = None;
     }
-    computed.attr_sized = (false, false);
+    computed.reset_box_layout.attr_sized = (false, false);
     // Grid supplies a definite percentage base at final layout. Leave the
     // percentage in the native style for intrinsic sizing to resolve as auto.
     computed.cb_height_def = true;
@@ -82,8 +83,8 @@ pub(crate) fn render(
     native.refine(painted.style());
     native.aspect_ratio = Some(ratio);
     let (mut align_start, mut justify_start) = (
-        computed.align_self.is_none() || computed.align_self_normal,
-        computed.justify_self.is_none() || computed.justify_self_normal,
+        computed.reset_flex.align_self.is_none() || computed.reset_flex.align_self_normal,
+        computed.reset_flex.justify_self.is_none() || computed.reset_flex.justify_self_normal,
     );
     if c.context.parent_grid >= 2 {
         std::mem::swap(&mut align_start, &mut justify_start);

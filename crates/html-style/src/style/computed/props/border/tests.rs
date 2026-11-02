@@ -52,10 +52,10 @@ fn shorthand_and_longhands_meet_by_order_of_appearance() {
     // `currentColor`, a later `border-color` wins over it.
     let (c, d) = styled("border-right: 6px solid; border-color: pink");
     let pink = StyleColor::parse_value("pink", d.values()).unwrap();
-    assert_eq!(c.border_colors[1], pink);
+    assert_eq!(c.reset_border.border_colors[1], pink);
     let (c, _d) = styled("border-color: pink; border-right: 6px solid");
-    assert_eq!(c.border_colors[1], StyleColor::Current);
-    assert_eq!(c.border_colors[0], pink);
+    assert_eq!(c.reset_border.border_colors[1], StyleColor::Current);
+    assert_eq!(c.reset_border.border_colors[0], pink);
     assert_eq!(c.used_uniform_border_color(), None);
 }
 
@@ -82,37 +82,53 @@ fn invalid_border_declarations_are_dropped_whole() {
 #[test]
 fn style_alone_gives_the_initial_medium_width() {
     let (c, _d) = styled("border-style: none solid");
-    assert_eq!(c.border_width.top, None);
+    assert_eq!(c.reset_border.border_width.top, None);
     assert_eq!(c.borders().top, None);
     assert_eq!(c.borders().right, Some(Len::Px(3.0)));
     let (c, _d) = styled("border-right: 10px dotted; border-color: pink");
-    assert_eq!(c.border_dotted, Some(true));
+    assert_eq!(c.reset_border.border_dotted, Some(true));
     // `currentColor` stays the keyword (css-color-4 §6.4): the element's
     // color decides it at use.
     let (c, _d) = styled("border: 1px solid currentColor");
     assert_eq!(c.borders().top, Some(Len::Px(1.0)));
-    assert!(c.border_colors.iter().all(StyleColor::is_current));
-    assert_eq!(c.border_side_styles, [Some(9); 4]);
+    assert!(
+        c.reset_border
+            .border_colors
+            .iter()
+            .all(StyleColor::is_current)
+    );
+    assert_eq!(c.reset_border.border_side_styles, [Some(9); 4]);
 }
 
 #[test]
 fn border_resets_border_image_and_outline_resets_its_parts() {
     let (c, _d) = styled("border-image: url(x.png) 30; border: 1px solid");
-    assert!(c.border_image.is_none());
+    assert!(c.reset_border.border_image.is_none());
     let (c, _d) = styled("border: 1px solid; border-image: url(x.png) 30");
-    assert!(c.border_image.is_some_and(|b| b.src.is_some()));
+    assert!(
+        c.reset_border
+            .border_image
+            .clone()
+            .is_some_and(|b| b.src.is_some())
+    );
     let (c, d) = styled("outline-color: red; outline: 2px solid");
-    let o = c.outline.expect("outline");
+    let o = c.reset_border.outline.clone().expect("outline");
     assert_eq!(
         (o.width, o.style, o.color),
         (Some(Len::Px(2.0)), Some(1), ColorOrAuto::Auto)
     );
     let (c, _d) = styled("outline: 2px solid; outline-color: red");
     assert_eq!(
-        c.outline.and_then(|o| o.color.color().cloned()),
+        c.reset_border
+            .outline
+            .clone()
+            .and_then(|o| o.color.color().cloned()),
         StyleColor::parse_value("red", d.values())
     );
     // `hidden` is not an outline style (css-ui-4 §outline-style).
     let (c, _d) = styled("outline: 2px dotted; outline-style: hidden");
-    assert_eq!(c.outline.and_then(|o| o.style), Some(3));
+    assert_eq!(
+        c.reset_border.outline.clone().and_then(|o| o.style),
+        Some(3)
+    );
 }

@@ -63,7 +63,8 @@ pub(crate) fn spanner_parts(
                     || bodies[..n_b - 1]
                         .iter()
                         .all(|b| b.iter().all(crate::dom::whitespace::is_blank));
-                let mut continuation = ParentResume::new(metrics, c.style.used().bdb_clone);
+                let mut continuation =
+                    ParentResume::new(metrics, c.style.used().reset_fragmentation.bdb_clone);
                 let mut bi = 0usize;
                 for p in inner {
                     match p {
@@ -86,11 +87,11 @@ pub(crate) fn spanner_parts(
                             if visible
                                 || own.is_some_and(|v| v > 0.)
                                 || (keep
-                                    && (c.style.used().height.is_some()
-                                        || c.style.used().min_height.is_some()))
+                                    && (c.style.used().reset_box_layout.height.is_some()
+                                        || c.style.used().reset_box_layout.min_height.is_some()))
                             {
                                 if let Some(v) = own {
-                                    f.style.used_mut().height = Some(Len::Px(v));
+                                    f.style.used_mut().reset_box_layout.height = Some(Len::Px(v));
                                 }
                                 body.push(Node::Element(f));
                             }
@@ -108,11 +109,12 @@ pub(crate) fn spanner_parts(
                             // (`spanner-in-opacity`). Трансформ и фильтр
                             // сюда не попадают вовсе: они барьер
                             // (`passes_spanner`).
-                            let s = match (c.style.used().opacity, &s) {
+                            let s = match (c.style.used().reset_effects.opacity, &s) {
                                 (Some(o), Node::Element(sp)) if o < 1.0 => {
                                     let mut sp = sp.clone();
-                                    sp.style.used_mut().opacity =
-                                        Some(sp.style.used().opacity.unwrap_or(1.0) * o);
+                                    sp.style.used_mut().reset_effects.opacity = Some(
+                                        sp.style.used().reset_effects.opacity.unwrap_or(1.0) * o,
+                                    );
                                     Node::Element(sp)
                                 }
                                 _ => s,
@@ -213,15 +215,33 @@ mod tests {
                 assert_eq!(dimensions(f).minimum[1], None);
                 assert_eq!(dimensions(f).maximum[1], None);
                 assert!(!dimensions(f).border_box);
-                assert_eq!(dimensions(f).preferred[1], f.style.used().height);
-                assert_eq!(f.style.used().min_height, e.style.used().min_height);
-                assert_eq!(f.style.used().max_height, e.style.used().max_height);
-                assert_eq!(f.style.used().border_box, e.style.used().border_box);
+                assert_eq!(
+                    dimensions(f).preferred[1],
+                    f.style.used().reset_box_layout.height
+                );
+                assert_eq!(
+                    f.style.used().reset_box_layout.min_height,
+                    e.style.used().reset_box_layout.min_height
+                );
+                assert_eq!(
+                    f.style.used().reset_box_layout.max_height,
+                    e.style.used().reset_box_layout.max_height
+                );
+                assert_eq!(
+                    f.style.used().reset_border.border_box,
+                    e.style.used().reset_border.border_box
+                );
             }
-            assert_eq!(e.style.used().height, Some(Len::Px(100.)));
-            assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));
-            assert_eq!(e.style.used().max_height, Some(Len::Px(180.)));
-            assert_eq!(e.style.used().border_box, Some(true));
+            assert_eq!(e.style.used().reset_box_layout.height, Some(Len::Px(100.)));
+            assert_eq!(
+                e.style.used().reset_box_layout.min_height,
+                Some(Len::Px(150.))
+            );
+            assert_eq!(
+                e.style.used().reset_box_layout.max_height,
+                Some(Len::Px(180.))
+            );
+            assert_eq!(e.style.used().reset_border.border_box, Some(true));
         }
     }
 }

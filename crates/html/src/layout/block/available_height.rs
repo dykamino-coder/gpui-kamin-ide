@@ -34,17 +34,27 @@ pub(crate) fn inner_with_dimensions(
     width: Option<f32>,
     viewport: f32,
 ) -> Option<f32> {
-    match st.display {
+    match st.reset_box_layout.display {
         Some(Display::Contents) => return outer,
         None | Some(Display::Block | Display::ListItem | Display::InlineBlock) => {}
         _ => return None,
     }
-    if st.wm().vertical() || st.column_count.is_some() || st.column_width.is_some() {
+    if st.wm().vertical()
+        || st.reset_fragmentation.column_count.is_some()
+        || st.reset_fragmentation.column_width.is_some()
+    {
         return None;
     }
-    let outer = if st.root_box { Some(viewport) } else { outer };
+    let outer = if st.reset_context.root_box {
+        Some(viewport)
+    } else {
+        outer
+    };
     if matches!(sizes.preferred[1], Some(Len::Pct(_)))
-        && matches!(st.position, Some(Position::Absolute | Position::Fixed))
+        && matches!(
+            st.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
     {
         return None;
     }
@@ -76,9 +86,19 @@ pub(crate) fn content_block_size_with_dimensions(
         };
         let b = st.borders();
         let (a, z, ba, bz) = if vertical {
-            (st.padding.left, st.padding.right, b.left, b.right)
+            (
+                st.reset_box_layout.padding.left,
+                st.reset_box_layout.padding.right,
+                b.left,
+                b.right,
+            )
         } else {
-            (st.padding.top, st.padding.bottom, b.top, b.bottom)
+            (
+                st.reset_box_layout.padding.top,
+                st.reset_box_layout.padding.bottom,
+                b.top,
+                b.bottom,
+            )
         };
         side(a)? + side(z)? + side(ba)? + side(bz)?
     } else {
@@ -110,12 +130,27 @@ mod tests {
     #[test]
     fn root_and_descendant_percentages_use_definite_content_height() {
         let root = Computed {
-            root_box: true,
-            height: Some(Len::Pct(1.0)),
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    root_box: true,
+                    ..Default::default()
+                },
+            ),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(1.0)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         let child = Computed {
-            height: Some(Len::Pct(0.5)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Pct(0.5)),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         assert_eq!(inner(&root, None, Some(800.0), 600.0), Some(600.0));
@@ -126,14 +161,24 @@ mod tests {
     #[test]
     fn border_box_subtracts_edges_but_min_height_does_not_make_auto_definite() {
         let mut st = Computed {
-            height: Some(Len::Px(100.0)),
-            border_box: Some(true),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    height: Some(Len::Px(100.0)),
+                    ..Default::default()
+                },
+            ),
+            reset_border: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBorder {
+                    border_box: Some(true),
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
-        st.padding.top = Some(Len::Pct(0.1));
+        st.reset_box_layout.padding.top = Some(Len::Pct(0.1));
         assert_eq!(inner(&st, None, Some(200.0), 600.0), Some(80.0));
-        st.height = None;
-        st.min_height = Some(Len::Px(100.0));
+        st.reset_box_layout.height = None;
+        st.reset_box_layout.min_height = Some(Len::Px(100.0));
         assert_eq!(inner(&st, Some(600.0), Some(200.0), 600.0), None);
     }
 }

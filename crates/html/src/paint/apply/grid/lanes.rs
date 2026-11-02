@@ -8,12 +8,12 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
     // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками
     // делает taffy. Порог `flow-tolerance: normal` — 1em (css-grid-3
     // Overview.bs:828-831), `infinite` разбор держит бесконечными точками.
-    if c.lanes_taffy {
-        let em = match c.font_size {
+    if c.reset_grid.lanes_taffy {
+        let em = match c.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => MEDIUM_FONT_SIZE_PX,
         };
-        let (tolerance, tolerance_pct) = match c.lanes_tolerance {
+        let (tolerance, tolerance_pct) = match c.reset_grid.lanes_tolerance {
             Some(Len::Px(v)) => (v, None),
             Some(Len::Em(k)) => (k * em, None),
             Some(Len::Pct(k)) => (0.0, Some(k)),
@@ -26,9 +26,9 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
         let logical_rows = crate::dom::lanes_row_dir(c);
         d.style().grid_lanes = Some(gpui::GridLanesFlow {
             rows: logical_rows != vertical,
-            track_reverse: c.lanes_track_reverse,
-            fill_reverse: c.lanes_fill_reverse,
-            dense: c.lanes_dense,
+            track_reverse: c.reset_grid.lanes_track_reverse,
+            fill_reverse: c.reset_grid.lanes_fill_reverse,
+            dense: c.reset_grid.lanes_dense,
             tolerance,
             tolerance_pct,
             stack_block: vertical && !logical_rows,
@@ -38,7 +38,7 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
         // проёмом; Blink `ResolvedAlignSelf(normal)` :1056-1060), а общий
         // путь `align-items: stretch` в стиль не пишет — для сетки это
         // умолчание. Лункам явная растяжка нужна в стиле.
-        if c.align_items == Some(crate::style::computed::Align::Stretch)
+        if c.reset_flex.align_items == Some(crate::style::computed::Align::Stretch)
             && !super::super::layout::legacy_block(c)
         {
             d.style().align_items = Some(gpui::AlignItems::Stretch);

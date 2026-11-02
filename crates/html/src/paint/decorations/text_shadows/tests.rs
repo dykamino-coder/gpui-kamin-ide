@@ -21,7 +21,16 @@ fn inherited_currentcolor_uses_the_descendant_color() {
     assert_eq!(shadows[0].color, Color::parse("green", vcx).unwrap().into());
     assert_eq!((shadows[0].x, shadows[0].y), (2.0, 3.0));
     assert_eq!(shadows[1].color, Color::parse("blue", vcx).unwrap().into());
-    assert!(child.text_shadow.clone().unwrap().color.is_current());
+    assert!(
+        child
+            .inh
+            .text_ink
+            .text_shadow
+            .clone()
+            .unwrap()
+            .color
+            .is_current()
+    );
 }
 
 #[test]
@@ -77,7 +86,7 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
     let mut groups = Vec::new();
     collect_groups(
         &nodes,
-        &ShadowStyle::new(&parent, parent.color),
+        &ShadowStyle::new(&parent, parent.inh.ui.color),
         &mut groups,
         vcx,
     );
@@ -87,7 +96,16 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
         groups[1][0].color,
         Color::parse("green", vcx).unwrap().into()
     );
-    assert!(parent.text_shadow.clone().unwrap().color.is_current());
+    assert!(
+        parent
+            .inh
+            .text_ink
+            .text_shadow
+            .clone()
+            .unwrap()
+            .color
+            .is_current()
+    );
 }
 
 #[test]
@@ -99,7 +117,7 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     owner.apply_one("text-decoration", "underline blue", vcx);
     owner.apply_one("text-shadow", "2px 3px green", vcx);
     let owner = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &owner, vcx);
-    let context = ShadowStyle::new(&owner, owner.color);
+    let context = ShadowStyle::new(&owner, owner.inh.ui.color);
     let group = context.resolved();
     let nodes = vec![Node::Element(span(
         (owner.clone()).into_computed(),
@@ -109,10 +127,13 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     let Node::Element(mask) = &masked[0] else {
         panic!("missing span")
     };
-    assert_eq!(mask.style.cascaded().color, owner.color);
-    assert_eq!(mask.style.used().decors, owner.decors);
+    assert_eq!(mask.style.cascaded().inh.ui.color, owner.inh.ui.color);
     assert_eq!(
-        mask.style.used().text_shadow_ink,
+        mask.style.used().reset_text_box.decors,
+        owner.reset_text_box.decors
+    );
+    assert_eq!(
+        mask.style.used().reset_text_box.text_shadow_ink,
         Some(Color::parse("green", vcx).unwrap())
     );
 }
@@ -123,8 +144,11 @@ fn text_only_preserves_shadow_ink_without_changing_computed_color() {
     let vcx = doc.values();
     let mut style = Computed::default();
     style.apply_one("color", "red", vcx);
-    style.text_shadow_ink = Some(Color::parse("green", vcx).unwrap());
+    style.reset_text_box.text_shadow_ink = Some(Color::parse("green", vcx).unwrap());
     let text = style.text_only();
-    assert_eq!(text.color, style.color);
-    assert_eq!(text.text_shadow_ink, style.text_shadow_ink);
+    assert_eq!(text.inh.ui.color, style.inh.ui.color);
+    assert_eq!(
+        text.reset_text_box.text_shadow_ink,
+        style.reset_text_box.text_shadow_ink
+    );
 }

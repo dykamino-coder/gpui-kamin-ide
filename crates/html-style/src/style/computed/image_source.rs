@@ -161,7 +161,7 @@ mod tests;
 
 impl Computed {
     pub fn content_image(&self) -> Option<&ImageSource> {
-        match self.content.as_deref() {
+        match self.reset_generated.content.as_deref() {
             Some([super::ContentItem::Image(image)]) => Some(image),
             _ => None,
         }

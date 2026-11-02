@@ -57,8 +57,13 @@ pub(super) fn pseudo_styles(
     let first_letter = layer("first-letter", Some(&style)).map(Box::new);
     let first_line = layer("first-line", Some(&style)).map(Box::new);
     let first_line_own = layer("first-line", None).map(Box::new);
-    style.first_letter_own = layer("first-letter", None).map(Box::new);
-    style.first_line_own = first_line_own;
+    let first_letter_own = layer("first-letter", None).map(Box::new);
+    if first_letter_own.is_some() || style.reset_text_box.first_letter_own.is_some() {
+        style.reset_text_box.first_letter_own = first_letter_own;
+    }
+    if first_line_own.is_some() || style.reset_text_box.first_line_own.is_some() {
+        style.reset_text_box.first_line_own = first_line_own;
+    }
     // `::marker` — НЕ копией стиля хозяина, как первая буква, а
     // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
     // протащила бы в маркер рамку, поля и размеры самого `<li>`.
@@ -74,20 +79,24 @@ pub(super) fn pseudo_styles(
             .filter(|r| r.sel.pseudo.as_deref() == Some("marker"))
             .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
             .collect();
-        (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
+        (!found.is_empty()
+            || tag == "li"
+            || style.reset_box_layout.display == Some(Display::ListItem))
+        .then(|| {
             // CSS Lists 3 marker UA style preserves spaces and tab characters.
             let mut m = {
                 let mut with_inherited = Computed {
                     ..Default::default()
                 };
-                with_inherited.keep_spaces = Some(true);
-                with_inherited.preserve_newlines = Some(true);
-                with_inherited.nowrap = Some(true);
-                with_inherited.text_transform = Some(crate::style::computed::TextTransform::None);
+                with_inherited.inh.text_flow.keep_spaces = Some(true);
+                with_inherited.inh.text_flow.preserve_newlines = Some(true);
+                with_inherited.inh.text_flow.nowrap = Some(true);
+                with_inherited.inh.text_flow.text_transform =
+                    Some(crate::style::computed::TextTransform::None);
                 with_inherited
             };
             if !found.is_empty() {
-                m.bidi_isolate = Some(true);
+                m.reset_cascade.bidi_isolate = Some(true);
             }
             m.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
             Box::new(m)

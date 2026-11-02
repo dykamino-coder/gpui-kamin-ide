@@ -7,7 +7,7 @@ pub(crate) fn fallbacks(
     base: Option<gpui::FontFallbacks>,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<gpui::FontFallbacks> {
-    let Some(families) = &style.font_families else {
+    let Some(families) = &style.inh.font.font_families else {
         return base.or_else(crate::text::fonts::document_fallbacks);
     };
     // CSS Fonts 4 section 5.2: missing glyphs continue through the authored
@@ -15,7 +15,7 @@ pub(crate) fn fallbacks(
     // font; DirectWrite maps only characters absent from that primary font.
     let mut list: Vec<String> = families
         .iter()
-        .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
+        .filter(|name| Some(name.as_str()) != style.inh.font.font_family.as_deref())
         .filter(|name| {
             crate::text::metrics::font_installed(name, vcx)
                 || crate::text::fonts::alias(name, vcx).is_some()

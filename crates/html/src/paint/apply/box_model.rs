@@ -29,14 +29,18 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // CSS Containment 2 §3.1: intrinsic keywords also size the box as empty.
     if c.contains_height()
         && matches!(
-            c.height,
+            c.reset_box_layout.height,
             None | Some(Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent)
         )
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.padding.top) + side(c.padding.bottom) + side(b.top) + side(b.bottom);
+        let pad = side(c.reset_box_layout.padding.top)
+            + side(c.reset_box_layout.padding.bottom)
+            + side(b.top)
+            + side(b.bottom);
         let ci = px(c
+            .reset_context
             .contain_intrinsic
             .1
             .unwrap_or_else(|| empty_contained_size(c, false))
@@ -47,7 +51,7 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         // Явная высота глушила растяжку (`contain-intrinsic-size-010/016`:
         // 13 точек вместо 100); нижней гранью подмена держит строку
         // авто-высоты от схлопывания в ноль.
-        d = if c.cross_stretched {
+        d = if c.reset_flex.cross_stretched {
             d.min_h(ci)
         } else {
             d.h(ci)
@@ -61,27 +65,31 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // (shrink-to-fit). Под обособлением содержимого у них нет — ширина
     // становится `contain-intrinsic-size`.
     let shrink_to_fit = matches!(
-        c.display,
+        c.reset_box_layout.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) || c.float.is_some()
+    ) || c.reset_box_layout.float.is_some()
         || matches!(
-            c.position,
+            c.reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         );
     if c.contains_width()
         && (matches!(
-            c.width,
+            c.reset_box_layout.width,
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
-        ) || (shrink_to_fit && matches!(c.width, None | Some(Len::Auto))))
+        ) || (shrink_to_fit && matches!(c.reset_box_layout.width, None | Some(Len::Auto))))
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
+        let pad = side(c.reset_box_layout.padding.left)
+            + side(c.reset_box_layout.padding.right)
+            + side(b.left)
+            + side(b.right);
         d = d.w(px(c
+            .reset_context
             .contain_intrinsic
             .0
             .unwrap_or_else(|| empty_contained_size(c, true))
@@ -93,14 +101,17 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // здесь нет). При ЯВНОЙ ширине вклад не нужен — она и есть ответ, а
     // подпорка снизу растягивала коробку против написанного.
     if c.contains_width()
-        && matches!(c.min_width, None | Some(Len::Auto))
-        && matches!(c.width, None | Some(Len::Auto))
+        && matches!(c.reset_box_layout.min_width, None | Some(Len::Auto))
+        && matches!(c.reset_box_layout.width, None | Some(Len::Auto))
         && !shrink_to_fit
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
-        d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
+        let pad = side(c.reset_box_layout.padding.left)
+            + side(c.reset_box_layout.padding.right)
+            + side(b.left)
+            + side(b.right);
+        d = d.min_w(px(c.reset_context.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
     d = apply_sides(d, &edges.inner, SideKind::Padding, vcx);
     d = apply_sides(d, &edges.outer, SideKind::Margin, vcx);
@@ -179,11 +190,15 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind, vcx: ValueCx<'_>) -> Div {
 pub(crate) fn radius_px(c: &Computed, l: Option<Len>, vcx: ValueCx<'_>) -> Option<f32> {
     let px_len = px_lossy_zero;
     let b = c.borders();
-    let extra_w =
-        px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
-    let extra_h =
-        px_len(c.padding.top) + px_len(c.padding.bottom) + px_len(b.top) + px_len(b.bottom);
-    let base = match (c.width, c.height) {
+    let extra_w = px_len(c.reset_box_layout.padding.left)
+        + px_len(c.reset_box_layout.padding.right)
+        + px_len(b.left)
+        + px_len(b.right);
+    let extra_h = px_len(c.reset_box_layout.padding.top)
+        + px_len(c.reset_box_layout.padding.bottom)
+        + px_len(b.top)
+        + px_len(b.bottom);
+    let base = match (c.reset_box_layout.width, c.reset_box_layout.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w + extra_w).min(h + extra_h),
         (Some(Len::Px(w)), _) => w + extra_w,
         (_, Some(Len::Px(h))) => h + extra_h,
@@ -204,10 +219,10 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // лезвием (см. `Computed::radius_masked`).
     // `border-shape` не совместим с `border-radius`: радиус — «as if it was
     // set to 0» (css-borders-4 §border-shape-radius-interaction).
-    if c.radius_masked(vcx) || c.border_shape.is_some() {
+    if c.radius_masked(vcx) || c.reset_border.border_shape.is_some() {
         return d;
     }
-    let r = &c.radius;
+    let r = &c.reset_border.radius;
     let resolve = |l: Option<Len>| radius_px(c, l, vcx);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
         let Some(v) = resolve(val) else { continue };

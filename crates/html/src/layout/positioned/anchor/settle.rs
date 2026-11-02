@@ -18,7 +18,7 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
-            if let Some(list) = &e.style.used().anchor_name {
+            if let Some(list) = &e.style.used().reset_positioned.anchor_name {
                 out.extend(list.iter().cloned());
             }
             names(&e.children, out);
@@ -27,38 +27,49 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
-            if e.style.used().position_anchor == Some(PositionAnchor::MatchParent) {
+            if e.style.used().reset_positioned.position_anchor == Some(PositionAnchor::MatchParent)
+            {
                 let (pa, implicit) = match_parent(parent);
-                e.style.used_mut().position_anchor = Some(pa);
+                e.style.used_mut().reset_positioned.position_anchor = Some(pa);
                 if implicit.is_some() {
-                    e.style.used_mut().implicit_anchor = implicit;
+                    e.style.used_mut().reset_positioned.implicit_anchor = implicit;
                 }
             }
-            let has_default = match &e.style.used().position_anchor {
+            let has_default = match &e.style.used().reset_positioned.position_anchor {
                 Some(PositionAnchor::Named(n)) => known.contains(n),
-                Some(PositionAnchor::Auto) => e.style.used().implicit_anchor.is_some(),
+                Some(PositionAnchor::Auto) => {
+                    e.style.used().reset_positioned.implicit_anchor.is_some()
+                }
                 // `normal` при непустой `position-area` ведёт себя как `auto`
                 // (§position-anchor); без области — как `none`.
                 Some(PositionAnchor::Normal) | None => {
-                    e.style.used().position_area.is_some()
-                        && e.style.used().implicit_anchor.is_some()
+                    e.style.used().reset_positioned.position_area.is_some()
+                        && e.style.used().reset_positioned.implicit_anchor.is_some()
                 }
                 _ => false,
             };
-            let s = &mut e.style.used_mut().inset;
-            for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                *slot = settle_len(*slot, has_default, known, vcx);
+            let inset = e.style.used().reset_positioned.inset;
+            // §anchor-resolution меняет только anchor(): обычные вставки не
+            // требуют отдельной копии стиля и сохраняют ключ materialization.
+            if [inset.top, inset.right, inset.bottom, inset.left]
+                .into_iter()
+                .any(|l| matches!(l, Some(Len::Anchor(_))))
+            {
+                let s = &mut e.style.used_mut().reset_positioned.inset;
+                for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
+                    *slot = settle_len(*slot, has_default, known, vcx);
+                }
             }
             let abs = matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             );
             let me: Parent = abs.then(|| {
                 (
-                    e.style.used().position_anchor.clone(),
-                    e.style.used().position_area.is_some(),
-                    e.style.used().implicit_anchor,
+                    e.style.used().reset_positioned.position_anchor.clone(),
+                    e.style.used().reset_positioned.position_area.is_some(),
+                    e.style.used().reset_positioned.implicit_anchor,
                 )
             });
             settle(&mut e.children, known, &me, vcx);
@@ -108,12 +119,16 @@ pub(super) enum DefaultAnchor {
 /// `position-anchor` → якорь по умолчанию; `normal`/не задано при непустой
 /// `position-area` — как `auto` (§position-anchor).
 pub(super) fn default_anchor_of(c: &Computed) -> Option<DefaultAnchor> {
-    match &c.position_anchor {
+    match &c.reset_positioned.position_anchor {
         Some(PositionAnchor::Named(n)) => Some(DefaultAnchor::Named(n.clone())),
-        Some(PositionAnchor::Auto) => c.implicit_anchor.map(DefaultAnchor::Implicit),
-        Some(PositionAnchor::Normal) | None if c.position_area.is_some() => {
-            c.implicit_anchor.map(DefaultAnchor::Implicit)
-        }
+        Some(PositionAnchor::Auto) => c
+            .reset_positioned
+            .implicit_anchor
+            .map(DefaultAnchor::Implicit),
+        Some(PositionAnchor::Normal) | None if c.reset_positioned.position_area.is_some() => c
+            .reset_positioned
+            .implicit_anchor
+            .map(DefaultAnchor::Implicit),
         _ => None,
     }
 }
@@ -138,5 +153,91 @@ pub(super) fn match_parent(parent: &Parent) -> (PositionAnchor, Option<u64>) {
             (PositionAnchor::Auto, *implicit)
         }
         _ => (PositionAnchor::None, None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::{Element, Marks};
+    use crate::style::computed::{ResetPositioned, Sides, StyleGroup};
+    use std::rc::Rc;
+
+    #[test]
+    fn ordinary_insets_keep_cascaded_and_materialized_storage() {
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let seed = Computed {
+            reset_positioned: StyleGroup::new(ResetPositioned {
+                inset: Sides {
+                    top: Some(Len::Px(7.)),
+                    right: Some(Len::Pct(25.)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+            ..doc.initial_style()
+        };
+        for materialized in [false, true] {
+            let element = Element::synthetic("div", seed.clone(), Marks::default(), Vec::new());
+            let mut nodes = vec![Node::Element(element)];
+            if materialized {
+                crate::style::cascade::materialize::materialize(
+                    &nodes,
+                    &Rc::new(doc.initial_style()),
+                    doc.values(),
+                );
+            }
+            let Node::Element(element) = &nodes[0] else {
+                panic!("element")
+            };
+            let before = element.style.computed();
+            settle_static(&mut nodes, doc.values());
+            let Node::Element(element) = &nodes[0] else {
+                panic!("element")
+            };
+            assert!(Rc::ptr_eq(&before, &element.style.computed()));
+            assert!(element.style.used_rc().is_none());
+            assert!(
+                seed.reset_positioned
+                    .ptr_eq(&element.style.cascaded().reset_positioned)
+            );
+        }
+    }
+
+    #[test]
+    fn missing_anchor_still_resolves_fallback_without_mutating_source() {
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let seed = Computed {
+            reset_positioned: StyleGroup::new(ResetPositioned {
+                inset: Sides {
+                    top: Len::parse("anchor(--missing top, 7px)", doc.values()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+            ..doc.initial_style()
+        };
+        assert!(matches!(
+            seed.reset_positioned.inset.top,
+            Some(Len::Anchor(_))
+        ));
+        let mut nodes = vec![Node::Element(Element::synthetic(
+            "div",
+            seed.clone(),
+            Marks::default(),
+            Vec::new(),
+        ))];
+        settle_static(&mut nodes, doc.values());
+        let Node::Element(element) = &nodes[0] else {
+            panic!("element")
+        };
+        assert_eq!(
+            element.style.used().reset_positioned.inset.top,
+            Some(Len::Px(7.))
+        );
+        assert!(matches!(
+            seed.reset_positioned.inset.top,
+            Some(Len::Anchor(_))
+        ));
     }
 }

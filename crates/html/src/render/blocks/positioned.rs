@@ -45,7 +45,12 @@ pub(crate) fn static_position_layer(
     // Отрицательный `z-index` рисуется ПОД содержимым потока
     // (CSS 2.1 §9.9, шаг 3), поэтому в верхний слой он не идёт:
     // там его место — поверх всего.
-    let below = e.style.used().z_index.is_some_and(|z| z < 0);
+    let below = e
+        .style
+        .used()
+        .reset_positioned
+        .z_index
+        .is_some_and(|z| z < 0);
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     // In a vertical parent the flag means "inline-start is the bottom":
     // `direction: rtl` of `vertical-*`, `ltr` of `sideways-lr` (§6.4).
@@ -75,8 +80,18 @@ pub(crate) fn static_position_layer(
     // под нами поля у absolute без краёв не считает — сдвиг
     // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
     // эталонный зелёный стоял без своих margin: 50px).
-    let ml = margin_px(e.style.used().margin.left, &e.style.used(), cx.vcx()).unwrap_or(0.0);
-    let mt = margin_px(e.style.used().margin.top, &e.style.used(), cx.vcx()).unwrap_or(0.0);
+    let ml = margin_px(
+        e.style.used().reset_box_layout.margin.left,
+        &e.style.used(),
+        cx.vcx(),
+    )
+    .unwrap_or(0.0);
+    let mt = margin_px(
+        e.style.used().reset_box_layout.margin.top,
+        &e.style.used(),
+        cx.vcx(),
+    )
+    .unwrap_or(0.0);
     // Под потоком (`below`) коробка остаётся абсолютной на месте
     // распорки, и поле от статической позиции ей уже даёт сама
     // раскладка (taffy: `static_position + margin`); обёртка
@@ -92,7 +107,12 @@ pub(crate) fn static_position_layer(
     // (min-content). Правый край — только при ltr в
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
-    let mr = margin_px(e.style.used().margin.right, &e.style.used(), cx.vcx()).unwrap_or(0.0);
+    let mr = margin_px(
+        e.style.used().reset_box_layout.margin.right,
+        &e.style.used(),
+        cx.vcx(),
+    )
+    .unwrap_or(0.0);
     let stretch = !inherited.wm().rtl() && !inherited.wm().vertical();
     let built = if (ml != 0.0 || mt != 0.0) && !below {
         let wrap = div().absolute().left(px(ml)).top(px(mt));
@@ -105,7 +125,13 @@ pub(crate) fn static_position_layer(
     // positioned boxes (CSS 2.1 §9.9 steps 8–9), as on the
     // CB-layer path above: `scalex` — a static-position abspos
     // with `z-index: 11` painted under its `z-index: 10` sibling.
-    let built = if !below && e.style.used().z_index.is_some_and(|z| z > 0) {
+    let built = if !below
+        && e.style
+            .used()
+            .reset_positioned
+            .z_index
+            .is_some_and(|z| z > 0)
+    {
         layered(built, &e.style.used(), inherited, layer_ok, under_tf)
     } else {
         built
@@ -173,7 +199,7 @@ pub(crate) fn static_position_layer(
                     below_run_start = out.len() - 1;
                     below_zs.clear();
                 }
-                below_zs.push(e.style.used().z_index.unwrap_or(0));
+                below_zs.push(e.style.used().reset_positioned.z_index.unwrap_or(0));
                 let mut at = below_zs.len() - 1;
                 while at > 0 && below_zs[at - 1] > below_zs[at] {
                     below_zs.swap(at - 1, at);

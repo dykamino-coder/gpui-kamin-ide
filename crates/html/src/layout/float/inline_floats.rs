@@ -27,43 +27,47 @@ pub(crate) fn transparent(e: &Element) -> bool {
 pub(crate) fn transparent_with_clear(e: &Element, clearance_possible: bool) -> bool {
     let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
-    let undecorated = [s.margin, s.padding, s.borders()]
-        .iter()
-        .all(|s| [s.top, s.right, s.bottom, s.left].into_iter().all(zero));
-    ((e.inline && s.display.is_none()) || s.inline_display == Some(true))
+    let undecorated = [
+        s.reset_box_layout.margin,
+        s.reset_box_layout.padding,
+        s.borders(),
+    ]
+    .iter()
+    .all(|s| [s.top, s.right, s.bottom, s.left].into_iter().all(zero));
+    ((e.inline && s.reset_box_layout.display.is_none()) || s.reset_context.inline_display == Some(true))
         // css-ruby-1 §2: ruby boxes pair bases with annotations; splitting
         // them around a float would break that pairing.
         && !matches!(e.tag.as_str(), "ruby" | "rb" | "rbc" | "rt" | "rtc" | "rp")
-        && s.float.is_none_or(|f| f == 0)
-        && (!clearance_possible || s.clear.is_none())
-        && s.position.is_none()
+        && s.reset_box_layout.float.is_none_or(|f| f == 0)
+        && (!clearance_possible || s.reset_box_layout.clear.is_none())
+        && s.reset_positioned.position.is_none()
         && e.hover.is_none()
         && e.first_letter.is_none()
         && e.first_line.is_none()
         && undecorated
-        && s.background.is_none()
-        && s.bg_image.is_none()
-        && s.gradient.is_none()
-        && s.opacity.is_none()
-        && s.filter.is_none()
-        && s.transform.is_none()
-        && s.blend.is_none()
-        && s.clip_polygon.is_none()
-        && s.mask_image.is_none()
-        && s.outline.is_none()
-        && s.shadows.is_empty()
-        && s.shadow_raw.is_none()
-        && s.bidi_override.is_none()
-        && s.bidi_isolate.is_none()
-        && s.bidi_embed.is_none()
-        && s.bidi_plaintext.is_none()
+        && s.reset_background.background.is_none()
+        && s.reset_background.bg_image.is_none()
+        && s.reset_background.gradient.is_none()
+        && s.reset_effects.opacity.is_none()
+        && s.reset_effects.filter.is_none()
+        && s.reset_transforms.transform.is_none()
+        && s.reset_effects.blend.is_none()
+        && s.reset_mask.clip_polygon.is_none()
+        && s.reset_mask.mask_image.is_none()
+        && s.reset_border.outline.is_none()
+        && s.reset_effects.shadows.is_empty()
+        && s.reset_effects.shadow_raw.is_none()
+        && s.reset_cascade.bidi_override.is_none()
+        && s.reset_cascade.bidi_isolate.is_none()
+        && s.reset_cascade.bidi_embed.is_none()
+        && s.reset_cascade.bidi_plaintext.is_none()
         && e.style.own_vertical_align().is_none()
-        && s.vertical_shift.is_none()
-        && s.vertical_shift_len.is_none()
+        && s.reset_text_box.vertical_shift.is_none()
+        && s.reset_text_box.vertical_shift_len.is_none()
         // Своё письмо и направление — объявленные: вычисленные наследуются.
-        && e.style.cascaded().writing_mode.is_none()
-        && !s.turned_line
-        && e.style.cascaded().rtl.is_none()
+        && e.style.cascaded().inh.writing.writing_mode.is_none()
+        && !s.reset_text_box.turned_line
+        && e.style.cascaded().inh.writing.rtl.is_none()
 }
 
 fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
@@ -75,14 +79,22 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     // the block's shared exclusion space, not an atomic paragraph child.
     let margin_fragment = if !transparent(e) {
         let mut bare = e.clone();
-        bare.style.used_mut().margin = Default::default();
+        bare.style.used_mut().reset_box_layout.margin = Default::default();
         transparent(&bare)
             && e.style
                 .cascaded()
+                .inh
+                .text_flow
                 .preserve_newlines
-                .or(parent.preserve_newlines)
+                .or(parent.inh.text_flow.preserve_newlines)
                 != Some(true)
-            && e.style.cascaded().keep_spaces.or(parent.keep_spaces) != Some(true)
+            && e.style
+                .cascaded()
+                .inh
+                .text_flow
+                .keep_spaces
+                .or(parent.inh.text_flow.keep_spaces)
+                != Some(true)
             && e.children
                 .iter()
                 .all(|n| crate::layout::box_kind::is_blank(n) || floated(n))
@@ -101,9 +113,9 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     // split a nowrap text sequence. Keep text in one inline fragment so
     // float placement can defer it past the whole unbreakable sequence.
     // Leading floats and preserved hard breaks remain on their own path.
-    let nowrap_text = (parent.nowrap != Some(true)
-        && style.nowrap == Some(true)
-        && style.preserve_newlines != Some(true)
+    let nowrap_text = (parent.inh.text_flow.nowrap != Some(true)
+        && style.inh.text_flow.nowrap == Some(true)
+        && style.inh.text_flow.preserve_newlines != Some(true)
         && children
             .iter()
             .all(|n| matches!(n, Node::Text(_)) || floated(n))
@@ -170,7 +182,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
 /// their intrinsic size inside shrink-to-fit containers
 /// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
-    matches!(node, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)
+    matches!(node, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)
         && !e.style.cascaded().wm().vertical())
 }
 

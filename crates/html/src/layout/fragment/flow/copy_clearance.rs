@@ -6,8 +6,7 @@ use crate::style::computed::Display;
 pub(crate) fn copy_flow(nodes: &[Node]) -> std::borrow::Cow<'_, [Node]> {
     let mut floats = false;
     for n in super::box_children::children(nodes) {
-        let root_float =
-            matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0));
+        let root_float = matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0));
         if root_float || (floats && matches!(n, Node::Element(_))) {
             // Обычная обёртка не заводит BFC: collapse и clear видят те же bands.
             return std::borrow::Cow::Owned(vec![Node::Element(
@@ -20,10 +19,15 @@ pub(crate) fn copy_flow(nodes: &[Node]) -> std::borrow::Cow<'_, [Node]> {
 }
 
 pub(crate) fn reaches(e: &Element) -> bool {
-    if e.style.used().display == Some(Display::None) {
+    if e.style.used().reset_box_layout.display == Some(Display::None) {
         return false;
     }
-    let floated = e.style.used().float.is_some_and(|f| f != 0);
+    let floated = e
+        .style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0);
     if floated {
         return true;
     }

@@ -13,7 +13,7 @@ pub(super) fn is_auto(style: &BoxStyle, value: Len, side: u8, vcx: ValueCx<'_>) 
         Len::Calc(index) => calc_get(index, vcx).pct != 0.0,
         _ => false,
     };
-    style.position == Some(Position::Relative)
+    style.reset_positioned.position == Some(Position::Relative)
         && matches!(side, 0 | 2)
         && !style.cb_height_def
         && percentage

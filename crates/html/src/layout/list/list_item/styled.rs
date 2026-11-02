@@ -22,7 +22,7 @@ pub(crate) async fn render_with_style(
     // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
     // Своей колонки при этом нет, и текст пункта начинается там же, где
     // у обычного абзаца.
-    let inside = merged.list_style_inside == Some(true);
+    let inside = merged.inh.table_list.list_style_inside == Some(true);
     if inside {
         let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
         if let Some(marker) = resolved {
@@ -53,15 +53,20 @@ pub(crate) async fn render_with_style(
     // строковый маркер выходил чужой гарнитурой рядом с Times пункта
     // (`list-style-type-string-*`).
     let mut mark_style = super::outside::content_style(marker_style, merged, vcx);
-    if mark_style.font_family.as_deref().is_none_or(str::is_empty)
-        && mark_style.monospace != Some(true)
+    if mark_style
+        .inh
+        .font
+        .font_family
+        .as_deref()
+        .is_none_or(str::is_empty)
+        && mark_style.inh.font.monospace != Some(true)
     {
-        mark_style.font_family = Some(opts.text.font_family.to_string());
+        mark_style.inh.font.font_family = Some(opts.text.font_family.to_string());
     }
     tabular_marker(
         &mut mark_style,
         merged,
-        li.style.used().marker_layer.as_deref(),
+        li.style.used().reset_generated.marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
     let marker_opts = super::outside_flow::options(opts, merged.wm().used_direction().rtl());

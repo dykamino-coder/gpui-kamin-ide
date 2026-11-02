@@ -35,13 +35,17 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // ортогонального потока, эталоны `orthogonal-positioned-grid-items-*`
         // (`place-items: start`) вылезали за сетку на всю высоту окна.
         if matches!(
-            container.display,
+            container.reset_box_layout.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) && matches!(
-            ch.style.used().align_self.or(container.align_items),
+            ch.style
+                .used()
+                .reset_flex
+                .align_self
+                .or(container.reset_flex.align_items),
             Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
         ) {
-            ch.style.used_mut().hug_inline = true;
+            ch.style.used_mut().reset_context.hug_inline = true;
         }
         // Корень с vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
         // flow). Прижим самим стилем корня (align-self) — контейнеры-колонки
@@ -49,32 +53,36 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // canvas-слой — тем страницам якорь не ставится.
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.cascaded().wm().block_rl()
-            && ch.style.used().align_self.is_none()
-            && ch.style.used().bg_image.is_none()
+            && ch.style.used().reset_flex.align_self.is_none()
+            && ch.style.used().reset_background.bg_image.is_none()
         {
-            ch.style.used_mut().align_self = Some(crate::style::computed::Align::End);
+            ch.style.used_mut().reset_flex.align_self = Some(crate::style::computed::Align::End);
         }
         // Ordinary orthogonal blocks now compute their own used inline size.
         if orthogonal_fixed_child::normal_block_flow(&ch.style.used(), container) {
-            ch.style.used_mut().flex_shrink = Some(0.0);
+            ch.style.used_mut().reset_flex.flex_shrink = Some(0.0);
             continue;
         }
-        if ch.style.used().height.is_some() || ch.style.used().max_height.is_some() {
+        if ch.style.used().reset_box_layout.height.is_some()
+            || ch.style.used().reset_box_layout.max_height.is_some()
+        {
             continue;
         }
         let margin = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) => match container.width {
+            Some(Len::Pct(k)) => match container.reset_box_layout.width {
                 Some(Len::Px(w)) => k * w,
                 _ => 0.0,
             },
             _ => 0.0,
         };
-        let margins = margin(ch.style.used().margin.top) + margin(ch.style.used().margin.bottom);
-        ch.style.used_mut().max_height = Some(match container.height {
-            Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
-            _ => Len::Pct(1.0),
-        });
+        let margins = margin(ch.style.used().reset_box_layout.margin.top)
+            + margin(ch.style.used().reset_box_layout.margin.bottom);
+        ch.style.used_mut().reset_box_layout.max_height =
+            Some(match container.reset_box_layout.height {
+                Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
+                _ => Len::Pct(1.0),
+            });
         // Тот же предел — и ПЕРЕНОСУ строк. Авто-строчный размер ортогонального
         // блока — shrink-to-fit к размеру, что «would stretch fit into … the
         // containing block’s size if that is fixed» (css-writing-modes-4
@@ -92,23 +100,26 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // отбивки ребёнка из него вычтет `element()`. Только блочный
         // контейнер (у сетки/гибкого содержащий блок другой) и только при
         // ненулевых полях — без них предел равен унаследованному.
-        if let Some(Len::Px(h)) = container.height
+        if let Some(Len::Px(h)) = container.reset_box_layout.height
             && margins > 0.0
-            && matches!(container.display, None | Some(Display::Block))
+            && matches!(
+                container.reset_box_layout.display,
+                None | Some(Display::Block)
+            )
         {
             let px = px_lossy_zero;
             // Предел — внутренний размер СБ: при `border-box` заданная
             // высота включает его рамки и отбивки по той же оси.
-            let inner = if container.border_box == Some(true) {
+            let inner = if container.reset_border.border_box == Some(true) {
                 let b = container.borders();
                 h - px(b.top)
                     - px(b.bottom)
-                    - px(container.padding.top)
-                    - px(container.padding.bottom)
+                    - px(container.reset_box_layout.padding.top)
+                    - px(container.reset_box_layout.padding.bottom)
             } else {
                 h
             };
-            ch.style.used_mut().ortho_limit = Some((inner - margins).max(0.0));
+            ch.style.used_mut().reset_context.ortho_limit = Some((inner - margins).max(0.0));
         }
     }
     out

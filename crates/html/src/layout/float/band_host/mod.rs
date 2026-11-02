@@ -65,20 +65,20 @@ pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
 pub(super) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     let b = c.borders();
     Some((
-        px_missing_zero(c.width)?
-            + px_missing_zero(c.padding.left)?
-            + px_missing_zero(c.padding.right)?
+        px_missing_zero(c.reset_box_layout.width)?
+            + px_missing_zero(c.reset_box_layout.padding.left)?
+            + px_missing_zero(c.reset_box_layout.padding.right)?
             + px_missing_zero(b.left)?
             + px_missing_zero(b.right)?
-            + px_margin(&c.margin.left)?
-            + px_margin(&c.margin.right)?,
-        px_missing_zero(c.height)?
-            + px_missing_zero(c.padding.top)?
-            + px_missing_zero(c.padding.bottom)?
+            + px_margin(&c.reset_box_layout.margin.left)?
+            + px_margin(&c.reset_box_layout.margin.right)?,
+        px_missing_zero(c.reset_box_layout.height)?
+            + px_missing_zero(c.reset_box_layout.padding.top)?
+            + px_missing_zero(c.reset_box_layout.padding.bottom)?
             + px_missing_zero(b.top)?
             + px_missing_zero(b.bottom)?
-            + px_margin(&c.margin.top)?
-            + px_margin(&c.margin.bottom)?,
+            + px_margin(&c.reset_box_layout.margin.top)?
+            + px_margin(&c.reset_box_layout.margin.bottom)?,
     ))
 }
 
@@ -97,11 +97,16 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     // Внепоточный сосед получил бы хост своим содержащим блоком; `clear`
     // требует зазора, которого шаг B1 не считает.
     if matches!(
-        c.style.used().position,
+        c.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) || c.style.used().float.is_some_and(|f| f != 0)
-        || c.style.used().clear.is_some()
+    ) || c
+        .style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0)
+        || c.style.used().reset_box_layout.clear.is_some()
     {
         return None;
     }
@@ -110,12 +115,12 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     // `width: auto` там `None` и складывается как НОЛЬ, а по §10.3.5 это
     // shrink-to-fit, которого полосы не считают. Без этой проверки коробка с
     // одними полями прошла бы гейт с нулевой шириной.
-    let sized = matches!(c.style.used().height, Some(Len::Px(_)))
-        && matches!(c.style.used().width, Some(Len::Px(_)))
+    let sized = matches!(c.style.used().reset_box_layout.height, Some(Len::Px(_)))
+        && matches!(c.style.used().reset_box_layout.width, Some(Len::Px(_)))
         && mw > 0.0
         && mh > 0.0;
     if matches!(
-        c.style.used().display,
+        c.style.used().reset_box_layout.display,
         Some(Display::InlineBlock) | Some(Display::InlineFlex)
     ) || (c.tag == "img" && inline_level(c))
     {
@@ -128,10 +133,13 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     }
     // Распорка: своей ширины нет, внутри пусто, краски нет — видно её нечем,
     // и место она занимает только по высоте.
-    let invisible = c.style.used().background.is_none()
+    let invisible = c.style.used().reset_background.background.is_none()
         && c.children.iter().all(is_blank)
-        && matches!(c.style.used().width, None | Some(Len::Auto))
-        && matches!(c.style.used().height, Some(Len::Px(_)))
+        && matches!(
+            c.style.used().reset_box_layout.width,
+            None | Some(Len::Auto)
+        )
+        && matches!(c.style.used().reset_box_layout.height, Some(Len::Px(_)))
         && mw == 0.0;
     (invisible && mh > 0.0).then_some(BandPiece::Strut)
 }

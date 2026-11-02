@@ -74,7 +74,7 @@ pub(crate) fn line_box_spans(
         return None;
     }
     let own = own_size(inherited, opts);
-    let strut = match inherited.line_height {
+    let strut = match inherited.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(_)) | Some(Len::Em(_)) => inherited.numeric_line_px(opts.base_size())?,
         None | Some(Len::Auto) => crate::text::metrics::normal_px(
@@ -85,7 +85,7 @@ pub(crate) fn line_box_spans(
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
-    let mut mixed = inherited.first_line.is_some();
+    let mut mixed = inherited.reset_text_box.first_line.is_some();
     let mut at = 0usize;
     for p in pieces {
         let inline::Piece::Text { text, style } = p else {
@@ -97,7 +97,7 @@ pub(crate) fn line_box_spans(
             continue;
         }
         let size = style.used_font(opts.base_size(), opts.cx.vcx()).size_px;
-        let lh = match style.line_height {
+        let lh = match style.inh.font.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(_)) | Some(Len::Em(_)) => style.numeric_line_px(opts.base_size())?,
             None | Some(Len::Auto) => crate::text::metrics::normal_px(
@@ -109,7 +109,7 @@ pub(crate) fn line_box_spans(
         };
         if (size - own).abs() > COORD_EPS
             || (lh - strut).abs() > COORD_EPS
-            || style.font_family != inherited.font_family
+            || style.inh.font.font_family != inherited.inh.font.font_family
         {
             mixed = true;
         }
@@ -138,11 +138,11 @@ pub(crate) fn atoms_fit_line(
         // (`wm-propagation-body-035`: the caption image rose by the descent).
         && (!inherited.wm().turned() || rotated_atom::text_turn(cx))
         && (ruby || !inherited.wm().rtl())
-        && inherited.no_select != Some(true)
-        && inherited.pointer_events_none != Some(true)
+        && inherited.reset_context.no_select != Some(true)
+        && inherited.inh.ui.pointer_events_none != Some(true)
         && crate::text::paragraph::align_for(inherited) != crate::text::paragraph::Align::Justify
         // Обрыв строки многоточием (`text-overflow: ellipsis`) режет текст по
         // знакам, а распорку атома знаком не считает: атом обрывался не там
         // (`text-overflow-016`, `text-overflow-ruby`) — такой абзац в ряду.
-        && inherited.ellipsis != Some(true)
+        && inherited.reset_text_box.ellipsis != Some(true)
 }

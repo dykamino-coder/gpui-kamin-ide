@@ -21,7 +21,7 @@ impl Computed {
             // `backface-visibility: hidden` обязан исчезнуть
             // (css-transforms-2 §backface-visibility, признак m33 < 0).
             "backface-visibility" => {
-                self.backface_hidden = apply_parsed!(
+                self.reset_transforms.backface_hidden = apply_parsed!(
                     self,
                     matches!(v, "hidden" | "visible").then_some(v == "hidden")
                 )
@@ -33,7 +33,7 @@ impl Computed {
             // сюда не доезжают (None). Ячейка заводится здесь, при разборе:
             // у родителя и его детей будет один и тот же Rc.
             "perspective" => {
-                self.perspective = parsed_value!(
+                self.reset_transforms.perspective = parsed_value!(
                     self,
                     match Len::parse(v, vcx) {
                         Some(Len::Px(d)) if d >= 0.0 => Some(Some(d.max(1.0))),
@@ -44,7 +44,10 @@ impl Computed {
                 if v == "none" {
                     self.accept_declaration();
                 }
-                self.perspective_frame = self.perspective.map(|_| PerspectiveFrame::default());
+                self.reset_transforms.perspective_frame = self
+                    .reset_transforms
+                    .perspective
+                    .map(|_| PerspectiveFrame::default());
             }
             // `perspective-origin` (§perspective-origin-property) — та же
             // грамматика <position>, что у `transform-origin` двумя осями:
@@ -80,8 +83,8 @@ impl Computed {
                 let mut free = free.into_iter();
                 let first = xs.or_else(|| free.next()).unwrap_or("center");
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
-                self.perspective_origin_px = (px_axis(first), px_axis(second));
-                self.perspective_origin =
+                self.reset_transforms.perspective_origin_px = (px_axis(first), px_axis(second));
+                self.reset_transforms.perspective_origin =
                     accept_parsed!(self, Some((axis(first, 0.5), axis(second, 0.5))));
             }
             // `transform-style` (css-transforms-2 §transform-style-property):
@@ -92,11 +95,11 @@ impl Computed {
             // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
             // (css-transforms-2 §3d-rendering-context, лист контекста).
             "transform-style" => {
-                self.preserve_3d = apply_parsed!(
+                self.reset_transforms.preserve_3d = apply_parsed!(
                     self,
                     matches!(v, "preserve-3d" | "flat").then_some(v == "preserve-3d")
                 );
-                self.frame_3d = match self.preserve_3d {
+                self.reset_transforms.frame_3d = match self.reset_transforms.preserve_3d {
                     Some(true) => Some(Frame3d::default()),
                     _ => None,
                 };
@@ -105,7 +108,7 @@ impl Computed {
             // коробку и НАЧАЛО отсчёта на bounding box фигуры; по умолчанию
             // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
             "transform-box" => {
-                self.transform_box = apply_parsed!(
+                self.reset_transforms.transform_box = apply_parsed!(
                     self,
                     match v.trim() {
                         "view-box" => Some(0),
@@ -114,12 +117,12 @@ impl Computed {
                         _ => None,
                     }
                 );
-                self.transform_box_fill = Some(v.trim() == "fill-box");
+                self.reset_transforms.transform_box_fill = Some(v.trim() == "fill-box");
             }
             // SVG 2 §vector-effect: `non-scaling-stroke` — толщина обводки в
             // точках экрана; нужна опорной коробке и толщине в `svg.rs`.
             "vector-effect" => {
-                self.svg_non_scaling = apply_parsed!(
+                self.reset_svg_math.svg_non_scaling = apply_parsed!(
                     self,
                     matches!(v, "non-scaling-stroke" | "none").then_some(v == "non-scaling-stroke")
                 )

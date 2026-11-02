@@ -42,6 +42,16 @@ impl Default for RootMetrics {
 }
 
 impl RootMetrics {
+    /// Точное сравнение входов кэша: NaN и знак нуля не схлопываются.
+    pub(crate) fn same_inputs(&self, other: &Self) -> bool {
+        self.font_px.to_bits() == other.font_px.to_bits()
+            && self.line_px.to_bits() == other.line_px.to_bits()
+            && self.family == other.family
+            && self.units.map(f32::to_bits) == other.units.map(f32::to_bits)
+            && self.font_view.map(|(b, v)| (b, v.to_bits()))
+                == other.font_view.map(|(b, v)| (b, v.to_bits()))
+    }
+
     pub fn resolve_units(&mut self, vcx: ValueCx<'_>) {
         let family = self.family.clone();
         self.resolve_font_units(FontRequest::new(&family, self.font_px), vcx);

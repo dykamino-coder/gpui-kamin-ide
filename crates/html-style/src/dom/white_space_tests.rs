@@ -24,7 +24,7 @@ fn break_spaces_reaches_the_wrap_rules() {
     }
     let div = find(&nodes).expect("блок в дереве");
     assert_eq!(
-        div.style.cascaded().break_after_spaces,
+        div.style.cascaded().inh.text_flow.break_after_spaces,
         Some(true),
         "разбор"
     );

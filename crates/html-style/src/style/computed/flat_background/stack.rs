@@ -113,7 +113,7 @@ mod tests {
         let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
         collapse(
             &mut result,
-            c.image_orient_none != Some(true),
+            c.inh.ui.image_orient_none != Some(true),
             &vcx.background_images(),
         );
         assert_eq!(c.style_rc(), &css);
@@ -135,7 +135,7 @@ mod tests {
         let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
         collapse(
             &mut result,
-            c.image_orient_none != Some(true),
+            c.inh.ui.image_orient_none != Some(true),
             &vcx.background_images(),
         );
         assert_eq!(c.style_rc(), &css);
@@ -167,7 +167,7 @@ mod tests {
         let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
         collapse(
             &mut result,
-            c.image_orient_none != Some(true),
+            c.inh.ui.image_orient_none != Some(true),
             &vcx.background_images(),
         );
         assert_eq!(c.style_rc(), &css);

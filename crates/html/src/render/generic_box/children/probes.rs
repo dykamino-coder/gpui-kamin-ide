@@ -22,14 +22,14 @@ pub(crate) fn child_probes(
     let sizes = BoxDimensions::for_element(e, merged);
     if let Some(items) = opts.cx.deferred.gap_items.clone()
         && !matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
         && !(e.node_id == 0 && e.children.is_empty())
     {
         // Проба ложится на паддинг-бокс; линейкам нужен рамочный.
-        let fs = match merged.font_size {
+        let fs = match merged.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
@@ -42,7 +42,10 @@ pub(crate) fn child_probes(
         kids.push(crate::layout::multicol::gap_rules::gap_item_probe(
             items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
-            [bw(merged.margin.right), bw(merged.margin.bottom)],
+            [
+                bw(merged.reset_box_layout.margin.right),
+                bw(merged.reset_box_layout.margin.bottom),
+            ],
         ));
     }
     if let Some((_, skip)) = crate::text::clamp::clamp_context(&opts.cx)
@@ -58,14 +61,14 @@ pub(crate) fn child_probes(
         // `flow-root` под «Line 4»). Флоат и абсолют — не поточные,
         // строчный атом — внутри строки.
         let monolithic = makes_bfc
-            && merged.float.is_none_or(|f| f == 0)
+            && merged.reset_box_layout.float.is_none_or(|f| f == 0)
             && !matches!(
-                merged.position,
+                merged.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             )
             && !matches!(
-                merged.display,
+                merged.reset_box_layout.display,
                 Some(Display::InlineBlock)
                     | Some(Display::InlineFlex)
                     | Some(Display::InlineGrid)
@@ -75,7 +78,7 @@ pub(crate) fn child_probes(
         // unstyled: lines overflowing it fit with it (`line-clamp-auto-040`).
         let sized = sizes.preferred[1].is_some()
             && !skip
-            && matches!(merged.display, None | Some(Display::Block));
+            && matches!(merged.reset_box_layout.display, None | Some(Display::Block));
         let side = px_lossy_zero;
         // Нижние рамка и паддинг фрагментированной коробки
         // остаются в потоке (css-overflow-4 §5.3): проба несёт
@@ -83,17 +86,18 @@ pub(crate) fn child_probes(
         // collapses along the ancestor chain of the clamp point (Blink
         // `LineClampAncestorChain`), so an in-flow block with any of them
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
-        let bp_after = side(e.style.used().borders().bottom) + side(e.style.used().padding.bottom);
+        let bp_after = side(e.style.used().borders().bottom)
+            + side(e.style.used().reset_box_layout.padding.bottom);
         let in_flow_block = !skip
-            && merged.float.is_none_or(|f| f == 0)
+            && merged.reset_box_layout.float.is_none_or(|f| f == 0)
             && !matches!(
-                merged.position,
+                merged.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             )
-            && matches!(merged.display, None | Some(Display::Block));
+            && matches!(merged.reset_box_layout.display, None | Some(Display::Block));
         // Font- and line-relative lengths (`3lh`, `1em`) of the end edges.
-        let fs = match merged.font_size {
+        let fs = match merged.inh.font.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
@@ -104,8 +108,8 @@ pub(crate) fn child_probes(
             Some(Len::Lh(k)) => Some(k * lh),
             _ => None,
         };
-        let end_margin = if in_flow_block || merged.float.is_some_and(|f| f != 0) {
-            len_px(merged.margin.bottom).unwrap_or(0.0)
+        let end_margin = if in_flow_block || merged.reset_box_layout.float.is_some_and(|f| f != 0) {
+            len_px(merged.reset_box_layout.margin.bottom).unwrap_or(0.0)
         } else {
             0.0
         };
@@ -116,7 +120,7 @@ pub(crate) fn child_probes(
                     m
                 } else {
                     m + side(e.style.used().borders().top)
-                        + side(e.style.used().padding.top)
+                        + side(e.style.used().reset_box_layout.padding.top)
                         + bp_after
                 }
             }
@@ -136,7 +140,8 @@ pub(crate) fn child_probes(
                 // or `min-height` of a size-contained box, whose height
                 // does not depend on its content (`line-clamp-auto-047`).
                 sizes.preferred[1].is_some()
-                    || (sizes.minimum[1].is_some() && e.style.used().contain_size == Some(true))
+                    || (sizes.minimum[1].is_some()
+                        && e.style.used().reset_context.contain_size == Some(true))
                     || monolithic,
                 bp_after,
                 crate::text::clamp::BoxEnds {
@@ -153,10 +158,10 @@ pub(crate) fn child_probes(
                 side(e.style.used().borders().top),
                 (
                     matches!(
-                        merged.position,
+                        merged.reset_positioned.position,
                         Some(crate::style::computed::Position::Absolute)
                     ),
-                    merged.float.is_some_and(|f| f != 0),
+                    merged.reset_box_layout.float.is_some_and(|f| f != 0),
                 ),
             ));
         } else if !is_clamp
@@ -166,18 +171,18 @@ pub(crate) fn child_probes(
             && e.children.iter().all(|n| {
                 is_blank(n)
                     || matches!(n, crate::dom::Node::Element(c) if matches!(
-                        c.style.used().position,
+                        c.style.used().reset_positioned.position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ))
             })
-            && merged.float.is_none_or(|f| f == 0)
+            && merged.reset_box_layout.float.is_none_or(|f| f == 0)
             && !matches!(
-                merged.position,
+                merged.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             )
-            && matches!(merged.display, None | Some(Display::Block))
+            && matches!(merged.reset_box_layout.display, None | Some(Display::Block))
         {
             kids.push(crate::text::clamp::clamp_empty_probe(measure));
         }

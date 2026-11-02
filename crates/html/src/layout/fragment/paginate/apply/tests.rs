@@ -29,8 +29,17 @@ fn row_item_strut_moves_its_margin_and_keeps_the_gap() {
         let Node::Element(item) = &parent.children[0] else {
             panic!("item")
         };
-        assert_eq!(item.style.used().margin.top, Some(Len::Px(3.0 + by)));
-        assert_eq!(parent.style.used().gap.unwrap().0, Some(Len::Px(10.0)));
-        assert_eq!(item.style.computed().margin.top, Some(Len::Px(3.0)));
+        assert_eq!(
+            item.style.used().reset_box_layout.margin.top,
+            Some(Len::Px(3.0 + by))
+        );
+        assert_eq!(
+            parent.style.used().reset_flex.gap.unwrap().0,
+            Some(Len::Px(10.0))
+        );
+        assert_eq!(
+            item.style.computed().reset_box_layout.margin.top,
+            Some(Len::Px(3.0))
+        );
     }
 }

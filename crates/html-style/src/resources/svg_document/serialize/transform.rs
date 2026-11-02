@@ -37,8 +37,8 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
     // и у атрибута, точки — от её начала при явной коробке, иначе как есть
     // (`transform-box/fill-box-*`, `svg-origin-relative-length-*`).
     let style_origin = match (
-        e.style.used().transform_origin,
-        e.style.used().transform_origin_px,
+        e.style.used().reset_transforms.transform_origin,
+        e.style.used().reset_transforms.transform_origin_px,
     ) {
         (_, (Some(px), Some(py))) => Some((from_box(px, bx), from_box(py, by))),
         (Some((kx, ky)), (px, py)) => Some((
@@ -63,7 +63,7 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
     // Матрица функций В ПОРЯДКЕ ЗАПИСИ (см. `computed::Transform::lin`);
     // проценты сдвига — от опорной коробки фигуры (css-transforms-1
     // §transform-box: доля — от выбранной reference box).
-    let style_t = e.style.used().transform.as_ref().map(|t| {
+    let style_t = e.style.used().reset_transforms.transform.as_ref().map(|t| {
         let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]] && t.tr == [[0.0; 3]; 2];
         if unit {
             return String::new();
@@ -97,6 +97,7 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
     let ind_t = e
         .style
         .used()
+        .reset_transforms
         .translate
         .filter(|_| e.tag != "svg")
         .and_then(|(x, y)| {
@@ -130,10 +131,10 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
         prefix.push_str(&format!("translate({dx} {dy}) "));
     }
     if e.tag != "svg" {
-        if let Some(angle) = e.style.used().rotate_prop {
+        if let Some(angle) = e.style.used().reset_transforms.rotate_prop {
             prefix.push_str(&format!("rotate({}) ", angle.to_degrees()));
         }
-        if let Some((x, y)) = e.style.used().scale_prop {
+        if let Some((x, y)) = e.style.used().reset_transforms.scale_prop {
             prefix.push_str(&format!("scale({x} {y}) "));
         }
     }
@@ -150,7 +151,11 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
         // Сдвиг от `translate:` — такой же повод перебить презентационный
         // атрибут, как и своё свойство `transform`: без этой ветки собранная
         // строка терялась, а в разметку уходил нетронутый атрибут.
-        (None, Some(t)) if e.style.used().transform.is_some() || ind_t.is_some() => Some(t),
+        (None, Some(t))
+            if e.style.used().reset_transforms.transform.is_some() || ind_t.is_some() =>
+        {
+            Some(t)
+        }
         _ => None,
     };
     (combined, attr_bad)
@@ -178,9 +183,9 @@ mod tests {
     #[test]
     fn default_percentages_use_viewport_not_shape_bounds() {
         let mut e = rect(r#"<svg><rect x="25" y="40" width="50" height="60"/></svg>"#);
-        e.style.used_mut().transform = Some(Default::default());
-        e.style.used_mut().transform_origin = Some((0.25, 0.5));
-        e.style.used_mut().translate = Some((Len::Pct(0.5), Len::Pct(0.25)));
+        e.style.used_mut().reset_transforms.transform = Some(Default::default());
+        e.style.used_mut().reset_transforms.transform_origin = Some((0.25, 0.5));
+        e.style.used_mut().reset_transforms.translate = Some((Len::Pct(0.5), Len::Pct(0.25)));
         assert_eq!(
             element_transform(&e, (200.0, 300.0)).0.as_deref(),
             Some("translate(50 150) translate(100 75)  translate(-50 -150)")
@@ -201,10 +206,10 @@ mod tests {
     #[test]
     fn individual_properties_precede_the_presentation_transform() {
         let mut e = rect(r#"<svg><rect transform="translate(10 20)"/></svg>"#);
-        e.style.used_mut().transform = Some(Default::default());
-        e.style.used_mut().translate = Some((Len::Px(3.0), Len::Px(4.0)));
-        e.style.used_mut().rotate_prop = Some(std::f32::consts::FRAC_PI_2);
-        e.style.used_mut().scale_prop = Some((2.0, 3.0));
+        e.style.used_mut().reset_transforms.transform = Some(Default::default());
+        e.style.used_mut().reset_transforms.translate = Some((Len::Px(3.0), Len::Px(4.0)));
+        e.style.used_mut().reset_transforms.rotate_prop = Some(std::f32::consts::FRAC_PI_2);
+        e.style.used_mut().reset_transforms.scale_prop = Some((2.0, 3.0));
         assert_eq!(
             element_transform(&e, (300.0, 150.0)).0.as_deref(),
             Some("translate(3 4) rotate(90) scale(2 3) translate(10 20)")

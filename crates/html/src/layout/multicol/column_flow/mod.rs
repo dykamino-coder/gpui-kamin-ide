@@ -58,7 +58,7 @@ fn column_flow_in(
     // знает только строки — такой поток идёт стопкой со статическими местами.
     if e.children.iter().any(|n| {
         matches!(n, Node::Element(c) if c.inline && matches!(
-            c.style.used().position,
+            c.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
         ))
     }) {
@@ -72,8 +72,8 @@ fn column_flow_in(
     // Такой поток идёт стопкой, где строки раскладывает сам абзац.
     // `::first-letter`/`::first-line` (CSS 2 §5.12) style parts of the first
     // formatted line; the text path paints raw text and would drop them.
-    if inherited.preserve_newlines == Some(true)
-        || inherited.nowrap == Some(true)
+    if inherited.inh.text_flow.preserve_newlines == Some(true)
+        || inherited.inh.text_flow.nowrap == Some(true)
         || e.first_letter.is_some()
         || e.first_line.is_some()
     {
@@ -81,7 +81,9 @@ fn column_flow_in(
     }
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
-        Node::Element(child) => child.inline && child.style.used().display.is_none(),
+        Node::Element(child) => {
+            child.inline && child.style.used().reset_box_layout.display.is_none()
+        }
     });
     if let Some(value) = non_inline_columns(
         e,
@@ -113,12 +115,12 @@ fn column_flow_in(
         .filter(|c| *c != '\u{2028}')
         .map(|c| c.len_utf8())
         .sum::<usize>();
-    let size = match inherited.font_size {
+    let size = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * opts.base_size(),
         _ => opts.base_size(),
     };
-    let line = match inherited.line_height {
+    let line = match inherited.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
         _ => crate::text::metrics::normal_px(
@@ -138,7 +140,12 @@ fn column_flow_in(
     // `column-gap: -1em` доезжает `Px(-20)`: промежуток `[0,∞]` (css-align-3
     // §column-row-gap), отрицательный невалиден — умолчание
     // (`multicol-gap-negative-001`).
-    let gap = match inherited.column_gap.or(e.style.used().column_gap) {
+    let gap = match inherited.reset_fragmentation.column_gap.or(e
+        .style
+        .used()
+        .reset_fragmentation
+        .column_gap)
+    {
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => size,
     };
@@ -148,7 +155,7 @@ fn column_flow_in(
     let opts_owned = opts.clone();
     // `continue: discard` (css-overflow-4 §discarding-content): переполняющие
     // колонки многоколоночника не рисуются.
-    let discard = e.style.used().clamp_discard == Some(true);
+    let discard = e.style.used().reset_fragmentation.clamp_discard == Some(true);
     let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels, &[rows::Row]) -> AnyElement> =
         std::rc::Rc::new(
             move |cuts: &[usize], used: usize, width: gpui::Pixels, rows: &[rows::Row]| {
@@ -183,7 +190,7 @@ fn column_flow_in(
             // `column-fill: auto` с заданной высотой: колонки заполняются
             // подряд до неё (css-multicol-1 §3.3).
             match (
-                e.style.used().column_fill_auto,
+                e.style.used().reset_fragmentation.column_fill_auto,
                 dimensions.preferred[1],
                 dimensions.maximum[1],
             ) {
@@ -205,8 +212,8 @@ fn column_flow_in(
         .in_outer(outer)
         // `orphans`/`widows` наследуются (css-break-3 §4.4), начальное — 2.
         .line_breaks(
-            inherited.orphans.unwrap_or(2) as usize,
-            inherited.widows.unwrap_or(2) as usize,
+            inherited.inh.text_flow.orphans.unwrap_or(2) as usize,
+            inherited.inh.text_flow.widows.unwrap_or(2) as usize,
         )
         .hooked(),
     )

@@ -27,7 +27,7 @@ pub(crate) fn contains_positioned(e: &Element) -> bool {
 pub(crate) fn contains_oof_box(e: &Element) -> bool {
     let mut pending = vec![e];
     while let Some(e) = pending.pop() {
-        if crate::style::flow::absolutely_positioned(e.style.used().position) {
+        if crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position) {
             return true;
         }
         pending.extend(e.children.iter().filter_map(|n| match n {

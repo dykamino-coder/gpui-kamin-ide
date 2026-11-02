@@ -20,7 +20,7 @@ pub(crate) fn children(
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, FlowMargins)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    if merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end {
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
@@ -78,10 +78,11 @@ pub(crate) fn pending_mixed(
             let used = c.style.used();
             let block = !c.inline
                 && matches!(
-                    used.position,
+                    used.reset_positioned.position,
                     None | Some(crate::style::computed::Position::Relative)
                 )
-                && (used.float.unwrap_or(0) == 0 || crate::layout::float::block_like_float(&used));
+                && (used.reset_box_layout.float.unwrap_or(0) == 0
+                    || crate::layout::float::block_like_float(&used));
             block.then(|| (resolved_lengths(c, merged, vcx), FlowMargins::default()))
         })
         .collect()
@@ -94,7 +95,7 @@ pub(crate) fn pending(
     merged: &BoxStyle,
     vcx: FrameCx<'_>,
 ) -> Option<Vec<(Element, FlowMargins)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    if merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end {
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
@@ -122,7 +123,7 @@ pub(crate) fn vertical_children(
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, FlowMargins)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    if merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end {
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
@@ -163,9 +164,15 @@ pub(crate) fn vertical_kid(
         _ => None,
     };
     let (start, end) = if reverse {
-        (c.style.used().margin.right, c.style.used().margin.left)
+        (
+            c.style.used().reset_box_layout.margin.right,
+            c.style.used().reset_box_layout.margin.left,
+        )
     } else {
-        (c.style.used().margin.left, c.style.used().margin.right)
+        (
+            c.style.used().reset_box_layout.margin.left,
+            c.style.used().reset_box_layout.margin.right,
+        )
     };
     let shape = FlowMargins {
         margin_top: margin(start)?,
@@ -182,7 +189,7 @@ pub(crate) fn pending_vertical(
     vcx: FrameCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, FlowMargins)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    if merged.reset_text_box.text_box_trim_start || merged.reset_text_box.text_box_trim_end {
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);

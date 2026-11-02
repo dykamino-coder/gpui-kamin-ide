@@ -67,13 +67,15 @@ fn natural(
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
 ) -> [f32; 2] {
-    let font = match c.font_size {
+    let font = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
-    let family = c.font_family.as_deref().unwrap_or("");
+    let family = c.inh.font.font_family.as_deref().unwrap_or("");
     let (ch, _) = crate::text::metrics::ch_ex_px(family, font, fonts, vcx);
     let line = c
+        .inh
+        .font
         .line_height
         .and_then(|v| v.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or_else(|| {
@@ -100,7 +102,7 @@ fn gutters(c: &Computed) -> [f32; 2] {
     use crate::style::computed::Overflow;
     let reserve = |overflow| {
         if overflow == Some(Overflow::Scroll) {
-            c.scroll.thickness()
+            c.reset_box_layout.scroll.thickness()
         } else {
             0.
         }
@@ -109,18 +111,22 @@ fn gutters(c: &Computed) -> [f32; 2] {
     // the inline-axis scrollbar contributes only when always requested.
     if c.wm().vertical() {
         [
-            if c.overflow_y == Some(Overflow::Scroll) && c.scroll.forced[1] {
-                c.scroll.thickness()
+            if c.reset_box_layout.overflow_y == Some(Overflow::Scroll)
+                && c.reset_box_layout.scroll.forced[1]
+            {
+                c.reset_box_layout.scroll.thickness()
             } else {
                 0.
             },
-            reserve(c.overflow_x),
+            reserve(c.reset_box_layout.overflow_x),
         ]
     } else {
         [
-            reserve(c.overflow_y),
-            if c.overflow_x == Some(Overflow::Scroll) && c.scroll.forced[0] {
-                c.scroll.thickness()
+            reserve(c.reset_box_layout.overflow_y),
+            if c.reset_box_layout.overflow_x == Some(Overflow::Scroll)
+                && c.reset_box_layout.scroll.forced[0]
+            {
+                c.reset_box_layout.scroll.thickness()
             } else {
                 0.
             },

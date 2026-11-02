@@ -43,7 +43,14 @@ fn border_radial_lengths_and_current_color_are_computed() {
         vcx,
     );
     let mut c = inherit(&BoxStyle::default(), &own, vcx);
-    let image = c.border_image.as_mut().unwrap().src.as_mut().unwrap();
+    let image = c
+        .reset_border
+        .border_image
+        .as_mut()
+        .unwrap()
+        .src
+        .as_mut()
+        .unwrap();
     let ImageSource::Gradient { value, .. } = image else {
         panic!("gradient")
     };
@@ -197,7 +204,7 @@ fn url_function_names_keep_css_case_and_escape_rules() {
         let mut style = Computed::default();
         style.apply_decls(&decls, vcx);
         assert_eq!(
-            style.bg_image,
+            style.reset_background.bg_image,
             Some(ImageSource::Url("MixedCase.png".into()))
         );
     }

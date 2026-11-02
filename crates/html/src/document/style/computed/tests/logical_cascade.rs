@@ -42,7 +42,10 @@ fn stronger_declaration_wins_between_logical_and_physical_sizes() {
     ] {
         let e = find(doc.nodes(), id).expect(id);
         assert_eq!(
-            (e.style.cascaded().width, e.style.cascaded().height),
+            (
+                e.style.cascaded().reset_box_layout.width,
+                e.style.cascaded().reset_box_layout.height
+            ),
             (Some(Len::Px(w)), Some(Len::Px(h))),
             "{id}"
         );
@@ -66,11 +69,20 @@ fn author_physical_side_beats_user_agent_logical_side() {
     .build()
     .unwrap();
     let a = find(doc.nodes(), "a").expect("a");
-    assert_eq!(a.style.cascaded().padding.top, Some(Len::Px(0.0)));
+    assert_eq!(
+        a.style.cascaded().reset_box_layout.padding.top,
+        Some(Len::Px(0.0))
+    );
     let b = find(doc.nodes(), "b").expect("b");
-    assert_eq!(b.style.cascaded().padding.left, Some(Len::Px(9.0)));
+    assert_eq!(
+        b.style.cascaded().reset_box_layout.padding.left,
+        Some(Len::Px(9.0))
+    );
     let c = find(doc.nodes(), "c").expect("c");
-    assert_eq!(c.style.cascaded().margin.left, Some(Len::Px(3.0)));
+    assert_eq!(
+        c.style.cascaded().reset_box_layout.margin.left,
+        Some(Len::Px(3.0))
+    );
 }
 
 #[test]
@@ -89,14 +101,30 @@ fn wide_keywords_and_substitution_in_box_longhands() {
     assert!(
         a.style
             .cascaded()
+            .reset_cascade
             .inherit_longhands
             .contains(crate::style::css::LonghandId::MarginLeft)
     );
-    assert_eq!(a.style.cascaded().padding.left, Some(Len::Px(0.0)));
-    assert_eq!(a.style.cascaded().inset.top, Some(Len::Auto));
+    assert_eq!(
+        a.style.cascaded().reset_box_layout.padding.left,
+        Some(Len::Px(0.0))
+    );
+    assert_eq!(
+        a.style.cascaded().reset_positioned.inset.top,
+        Some(Len::Auto)
+    );
     let b = find(doc.nodes(), "b").expect("b");
-    assert_eq!(b.style.cascaded().margin.top, Some(Len::Px(5.0)));
-    assert_eq!(b.style.cascaded().margin.right, Some(Len::Px(6.0)));
+    assert_eq!(
+        b.style.cascaded().reset_box_layout.margin.top,
+        Some(Len::Px(5.0))
+    );
+    assert_eq!(
+        b.style.cascaded().reset_box_layout.margin.right,
+        Some(Len::Px(6.0))
+    );
     // Invalid after substitution: `unset`, not the earlier `padding: 3px`.
-    assert_eq!(b.style.cascaded().padding.top, Some(Len::Px(0.0)));
+    assert_eq!(
+        b.style.cascaded().reset_box_layout.padding.top,
+        Some(Len::Px(0.0))
+    );
 }

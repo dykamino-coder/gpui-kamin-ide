@@ -41,8 +41,12 @@ pub(super) fn cell_spans(slot: CellSlot<'_>, cols_collapsed: &[bool], cell: &Ele
     let spans_collapsed = span_cols > 1
         && (col_ix..col_ix + span_cols as usize)
             .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
-    let clipped =
-        [st.overflow_x, st.overflow_y].contains(&Some(Overflow::Hidden)) || spans_collapsed;
+    let clipped = [
+        st.reset_box_layout.overflow_x,
+        st.reset_box_layout.overflow_y,
+    ]
+    .contains(&Some(Overflow::Hidden))
+        || spans_collapsed;
     CellSpans {
         span_cols,
         span_rows,
@@ -71,10 +75,11 @@ pub(super) fn row_band_probes(
     let rs = row.style.used();
     let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
-            && (rs.bg_image.is_some()
-                || rs.gradient_raw.is_some()
-                || (rs.background.is_some() && rs.bg_clip.is_some())
-                || !rs.shadows.is_empty()))
+            && (rs.reset_background.bg_image.is_some()
+                || rs.reset_background.gradient_raw.is_some()
+                || (rs.reset_background.background.is_some()
+                    && rs.reset_background.bg_clip.is_some())
+                || !rs.reset_effects.shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
@@ -87,27 +92,28 @@ pub(super) fn row_band_probes(
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
         let gs = g.style.used();
-        (gs.collapsed != Some(true)
-            && (gs.bg_image.is_some()
-                || gs.gradient_raw.is_some()
-                || (gs.background.is_some() && gs.bg_clip.is_some())
-                || !gs.shadows.is_empty()
-                || gs.outline.is_some()))
+        (gs.reset_context.collapsed != Some(true)
+            && (gs.reset_background.bg_image.is_some()
+                || gs.reset_background.gradient_raw.is_some()
+                || (gs.reset_background.background.is_some()
+                    && gs.reset_background.bg_clip.is_some())
+                || !gs.reset_effects.shadows.is_empty()
+                || gs.reset_border.outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.group)
         && group_of.get(&row.node_id).is_some_and(|edge| edge.first)
     {
         let mut band_style = g.style.cascaded().clone();
-        if band_style.bg_image.is_none() {
-            band_style.bg_image = band_style.gradient_raw.clone();
+        if band_style.reset_background.bg_image.is_none() {
+            band_style.reset_background.bg_image = band_style.reset_background.gradient_raw.clone();
         }
         // Полоса только с обводкой не дублирует цвет, который несут ячейки.
-        if band_style.bg_image.is_none()
-            && g.style.used().shadows.is_empty()
-            && g.style.used().bg_clip.is_none()
+        if band_style.reset_background.bg_image.is_none()
+            && g.style.used().reset_effects.shadows.is_empty()
+            && g.style.used().reset_background.bg_clip.is_none()
         {
-            band_style.background = None;
+            band_style.reset_background.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
         under.push(cx.contracts.build.layer(band));
@@ -116,8 +122,8 @@ pub(super) fn row_band_probes(
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
         let mut band_style = row.style.used().as_ref().clone();
-        if band_style.bg_image.is_none() {
-            band_style.bg_image = band_style.gradient_raw.clone();
+        if band_style.reset_background.bg_image.is_none() {
+            band_style.reset_background.bg_image = band_style.reset_background.gradient_raw.clone();
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
         under.push(cx.contracts.build.layer(band));
@@ -149,7 +155,7 @@ pub(super) fn push_empty_row_track(
             .iter()
             .any(|n| matches!(n, Node::Element(c) if is_cell(c)))
         && !covered
-        && let Some(Len::Px(h)) = row.style.used().height
+        && let Some(Len::Px(h)) = row.style.used().reset_box_layout.height
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
@@ -176,7 +182,7 @@ pub(super) fn cell_cascaded_style(
     // `baseline` (`vertical-align-applies-to-*`: a row group's
     // `bottom` must not move the cell's content).
     if cell.style.own_vertical_align().is_none() && !html_cell(cell) {
-        cm.vertical_align = None;
+        cm.inh.text_flow.vertical_align = None;
     }
     // Потолок вертикальной ячейки режет доступное место её
     // ортогонального потока — как у блока (см. ortho_limit в
@@ -185,11 +191,17 @@ pub(super) fn cell_cascaded_style(
     // зелёный квадрат из двух колонок).
     // Высота в `ch` разрешается позже, с письмом ряда (`cell_heights`).
     if cell.style.used().wm().vertical()
-        && cm.ortho_limit.is_none()
-        && !matches!(cell.style.cascaded().height, Some(Len::Ch(_)))
-        && let Some(Len::Px(h)) = st.height.or(st.max_height)
+        && cm.reset_context.ortho_limit.is_none()
+        && !matches!(
+            cell.style.cascaded().reset_box_layout.height,
+            Some(Len::Ch(_))
+        )
+        && let Some(Len::Px(h)) = st
+            .reset_box_layout
+            .height
+            .or(st.reset_box_layout.max_height)
     {
-        cm.ortho_limit = Some(h);
+        cm.reset_context.ortho_limit = Some(h);
     }
     // Инлайн-мера ячейки ПАРАЛЛЕЛЬНОЙ таблицы — дорожка КОЛОНКИ, не стол.
     // Унаследованный предел — запас по §7.3 лишь для неопределённого места;
@@ -201,8 +213,8 @@ pub(super) fn cell_cascaded_style(
     // (гейт транспонирования решётки и spacing_phys), предел уже задан.
     // У анонимной обёртки table-cell (anon_element("table", …),
     // Computed::default()) своё письмо пусто: line-box-direction-* не затронуты.
-    if e.style.used().wm().vertical() && cm.ortho_limit.is_some() {
-        cm.ortho_col = true;
+    if e.style.used().wm().vertical() && cm.reset_context.ortho_limit.is_some() {
+        cm.reset_context.ortho_col = true;
     }
     cm
 }
@@ -213,8 +225,12 @@ pub(super) fn hides_empty_cell(
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> bool {
-    box_style(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
-        && e.style.cascaded().border_collapse != Some(true)
+    box_style(row_style, &cell.style, vcx)
+        .inh
+        .table_list
+        .empty_cells_hide
+        == Some(true)
+        && e.style.cascaded().inh.table_list.border_collapse != Some(true)
         && {
             let mut текст = String::new();
             gather_text(&cell.children, &mut текст);

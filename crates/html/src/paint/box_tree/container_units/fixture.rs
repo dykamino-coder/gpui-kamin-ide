@@ -52,8 +52,8 @@ pub(super) fn element<'a>(nodes: &'a [Node], id: &str) -> &'a Element {
 pub(super) fn content(doc: &Document, id: &str) -> (f32, f32) {
     let c = element(doc.nodes(), id).style.computed();
     (
-        c.cq_size.0.expect("settled width"),
-        c.cq_size.1.expect("settled height"),
+        c.reset_context.cq_size.0.expect("settled width"),
+        c.reset_context.cq_size.1.expect("settled height"),
     )
 }
 

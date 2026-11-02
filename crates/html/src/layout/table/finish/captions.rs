@@ -20,7 +20,7 @@ pub(super) async fn collect_captions(
     let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     for c in &e.children {
         if let Node::Element(cap) = c
-            && (cap.tag == "caption" || cap.style.used().is_caption == Some(true))
+            && (cap.tag == "caption" || cap.style.used().reset_context.is_caption == Some(true))
         {
             let cm = box_style(inherited, &cap.style, vcx);
             let cap_side_bottom = crate::dom::table_boxes::caption_at_bottom(cap);
@@ -115,7 +115,7 @@ pub(super) fn wrap_with_captions(
         // a caption list item of a table with `margin-left: 1in`).
         let margin = std::mem::take(&mut outer.style().margin);
         wrap.style().margin = margin;
-        if inherited.flex_item && !vertical {
+        if inherited.reset_flex.flex_item && !vertical {
             let s = outer.style();
             let grow = s.flex_grow.take();
             let shrink = s.flex_shrink.take();
@@ -124,21 +124,21 @@ pub(super) fn wrap_with_captions(
             let w = wrap.style();
             w.flex_grow = grow;
             w.flex_shrink = shrink;
-            w.align_self = if e.style.used().align_self.is_some() {
+            w.align_self = if e.style.used().reset_flex.align_self.is_some() {
                 own_align
             } else {
                 None
             };
             // Render sizing has already included content-box borders/padding.
             // Move that resolved inline basis to the wrapper exactly once.
-            if !inherited.flex_main_vertical
-                && matches!(e.style.used().flex_basis, Some(Len::Px(_)))
+            if !inherited.reset_flex.flex_main_vertical
+                && matches!(e.style.used().reset_flex.flex_basis, Some(Len::Px(_)))
             {
                 w.flex_basis = s.flex_basis.take();
-            } else if inherited.flex_main_vertical
+            } else if inherited.reset_flex.flex_main_vertical
                 && grow == Some(0.0)
                 && shrink == Some(0.0)
-                && matches!(e.style.used().flex_basis, Some(Len::Px(_)))
+                && matches!(e.style.used().reset_flex.flex_basis, Some(Len::Px(_)))
             {
                 // A fully inflexible table keeps its definite main size.
                 // Include that size when the wrapper measures its captions.
@@ -150,9 +150,9 @@ pub(super) fn wrap_with_captions(
         // CSS 2.1 §17.4: the wrapper uses the table's border-edge inline size.
         // styled_div_with has resolved box sizing and font units on the grid.
         let inline_size = if vertical {
-            e.style.used().height
+            e.style.used().reset_box_layout.height
         } else {
-            e.style.used().width
+            e.style.used().reset_box_layout.width
         };
         if matches!(inline_size, Some(Len::Px(_) | Len::Pct(_))) {
             if vertical {
@@ -186,16 +186,18 @@ pub(super) fn wrap_with_captions(
         // колонки (`anonymous-table-box-width-001`: пустая подпись в 100
         // точек, рамка `border-bottom: 100px` у стола нулевой ширины).
         let caps_px = e.children.iter().all(|n| match n {
-            Node::Element(c) if c.tag == "caption" || c.style.used().is_caption == Some(true) => {
-                matches!(c.style.used().width, Some(Len::Px(_)))
+            Node::Element(c)
+                if c.tag == "caption" || c.style.used().reset_context.is_caption == Some(true) =>
+            {
+                matches!(c.style.used().reset_box_layout.width, Some(Len::Px(_)))
             }
             _ => true,
         });
         let mut outer = outer;
         if !vertical
             && caps_px
-            && e.style.used().width.is_none()
-            && e.style.used().align_self.is_none()
+            && e.style.used().reset_box_layout.width.is_none()
+            && e.style.used().reset_flex.align_self.is_none()
         {
             outer.style().align_self = Some(gpui::AlignItems::Stretch);
         }

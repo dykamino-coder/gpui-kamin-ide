@@ -51,7 +51,7 @@ impl ThroughCache {
                         }
                         if (ch.inline && !inline_marked_block(ch))
                             || matches!(
-                                ch.style.used().display,
+                                ch.style.used().reset_box_layout.display,
                                 Some(Display::None | Display::Contents)
                             )
                             || !in_flow(&ch.style.used())
@@ -69,7 +69,7 @@ impl ThroughCache {
                         id,
                         own,
                         children,
-                        e.style.used().margin_trim & 3 == 0,
+                        e.style.used().reset_fragmentation.margin_trim & 3 == 0,
                     ));
                     pending.extend(descend);
                 }

@@ -32,9 +32,9 @@ pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
         return false;
     }
     let own = if last {
-        e.style.used().break_after_avoid
+        e.style.used().reset_fragmentation.break_after_avoid
     } else {
-        e.style.used().break_before_avoid
+        e.style.used().reset_fragmentation.break_before_avoid
     };
     if own {
         return true;
@@ -43,7 +43,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
         return value;
     }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
-        |n| !matches!(n, Node::Element(k) if matches!(k.style.used().display, Some(Display::None))),
+        |n| !matches!(n, Node::Element(k) if matches!(k.style.used().reset_box_layout.display, Some(Display::None))),
     );
     let edge = if last { live.next_back() } else { live.next() };
     // Ряд `flex` без переноса — одна строка: `break-before/after` ЛЮБОГО
@@ -53,15 +53,15 @@ pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // последняя, значит значение уходит на контейнер. Сетка и колонка сюда
     // не попадают: там «бок о бок» неверен (см. выше).
     let row_line = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && e.style.used().webkit_box != Some(true)
+    ) && e.style.used().reset_flex.webkit_box != Some(true)
         && matches!(
-            e.style.used().flex_dir,
+            e.style.used().reset_flex.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && e.style.used().flex_wrap != Some(true);
+        && e.style.used().reset_flex.flex_wrap != Some(true);
     if row_line {
         return e
             .children
@@ -93,16 +93,16 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // и его потомков потоку родителя не передаётся
     // (`out-of-flow-in-multicolumn-005`).
     if matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
         return false;
     }
     let own = if last {
-        e.style.used().break_after_force
+        e.style.used().reset_fragmentation.break_after_force
     } else {
-        e.style.used().break_before_force
+        e.style.used().reset_fragmentation.break_before_force
     };
     if own {
         return true;
@@ -119,7 +119,7 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
         return value;
     }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
-        |n| !matches!(n, Node::Element(k) if matches!(k.style.used().display, Some(Display::None))),
+        |n| !matches!(n, Node::Element(k) if matches!(k.style.used().reset_box_layout.display, Some(Display::None))),
     );
     // Ряд flex БЕЗ переноса: элементы стоят бок о бок и НАЧИНАЮТСЯ с верха
     // ряда — в блочном направлении «первый» и «последний» это каждый из них
@@ -131,16 +131,16 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // 956-963) — контроль обязан включать `single-line-row-flex-
     // fragmentation-046-print`.
     let row_nowrap = (matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || e.style.used().webkit_box == Some(true))
+    ) || e.style.used().reset_flex.webkit_box == Some(true))
         && matches!(
-            e.style.used().flex_dir,
+            e.style.used().reset_flex.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && e.style.used().flex_wrap != Some(true)
-        && e.style.cascaded().webkit_box_vertical != Some(true);
+        && e.style.used().reset_flex.flex_wrap != Some(true)
+        && e.style.cascaded().inh.text_flow.webkit_box_vertical != Some(true);
     // Ячейки одного ряда стоят бок о бок ровно как элементы ряда `flex` без
     // переноса: в блочном направлении «первой» и «последней» служит КАЖДАЯ
     // (css-break-4 §break-propagation вместе с css-tables-3 §fragmentation;
@@ -167,24 +167,24 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // как и было (`grid-item-fragmentation-042` — зелёная, гейт её не
     // пускает: `grid-template-columns: 25px`, одна колонка).
     let grid_one_row = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Grid) | Some(Display::InlineGrid)
-    ) && e.style.used().grid_rows.is_none()
-        && e.style.used().grid_areas.is_none()
+    ) && e.style.used().reset_grid.grid_rows.is_none()
+        && e.style.used().reset_grid.grid_areas.is_none()
         && !matches!(
-            e.style.used().grid_auto_flow,
+            e.style.used().reset_grid.grid_auto_flow,
             Some(crate::style::computed::AutoFlow::Col)
                 | Some(crate::style::computed::AutoFlow::ColDense)
         )
         && !e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-            if k.style.used().grid_row.is_some() || k.style.used().grid_area_name.is_some())
+            if k.style.used().reset_grid.grid_row.is_some() || k.style.used().reset_grid.grid_area_name.is_some())
         })
         && e.style
             .used()
-            .grid_cols
+            .reset_grid.grid_cols
             .map(|n| n as usize)
-            .or_else(|| e.style.used().grid_tracks.as_ref().map(|t| t.len()))
+            .or_else(|| e.style.used().reset_grid.grid_tracks.as_ref().map(|t| t.len()))
             .is_some_and(|cols| {
                 cols > 1
                     && e.children
@@ -193,7 +193,7 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
                         .filter(|n| {
                             matches!(n, Node::Element(k)
                             if !out_of_flow(&k.style.used())
-                                && !matches!(k.style.used().display, Some(Display::None)))
+                                && !matches!(k.style.used().reset_box_layout.display, Some(Display::None)))
                         })
                         .count()
                         <= cols

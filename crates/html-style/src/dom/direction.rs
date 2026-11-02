@@ -19,7 +19,7 @@ pub(super) fn first_strong(
         let own_dir = e
             .attr("dir")
             .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "ltr" | "rtl" | "auto"));
-        e.style.cascaded().rtl.is_none() && e.tag != "bdi" && !own_dir
+        e.style.cascaded().inh.writing.rtl.is_none() && e.tag != "bdi" && !own_dir
     }) {
         match node? {
             Node::Text(t) => {

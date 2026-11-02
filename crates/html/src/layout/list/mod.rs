@@ -31,7 +31,7 @@ pub(crate) async fn render(
             }
             Node::Element(pseudo)
                 if pseudo.tag.starts_with("::")
-                    && pseudo.style.used().display != Some(Display::ListItem) => {}
+                    && pseudo.style.used().reset_box_layout.display != Some(Display::ListItem) => {}
             _ => pending.push(child.clone()),
         }
     }

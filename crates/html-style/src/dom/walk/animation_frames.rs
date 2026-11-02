@@ -22,7 +22,7 @@ pub(super) fn animation_frames(
 ) -> Option<Vec<(f32, Computed)>> {
     // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
     // уже нет, а интерполировать нужно готовые стили, а не текст.
-    let mut anim = style.animation.as_ref().and_then(|a| {
+    let mut anim = style.reset_context.animation.as_ref().and_then(|a| {
         // Набор `name` поверх стиля `base`.
         let resolve = |name: &str, base: &Computed| -> Option<Vec<(f32, Computed)>> {
             let track = frames.get(name)?;
@@ -34,7 +34,7 @@ pub(super) fn animation_frames(
                     // дописывает функции к уже стоящим (ветка
                     // `"transform"`: `self.transform.unwrap_or_default()`).
                     if decls.contains("transform") {
-                        c.transform = None;
+                        c.reset_transforms.transform = None;
                     }
                     c.apply_decls_with_vars(decls, vars, vcx);
                     // Происхождение анимаций ниже важных объявлений
@@ -85,7 +85,7 @@ pub(super) fn animation_frames(
         }
         resolve(&a.name, &style)
     });
-    if let (Some(resolved), Some(spec)) = (anim.as_mut(), style.animation.as_ref()) {
+    if let (Some(resolved), Some(spec)) = (anim.as_mut(), style.reset_context.animation.as_ref()) {
         // Frames contain underlying values too. Only animated margins may replace
         // the node's edges: flow may already have consumed its collapsed margins.
         let animated = ["margin-top", "margin-right", "margin-bottom", "margin-left"].map(|key| {
@@ -101,7 +101,7 @@ pub(super) fn animation_frames(
                 })
         });
         for (_, frame) in resolved {
-            let margin = &mut frame.margin;
+            let margin = &mut frame.reset_box_layout.margin;
             for (edge, active) in [
                 &mut margin.top,
                 &mut margin.right,
@@ -149,9 +149,9 @@ mod tests {
             let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
             let frames = animation_frames(&base, &tracks, &HashMap::new(), None, vcx).unwrap();
             for (_, frame) in frames {
-                assert_eq!(frame.margin.left, expected);
+                assert_eq!(frame.reset_box_layout.margin.left, expected);
                 assert_eq!(
-                    frame.margin.top,
+                    frame.reset_box_layout.margin.top,
                     (property == "margin").then_some(Len::Px(20.0))
                 );
             }

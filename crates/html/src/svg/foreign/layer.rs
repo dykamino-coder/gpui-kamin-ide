@@ -37,11 +37,16 @@ pub(super) fn prepare(
     let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let zoom = merged.zoom_eff.unwrap_or(1.0);
-        let w =
-            super::geometry::length(e.style.used().width, e.attr("width"), viewport.0, zoom, vcx);
+        let zoom = merged.inh.font.zoom_eff.unwrap_or(1.0);
+        let w = super::geometry::length(
+            e.style.used().reset_box_layout.width,
+            e.attr("width"),
+            viewport.0,
+            zoom,
+            vcx,
+        );
         let h = super::geometry::length(
-            e.style.used().height,
+            e.style.used().reset_box_layout.height,
             e.attr("height"),
             viewport.1,
             zoom,
@@ -145,30 +150,34 @@ pub(super) fn prepare(
 /// clipping, masking, filters, blending) the SVG host already applies to the
 /// captured layer; its contents are clipped to the viewport.
 fn embedded_root(mut root: BoxStyle, size: (f32, f32)) -> BoxStyle {
-    root.width = Some(Len::Px(size.0));
-    root.height = Some(Len::Px(size.1));
-    root.display = Some(Display::Block);
-    root.position = Some(Position::Relative);
-    root.flow_root = Some(true);
-    root.transform = None;
-    root.transform_raw = None;
-    root.translate = None;
-    root.opacity = None;
-    root.clip_ref = None;
-    root.clip_inset = None;
-    root.clip_edges = None;
-    root.clip_xywh = None;
-    root.clip_shape = None;
-    root.clip_polygon = None;
-    root.clip_bare_box = false;
-    root.mask_image = None;
-    root.filter = None;
-    root.filter_ref = None;
-    root.rotate_prop = None;
-    root.scale_prop = None;
-    root.overflow_x.get_or_insert(Overflow::Hidden);
-    root.overflow_y.get_or_insert(Overflow::Hidden);
-    root.blend = None;
+    root.reset_box_layout.width = Some(Len::Px(size.0));
+    root.reset_box_layout.height = Some(Len::Px(size.1));
+    root.reset_box_layout.display = Some(Display::Block);
+    root.reset_positioned.position = Some(Position::Relative);
+    root.reset_context.flow_root = Some(true);
+    root.reset_transforms.transform = None;
+    root.reset_transforms.transform_raw = None;
+    root.reset_transforms.translate = None;
+    root.reset_effects.opacity = None;
+    root.reset_mask.clip_ref = None;
+    root.reset_mask.clip_inset = None;
+    root.reset_mask.clip_edges = None;
+    root.reset_mask.clip_xywh = None;
+    root.reset_mask.clip_shape = None;
+    root.reset_mask.clip_polygon = None;
+    root.reset_mask.clip_bare_box = false;
+    root.reset_mask.mask_image = None;
+    root.reset_effects.filter = None;
+    root.reset_effects.filter_ref = None;
+    root.reset_transforms.rotate_prop = None;
+    root.reset_transforms.scale_prop = None;
+    root.reset_box_layout
+        .overflow_x
+        .get_or_insert(Overflow::Hidden);
+    root.reset_box_layout
+        .overflow_y
+        .get_or_insert(Overflow::Hidden);
+    root.reset_effects.blend = None;
     root
 }
 

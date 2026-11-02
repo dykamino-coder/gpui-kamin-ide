@@ -32,8 +32,13 @@ pub(crate) fn finish_element(
     opts: &RenderOpts,
 ) {
     let vcx = opts.cx.vcx();
-    let below_cb_axis = e.style.used().position == Some(crate::style::computed::Position::Absolute)
-        && e.style.used().z_index.is_some_and(|z| z < 0)
+    let below_cb_axis = e.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Absolute)
+        && e.style
+            .used()
+            .reset_positioned
+            .z_index
+            .is_some_and(|z| z < 0)
         && y_set
         && !x_set
         && !e.inline
@@ -41,7 +46,7 @@ pub(crate) fn finish_element(
         && !inherited.wm().vertical()
         && !e.style.cascaded().wm().vertical()
         && matches!(
-            inherited.position,
+            inherited.reset_positioned.position,
             Some(crate::style::computed::Position::Relative)
                 | Some(crate::style::computed::Position::Absolute)
         )
@@ -49,9 +54,13 @@ pub(crate) fn finish_element(
         && !inherited.cb_ancestor
         && !stacking_context(inherited)
         && !ordered_context;
-    let below_free_axis = e.style.used().position
+    let below_free_axis = e.style.used().reset_positioned.position
         == Some(crate::style::computed::Position::Absolute)
-        && e.style.used().z_index.is_some_and(|z| z < 0)
+        && e.style
+            .used()
+            .reset_positioned
+            .z_index
+            .is_some_and(|z| z < 0)
         && !(x_set && y_set)
         && !below_cb_axis;
     // Не уводить в верхний слой ВСЯКУЮ абсолютную коробку с одной
@@ -90,8 +99,9 @@ pub(crate) fn finish_element(
     if record_root {
         let side = px_lossy_zero;
         let root_b = inherited.borders();
-        let offset =
-            side(e.style.used().margin.left) + side(inherited.padding.left) + side(root_b.left);
+        let offset = side(e.style.used().reset_box_layout.margin.left)
+            + side(inherited.reset_box_layout.padding.left)
+            + side(root_b.left);
         done = crate::text::vertical::record_root_left(done, offset, opts.cx.layout());
     }
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
@@ -106,16 +116,18 @@ pub(crate) fn finish_element(
     // (contain-body-w-m-001..004, contain-html-w-m-001..004).
     if matches!(e.tag.as_str(), "html" | "body")
         && e.style.cascaded().wm().block_rl()
-        && !e.style.used().wm_contained
+        && !e.style.used().reset_context.wm_contained
     {
-        if !e.style.used().background_paint.paints() || e.style.used().bg_image.is_none() {
+        if !e.style.used().background_paint.paints()
+            || e.style.used().reset_background.bg_image.is_none()
+        {
             done = div()
                 .w_full()
                 .flex()
                 .justify_end()
                 .child(done)
                 .into_any_element();
-        } else if let Some(Len::Px(w)) = e.style.used().width {
+        } else if let Some(Len::Px(w)) = e.style.used().reset_box_layout.width {
             // Корню с фоном-картинкой флекс-обёртка гасила слой
             // краски — прижим вправо считается сдвигом по известной
             // ширине (background-size-document-root-vrl-*).
@@ -142,8 +154,13 @@ pub(crate) fn finish_element(
     // ребёнка ложится под его содержимое, но ПОВЕРХ его фона — не под
     // весь документ (`individual-transform/stacking-context-00*`,
     // `transform-stacking-001`).
-    if e.style.used().z_index.is_some_and(|z| z < 0)
-        && e.style.used().position == Some(crate::style::computed::Position::Relative)
+    if e.style
+        .used()
+        .reset_positioned
+        .z_index
+        .is_some_and(|z| z < 0)
+        && e.style.used().reset_positioned.position
+            == Some(crate::style::computed::Position::Relative)
         && e.tag != "body"
         && !crate::paint::stacking::nested_context(inherited)
     {
@@ -169,13 +186,14 @@ pub(crate) fn finish_element(
     // `fixed` остаётся в контексте предка и требует того же шага 8, что
     // абсолют: перестановка детей не поднимает его над отложенными строками.
     let step8 = (matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Relative)
             | Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Sticky)
     ) || (under_tf
-        && e.style.used().position == Some(crate::style::computed::Position::Fixed)))
-        && e.style.used().z_index.unwrap_or(0) == 0
+        && e.style.used().reset_positioned.position
+            == Some(crate::style::computed::Position::Fixed)))
+        && e.style.used().reset_positioned.z_index.unwrap_or(0) == 0
         && !matches!(e.tag.as_str(), "html" | "body")
         && paint_last_ok(e, &nodes[idx + 1..], &opts.cx);
     // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что
@@ -184,25 +202,25 @@ pub(crate) fn finish_element(
     // 0»; Blink кладёт такой слой в список z-порядка с нулём): после
     // блоков и строк потока, в порядке разметки (`t32-opacity-zorder-c`).
     let step8 = step8
-        || (e.style.used().position.is_none_or(|p| p == crate::style::computed::Position::Static)
+        || (e.style.used().reset_positioned.position.is_none_or(|p| p == crate::style::computed::Position::Static)
             // `z-index` у непозиционированного не действует
             // (CSS 2.1 §9.9.1 «Applies to: positioned elements»).
-            && (e.style.used().z_index.unwrap_or(0) == 0
+            && (e.style.used().reset_positioned.z_index.unwrap_or(0) == 0
                 || !z_index_applies(&e.style.used(), inherited))
             // Только прозрачность: у `contain`/`will-change`/
             // `transform` положительный `z-index` потомков держится
             // на краске на месте (`contain-paint-stacking-context-*`).
-            && (e.style.used().opacity.is_some_and(|o| o < 1.0)
+            && (e.style.used().reset_effects.opacity.is_some_and(|o| o < 1.0)
                 // css-transforms-1 §transform-rendering: a transformed
                 // box establishes a stacking context and is painted
                 // as a positioned `z-index: 0` layer (Blink puts it in
                 // the z-order list with 0): `perspective-zero` — a
                 // static transformed box after a `relative` one.
-                || e.style.used().transform.is_some()
-                || e.style.used().translate.is_some()
+                || e.style.used().reset_transforms.transform.is_some()
+                || e.style.used().reset_transforms.translate.is_some()
                 // Compositing 1 §mix-blend-mode: paint the new context at level zero.
-                || e.style.used().blend.is_some_and(|b| b != 0))
-            && !e.style.used().z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style.used(), inherited))
+                || e.style.used().reset_effects.blend.is_some_and(|b| b != 0))
+            && !e.style.used().reset_positioned.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style.used(), inherited))
             && !matches!(e.tag.as_str(), "html" | "body")
             && paint_last_ok(e, &nodes[idx + 1..], &opts.cx));
     if step8 {

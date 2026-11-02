@@ -30,8 +30,8 @@ pub(super) fn self_alignment(
     // `normal` у элемента ГИБКОГО контейнера = `stretch` (§6.2), а не
     // «пусто»: пустое значение брало `align-items` родителя
     // (`self-align-normal-flex`).
-    if own.align_self_normal && flex_parent {
-        set!(c.align_self, Some(Align::Stretch));
+    if own.reset_flex.align_self_normal && flex_parent {
+        set!(c.reset_flex.align_self, Some(Align::Stretch));
     }
     // `self-start`/`self-end` меряются по письму САМОГО элемента (css-align-3
     // §6.2). Значение уже физическое (начало = левый край при ltr), поэтому
@@ -44,9 +44,11 @@ pub(super) fn self_alignment(
     // элемента в rtl-колонке — тоже rtl, и зеркалить нечего (поперечную ось
     // rtl-колонки разворачивает сама раскладка, `paint/apply/`:
     // `flex_cross_reverse` / `flip`).
-    if c.context.parent_grid == 0 && own.align_self_own_axis && c.rtl.unwrap_or(false) != parent.rtl
+    if c.context.parent_grid == 0
+        && own.reset_flex.align_self_own_axis
+        && c.inh.writing.rtl.unwrap_or(false) != parent.rtl
     {
-        set!(c.align_self, flip(c.align_self));
+        set!(c.reset_flex.align_self, flip(c.reset_flex.align_self));
     }
     // `start`/`end` (и `self-*`) меряются по ПИСЬМУ, а раскладка знает только
     // гибкие концы (`apply::to_items` → `FlexStart`/`FlexEnd`), которые
@@ -55,7 +57,7 @@ pub(super) fn self_alignment(
     // развернёт их обратно. Переворот поперёк письма (`paint/apply/`: `flip`
     // через тот же `WrapReverse`) здесь не участвует — он виден раскладке и
     // для `flex-*`, и для `start` одинаково (`self-align-start-end-flex-001`).
-    if !own.align_self_flex_kw && parent.wrap_reverse && flex_parent {
-        set!(c.align_self, flip(c.align_self));
+    if !own.reset_flex.align_self_flex_kw && parent.wrap_reverse && flex_parent {
+        set!(c.reset_flex.align_self, flip(c.reset_flex.align_self));
     }
 }

@@ -24,9 +24,9 @@ pub(crate) fn physical(
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
     if !text_turn(&opts.cx)
         || !flow.wm().turned()
-        || e.style.used().inline_display == Some(true)
+        || e.style.used().reset_context.inline_display == Some(true)
         || !(matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(
                 Display::InlineBlock
                     | Display::InlineFlex
@@ -35,7 +35,7 @@ pub(crate) fn physical(
             )
         ) || physical_replaced(e))
         || matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -45,24 +45,25 @@ pub(crate) fn physical(
         return None;
     }
     let mut context = flow.clone();
-    context.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-        true,
-        context.wm().block_rl(),
-        context.wm().sideways(),
-    ));
-    context.turned_line = false;
-    context.lines_reversed = None;
-    context.para_vertical = None;
+    context.inh.writing.writing_mode =
+        Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            context.wm().block_rl(),
+            context.wm().sideways(),
+        ));
+    context.reset_text_box.turned_line = false;
+    context.reset_context.lines_reversed = None;
+    context.reset_context.para_vertical = None;
     let mut child =
         crate::layout::atom::pct_resolved_against_block(e, flow).unwrap_or_else(|| e.clone());
     let margins = margin(&child.style.used(), flow);
-    child.style.used_mut().margin = Sides::default();
+    child.style.used_mut().reset_box_layout.margin = Sides::default();
     // The atom is its own layout root inside the counter-rotation, where a
     // relative offset has nothing to shift against. Offsets are physical
     // (CSS 2.1 §9.4.3), so they move the wrapper in the turned line's frame.
     let (dx, dy) = crate::layout::positioned::relative::relative_shift(&child, None);
     if (dx, dy) != (0.0, 0.0) {
-        child.style.used_mut().inset = Default::default();
+        child.style.used_mut().reset_positioned.inset = Default::default();
     }
     let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
     let central = !flow.wm().alphabetic_baseline();
@@ -102,18 +103,18 @@ fn physical_replaced(e: &Element) -> bool {
     matches!(
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
-    ) && e.style.used().display.is_none()
+    ) && e.style.used().reset_box_layout.display.is_none()
 }
 
 pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
-    (e.style.used().display == Some(Display::InlineBlock)
-        && e.style.used().inline_display != Some(true))
+    (e.style.used().reset_box_layout.display == Some(Display::InlineBlock)
+        && e.style.used().reset_context.inline_display != Some(true))
     .then(|| crate::layout::atom::pct_resolved_against_block(e, flow))
     .flatten()
 }
 
 pub(crate) fn margin(style: &Computed, flow: &Computed) -> Sides {
-    crate::text::inline::physical_sides::side_values(flow, style.margin)
+    crate::text::inline::physical_sides::side_values(flow, style.reset_box_layout.margin)
 }
 
 #[cfg(test)]

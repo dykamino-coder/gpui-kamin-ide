@@ -111,7 +111,7 @@ mod tests {
         let Node::Element(e) = &mut nodes[0] else {
             unreachable!()
         };
-        e.style.used_mut().float = Some(1);
+        e.style.used_mut().reset_box_layout.float = Some(1);
         let next = cache.get(&nodes, false, false);
         assert!(next.clearance_possible);
         assert!(!Rc::ptr_eq(&first, &next));
@@ -121,7 +121,7 @@ mod tests {
     fn paint_indices_use_preorder_entries_and_subtree_ends() {
         let mut positioned = anon_element("span", vec![]);
         positioned.node_id = 2;
-        positioned.style.used_mut().position = Some(Position::Relative);
+        positioned.style.used_mut().reset_positioned.position = Some(Position::Relative);
         let positioned_id = positioned.node_id;
         let mut root = anon_element("div", vec![Node::Element(positioned)]);
         root.node_id = 1;

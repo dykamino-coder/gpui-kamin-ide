@@ -25,24 +25,27 @@ pub(super) fn percentage_height(
     }
     use crate::style::computed::Display as D;
     use crate::style::values::value::Len as L;
-    let out_of_flow = crate::style::flow::absolutely_positioned(own.position);
+    let out_of_flow = crate::style::flow::absolutely_positioned(own.reset_positioned.position);
     let tabular = matches!(
-        own.display,
+        own.reset_box_layout.display,
         Some(D::Table | D::InlineTable | D::TableCell | D::TableRow | D::TableRowGroup)
     );
     // Опора считается по ЗАДАННОЙ высоте коробки (своя запись или доля,
     // решённая квирком), как её видит предок-коробка.
-    let mut height = own.height;
-    if let (Some(L::Pct(k)), false, false, Some(base)) =
-        (own.height, c.cb_height_def, tabular, parent.quirk_pct_base)
-    {
+    let mut height = own.reset_box_layout.height;
+    if let (Some(L::Pct(k)), false, false, Some(base)) = (
+        own.reset_box_layout.height,
+        c.cb_height_def,
+        tabular,
+        parent.quirk_pct_base,
+    ) {
         height = Some(L::Px(k * base));
-        set!(c.height, height);
+        set!(c.reset_box_layout.height, height);
     }
     // Only block containers and table wrappers transmit an indefinite
     // percentage basis. Flex/grid containers stop the quirks ancestor walk.
     let blockish = matches!(
-        own.display,
+        own.reset_box_layout.display,
         None | Some(D::Block | D::InlineBlock | D::ListItem)
     );
     c.quirk_pct_base = match height {
@@ -50,11 +53,13 @@ pub(super) fn percentage_height(
         // Доля от определённого блока — тоже опора: флоат `height: 50%`
         // в контейнере 200 даёт потомкам 100 (`intrinsic-percent-
         // replaced-003/004`).
-        Some(L::Pct(k)) if !tabular => match parent.height {
+        Some(L::Pct(k)) if !tabular => match parent.reset_box_layout.height {
             Some(L::Px(h)) => Some(k * h),
             _ => parent.quirk_pct_base.map(|b| k * b),
         },
-        None | Some(L::Auto) if blockish && !out_of_flow && !tabular && !c.root_box => {
+        None | Some(L::Auto)
+            if blockish && !out_of_flow && !tabular && !c.reset_context.root_box =>
+        {
             parent.quirk_pct_base
         }
         _ => None,

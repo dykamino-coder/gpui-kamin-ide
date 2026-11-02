@@ -34,36 +34,37 @@ impl Computed {
         match key {
             "background-blend-mode" => {
                 if let Some(mode) = BlendMode::parse(v) {
-                    self.background_blend = accept_parsed!(self, Some(mode));
+                    self.reset_background.background_blend = accept_parsed!(self, Some(mode));
                 } else if matches!(v, "initial" | "unset" | "revert" | "revert-layer") {
-                    self.background_blend = None;
+                    self.reset_background.background_blend = None;
                 }
             }
             // Запись бывает и поосевой: `repeat space`, `round no-repeat`.
             "background-repeat" => {
                 if let Some(repeat) = record_parsed!(self, repeat_style(v)) {
-                    self.bg_repeat = (repeat != BgRepeat::Axes(Tiling::Repeat, Tiling::Repeat))
-                        .then_some(repeat);
+                    self.reset_background.bg_repeat = (repeat
+                        != BgRepeat::Axes(Tiling::Repeat, Tiling::Repeat))
+                    .then_some(repeat);
                 }
             }
             // Откуда отсчитывается картинка: умолчание — внутренний край
             // рамки (`padding-box`).
             "background-origin" => {
                 if let Some(origin) = record_parsed!(self, origin_box(v)) {
-                    self.bg_origin = origin;
+                    self.reset_background.bg_origin = origin;
                 }
             }
             // Область покраски фона: умолчание — `border-box`.
             "background-clip" | "-webkit-background-clip" => {
                 if let Some(clip) = record_parsed!(self, clip_box(v)) {
-                    self.bg_clip = clip;
+                    self.reset_background.bg_clip = clip;
                 }
             }
             // Отрицательная длина делает объявление негодным (§3.9).
             // Процентная смесь `calc(50px + 50%)` доживает до растра.
             "background-size" => {
                 if let Some(size) = record_parsed!(self, bg_size(v, vcx)) {
-                    self.bg_size = size;
+                    self.reset_background.bg_size = size;
                 }
             }
             // Оси положения (css-backgrounds-4 §3.6): своя ось, другая не
@@ -75,13 +76,13 @@ impl Computed {
             // окна, а красится всё равно только внутри коробки (§3.5).
             "background-attachment" => {
                 if let Some(fixed) = record_parsed!(self, attachment(v)) {
-                    self.bg_fixed = fixed.then_some(true);
+                    self.reset_background.bg_fixed = fixed.then_some(true);
                 }
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
             "object-view-box" => {
-                self.object_view_box = parsed_value!(
+                self.reset_shapes.object_view_box = parsed_value!(
                     self,
                     parse_view_box(v, vcx)
                         .map(Some)
@@ -95,7 +96,8 @@ impl Computed {
                 if !super::values::position_ok(v, vcx) {
                     return;
                 }
-                self.object_position = accept_parsed!(self, Some(parse_pos_words(v, vcx)));
+                self.reset_shapes.object_position =
+                    accept_parsed!(self, Some(parse_pos_words(v, vcx)));
             }
             _ => *hit = false,
         }

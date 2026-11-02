@@ -23,6 +23,12 @@ fn image_size_attributes_reach_the_style() {
         None
     }
     let img = find(&nodes).expect("картинка в дереве");
-    assert_eq!(img.style.cascaded().width, Some(Len::Px(100.0)));
-    assert_eq!(img.style.cascaded().height, Some(Len::Px(40.0)));
+    assert_eq!(
+        img.style.cascaded().reset_box_layout.width,
+        Some(Len::Px(100.0))
+    );
+    assert_eq!(
+        img.style.cascaded().reset_box_layout.height,
+        Some(Len::Px(40.0))
+    );
 }

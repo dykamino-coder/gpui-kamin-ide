@@ -30,8 +30,11 @@ fn first_child_is_addressable() {
     assert_eq!(found.len(), 3, "три куска");
     let first = &found[0];
     assert_ne!(
-        first.background, found[1].background,
+        first.reset_background.background, found[1].reset_background.background,
         "фон первого куска обязан отличаться от второго"
     );
-    assert!(first.color.is_some(), ":first-child тоже обязан сработать");
+    assert!(
+        first.inh.ui.color.is_some(),
+        ":first-child тоже обязан сработать"
+    );
 }

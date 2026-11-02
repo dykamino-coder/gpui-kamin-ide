@@ -15,8 +15,8 @@ pub(crate) fn claim_float_inline_size(
 ) {
     // CSS Containment 2 §3.1: a float's shrink-to-fit width must measure
     // the empty containment box even after placement removes its float flag.
-    if style.contains_width() && matches!(style.width, None | Some(Len::Auto)) {
-        style.width = Some(Len::FitContent);
+    if style.contains_width() && matches!(style.reset_box_layout.width, None | Some(Len::Auto)) {
+        style.reset_box_layout.width = Some(Len::FitContent);
     }
     // Native block children already establish the float's inline size and stretch together.
     // Only the rotated inline paragraph needs an explicit outer size claim.
@@ -24,14 +24,14 @@ pub(crate) fn claim_float_inline_size(
         return;
     }
     if style.vertical_decl().or(parent.vertical_decl()) == Some(true)
-        && matches!(style.height, None | Some(Len::Auto))
+        && matches!(style.reset_box_layout.height, None | Some(Len::Auto))
     {
         // The float's automatic orthogonal inline size is fit-content. Resolve
         // that size at its flow root before stretching parallel block children;
         // propagating auto claims would give each column its own min-content height.
-        style.height = Some(Len::FitContent);
-        style.hug_inline = true;
-        style.hug_claim = true;
+        style.reset_box_layout.height = Some(Len::FitContent);
+        style.reset_context.hug_inline = true;
+        style.reset_context.hug_claim = true;
     }
 }
 
@@ -61,7 +61,7 @@ pub(crate) fn constraint(
         .or(crate::layout::writing_mode::orthogonal_inline::flow_constraint(style))
         .or_else(|| crate::layout::writing_mode::orthogonal_absolute::constraint(style, fallback))
         .or_else(|| {
-            if !style.hug_inline {
+            if !style.reset_context.hug_inline {
                 return None;
             }
             let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -75,7 +75,7 @@ pub(crate) fn constraint(
         .or_else(|| {
             // The former rotated wrapper explicitly requested min-content for
             // parallel table columns; available space alone must not replace it.
-            if !style.ortho_col || style.ortho_limit.is_none() {
+            if !style.reset_context.ortho_col || style.reset_context.ortho_limit.is_none() {
                 return None;
             }
             let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -89,159 +89,17 @@ pub(crate) fn constraint(
 }
 
 pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
-    match style.height {
+    match style.reset_box_layout.height {
         Some(Len::MinContent) => Some(InlineKeyword::MinContent),
         Some(Len::MaxContent) => Some(InlineKeyword::MaxContent),
         Some(Len::FitContent) => Some(InlineKeyword::FitContent),
         _ => None,
     }
     .or_else(|| {
-        (style.ortho_col && style.ortho_limit.is_some()).then_some(InlineKeyword::MinContent)
+        (style.reset_context.ortho_col && style.reset_context.ortho_limit.is_some())
+            .then_some(InlineKeyword::MinContent)
     })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
-        super::constraint(
-            &crate::style::computed::BoxStyle::new(style.clone()),
-            fallback,
-        )
-    }
-
-    #[test]
-    fn float_claim_follows_own_writing_mode_and_preserves_definite_inline_sizes() {
-        let parent = {
-            let mut with_inherited = Computed {
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        };
-        let mut child = Computed::default();
-        claim_float_inline_size(&mut child, &parent, &[]);
-        assert!(child.hug_inline && child.hug_claim);
-        assert_eq!(child.height, Some(Len::FitContent));
-        let mut horizontal = {
-            let mut with_inherited = Computed {
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(false, false, false),
-            );
-            with_inherited
-        };
-        claim_float_inline_size(&mut horizontal, &parent, &[]);
-        assert!(!horizontal.hug_inline);
-        let mut fixed = Computed {
-            height: Some(Len::Px(70.0)),
-            ..Computed::default()
-        };
-        claim_float_inline_size(&mut fixed, &parent, &[]);
-        assert!(!fixed.hug_inline);
-    }
-
-    #[test]
-    fn auto_shrink_to_fit_claim_uses_real_intrinsics_and_own_limits() {
-        let style = {
-            let mut with_inherited = Computed {
-                hug_inline: true,
-                min_height: Some(Len::Px(80.0)),
-                max_height: Some(Len::Px(250.0)),
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        };
-        let value = constraint(&style, 600.0).unwrap();
-        assert_eq!(value.used_keyword(None, 40.0, 180.0), 180.0);
-        assert_eq!(value.used_keyword(None, 40.0, 900.0), 250.0);
-        assert_eq!(value.used_keyword(None, 40.0, 60.0), 80.0);
-    }
-
-    #[test]
-    fn authored_inline_size_remains_definite_without_an_orthogonal_boundary() {
-        let style = {
-            let mut with_inherited = Computed {
-                display: Some(crate::style::computed::Display::InlineBlock),
-                height: Some(Len::Px(160.0)),
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        };
-        let value = constraint(&style, 600.0).unwrap();
-        assert_eq!(value.fixed, Some(160.0));
-        assert_eq!(
-            value.used_keyword(Some(InlineKeyword::MinContent), 40.0, 700.0),
-            160.0
-        );
-    }
-
-    #[test]
-    fn parallel_table_track_keeps_min_content_and_own_limits() {
-        let mut style = {
-            let mut with_inherited = Computed {
-                ortho_col: true,
-                ortho_limit: Some(200.0),
-                min_height: Some(Len::Px(40.0)),
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        };
-        let value = constraint(&style, 200.0).unwrap();
-        assert_eq!(value.used_keyword(keyword(&style), 30.0, 900.0), 40.0);
-        style.height = Some(Len::Px(80.0));
-        assert_eq!(
-            constraint(&style, 200.0)
-                .unwrap()
-                .used_keyword(keyword(&style), 30.0, 900.0),
-            80.0
-        );
-    }
-
-    #[test]
-    fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
-        let style = {
-            let mut with_inherited = Computed {
-                height: Some(Len::MaxContent),
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        };
-        let value = constraint(&style, 200.0).unwrap();
-        assert_eq!(value.used_keyword(keyword(&style), 30.0, 900.0), 900.0);
-        let intrinsic_table = Computed {
-            ortho_col: true,
-            ortho_limit: Some(200.0),
-            ..style
-        };
-        assert_eq!(
-            constraint(&intrinsic_table, 200.0).unwrap().used_keyword(
-                keyword(&intrinsic_table),
-                30.0,
-                900.0
-            ),
-            900.0
-        );
-        let table = Computed {
-            ortho_col: true,
-            ..Computed::default()
-        };
-        assert!(constraint(&table, 200.0).is_none());
-    }
-}
+mod tests;

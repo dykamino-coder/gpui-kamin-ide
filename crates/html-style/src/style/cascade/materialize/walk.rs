@@ -18,6 +18,7 @@ pub(super) fn walk(
     vcx: ValueCx<'_>,
 ) -> bool {
     let mut changed = false;
+    let mut sharing = super::sharing::Sharing::default();
     let mut pending = vec![(nodes.iter(), parent.clone())];
     while let Some((nodes, inherited)) = pending.last_mut() {
         let Some(node) = nodes.next() else {
@@ -35,7 +36,7 @@ pub(super) fn walk(
         let slot = e.style.slot();
         let computed = slot
             .get(e.style.cascaded(), &parent, generation)
-            .unwrap_or_else(|| slot.compute(&parent, e.style.cascaded(), vcx));
+            .unwrap_or_else(|| sharing.compute(slot, &parent, e.style.cascaded(), vcx));
         // Равные входы позволяют разделить значение, но ссылка наследования
         // должна указывать на текущего родителя, включая новый кадр каскада.
         let republished = !e

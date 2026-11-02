@@ -34,24 +34,31 @@ pub fn promote_auto_ratio(style: &mut Computed, tag: &str) {
             | "select"
             | "textarea"
             | "button"
-    ) || style.aspect_ratio.is_some()
+    ) || style.reset_shapes.aspect_ratio.is_some()
     {
         return;
     }
     let Some(r) = style
+        .reset_shapes
         .aspect_ratio_auto
         .filter(|r| r.is_finite() && *r > 0.0)
     else {
         return;
     };
-    if style.border_box != Some(true) {
-        style.aspect_ratio = Some(r);
+    if style.reset_border.border_box != Some(true) {
+        style.reset_shapes.aspect_ratio = Some(r);
         return;
     }
     let px = px_lossy_zero;
     let b = style.borders();
-    let pad_x = px(style.padding.left) + px(style.padding.right) + px(b.left) + px(b.right);
-    let pad_y = px(style.padding.top) + px(style.padding.bottom) + px(b.top) + px(b.bottom);
+    let pad_x = px(style.reset_box_layout.padding.left)
+        + px(style.reset_box_layout.padding.right)
+        + px(b.left)
+        + px(b.right);
+    let pad_y = px(style.reset_box_layout.padding.top)
+        + px(style.reset_box_layout.padding.bottom)
+        + px(b.top)
+        + px(b.bottom);
     // Ось, заданная в точках (с зажимом своими пределами), либо её предел.
     let axis = |v: Option<Len>, lo: Option<Len>, hi: Option<Len>| -> Option<f32> {
         let clamp = |x: f32| {
@@ -70,8 +77,16 @@ pub fn promote_auto_ratio(style: &mut Computed, tag: &str) {
             _ => None,
         }
     };
-    let w = axis(style.width, style.min_width, style.max_width);
-    let h = axis(style.height, style.min_height, style.max_height);
+    let w = axis(
+        style.reset_box_layout.width,
+        style.reset_box_layout.min_width,
+        style.reset_box_layout.max_width,
+    );
+    let h = axis(
+        style.reset_box_layout.height,
+        style.reset_box_layout.min_height,
+        style.reset_box_layout.max_height,
+    );
     let border_ratio = match (w, h) {
         (Some(wb), None) => {
             let hb = (wb - pad_x).max(0.0) / r + pad_y;
@@ -83,7 +98,7 @@ pub fn promote_auto_ratio(style: &mut Computed, tag: &str) {
         }
         _ => None,
     };
-    style.aspect_ratio = Some(border_ratio.unwrap_or(r));
+    style.reset_shapes.aspect_ratio = Some(border_ratio.unwrap_or(r));
 }
 
 pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
@@ -109,8 +124,8 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
             }
         })
     };
-    style.attr_width = value("width");
-    style.attr_height = value("height");
+    style.reset_box_layout.attr_width = value("width");
+    style.reset_box_layout.attr_height = value("height");
     // Своего пикселя у холста нет, но размер по умолчанию задан разметкой:
     // 300 на 150 (HTML §4.12.5). Без него `<canvas width="20">` выходил
     // нулевой высоты, а холст без атрибутов — пустым местом.
@@ -121,8 +136,8 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
     // Ширина таблицы — намёк каскада (`presentational_legacy`, HTML §15.3.8:
     // размерное значение, ноль не считается).
     if tag == "table" {
-        style.attr_width = None;
-        style.attr_height = None;
+        style.reset_box_layout.attr_width = None;
+        style.reset_box_layout.attr_height = None;
         return;
     }
     // Оба атрибута объявлены разметкой — только тогда природное соотношение
@@ -131,20 +146,28 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
     // на заданной атрибутом стороне стоит `flex-basis: content`
     // (`flexbox-flex-basis-content-001a`: `<canvas width="20"
     // style="height: 8px">`).
-    let natural_pair = tag == "canvas" && style.attr_width.is_some() && style.attr_height.is_some();
+    let natural_pair = tag == "canvas"
+        && style.reset_box_layout.attr_width.is_some()
+        && style.reset_box_layout.attr_height.is_some();
     if tag == "canvas" {
-        style.attr_width = style.attr_width.or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.0)));
-        style.attr_height = style
+        style.reset_box_layout.attr_width = style
+            .reset_box_layout
+            .attr_width
+            .or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.0)));
+        style.reset_box_layout.attr_height = style
+            .reset_box_layout
             .attr_height
             .or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.1)));
     }
-    if style.width.is_none() {
-        style.width = style.attr_width;
-        style.attr_sized.0 = tag == "canvas" && style.attr_width.is_some();
+    if style.reset_box_layout.width.is_none() {
+        style.reset_box_layout.width = style.reset_box_layout.attr_width;
+        style.reset_box_layout.attr_sized.0 =
+            tag == "canvas" && style.reset_box_layout.attr_width.is_some();
     }
-    if style.height.is_none() {
-        style.height = style.attr_height;
-        style.attr_sized.1 = tag == "canvas" && style.attr_height.is_some();
+    if style.reset_box_layout.height.is_none() {
+        style.reset_box_layout.height = style.reset_box_layout.attr_height;
+        style.reset_box_layout.attr_sized.1 =
+            tag == "canvas" && style.reset_box_layout.attr_height.is_some();
     }
     // Атрибуты холста — ПРИРОДНЫЙ размер, а не заданный автором: HTML §4.12.5
     // («the intrinsic dimensions of the canvas element equal the size of the
@@ -160,19 +183,22 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
     // ничего не меняется, и `flex-basis: content`, `contain: size` и спаннер
     // многоколоночника, читающие `attr_width`/`attr_height` отдельно,
     // работают как прежде.
-    if natural_pair && !(style.attr_sized.0 && style.attr_sized.1) {
-        if let (Some(Len::Px(w)), Some(Len::Px(h))) = (style.attr_width, style.attr_height)
-            && w > 0.0
+    if natural_pair && !(style.reset_box_layout.attr_sized.0 && style.reset_box_layout.attr_sized.1)
+    {
+        if let (Some(Len::Px(w)), Some(Len::Px(h))) = (
+            style.reset_box_layout.attr_width,
+            style.reset_box_layout.attr_height,
+        ) && w > 0.0
             && h > 0.0
-            && style.aspect_ratio.is_none()
+            && style.reset_shapes.aspect_ratio.is_none()
         {
-            style.aspect_ratio = Some(w / h);
+            style.reset_shapes.aspect_ratio = Some(w / h);
         }
-        if style.attr_sized.0 {
-            style.width = None;
+        if style.reset_box_layout.attr_sized.0 {
+            style.reset_box_layout.width = None;
         }
-        if style.attr_sized.1 {
-            style.height = None;
+        if style.reset_box_layout.attr_sized.1 {
+            style.reset_box_layout.height = None;
         }
     }
     if tag == "canvas" {

@@ -18,10 +18,10 @@ pub fn blank_text(t: &str) -> bool {
 
 /// Сохраняет ли CSS пробелы с возможностью переноса после каждого из них.
 pub fn break_spaces(c: &crate::style::computed::Computed) -> bool {
-    c.break_after_spaces == Some(true)
+    c.inh.text_flow.break_after_spaces == Some(true)
 }
 
 /// Сохраняет ли CSS последовательности пробелов.
 pub fn keep_spaces(c: &crate::style::computed::Computed) -> bool {
-    c.keep_spaces == Some(true)
+    c.inh.text_flow.keep_spaces == Some(true)
 }

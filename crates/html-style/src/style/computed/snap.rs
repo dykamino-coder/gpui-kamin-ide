@@ -38,7 +38,7 @@ impl Computed {
             _ => 0,
         };
         if bit != 0 && v == "inherit" {
-            self.snap.inherit |= bit;
+            self.reset_box_layout.snap.inherit |= bit;
             return;
         }
         match key {
@@ -46,9 +46,9 @@ impl Computed {
                 let parts: Vec<_> = v.split_whitespace().collect();
                 if parts == ["none"] {
                     self.accept_declaration();
-                    self.snap.inherit &= !bit;
-                    self.snap.axis = 0;
-                    self.snap.strictness = 0;
+                    self.reset_box_layout.snap.inherit &= !bit;
+                    self.reset_box_layout.snap.axis = 0;
+                    self.reset_box_layout.snap.strictness = 0;
                     return;
                 }
                 let axis = match parts.first().copied() {
@@ -66,9 +66,9 @@ impl Computed {
                 };
                 if parts.len() <= 2 {
                     self.accept_declaration();
-                    self.snap.inherit &= !bit;
-                    self.snap.axis = axis;
-                    self.snap.strictness = strictness;
+                    self.reset_box_layout.snap.inherit &= !bit;
+                    self.reset_box_layout.snap.axis = axis;
+                    self.reset_box_layout.snap.strictness = strictness;
                 }
             }
             "scroll-snap-align" => {
@@ -85,8 +85,8 @@ impl Computed {
                         (parse(parts[0]), parse(*parts.get(1).unwrap_or(&parts[0])))
                 {
                     self.accept_declaration();
-                    self.snap.inherit &= !bit;
-                    self.snap.align = [block, inline];
+                    self.reset_box_layout.snap.inherit &= !bit;
+                    self.reset_box_layout.snap.align = [block, inline];
                 }
             }
             _ if key.starts_with("scroll-padding") || key.starts_with("scroll-margin") => {
@@ -97,9 +97,9 @@ impl Computed {
                     "scroll-margin"
                 };
                 let sides = if padding {
-                    &mut self.snap.padding
+                    &mut self.reset_box_layout.snap.padding
                 } else {
-                    &mut self.snap.margin
+                    &mut self.reset_box_layout.snap.margin
                 };
                 let parts = split_outside_parens(v);
                 let lengths: Option<Vec<_>> = parts
@@ -140,7 +140,7 @@ impl Computed {
                 }
                 if *hit {
                     self.accept_declaration();
-                    self.snap.inherit &= !bit;
+                    self.reset_box_layout.snap.inherit &= !bit;
                 }
             }
             _ => *hit = false,
@@ -149,18 +149,29 @@ impl Computed {
 }
 
 pub fn inherit(parent: &Computed, c: &mut Computed) {
-    let bits = c.snap.inherit;
+    let bits = c.reset_box_layout.snap.inherit;
     if bits & 1 != 0 {
-        c.snap.axis = parent.snap.axis;
-        c.snap.strictness = parent.snap.strictness;
+        c.reset_box_layout.snap.axis = parent.reset_box_layout.snap.axis;
+        c.reset_box_layout.snap.strictness = parent.reset_box_layout.snap.strictness;
     }
     if bits & 2 != 0 {
-        c.snap.align = parent.snap.align;
+        c.reset_box_layout.snap.align = parent.reset_box_layout.snap.align;
     }
-    for (own, inherited, first) in [
-        (&mut c.snap.padding, parent.snap.padding, 2),
-        (&mut c.snap.margin, parent.snap.margin, 6),
-    ] {
+    for (own, inherited, first) in {
+        let group_0 = &mut *c.reset_box_layout;
+        [
+            (
+                &mut group_0.snap.padding,
+                parent.reset_box_layout.snap.padding,
+                2,
+            ),
+            (
+                &mut group_0.snap.margin,
+                parent.reset_box_layout.snap.margin,
+                6,
+            ),
+        ]
+    } {
         for (i, (out, value)) in [
             (&mut own.top, inherited.top),
             (&mut own.right, inherited.right),
@@ -178,58 +189,4 @@ pub fn inherit(parent: &Computed, c: &mut Computed) {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Snap cascade regression checks, including invalid declarations and CSS-wide resets.
-    use crate::style::computed::BoxStyle;
-    use crate::style::{cascade::inherit::inherit, computed::Computed, values::value::Len};
-
-    #[test]
-    fn snap_is_local_and_explicit_inheritance_copies_only_requested_properties() {
-        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut parent = Computed::default();
-        parent.apply_one("scroll-snap-type", "both mandatory", vcx);
-        parent.apply_one("scroll-snap-align", "end center", vcx);
-        parent.apply_one("scroll-padding", "10px 20px", vcx);
-        parent.apply_one("scroll-margin", "5px", vcx);
-        let mut own = Computed::default();
-        assert_eq!(
-            inherit(&BoxStyle::from(parent.clone()), &own, vcx)
-                .snap
-                .axis,
-            0
-        );
-        own.apply_one("scroll-snap-type", "inherit", vcx);
-        own.apply_one("scroll-padding-left", "inherit", vcx);
-        let child = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
-        assert_eq!(child.snap.axis, 5);
-        assert_eq!(child.snap.strictness, 2);
-        assert_eq!(child.snap.align, [0; 2]);
-        assert_eq!(child.snap.padding.left, Some(Len::Px(20.0)));
-        assert_eq!(child.snap.padding.top, None);
-        assert_eq!(child.snap.margin.top, None);
-        own.apply_one("scroll-snap-type", "initial", vcx);
-        assert_eq!(
-            inherit(&BoxStyle::from(parent.clone()), &own, vcx)
-                .snap
-                .axis,
-            0
-        );
-    }
-
-    #[test]
-    fn snap_invalid_values_preserve_valid_declarations() {
-        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut c = Computed::default();
-        c.apply_one("scroll-snap-align", "start end", vcx);
-        c.apply_one("scroll-snap-align", "start invalid", vcx);
-        assert_eq!(c.snap.align, [1, 2]);
-        c.apply_one("scroll-padding", "10px", vcx);
-        c.apply_one("scroll-padding", "-1px", vcx);
-        assert_eq!(c.snap.padding.top, Some(Len::Px(10.0)));
-        c.apply_one("scroll-margin", "-5px", vcx);
-        c.apply_one("scroll-margin", "50%", vcx);
-        assert_eq!(c.snap.margin.top, Some(Len::Px(-5.0)));
-    }
-}
+mod tests;

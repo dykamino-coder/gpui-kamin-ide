@@ -6,19 +6,23 @@ use crate::style::computed::{Computed, Display, Overflow, Position};
 pub(super) fn independent(style: &Computed, tag: &str) -> bool {
     // CSS Display 3 §formatting-context and CSS Align 3 §align-block.
     let scroll = |value| matches!(value, Some(Overflow::Hidden | Overflow::Scroll));
-    scroll(style.overflow_x)
-        || scroll(style.overflow_y)
-        || matches!(style.position, Some(Position::Absolute | Position::Fixed))
-        || style.float.unwrap_or(0) != 0
-        || style.flow_root == Some(true)
-        || style.contain_layout == Some(true)
-        || style.contain_paint == Some(true)
-        || style.align_content_block
-        || multicol_container(style)
-        || style.column_span == Some(true)
-        || (style.display == Some(Display::InlineBlock) && style.inline_display != Some(true))
+    scroll(style.reset_box_layout.overflow_x)
+        || scroll(style.reset_box_layout.overflow_y)
         || matches!(
-            style.display,
+            style.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
+        || style.reset_box_layout.float.unwrap_or(0) != 0
+        || style.reset_context.flow_root == Some(true)
+        || style.reset_context.contain_layout == Some(true)
+        || style.reset_context.contain_paint == Some(true)
+        || style.reset_flex.align_content_block
+        || multicol_container(style)
+        || style.reset_fragmentation.column_span == Some(true)
+        || (style.reset_box_layout.display == Some(Display::InlineBlock)
+            && style.reset_context.inline_display != Some(true))
+        || matches!(
+            style.reset_box_layout.display,
             Some(
                 Display::Flex
                     | Display::InlineFlex
@@ -92,7 +96,12 @@ mod tests {
         assert!(independent(&Computed::default(), "fieldset"));
         assert!(independent(
             &Computed {
-                align_content_block: true,
+                reset_flex: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetFlex {
+                        align_content_block: true,
+                        ..Default::default()
+                    }
+                ),
                 ..Computed::default()
             },
             "div"

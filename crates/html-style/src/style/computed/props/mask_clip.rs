@@ -38,12 +38,14 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
-                self.shape_outside = (t != "none").then(|| t.to_string());
-                self.shape_image = ImageSource::parse(t, vcx);
+                self.reset_shapes.shape_outside = (t != "none").then(|| t.to_string());
+                self.reset_shapes.shape_image = ImageSource::parse(t, vcx);
             }
-            "shape-margin" => self.shape_margin = apply_parsed!(self, Len::parse(v.trim(), vcx)),
+            "shape-margin" => {
+                self.reset_shapes.shape_margin = apply_parsed!(self, Len::parse(v.trim(), vcx))
+            }
             "shape-image-threshold" => {
-                self.shape_threshold = apply_parsed!(
+                self.reset_shapes.shape_threshold = apply_parsed!(
                     self,
                     v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0))
                 );
@@ -52,12 +54,12 @@ impl Computed {
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {
                 if v == "inherit" {
-                    self.inherit_bits |= inh::CLIP;
+                    self.reset_cascade.inherit_bits |= inh::CLIP;
                     return;
                 }
                 let raw = parsed_value!(self, shape_value::clip_rect(v, vcx));
-                self.clip_len = raw;
-                self.clip_rect = raw.map(|sides| {
+                self.reset_mask.clip_len = raw;
+                self.reset_mask.clip_rect = raw.map(|sides| {
                     sides.map(|side| match side {
                         Some(Len::Px(n)) => Some(n),
                         Some(
@@ -76,8 +78,8 @@ impl Computed {
             "mask-size" | "-webkit-mask-size" => mask_size::apply(self, top_layer(v), vcx),
             "mask-mode" => {
                 self.accept_declaration();
-                self.mask_luminance = Some(top_layer(v) == "luminance");
-                self.mask_alpha_mode = Some(top_layer(v) == "alpha");
+                self.reset_mask.mask_luminance = Some(top_layer(v) == "luminance");
+                self.reset_mask.mask_alpha_mode = Some(top_layer(v) == "alpha");
             }
             "mask-border-source" | "mask-border-slice" | "mask-border-width"
             | "mask-border-outset" | "mask-border-repeat" | "mask-border-mode" => {
@@ -86,7 +88,7 @@ impl Computed {
                 }
             }
             "mask-type" => {
-                self.mask_type_alpha = apply_parsed!(
+                self.reset_mask.mask_type_alpha = apply_parsed!(
                     self,
                     match v {
                         "alpha" => Some(true),
@@ -119,7 +121,7 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
-                self.mask_composite = Some(
+                self.reset_mask.mask_composite = Some(
                     v.split(',')
                         .map(|t| match t.trim() {
                             "subtract" => 1,
