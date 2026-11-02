@@ -174,11 +174,7 @@ fn intrinsic_layout(build: &Build, p: &mut Probe) -> (f32, f32) {
         crate::work::time!(_build, BandIntrinsicBuildNs);
         build(0.0, 0.0, None, None, measure.clone())
     };
-    let mut el = Tap {
-        inner,
-        id: tap.clone(),
-    }
-    .hooked();
+    let mut el = Tap { inner, id: tap }.hooked();
     let root = el.request_layout(p.window, p.cx);
     let vert = p.vert;
     let w = |a: AvailableSpace, p: &mut Probe| {
