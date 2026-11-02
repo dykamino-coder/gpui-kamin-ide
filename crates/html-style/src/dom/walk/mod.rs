@@ -7,6 +7,7 @@ mod leave;
 mod marker;
 mod pending;
 mod sibling_survey;
+pub use ancestor::element_attrs;
 pub(super) use engine::walk_children;
 
 mod text_nodes;
