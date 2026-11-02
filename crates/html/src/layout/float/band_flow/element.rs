@@ -8,7 +8,7 @@ use crate::layout::build_contracts::ChildBuild;
 use crate::layout::cx::LayoutCx;
 use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Window, px, size};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub struct BandFlow {
@@ -77,8 +77,20 @@ impl Hooks for BandFlow {
         // Height follows the owner's float-containment policy independently
         // of this inline-size calculation (§§10.6.3, 10.6.7).
         let (vert, contain_floats) = (self.vert, self.contain_floats);
+        // Intrinsic sizes depend only on the children, never on the measure
+        // inputs (CSS Sizing 3 §5): one probe pair per element instance.
+        let intrinsic = Rc::new(Cell::new(None));
+        // Probes run during the root's layout, outside this element's text
+        // style scopes; they build the children with the inherited text style
+        // that `prepaint` sees, so both phases plan the same boxes.
+        let text = window.text_style_scope();
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let v = vert.is_some();
+            // A final layout pass whose parent already fixed the inline size
+            // lays the children out at that size: shrink-to-fit would only
+            // re-derive it from min/max-content probes.
+            let fixed = window.measured_size_fixed();
+            let fixed_inline = if v { fixed.height } else { fixed.width };
             // Строчная ось — ширина в горизонтальном письме, высота в
             // вертикальном; блочный размер плана уходит в другую ось.
             let (known_inline, avail_inline) = if vert.is_some() {
@@ -95,9 +107,10 @@ impl Hooks for BandFlow {
             };
             let cb = match (known_inline, avail_inline) {
                 (Some(w), _) => f32::from(w),
+                (None, AvailableSpace::Definite(w)) if fixed_inline => f32::from(w),
                 (None, AvailableSpace::Definite(w)) => {
                     let w = f32::from(w);
-                    let (mn, mx) = window.with_nested_layout(|window| {
+                    let (mn, mx) = nested(window, &text, |window| {
                         let p = &mut Probe::new(
                             window,
                             cx,
@@ -107,12 +120,12 @@ impl Hooks for BandFlow {
                             scopes.clone(),
                             build,
                         );
-                        intrinsic_sizes(&kids, p)
+                        memo_intrinsic(&intrinsic, &kids, p)
                     });
                     // §10.3.5: `min(max(min-content, available), max-content)`.
                     mx.max(mn).min(mn.max(w))
                 }
-                (None, a) => window.with_nested_layout(|window| {
+                (None, a) => nested(window, &text, |window| {
                     let p = &mut Probe::new(
                         window,
                         cx,
@@ -122,7 +135,7 @@ impl Hooks for BandFlow {
                         scopes.clone(),
                         build,
                     );
-                    let (mn, mx) = intrinsic_sizes(&kids, p);
+                    let (mn, mx) = memo_intrinsic(&intrinsic, &kids, p);
                     if matches!(a, AvailableSpace::MaxContent) {
                         mx
                     } else {
@@ -139,7 +152,7 @@ impl Hooks for BandFlow {
                 super::clamp::publish(&output, p, vert, inline_up);
                 return phys(cb, p.height);
             }
-            let p = window.with_nested_layout(|window| {
+            let p = nested(window, &text, |window| {
                 plan(
                     &kids,
                     cb,
@@ -201,3 +214,26 @@ impl Hooks for BandFlow {
         });
     }
 }
+
+/// A probe layout under the requesting element's inherited text style.
+fn nested<R>(
+    window: &mut Window,
+    text: &[gpui::TextStyleRefinement],
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    window.with_text_style_scope(text, |window| window.with_nested_layout(f))
+}
+
+/// Min-content and max-content of the children, probed once per element instance.
+fn memo_intrinsic(memo: &Cell<Option<(f32, f32)>>, kids: &[Kid], p: &mut Probe) -> (f32, f32) {
+    if let Some(sizes) = memo.get() {
+        return sizes;
+    }
+    let sizes = intrinsic_sizes(kids, p);
+    memo.set(Some(sizes));
+    sizes
+}
+
+#[cfg(test)]
+#[path = "element_tests.rs"]
+mod tests;
