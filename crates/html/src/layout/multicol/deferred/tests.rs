@@ -207,7 +207,7 @@ fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui:
                     intrinsic,
                     Default::default(),
                 )
-                .with_deferred(Some(built.clone()));
+                .with_deferred(Some(built));
                 gpui::div().w(gpui::px(200.)).child(stack.into_hooked())
             },
         );
