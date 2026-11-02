@@ -194,3 +194,54 @@ fn font_size_adjust_root_rem_and_rex_have_separate_bases() {
         Some((0.0, 36.0))
     );
 }
+
+/// Faces that count the adjustment-metric queries they answer.
+#[derive(Default)]
+struct Counted(std::cell::Cell<usize>);
+impl FontFactsProvider for Counted {
+    fn normal_line(
+        &self,
+        request: FontRequest<'_>,
+        snapshot: &FontRegistrySnapshot,
+    ) -> Result<kamin_font_facts::font_facts::NormalLineFacts, FontFactsError> {
+        Faces.normal_line(request, snapshot)
+    }
+    fn metrics(
+        &self,
+        request: FontRequest<'_>,
+        snapshot: &FontRegistrySnapshot,
+    ) -> Result<FontMetricFacts, FontFactsError> {
+        if request.metric_query == FontMetricQuery::Adjustment {
+            self.0.set(self.0.get() + 1);
+        }
+        Faces.metrics(request, snapshot)
+    }
+}
+
+#[test]
+fn font_size_adjust_none_queries_no_adjustment_metrics() {
+    let counted = Rc::new(Counted::default());
+    let doc = crate::values::DocumentValues::detached(Default::default());
+    doc.install_font_facts(Some(counted.clone()));
+    let vcx = doc.values();
+    let none = styled(
+        "font-family:narrow;font-size:20px;font-size-adjust:none",
+        vcx,
+    );
+    assert_eq!(none.font_size_adjust, Some((u8::MAX, 0.0)));
+    assert_eq!(none.font_adjustment(), None);
+    let used = none.used_font(16.0, vcx);
+    assert_eq!((used.size_px, used.property_scale), (20.0, 1.0));
+    assert!(none.font_cx(vcx).units.is_none());
+    assert_eq!(
+        counted.0.get(),
+        0,
+        "none adjusts nothing and measures nothing"
+    );
+    let adjusted = styled(
+        "font-family:narrow;font-size:20px;font-size-adjust:0.8",
+        vcx,
+    );
+    assert_eq!(adjusted.used_font(16.0, vcx).size_px, 40.0);
+    assert!(counted.0.get() > 0);
+}
