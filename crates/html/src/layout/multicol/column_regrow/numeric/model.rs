@@ -9,13 +9,14 @@ use crate::layout::fragment::{
 use gpui::Window;
 
 pub(super) enum Model {
-    Lines(Lines),
+    Lines(Box<Lines>),
     Serial(Serial),
 }
 
 impl Model {
     pub(super) fn measure(c: &StackChild, axis: StackAxis, window: &mut Window) -> Option<Self> {
         Lines::measure(c, axis, window)
+            .map(Box::new)
             .map(Self::Lines)
             .or_else(|| Serial::measure(c, axis, window).map(Self::Serial))
     }
