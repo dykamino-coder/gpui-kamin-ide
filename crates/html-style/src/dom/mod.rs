@@ -98,6 +98,7 @@ use crate::dom::element_style::*;
 pub(super) mod scroll_markers;
 pub(super) mod walk;
 use crate::dom::scroll_markers::*;
+pub use crate::dom::walk::element_attrs;
 mod marks;
 pub(super) mod pseudo;
 mod state_identity;
