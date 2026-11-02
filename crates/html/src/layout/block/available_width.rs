@@ -70,7 +70,8 @@ pub(crate) fn inner_with_dimensions(
             if bb { width - pb } else { width }
         }
         None | Some(Len::Auto) => {
-            if st.reset_box_layout.float.is_some_and(|f| f != 0)
+            if st.reset_context.floated_box
+                || st.reset_box_layout.float.is_some_and(|f| f != 0)
                 || matches!(
                     st.reset_positioned.position,
                     Some(crate::style::computed::Position::Absolute)

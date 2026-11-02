@@ -6,7 +6,6 @@
 
 use crate::text::paragraph::MeasureCache;
 use crate::text::vertical::VerticalMeasures;
-use std::cell::Cell;
 use std::rc::Rc;
 
 /// Paragraph and vertical-text measurements belonging to one document.
@@ -16,9 +15,6 @@ pub(crate) struct ParagraphState {
     pub(crate) vertical: Rc<VerticalMeasures>,
     /// Shaped paragraphs and fit results shared only inside this document.
     pub(crate) paragraphs: Rc<MeasureCache>,
-    /// The host began a frame (`DocState::begin_frame`) and the tree build has not yet
-    /// sanitized it: that build must not rotate the measurement cache a second time.
-    begun: Cell<bool>,
 }
 
 impl ParagraphState {
@@ -28,7 +24,6 @@ impl ParagraphState {
         Self {
             vertical: Default::default(),
             paragraphs: previous.paragraphs.clone(),
-            begun: Cell::new(false),
         }
     }
 
@@ -38,17 +33,5 @@ impl ParagraphState {
     pub(crate) fn begin_frame(&self) {
         self.vertical.begin_frame();
         self.paragraphs.begin_frame();
-        self.begun.set(true);
-    }
-
-    /// Start of a tree build (`interactive::frame::frame_sanitize`). Occurrence counters
-    /// restart for every build; the measurement cache rotates once per frame: a build
-    /// right after the host's `begin_frame` keeps the entries that frame just carried
-    /// over, a build without one (raw `render` of a parsed tree) starts its own frame.
-    pub(crate) fn begin_build(&self) {
-        self.vertical.begin_frame();
-        if !self.begun.replace(false) {
-            self.paragraphs.begin_frame();
-        }
     }
 }

@@ -9,6 +9,7 @@ use crate::layout::options::RenderOpts;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{BoxStyle, Computed};
 mod deferred;
+mod intrinsic;
 mod parts;
 use deferred::deferred;
 pub(super) use parts::band_kid_kind;
@@ -173,6 +174,7 @@ pub(crate) fn band_kids(
         let vertical = vert.is_some();
         let cb_height = inherited.reset_box_layout.height;
         let cb_block_w = inherited.reset_box_layout.width;
+        let intrinsic = intrinsic::sizes(&node, &inherited, opts, em, vertical);
         let build = deferred(opts, !is_nest, move |opts, cb, avail, shapes, height| {
             build_band_kid(
                 float, &node, &inherited, opts, is_nest, vertical, cb_height, cb_block_w, cb,
@@ -195,6 +197,7 @@ pub(crate) fn band_kids(
                 }) as crate::layout::float::band_flow::ShapeOf
             });
         kids.push(Kid {
+            intrinsic,
             flow: own_flow,
             watched: opts.frag.watch.clone(),
             flow_key: idx + 1,

@@ -44,6 +44,7 @@ pub(super) fn place_flow(
     bands.set_walls(walls.0, walls.1);
     let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
     slots[k] = Slot {
+        prepared: p.last_prepared.clone(),
         // CSS 2.1 §10.3.3: an over-constrained box drops its end margin; in an
         // rtl containing block it stands at the right edge.
         x: inline_start(x0 + ml, x1 - mr, bw, kid.rtl),
@@ -88,15 +89,21 @@ fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f3
             continue;
         }
         let [_, mr, _, ml] = kid.margin.map(|e| e.at(0.0));
-        let (mn, mx) = match kid.nest.as_ref() {
-            // Коробка с детьми на общих полосах: её внутренний размер — от
-            // детей плюс рамка с отступом.
-            Some(nest) => {
-                let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
-                let (mn, mx) = intrinsic_sizes_with(&nest.kids, measure);
-                (mn + il + ir, mx + il + ir)
+        let (mn, mx) = if let Some(sizes) = kid.intrinsic.get() {
+            sizes
+        } else {
+            match kid.nest.as_ref() {
+                // Коробка с детьми на общих полосах: её внутренний размер — от
+                // детей плюс рамка с отступом.
+                Some(nest) => {
+                    let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
+                    let (min, max) = intrinsic_sizes_with(&nest.kids, measure);
+                    let sizes = (min + il + ir, max + il + ir);
+                    kid.intrinsic.set(Some(sizes));
+                    sizes
+                }
+                None => measure(kid),
             }
-            None => measure(kid),
         };
         let is_float = matches!(kid.kind, Kind::Float { .. });
         let is_fc = matches!(kid.kind, Kind::Piece { .. });
@@ -150,7 +157,7 @@ fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f3
             fr = 0.0;
         }
     }
-    (min_size, max_size)
+    (min_size, max_size.max(min_size))
 }
 
 #[cfg(test)]
