@@ -96,3 +96,20 @@ fn ruby_edges_follow_uax14_between_base_and_neighbour() {
     assert!(super::pair_breaks('漢', '字'));
     assert!(!super::pair_breaks('a', ','));
 }
+
+/// The opportunity right after an atom carrier (U+FEFF, class WJ) stays,
+/// whatever the order of the atom boxes; after a carrier that is not an
+/// atom the word joiner keeps forbidding it.
+#[test]
+fn opportunities_after_atom_carriers_follow_box_index_in_any_order() {
+    let text = "x\u{feff}x\u{feff}x\u{feff}x";
+    let at = |p: &Paragraph| -> Vec<usize> { p.opportunities().iter().map(|s| s.at).collect() };
+    let boxes = |ats: &[usize]| ats.iter().map(|&a| (a, None)).collect::<Vec<_>>();
+    let all = at(&paragraph(text, &boxes(&[9, 1, 5, 5])));
+    for expected in [4, 8, 12] {
+        assert!(all.contains(&expected), "{expected} in {all:?}");
+    }
+    let some = at(&paragraph(text, &boxes(&[5])));
+    assert!(some.contains(&8), "{some:?}");
+    assert!(!some.contains(&4) && !some.contains(&12), "{some:?}");
+}

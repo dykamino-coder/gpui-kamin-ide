@@ -148,7 +148,15 @@ pub(super) fn cascade_element(
     let mut style =
         tree.style_sharing
             .resolve(&matched, &inline_decls, &map, vars, element, vcx, |style| {
-                apply_used_scheme(style, used_scheme(style, vcx))
+                let used = used_scheme(style, vcx);
+                let value = crate::style::values::value::dark_scheme(used);
+                if style.reset_cascade.dark_color_scheme != value {
+                    style.reset_cascade.dark_color_scheme = value;
+                }
+                let value = crate::style::values::value::embedding_dark_scheme(used);
+                if style.reset_cascade.embedding_dark_scheme != value {
+                    style.reset_cascade.embedding_dark_scheme = value;
+                }
             });
     // Важные объявления сильнее анимаций (css-cascade-5 §6.2): кадры
     // `@keyframes` кладутся под них. Лист форм
@@ -217,15 +225,4 @@ fn used_scheme<'a>(
         .color_scheme
         .as_deref()
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx))
-}
-
-fn apply_used_scheme(style: &mut Computed, vcx: crate::values::ValueCx<'_>) {
-    let value = crate::style::values::value::dark_scheme(vcx);
-    if style.reset_cascade.dark_color_scheme != value {
-        style.reset_cascade.dark_color_scheme = value;
-    }
-    let value = crate::style::values::value::embedding_dark_scheme(vcx);
-    if style.reset_cascade.embedding_dark_scheme != value {
-        style.reset_cascade.embedding_dark_scheme = value;
-    }
 }
