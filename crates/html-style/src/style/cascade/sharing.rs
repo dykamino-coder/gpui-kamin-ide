@@ -19,6 +19,10 @@ struct Cache {
 pub(crate) struct StyleSharing(std::cell::RefCell<Cache>);
 
 impl StyleSharing {
+    /// `finish` дописывает поля, которые зависят только от входов ключа (окружения и
+    /// совпавших блоков). Запись идёт до сохранения, поэтому попадание не пишет в общие
+    /// группы и не отделяет их копией.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn resolve(
         &self,
         rules: &[&Rule],
@@ -27,10 +31,11 @@ impl StyleSharing {
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
+        finish: impl FnOnce(&mut Computed),
     ) -> Computed {
         self.0
             .borrow_mut()
-            .resolve(rules, inline, map, vars, cx, vcx)
+            .resolve(rules, inline, map, vars, cx, vcx, finish)
     }
 }
 
@@ -133,6 +138,7 @@ impl Cache {
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
+        finish: impl FnOnce(&mut Computed),
     ) -> Computed {
         let bytes = cacheable(rules, inline, cx, vcx);
         if bytes.is_some()
@@ -148,6 +154,7 @@ impl Cache {
         }
         let mut style = vcx.doc.initial_style();
         style.apply_map(map, vars, cx, vcx);
+        finish(&mut style);
         if let Some(bytes) = bytes {
             let admission = vcx
                 .doc

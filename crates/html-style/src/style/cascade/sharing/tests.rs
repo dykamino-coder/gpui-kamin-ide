@@ -5,7 +5,15 @@ use crate::values::DocumentValues;
 
 fn resolve(cache: &mut StyleSharing, inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
     let map = CascadeMap::collect(&[], inline);
-    cache.resolve(&[], inline, &map, &VarMap::new(), CascadeCx::NONE, vcx)
+    cache.resolve(
+        &[],
+        inline,
+        &map,
+        &VarMap::new(),
+        CascadeCx::NONE,
+        vcx,
+        |_| {},
+    )
 }
 
 #[test]
@@ -91,4 +99,61 @@ fn only_context_free_color_functions_are_admitted() {
     ] {
         assert!(!pure_value(value), "{value}");
     }
+}
+
+/// Поля, зависящие только от входов ключа, пишутся до сохранения: попадание
+/// возвращает их готовыми и не отделяет общие группы записью.
+#[test]
+fn finish_runs_before_caching_and_hits_keep_shared_groups() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let inline = parse_decls_in("width: 8px", vcx);
+    let map = CascadeMap::collect(&[], &inline);
+    let cache = StyleSharing::default();
+    let calls = std::cell::Cell::new(0);
+    let run = || {
+        cache.resolve(
+            &[],
+            &inline,
+            &map,
+            &VarMap::new(),
+            CascadeCx::NONE,
+            vcx,
+            |style| {
+                calls.set(calls.get() + 1);
+                style.reset_cascade.embedding_dark_scheme = true;
+            },
+        )
+    };
+    let first = run();
+    let second = run();
+    assert_eq!(calls.get(), 1);
+    assert!(second.reset_cascade.embedding_dark_scheme);
+    assert!(first.shares_storage(&second));
+}
+
+/// Siblings with the same matched rules keep one storage for every group after
+/// the whole element cascade, so materialization can reuse their computed style.
+#[test]
+fn equal_siblings_share_storage_after_element_cascade() {
+    let parsed = crate::dom::parse(
+        "<style>.c{display:inline-block;width:8px;background:#456}</style>\
+         <p><i class=c></i><i class=c></i><i class=c></i></p>",
+        "",
+    );
+    fn cells(nodes: &[crate::dom::Node], out: &mut Vec<Computed>) {
+        for node in nodes {
+            if let crate::dom::Node::Element(el) = node {
+                if &*el.tag == "i" {
+                    out.push(el.style.cascaded().clone());
+                }
+                cells(&el.children, out);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    cells(&parsed.nodes, &mut found);
+    assert_eq!(found.len(), 3);
+    assert!(found[0].shares_storage(&found[1]));
+    assert!(found[1].shares_storage(&found[2]));
 }
