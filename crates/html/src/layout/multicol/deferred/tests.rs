@@ -168,3 +168,50 @@ fn numeric_measurements_release_children_before_materializing_the_final_stack(
         },
     );
 }
+
+#[gpui::test]
+fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui::TestAppContext) {
+    use crate::hooks::IntoHooked;
+    use crate::layout::fragment::types::Intrinsic;
+    use gpui::{ParentElement, Styled};
+    let cx = cx.add_empty_window();
+    for (intrinsic, builds) in [(None, 0), (Some(Intrinsic(None)), 1)] {
+        let drawn: std::rc::Rc<std::cell::RefCell<Option<std::rc::Rc<Recipe>>>> =
+            Default::default();
+        let slot = drawn.clone();
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(400.), gpui::px(400.)),
+            move |_, _| {
+                let tree = crate::document::parsed::parse(
+                    "<section style='column-count:2'><div style='height:50px'></div></section>",
+                    "",
+                );
+                let opts = materialized_opts(&tree, (400., 400.));
+                let host = section(&tree);
+                let merged = crate::style::cascade::materialize::box_style(
+                    &opts.root_style(),
+                    &host.style,
+                    opts.cx.vcx(),
+                );
+                let built = Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None)
+                    .expect("deferred recipe");
+                slot.replace(Some(built.clone()));
+                let stack = ColumnStack::new(
+                    Vec::new(),
+                    2,
+                    0.,
+                    None,
+                    None,
+                    None,
+                    intrinsic,
+                    Default::default(),
+                )
+                .with_deferred(Some(built));
+                gpui::div().w(gpui::px(200.)).child(stack.into_hooked())
+            },
+        );
+        let builds_seen = drawn.take().expect("drawn").intrinsic_builds.get();
+        assert_eq!(builds_seen, builds);
+    }
+}
