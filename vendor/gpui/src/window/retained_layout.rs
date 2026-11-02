@@ -14,8 +14,9 @@ pub struct ElementIdContext(Rc<[crate::ElementId]>);
 #[derive(Clone)]
 pub struct ElementLayoutContext {
     identity: ElementIdContext,
-    text: Rc<[crate::TextStyleRefinement]>,
-    rem_size: crate::Pixels,
+    /// Inherited text style and rem size: the scope every measure callback
+    /// already runs in (`Window::measure_scope`).
+    scope: super::text_style_scope::MeasureScope,
 }
 
 /// KaminIDE patch: a measured subtree keeps its layout IDs through paint.
@@ -51,8 +52,7 @@ impl Window {
     pub fn element_layout_context(&self) -> ElementLayoutContext {
         ElementLayoutContext {
             identity: self.element_id_context(),
-            text: Rc::from(self.text_style_stack.as_slice()),
-            rem_size: self.rem_size(),
+            scope: self.measure_scope(),
         }
     }
 
@@ -62,17 +62,9 @@ impl Window {
         context: &ElementLayoutContext,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.text_style_stack, context.text.to_vec());
-        self.with_restore(
-            outer,
-            |window, outer| std::mem::swap(&mut window.text_style_stack, outer),
-            |window| {
-                window.with_rem_size(Some(context.rem_size), |window| {
-                    window.with_element_id_context(&context.identity, f)
-                })
-            },
-        )
-        .0
+        context
+            .scope
+            .enter(self, |window| window.with_element_id_context(&context.identity, f))
     }
 
     /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.
