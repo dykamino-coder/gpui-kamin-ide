@@ -1241,6 +1241,10 @@ pub struct Window {
     rem_size_override_stack: SmallVec<[Pixels; 8]>,
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
+    /// KaminIDE patch: axes whose size the parent algorithm fixed for the
+    /// measured leaf of the current final-layout pass (see
+    /// [`Window::measured_size_fixed`]).
+    pub(crate) measured_size_fixed: Size<bool>,
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
@@ -2193,6 +2197,7 @@ impl Window {
             rem_size_override_stack: SmallVec::new(),
             viewport_size: content_size,
             layout_engine: Some(TaffyLayoutEngine::new()),
+            measured_size_fixed: Size::default(),
             root: None,
             element_id_stack: SmallVec::default(),
             text_style_stack: Vec::new(),
@@ -6152,6 +6157,16 @@ impl Window {
     /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
     /// в основное дерево не годится — его надо строить заново (так делает и
     /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
+    /// KaminIDE patch: inside a measure callback, the axes whose border-box
+    /// size the parent already fixed for this final layout pass. Taffy passes
+    /// no known dimensions to measure functions when performing layout (only
+    /// the definite available space), so a box that would otherwise size
+    /// itself to fit-content can tell that its size is already decided and
+    /// skip the intrinsic-size probes that only re-derive it.
+    pub fn measured_size_fixed(&self) -> Size<bool> {
+        self.measured_size_fixed
+    }
+
     pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
         let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
         let r = f(self);
