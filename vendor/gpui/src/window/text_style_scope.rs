@@ -66,6 +66,7 @@ impl Drop for TextStyleScope {
 /// inherited text style and rem size. Taffy calls measure functions during
 /// the root's layout, after those scopes were popped; elements a callback
 /// builds for probing must still see them.
+#[derive(Clone)]
 pub(crate) struct MeasureScope {
     text: TextStyleScope,
     rem: Pixels,

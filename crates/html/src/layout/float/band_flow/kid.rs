@@ -76,6 +76,8 @@ pub struct Nest {
 pub type GroupWrap = std::rc::Rc<dyn Fn(gpui::Div) -> gpui::AnyElement>;
 
 pub struct Kid {
+    /// Постоянный слот узла; смена входов и dirty-путь не зависят от кадра.
+    pub(crate) intrinsic: crate::dom::IntrinsicSizes,
     pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasure>>,
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     pub(crate) flow_key: usize,

@@ -95,6 +95,8 @@ mod render_context;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
+mod retained_layout;
+pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;
@@ -1025,6 +1027,7 @@ pub(crate) struct DeferredDraw {
     text_style_stack: TextStyleScope,
     // KaminIDE patch: restore host scopes when drawing outside the original traversal.
     render_contexts: render_context::Snapshot,
+    layout_owner: RetainedLayout,
     content_mask: Option<ContentMask<Pixels>>,
     rem_size: Pixels,
     element: Option<AnyElement>,
@@ -1243,6 +1246,7 @@ pub struct Window {
     rem_size_override_stack: SmallVec<[Pixels; 8]>,
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
+    layout_owner: RetainedLayout,
     /// KaminIDE patch: axes whose size the parent algorithm fixed for the
     /// measured leaf of the current final-layout pass (see
     /// [`Window::measured_size_fixed`]).
@@ -2199,6 +2203,7 @@ impl Window {
             rem_size_override_stack: SmallVec::new(),
             viewport_size: content_size,
             layout_engine: Some(TaffyLayoutEngine::new()),
+            layout_owner: RetainedLayout::active(),
             measured_size_fixed: Size::default(),
             root: None,
             element_id_stack: SmallVec::default(),
@@ -4045,10 +4050,14 @@ impl Window {
 
                 let prepaint_start = self.prepaint_index();
                 if let Some(mut element) = element {
-                    self.with_rendered_view(current_view, |window| {
-                        window.with_rem_size(Some(rem_size), |window| {
-                            window.with_absolute_element_offset(absolute_offset, |window| {
-                                element.prepaint(window, cx);
+                    let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
+                        .layout_owner.clone();
+                    self.with_retained_layout(&mut layout_owner, |window| {
+                        window.with_rendered_view(current_view, |window| {
+                            window.with_rem_size(Some(rem_size), |window| {
+                                window.with_absolute_element_offset(absolute_offset, |window| {
+                                    element.prepaint(window, cx);
+                                });
                             });
                         });
                     });
@@ -4091,11 +4100,13 @@ impl Window {
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
-                self.with_rendered_view(deferred_draw.current_view, |window| {
-                    window.with_content_mask(content_mask, |window| {
-                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
-                            element.paint(window, cx);
-                        });
+                self.with_retained_layout(&mut deferred_draw.layout_owner, |window| {
+                    window.with_rendered_view(deferred_draw.current_view, |window| {
+                        window.with_content_mask(content_mask, |window| {
+                            window.with_rem_size(Some(deferred_draw.rem_size), |window| {
+                                element.paint(window, cx);
+                            });
+                        })
                     })
                 })
             } else {
@@ -4179,6 +4190,7 @@ impl Window {
                     element_id_stack: deferred_draw.element_id_stack.clone(),
                     text_style_stack: deferred_draw.text_style_stack.clone(),
                     render_contexts: deferred_draw.render_contexts.clone(),
+                    layout_owner: deferred_draw.layout_owner.clone(),
                     content_mask: deferred_draw.content_mask,
                     rem_size: deferred_draw.rem_size,
                     priority: deferred_draw.priority,
@@ -4934,6 +4946,7 @@ impl Window {
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
             render_contexts: self.render_contexts.snapshot(),
+            layout_owner: self.retained_layout(),
             content_mask,
             rem_size: self.rem_size(),
             priority,
@@ -6153,29 +6166,6 @@ impl Window {
             })
     }
 
-    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
-    ///
-    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
-    /// движок вынут из окна (`compute_layout` ниже держит его `take()`-нутым), и
-    /// `layout_as_root` в нём паникует на `unwrap`. Хосту полос обтекания
-    /// (`crates/html/src/band_flow.rs`) размер детей нужен именно там: высота
-    /// контекста с флоатами зависит от ширины содержащего блока, а её знает
-    /// только замер. Здесь на время `f` в окно кладётся свежий движок, после —
-    /// возвращается прежний (`None` внутри замера, основной вне его). Узлы
-    /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
-    /// в основное дерево не годится — его надо строить заново (так делает и
-    /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
-    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
-        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
-        // KaminIDE patch: a nested tree is laid out independently; the outer
-        // measure callback's fixed axes do not apply to its nodes.
-        let fixed = std::mem::take(&mut self.measured_size_fixed);
-        let r = f(self);
-        self.measured_size_fixed = fixed;
-        self.layout_engine = outer;
-        r
-    }
-
     /// KaminIDE patch: inside a measure callback, the axes whose border-box
     /// size the parent already fixed for this final layout pass. Taffy passes
     /// no known dimensions to measure functions when performing layout (only
@@ -6184,24 +6174,6 @@ impl Window {
     /// skip the intrinsic-size probes that only re-derive it.
     pub fn measured_size_fixed(&self) -> Size<bool> {
         self.measured_size_fixed
-    }
-
-    /// KaminIDE patch: the inherited text style refinements in force now,
-    /// shared (one `Rc` clone). Measure callbacks already run in the scope of
-    /// the element that requested them (`request_measured_layout`).
-    pub fn text_style_scope(&self) -> TextStyleScope {
-        self.text_style_stack.clone()
-    }
-
-    /// KaminIDE patch: run `f` with the inherited text style replaced by
-    /// `scope` (see [`Window::text_style_scope`]), then restore it.
-    pub fn with_text_style_scope<R>(
-        &mut self,
-        scope: &TextStyleScope,
-        f: impl FnOnce(&mut Window) -> R,
-    ) -> R {
-        let outer = std::mem::replace(&mut self.text_style_stack, scope.clone());
-        self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
     }
 
     /// KaminIDE patch: размер узла без округления к физической точке (см.

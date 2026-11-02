@@ -1,21 +1,22 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 2. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 3. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 4. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 5. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 6. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 7. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 8. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 9. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 10. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 11. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 12. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 13. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 14. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 15. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 16. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -25497,7 +25498,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..faf76bcadf03c66758790eb35cbf4d32729eb788
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9e066c0c1
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -25899,14 +25900,70 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..faf76bcadf03c66758790eb35cbf4d32
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -988 +1328 @@
+@@ -984,0 +1325,26 @@
++    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
++    pub fn compute_size_with_measure<MeasureFunction>(
++        &mut self,
++        node_id: NodeId,
++        available_space: Size<AvailableSpace>,
++        axis: crate::RequestedAxis,
++        measure_function: MeasureFunction,
++    ) -> LayoutOutput
++    where
++        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++    {
++        #[cfg(feature = "std")]
++        let _calc = self.calc_scope();
++        let mut view = TaffyView { taffy: self, measure_function };
++        view.compute_child_layout(node_id, LayoutInput {
++            run_mode: crate::RunMode::ComputeSize,
++            sizing_mode: crate::SizingMode::InherentSize,
++            axis,
++            known_dimensions: Size::NONE,
++            known_dimensions_are_definite: Size { width: false, height: false },
++            parent_size: available_space.into_options(),
++            available_space,
++            vertical_margins_are_collapsible: crate::geometry::Line::FALSE,
++        }, #[cfg(feature = "block_layout")] None)
++    }
++
+@@ -988 +1354 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1343,3 @@
+@@ -1003 +1369,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
+@@ -1029,0 +1398,28 @@
++    }
++
++    #[test]
++    fn intrinsic_axis_query_preserves_final_geometry_and_cache_purpose() {
++        let mut tree = TaffyTree::<()>::new();
++        let root = tree.new_leaf(Style::default()).unwrap();
++        let mut measure = |input: LayoutInput, _: NodeId, _: Option<&mut ()>, style: &Style| {
++            compute_leaf_layout(input, style, |_, _| 0.0, |known, available| Size {
++                width: known.width.unwrap_or(match available.width {
++                    AvailableSpace::MinContent => 20.0,
++                    _ => 60.0,
++                }),
++                height: if input.axis == crate::RequestedAxis::Horizontal { 0.0 } else { 10.0 },
++            })
++        };
++        let max = Size { width: AvailableSpace::MaxContent, height: AvailableSpace::MaxContent };
++        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
++        let final_layout = *tree.layout(root).unwrap();
++        let intrinsic = tree.compute_size_with_measure(
++            root,
++            Size { width: AvailableSpace::MinContent, ..max },
++            crate::RequestedAxis::Horizontal,
++            &mut measure,
++        );
++        assert_eq!(intrinsic.size.width, 20.0);
++        assert_eq!(*tree.layout(root).unwrap(), final_layout);
++        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
++        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
 diff --git a/vendor/taffy/src/tree/traits.rs b/vendor/taffy/src/tree/traits.rs
 index 7d4adf226accc9339bedf755ca3b60007addecd9..5b427a30d08cd6185e1a9f913035221b024d78b9
 --- a/vendor/taffy/src/tree/traits.rs

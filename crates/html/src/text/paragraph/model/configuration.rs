@@ -112,7 +112,7 @@ impl Paragraph {
     /// Правила переноса по кускам: отрезок байт → своё правило.
     pub fn spans(mut self, spans: Vec<(std::ops::Range<usize>, Wrap)>) -> Self {
         self.invalidate_prepared();
-        self.spans = spans;
+        self.spans = spans.into();
         self
     }
 }

@@ -1,22 +1,28 @@
 //! Правка текста без перерасчёта стиля.
 //!
-//! Каскад от содержимого текста зависит в немногих местах: `:empty` (есть ли
-//! текст), схлопывание пробельных узлов при обходе (узел из одних
-//! схлопываемых пробелов, края узла), склейка соседних текстов, первая буква
-//! блока (`::first-letter` режет текст), первый сильный знак для `dir=auto`
-//! (HTML §3.2.6.4) и элементы, чьё содержимое — не поток текста (листы,
-//! скрипты, поля форм, заголовок документа). Правка годится, когда ни одно из
-//! них не может отличить прежний текст от нового: оба непустые не из одних
-//! пробелов, с одинаковыми пробельными краями, без знаков письма справа
-//! налево и управляющих bidi, с сильным знаком слева направо в обоих или ни в
-//! одном, у элемента с потоком текста. Тогда в дереве коробок меняются узлы,
-//! построенные из этого исходного текста (`dom::Text::source`), и только они;
-//! текст, склеенный обходом с соседним, номера не несёт и правкой не находится.
+//! Сборка дерева коробок читает содержимое текста двумя способами. Почти все
+//! читатели спрашивают лишь, пустой ли узел по CSS (только схлопываемые
+//! пробелы, CSS Text 3 §4.1.1): обход (пустые узлы выбрасываются, пробельный
+//! узел между строчными становится пробелом), `:empty` (Selectors 4 §14.2;
+//! узел из пробелов делает элемент непустым, а пустой узел HTML-разбор не
+//! создаёт), анонимные ячейки таблиц (CSS 2.1 §17.2.1), руби (css-ruby-1
+//! §2.2), run-in, `filter: url()` без содержимого, `float_tail`. Ответ этих
+//! читателей не меняется, если прежний и новый текст оба непустые: так Blink
+//! пересчитывает `:empty` (`AffectedByEmpty`) лишь при смене пустоты.
+//!
+//! Остальные читатели берут само содержимое и отмечают прочитанные тексты в
+//! `TraversalState` (`read_texts`): первый сильный знак для `dir=auto` и
+//! `<bdi>` (HTML §3.2.6.4, §4.5.24; тексты до найденного знака) и листы
+//! `<style>`. Правка отмеченного текста может изменить стиль; правка
+//! неотмеченного — нет, при любом письме, цифрах и управляющих bidi:
+//! направление строк решает раскладка, которая идёт заново. Тогда в дереве
+//! коробок меняются узлы, построенные из этого исходного текста
+//! (`dom::Text::source`), и только они; текст, склеенный обходом с соседним,
+//! номера не несёт и правкой не находится.
 
 use super::patch::{Path, apply};
 use super::shape::Edited;
 use crate::dom::{Node, TextId};
-use markup5ever_rcdom::NodeData;
 use std::collections::{HashMap, HashSet};
 
 /// Прежнее и новое содержимое правленого исходного текста.
@@ -25,103 +31,20 @@ pub(super) struct TextEdit {
     pub(super) new: String,
 }
 
-/// Элементы, текст которых читают не как поток строк (или читают проходы
-/// сборки сами): листы, скрипты, поля форм, таблицы, ruby, заголовок, медиа.
-const OPAQUE: &[&str] = &[
-    "style",
-    "script",
-    "title",
-    "textarea",
-    "option",
-    "optgroup",
-    "select",
-    "datalist",
-    "noscript",
-    "noembed",
-    "noframes",
-    "xmp",
-    "iframe",
-    "plaintext",
-    "template",
-    "head",
-    "html",
-    "table",
-    "tbody",
-    "thead",
-    "tfoot",
-    "tr",
-    "colgroup",
-    "col",
-    "caption",
-    "ruby",
-    "rt",
-    "rp",
-    "rb",
-    "rtc",
-    "details",
-    "summary",
-    "button",
-    "input",
-    "meter",
-    "progress",
-    "legend",
-    "fieldset",
-    "canvas",
-    "video",
-    "audio",
-    "object",
-    "embed",
-    "picture",
-    "img",
-    "frameset",
-    "bdi",
-    "bdo",
-    "slot",
-];
-
-/// Не меняет ли правка `edit` ни одного каскадного значения.
-pub(super) fn editable(edit: &Edited) -> bool {
-    let NodeData::Element { name, attrs, .. } = &edit.parent.data else {
-        return false;
-    };
-    if name.ns != html5ever::ns!(html) || OPAQUE.contains(&&*name.local) {
-        return false;
-    }
-    if attrs.borrow().iter().any(|a| &*a.name.local == "dir") {
-        return false;
-    }
-    matches!((shape(&edit.old), shape(&edit.new)), (Some(old), Some(new)) if old == new)
-}
-
-/// Признаки текста, которые видит каскад: пробельные края и наличие сильного
-/// знака слева направо; `None` — текст пустой по CSS или с письмом справа
-/// налево.
-fn shape(text: &str) -> Option<(&str, &str, bool)> {
-    use crate::dom::whitespace::collapsible;
-    use unicode_bidi::BidiClass::*;
-    let body = text.trim_matches(collapsible);
-    if body.is_empty() {
-        return None;
-    }
-    let mut strong = false;
-    for c in body.chars() {
-        match unicode_bidi::bidi_class(c) {
-            R | AL | AN | RLE | RLO | LRE | LRO | PDF | LRI | RLI | FSI | PDI => return None,
-            L => strong = true,
-            _ => {}
-        }
-    }
-    let start = &text[..text.len() - text.trim_start_matches(collapsible).len()];
-    let end = &text[text.trim_end_matches(collapsible).len()..];
-    Some((start, end, strong))
+/// Не меняет ли правка `edit` ни одного каскадного значения: оба текста
+/// непустые по CSS, и содержимое прежнего не читал ни один читатель сборки
+/// (`read` — адреса прочитанных исходных текстов).
+pub(super) fn editable(edit: &Edited, read: &HashSet<usize>) -> bool {
+    use crate::dom::whitespace::blank_text;
+    !blank_text(&edit.old) && !blank_text(&edit.new) && !read.contains(&edit.node)
 }
 
 /// Новые тексты в узлах дерева коробок с номерами правленых исходных
 /// текстов. Куски и копии исходного текста несут его номер, поэтому правится
 /// каждый такой узел. Узел с номером правки, но другим содержимым (сборка
-/// разрезала или изменила текст), узел под первой буквой или в
-/// псевдоэлементе и правка без единого узла (текст склеен с соседом или
-/// выброшен) — `false`, дерево не меняется.
+/// разрезала или изменила текст), узел внутри псевдоэлемента и правка без
+/// единого узла (текст склеен с соседом или выброшен) — `false`, дерево не
+/// меняется.
 pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &HashMap<TextId, TextEdit>) -> bool {
     if edits.is_empty() {
         return true;
@@ -143,12 +66,12 @@ pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &HashMap<TextId, TextEdi
     true
 }
 
-/// Пути к узлам текста с номерами `edits` среди `children`; `lettered` —
-/// текст здесь режет первая буква блока или он внутри псевдоэлемента.
+/// Пути к узлам текста с номерами `edits` среди `children`; `generated` —
+/// текст внутри псевдоэлемента.
 fn collect(
     children: &[Node],
     edits: &HashMap<TextId, TextEdit>,
-    lettered: bool,
+    generated: bool,
     path: &mut Vec<usize>,
     found: &mut Vec<(Path, TextId)>,
 ) -> bool {
@@ -156,7 +79,7 @@ fn collect(
         path.push(i);
         let ok = match child {
             Node::Text(text) => match text.source().and_then(|id| Some((id, edits.get(&id)?))) {
-                Some((id, edit)) if !lettered && text.as_str() == edit.old => {
+                Some((id, edit)) if !generated && text.as_str() == edit.old => {
                     found.push((path.clone(), id));
                     true
                 }
@@ -164,10 +87,8 @@ fn collect(
                 None => true,
             },
             Node::Element(e) => {
-                let pseudo = e.tag.starts_with("::");
-                let synthetic = e.node_id == 0 && !pseudo;
-                let lettered = pseudo || e.first_letter.is_some() || (synthetic && lettered);
-                collect(&e.children, edits, lettered, path, found)
+                let generated = generated || e.tag.starts_with("::");
+                collect(&e.children, edits, generated, path, found)
             }
         };
         path.pop();

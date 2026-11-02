@@ -55,7 +55,7 @@ pub(super) fn finish_element(
         // для элемента целиком (`text-align-end-016`).
         style.reset_cascade.bidi_plaintext = Some(true);
         if style.inh.writing.rtl.is_none()
-            && let Some(rtl) = first_strong(&admission, &children)?
+            && let Some(rtl) = first_strong(&admission, &vcx.doc.traversal, &children)?
         {
             style.inh.writing.rtl = Some(rtl);
         }

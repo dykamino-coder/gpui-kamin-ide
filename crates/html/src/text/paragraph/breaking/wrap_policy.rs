@@ -13,7 +13,7 @@ impl Paragraph {
     /// диапазонами кусков: если оба знака в ОДНОМ куске, правило его; если в
     /// разных (или один вне кусков) — общий предок это сам абзац.
     pub(crate) fn nowrap_between(&self, at: usize) -> bool {
-        let which = |i: usize| self.spans.iter().position(|(r, _)| r.contains(&i));
+        let which = |i: usize| self.spans.index_of(i);
         let left = which(at.saturating_sub(1));
         let right = which(at);
         // Не решать точку переноса после ЛЮБОГО пробела по `white-space`
@@ -103,9 +103,7 @@ impl Paragraph {
 impl Paragraph {
     pub(crate) fn wrap_at(&self, at: usize) -> Wrap {
         self.spans
-            .iter()
-            .find(|(r, _)| r.contains(&at))
-            .map(|(_, w)| *w)
-            .unwrap_or(self.wrap)
+            .index_of(at)
+            .map_or(self.wrap, |i| self.spans[i].1)
     }
 }

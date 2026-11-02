@@ -63,7 +63,7 @@ impl Paragraph {
             id: None,
             highlight: Hsla::default(),
             wrap,
-            spans: Vec::new(),
+            spans: Default::default(),
             word_spans: Vec::new(),
             letter_spans: Vec::new(),
             shift_spans: Vec::new(),

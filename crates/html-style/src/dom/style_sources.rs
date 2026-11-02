@@ -15,6 +15,7 @@ pub fn collect(input: &super::input::Admitted, theme: &str) -> Result<Buffer<Tex
         &input.dom.document,
         Templates::Active,
         &admission,
+        None,
         &mut sheets,
     )?;
     Ok(sheets)
@@ -23,7 +24,25 @@ pub fn collect(input: &super::input::Admitted, theme: &str) -> Result<Buffer<Tex
 /// Один и тот же сборщик обслуживает document и shadow sheet без склейки EOF.
 pub fn try_collect_style_tags(root: &Handle, admission: &Admission) -> Result<Buffer<Text>, Error> {
     let mut sheets = Buffer::default();
-    collect_into(root, Templates::None, admission, &mut sheets)?;
+    collect_into(root, Templates::None, admission, None, &mut sheets)?;
+    Ok(sheets)
+}
+
+/// Листы `<style>` документа; каждый прочитанный текст листа отмечается в
+/// `traversal`: от его содержимого зависят правила каскада.
+pub fn document_style_tags(
+    root: &Handle,
+    admission: &Admission,
+    traversal: &crate::values::traversal::TraversalState,
+) -> Result<Buffer<Text>, Error> {
+    let mut sheets = Buffer::default();
+    collect_into(
+        root,
+        Templates::None,
+        admission,
+        Some(traversal),
+        &mut sheets,
+    )?;
     Ok(sheets)
 }
 
@@ -31,6 +50,7 @@ fn collect_into(
     root: &Handle,
     templates: Templates,
     admission: &Admission,
+    traversal: Option<&crate::values::traversal::TraversalState>,
     out: &mut Buffer<Text>,
 ) -> Result<(), Error> {
     let mut walk = SourceWalk::new(root, templates, admission.clone())?;
@@ -44,6 +64,9 @@ fn collect_into(
             for child in node.children.borrow().iter() {
                 admission.work(1)?;
                 if let NodeData::Text { contents } = &child.data {
+                    if let Some(traversal) = traversal {
+                        traversal.read_source_text(child);
+                    }
                     let text = contents.borrow();
                     admission.work(text.len())?;
                     let body = text
@@ -128,7 +151,7 @@ mod tests {
         let root = &input.dom.document;
         let run = |admission: &Admission| {
             let mut out = Buffer::default();
-            collect_into(root, Templates::Active, admission, &mut out)?;
+            collect_into(root, Templates::Active, admission, None, &mut out)?;
             Ok::<_, Error>(out)
         };
         let (admission, revision) = policy(TraversalVisits, 1_000_000);

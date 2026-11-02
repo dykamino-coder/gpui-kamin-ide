@@ -59,6 +59,7 @@ pub(super) fn place_float(
     }
     let (bw, bh) = probe(kid, cbw, avail, None, p);
     let geometry = p.last_geometry.clone();
+    let prepared = p.last_prepared.clone();
     let clamp = p.last_clamp.clone();
     // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
     // потока (Servo `set_ceiling_from_non_floats`,
@@ -121,6 +122,7 @@ pub(super) fn place_float(
         at
     };
     slots[k] = Slot {
+        prepared,
         geometry,
         clamp,
         x: fx + ml,
@@ -181,8 +183,9 @@ pub(super) fn place_nest(
         place_seq(&nest.kids, ix0, ix1, inner_top, adjoining, root, bands, p);
     bands.set_walls(walls.0, walls.1);
     let h = nest.height.unwrap_or((inner_end - inner_top).max(0.0));
-    let clamp = super::clamp::nest(kid, cbw, (bx1 - bx0).max(0.0), h, p);
+    let (clamp, prepared) = super::clamp::nest(kid, cbw, (bx1 - bx0).max(0.0), h, p);
     slots[k] = Slot {
+        prepared,
         clamp,
         x: ix0 - il,
         y: top,
