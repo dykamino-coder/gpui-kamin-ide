@@ -43,6 +43,8 @@ use crate::dom::{Element, Node};
 /// именно текст. Пишем только то, что имеет смысл внутри SVG: имя тега,
 /// атрибуты и текстовые узлы.
 pub fn serialize(e: &Element, vcx: ValueCx<'_>) -> String {
+    crate::work::add!(SvgSerializeCalls, 1);
+    crate::work::time!(_svg_time, SvgSerializeNs);
     let mut out = String::new();
     if subtree_has(e, "fedisplacementmap") {
         let mut copy = e.clone();
@@ -71,6 +73,7 @@ pub(super) fn write_with(
     cx: SerializeCx,
     vcx: ValueCx<'_>,
 ) {
+    crate::work::add!(SvgSerializeNodes, 1);
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
     let clip_id = synth_clip(e, out, ids, cx, vcx);
     out.push('<');

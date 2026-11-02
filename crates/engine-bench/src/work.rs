@@ -17,7 +17,10 @@ impl Capture {
         let _ = luid;
         Ok(Self {
             #[cfg(feature = "work-counters")]
-            session: kamin_html::work::Session::begin_observed(Some(usage.observer())),
+            session: kamin_html::work::Session::begin_measured(
+                Some(usage.observer()),
+                Some(super::allocations::snapshot),
+            ),
             #[cfg(feature = "work-counters")]
             usage,
         })

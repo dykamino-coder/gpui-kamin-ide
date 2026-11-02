@@ -32,6 +32,22 @@ macro_rules! vocabulary {
 }
 
 vocabulary!(Counter {
+    SvgSerializeCalls => "svg_serialize_calls",
+    SvgSerializeNodes => "svg_serialize_nodes",
+    SvgSerializeNs => "svg_serialize_ns",
+    SvgSerializeAllocations => "svg_serialize_allocations",
+    SvgSerializeAllocatedBytes => "svg_serialize_allocated_bytes",
+    SvgParseCalls => "svg_parse_calls",
+    SvgParseNs => "svg_parse_ns",
+    SvgParseAllocations => "svg_parse_allocations",
+    SvgParseAllocatedBytes => "svg_parse_allocated_bytes",
+    SvgRenderCalls => "svg_render_calls",
+    SvgRenderPixels => "svg_render_pixels",
+    SvgRenderNs => "svg_render_ns",
+    SvgRenderAllocations => "svg_render_allocations",
+    SvgRenderAllocatedBytes => "svg_render_allocated_bytes",
+    SvgRasterCacheHits => "svg_raster_cache_hits",
+    SvgRasterCacheMisses => "svg_raster_cache_misses",
     GradientRasters => "gradient_rasters",
     GradientRasterPixels => "gradient_raster_pixels",
     RoundedMaskRasters => "rounded_mask_rasters",
@@ -86,6 +102,7 @@ struct Totals {
     phase: AtomicUsize,
     counts: [[AtomicU64; Counter::COUNT]; Phase::COUNT],
     observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
+    allocations: Option<fn() -> (u64, u64)>,
 }
 struct Collector(Arc<Totals>);
 // Dispatch хранит область наблюдения и восстанавливает предыдущего подписчика.
@@ -118,10 +135,18 @@ impl Session {
     }
     /// Наблюдатель границ для стенда; вызывается только при смене фазы.
     pub fn begin_observed(observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>) -> Self {
+        Self::begin_measured(observer, None)
+    }
+    /// Стенд может подключить накопительные счётчики аллокатора; обычный движок их не читает.
+    pub fn begin_measured(
+        observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
+        allocations: Option<fn() -> (u64, u64)>,
+    ) -> Self {
         let totals = Arc::new(Totals {
             phase: AtomicUsize::new(Phase::PipelineOther as usize),
             counts: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             observer,
+            allocations,
         });
         let dispatch = Dispatch::new(Collector(totals.clone()));
         Self {

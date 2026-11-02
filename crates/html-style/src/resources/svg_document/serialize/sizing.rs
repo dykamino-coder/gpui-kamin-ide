@@ -11,6 +11,9 @@ use crate::values::ValueCx;
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
 pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: ValueCx<'_>) -> String {
+    crate::work::add!(SvgSerializeCalls, 1);
+    crate::work::add!(SvgSerializeNodes, 1);
+    crate::work::time!(_svg_time, SvgSerializeNs);
     let cleaned;
     let e = if subtree_has(e, "fedisplacementmap") {
         let mut copy = e.clone();
