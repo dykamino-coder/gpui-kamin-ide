@@ -27,7 +27,7 @@ pub(super) async fn build(
         )
     };
     let positioned_out = matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
@@ -40,11 +40,11 @@ pub(super) async fn build(
     // Содержимое выше растяжения держатель не зажмёт — приближение.
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let holder_axis = if positioned_out
-        && e.style.used().writing_mode.is_none()
-        && auto_len(e.style.used().height)
-        && kw_len(e.style.used().max_height)
-        && edge_set(e.style.used().inset.top)
-        && edge_set(e.style.used().inset.bottom)
+        && e.style.used().inh.writing.writing_mode.is_none()
+        && auto_len(e.style.used().reset_box_layout.height)
+        && kw_len(e.style.used().reset_box_layout.max_height)
+        && edge_set(e.style.used().reset_positioned.inset.top)
+        && edge_set(e.style.used().reset_positioned.inset.bottom)
     {
         Some(true)
     } else if positioned_out
@@ -57,9 +57,9 @@ pub(super) async fn build(
         // `left/right` во всё окно (`div-{min,max,fit}-content-
         // orthogonal-*`: 13.5 %). Ветка высоты выше гейт сохраняет: в
         // вертикальном письме это строчная ось, её пары не разбирались.
-        && auto_len(e.style.used().width) && kw_len(e.style.used().max_width)
-        && edge_set(e.style.used().inset.left)
-        && edge_set(e.style.used().inset.right)
+        && auto_len(e.style.used().reset_box_layout.width) && kw_len(e.style.used().reset_box_layout.max_width)
+        && edge_set(e.style.used().reset_positioned.inset.left)
+        && edge_set(e.style.used().reset_positioned.inset.right)
     {
         Some(false)
     } else {
@@ -67,10 +67,9 @@ pub(super) async fn build(
     };
     // Липкая коробка сдвигает своё поддерево на подготовке: щупы внутри
     // вычитают сдвиг (`ShiftLink`), поэтому звено заводится ДО сборки.
-    let sticky_link = (e.style.used().position == Some(crate::style::computed::Position::Sticky))
-        .then(|| {
-            crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.scroll.sticky.as_ref())
-        });
+    let sticky_link = (e.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Sticky))
+    .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.scroll.sticky.as_ref()));
     let sticky_opts = sticky_link
         .as_ref()
         .map(|link| opts.inner(|cx| cx.scroll.sticky = Some(link.clone())));
@@ -86,7 +85,10 @@ pub(super) async fn build(
         )
     };
     let built = match root_box {
-        Some(area) if e.style.used().root_box && e.style.used().canvas_background.is_some() => {
+        Some(area)
+            if e.style.used().reset_context.root_box
+                && e.style.used().canvas_background.is_some() =>
+        {
             crate::paint::background::record_root_box(
                 built,
                 area,
@@ -106,14 +108,14 @@ pub(super) async fn build(
     // табличными детьми.
     let table_child = e.tag == "table"
         || matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
     let block_parent = matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::Block) | Some(Display::ListItem) | Some(Display::TableCell)
     );
-    if table_child && block_parent && e.style.used().width.is_none() {
+    if table_child && block_parent && e.style.used().reset_box_layout.width.is_none() {
         div().flex().flex_row().child(built).into_any_element()
     } else {
         built

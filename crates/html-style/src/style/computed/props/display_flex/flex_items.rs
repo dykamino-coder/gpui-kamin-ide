@@ -16,11 +16,11 @@ impl Computed {
         match key {
             "flex-wrap" => {
                 if let Some(w) = values::flex_wrap(v) {
-                    self.flex_wrap = accept_parsed!(self, Some(w.wrap));
+                    self.reset_flex.flex_wrap = accept_parsed!(self, Some(w.wrap));
                     // Обратный перенос кладёт строки с другого края: одна строка
                     // в контейнере уезжает вниз, а не остаётся вверху.
-                    self.flex_wrap_reverse = Some(w.reverse);
-                    self.flex_balance = Some(w.balance);
+                    self.reset_flex.flex_wrap_reverse = Some(w.reverse);
+                    self.reset_flex.flex_balance = Some(w.balance);
                 }
             }
             "flex-line-count" => {
@@ -29,7 +29,7 @@ impl Computed {
                 if let Ok(n) = v.trim().parse::<u32>()
                     && n >= 1
                 {
-                    self.flex_line_count =
+                    self.reset_flex.flex_line_count =
                         accept_parsed!(self, Some(n.min(u32::from(u16::MAX)) as u16));
                 }
             }
@@ -38,18 +38,18 @@ impl Computed {
             // (`flex-shrink-002`, `flex-basis-004`).
             "flex-grow" => {
                 if let Some(g) = flex_factor(v, vcx) {
-                    self.flex_grow = accept_parsed!(self, Some(g));
+                    self.reset_flex.flex_grow = accept_parsed!(self, Some(g));
                 }
             }
             "flex-shrink" => {
                 if let Some(g) = flex_factor(v, vcx) {
-                    self.flex_shrink = accept_parsed!(self, Some(g));
+                    self.reset_flex.flex_shrink = accept_parsed!(self, Some(g));
                 }
             }
             "flex-basis" => {
                 if let Some((basis, content)) = values::flex_basis(v, vcx) {
-                    self.flex_basis = accept_parsed!(self, Some(basis));
-                    self.basis_content = Some(content);
+                    self.reset_flex.flex_basis = accept_parsed!(self, Some(basis));
+                    self.reset_flex.basis_content = Some(content);
                 }
             }
             // Каскадное `inherit` держит каскад (`Computed::inherit_longhands`).
@@ -66,21 +66,22 @@ impl Computed {
                 if !matches!(last, Some("left") | Some("right"))
                     && let Ok(a) = align_keyword(v)
                 {
-                    self.align_self = accept_parsed!(self, a);
-                    self.align_self_decl = Some(a);
-                    self.align_self_safe = is_safe(v);
-                    self.align_self_normal = v.trim() == "normal";
-                    self.align_self_own_axis =
+                    self.reset_flex.align_self = accept_parsed!(self, a);
+                    self.reset_flex.align_self_decl = Some(a);
+                    self.reset_flex.align_self_safe = is_safe(v);
+                    self.reset_flex.align_self_normal = v.trim() == "normal";
+                    self.reset_flex.align_self_own_axis =
                         matches!(last, Some("self-start") | Some("self-end"));
-                    self.align_self_flex_kw = matches!(last, Some("flex-start") | Some("flex-end"));
-                    self.align_self_last = v.split_whitespace().any(|w| w == "last");
+                    self.reset_flex.align_self_flex_kw =
+                        matches!(last, Some("flex-start") | Some("flex-end"));
+                    self.reset_flex.align_self_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             "align-items" => {
                 if let Ok(a) = align_keyword(v) {
-                    self.align_items = accept_parsed!(self, a);
-                    self.align_items_safe = is_safe(v);
-                    self.align_items_last = v.split_whitespace().any(|w| w == "last");
+                    self.reset_flex.align_items = accept_parsed!(self, a);
+                    self.reset_flex.align_items_safe = is_safe(v);
+                    self.reset_flex.align_items_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             // `space-evenly` и `space-around` различаются шириной крайних
@@ -93,11 +94,11 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (v == "normal").then_some(None))
                 );
-                self.justify_content = parsed;
+                self.reset_flex.justify_content = parsed;
                 if v == "normal" {
                     self.accept_declaration();
                 }
-                self.justify_content_safe = is_safe(v);
+                self.reset_flex.justify_content_safe = is_safe(v);
             }
             _ => self.apply_gap_place(key, v, hit, vcx),
         }

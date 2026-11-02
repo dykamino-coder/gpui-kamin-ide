@@ -39,27 +39,27 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
     // Монолит такого элемента переполняет колонку, как в блоке (Blink
     // `FinishFragmentation` растит фрагмент контейнера до конца монолита;
     // `monolithic-overflow-003/004.tentative` во flex и сетке).
-    let stacked = (c.style.used().display == Some(Display::Flex)
-        && c.style.used().webkit_box != Some(true)
+    let stacked = (c.style.used().reset_box_layout.display == Some(Display::Flex)
+        && c.style.used().reset_flex.webkit_box != Some(true)
         && !c.style.cascaded().wm().vertical()
         && matches!(
-            c.style.used().flex_dir,
+            c.style.used().reset_flex.flex_dir,
             Some(crate::style::computed::FlexDir::Col)
                 | Some(crate::style::computed::FlexDir::ColReverse)
         )
-        && c.style.used().flex_wrap != Some(true))
-        || (c.style.used().display == Some(Display::Grid) && grid_stack(c));
+        && c.style.used().reset_flex.flex_wrap != Some(true))
+        || (c.style.used().reset_box_layout.display == Some(Display::Grid) && grid_stack(c));
     // `break-inside: avoid` элемента без настоящего монолита — пожелание
     // (css-break-4 §4.4): с верха колонки такой элемент выше колонки рвётся, а
     // ветка переполнения (`overflow_top`) держала бы его целым
     // (`single-line-column-flex-fragmentation-015`: элемент 250 в колонке 100).
     let stacked = stacked
         && !c.children.iter().any(
-            |n| matches!(n, Node::Element(k) if k.style.used().break_inside_avoid && avoid_only_monolith(k)),
+            |n| matches!(n, Node::Element(k) if k.style.used().reset_fragmentation.break_inside_avoid && avoid_only_monolith(k)),
         );
     let own = !stacked
         && matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             Some(Display::Flex)
                 | Some(Display::Grid)
                 | Some(Display::GridLanes)
@@ -68,7 +68,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
                 | Some(Display::TableRowGroup)
                 | Some(Display::TableCell)
         )
-        || c.style.used().webkit_box == Some(true)
+        || c.style.used().reset_flex.webkit_box == Some(true)
         || multicol_container(&c.style.used())
         || matches!(
             c.tag.as_str(),
@@ -114,7 +114,7 @@ enum SpanPart {
 /// бывает; флоат и абсолют — не в потоке. Тот же признак — у `is_span`
 /// сегментного пути в `element()`.
 pub(crate) fn spanner_box(c: &Element) -> bool {
-    c.style.used().column_span == Some(true) && block_level_in_flow(c)
+    c.style.used().reset_fragmentation.column_span == Some(true) && block_level_in_flow(c)
 }
 
 /// Пропускает ли предок спаннера его наружу, к многоколоночнику.
@@ -153,7 +153,7 @@ fn passes_spanner(c: &Element) -> bool {
     // caption») расходилась с эталоном, где тот же `<h3>` —
     // `column-span: none`.
     if table_box(c)
-        || c.style.used().is_caption == Some(true)
+        || c.style.used().reset_context.is_caption == Some(true)
         || matches!(
             c.tag.as_str(),
             "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
@@ -162,7 +162,7 @@ fn passes_spanner(c: &Element) -> bool {
         return false;
     }
     if !matches!(
-        c.style.used().display,
+        c.style.used().reset_box_layout.display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) {
         return false;
@@ -177,14 +177,14 @@ fn passes_spanner(c: &Element) -> bool {
     if out_of_flow(&c.style.used()) {
         return false;
     }
-    if c.style.used().flow_root == Some(true) {
+    if c.style.used().reset_context.flow_root == Some(true) {
         return false;
     }
     if !matches!(
-        c.style.used().overflow_x,
+        c.style.used().reset_box_layout.overflow_x,
         None | Some(crate::style::computed::Overflow::Visible)
     ) || !matches!(
-        c.style.used().overflow_y,
+        c.style.used().reset_box_layout.overflow_y,
         None | Some(crate::style::computed::Overflow::Visible)
     ) {
         return false;
@@ -195,11 +195,11 @@ fn passes_spanner(c: &Element) -> bool {
     // created»). На этом запрете стоят зелёные `multicol-span-all-010`
     // (`transform`, `filter`, `contain: paint|layout|content|strict`) и
     // `multicol-span-all-017` (`transform: scale(1)`).
-    if c.style.used().transform.is_some()
-        || c.style.used().filter.is_some()
-        || c.style.used().perspective.is_some()
-        || c.style.used().contain_layout == Some(true)
-        || c.style.used().contain_paint == Some(true)
+    if c.style.used().reset_transforms.transform.is_some()
+        || c.style.used().reset_effects.filter.is_some()
+        || c.style.used().reset_transforms.perspective.is_some()
+        || c.style.used().reset_context.contain_layout == Some(true)
+        || c.style.used().reset_context.contain_paint == Some(true)
     {
         return false;
     }

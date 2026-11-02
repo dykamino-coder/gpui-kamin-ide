@@ -63,7 +63,7 @@ impl Measured {
             let build = move |dom: &Element, part: usize, band: bool, opts_b: &RenderOpts| {
                 let vcx = opts_b.cx.vcx();
                 let mut inner = box_style(&merged, &dom.style, vcx);
-                inner.fragment_clip_ancestor = false;
+                inner.reset_context.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
                 opts.frag.watch = (!band).then(|| {
                     let watched = opts_b

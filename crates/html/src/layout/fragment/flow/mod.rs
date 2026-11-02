@@ -35,9 +35,9 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 pub(crate) fn flow_lines_in(e: &crate::dom::Element, owner: Option<u64>) -> bool {
     use crate::style::computed::Display;
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem | Display::Contents | Display::Table)
-    ) && e.style.used().webkit_box != Some(true)
+    ) && e.style.used().reset_flex.webkit_box != Some(true)
         && !matches!(
             e.tag.as_str(),
             "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"

@@ -115,7 +115,11 @@ fn typed_attr_uses_host_language_case_rules_in_the_style_walk() {
             parse(source, css)
         };
         assert_eq!(
-            first_element(&parsed).style.cascaded().width,
+            first_element(&parsed)
+                .style
+                .cascaded()
+                .reset_box_layout
+                .width,
             Some(Len::Px(expected))
         );
     }

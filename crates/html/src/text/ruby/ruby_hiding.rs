@@ -19,13 +19,17 @@ pub(super) fn text(nodes: &[Node]) -> String {
 pub(super) fn hidden(annotation: &[Node], base: &str, container: &Computed) -> bool {
     // The renderer uses separate pairing for auto; explicit merge disables
     // hiding. Visibility on the annotation inherits from its container.
-    if container.ruby_merge == Some(1) {
+    if container.inh.text_flow.ruby_merge == Some(1) {
         return false;
     }
     let collapsed = if let [Node::Element(e)] = annotation {
-        e.style.used().collapsed.or(container.collapsed)
+        e.style
+            .used()
+            .reset_context
+            .collapsed
+            .or(container.reset_context.collapsed)
     } else {
-        container.collapsed
+        container.reset_context.collapsed
     };
     collapsed == Some(true) || text(annotation) == base
 }

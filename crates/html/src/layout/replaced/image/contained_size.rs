@@ -20,8 +20,14 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
     }
     let side = px_lossy_zero;
     let b = style.borders();
-    let pad_x = side(style.padding.left) + side(style.padding.right) + side(b.left) + side(b.right);
-    let pad_y = side(style.padding.top) + side(style.padding.bottom) + side(b.top) + side(b.bottom);
+    let pad_x = side(style.reset_box_layout.padding.left)
+        + side(style.reset_box_layout.padding.right)
+        + side(b.left)
+        + side(b.right);
+    let pad_y = side(style.reset_box_layout.padding.top)
+        + side(style.reset_box_layout.padding.bottom)
+        + side(b.top)
+        + side(b.bottom);
     let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
         Some(Len::Px(v)) => v,
         _ => ci.unwrap_or(0.0),
@@ -40,27 +46,52 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
     // заявленное отдаётся ДО проверки обособления, гейт
     // `ShouldApplyAnySizeContainment` стоит только вокруг природного.
     let ratio = style
+        .reset_shapes
         .aspect_ratio
         .filter(|r| r.is_finite() && *r > 0.0)
-        .or_else(|| match (style.attr_width, style.attr_height) {
-            (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
-            _ => None,
+        .or_else(|| {
+            match (
+                style.reset_box_layout.attr_width,
+                style.reset_box_layout.attr_height,
+            ) {
+                (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
+                _ => None,
+            }
         });
     let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
-    let (nw, nh) = (named(style.width), named(style.height));
+    let (nw, nh) = (
+        named(style.reset_box_layout.width),
+        named(style.reset_box_layout.height),
+    );
     let cw = match ratio {
-        Some(r) if !nw && nh => used(style.height, style.contain_intrinsic.1) * r,
-        _ => used(style.width, style.contain_intrinsic.0),
+        Some(r) if !nw && nh => {
+            used(
+                style.reset_box_layout.height,
+                style.reset_context.contain_intrinsic.1,
+            ) * r
+        }
+        _ => used(
+            style.reset_box_layout.width,
+            style.reset_context.contain_intrinsic.0,
+        ),
     };
     let ch = match ratio {
-        Some(r) if nw && !nh => used(style.width, style.contain_intrinsic.0) / r,
-        _ => used(style.height, style.contain_intrinsic.1),
+        Some(r) if nw && !nh => {
+            used(
+                style.reset_box_layout.width,
+                style.reset_context.contain_intrinsic.0,
+            ) / r
+        }
+        _ => used(
+            style.reset_box_layout.height,
+            style.reset_context.contain_intrinsic.1,
+        ),
     };
     // CSS Containment 2 §3.1: lay out content in the final box, including
     // its min/max constraints, rather than the suppressed natural size.
     let clamp = |value: f32, min: Option<Len>, max: Option<Len>, padding: f32| {
         let content = |length| match length {
-            Some(Len::Px(v)) => Some(if style.border_box == Some(true) {
+            Some(Len::Px(v)) => Some(if style.reset_border.border_box == Some(true) {
                 (v - padding).max(0.0)
             } else {
                 v
@@ -71,14 +102,24 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
             .min(content(max).unwrap_or(f32::INFINITY))
             .max(content(min).unwrap_or(0.0))
     };
-    let cw = clamp(cw, style.min_width, style.max_width, pad_x);
-    let ch = clamp(ch, style.min_height, style.max_height, pad_y);
+    let cw = clamp(
+        cw,
+        style.reset_box_layout.min_width,
+        style.reset_box_layout.max_width,
+        pad_x,
+    );
+    let ch = clamp(
+        ch,
+        style.reset_box_layout.min_height,
+        style.reset_box_layout.max_height,
+        pad_y,
+    );
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     Some(ContainedSize {
         content: (cw, ch),
         holder: (
-            (style.contains_width() && auto(style.width)).then_some(cw + pad_x),
-            (style.contains_height() && auto(style.height)).then_some(ch + pad_y),
+            (style.contains_width() && auto(style.reset_box_layout.width)).then_some(cw + pad_x),
+            (style.contains_height() && auto(style.reset_box_layout.height)).then_some(ch + pad_y),
         ),
     })
 }

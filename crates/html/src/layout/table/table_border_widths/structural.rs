@@ -42,13 +42,15 @@ impl<'a> Edges<'a> {
 
     fn widths(&self, element: &Element) -> [f32; 4] {
         let border = element.style.used().borders();
-        let font = match element.style.used().font_size {
+        let font = match element.style.used().inh.font.font_size {
             Some(crate::style::values::value::Len::Px(size)) => size,
             _ => self.font,
         };
         let family = element
             .style
             .cascaded()
+            .inh
+            .font
             .font_family
             .as_deref()
             .unwrap_or(self.family);

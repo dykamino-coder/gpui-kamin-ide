@@ -80,6 +80,6 @@ fn continue_discard_is_its_own_computed_value() {
         ("", None),
     ] {
         let (_, style) = styled(css, vec![]);
-        assert_eq!(style.clamp_discard, discard, "{css}");
+        assert_eq!(style.reset_fragmentation.clamp_discard, discard, "{css}");
     }
 }

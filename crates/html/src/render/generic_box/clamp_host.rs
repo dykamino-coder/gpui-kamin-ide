@@ -32,14 +32,14 @@ pub(super) fn build(
     let geometry = crate::text::clamp::geometry::ClampGeometry {
         limit: e.style.used().clamp_lines(),
         max_h: auto_clamp_limit(&c).filter(|_| e.style.used().clamp_by_height()),
-        trim_end: if c.text_box_trim_end {
+        trim_end: if c.reset_text_box.text_box_trim_end {
             crate::text::text_box::text_box_trim_px(&c, false, opts)
         } else {
             0.0
         },
     };
     let key = e.node_id;
-    let border_box = c.border_box == Some(true);
+    let border_box = c.reset_border.border_box == Some(true);
     let paint = opts.cx.deferred.paint.clone();
     let children = opts.cx.contracts.build;
     let e = e.clone();

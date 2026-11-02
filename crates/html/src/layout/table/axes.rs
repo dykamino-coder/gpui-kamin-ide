@@ -40,23 +40,23 @@ impl Axes {
 pub(super) fn inherited(e: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Option<Element> {
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if (
-        e.style.used().writing_mode,
-        e.style.used().flat_mode,
-        e.style.used().rtl,
-        e.style.used().text_orientation,
+        e.style.used().inh.writing.writing_mode,
+        e.style.used().inh.writing.flat_mode,
+        e.style.used().inh.writing.rtl,
+        e.style.used().inh.writing.text_orientation,
     ) == (
-        style.writing_mode,
-        style.flat_mode,
-        style.rtl,
-        style.text_orientation,
+        style.inh.writing.writing_mode,
+        style.inh.writing.flat_mode,
+        style.inh.writing.rtl,
+        style.inh.writing.text_orientation,
     ) {
         return None;
     }
     let mut copy = e.clone();
-    copy.style.used_mut().writing_mode = style.writing_mode;
-    copy.style.used_mut().flat_mode = style.flat_mode;
-    copy.style.used_mut().rtl = style.rtl;
-    copy.style.used_mut().text_orientation = style.text_orientation;
+    copy.style.used_mut().inh.writing.writing_mode = style.inh.writing.writing_mode;
+    copy.style.used_mut().inh.writing.flat_mode = style.inh.writing.flat_mode;
+    copy.style.used_mut().inh.writing.rtl = style.inh.writing.rtl;
+    copy.style.used_mut().inh.writing.text_orientation = style.inh.writing.text_orientation;
     Some(copy)
 }
 
@@ -85,7 +85,7 @@ mod tests {
             parsed.values(),
         );
         let table = find(&parsed.nodes, "table").unwrap();
-        assert!(table.style.cascaded().writing_mode.is_none());
+        assert!(table.style.cascaded().inh.writing.writing_mode.is_none());
         let style = box_style(&BoxStyle::default(), &table.style, parsed.values());
         let inherited = inherited(table, &BoxStyle::default(), parsed.values());
         let table = inherited.as_ref().unwrap_or(table);
@@ -109,11 +109,11 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Computed::default()
                 };
-                with_inherited.writing_mode =
+                with_inherited.inh.writing.writing_mode =
                     Some(crate::style::computed::writing_mode::WritingModeKw::new(
                         vertical, rl, sideways,
                     ));
-                with_inherited.rtl = Some(rtl);
+                with_inherited.inh.writing.rtl = Some(rtl);
                 with_inherited
             });
             assert_eq!(axes.logical([0, 1, 2, 3]), expected);

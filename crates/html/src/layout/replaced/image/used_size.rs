@@ -56,11 +56,17 @@ impl<'a> PictureSizing<'a> {
         cb_width: Option<f32>,
     ) -> Self {
         let side = px_lossy_zero;
-        let sub = if style.border_box == Some(true) {
+        let sub = if style.reset_border.border_box == Some(true) {
             let b = style.borders();
             (
-                side(style.padding.left) + side(style.padding.right) + side(b.left) + side(b.right),
-                side(style.padding.top) + side(style.padding.bottom) + side(b.top) + side(b.bottom),
+                side(style.reset_box_layout.padding.left)
+                    + side(style.reset_box_layout.padding.right)
+                    + side(b.left)
+                    + side(b.right),
+                side(style.reset_box_layout.padding.top)
+                    + side(style.reset_box_layout.padding.bottom)
+                    + side(b.top)
+                    + side(b.bottom),
             )
         } else {
             (0.0, 0.0)
@@ -73,8 +79,8 @@ impl<'a> PictureSizing<'a> {
             max_w: None,
             max_h: None,
         };
-        sizing.max_w = sizing.clamp(style.max_width, sub.0);
-        sizing.max_h = sizing.clamp(style.max_height, sub.1);
+        sizing.max_w = sizing.clamp(style.reset_box_layout.max_width, sub.0);
+        sizing.max_h = sizing.clamp(style.reset_box_layout.max_height, sub.1);
         sizing
     }
 
@@ -110,13 +116,15 @@ impl<'a> PictureSizing<'a> {
     /// Соотношение сторон рисунка.
     pub(crate) fn ratio(&self) -> Option<f32> {
         // CSS Sizing 4 #aspect-ratio: authored ratio overrides the natural ratio.
-        if let Some(r) = self.style.aspect_ratio.filter(|r| *r > 0.0) {
+        if let Some(r) = self.style.reset_shapes.aspect_ratio.filter(|r| *r > 0.0) {
             return Some(r);
         }
         // `auto <ratio>`: природное сильнее, заявленное — запасное.
-        self.natural_ratio()
-            .filter(|r| *r > 0.0)
-            .or(self.style.aspect_ratio_auto.filter(|r| *r > 0.0))
+        self.natural_ratio().filter(|r| *r > 0.0).or(self
+            .style
+            .reset_shapes
+            .aspect_ratio_auto
+            .filter(|r| *r > 0.0))
     }
 
     pub(super) fn transfer(&self, size: f32, ratio: f32, from_width: bool) -> f32 {

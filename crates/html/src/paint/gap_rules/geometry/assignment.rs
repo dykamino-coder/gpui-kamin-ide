@@ -129,7 +129,11 @@ mod tests {
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one("column-rule-width", "repeat(2, 1px, 2px), 3px", vcx);
-        let list = style.column_rule_widths.as_ref().unwrap();
+        let list = style
+            .reset_fragmentation
+            .column_rule_widths
+            .as_ref()
+            .unwrap();
         let slots = assign(&[7], false, true, false);
         let got: Vec<_> = slots[0].iter().map(|s| s.value(list).unwrap()).collect();
         assert_eq!(got, [2., 1., 3., 2., 1., 2., 1.].map(Len::Px));

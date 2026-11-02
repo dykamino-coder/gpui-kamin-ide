@@ -21,35 +21,37 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
     // примитива с аффинной формулой — та же матрица (`svg_filter_matrix`;
     // `backdrop-filter-svg`).
     let matrix = c
+        .reset_effects
         .backdrop_color
         .and_then(|f| f.color_matrix())
         .or_else(|| {
-            c.backdrop_ref
+            c.reset_effects
+                .backdrop_ref
                 .as_deref()
                 .and_then(|id| vcx.doc.masks.markup(&format!("filter:{id}")))
                 .and_then(|def| svg_filter_matrix(&def))
         })
-        .filter(|_| !c.backdrop_root_above);
+        .filter(|_| !c.reset_effects.backdrop_root_above);
     if let Some(m) = matrix {
         let side = px_lossy_zero;
-        let radius = c.backdrop_blur.unwrap_or(0.0);
+        let radius = c.reset_effects.backdrop_blur.unwrap_or(0.0);
         // Своя `mask-image` делает элемент группой (`grouped`), а буфер группы
         // рисуется до кадра: подложку поднимает в кадр `paint_backdrop_filter`
         // (filter-effects-2 Overview.bs:61-66, шаги 1-5;
         // `backdrop-filter-good-and-bad-mask-image`). Форма `clip-path` —
         // нет: без обрезки формой подъём дал бы подложку во всю коробку.
-        let hoist = c.mask_image.is_some()
-            && c.clip_shape.is_none()
-            && c.clip_polygon.is_none()
-            && c.clip_inset.is_none()
-            && c.clip_edges.is_none()
-            && c.clip_xywh.is_none()
-            && !c.clip_bare_box;
+        let hoist = c.reset_mask.mask_image.is_some()
+            && c.reset_mask.clip_shape.is_none()
+            && c.reset_mask.clip_polygon.is_none()
+            && c.reset_mask.clip_inset.is_none()
+            && c.reset_mask.clip_edges.is_none()
+            && c.reset_mask.clip_xywh.is_none()
+            && !c.reset_mask.clip_bare_box;
         let corners = [
-            side(c.radius.tl),
-            side(c.radius.tr),
-            side(c.radius.br),
-            side(c.radius.bl),
+            side(c.reset_border.radius.tl),
+            side(c.reset_border.radius.tr),
+            side(c.reset_border.radius.br),
+            side(c.reset_border.radius.bl),
         ];
         let b = c.borders();
         out.push(
@@ -78,10 +80,10 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
             .left(px(-side(b.left)))
             .into_any_element(),
         );
-    } else if let Some(radius) = c.backdrop_blur {
+    } else if let Some(radius) = c.reset_effects.backdrop_blur {
         // `backdrop-filter: blur(N)`: размывает то, что под элементом. Рисуется
         // проходом рендера (патч gpui), поэтому это канвас, а не стиль.
-        let corner = px_lossy_zero(c.radius.tl);
+        let corner = px_lossy_zero(c.reset_border.radius.tl);
         out.push(
             gpui::canvas(
                 |_, _, _| {},

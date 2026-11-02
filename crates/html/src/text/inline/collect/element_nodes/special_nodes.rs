@@ -25,14 +25,15 @@ pub(super) async fn special_node(
     // line break, no break opportunity
     // (`display-contents-sharing-001`).
     if matches!(e.tag.as_str(), "br" | "wbr")
-        && e.style.used().display == Some(crate::style::computed::Display::Contents)
+        && e.style.used().reset_box_layout.display
+            == Some(crate::style::computed::Display::Contents)
     {
         return true;
     }
     if e.tag == "br" {
         // Blink inline_items_builder.cc:58-62 suppresses forced breaks
         // in ruby columns, including bases, until they can be fragmented.
-        if inherited.ruby_suppress_breaks {
+        if inherited.reset_text_box.ruby_suppress_breaks {
             return true;
         }
         cx.case.boundary();
@@ -50,7 +51,13 @@ pub(super) async fn special_node(
         // (css-text-4 §word-space-transform: свойство наследуемое,
         // и у элемента своё значение).
         let mut style = inherited.clone();
-        style.word_space_char = e.style.cascaded().word_space_char.or(style.word_space_char);
+        style.inh.text_flow.word_space_char = e
+            .style
+            .cascaded()
+            .inh
+            .text_flow
+            .word_space_char
+            .or(style.inh.text_flow.word_space_char);
         out.push(Piece::Text {
             text: "\u{200b}".into(),
             style,
@@ -65,7 +72,7 @@ pub(super) async fn special_node(
     // а строчный сбор вёл такой элемент обычным
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
-    if e.style.used().display == Some(crate::style::computed::Display::Contents) {
+    if e.style.used().reset_box_layout.display == Some(crate::style::computed::Display::Contents) {
         let merged = box_style(inherited, &e.style, vcx);
         out.extend(
             stk.run(|stk| collect_stack(stk, &e.children, &merged, atom, has_text, cx))

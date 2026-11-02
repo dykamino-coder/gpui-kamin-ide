@@ -61,7 +61,7 @@ fn floats_alone(
         .iter()
         .take_while(|n| {
             is_blank(n)
-                || matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0))
+                || matches!(n, Node::Element(e) if e.style.used().reset_box_layout.float.is_some_and(|f| f != 0))
         })
         .map(|n| match n {
             Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {
@@ -69,7 +69,7 @@ fn floats_alone(
                 // Семейство наследуется: `ex`/`ch` полей — по вычисленному шрифту.
                 let font = f.style.used().font_cx(vcx).family.to_owned();
                 let font = crate::style::computed::FontCx::new(&font, em);
-                let m = &mut f.style.used_mut().margin;
+                let m = &mut f.style.used_mut().reset_box_layout.margin;
                 for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {
                     if let Some(l) =
                         side.filter(|l| !matches!(l, Len::Px(_) | Len::Pct(_) | Len::Auto))

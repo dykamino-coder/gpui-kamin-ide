@@ -32,12 +32,12 @@ impl Computed {
                     let kinds = gap_list(v, super::gap_rules::gap_kind);
                     if key == "column-rule-style" {
                         self.set_gap_styles(true, &l);
-                        self.column_rule_double = double;
-                        self.column_rule_kinds = kinds;
+                        self.reset_fragmentation.column_rule_double = double;
+                        self.reset_fragmentation.column_rule_kinds = kinds;
                     } else {
                         self.set_gap_styles(false, &l);
-                        self.row_rule_double = double;
-                        self.row_rule_kinds = kinds;
+                        self.reset_fragmentation.row_rule_double = double;
+                        self.reset_fragmentation.row_rule_kinds = kinds;
                     }
                 }
             }
@@ -78,9 +78,9 @@ impl Computed {
                 };
                 self.accept_declaration();
                 let arr = if column {
-                    &mut self.column_rule_inset
+                    &mut self.reset_fragmentation.column_rule_inset
                 } else {
-                    &mut self.row_rule_inset
+                    &mut self.reset_fragmentation.row_rule_inset
                 };
                 arr.get_or_insert([GapInset::Len(Len::Px(0.0)); 4])[slot] = inset;
             }

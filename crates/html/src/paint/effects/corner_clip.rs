@@ -23,29 +23,31 @@ fn side(v: Option<Len>) -> f32 {
 /// Explicit masks and background-clip continue through their existing compositors.
 pub(crate) fn insets(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     if !c.corner_shaped()
-        || c.border_shape.is_some()
-        || c.overflow_x != Some(Overflow::Clip)
-        || c.overflow_y != Some(Overflow::Clip)
-        || c.mask_image.is_some()
-        || c.clip_shape.is_some()
-        || c.clip_polygon.is_some()
+        || c.reset_border.border_shape.is_some()
+        || c.reset_box_layout.overflow_x != Some(Overflow::Clip)
+        || c.reset_box_layout.overflow_y != Some(Overflow::Clip)
+        || c.reset_mask.mask_image.is_some()
+        || c.reset_mask.clip_shape.is_some()
+        || c.reset_mask.clip_polygon.is_some()
         || c.color_clip(vcx).is_some()
     {
         return None;
     }
-    let margin = c.clip_margin?;
+    let margin = c.reset_mask.clip_margin?;
     let b = c.borders();
     let border = [side(b.top), side(b.right), side(b.bottom), side(b.left)];
     let padding = [
-        side(c.padding.top),
-        side(c.padding.right),
-        side(c.padding.bottom),
-        side(c.padding.left),
+        side(c.reset_box_layout.padding.top),
+        side(c.reset_box_layout.padding.right),
+        side(c.reset_box_layout.padding.bottom),
+        side(c.reset_box_layout.padding.left),
     ];
-    Some(std::array::from_fn(|i| match c.clip_margin_box {
-        Some(2) => -margin,
-        Some(0) => border[i] + padding[i] - margin,
-        _ => border[i] - margin,
+    Some(std::array::from_fn(|i| {
+        match c.reset_mask.clip_margin_box {
+            Some(2) => -margin,
+            Some(0) => border[i] + padding[i] - margin,
+            _ => border[i] - margin,
+        }
     }))
 }
 
@@ -61,8 +63,8 @@ pub(crate) fn new(
         return None;
     }
     let mut own = BoxStyle::shared(crate::style::box_input::BoxStyleInput::from(c));
-    own.clip_margin = None;
-    own.opacity = None;
+    own.reset_mask.clip_margin = None;
+    own.reset_effects.opacity = None;
     let b = c.borders();
     let layer = div()
         .relative()

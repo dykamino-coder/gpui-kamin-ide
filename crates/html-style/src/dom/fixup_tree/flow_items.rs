@@ -31,7 +31,7 @@ pub fn fold_run_ins(
         Frame {
             nodes: std::mem::take(nodes),
             index: 0,
-            keep: parent.is_some_and(|p| p.keep_spaces == Some(true)),
+            keep: parent.is_some_and(|p| p.inh.text_flow.keep_spaces == Some(true)),
             descended: false,
             owner: None,
         },
@@ -58,7 +58,7 @@ pub fn fold_run_ins(
                     unreachable!()
                 };
                 let nodes = std::mem::take(&mut owner.children).into_vec();
-                let keep = owner.style.cascaded().keep_spaces == Some(true);
+                let keep = owner.style.cascaded().inh.text_flow.keep_spaces == Some(true);
                 stack.push(
                     Frame {
                         nodes,
@@ -89,7 +89,7 @@ fn fold_at(
     // строчными обёртками) запрещает вбегание.
     let runs_in = match &nodes[i] {
         Node::Element(e) => {
-            e.style.cascaded().run_in == Some(true)
+            e.style.cascaded().reset_context.run_in == Some(true)
                 && !crate::style::flow::has_float_or_absolute_position(e.style.cascaded())
                 && !holds_block(admission, &e.children)?
         }
@@ -108,9 +108,9 @@ fn fold_at(
         };
     let target_ok = matches!(&nodes[j], Node::Element(t)
     if !t.inline
-        && t.style.cascaded().run_in != Some(true)
+        && t.style.cascaded().reset_context.run_in != Some(true)
         && !matches!(
-            t.style.cascaded().display,
+            t.style.cascaded().reset_box_layout.display,
             Some(Display::None)
                 | Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
@@ -129,8 +129,8 @@ fn fold_at(
         unreachable!()
     };
     run.inline = true;
-    run.style.cascaded_mut().display = None;
-    run.style.cascaded_mut().run_in = None;
+    run.style.cascaded_mut().reset_box_layout.display = None;
+    run.style.cascaded_mut().reset_context.run_in = None;
     // Наследование от ИСХОДНОГО родителя (§9.2.3) НЕ запекается:
     // `style::cascade::inherit` сливает и рендерные поля, и `run-in-inherit-001`
     // от этого ломается. Цвет нового блока вбёгнутый перенимает
@@ -152,7 +152,7 @@ fn holds_block(
     let transparent = |ch: &Element| {
         ch.inline
             || matches!(
-                ch.style.cascaded().display,
+                ch.style.cascaded().reset_box_layout.display,
                 Some(
                     Display::InlineBlock
                         | Display::InlineFlex
@@ -163,7 +163,7 @@ fn holds_block(
     };
     let visible = |ch: &Element| {
         !crate::style::flow::has_float_or_absolute_position(ch.style.cascaded())
-            && ch.style.cascaded().display != Some(Display::None)
+            && ch.style.cascaded().reset_box_layout.display != Some(Display::None)
     };
     for node in crate::dom::traversal::nodes(admission, nodes, |ch| visible(ch) && transparent(ch))
     {
@@ -180,7 +180,7 @@ pub fn flex_items_lose_float(
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::postorder(admission, nodes, |el| {
         if !matches!(
-            el.style.cascaded().display,
+            el.style.cascaded().reset_box_layout.display,
             Some(Display::Grid)
                 | Some(Display::InlineGrid)
                 | Some(Display::Flex)
@@ -192,11 +192,13 @@ pub fn flex_items_lose_float(
             let Node::Element(child) = child else {
                 continue;
             };
-            if crate::style::flow::absolutely_positioned(child.style.cascaded().position) {
+            if crate::style::flow::absolutely_positioned(
+                child.style.cascaded().reset_positioned.position,
+            ) {
                 continue;
             }
-            child.style.cascaded_mut().float = None;
-            child.style.cascaded_mut().clear = None;
+            child.style.cascaded_mut().reset_box_layout.float = None;
+            child.style.cascaded_mut().reset_box_layout.clear = None;
         }
     })
 }

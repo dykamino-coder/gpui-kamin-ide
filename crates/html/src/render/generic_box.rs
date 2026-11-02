@@ -37,11 +37,11 @@ pub(super) async fn generic_box_stack(
         && !e.inline
         && crate::layout::box_kind::in_flow(&e.style.used())
         && matches!(
-            inherited.display,
+            inherited.reset_box_layout.display,
             None | Some(Display::Block | Display::InlineBlock)
         )
     {
-        merged.baseline_orthogonal = true;
+        merged.reset_context.baseline_orthogonal = true;
     }
     let host_opts;
     let opts = if clamp_host::active(e, &merged)
@@ -152,9 +152,9 @@ pub(super) async fn generic_box_stack(
         // Blink: `table_layout_algorithm.cc:67`
         // `ConstraintSpaceBuilder(space, caption.Style().GetWritingDirection(), true)`.
         && (matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             None | Some(Display::InlineBlock) | Some(Display::TableCell)
-        ) || e.style.used().is_caption == Some(true)
+        ) || e.style.used().reset_context.is_caption == Some(true)
             // Объявленный `display: flow-root` — тот же блок со своим
             // контекстом (`style::computed` ставит ему `Some(Block)` с
             // меткой `flow_root`); блокифицированный абсолют метки не
@@ -164,8 +164,8 @@ pub(super) async fn generic_box_stack(
             // min-content, флоаты-колонки эталона
             // `css-break/background-image-001` вставали поперёк строки
             // и пропадали.
-            || (e.style.used().flow_root == Some(true)
-                && e.style.used().display == Some(Display::Block)))
+            || (e.style.used().reset_context.flow_root == Some(true)
+                && e.style.used().reset_box_layout.display == Some(Display::Block)))
     {
         // Вертикальное письмо: ось блочного потока — горизонтальная.
         // Дети идут слева направо (`vertical-lr`) или справа налево
@@ -185,10 +185,10 @@ pub(super) async fn generic_box_stack(
         // рисунок. Снимать ВМЕСТЕ с патчем поворота и мерить
         // `wm-propagation-body-047`, `abs-pos-border-offset-002` —
         // ровно те две пары, ради которых заплатка ставилась.
-        if e.style.used().width.is_none() {
+        if e.style.used().reset_box_layout.width.is_none() {
             d = d.flex_shrink_0();
         }
-    } else if e.style.used().display.is_none() {
+    } else if e.style.used().reset_box_layout.display.is_none() {
         // Блок без явного `display` — блочная раскладка taffy, а не
         // гибкая колонка. Колонка навязывала детям сжатие: ребёнок
         // выше родителя ужимался, тогда как браузер даёт ему вылезти.
@@ -214,8 +214,8 @@ pub(super) async fn generic_box_stack(
     // без своего `direction` шёл слева направо — поля
     // `margin-inline-start` эталонов вставали не между элементами
     // (`gap-001-rtl-ref`, `gap-003-rtl-ref`).
-    if e.style.used().display == Some(Display::Flex)
-        && e.style.used().flex_dir.is_none()
+    if e.style.used().reset_box_layout.display == Some(Display::Flex)
+        && e.style.used().reset_flex.flex_dir.is_none()
         && !merged.wm().rtl()
     {
         // При вертикальном письме умолчание `row` — это ось строки, а

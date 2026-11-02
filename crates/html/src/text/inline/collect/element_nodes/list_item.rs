@@ -17,8 +17,9 @@ pub(super) async fn children(
     let doc = cx.layout.doc().clone();
     let vcx = doc.frame_values();
     // CSS Lists 3: outside computes to inside for an inline list item.
-    if e.style.used().inline_display == Some(true)
-        && e.style.used().display == Some(crate::style::computed::Display::ListItem)
+    if e.style.used().reset_context.inline_display == Some(true)
+        && e.style.used().reset_box_layout.display
+            == Some(crate::style::computed::Display::ListItem)
         && let Some(marker) =
             crate::layout::list::list_item::marker::inline_marker(e, merged, merged, vcx)
     {

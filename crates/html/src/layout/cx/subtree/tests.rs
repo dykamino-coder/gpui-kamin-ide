@@ -44,9 +44,9 @@ fn cow_style_change_invalidates_shared_proofs() {
     let Node::Element(child) = &mut root.children[0] else {
         unreachable!()
     };
-    child.style.used_mut().break_after_avoid = true;
-    child.style.used_mut().float = Some(1);
-    child.style.used_mut().margin.top = Some(Len::Px(10.));
+    child.style.used_mut().reset_fragmentation.break_after_avoid = true;
+    child.style.used_mut().reset_box_layout.float = Some(1);
+    child.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(10.));
     assert!(!facts.breaks_absent(&root));
     assert!(!facts.floats_absent(&root));
     assert!(!facts.margins_unchanged(&root.children));
@@ -58,11 +58,11 @@ fn cow_style_change_invalidates_shared_proofs() {
 #[test]
 fn clearance_keeps_hover_and_first_letter_float_possibilities() {
     let mut element = anon_element("div", vec![]);
-    element.style.used_mut().clear = Some(0);
+    element.style.used_mut().reset_box_layout.clear = Some(0);
     let mut facts = SubtreeFacts::default();
     assert!(!facts.clearance_possible(&[Node::Element(element.clone())]));
     let mut floated = Computed::default();
-    floated.float = Some(1);
+    floated.reset_box_layout.float = Some(1);
     element.hover = Some(floated.clone().into());
     assert!(facts.clearance_possible(&[Node::Element(element.clone())]));
     element.hover = None;
@@ -86,8 +86,8 @@ fn break_proof_is_shared_and_cow_style_change_invalidates_it() {
     let Node::Element(child) = &mut root.children[0] else {
         unreachable!()
     };
-    child.style.used_mut().break_after_avoid = true;
-    child.style.used_mut().float = Some(1);
+    child.style.used_mut().reset_fragmentation.break_after_avoid = true;
+    child.style.used_mut().reset_box_layout.float = Some(1);
     assert!(!facts.breaks_absent(&root));
     assert!(!facts.floats_absent(&root));
     assert!(facts.breaks_absent(&old));
@@ -111,7 +111,7 @@ fn cow_margin_change_invalidates_the_subtree_proof() {
     let Node::Element(child) = &mut root.children[0] else {
         unreachable!()
     };
-    child.style.used_mut().margin.top = Some(Len::Px(10.));
+    child.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(10.));
     assert!(!facts.margins_unchanged(&nodes));
     assert_eq!(facts.children.len(), entries + 1);
 }
@@ -119,7 +119,7 @@ fn cow_margin_change_invalidates_the_subtree_proof() {
 #[test]
 fn nonzero_margins_do_not_require_structural_inline_preparation() {
     let mut leaf = anon_element("span", vec![Node::Text("leaf".into())]);
-    leaf.style.used_mut().margin.top = Some(Len::Px(12.));
+    leaf.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(12.));
     let mut nodes = vec![Node::Element(leaf)];
     for _ in 0..1000 {
         nodes = vec![Node::Element(anon_element("div", nodes))];

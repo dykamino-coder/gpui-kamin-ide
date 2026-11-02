@@ -114,7 +114,7 @@ fn constant_gradient_facts_follow_resolved_current_color_and_hue_arc() {
         vcx,
     );
     let mut image = ImageSource::parse("linear-gradient(currentColor, currentColor)", vcx).unwrap();
-    image.resolve_colors(own.color.unwrap());
+    image.resolve_colors(own.inh.ui.color.unwrap());
     let facts = Rc::new(BackgroundImages::default());
     assert_eq!(
         facts.uniform_image_color(&image),

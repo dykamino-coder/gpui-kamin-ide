@@ -65,9 +65,15 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float")
     };
-    assert_eq!(e.style.used().float, Some(-1));
-    assert_eq!(e.style.used().margin.top, Some(Len::Px(24.0)));
-    assert_eq!(e.style.used().margin.bottom, Some(Len::Px(12.0)));
+    assert_eq!(e.style.used().reset_box_layout.float, Some(-1));
+    assert_eq!(
+        e.style.used().reset_box_layout.margin.top,
+        Some(Len::Px(24.0))
+    );
+    assert_eq!(
+        e.style.used().reset_box_layout.margin.bottom,
+        Some(Len::Px(12.0))
+    );
 }
 
 #[test]
@@ -89,7 +95,7 @@ fn flowing_page_float_records_its_own_children_and_inline_continuation() {
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float")
     };
-    assert_eq!(e.style.used().float, Some(-1));
+    assert_eq!(e.style.used().reset_box_layout.float, Some(-1));
 }
 
 #[test]
@@ -112,7 +118,7 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float host")
     };
-    assert_eq!(e.style.used().width, Some(Len::Px(100.0)));
+    assert_eq!(e.style.used().reset_box_layout.width, Some(Len::Px(100.0)));
 }
 
 #[test]

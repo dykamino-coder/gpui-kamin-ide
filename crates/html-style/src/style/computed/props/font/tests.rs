@@ -30,7 +30,7 @@ fn stretch_preserves_fractional_percentages_and_keywords() {
     ] {
         let mut c = Computed::default();
         c.apply_decls(&parse_decls(&format!("font-stretch: {value}")), vcx);
-        assert_eq!(c.font_stretch, Some(expected), "{value}");
+        assert_eq!(c.inh.font.font_stretch, Some(expected), "{value}");
     }
 }
 
@@ -50,7 +50,7 @@ fn invalid_stretch_preserves_previous_declaration() {
         "87.5% extra",
     ] {
         let c = style(&format!("font-stretch: 75%; font-stretch: {value}"), vcx);
-        assert_eq!(c.font_stretch, Some(75.), "{value}");
+        assert_eq!(c.inh.font.font_stretch, Some(75.), "{value}");
     }
 }
 
@@ -64,16 +64,16 @@ fn font_shorthand_resets_every_longhand_it_names() {
          font-feature-settings: 'liga' 0; font: 13.3333px monospace",
         vcx,
     );
-    assert_eq!(c.italic, Some(false));
-    assert_eq!(c.font_weight, Some(400));
-    assert_eq!(c.line_height, Some(Len::Auto));
-    assert_eq!(c.font_kerning, Some(2));
-    assert_eq!(c.font_size_adjust, Some((u8::MAX, 0.0)));
-    assert_eq!(c.font_settings, Some(Vec::new()));
-    assert!(c.font_features.is_empty());
-    assert_eq!(c.font_variant_set, 0b11111);
-    assert_eq!(c.font_size, Some(Len::Px(13.3333)));
-    assert_eq!(c.monospace, Some(true));
+    assert_eq!(c.inh.font.italic, Some(false));
+    assert_eq!(c.inh.font.font_weight, Some(400));
+    assert_eq!(c.inh.font.line_height, Some(Len::Auto));
+    assert_eq!(c.inh.font.font_kerning, Some(2));
+    assert_eq!(c.inh.font.font_size_adjust, Some((u8::MAX, 0.0)));
+    assert_eq!(c.inh.font.font_settings, Some(Vec::new()));
+    assert!(c.inh.font.font_features.is_empty());
+    assert_eq!(c.reset_cascade.font_variant_set, 0b11111);
+    assert_eq!(c.inh.font.font_size, Some(Len::Px(13.3333)));
+    assert_eq!(c.inh.font.monospace, Some(true));
 }
 
 #[test]
@@ -81,10 +81,10 @@ fn font_shorthand_order_does_not_matter_against_its_longhands() {
     let doc = doc();
     let vcx = doc.values();
     let c = style("line-height: 3; font: 20px/1 serif; font-weight: 900", vcx);
-    assert_eq!(c.font_weight, Some(900));
-    assert_eq!(c.line_height, Some(Len::Pct(1.0)));
+    assert_eq!(c.inh.font.font_weight, Some(900));
+    assert_eq!(c.inh.font.line_height, Some(Len::Pct(1.0)));
     let c = style("font-weight: 900; font: 20px serif", vcx);
-    assert_eq!(c.font_weight, Some(400));
+    assert_eq!(c.inh.font.font_weight, Some(400));
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn invalid_font_shorthand_is_dropped_whole() {
         "20px serif, inherit",
     ] {
         let c = style(&format!("font: 30px Ahem; font: {value}"), vcx);
-        assert_eq!(c.font_size, Some(Len::Px(30.0)), "{value}");
+        assert_eq!(c.inh.font.font_size, Some(Len::Px(30.0)), "{value}");
     }
 }
 
@@ -109,14 +109,14 @@ fn font_shorthand_prefix_in_any_order() {
     let doc = doc();
     let vcx = doc.values();
     let c = style("font: 900 oblique 10deg small-caps condensed 0 Ahem", vcx);
-    assert_eq!(c.font_weight, Some(900));
-    assert_eq!(c.font_oblique_angle, Some(10.0));
-    assert_eq!(c.font_stretch, Some(75.0));
-    assert_eq!(c.font_size, Some(Len::Px(0.0)));
-    assert!(c.font_features.iter().any(|(t, _)| t == "smcp"));
+    assert_eq!(c.inh.font.font_weight, Some(900));
+    assert_eq!(c.inh.font.font_oblique_angle, Some(10.0));
+    assert_eq!(c.inh.font.font_stretch, Some(75.0));
+    assert_eq!(c.inh.font.font_size, Some(Len::Px(0.0)));
+    assert!(c.inh.font.font_features.iter().any(|(t, _)| t == "smcp"));
     let c = style("font: normal normal 2em / 1.5 \"A B\", serif", vcx);
-    assert_eq!(c.font_size, Some(Len::Em(2.0)));
-    assert_eq!(c.line_height, Some(Len::Pct(1.5)));
+    assert_eq!(c.inh.font.font_size, Some(Len::Em(2.0)));
+    assert_eq!(c.inh.font.line_height, Some(Len::Pct(1.5)));
 }
 
 #[test]
@@ -126,14 +126,18 @@ fn variant_groups_inherit_separately_and_font_resets_them() {
     let parent = style("font-variant: small-caps tabular-nums", vcx);
     let child = style("font-variant-caps: normal", vcx);
     let c = inherit(&BoxStyle::from(parent.clone()), &child, vcx);
-    assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
-    assert!(!c.font_features.iter().any(|(t, _)| t == "smcp"));
+    assert!(c.inh.font.font_features.iter().any(|(t, _)| t == "tnum"));
+    assert!(!c.inh.font.font_features.iter().any(|(t, _)| t == "smcp"));
     let child = style("font: 16px serif", vcx);
     let c = inherit(&BoxStyle::from(parent.clone()), &child, vcx);
-    assert!(c.font_features.is_empty(), "{:?}", c.font_features);
+    assert!(
+        c.inh.font.font_features.is_empty(),
+        "{:?}",
+        c.inh.font.font_features
+    );
     let child = style("font-variant-numeric: inherit", vcx);
     let c = inherit(&BoxStyle::from(parent), &child, vcx);
-    assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
+    assert!(c.inh.font.font_features.iter().any(|(t, _)| t == "tnum"));
 }
 
 #[test]
@@ -141,8 +145,8 @@ fn system_font_sets_size_and_family() {
     let doc = doc();
     let vcx = doc.values();
     let c = style("font: menu", vcx);
-    assert_eq!(c.font_size, Some(Len::Px(12.0)));
-    assert_eq!(c.line_height, Some(Len::Auto));
+    assert_eq!(c.inh.font.font_size, Some(Len::Px(12.0)));
+    assert_eq!(c.inh.font.line_height, Some(Len::Auto));
 }
 
 #[test]
@@ -157,7 +161,7 @@ fn var_in_font_shorthand_is_invalid_at_computed_value_time_as_a_whole() {
         &vars,
         vcx,
     );
-    assert_eq!(c.font_size, Some(Len::Px(20.0)));
+    assert_eq!(c.inh.font.font_size, Some(Len::Px(20.0)));
     let mut c = Computed::default();
     c.apply_decls_with_vars(
         &crate::style::css::parse_decls_in("font-weight: 900; font: var(--s)", vcx),
@@ -165,5 +169,5 @@ fn var_in_font_shorthand_is_invalid_at_computed_value_time_as_a_whole() {
         vcx,
     );
     // Негодное после подстановки — `unset` у каждого длинного свойства.
-    assert_eq!(c.font_weight, None);
+    assert_eq!(c.inh.font.font_weight, None);
 }

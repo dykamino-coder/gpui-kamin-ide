@@ -31,19 +31,19 @@ fn foreign_object_preserves_effective_zoom_and_inherited_lengths() {
         ("p", 2.0),
     ] {
         let style = element(&parsed.nodes, tag).style.computed();
-        assert_eq!(style.zoom_eff, Some(zoom), "{tag}: effective zoom");
+        assert_eq!(style.inh.font.zoom_eff, Some(zoom), "{tag}: effective zoom");
         assert_eq!(
-            style.font_size,
+            style.inh.font.font_size,
             Some(Len::Px(16.0 * zoom)),
             "{tag}: font-size"
         );
         assert_eq!(
-            style.line_height,
+            style.inh.font.line_height,
             Some(Len::Px(24.0 * zoom)),
             "{tag}: line-height"
         );
         assert_eq!(
-            style.letter_spacing,
+            style.inh.text_flow.letter_spacing,
             Some(Len::Px(2.0 * zoom)),
             "{tag}: spacing"
         );

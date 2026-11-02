@@ -38,8 +38,9 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
     let mut path = Vec::new();
     let mut current = e;
     loop {
-        let genuine_inline = (current.inline && current.style.used().display.is_none())
-            || current.style.used().inline_display == Some(true);
+        let genuine_inline = (current.inline
+            && current.style.used().reset_box_layout.display.is_none())
+            || current.style.used().reset_context.inline_display == Some(true);
         // Ruby boxes are not plain inline wrappers: their content is paired into
         // bases and annotations (css-ruby-1 §2.2) and laid out by the ruby path.
         if !genuine_inline
@@ -47,15 +48,20 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
                 current.tag.as_str(),
                 "br" | "ruby" | "rb" | "rt" | "rtc" | "rp"
             )
-            || current.style.used().float.is_some_and(|f| f != 0)
-            || current.style.used().position.is_some()
+            || current
+                .style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            || current.style.used().reset_positioned.position.is_some()
             || current.hover.is_some()
-            || current.style.used().opacity.is_some()
-            || current.style.used().filter.is_some()
-            || current.style.used().transform.is_some()
-            || current.style.used().blend.is_some()
-            || current.style.used().clip_polygon.is_some()
-            || current.style.used().mask_image.is_some()
+            || current.style.used().reset_effects.opacity.is_some()
+            || current.style.used().reset_effects.filter.is_some()
+            || current.style.used().reset_transforms.transform.is_some()
+            || current.style.used().reset_effects.blend.is_some()
+            || current.style.used().reset_mask.clip_polygon.is_some()
+            || current.style.used().reset_mask.mask_image.is_some()
         {
             return None;
         }
@@ -71,9 +77,14 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
             return None;
         };
         path.push((current, i));
-        if child.style.used().float.is_some_and(|f| f != 0)
-            && child.style.used().position.is_none()
-            && child.style.used().display != Some(Display::None)
+        if child
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|f| f != 0)
+            && child.style.used().reset_positioned.position.is_none()
+            && child.style.used().reset_box_layout.display != Some(Display::None)
         {
             let mut float = child.clone();
             let mut inner = None;
@@ -97,11 +108,11 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
 /// (only those the wrapper sets itself; `style::cascade::inherit` would also resolve
 /// font-relative units against the bare wrapper style).
 pub(super) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
-    own.color = own.color.or(wrapper.color);
-    own.font_weight = own.font_weight.or(wrapper.font_weight);
-    own.italic = own.italic.or(wrapper.italic);
-    if own.font_family.is_none() {
-        own.font_family = wrapper.font_family.clone();
+    own.inh.ui.color = own.inh.ui.color.or(wrapper.inh.ui.color);
+    own.inh.font.font_weight = own.inh.font.font_weight.or(wrapper.inh.font.font_weight);
+    own.inh.font.italic = own.inh.font.italic.or(wrapper.inh.font.italic);
+    if own.inh.font.font_family.is_none() {
+        own.inh.font.font_family = wrapper.inh.font.font_family.clone();
     }
 }
 
@@ -111,30 +122,30 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
         // `display: inline` после каскада — это `InlineBlock` с пометкой
         // `inline_display` (`dom::display_inheritance`), поэтому одного взгляда на `display`
         // мало; тег без своего `display` даёт строчность через `e.inline`.
-        let genuine_inline = (e.inline && e.style.used().display.is_none())
-            || e.style.used().inline_display == Some(true);
+        let genuine_inline = (e.inline && e.style.used().reset_box_layout.display.is_none())
+            || e.style.used().reset_context.inline_display == Some(true);
         if !genuine_inline
-        || e.style.used().float.is_some_and(|f| f != 0)
-        || e.style.used().clear.is_some()
-        || e.style.used().position.is_some()
+        || e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)
+        || e.style.used().reset_box_layout.clear.is_some()
+        || e.style.used().reset_positioned.position.is_some()
         || e.hover.is_some()
         || e.first_letter.is_some()
         || e.first_line.is_some()
         // Обёртка КРАСИТ: фон, картинка и градиент ушли бы вместе с ней.
-        || e.style.used().background.is_some()
-        || e.style.used().bg_image.is_some()
-        || e.style.used().gradient.is_some()
+        || e.style.used().reset_background.background.is_some()
+        || e.style.used().reset_background.bg_image.is_some()
+        || e.style.used().reset_background.gradient.is_some()
         // Обёртка образует ГРУППУ: прозрачность, фильтр, трансформ,
         // смешивание, обрезка и маска действуют на плавающего ребёнка ЧЕРЕЗ
         // неё. `css-color/inline-opacity-float-child` (зелёная, 0.00) держится
         // ровно на этом: `opacity: 0` на `<span>` гасит красный флоат внутри,
         // и снятая обёртка проявила бы красное.
-        || e.style.used().opacity.is_some()
-        || e.style.used().filter.is_some()
-        || e.style.used().transform.is_some()
-        || e.style.used().blend.is_some()
-        || e.style.used().clip_polygon.is_some()
-        || e.style.used().mask_image.is_some()
+        || e.style.used().reset_effects.opacity.is_some()
+        || e.style.used().reset_effects.filter.is_some()
+        || e.style.used().reset_transforms.transform.is_some()
+        || e.style.used().reset_effects.blend.is_some()
+        || e.style.used().reset_mask.clip_polygon.is_some()
+        || e.style.used().reset_mask.mask_image.is_some()
         {
             return None;
         }
@@ -151,7 +162,13 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
             }
         }
         let inner = only?;
-        if inner.style.used().float.is_some_and(|f| f != 0) {
+        if inner
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|f| f != 0)
+        {
             return Some(inner.clone());
         }
         e = inner;
@@ -164,12 +181,12 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
 pub(crate) fn px_margin_w(c: &Computed) -> Option<f32> {
     let b = c.borders();
     Some(
-        px_missing_zero(c.width)?
-            + px_missing_zero(c.padding.left)?
-            + px_missing_zero(c.padding.right)?
+        px_missing_zero(c.reset_box_layout.width)?
+            + px_missing_zero(c.reset_box_layout.padding.left)?
+            + px_missing_zero(c.reset_box_layout.padding.right)?
             + px_missing_zero(b.left)?
             + px_missing_zero(b.right)?
-            + px_margin(&c.margin.left)?
-            + px_margin(&c.margin.right)?,
+            + px_margin(&c.reset_box_layout.margin.left)?
+            + px_margin(&c.reset_box_layout.margin.right)?,
     )
 }

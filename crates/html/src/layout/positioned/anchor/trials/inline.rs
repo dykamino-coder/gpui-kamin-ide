@@ -25,8 +25,9 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
     {
         return None;
     }
-    let fixed = e.style.used().position == Some(Position::Fixed);
-    let under_tf = inherited.transform_ancestor || inherited.transform.is_some();
+    let fixed = e.style.used().reset_positioned.position == Some(Position::Fixed);
+    let under_tf = inherited.reset_transforms.transform_ancestor
+        || inherited.reset_transforms.transform.is_some();
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
@@ -40,9 +41,11 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             .as_ref()
             .is_some_and(|o| o.take())
         && !fixed
-        && (edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right))
-        && (edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom))
-        && e.style.used().z_index.unwrap_or(0) >= 0;
+        && (edge_set(e.style.used().reset_positioned.inset.left)
+            || edge_set(e.style.used().reset_positioned.inset.right))
+        && (edge_set(e.style.used().reset_positioned.inset.top)
+            || edge_set(e.style.used().reset_positioned.inset.bottom))
+        && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(offer) = &opts.cx.position.inline_cb {
         offer.note_taken();
     }
@@ -63,8 +66,10 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             "img" | "svg" | "iframe" | "canvas" | "video" | "object" | "embed"
         ),
         fixed_axes: (
-            edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right),
-            edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom),
+            edge_set(e.style.used().reset_positioned.inset.left)
+                || edge_set(e.style.used().reset_positioned.inset.right),
+            edge_set(e.style.used().reset_positioned.inset.top)
+                || edge_set(e.style.used().reset_positioned.inset.bottom),
         ),
         ..Default::default()
     });

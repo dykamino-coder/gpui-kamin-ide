@@ -18,7 +18,7 @@ pub(crate) fn push(
     // initial containing block. The spot still supplies its static coordinate
     // on the auto axis (§§10.3.7, 10.6.4); an inline wrapper must not become
     // the containing block just because only one inset axis is explicit.
-    if own.position != Some(Position::Absolute) {
+    if own.reset_positioned.position != Some(Position::Absolute) {
         return positioning.late_push(spot, element);
     }
     if inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited) {

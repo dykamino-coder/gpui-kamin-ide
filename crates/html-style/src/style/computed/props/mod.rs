@@ -11,7 +11,7 @@ macro_rules! parsed_value {
                 $parser.accept_declaration();
                 parsed
             }
-            None if $parser.css_wide_value => {
+            None if $parser.reset_cascade.css_wide_value => {
                 $parser.accept_declaration();
                 Default::default()
             }
@@ -23,10 +23,10 @@ macro_rules! parsed_value {
 // A handler that checks its whole grammar before writing resets its slots for
 // a CSS-wide keyword instead (the multi-slot form of `parsed_value!`).
 macro_rules! css_wide_reset {
-    ($parser:ident, $($field:ident),+ $(,)?) => {
-        if $parser.css_wide_value {
+    ($parser:ident, $($field:ident $(.$tail:ident)*),+ $(,)?) => {
+        if $parser.reset_cascade.css_wide_value {
             $parser.accept_declaration();
-            $($parser.$field = Default::default();)+
+            $($parser.$field$(.$tail)* = Default::default();)+
             return;
         }
     };
@@ -39,7 +39,7 @@ macro_rules! apply_parsed {
                 $parser.accept_declaration();
                 Some(parsed)
             }
-            None if $parser.css_wide_value => {
+            None if $parser.reset_cascade.css_wide_value => {
                 $parser.accept_declaration();
                 None
             }

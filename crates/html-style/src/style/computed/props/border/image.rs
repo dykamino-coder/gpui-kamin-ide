@@ -13,7 +13,7 @@ impl Computed {
     pub fn set_border_image(&mut self, name: &str, v: &str, vcx: ValueCx<'_>) {
         // CSS Backgrounds 3 §6.7: the shorthand resets omitted longhands.
         if name == "border-image" {
-            self.border_image = None;
+            self.reset_border.border_image = None;
         }
         let initial = BorderImage {
             src: None,
@@ -23,7 +23,11 @@ impl Computed {
             outset: [BorderImageWidth::Px(0.0); 4],
             repeat: (Tiling::None, Tiling::None),
         };
-        let mut image = self.border_image.clone().unwrap_or(initial.clone());
+        let mut image = self
+            .reset_border
+            .border_image
+            .clone()
+            .unwrap_or(initial.clone());
         let mut accepted = false;
         let mut set = |part: &str, value: &str| match part {
             "border-image-source" => {
@@ -215,6 +219,6 @@ impl Computed {
                 outset: initial.outset,
                 ..image.clone()
             } == initial;
-        self.border_image = (!is_initial).then_some(image);
+        self.reset_border.border_image = (!is_initial).then_some(image);
     }
 }

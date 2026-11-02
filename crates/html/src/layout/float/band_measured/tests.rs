@@ -10,24 +10,40 @@ use crate::style::values::value::Len;
 #[test]
 fn transformed_float_keeps_untransformed_margins() {
     let mut style = Computed {
-        float: Some(-1),
-        width: Some(Len::Px(40.0)),
-        height: Some(Len::Px(20.0)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                float: Some(-1),
+                width: Some(Len::Px(40.0)),
+                height: Some(Len::Px(20.0)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
-    style.margin.left = Some(Len::Em(2.0));
-    style.margin.right = Some(Len::Pct(0.1));
+    style.reset_box_layout.margin.left = Some(Len::Em(2.0));
+    style.reset_box_layout.margin.right = Some(Len::Pct(0.1));
     let plain = Element::synthetic("div", style.clone(), Default::default(), vec![]);
-    style.transform = Some(Default::default());
-    style.transform.as_mut().expect("transform").scale = (2.0, 3.0);
+    style.reset_transforms.transform = Some(Default::default());
+    style
+        .reset_transforms
+        .transform
+        .as_mut()
+        .expect("transform")
+        .scale = (2.0, 3.0);
     let turned = Element::synthetic("div", style, Default::default(), vec![]);
     assert_eq!(band_float_m(&plain, 16.0), Some(()));
     assert_eq!(band_float_m(&turned, 16.0), Some(()));
     let margins = band_margins(&turned.style.used(), 16.0).expect("resolvable margins");
     assert!(matches!(margins[3], Edge::Px(v) if v == 32.0));
     assert!(matches!(margins[1], Edge::Pct(v) if v == 0.1));
-    assert_eq!(turned.style.used().width, plain.style.used().width);
-    assert_eq!(turned.style.used().height, plain.style.used().height);
+    assert_eq!(
+        turned.style.used().reset_box_layout.width,
+        plain.style.used().reset_box_layout.width
+    );
+    assert_eq!(
+        turned.style.used().reset_box_layout.height,
+        plain.style.used().reset_box_layout.height
+    );
 }
 
 #[test]
@@ -41,9 +57,14 @@ fn float_host_retains_a_preceding_invisible_inline_run() {
     let float = Element::synthetic(
         "div",
         Computed {
-            float: Some(-1),
-            width: Some(Len::Px(100.)),
-            height: Some(Len::Px(100.)),
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    float: Some(-1),
+                    width: Some(Len::Px(100.)),
+                    height: Some(Len::Px(100.)),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         },
         Default::default(),
@@ -78,17 +99,23 @@ fn orthogonal_text_float_uses_the_shared_measured_host() {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.writing_mode = Some(WritingModeKw::new(true, rl, false));
+            with_inherited.inh.writing.writing_mode = Some(WritingModeKw::new(true, rl, false));
             with_inherited
         };
         let child = Element::synthetic(
             "div",
             {
                 let mut with_inherited = Computed {
-                    float: Some(-1),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            float: Some(-1),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 };
-                with_inherited.writing_mode = Some(WritingModeKw::new(false, false, false));
+                with_inherited.inh.writing.writing_mode =
+                    Some(WritingModeKw::new(false, false, false));
                 with_inherited
             },
             Default::default(),

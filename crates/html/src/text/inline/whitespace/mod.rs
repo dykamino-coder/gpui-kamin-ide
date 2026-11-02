@@ -57,7 +57,7 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, sol
             Piece::Text { text, .. } if text == SPACER || text == ZWSP => continue,
             Piece::Text { text, style } => {
                 // `white-space: pre*` пробелы бережёт — там удалять нечего.
-                if style.keep_spaces == Some(true) {
+                if style.inh.text_flow.keep_spaces == Some(true) {
                     return;
                 }
                 // Пустой кусок ряда не обрывает: он и есть схлопнутый пробел,
@@ -133,7 +133,7 @@ pub(super) fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
         // тоже снимает, и хвостовая строка из них пропадала целиком
         // (`trailing-ideographic-space-017`).
         let collapsible = |c: char| matches!(c, ' ' | '\t' | '\r' | '\n');
-        if style.keep_spaces == Some(true) || !text.chars().all(collapsible) {
+        if style.inh.text_flow.keep_spaces == Some(true) || !text.chars().all(collapsible) {
             break;
         }
         pieces.pop();

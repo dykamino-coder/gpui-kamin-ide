@@ -15,9 +15,9 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // У АБСОЛЮТНОЙ коробки то же правило §10.3.7: избыточен один из краёв,
     // и при rtl это левый. Но избыток возникает, только когда заданы все три
     // величины — при `width: auto` края решают ширину, и отбрасывать нечего.
-    let over = match c.position {
+    let over = match c.reset_positioned.position {
         Some(Position::Relative) => true,
-        Some(Position::Absolute) | Some(Position::Fixed) => set(c.width),
+        Some(Position::Absolute) | Some(Position::Fixed) => set(c.reset_box_layout.width),
         _ => false,
     };
     // В ВЕРТИКАЛЬНОМ содержащем блоке оси меняются ролями
@@ -31,12 +31,12 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // (§9.4.3 в логических осях, Blink `relative_utils.cc:71-88`):
     // `overconstrained-rel-pos-*-vrl-*`, `-rtl-*-vlr-*`.
     let vertical_cb = matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Relative)
     ) && c.context.cb_wm.vertical();
     let drop_left = over
-        && set(c.inset.left)
-        && set(c.inset.right)
+        && set(c.reset_positioned.inset.left)
+        && set(c.reset_positioned.inset.right)
         && if vertical_cb {
             c.context.cb_wm.block_rl()
         } else {
@@ -45,15 +45,30 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // У относительного сдвига переопределение от размера не зависит (`over`
     // для него всегда истинно) — только у абсолюта нужен `height`.
     let drop_top = vertical_cb
-        && (c.position == Some(Position::Relative) || set(c.height))
-        && set(c.inset.top)
-        && set(c.inset.bottom)
+        && (c.reset_positioned.position == Some(Position::Relative)
+            || set(c.reset_box_layout.height))
+        && set(c.reset_positioned.inset.top)
+        && set(c.reset_positioned.inset.bottom)
         && c.context.cb_wm.rtl() != c.context.cb_wm.sideways_lr();
     for (val, f) in [
-        (if drop_top { None } else { c.inset.top }, 0u8),
-        (c.inset.right, 1),
-        (c.inset.bottom, 2),
-        (if drop_left { None } else { c.inset.left }, 3),
+        (
+            if drop_top {
+                None
+            } else {
+                c.reset_positioned.inset.top
+            },
+            0u8,
+        ),
+        (c.reset_positioned.inset.right, 1),
+        (c.reset_positioned.inset.bottom, 2),
+        (
+            if drop_left {
+                None
+            } else {
+                c.reset_positioned.inset.left
+            },
+            3,
+        ),
     ] {
         let Some(l) = val else { continue };
         if l == Len::Auto {
@@ -80,7 +95,7 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // `translate` двигает элемент ВИЗУАЛЬНО, не трогая раскладку. Считается
     // ПОСЛЕ краёв и складывается с ними: раньше цикл краёв затирал сдвиг, и
     // у абсолютного элемента с `left` он пропадал.
-    if let Some((x, y)) = c.translate {
+    if let Some((x, y)) = c.reset_transforms.translate {
         let shift = |base: Option<Len>, delta: Len| -> Option<Len> {
             match (base, delta) {
                 (Some(Len::Px(b)), Len::Px(v)) => Some(Len::Px(b + v)),
@@ -88,13 +103,13 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
                 (base, _) => base,
             }
         };
-        if c.position.is_none() {
+        if c.reset_positioned.position.is_none() {
             d = d.relative();
         }
-        if let Some(l) = shift(c.inset.left, x) {
+        if let Some(l) = shift(c.reset_positioned.inset.left, x) {
             d = d.left(len_to_gpui(l, vcx));
         }
-        if let Some(t) = shift(c.inset.top, y) {
+        if let Some(t) = shift(c.reset_positioned.inset.top, y) {
             d = d.top(len_to_gpui(t, vcx));
         }
     }
@@ -119,23 +134,27 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // (`render::grouped`), а не прямоугольник padding-box: тот срезал бы и
     // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
     // (border-shape-overflow-child-clip, -replaced-img/-iframe).
-    let shaped =
-        c.border_shape.is_some() || crate::paint::effects::corner_clip::insets(c, vcx).is_some();
-    if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll))
+    let shaped = c.reset_border.border_shape.is_some()
+        || crate::paint::effects::corner_clip::insets(c, vcx).is_some();
+    if !shaped
+        && (c.reset_box_layout.overflow_x == Some(Overflow::Hidden)
+            || c.reset_box_layout.overflow_x == Some(Overflow::Scroll))
     {
         d = d.overflow_x_hidden();
     }
-    if !shaped && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll))
+    if !shaped
+        && (c.reset_box_layout.overflow_y == Some(Overflow::Hidden)
+            || c.reset_box_layout.overflow_y == Some(Overflow::Scroll))
     {
         d = d.overflow_y_hidden();
     }
     // `clip` режет краску, но НЕ создаёт скролл-контейнер: авто-минимум
     // flex/grid-элемента остаётся по содержимому — у gpui/taffy для этого
     // отдельный вариант (CSSWG #7714; min-size-auto-overflow-clip).
-    if !shaped && c.overflow_x == Some(Overflow::Clip) {
+    if !shaped && c.reset_box_layout.overflow_x == Some(Overflow::Clip) {
         d.style().overflow.x = Some(gpui::Overflow::Clip);
     }
-    if !shaped && c.overflow_y == Some(Overflow::Clip) {
+    if !shaped && c.reset_box_layout.overflow_y == Some(Overflow::Clip) {
         d.style().overflow.y = Some(gpui::Overflow::Clip);
     }
     // Поле обрезки: край отодвигается от коробки отсчёта (css-overflow-3 §5).
@@ -148,16 +167,17 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // including the offset»): край остаётся на padding-box. `content-box` и
     // отрицательный сдвиг у скроллера действуют — `-018/-019/-020` зелёные.
     let scroller = matches!(
-        c.overflow_x,
+        c.reset_box_layout.overflow_x,
         Some(Overflow::Hidden) | Some(Overflow::Scroll)
     ) || matches!(
-        c.overflow_y,
+        c.reset_box_layout.overflow_y,
         Some(Overflow::Hidden) | Some(Overflow::Scroll)
     );
-    if let Some(m) = c
-        .clip_margin
-        .filter(|_| !(scroller && (c.clip_margin_box == Some(2) || c.contain_paint == Some(true))))
-    {
+    if let Some(m) = c.reset_mask.clip_margin.filter(|_| {
+        !(scroller
+            && (c.reset_mask.clip_margin_box == Some(2)
+                || c.reset_context.contain_paint == Some(true)))
+    }) {
         let side = px_lossy_zero;
         let border = c.borders();
         let b = [
@@ -167,12 +187,12 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
             side(border.left),
         ];
         let pd = [
-            side(c.padding.top),
-            side(c.padding.right),
-            side(c.padding.bottom),
-            side(c.padding.left),
+            side(c.reset_box_layout.padding.top),
+            side(c.reset_box_layout.padding.right),
+            side(c.reset_box_layout.padding.bottom),
+            side(c.reset_box_layout.padding.left),
         ];
-        let arr = match c.clip_margin_box {
+        let arr = match c.reset_mask.clip_margin_box {
             Some(2) => [b[0] + m, b[1] + m, b[2] + m, b[3] + m],
             Some(0) => [m - pd[0], m - pd[1], m - pd[2], m - pd[3]],
             _ => [m; 4],
@@ -187,7 +207,7 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // Ранний выход стоял ПЕРЕД блоком сдвига, поэтому ветка
     // `if c.position.is_none() { d.relative() }` была недостижима.
     if !matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(Position::Relative) | Some(Position::Absolute) | Some(Position::Fixed)
     ) {
         return static_shift(d, c);
@@ -203,12 +223,13 @@ pub(crate) fn static_shift(mut d: Div, c: &Computed) -> Div {
     // Чистый px-сдвиг `transform` складывается сюда же
     // (`Computed::folded_shift`); матрицу обёртки он тогда не трогает.
     let folded = c.folded_shift();
-    if c.translate.is_some() || folded.is_some() {
+    if c.reset_transforms.translate.is_some() || folded.is_some() {
         let px_of = |l: Len| match l {
             Len::Px(v) => v,
             _ => 0.0,
         };
         let (mut dx, mut dy) = c
+            .reset_transforms
             .translate
             .map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
         if let Some((fx, fy)) = folded {

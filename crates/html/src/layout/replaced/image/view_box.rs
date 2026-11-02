@@ -55,15 +55,18 @@ pub(crate) fn view_box_size(
     let px_of = px_strict;
     let (bw, bh) = if style.contains_width() || style.contains_height() {
         (
-            px_of(style.width)
-                .or(style.contain_intrinsic.0)
+            px_of(style.reset_box_layout.width)
+                .or(style.reset_context.contain_intrinsic.0)
                 .unwrap_or(0.0),
-            px_of(style.height)
-                .or(style.contain_intrinsic.1)
+            px_of(style.reset_box_layout.height)
+                .or(style.reset_context.contain_intrinsic.1)
                 .unwrap_or(0.0),
         )
     } else {
-        match (px_of(style.width), px_of(style.height)) {
+        match (
+            px_of(style.reset_box_layout.width),
+            px_of(style.reset_box_layout.height),
+        ) {
             (Some(w), Some(h)) => (w, h),
             (Some(w), None) => (w, w * vh / vw),
             (None, Some(h)) => (h * vw / vh, h),

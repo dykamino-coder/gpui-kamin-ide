@@ -18,19 +18,25 @@ pub fn depth(value: &str) -> Option<Depth> {
     }
 }
 pub fn inherit(parent: &Computed, c: &mut Computed, vcx: crate::values::ValueCx<'_>) {
-    c.math_compact = c.math_compact.or(parent.math_compact);
-    c.math_shift = c.math_shift.or(parent.math_shift);
-    c.math_operator_form = c.math_operator_form.or(parent.math_operator_form);
-    c.math_level = match c.math_depth {
+    c.inh.ui.math_compact = c.inh.ui.math_compact.or(parent.inh.ui.math_compact);
+    c.inh.ui.math_shift = c.inh.ui.math_shift.or(parent.inh.ui.math_shift);
+    c.inh.ui.math_operator_form = c
+        .inh
+        .ui
+        .math_operator_form
+        .or(parent.inh.ui.math_operator_form);
+    c.inh.ui.math_level = match c.reset_svg_math.math_depth {
         Some(Depth::Absolute(v)) => v,
-        Some(Depth::Add(v)) => parent.math_level.saturating_add(v),
+        Some(Depth::Add(v)) => parent.inh.ui.math_level.saturating_add(v),
         Some(Depth::Auto) => parent
+            .inh
+            .ui
             .math_level
-            .saturating_add(i32::from(parent.math_compact == Some(true))),
-        None => parent.math_level,
+            .saturating_add(i32::from(parent.inh.ui.math_compact == Some(true))),
+        None => parent.inh.ui.math_level,
     };
-    if c.math_font_size {
-        let family = parent.font_family.as_deref().unwrap_or("");
+    if c.reset_svg_math.math_font_size {
+        let family = parent.inh.font.font_family.as_deref().unwrap_or("");
         let mut request = parent.font_request(family, 0.0);
         request.metric_query = FontMetricQuery::Math;
         let constants = vcx
@@ -39,13 +45,13 @@ pub fn inherit(parent: &Computed, c: &mut Computed, vcx: crate::values::ValueCx<
             .metrics(request, &vcx.doc.font_snapshot())
             .ok()
             .and_then(|f| f.math_script_scale);
-        let factor = scale(parent.math_level, c.math_level, constants);
-        let size = if let Some(Len::Px(v)) = parent.font_size {
+        let factor = scale(parent.inh.ui.math_level, c.inh.ui.math_level, constants);
+        let size = if let Some(Len::Px(v)) = parent.inh.font.font_size {
             v
         } else {
             16.0
         };
-        c.font_size = Some(Len::Px(size * factor));
+        c.inh.font.font_size = Some(Len::Px(size * factor));
     }
 }
 fn scale(mut a: i32, mut b: i32, constants: Option<(f32, f32)>) -> f32 {
@@ -86,22 +92,22 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.math_compact = Some(true);
-            with_inherited.font_size = Some(Len::Px(500.0));
-            with_inherited.font_family = Some("Ahem".into());
+            with_inherited.inh.ui.math_compact = Some(true);
+            with_inherited.inh.font.font_size = Some(Len::Px(500.0));
+            with_inherited.inh.font.font_family = Some("Ahem".into());
             with_inherited
         };
         for (reset, compact, size) in [("initial", false, 500.0), ("unset", true, 355.0)] {
             let own = Computed::resolve(&[], &parse_decls(&format!("math-style: {reset}")), vcx);
             let middle = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
-            assert_eq!(middle.math_compact, Some(compact));
+            assert_eq!(middle.inh.ui.math_compact, Some(compact));
             let own = Computed::resolve(
                 &[],
                 &parse_decls("font-size: math; math-depth: auto-add"),
                 vcx,
             );
             let child = inherit(&middle, &own, vcx);
-            let Some(Len::Px(actual)) = child.font_size else {
+            let Some(Len::Px(actual)) = child.inh.font.font_size else {
                 panic!("computed pixels")
             };
             assert!((actual - size).abs() < 0.001, "{reset}: {actual}");

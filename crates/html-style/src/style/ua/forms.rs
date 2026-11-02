@@ -25,19 +25,21 @@ pub fn size(kind: ControlKind) -> [f32; 2] {
 /// cannot accidentally inherit a shorter GPUI line-height from a wrapper.
 pub fn text_style(style: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
     let mut c = style.clone();
-    let font = match c.font_size {
+    let font = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => 16.,
     };
-    let family = c.font_family.as_deref().unwrap_or("");
+    let family = c.inh.font.font_family.as_deref().unwrap_or("");
     let normal = crate::style::font_metrics::normal(family, font, vcx)
         .height
         .map_or(1.2 * font, |m| m.px);
     let line = c
+        .inh
+        .font
         .line_height
         .and_then(|l| l.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or(normal);
-    c.line_height = Some(Len::Px(line.max(normal)));
+    c.inh.font.line_height = Some(Len::Px(line.max(normal)));
     c
 }
 
@@ -62,19 +64,28 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_size = Some(Len::Px(60.));
+            with_inherited.inh.font.font_size = Some(Len::Px(60.));
             with_inherited
         };
-        let normal = text_style(&BoxStyle::from(c.clone()), vcx).line_height;
-        c.line_height = Some(Len::Px(1.));
+        let normal = text_style(&BoxStyle::from(c.clone()), vcx)
+            .inh
+            .font
+            .line_height;
+        c.inh.font.line_height = Some(Len::Px(1.));
         assert_eq!(
-            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
+            text_style(&BoxStyle::from(c.clone()), vcx)
+                .inh
+                .font
+                .line_height,
             normal
         );
-        c.line_height = Some(Len::Px(200.));
+        c.inh.font.line_height = Some(Len::Px(200.));
         assert_eq!(
-            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
-            c.line_height
+            text_style(&BoxStyle::from(c.clone()), vcx)
+                .inh
+                .font
+                .line_height,
+            c.inh.font.line_height
         );
     }
 }

@@ -40,19 +40,19 @@ pub(crate) async fn table_stack(
     let unlimited;
     let inherited = if !inherited.wm().vertical()
         && matches!(
-            inherited.max_height,
+            inherited.reset_box_layout.max_height,
             Some(Len::MinContent)
                 | Some(Len::MaxContent)
                 | Some(Len::FitContent)
                 | Some(Len::Px(_))
         ) {
         let mut c = inherited.clone();
-        if let Some(Len::Px(m)) = c.max_height
-            && let Some(Len::Px(h)) = c.height
+        if let Some(Len::Px(m)) = c.reset_box_layout.max_height
+            && let Some(Len::Px(h)) = c.reset_box_layout.height
         {
-            c.height = Some(Len::Px(h.min(m)));
+            c.reset_box_layout.height = Some(Len::Px(h.min(m)));
         }
-        c.max_height = None;
+        c.reset_box_layout.max_height = None;
         unlimited = c;
         &unlimited
     } else {
@@ -143,11 +143,11 @@ pub(crate) async fn table_stack(
     // колонку, а не свою коробку (CSS 2.1 §17.5.2.2) — колонка не уже
     // содержимого (пол min-content), процентная забирает долю остатка.
     let mut col_widths: Vec<(Option<f32>, Option<f32>)> = vec![(None, None); cols as usize];
-    let table_font = match inherited.font_size {
+    let table_font = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     };
-    let table_family = inherited.font_family.clone().unwrap_or_default();
+    let table_family = inherited.inh.font.font_family.clone().unwrap_or_default();
     let (from_cols, cols_collapsed, cols_pct) =
         col_element_widths(&e.children, table_font, &table_family);
     // §17.5.2.1: при фиксированной раскладке и ЗАДАННОЙ ширине стола
@@ -191,7 +191,7 @@ pub(crate) async fn table_stack(
         col_widths,
         table_font,
         table_em: crate::defaults::MEDIUM_FONT_SIZE_PX,
-        table_family: inherited.font_family.clone().unwrap_or_default(),
+        table_family: inherited.inh.font.font_family.clone().unwrap_or_default(),
         from_cols,
         cols_collapsed,
         cols_pct,
@@ -201,8 +201,9 @@ pub(crate) async fn table_stack(
         table_is_vertical,
         bw: [0.0; 4],
         have_rows: !rows.is_empty(),
-        collapse_cells: e.style.cascaded().border_collapse == Some(true)
-            || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some()),
+        collapse_cells: e.style.cascaded().inh.table_list.border_collapse == Some(true)
+            || (e.style.cascaded().inh.table_list.border_collapse.is_none()
+                && e.attr("rules").is_some()),
     };
     let mut out = context::RowsOut {
         cells,

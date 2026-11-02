@@ -14,7 +14,7 @@ use shadows::paint_shadows;
 /// Group opacity of the box and its content (CSS Color 4 §opacity). With a
 /// corner clip the group buffer applies it instead (`grouped_wrapper`).
 pub(crate) fn apply_opacity(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
-    match c.opacity {
+    match c.reset_effects.opacity {
         Some(o) if crate::paint::effects::corner_clip::insets(c, vcx).is_none() => d.opacity(o),
         _ => d,
     }
@@ -28,19 +28,19 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // is painted with it, not after later siblings' backgrounds
     // (`grid-lanes` items with overlapping negative margins).
     let atomic = c.context.parent_flex_grid
-        || c.float.is_some_and(|f| f != 0)
+        || c.reset_box_layout.float.is_some_and(|f| f != 0)
         || matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         );
     // An integer `z-index` on a positioned box (or a flex/grid item, css-flexbox-1
     // §5.4) makes it a stacking context (CSS 2.1 §9.9.1): its line content stays
     // inside it — a `z-index: -1` box's text no longer paints above later flow
     // backgrounds (`line-breaking-ic-001`).
-    let stacking = c.z_index.is_some()
+    let stacking = c.reset_positioned.z_index.is_some()
         && (c.context.parent_flex_grid
             || matches!(
-                c.position,
+                c.reset_positioned.position,
                 Some(Position::Relative)
                     | Some(Position::Absolute)
                     | Some(Position::Fixed)
@@ -74,22 +74,24 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         }
     }
     d = paint_border_colors(d, c, vcx);
-    if c.border_dashed == Some(true) {
+    if c.reset_border.border_dashed == Some(true) {
         d = d.border_dashed();
     }
-    if c.border_dotted == Some(true) {
+    if c.reset_border.border_dotted == Some(true) {
         d.style().border_style = Some(gpui::BorderStyle::Dotted);
     }
     d = apply_opacity(d, c, vcx);
     // `visibility: hidden` — элемент занимает своё место, но не рисуется.
-    if c.hidden == Some(true) && c.paints_decorations() {
+    if c.inh.ui.hidden == Some(true) && c.paints_decorations() {
         d.style().visibility = Some(gpui::Visibility::Hidden);
     }
     // Элемент, не ловящий курсор, не меняет и его форму.
     if let Some(name) = c
+        .inh
+        .ui
         .cursor
         .as_ref()
-        .filter(|_| c.pointer_events_none != Some(true))
+        .filter(|_| c.inh.ui.pointer_events_none != Some(true))
     {
         // Набор GPUI совпадает с CSS почти буква в букву; неизвестное имя
         // оставляем без изменений, а не подменяем стрелкой.

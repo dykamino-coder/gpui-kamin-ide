@@ -25,7 +25,7 @@ pub(crate) use own_box::has_own_box;
 pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     fn positioned(e: &Element) -> bool {
         matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Relative)
                 | Some(crate::style::computed::Position::Sticky)
                 | Some(crate::style::computed::Position::Absolute)
@@ -40,10 +40,10 @@ pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     rest.iter().any(|n| {
         let Node::Element(e) = n else { return false };
         let late_sibling = matches!(
-            e.style.used().position,
+            e.style.used().reset_positioned.position,
             Some(crate::style::computed::Position::Relative)
                 | Some(crate::style::computed::Position::Sticky)
-        ) && e.style.used().z_index.unwrap_or(0) == 0
+        ) && e.style.used().reset_positioned.z_index.unwrap_or(0) == 0
             && block_level_in_flow(e);
         if late_sibling {
             return false;
@@ -67,7 +67,7 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
     fn walk(nodes: &[Node], under_cb: bool) -> bool {
         nodes.iter().any(|n| {
             let Node::Element(e) = n else { return false };
-            let pos = e.style.used().position;
+            let pos = e.style.used().reset_positioned.position;
             let positioned = matches!(
                 pos,
                 Some(crate::style::computed::Position::Relative)
@@ -78,17 +78,22 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
             // взаимный порядок сохранится.
             let hoisted = pos == Some(crate::style::computed::Position::Absolute)
                 && !under_cb
-                && e.style.used().z_index.unwrap_or(0) >= 0
-                && (edge_set(e.style.used().inset.left)
-                    || edge_set(e.style.used().inset.right)
-                    || edge_set(e.style.used().inset.top)
-                    || edge_set(e.style.used().inset.bottom));
+                && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0
+                && (edge_set(e.style.used().reset_positioned.inset.left)
+                    || edge_set(e.style.used().reset_positioned.inset.right)
+                    || edge_set(e.style.used().reset_positioned.inset.top)
+                    || edge_set(e.style.used().reset_positioned.inset.bottom));
             // A negative `z-index` paints in the bottom layer (CSS 2.1 §9.9,
             // step 3) whatever its document position: hoisting an earlier
             // sibling cannot reorder against it (spec-examples
             // `shape-outside-001`: `#failure-container` kept `#test` in
             // place, positioned from the collapsed `body` top, 16px low).
-            let below = e.style.used().z_index.is_some_and(|z| z < 0);
+            let below = e
+                .style
+                .used()
+                .reset_positioned
+                .z_index
+                .is_some_and(|z| z < 0);
             if positioned && below {
                 // …together with its whole subtree.
                 return false;

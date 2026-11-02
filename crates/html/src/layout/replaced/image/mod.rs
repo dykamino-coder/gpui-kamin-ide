@@ -30,13 +30,21 @@ mod sized;
 pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     let mut resolved = pct_limits_to_px(e, inherited);
     // Replaced boxes resolve viewport units from their raw style, too.
-    resolved.style.used_mut().viewport_unit_insets = resolved
+    resolved
+        .style
+        .used_mut()
+        .reset_positioned
+        .viewport_unit_insets = resolved
         .style
         .used()
+        .reset_positioned
         .viewport_unit_insets
-        .or(inherited.viewport_unit_insets);
+        .or(inherited.reset_positioned.viewport_unit_insets);
     let e = &resolved;
-    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.used().height, inherited.height) else {
+    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (
+        e.style.used().reset_box_layout.height,
+        inherited.reset_box_layout.height,
+    ) else {
         return e.clone();
     };
     // `inline-block` сюда пускается: картинка СТРОКИ внутри `inline-block` с
@@ -44,7 +52,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     // раскладки не доезжает (`intrinsic-percent-replaced-021`: `<button>`
     // 100px, картинка 200×200 вместо 100×100; тот же `div` блоком — верно).
     if !matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         None | Some(Display::Block) | Some(Display::InlineBlock)
     ) {
         return e.clone();
@@ -60,11 +68,11 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     // css-sizing-3 §box-sizing): `.inner {box-sizing: border-box; height: 50px;
     // padding-top: 25px}` даёт холсту 25, а не 50
     // (`intrinsic-percent-replaced-012/013`).
-    let h = if inherited.border_box == Some(true) {
+    let h = if inherited.reset_border.border_box == Some(true) {
         let px_of = px_lossy_zero;
         let b = inherited.borders();
-        (h - px_of(inherited.padding.top)
-            - px_of(inherited.padding.bottom)
+        (h - px_of(inherited.reset_box_layout.padding.top)
+            - px_of(inherited.reset_box_layout.padding.bottom)
             - px_of(b.top)
             - px_of(b.bottom))
         .max(0.0)
@@ -72,7 +80,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
         h
     };
     let mut copy = e.clone();
-    copy.style.used_mut().height = Some(Len::Px(k * h));
+    copy.style.used_mut().reset_box_layout.height = Some(Len::Px(k * h));
     copy
 }
 
@@ -90,13 +98,26 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
         (Some(Len::Pct(k)), Some(Len::Px(b))) if b > 0.0 => Some(Len::Px(k * b)),
         _ => l,
     };
-    let block_cb = matches!(inherited.display, None | Some(Display::Block));
-    let h_base = block_cb.then_some(inherited.height).flatten();
+    let block_cb = matches!(
+        inherited.reset_box_layout.display,
+        None | Some(Display::Block)
+    );
+    let h_base = block_cb
+        .then_some(inherited.reset_box_layout.height)
+        .flatten();
     let mut copy = e.clone();
-    copy.style.used_mut().max_width = of(e.style.used().max_width, inherited.width);
-    copy.style.used_mut().min_width = of(e.style.used().min_width, inherited.width);
-    copy.style.used_mut().max_height = of(e.style.used().max_height, h_base);
-    copy.style.used_mut().min_height = of(e.style.used().min_height, h_base);
+    copy.style.used_mut().reset_box_layout.max_width = of(
+        e.style.used().reset_box_layout.max_width,
+        inherited.reset_box_layout.width,
+    );
+    copy.style.used_mut().reset_box_layout.min_width = of(
+        e.style.used().reset_box_layout.min_width,
+        inherited.reset_box_layout.width,
+    );
+    copy.style.used_mut().reset_box_layout.max_height =
+        of(e.style.used().reset_box_layout.max_height, h_base);
+    copy.style.used_mut().reset_box_layout.min_height =
+        of(e.style.used().reset_box_layout.min_height, h_base);
     copy
 }
 
@@ -117,17 +138,17 @@ pub(crate) fn inherit_item_metadata(
     if merged.context.parent_grid == 0 {
         return context;
     }
-    style.rtl = merged.rtl;
+    style.inh.writing.rtl = merged.inh.writing.rtl;
     context.cb_wm = merged.context.cb_wm;
-    if merged.align_self.is_none() {
-        style.align_self = parent.align_items;
-        style.align_self_last = parent.align_items_last;
-        style.align_self_safe = parent.align_items_safe;
+    if merged.reset_flex.align_self.is_none() {
+        style.reset_flex.align_self = parent.reset_flex.align_items;
+        style.reset_flex.align_self_last = parent.reset_flex.align_items_last;
+        style.reset_flex.align_self_safe = parent.reset_flex.align_items_safe;
     }
-    if merged.justify_self.is_none() {
-        style.justify_self = parent.justify_items;
-        style.justify_self_last = parent.justify_items_last;
-        style.justify_self_safe = parent.justify_items_safe;
+    if merged.reset_flex.justify_self.is_none() {
+        style.reset_flex.justify_self = parent.reset_flex.justify_items;
+        style.reset_flex.justify_self_last = parent.reset_flex.justify_items_last;
+        style.reset_flex.justify_self_safe = parent.reset_flex.justify_items_safe;
     }
     context
 }

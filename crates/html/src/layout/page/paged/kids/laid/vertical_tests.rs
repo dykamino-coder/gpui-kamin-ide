@@ -29,7 +29,7 @@ fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
             panic!("host")
         };
         assert!(e.style.used().wm().vertical());
-        assert_eq!(e.style.used().height, Some(Len::Px(100.0)));
+        assert_eq!(e.style.used().reset_box_layout.height, Some(Len::Px(100.0)));
         assert_eq!(e.children.len(), 2);
     }
 }
@@ -69,8 +69,14 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
                     panic!("block")
                 };
                 assert!(physical.style.used().wm().vertical());
-                assert_eq!(physical.style.used().margin.left, Some(Len::Px(13.0)));
-                assert_eq!(physical.style.used().margin.right, Some(Len::Px(7.0)));
+                assert_eq!(
+                    physical.style.used().reset_box_layout.margin.left,
+                    Some(Len::Px(13.0))
+                );
+                assert_eq!(
+                    physical.style.used().reset_box_layout.margin.right,
+                    Some(Len::Px(7.0))
+                );
                 let cx = ShapeCx {
                     paged: true,
                     ..ShapeCx::COLUMNS

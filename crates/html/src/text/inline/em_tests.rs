@@ -23,17 +23,21 @@ fn em_resolves_against_the_font_size() {
     let child = styled("font-size: 2em; height: 1em", vcx);
     let merged = inherit(&BoxStyle::from(parent), &child, vcx);
     assert_eq!(
-        merged.font_size,
+        merged.inh.font.font_size,
         Some(Len::Px(24.0)),
         "свой кегль от родителя"
     );
-    assert_eq!(merged.height, Some(Len::Px(24.0)), "высота от своего кегля");
+    assert_eq!(
+        merged.reset_box_layout.height,
+        Some(Len::Px(24.0)),
+        "высота от своего кегля"
+    );
 
     // Внук: 2em от 24 = 48, высота 1em = 48.
     let grand = styled("font-size: 2em; height: 1em", vcx);
     let merged2 = inherit(&merged, &grand, vcx);
-    assert_eq!(merged2.font_size, Some(Len::Px(48.0)));
-    assert_eq!(merged2.height, Some(Len::Px(48.0)));
+    assert_eq!(merged2.inh.font.font_size, Some(Len::Px(48.0)));
+    assert_eq!(merged2.reset_box_layout.height, Some(Len::Px(48.0)));
 }
 
 #[test]
@@ -43,7 +47,7 @@ fn em_without_own_font_size_uses_the_inherited_one() {
     let parent = styled("font-size: 20px", vcx);
     let child = styled("width: 10em", vcx);
     let merged = inherit(&BoxStyle::from(parent), &child, vcx);
-    assert_eq!(merged.width, Some(Len::Px(200.0)));
+    assert_eq!(merged.reset_box_layout.width, Some(Len::Px(200.0)));
 }
 
 #[test]
@@ -68,7 +72,7 @@ fn inherited_emphasis_resolves_the_childs_typographic_context() {
     assert!(!spans[0].under);
 
     let mut child = inherit(&BoxStyle::from(parent), &Computed::default(), vcx);
-    child.lang = Some("Zh-Hant".into());
+    child.inh.text_flow.lang = Some("Zh-Hant".into());
     let pieces = [super::Piece::Text {
         text: "你好".into(),
         style: child,
@@ -94,9 +98,9 @@ fn explicit_emphasis_none_and_position_override_the_parent() {
         ),
         vcx,
     );
-    assert_eq!(child.text_emphasis.as_deref(), Some(""));
-    assert!(!child.emphasis_under);
-    assert!(!child.emphasis_left);
+    assert_eq!(child.inh.text_ink.text_emphasis.as_deref(), Some(""));
+    assert!(!child.inh.text_ink.emphasis_under);
+    assert!(!child.inh.text_ink.emphasis_left);
     let pieces = [super::Piece::Text {
         text: "text".into(),
         style: child,

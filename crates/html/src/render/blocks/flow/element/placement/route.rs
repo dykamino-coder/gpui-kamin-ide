@@ -17,17 +17,21 @@ pub(crate) fn layer_route(
     idx: usize,
     cx: &crate::layout::cx::LayoutCx,
 ) -> (bool, bool, bool, bool, bool, bool, bool) {
-    let x_set = edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right);
-    let y_set = edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom);
+    let x_set = edge_set(e.style.used().reset_positioned.inset.left)
+        || edge_set(e.style.used().reset_positioned.inset.right);
+    let y_set = edge_set(e.style.used().reset_positioned.inset.top)
+        || edge_set(e.style.used().reset_positioned.inset.bottom);
     // `fixed` считается ОТ ОКНА всегда (§10.1 п.3): позиционированный
     // предок ему не содержащий блок, и заданной оси от него не
     // требуется — незаданная сторона держит статическое место. Пока он
     // шёл общим путём, коробка висела от края родителя.
-    let is_fixed = e.style.used().position == Some(crate::style::computed::Position::Fixed);
+    let is_fixed =
+        e.style.used().reset_positioned.position == Some(crate::style::computed::Position::Fixed);
     let fixed_policy = FixedPolicy::for_box(is_fixed, under_tf);
     let fixed = fixed_policy == FixedPolicy::RepeatPages;
     // `fixed` под трансформом — абсолют относительно этого предка.
-    let abs_like = e.style.used().position == Some(crate::style::computed::Position::Absolute)
+    let abs_like = e.style.used().reset_positioned.position
+        == Some(crate::style::computed::Position::Absolute)
         || (is_fixed && fixed_policy == FixedPolicy::Fragment);
     // В стопке страниц абсолют корня уходит в слой и без заданных
     // сторон: на месте его резала бы маска фрагмента кида
@@ -75,12 +79,12 @@ pub(crate) fn layer_route(
         && (x_set
             || y_set
             || (!stacking_context(inherited)
-                && !inherited.backdrop_root_above
+                && !inherited.reset_effects.backdrop_root_above
                 && !crate::text::inline::backdrop_root(inherited)
                 // Replaced boxes and inline static positions retain their
                 // intrinsic/line wrapper until those layout paths carry CB
                 // geometry separately from the hypothetical inline box.
-                && e.style.used().inline_display != Some(true)
+                && e.style.used().reset_context.inline_display != Some(true)
                 && !matches!(
                     e.tag.as_str(),
                     "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -92,7 +96,11 @@ pub(crate) fn layer_route(
     // parent's box, e.g. a `body` lowered by a collapsed margin
     // (spec-examples `shape-outside-001`: `#failure-container`).
     let below_icb = (orphan_abs || fixed)
-        && e.style.used().z_index.is_some_and(|z| z < 0)
+        && e.style
+            .used()
+            .reset_positioned
+            .z_index
+            .is_some_and(|z| z < 0)
         && !stacking_context(inherited);
     // In a flex/grid container the static-position probe is missing, but with
     // both axes set it is not needed: the containing block of `fixed` (and of an
@@ -101,7 +109,7 @@ pub(crate) fn layer_route(
     let to_icb = (!ordered_context || (x_set && y_set))
         && geometry_layer_ok
         && (fixed || orphan_abs)
-        && (e.style.used().z_index.unwrap_or(0) >= 0 || below_icb)
+        && (e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0 || below_icb)
         // Исходная геометрия записывается без paint: порядок соседних слоёв
         // не меняет CSS containing block и базу процентов вынесенной коробки.
         && (cx.position.geometry_record.is_some()
@@ -117,7 +125,7 @@ pub(crate) fn layer_route(
         && (!ordered_context || (x_set && y_set))
         && geometry_layer_ok
         && far_abs
-        && e.style.used().z_index.unwrap_or(0) >= 0
+        && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0
         && (!stays_positioned(&nodes[idx + 1..]) || cx.position.state.cb_active(far_fixed));
     (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed)
 }

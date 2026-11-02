@@ -10,7 +10,7 @@ use gpui::{AnyElement, Pixels};
 
 pub(super) fn probe(frame: Frame, c: &Computed, sticky: Option<StickyShift>) -> Option<AnyElement> {
     if !matches!(
-        c.display,
+        c.reset_box_layout.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
     ) {
         return None;

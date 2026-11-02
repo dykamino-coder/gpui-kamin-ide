@@ -88,7 +88,8 @@ mod tests {
             size(px(400.), px(400.)),
             |window, app| {
                 let mut kid = crate::layout::table::anon::anon_element("div", Vec::new());
-                kid.style.used_mut().position = Some(crate::style::computed::Position::Absolute);
+                kid.style.used_mut().reset_positioned.position =
+                    Some(crate::style::computed::Position::Absolute);
                 let opts = RenderOpts {
                     viewport: (400., 400.),
                     normal_line_height: 1.2,

@@ -15,15 +15,23 @@ fn adjust(value: &mut Option<Length>, side: f32, total: f32, vcx: ValueCx<'_>) {
     *v = super::add(*v, side - fraction * total, vcx);
 }
 pub(crate) fn apply(mut div: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
-    if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
+    if !matches!(
+        c.reset_positioned.position,
+        Some(Position::Absolute | Position::Fixed)
+    ) {
         return div;
     }
-    let (used, native) =
-        if c.cb_node == 0 || c.position == Some(Position::Fixed) && !c.transform_ancestor {
-            (c.icb_scroll_insets.unwrap_or_default(), [0.0; 4])
-        } else {
-            c.cb_scroll_insets
-        };
+    let (used, native) = if c.cb_node == 0
+        || c.reset_positioned.position == Some(Position::Fixed)
+            && !c.reset_transforms.transform_ancestor
+    {
+        (
+            c.reset_positioned.icb_scroll_insets.unwrap_or_default(),
+            [0.0; 4],
+        )
+    } else {
+        c.cb_scroll_insets
+    };
     let delta: [f32; 4] = std::array::from_fn(|side| used[side] - native[side]);
     if delta == [0.0; 4] {
         return div;

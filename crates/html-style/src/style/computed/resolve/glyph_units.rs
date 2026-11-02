@@ -9,7 +9,12 @@ impl Computed {
         let (ch, ex) = crate::style::font_metrics::horizontal(family, used, vcx);
         let cap = crate::style::font_metrics::vertical(family, used, vcx).2;
         let ic = crate::style::font_metrics::ideographic(family, used, vcx);
-        if self.font_size_adjust.is_none_or(|(metric, _)| metric >= 5) {
+        if self
+            .inh
+            .font
+            .font_size_adjust
+            .is_none_or(|(metric, _)| metric >= 5)
+        {
             return [cap, ch, ex, ic];
         }
         let mut request = self.font_request(family, used);

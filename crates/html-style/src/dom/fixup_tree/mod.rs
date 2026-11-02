@@ -36,19 +36,20 @@ pub(super) fn quirks_percent_heights(
     mark_quirks_fill(nodes);
     crate::dom::traversal::preorder(admission, nodes, base, |e, &base| {
         let st = e.style.cascaded_mut();
-        let out_of_flow = crate::style::flow::absolutely_positioned(st.position);
+        let out_of_flow = crate::style::flow::absolutely_positioned(st.reset_positioned.position);
         let blockish = matches!(
-            st.display,
+            st.reset_box_layout.display,
             None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem)
         );
-        if let (Some(Len::Pct(k)), Some(b), false, true) = (st.height, base, out_of_flow, blockish)
+        if let (Some(Len::Pct(k)), Some(b), false, true) =
+            (st.reset_box_layout.height, base, out_of_flow, blockish)
         {
-            st.height = Some(Len::Px(k * b));
+            st.reset_box_layout.height = Some(Len::Px(k * b));
         }
         // Табличные коробки квирка не дают: доля внука ячейки с заданной
         // высотой остаётся `auto` (`percentages-grandchildren-quirks-mode-001`).
         let tabular = matches!(
-            st.display,
+            st.reset_box_layout.display,
             Some(
                 Display::Table
                     | Display::InlineTable
@@ -57,7 +58,7 @@ pub(super) fn quirks_percent_heights(
                     | Display::TableRowGroup
             )
         );
-        let child_base = match st.height {
+        let child_base = match st.reset_box_layout.height {
             _ if tabular => None,
             Some(Len::Px(h)) => Some(h),
             None | Some(Len::Auto) if blockish && !out_of_flow && e.tag != "html" => base,
@@ -78,13 +79,13 @@ pub(super) fn filter_ref_only_empty(
     nodes: &mut [Node],
 ) -> Result<(), crate::budget::admission::Error> {
     crate::dom::traversal::preorder(admission, nodes, (), |el, _| {
-        if el.style.cascaded().filter_ref.is_some()
+        if el.style.cascaded().reset_effects.filter_ref.is_some()
             && el.children.iter().any(|c| match c {
                 Node::Element(_) => true,
                 Node::Text(t) => !t.trim().is_empty(),
             })
         {
-            el.style.cascaded_mut().filter_ref = None;
+            el.style.cascaded_mut().reset_effects.filter_ref = None;
         }
         Some(())
     })
@@ -94,7 +95,12 @@ fn mark_quirks_fill(nodes: &mut [Node]) {
     if let [Node::Element(html)] = nodes
         && html.tag == "html"
     {
-        html.marks.quirks_fill = html.style.cascaded().float.is_none_or(|f| f == 0);
+        html.marks.quirks_fill = html
+            .style
+            .cascaded()
+            .reset_box_layout
+            .float
+            .is_none_or(|f| f == 0);
         if let Some(Node::Element(body)) = html
             .children
             .iter_mut()
@@ -103,7 +109,12 @@ fn mark_quirks_fill(nodes: &mut [Node]) {
         {
             // Float layout clears `float` on the box it puts into a row.
             // Preserve the fill exclusion before that tree rewrite.
-            body.marks.quirks_fill = body.style.cascaded().float.is_none_or(|f| f == 0);
+            body.marks.quirks_fill = body
+                .style
+                .cascaded()
+                .reset_box_layout
+                .float
+                .is_none_or(|f| f == 0);
         }
     }
 }

@@ -30,7 +30,7 @@ pub(super) fn finish_element(
     let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     let ruby_parent = ruby_box_role(&tag, &style);
     if ruby_parent.is_some() {
-        style.ruby_suppress_breaks = true;
+        style.reset_text_box.ruby_suppress_breaks = true;
         crate::dom::fixup_tree::ruby_normalize::inlinify(&admission, &mut children)?;
     }
     // `dir="auto"` — сторону задаёт ПЕРВЫЙ СИЛЬНЫЙ знак содержимого
@@ -53,11 +53,11 @@ pub(super) fn finish_element(
         // `dir="auto"` в HTML — это `unicode-bidi: plaintext`: сторона
         // решается для КАЖДОГО абзаца между жёсткими разрывами, а не
         // для элемента целиком (`text-align-end-016`).
-        style.bidi_plaintext = Some(true);
-        if style.rtl.is_none()
+        style.reset_cascade.bidi_plaintext = Some(true);
+        if style.inh.writing.rtl.is_none()
             && let Some(rtl) = first_strong(&admission, &children)?
         {
-            style.rtl = Some(rtl);
+            style.inh.writing.rtl = Some(rtl);
         }
     }
     // Псевдокоробки ВНЕ элемента (css-overflow-5; порядок Blink
@@ -73,7 +73,7 @@ pub(super) fn finish_element(
         .chain(sp.buttons.iter_mut())
         .chain(sp.group_after.iter_mut())
     {
-        el.style.cascaded_mut().implicit_anchor = Some(node_id);
+        el.style.cascaded_mut().reset_positioned.implicit_anchor = Some(node_id);
     }
     if tag == "html" {
         if let Some(g) = sp.group_before.take() {
@@ -93,8 +93,8 @@ pub(super) fn finish_element(
     // элемента — на главной коробке; наследуемые доходят до контейнера
     // обычным `style::cascade::inherit` (стиль контейнера пуст). Тег `ruby` у
     // синтетического узла — роль контейнера по тегу (`block-ruby-001`).
-    let children = if style.display == Some(Display::Block)
-        && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
+    let children = if style.reset_box_layout.display == Some(Display::Block)
+        && style.reset_text_box.ruby_role == Some(crate::style::computed::RubyRole::Container)
     {
         vec![anonymous_ruby(children)]
     } else {
@@ -110,7 +110,7 @@ pub(super) fn finish_element(
     // исходного тега и `display` — `<p>` замещается блоком. Корень не
     // трогается: замещаемого корня у нас нет. Ненайденная картинка
     // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
-    let (tag, children, attrs) = match style.content.as_deref() {
+    let (tag, children, attrs) = match style.reset_generated.content.as_deref() {
         Some([crate::style::computed::ContentItem::Image(src)])
             if tag != "html" && content_image_src(src).is_some() =>
         {

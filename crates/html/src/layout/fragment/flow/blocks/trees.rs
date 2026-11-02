@@ -15,9 +15,9 @@ use crate::style::computed::Display;
 /// детей иначе — их границы дают свои контексты (строки — `Paragraph`).
 pub(super) fn stacks_blocks(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) && e.style.used().webkit_box != Some(true)
+    ) && e.style.used().reset_flex.webkit_box != Some(true)
         && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !table_box(e)
         && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
@@ -58,7 +58,7 @@ pub(crate) fn table_tree(e: &Element) -> bool {
             Node::Element(k) if k.inline => true,
             Node::Element(k)
                 if matches!(
-                    k.style.used().display,
+                    k.style.used().reset_box_layout.display,
                     Some(Display::TableRow)
                         | Some(Display::TableRowGroup)
                         | Some(Display::TableCell)
@@ -89,7 +89,7 @@ pub(super) fn holds_blocks(e: &Element) -> bool {
             false
         }
         Node::Element(k) if !k.inline => true,
-        Node::Element(k) => k.style.used().display.is_none() && holds_blocks(k),
+        Node::Element(k) => k.style.used().reset_box_layout.display.is_none() && holds_blocks(k),
         _ => false,
     })
 }

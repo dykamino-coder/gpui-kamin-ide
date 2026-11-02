@@ -36,7 +36,11 @@ fn fill(value: &str) -> Option<u8> {
 impl Computed {
     pub(super) fn apply_animation(&mut self, key: &str, value: &str) {
         if key == "animation" {
-            css_wide_reset!(self, animation, animation_easing);
+            css_wide_reset!(
+                self,
+                reset_context.animation,
+                reset_context.animation_easing
+            );
         }
         if !grammar::valid(key, value) {
             return;
@@ -49,8 +53,8 @@ impl Computed {
         {
             return;
         }
-        let mut easing = self.animation_easing;
-        let mut spec = self.animation.clone().unwrap_or_else(initial);
+        let mut easing = self.reset_context.animation_easing;
+        let mut spec = self.reset_context.animation.clone().unwrap_or_else(initial);
         if key == "animation-fill-mode" {
             if let Some(mode) = fill(value) {
                 spec.fill = mode;
@@ -120,8 +124,8 @@ impl Computed {
                 spec.names = if names.len() > 1 { names } else { vec![] };
             }
         }
-        self.animation = accept_parsed!(self, Some(spec));
-        self.animation_easing = easing;
+        self.reset_context.animation = accept_parsed!(self, Some(spec));
+        self.reset_context.animation_easing = easing;
     }
 }
 
@@ -139,16 +143,30 @@ mod tests {
             "slide 100s -50s steps(4, jump-end) both paused",
             vcx,
         );
-        let spec = style.animation.as_ref().unwrap();
+        let spec = style.reset_context.animation.as_ref().unwrap();
         assert_eq!(spec.name, "slide");
         assert_eq!(spec.fill, 3);
         assert_eq!(spec.delay, -50.0);
-        assert_eq!(style.animation_easing.unwrap().sample(0.6, false), 0.5);
+        assert_eq!(
+            style
+                .reset_context
+                .animation_easing
+                .unwrap()
+                .sample(0.6, false),
+            0.5
+        );
         style.apply_one("animation-timing-function", "cubic-bezier(0, 0, 1, 1)", vcx);
-        assert_eq!(style.animation_easing.unwrap().sample(0.5, false), 0.5);
+        assert_eq!(
+            style
+                .reset_context
+                .animation_easing
+                .unwrap()
+                .sample(0.5, false),
+            0.5
+        );
         style.apply_one("animation-fill-mode", "backwards", vcx);
-        assert_eq!(style.animation.as_ref().unwrap().fill, 1);
+        assert_eq!(style.reset_context.animation.as_ref().unwrap().fill, 1);
         style.apply_one("animation-fill-mode", "invalid", vcx);
-        assert_eq!(style.animation.as_ref().unwrap().fill, 1);
+        assert_eq!(style.reset_context.animation.as_ref().unwrap().fill, 1);
     }
 }

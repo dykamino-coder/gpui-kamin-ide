@@ -64,9 +64,9 @@ pub(super) fn wrap(
     {
         use crate::style::computed::Display;
         style.plain_block_box = matches!(
-            style.display,
+            style.reset_box_layout.display,
             Some(Display::Block | Display::ListItem | Display::Flex | Display::Grid)
-        ) && style.float.is_none_or(|f| f == 0);
+        ) && style.reset_box_layout.float.is_none_or(|f| f == 0);
     }
     let is_pseudo = |n: &Node| matches!(n, Node::Element(e) if e.tag.starts_with("::"));
     let lead = children.iter().take_while(|n| is_pseudo(n)).count();

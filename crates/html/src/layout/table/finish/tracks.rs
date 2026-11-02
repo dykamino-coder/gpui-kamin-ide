@@ -26,9 +26,9 @@ pub(super) fn table_tracks(
     let mut col_widths = col_widths.to_vec();
     let vertical = e.style.used().wm().vertical();
     let inline_size = if vertical {
-        e.style.used().height
+        e.style.used().reset_box_layout.height
     } else {
-        e.style.used().width
+        e.style.used().reset_box_layout.width
     };
     let first_row_widths = first_row_widths_of(
         e,
@@ -57,7 +57,7 @@ pub(super) fn table_tracks(
         .collect();
     let tracks = track_list_collapsed(
         cols,
-        e.style.used().table_fixed == Some(true),
+        e.style.used().reset_context.table_fixed == Some(true),
         &first_row_widths,
         &col_widths,
         cols_collapsed,
@@ -77,10 +77,10 @@ pub(super) fn table_tracks(
                     _ => 0.0,
                 };
                 let bs = e.style.used().borders();
-                let gap = if e.style.cascaded().border_collapse == Some(true) {
+                let gap = if e.style.cascaded().inh.table_list.border_collapse == Some(true) {
                     0.0
                 } else {
-                    match e.style.used().border_spacing {
+                    match e.style.used().inh.table_list.border_spacing {
                         Some((Some(Len::Px(g)), _)) => g,
                         _ => 0.0,
                     }
@@ -101,8 +101,8 @@ pub(super) fn table_tracks(
     // схлопывался по содержимому, и вся середина уезжала.
     // Считается и от min-height: минимум так же растягивает таблицу, и
     // остаток обязан достаться безвысотным рядам.
-    let table_tall = matches!(e.style.used().height, Some(Len::Px(_)))
-        || matches!(e.style.used().min_height, Some(Len::Px(_)))
+    let table_tall = matches!(e.style.used().reset_box_layout.height, Some(Len::Px(_)))
+        || matches!(e.style.used().reset_box_layout.min_height, Some(Len::Px(_)))
         // Доля высоты, которая РАЗРЕШАЕТСЯ (содержащий блок определён), —
         // такая же заданная высота: css-tables-3 «a 'height' property with a
         // value other than auto … will eventually be distributed to the height
@@ -112,7 +112,7 @@ pub(super) fn table_tracks(
         // а ряды-доли в неопределённой высоте выравниваются по самому высокому.
         // Эталоны `fr-unit-ref`, `display-grid-ref`: стол `height:100%` в
         // абсолюте 400×100 держал ряды по тексту вместо 30/70.
-        || (matches!(e.style.used().height, Some(Len::Pct(_)))
+        || (matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)))
             && inherited.cb_height_def
             && !inherited.stretched);
     (first_row_widths, tracks, table_tall)
@@ -145,7 +145,7 @@ pub(super) fn first_row_widths_of(
                         Some(Len::Px(p)) => p,
                         _ => 0.0,
                     };
-                    let extra = if cell.style.used().border_box == Some(true) {
+                    let extra = if cell.style.used().reset_border.border_box == Some(true) {
                         0.0
                     } else {
                         let b = cell.style.used().borders();
@@ -156,7 +156,7 @@ pub(super) fn first_row_widths_of(
                             side(b.left),
                         ]);
                         let border = border[1] + border[3];
-                        let pad = &cell.style.used().padding;
+                        let pad = &cell.style.used().reset_box_layout.padding;
                         let pad = axes.logical([
                             side(pad.top),
                             side(pad.right),
@@ -165,7 +165,7 @@ pub(super) fn first_row_widths_of(
                         ]);
                         pad[1]
                             + pad[3]
-                            + if e.style.cascaded().border_collapse == Some(true) {
+                            + if e.style.cascaded().inh.table_list.border_collapse == Some(true) {
                                 // Половина ПОБЕДИВШЕЙ линии — та же, что
                                 // легла в паддинг ячейки (§17.6.2.1).
 
@@ -188,9 +188,9 @@ pub(super) fn first_row_widths_of(
                     // требует ещё нижней грани ширины стола по сумме
                     // дорожек — возвращать вместе с ней.
                     match if vertical {
-                        cell.style.used().height
+                        cell.style.used().reset_box_layout.height
                     } else {
-                        cell.style.used().width
+                        cell.style.used().reset_box_layout.width
                     } {
                         Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
                         // Ширина в единицах шрифта — кеглем САМОЙ ячейки
@@ -199,13 +199,15 @@ pub(super) fn first_row_widths_of(
                         // (§17.5.2.1) не складывался (`separated-border-model-004c`).
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
                             let size = super::super::col_measure::cell_font_px(
-                                cell.style.used().font_size,
-                                row.element.style.used().font_size,
+                                cell.style.used().inh.font.font_size,
+                                row.element.style.used().inh.font.font_size,
                                 table_font,
                             );
                             let family = cell
                                 .style
                                 .cascaded()
+                                .inh
+                                .font
                                 .font_family
                                 .clone()
                                 .unwrap_or_else(|| table_family.to_string());
@@ -217,9 +219,9 @@ pub(super) fn first_row_widths_of(
                         // «a percentage value ... of the table width»).
                         // Известна, только когда ширина таблицы в точках.
                         Some(Len::Pct(p)) if span == 1 => match if vertical {
-                            e.style.used().height
+                            e.style.used().reset_box_layout.height
                         } else {
-                            e.style.used().width
+                            e.style.used().reset_box_layout.width
                         } {
                             Some(Len::Px(tw)) => {
                                 let gaps = spacing.0 * (f32::from(cols) + 1.0);

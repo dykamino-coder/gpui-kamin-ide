@@ -6,29 +6,29 @@ use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 
 pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, ratio: Option<f32>) {
-    if !c.flex_item {
+    if !c.reset_flex.flex_item {
         return;
     }
-    let vertical = c.flex_main_vertical;
+    let vertical = c.reset_flex.flex_main_vertical;
     let (preferred, minimum, maximum, cross, cross_min, cross_max, overflow) = if vertical {
         (
-            c.height,
-            c.min_height,
-            c.max_height,
-            c.width,
-            c.min_width,
-            c.max_width,
-            c.overflow_y,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_height,
+            c.reset_box_layout.width,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.overflow_y,
         )
     } else {
         (
-            c.width,
-            c.min_width,
-            c.max_width,
-            c.height,
-            c.min_height,
-            c.max_height,
-            c.overflow_x,
+            c.reset_box_layout.width,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_height,
+            c.reset_box_layout.overflow_x,
         )
     };
     if !matches!(minimum, None | Some(Len::Auto))
@@ -53,17 +53,27 @@ pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, rati
             _ => None,
         })
     };
-    let Some(x) = sum([c.padding.left, c.padding.right, border.left, border.right]) else {
+    let Some(x) = sum([
+        c.reset_box_layout.padding.left,
+        c.reset_box_layout.padding.right,
+        border.left,
+        border.right,
+    ]) else {
         return;
     };
-    let Some(y) = sum([c.padding.top, c.padding.bottom, border.top, border.bottom]) else {
+    let Some(y) = sum([
+        c.reset_box_layout.padding.top,
+        c.reset_box_layout.padding.bottom,
+        border.top,
+        border.bottom,
+    ]) else {
         return;
     };
     let (main_edges, cross_edges) = if vertical { (y, x) } else { (x, y) };
     let px = |length, edges| match length {
         Some(Len::Px(value)) => Some(
             (value
-                - if c.border_box == Some(true) {
+                - if c.reset_border.border_box == Some(true) {
                     edges
                 } else {
                     0.0

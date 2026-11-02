@@ -33,9 +33,9 @@ impl Computed {
                         super::values::rotate_value(raw, vcx)
                     }
                 );
-                let mut t = self.transform.unwrap_or_default();
+                let mut t = self.reset_transforms.transform.unwrap_or_default();
                 t.rotate_rad = if flat { angle.to_radians() } else { 0.0 };
-                self.transform = Some(t);
+                self.reset_transforms.transform = Some(t);
                 // Угол вокруг оси z — ещё и отдельным полем: в матрицу
                 // отрисовки его приставляет `transformed()` СЛЕВА от списка
                 // `transform` (css-transforms-2 §ctm п.4). Рукав держится на
@@ -43,10 +43,10 @@ impl Computed {
                 // красные пары семьи — скриптовые, вне цели.
                 // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима;
                 // ось z (`z 45deg`, `0 0 1 45deg`) — тот же плоский поворот.
-                self.rotate_prop = flat.then_some(t.rotate_rad);
+                self.reset_transforms.rotate_prop = flat.then_some(t.rotate_rad);
             }
             "scale" => {
-                let mut t = self.transform.unwrap_or_default();
+                let mut t = self.reset_transforms.transform.unwrap_or_default();
                 // Процент — это доля: `scale: 150%` равно 1.5, а не 150.
                 let nums = v
                     .split_whitespace()
@@ -68,13 +68,13 @@ impl Computed {
                     self.accept_declaration();
                 }
                 t.scale = (x, nums.get(1).copied().unwrap_or(x));
-                self.transform = Some(t);
+                self.reset_transforms.transform = Some(t);
                 // …и отдельным полем для матрицы отрисовки (css-transforms-2
                 // §ctm п.5). Ноль по третьей оси делает матрицу необратимой, и
                 // элемент не рисуется (css-transforms-1 §transform-rendering;
                 // `individual-transform-3`: `scale: 1 1 0`) — плоский путь
                 // выражает это нулевым масштабом, как `scale(0)`.
-                self.scale_prop = (!nums.is_empty()).then(|| {
+                self.reset_transforms.scale_prop = (!nums.is_empty()).then(|| {
                     if nums.get(2).is_some_and(|z| *z == 0.0) {
                         (0.0, 0.0)
                     } else {
@@ -129,14 +129,14 @@ impl Computed {
                 let mut free = free.into_iter();
                 let first = xs.or_else(|| free.next()).unwrap_or("center");
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
-                self.transform_origin_px = (px_axis(first), px_axis(second));
-                self.transform_origin =
+                self.reset_transforms.transform_origin_px = (px_axis(first), px_axis(second));
+                self.reset_transforms.transform_origin =
                     accept_parsed!(self, Some((axis(first, 0.5), axis(second, 0.5))));
                 // Третье значение — только <length>, z точки отсчёта
                 // (css-transforms-2 §transform-origin); видна лишь объёмному
                 // пути (transform3d-translate3d-001: `0 0 0` против эталона
                 // `10px 30px -10px`).
-                self.transform_origin_z = free.next().and_then(px_axis);
+                self.reset_transforms.transform_origin_z = free.next().and_then(px_axis);
             }
             _ => self.apply_transform_perspective(key, v, hit, vcx),
         }

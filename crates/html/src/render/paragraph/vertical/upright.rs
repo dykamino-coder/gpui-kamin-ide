@@ -20,7 +20,7 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
             }
             Node::Element(element)
                 if crate::layout::box_kind::real_inline(element)
-                    || element.style.used().display
+                    || element.style.used().reset_box_layout.display
                         == Some(crate::style::computed::Display::Contents) =>
             {
                 let child = crate::style::cascade::materialize::box_style_unpainted(
@@ -48,10 +48,10 @@ pub(crate) fn upright_paragraph(
     }
     let mut stack = inherited.clone();
     stack.inline_format = Some(crate::style::computed::InlineFormat::Upright);
-    stack.flat_mode = stack.flow_mode();
-    stack.writing_mode = None;
-    stack.upright_stack = true;
-    stack.break_word = Some(true);
+    stack.inh.writing.flat_mode = stack.flow_mode();
+    stack.inh.writing.writing_mode = None;
+    stack.reset_context.upright_stack = true;
+    stack.inh.text_flow.break_word = Some(true);
     let em = crate::layout::options::own_size(&stack, opts);
     // Каждый стоячий глиф продвигает строку РОВНО на кегль (§7.4):
     // шаг стопки — кегль, а не своя высота строки; полоса переноса
@@ -61,7 +61,7 @@ pub(crate) fn upright_paragraph(
     // (стопка глифов стоит в полосе высоты строки, повернутой набок):
     // читается ДО подмены шага стопки кеглем, иначе полоса всегда
     // равнялась кеглю (`vertical-alignment-vrl-022`).
-    let lane = match stack.line_height {
+    let lane = match stack.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Em(_)) | Some(Len::Pct(_)) => {
             stack.numeric_line_px(opts.base_size()).unwrap_or(em)
@@ -71,7 +71,7 @@ pub(crate) fn upright_paragraph(
         Some(Len::Ch(k)) => k * em,
         _ => em,
     };
-    stack.line_height = Some(Len::Px(em));
+    stack.inh.font.line_height = Some(Len::Px(em));
     // Стопка набрана горизонтально, а физические лево и право строчной
     // коробки в вертикальном письме — БЛОЧНАЯ ось (css-writing-modes-4
     // §6.4, Abstract-Physical Mapping): её поля, отбивки и рамки строку не
@@ -92,14 +92,15 @@ pub(crate) fn upright_paragraph(
 /// Строчные элементы без физических левых и правых полей, отбивок и рамок.
 fn drop_block_axis_sides(n: &Node) -> Node {
     match n {
-        Node::Element(e) if e.inline && e.style.used().display.is_none() => {
+        Node::Element(e) if e.inline && e.style.used().reset_box_layout.display.is_none() => {
             let mut e = e.clone();
             let style = &mut *e.style.used_mut();
-            for sides in [
-                &mut style.margin,
-                &mut style.padding,
-                &mut style.border_width,
-            ] {
+            for style_field_index in 0..3 {
+                let sides = match style_field_index {
+                    0 => &mut style.reset_box_layout.margin,
+                    1 => &mut style.reset_box_layout.padding,
+                    _ => &mut style.reset_border.border_width,
+                };
                 sides.left = None;
                 sides.right = None;
             }

@@ -24,14 +24,14 @@ fn a_moved_grid_descendant_inherits_from_its_parent_element() {
     let section = element(&parsed.nodes, "section").style.published().unwrap();
     let i = find(&parsed.nodes, "i").unwrap();
     let computed = i.style.published().unwrap();
-    assert_eq!(computed.font_size, section.font_size);
-    assert_eq!(computed.color, section.color);
-    assert_eq!(computed.padding.left, Some(Len::Px(7.0)));
+    assert_eq!(computed.inh.font.font_size, section.inh.font.font_size);
+    assert_eq!(computed.inh.ui.color, section.inh.ui.color);
+    assert_eq!(computed.reset_box_layout.padding.left, Some(Len::Px(7.0)));
     // The box under the grid's box keeps the element parent's values.
     let boxed = box_style(&BoxStyle::shared(grid.style.computed()), &i.style, vcx);
-    assert_eq!(boxed.font_size, section.font_size);
-    assert_eq!(boxed.color, section.color);
-    assert_eq!(boxed.padding.left, Some(Len::Px(7.0)));
+    assert_eq!(boxed.inh.font.font_size, section.inh.font.font_size);
+    assert_eq!(boxed.inh.ui.color, section.inh.ui.color);
+    assert_eq!(boxed.reset_box_layout.padding.left, Some(Len::Px(7.0)));
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn an_anonymous_table_passes_its_parent_element_through() {
     let b = find(&parsed.nodes, "b").unwrap();
     // `inherit` takes the value of the parent element, not of the anonymous table.
     let held = b.style.published().unwrap();
-    assert_eq!(held.padding.left, Some(Len::Px(5.0)));
+    assert_eq!(held.reset_box_layout.padding.left, Some(Len::Px(5.0)));
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     assert!(b.style.published().unwrap().ptr_eq(&held));
 }
@@ -72,12 +72,17 @@ fn a_box_under_another_parent_keeps_the_elements_perspective_cell() {
         &div.style,
         vcx,
     );
-    parent.width = Some(Len::Px(7.0));
+    parent.reset_box_layout.width = Some(Len::Px(7.0));
     let boxed = box_style(&parent, &section.style, vcx);
-    assert_eq!(boxed.perspective, Some(100.0));
+    assert_eq!(boxed.reset_transforms.perspective, Some(100.0));
     let (Some(cell), Some(own)) = (
-        boxed.perspective_frame.as_ref(),
-        section.style.computed().perspective_frame.clone(),
+        boxed.reset_transforms.perspective_frame.as_ref(),
+        section
+            .style
+            .computed()
+            .reset_transforms
+            .perspective_frame
+            .clone(),
     ) else {
         panic!("perspective cells")
     };
@@ -124,13 +129,19 @@ fn vertical_font_units_use_the_elements_axes_under_an_upright_stack_copy() {
         let span = element(&parsed.nodes, "span");
         let computed = span.style.computed();
         let mut stack = box_style(&BoxStyle::default(), &div.style, vcx);
-        stack.writing_mode = None;
-        stack.line_height = Some(Len::Px(20.0));
+        stack.inh.writing.writing_mode = None;
+        stack.inh.font.line_height = Some(Len::Px(20.0));
         let positioned = box_style(&stack, &span.style, vcx);
-        assert_eq!(computed.height, Some(Len::Px(40.0)));
-        assert_eq!(computed.width, Some(Len::Px(60.0)));
-        assert_eq!(positioned.height, computed.height);
-        assert_eq!(positioned.width, computed.width);
+        assert_eq!(computed.reset_box_layout.height, Some(Len::Px(40.0)));
+        assert_eq!(computed.reset_box_layout.width, Some(Len::Px(60.0)));
+        assert_eq!(
+            positioned.reset_box_layout.height,
+            computed.reset_box_layout.height
+        );
+        assert_eq!(
+            positioned.reset_box_layout.width,
+            computed.reset_box_layout.width
+        );
         assert_eq!(positioned.wm(), computed.wm());
         assert_eq!(div.style.computed().wm(), computed.wm());
     }
@@ -149,16 +160,19 @@ fn a_computed_cascade_variant_reaches_descendants_without_used_values() {
     assert!(recompute_onto(
         &mut parent,
         &div.style,
-        |c| c.width = Some(Len::Px(30.0)),
+        |c| c.reset_box_layout.width = Some(Len::Px(30.0)),
         vcx
     ));
-    parent.width = Some(Len::Px(99.0));
-    parent.font_size = Some(Len::Px(7.0));
+    parent.reset_box_layout.width = Some(Len::Px(99.0));
+    parent.inh.font.font_size = Some(Len::Px(7.0));
     let child = box_style(&parent, &element(&parsed.nodes, "span").style, vcx);
     let grandchild = box_style(&child, &element(&parsed.nodes, "i").style, vcx);
-    assert_eq!(child.width, Some(Len::Px(30.0)));
-    assert_eq!(grandchild.width, Some(Len::Px(30.0)));
-    assert_eq!(child.font_size, Some(Len::Px(20.0)));
-    assert_eq!(grandchild.font_size, Some(Len::Px(20.0)));
-    assert_eq!(div.style.computed().width, Some(Len::Px(10.0)));
+    assert_eq!(child.reset_box_layout.width, Some(Len::Px(30.0)));
+    assert_eq!(grandchild.reset_box_layout.width, Some(Len::Px(30.0)));
+    assert_eq!(child.inh.font.font_size, Some(Len::Px(20.0)));
+    assert_eq!(grandchild.inh.font.font_size, Some(Len::Px(20.0)));
+    assert_eq!(
+        div.style.computed().reset_box_layout.width,
+        Some(Len::Px(10.0))
+    );
 }

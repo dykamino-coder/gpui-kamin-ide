@@ -9,7 +9,7 @@ impl Computed {
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Self {
-        let mut out = Self::default();
+        let mut out = vcx.doc.initial_style();
         let mut picks = map.picks("appearance");
         if let Some(first) = picks.next() {
             out.apply_winner("appearance", first, picks, vars, &ComputeCx::new(cx, vcx));
@@ -40,7 +40,10 @@ mod tests {
             let projected = Computed::appearance_from_map(&map, &vars, CascadeCx::NONE, vcx);
             let mut full = Computed::default();
             full.apply_map(&map, &vars, CascadeCx::NONE, vcx);
-            assert_eq!(projected.appearance, full.appearance, "{raw}");
+            assert_eq!(
+                projected.reset_context.appearance, full.reset_context.appearance,
+                "{raw}"
+            );
         }
     }
 }

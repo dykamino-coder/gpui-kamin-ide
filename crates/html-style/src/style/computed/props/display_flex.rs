@@ -19,22 +19,22 @@ impl Computed {
                 if v.trim().eq_ignore_ascii_case("-webkit-box")
                     || v.trim().eq_ignore_ascii_case("-webkit-inline-box") =>
             {
-                self.webkit_box = accept_parsed!(self, Some(true));
+                self.reset_flex.webkit_box = accept_parsed!(self, Some(true));
                 // `-webkit-inline-box` — та же легаси-коробка, но ВСТРОЕННАЯ
                 // (по факту `inline-block`): соседний текст обязан стоять с
                 // ней в одной строке (`webkit-line-clamp-024`).
                 if v.trim().eq_ignore_ascii_case("-webkit-inline-box") {
-                    self.display = Some(Display::InlineBlock);
+                    self.reset_box_layout.display = Some(Display::InlineBlock);
                 }
             }
             "display" => {
                 if v == "inherit" {
-                    self.inherit_bits |= inh::DISPLAY;
+                    self.reset_cascade.inherit_bits |= inh::DISPLAY;
                     return;
                 }
-                let mut lanes_inline = self.lanes_inline;
-                let mut flow_root = self.flow_root;
-                let mut is_caption = self.is_caption;
+                let mut lanes_inline = self.reset_grid.lanes_inline;
+                let mut flow_root = self.reset_context.flow_root;
+                let mut is_caption = self.reset_context.is_caption;
                 let mut inline_display = None;
                 let math_layout = match v {
                     "math" | "inline math" => Some(Display::InlineBlock),
@@ -48,7 +48,7 @@ impl Computed {
                 // Роль руби живёт вместе со значением `display`: более
                 // важное `display: block` на `span.rt` снимает её.
                 let mut ruby_role = None;
-                self.display = apply_parsed!(
+                self.reset_box_layout.display = apply_parsed!(
                     self,
                     match v {
                         "flex" => Some(Display::Flex),
@@ -143,7 +143,7 @@ impl Computed {
                         // первым строчным в следующий блок или остаётся блоком
                         // (dom::fold_run_ins).
                         "run-in" => {
-                            self.run_in = Some(true);
+                            self.reset_context.run_in = Some(true);
                             Some(Display::Block)
                         }
                         "flow-root" => {
@@ -201,18 +201,18 @@ impl Computed {
                     }
                 )
                 .filter(|_| math_layout.is_none())
-                .or(self.display);
-                self.inline_display = inline_display;
-                self.math_layout = math_layout;
-                self.row_group_kind = row_group_kind;
-                self.col_role = col_role;
-                self.ruby_role = ruby_role;
-                self.lanes_inline = lanes_inline;
-                self.flow_root = flow_root;
-                self.is_caption = is_caption;
+                .or(self.reset_box_layout.display);
+                self.reset_context.inline_display = inline_display;
+                self.reset_svg_math.math_layout = math_layout;
+                self.reset_context.row_group_kind = row_group_kind;
+                self.reset_context.col_role = col_role;
+                self.reset_text_box.ruby_role = ruby_role;
+                self.reset_grid.lanes_inline = lanes_inline;
+                self.reset_context.flow_root = flow_root;
+                self.reset_context.is_caption = is_caption;
             }
             "flex-direction" => {
-                self.flex_dir = apply_parsed!(self, values::flex_direction(v));
+                self.reset_flex.flex_dir = apply_parsed!(self, values::flex_direction(v));
             }
             _ => self.apply_flex_items(key, v, hit, vcx),
         }

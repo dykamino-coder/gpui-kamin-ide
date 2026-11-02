@@ -158,11 +158,14 @@ fn zero_normal_overrides_keep_css_and_form_policies_distinct() {
     assert_eq!(f.height.unwrap().px, 0.0);
     assert_eq!(root_normal_line_px("zero", 20.0, vcx), 24.0);
     let mut c = crate::style::computed::Computed::default();
-    c.font_family = Some("zero".into());
-    c.font_size = Some(Len::Px(20.0));
+    c.inh.font.font_family = Some("zero".into());
+    c.inh.font.font_size = Some(Len::Px(20.0));
     let c = crate::style::computed::BoxStyle::from(c);
     assert_eq!(
-        crate::style::ua::forms::text_style(&c, vcx).line_height,
+        crate::style::ua::forms::text_style(&c, vcx)
+            .inh
+            .font
+            .line_height,
         Some(Len::Px(0.0))
     );
 }

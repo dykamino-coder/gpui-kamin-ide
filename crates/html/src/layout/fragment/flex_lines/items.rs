@@ -15,12 +15,12 @@ pub(super) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
         Some(Len::Pct(p)) => Some(p * main),
         _ => None,
     };
-    if ks.basis_content == Some(true) {
+    if ks.reset_flex.basis_content == Some(true) {
         return None;
     }
-    match ks.flex_basis {
-        Some(Len::Auto) | None => px(&ks.width),
-        _ => px(&ks.flex_basis),
+    match ks.reset_flex.flex_basis {
+        Some(Len::Auto) | None => px(&ks.reset_box_layout.width),
+        _ => px(&ks.reset_flex.flex_basis),
     }
 }
 
@@ -32,7 +32,7 @@ pub(super) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
 pub(crate) fn class_a_box(e: &Element) -> bool {
     let blocky = (!e.inline && !inline_display(e))
         || matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::Block)
                 | Some(Display::Flex)
                 | Some(Display::Grid)
@@ -41,9 +41,9 @@ pub(crate) fn class_a_box(e: &Element) -> bool {
         );
     blocky
         && !out_of_flow(&e.style.used())
-        && e.style.used().float.unwrap_or(0) == 0
+        && e.style.used().reset_box_layout.float.unwrap_or(0) == 0
         && !matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::None) | Some(Display::Contents)
         )
 }
@@ -57,7 +57,7 @@ pub(crate) fn class_a_box(e: &Element) -> bool {
 /// (`page-name-flex-004-print`).
 pub(crate) fn item_container(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
@@ -74,9 +74,9 @@ pub(crate) fn inline_display(e: &Element) -> bool {
     // `inline_display`: блоки внутри такого строчного разрывают его
     // (block-in-inline), и их разрывы — точки класса A
     // (`css-break/block-in-inline-015-print`). Его не трогаем.
-    e.style.used().inline_display != Some(true)
+    e.style.used().reset_context.inline_display != Some(true)
         && matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)

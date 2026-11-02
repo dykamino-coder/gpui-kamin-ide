@@ -19,26 +19,29 @@ pub(super) fn container_atom(
     e: &Element,
 ) -> Option<Option<AnyElement>> {
     let vcx = opts.cx.vcx();
-    if e.style.used().display == Some(Display::GridLanes) {
+    if e.style.used().reset_box_layout.display == Some(Display::GridLanes) {
         return Some(Some(opts.cx.contracts.build.element(e, inherited, opts)));
     }
     if multicol_container(&e.style.used()) {
         let merged = box_style(inherited, &e.style, vcx);
-        let gap = match e.style.used().column_gap {
+        let gap = match e.style.used().reset_fragmentation.column_gap {
             Some(Len::Px(v)) => v,
-            _ => match merged.font_size {
+            _ => match merged.inh.font.font_size {
                 Some(Len::Px(size)) => size,
                 _ => opts.base_size(),
             },
         };
-        let shrink_to_fit = match (e.style.used().column_count, e.style.used().column_width) {
+        let shrink_to_fit = match (
+            e.style.used().reset_fragmentation.column_count,
+            e.style.used().reset_fragmentation.column_width,
+        ) {
             (Some(c), Some(Len::Px(w))) if w > 0.0 => Some(c as f32 * w + (c as f32 - 1.0) * gap),
             _ => None,
         };
-        if e.style.used().width.is_some() || shrink_to_fit.is_some() {
+        if e.style.used().reset_box_layout.width.is_some() || shrink_to_fit.is_some() {
             let mut copy = e.clone();
-            if copy.style.used().width.is_none() {
-                copy.style.used_mut().width = shrink_to_fit.map(Len::Px);
+            if copy.style.used().reset_box_layout.width.is_none() {
+                copy.style.used_mut().reset_box_layout.width = shrink_to_fit.map(Len::Px);
             }
             return Some(Some(
                 opts.cx.contracts.build.element(&copy, inherited, opts),
@@ -47,7 +50,7 @@ pub(super) fn container_atom(
     }
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
-    if e.style.used().display == Some(Display::InlineTable) {
+    if e.style.used().reset_box_layout.display == Some(Display::InlineTable) {
         let built = table(e, &box_style(inherited, &e.style, vcx), opts);
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
@@ -85,10 +88,10 @@ pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> 
     // лунки — тоже свой путь (`row-auto-repeat-auto-023/024` ломаются с
     // переносом признака).
     if !matches!(
-        inherited.display,
+        inherited.reset_box_layout.display,
         Some(Display::TableCell) | Some(Display::GridLanes)
     ) {
-        copy.style.used_mut().cb_height_def_hint =
+        copy.style.used_mut().reset_context.cb_height_def_hint =
             box_style(inherited, &e.style, vcx).cb_height_def;
     }
     // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
@@ -115,7 +118,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // блока (`svg::stretch_fit`): ширина родителя, когда она в
     // точках, иначе ближайшая известная (`BoxConstraints::cb_width` — та же, что у
     // картинки с одним соотношением в `image_with`).
-    let cb_w = match inherited.width {
+    let cb_w = match inherited.reset_box_layout.width {
         Some(Len::Px(v)) if v > 0.0 => Some(v),
         _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
     };
@@ -176,7 +179,7 @@ pub(super) fn canvas_atom(
     // Под обособлением размера холст меряется как пустой
     // (css-contain-2 §size containment) — там наполнителя быть не
     // должно, иначе он вернул бы размер, который обособление сняло.
-    let ratio = e.style.used().aspect_ratio.filter(|r| {
+    let ratio = e.style.used().reset_shapes.aspect_ratio.filter(|r| {
         r.is_finite()
             && *r > 0.0
             && !e.style.used().contains_width()
@@ -194,14 +197,18 @@ pub(super) fn canvas_atom(
     let pct = |l: Option<Len>| matches!(l, Some(Len::Pct(_)));
     let d = match ratio {
         Some(r)
-            if (auto(e.style.used().width) || pct(e.style.used().width))
-                && named(e.style.used().height) =>
+            if (auto(e.style.used().reset_box_layout.width)
+                || pct(e.style.used().reset_box_layout.width))
+                && named(e.style.used().reset_box_layout.height) =>
         {
             let mut fill = div().h(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);
             d.child(fill)
         }
-        Some(r) if auto(e.style.used().height) && named(e.style.used().width) => {
+        Some(r)
+            if auto(e.style.used().reset_box_layout.height)
+                && named(e.style.used().reset_box_layout.width) =>
+        {
             let mut fill = div().w(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);
             d.child(fill)

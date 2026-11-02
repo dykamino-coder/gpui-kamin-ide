@@ -14,7 +14,7 @@ pub struct Context {
 impl Context {
     pub fn new(style: &Computed, parent: Self) -> Self {
         Self {
-            rtl: style.rtl.unwrap_or(parent.rtl),
+            rtl: style.inh.writing.rtl.unwrap_or(parent.rtl),
             vertical: style.vertical_decl().unwrap_or(parent.vertical),
             vertical_rl: style.rl_decl().unwrap_or(parent.vertical_rl),
         }

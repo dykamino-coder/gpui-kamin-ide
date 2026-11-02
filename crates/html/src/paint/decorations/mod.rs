@@ -57,7 +57,7 @@ pub(crate) fn decorations(
     // Только у коробки БЕЗ содержимого: над содержимым слой лёг бы поверх
     // детей (filter-region-transformed-composited-child-001).
     if empty
-        && let Some(id) = c.filter_ref.as_deref()
+        && let Some(id) = c.reset_effects.filter_ref.as_deref()
         && let Some(def) = vcx.doc.masks.markup(&format!("filter:{id}"))
     {
         let fill = match c
@@ -93,9 +93,10 @@ pub(crate) fn decorations(
         return out;
     }
     if !(empty
-        && !c.transform_ancestor
-        && c.transform.is_none()
-        && c.filter_ref
+        && !c.reset_transforms.transform_ancestor
+        && c.reset_transforms.transform.is_none()
+        && c.reset_effects
+            .filter_ref
             .as_deref()
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
         && let Some(layer) = crate::paint::background::color_layer(c, vcx)

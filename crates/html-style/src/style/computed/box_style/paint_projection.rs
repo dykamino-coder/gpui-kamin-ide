@@ -59,7 +59,7 @@ impl BoxStyle {
     /// Цвет псевдоэлемента меняет CSS-наследование и foreground своего прогона.
     pub fn overlay_pseudo_color(&mut self, color: Option<Color>) {
         if let Some(color) = color {
-            self.color = Some(color);
+            self.inh.ui.color = Some(color);
             self.own_paint_mut().foreground.color = Some(color);
         }
     }
@@ -94,15 +94,24 @@ mod tests {
         }
         let original = BoxStyle::new(css);
         let hidden = original.without_own_decorations();
-        assert_eq!(hidden.hidden, Some(true));
-        assert_eq!(hidden.color, original.color);
-        assert_eq!(hidden.background, original.background);
-        assert_eq!(hidden.border_colors, original.border_colors);
+        assert_eq!(hidden.inh.ui.hidden, Some(true));
+        assert_eq!(hidden.inh.ui.color, original.inh.ui.color);
+        assert_eq!(
+            hidden.reset_background.background,
+            original.reset_background.background
+        );
+        assert_eq!(
+            hidden.reset_border.border_colors,
+            original.reset_border.border_colors
+        );
         assert_eq!(hidden.borders(), original.borders());
-        assert_eq!(hidden.radius, original.radius);
-        assert_eq!(hidden.outline, original.outline);
-        assert_eq!(hidden.shadows, original.shadows);
-        assert_eq!(hidden.inset_shadows, original.inset_shadows);
+        assert_eq!(hidden.reset_border.radius, original.reset_border.radius);
+        assert_eq!(hidden.reset_border.outline, original.reset_border.outline);
+        assert_eq!(hidden.reset_effects.shadows, original.reset_effects.shadows);
+        assert_eq!(
+            hidden.reset_effects.inset_shadows,
+            original.reset_effects.inset_shadows
+        );
         assert!(!hidden.paints_decorations());
         assert!(original.paints_decorations());
         assert!(hidden.paint_background().color.is_none());
@@ -116,14 +125,14 @@ mod tests {
     #[test]
     fn background_capture_and_word_projection_keep_their_own_ink() {
         let mut css = Computed::default();
-        css.color = Some(Color::BLACK);
+        css.inh.ui.color = Some(Color::BLACK);
         let white = Color {
             r: 1.0,
             g: 1.0,
             b: 1.0,
             a: 1.0,
         };
-        css.background = Some(white);
+        css.reset_background.background = Some(white);
         let mut source = BoxStyle::new(css);
         let ink = Color {
             r: 0.5,
@@ -131,11 +140,14 @@ mod tests {
         };
         source.own_paint_mut().foreground.color = Some(ink);
         let captured = source.without_background_color();
-        assert_eq!(captured.background, source.background);
+        assert_eq!(
+            captured.reset_background.background,
+            source.reset_background.background
+        );
         assert!(captured.paint_background().color.is_none());
         assert_eq!(captured.ink(), Some(ink));
         let word = source.text_paint_style();
-        assert_eq!(word.color, source.color);
+        assert_eq!(word.inh.ui.color, source.inh.ui.color);
         assert_eq!(word.foreground_paint(), source.foreground_paint());
         assert!(word.paint_background().color.is_none());
         assert_eq!(source.paint_background().color, Some(white));
@@ -155,7 +167,10 @@ mod tests {
         let original = BoxStyle::new(css);
         let mut projected = original.clone();
         projected.project_border_paint([3, 0, 1, 2]);
-        assert_eq!(projected.border_colors, original.border_colors);
+        assert_eq!(
+            projected.reset_border.border_colors,
+            original.reset_border.border_colors
+        );
         for (side, source) in [3, 0, 1, 2].into_iter().enumerate() {
             assert_eq!(
                 projected.used_border_color(side),
@@ -163,7 +178,7 @@ mod tests {
             );
         }
         let captured = projected.without_paint_filter();
-        assert_eq!(captured.filter, original.filter);
+        assert_eq!(captured.reset_effects.filter, original.reset_effects.filter);
         assert!(captured.paint_filter().is_none());
         assert_eq!(captured.ink(), projected.ink());
         let blue = Color {
@@ -171,8 +186,8 @@ mod tests {
             ..Color::BLACK
         };
         projected.overlay_pseudo_color(Some(blue));
-        assert_eq!(projected.color, Some(blue));
+        assert_eq!(projected.inh.ui.color, Some(blue));
         assert_eq!(projected.ink(), Some(blue));
-        assert_eq!(original.color.unwrap().r, 1.0);
+        assert_eq!(original.inh.ui.color.unwrap().r, 1.0);
     }
 }

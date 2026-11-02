@@ -58,8 +58,8 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.font_size = Some(Len::Px(20.0));
-            with_inherited.line_height = Some(Len::Pct(1.5));
+            with_inherited.inh.font.font_size = Some(Len::Px(20.0));
+            with_inherited.inh.font.line_height = Some(Len::Pct(1.5));
             with_inherited
         };
         style.apply_one(
@@ -69,16 +69,16 @@ mod tests {
         );
         style.resolve_em(16.0, vcx);
         let Some([ContentItem::Image(ImageSource::Filter { program, .. })]) =
-            style.content.as_deref()
+            style.reset_generated.content.as_deref()
         else {
             panic!("typed filter content");
         };
         let shadow = program.shadow.clone().unwrap();
         assert_eq!((shadow.x, shadow.y, shadow.blur), (22.0, 30.0, 0.0));
         assert!(program.cacheable());
-        let before = style.content.clone();
+        let before = style.reset_generated.content.clone();
         style.resolve_em(80.0, vcx);
-        assert_eq!(style.content, before);
+        assert_eq!(style.reset_generated.content, before);
     }
 
     #[test]
@@ -92,12 +92,12 @@ mod tests {
             vcx,
         );
         style.resolve_em(16.0, vcx);
-        let Some(ImageSource::Filter { program, .. }) = &style.bg_image else {
+        let Some(ImageSource::Filter { program, .. }) = &style.reset_background.bg_image else {
             panic!("typed filter");
         };
         assert!(!program.cacheable());
         style.resolve_viewport((500.0, 300.0), vcx);
-        let Some(ImageSource::Filter { program, .. }) = &style.bg_image else {
+        let Some(ImageSource::Filter { program, .. }) = &style.reset_background.bg_image else {
             panic!("typed filter");
         };
         assert_eq!(program.filter.unwrap().blur, 26.0);

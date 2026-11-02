@@ -1,6 +1,6 @@
 //! Аудит чтения полей `Computed`: какие поля разрешённого стиля никто не читает.
 //!
-//! Вход — текст `style/computed/fields.rs` и список исходников-потребителей
+//! Вход — заголовок и CSS-группы `Computed`, список исходников-потребителей
 //! (`sources::CONSUMERS`); выход — `dead_fields()`, имена полей без единого
 //! чтения. Обращение к полю отличается от вызова метода по следующему знаку,
 //! а поля, читаемые через методы стиля (`borders()`, `resolve_logical`,
@@ -77,32 +77,61 @@ const CRATE_INTERNAL: &[&str] = &[
     "clamp_continue",
 ];
 
+/// Листья CSS-групп и факты коробки; ownership handles не являются свойствами.
+fn property_fields(source: &str) -> impl Iterator<Item = &str> {
+    source.lines().filter_map(|line| {
+        let (name, ty) = line.trim().strip_prefix("pub ")?.split_once(':')?;
+        if ty.contains("StyleGroup<") || ty.contains("InheritedGroup") || ty.contains("CloneAudit<")
+        {
+            return None;
+        }
+        let name = name.trim();
+        (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .then_some(name)
+    })
+}
+
 /// Поля разрешённого стиля, которые никто не читает.
 pub fn dead_fields() -> Vec<String> {
-    let source = include_str!("../../../html-style/src/style/computed/fields.rs");
-    let start = match source.find("pub struct Computed {") {
-        Some(i) => i,
-        None => return vec![],
-    };
-    let body = &source[start
-        ..source[start..]
-            .find(
-                "
-}",
-            )
-            .map(|e| start + e)
-            .unwrap_or(source.len())];
-    body.lines()
-        .filter_map(|l| l.trim().strip_prefix("pub "))
-        .filter_map(|l| l.split(':').next())
-        .map(|f| f.trim().to_string())
-        .filter(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .filter(|f| !CRATE_INTERNAL.contains(&f.as_str()))
+    super::field_sources::SOURCES
+        .iter()
+        .flat_map(|source| property_fields(source))
+        .filter(|f| !CRATE_INTERNAL.contains(f))
         .filter(|f| !CONSUMERS.iter().any(|src| reads_field(src, f)))
         .filter(|f| {
             !ACCESSORS
                 .iter()
                 .any(|(field, call)| field == f && CONSUMERS.iter().any(|src| src.contains(call)))
         })
+        .map(str::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_checks_leaf_properties_instead_of_ownership_handles() {
+        let source = "pub struct Style {\n pub reset_border: StyleGroup<Border>,\n pub inh: InheritedGroup,\n pub clone_audit: CloneAudit<false>,\n pub decor_box: u64,\n}\npub struct Border {\n pub border_width: Sides,\n pub radius2: f32,\n}";
+        assert_eq!(
+            property_fields(source).collect::<Vec<_>>(),
+            ["decor_box", "border_width", "radius2"]
+        );
+        assert!(!reads_field("style.reset_border.border_width", "radius2"));
+        assert!(reads_field(
+            "style.reset_border.border_width",
+            "border_width"
+        ));
+    }
+
+    #[test]
+    fn every_group_contributes_its_css_leaves() {
+        let fields: Vec<_> = super::super::field_sources::SOURCES
+            .iter()
+            .flat_map(|s| property_fields(s))
+            .collect();
+        assert!(fields.len() >= 528);
+        assert!(fields.contains(&"border_width") && fields.contains(&"font_families"));
+    }
 }

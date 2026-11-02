@@ -23,9 +23,9 @@ pub(super) fn normalize(
         && through_strut(flow, crate::layout::block::margins::MarginCx::new(vcx)).is_some();
     if zero {
         if vertical {
-            copy.style.used_mut().width = Some(Len::Px(0.0));
+            copy.style.used_mut().reset_box_layout.width = Some(Len::Px(0.0));
         } else {
-            copy.style.used_mut().height = Some(Len::Px(0.0));
+            copy.style.used_mut().reset_box_layout.height = Some(Len::Px(0.0));
         }
     }
     (empty, zero)
@@ -68,17 +68,17 @@ mod tests {
                 if zero {
                     assert_eq!(
                         if vertical {
-                            copy.style.used().width
+                            copy.style.used().reset_box_layout.width
                         } else {
-                            copy.style.used().height
+                            copy.style.used().reset_box_layout.height
                         },
                         Some(Len::Px(0.0))
                     );
                     assert_eq!(
                         if vertical {
-                            copy.style.used().height
+                            copy.style.used().reset_box_layout.height
                         } else {
-                            copy.style.used().width
+                            copy.style.used().reset_box_layout.width
                         },
                         None
                     );

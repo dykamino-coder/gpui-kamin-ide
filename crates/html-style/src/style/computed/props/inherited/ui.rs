@@ -174,42 +174,48 @@ impl Computed {
                 let Some(parsed) = StyleColor::parse_value(v, vcx) else {
                     return;
                 };
-                self.color_initial = false;
-                (self.color, self.color_function) = match parsed {
+                self.reset_cascade.color_initial = false;
+                (self.inh.ui.color, self.reset_cascade.color_function) = match parsed {
                     StyleColor::Current => (None, None),
                     StyleColor::Absolute(color) => (Some(color), None),
                     function => (None, Some(function)),
                 };
             }
-            ColorScheme => self.color_scheme = color_scheme(v).or(self.color_scheme.take()),
-            Cursor => self.cursor = cursor(v).or(self.cursor.take()),
+            ColorScheme => {
+                self.inh.ui.color_scheme = color_scheme(v).or(self.inh.ui.color_scheme.take())
+            }
+            Cursor => self.inh.ui.cursor = cursor(v).or(self.inh.ui.cursor.take()),
             PointerEvents => {
-                self.pointer_events_none = pointer_events(v).or(self.pointer_events_none)
+                self.inh.ui.pointer_events_none =
+                    pointer_events(v).or(self.inh.ui.pointer_events_none)
             }
             Visibility => {
                 if let Some((hidden, collapsed)) = visibility(v) {
-                    self.hidden = Some(hidden);
-                    self.collapsed = Some(collapsed);
+                    self.inh.ui.hidden = Some(hidden);
+                    self.reset_context.collapsed = Some(collapsed);
                 }
             }
             AccentColor => {
                 if let Some(c) = ColorOrAuto::parse_value(v, vcx) {
-                    self.accent_color = Some(c);
+                    self.inh.ui.accent_color = Some(c);
                 }
             }
             CaretColor => {
                 if let Some(c) = ColorOrAuto::parse_value(v, vcx) {
-                    self.caret_color = Some(c);
+                    self.inh.ui.caret_color = Some(c);
                 }
             }
             ScrollbarColor => {
                 if let Some(colors) = scrollbar_color(v, vcx) {
-                    self.scroll.colors = Some(colors);
+                    self.reset_box_layout.scroll.colors = Some(colors);
                 }
             }
-            ImageRendering => self.image_pixelated = image_rendering(v).or(self.image_pixelated),
+            ImageRendering => {
+                self.inh.ui.image_pixelated = image_rendering(v).or(self.inh.ui.image_pixelated)
+            }
             ImageOrientation => {
-                self.image_orient_none = image_orientation(v).or(self.image_orient_none)
+                self.inh.ui.image_orient_none =
+                    image_orientation(v).or(self.inh.ui.image_orient_none)
             }
             _ => {}
         }
@@ -219,22 +225,22 @@ impl Computed {
         use LonghandId::*;
         match id {
             Color => {
-                self.color = None;
-                self.color_function = None;
-                self.color_initial = false;
+                self.inh.ui.color = None;
+                self.reset_cascade.color_function = None;
+                self.reset_cascade.color_initial = false;
             }
-            ColorScheme => self.color_scheme = None,
-            Cursor => self.cursor = None,
-            PointerEvents => self.pointer_events_none = None,
+            ColorScheme => self.inh.ui.color_scheme = None,
+            Cursor => self.inh.ui.cursor = None,
+            PointerEvents => self.inh.ui.pointer_events_none = None,
             Visibility => {
-                self.hidden = None;
-                self.collapsed = None;
+                self.inh.ui.hidden = None;
+                self.reset_context.collapsed = None;
             }
-            AccentColor => self.accent_color = None,
-            CaretColor => self.caret_color = None,
-            ScrollbarColor => self.scroll.colors = None,
-            ImageRendering => self.image_pixelated = None,
-            ImageOrientation => self.image_orient_none = None,
+            AccentColor => self.inh.ui.accent_color = None,
+            CaretColor => self.inh.ui.caret_color = None,
+            ScrollbarColor => self.reset_box_layout.scroll.colors = None,
+            ImageRendering => self.inh.ui.image_pixelated = None,
+            ImageOrientation => self.inh.ui.image_orient_none = None,
             _ => {}
         }
     }

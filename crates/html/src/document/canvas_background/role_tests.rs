@@ -25,16 +25,22 @@ fn own_root_source_survives_box_transport_without_rewriting_or_inheriting_css() 
         let boxed = box_style(&BoxStyle::default(), &root.style, vcx);
         let source = boxed.canvas_background.clone().unwrap();
         assert_eq!(source, CanvasBackgroundSource::Root);
-        assert_eq!(boxed.background, root.style.computed().background);
-        assert_eq!(boxed.radius, root.style.computed().radius);
+        assert_eq!(
+            boxed.reset_background.background,
+            root.style.computed().reset_background.background
+        );
+        assert_eq!(
+            boxed.reset_border.radius,
+            root.style.computed().reset_border.radius
+        );
         let body_box = box_style(&boxed, &body.style, vcx);
         let child_box = box_style(&body_box, &child.style, vcx);
         assert!(body_box.canvas_background.is_none());
         assert!(child_box.canvas_background.is_none());
         assert!(body_box.background_paint.paints());
         assert_eq!(
-            child.style.computed().background,
-            body.style.computed().background
+            child.style.computed().reset_background.background,
+            body.style.computed().reset_background.background
         );
         // Заимствованный, потребляющий и restyle-пути сохраняют ту же роль.
         let restyled = boxed.restyled((**boxed.style_rc()).clone());
@@ -45,8 +51,11 @@ fn own_root_source_survives_box_transport_without_rewriting_or_inheriting_css() 
         ] {
             let input = transported.used();
             assert_eq!(input.canvas_background.as_ref(), Some(&source));
-            assert_eq!(input.background, boxed.background);
-            assert_eq!(input.radius, boxed.radius);
+            assert_eq!(
+                input.reset_background.background,
+                boxed.reset_background.background
+            );
+            assert_eq!(input.reset_border.radius, boxed.reset_border.radius);
         }
     }
 }

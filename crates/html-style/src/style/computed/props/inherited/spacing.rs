@@ -138,57 +138,61 @@ impl Computed {
         use LonghandId::*;
         match id {
             LetterSpacing => {
-                self.letter_spacing = Len::parse_spacing(v, vcx).or(self.letter_spacing)
+                self.inh.text_flow.letter_spacing =
+                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.letter_spacing)
             }
-            WordSpacing => self.word_spacing = Len::parse_spacing(v, vcx).or(self.word_spacing),
+            WordSpacing => {
+                self.inh.text_flow.word_spacing =
+                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.word_spacing)
+            }
             TextIndent => {
                 if let Some((length, each, hanging)) = text_indent(v, vcx) {
-                    self.text_indent = Some(length);
-                    self.text_indent_each_line = Some(each);
-                    self.text_indent_hanging = Some(hanging);
+                    self.inh.text_flow.text_indent = Some(length);
+                    self.inh.text_flow.text_indent_each_line = Some(each);
+                    self.inh.text_flow.text_indent_hanging = Some(hanging);
                 }
             }
             TextAlignAll => match align(v, false) {
                 Some(None) => {
-                    self.text_align = None;
-                    self.text_align_match_parent |= 1;
+                    self.inh.text_flow.text_align = None;
+                    self.reset_text_box.text_align_match_parent |= 1;
                 }
                 Some(Some(a)) => {
-                    self.text_align = a;
-                    self.text_align_match_parent &= !1;
+                    self.inh.text_flow.text_align = a;
+                    self.reset_text_box.text_align_match_parent &= !1;
                 }
                 None => {}
             },
             TextAlignLast => match align(v, true) {
                 Some(None) => {
-                    self.text_align_last = None;
-                    self.text_align_match_parent |= 2;
+                    self.inh.text_flow.text_align_last = None;
+                    self.reset_text_box.text_align_match_parent |= 2;
                 }
                 Some(Some(a)) => {
-                    self.text_align_last = Some(a);
-                    self.text_align_match_parent &= !2;
+                    self.inh.text_flow.text_align_last = Some(a);
+                    self.reset_text_box.text_align_match_parent &= !2;
                 }
                 None => {}
             },
             TextJustify => {
                 if let Some((none, ruby, chars)) = text_justify(v) {
-                    self.no_justify = Some(none);
-                    self.ruby_justify = Some(ruby);
-                    self.justify_chars = Some(chars);
+                    self.inh.text_flow.no_justify = Some(none);
+                    self.inh.text_flow.ruby_justify = Some(ruby);
+                    self.inh.text_flow.justify_chars = Some(chars);
                 }
             }
             TextTransform => {
                 if let Some((case, flags)) = text_transform(v) {
-                    self.text_transform = Some(case);
-                    self.text_transform_flags = flags;
+                    self.inh.text_flow.text_transform = Some(case);
+                    self.inh.text_flow.text_transform_flags = flags;
                 }
             }
             TabSize => match tab_size(v, vcx) {
                 Some(TabSizeValue::Spaces(n)) => {
-                    (self.tab_size, self.tab_size_len) = (Some(n), None)
+                    (self.inh.text_flow.tab_size, self.inh.text_flow.tab_size_len) = (Some(n), None)
                 }
                 Some(TabSizeValue::Length(l)) => {
-                    (self.tab_size, self.tab_size_len) = (None, Some(l))
+                    (self.inh.text_flow.tab_size, self.inh.text_flow.tab_size_len) = (None, Some(l))
                 }
                 None => {}
             },
@@ -200,31 +204,33 @@ impl Computed {
     pub(super) fn inherit_spacing(&mut self, id: LonghandId) -> bool {
         use LonghandId::*;
         match id {
-            LetterSpacing => self.letter_spacing = None,
-            WordSpacing => self.word_spacing = None,
+            LetterSpacing => self.inh.text_flow.letter_spacing = None,
+            WordSpacing => self.inh.text_flow.word_spacing = None,
             TextIndent => {
-                self.text_indent = None;
-                self.text_indent_each_line = None;
-                self.text_indent_hanging = None;
+                self.inh.text_flow.text_indent = None;
+                self.inh.text_flow.text_indent_each_line = None;
+                self.inh.text_flow.text_indent_hanging = None;
             }
             TextAlignAll => {
-                self.text_align = None;
-                self.text_align_match_parent &= !1;
+                self.inh.text_flow.text_align = None;
+                self.reset_text_box.text_align_match_parent &= !1;
             }
             TextAlignLast => {
-                self.text_align_last = None;
-                self.text_align_match_parent &= !2;
+                self.inh.text_flow.text_align_last = None;
+                self.reset_text_box.text_align_match_parent &= !2;
             }
             TextJustify => {
-                self.no_justify = None;
-                self.ruby_justify = None;
-                self.justify_chars = None;
+                self.inh.text_flow.no_justify = None;
+                self.inh.text_flow.ruby_justify = None;
+                self.inh.text_flow.justify_chars = None;
             }
             TextTransform => {
-                self.text_transform = None;
-                self.text_transform_flags = 0;
+                self.inh.text_flow.text_transform = None;
+                self.inh.text_flow.text_transform_flags = 0;
             }
-            TabSize => (self.tab_size, self.tab_size_len) = (None, None),
+            TabSize => {
+                (self.inh.text_flow.tab_size, self.inh.text_flow.tab_size_len) = (None, None)
+            }
             _ => return false,
         }
         true

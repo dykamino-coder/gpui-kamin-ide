@@ -18,7 +18,11 @@ fn unwrapped(body: &str) -> Vec<Node> {
 }
 
 fn filter(e: &Element) -> Option<(f32, f32)> {
-    e.style.cascaded().filter.map(|f| (f.opacity, f.brightness))
+    e.style
+        .cascaded()
+        .reset_effects
+        .filter
+        .map(|f| (f.opacity, f.brightness))
 }
 
 #[test]
@@ -26,7 +30,10 @@ fn unwrapped_root_filter_moves_to_content() {
     let nodes = unwrapped("<body><p>a</p></body>");
     let p = find(&nodes, "p");
     assert_eq!(filter(p), Some((0.5, 1.0)));
-    assert_eq!(p.style.cascaded().scrollbar_filter_ops.len(), 1);
+    assert_eq!(
+        p.style.cascaded().reset_effects.scrollbar_filter_ops.len(),
+        1
+    );
 }
 
 #[test]

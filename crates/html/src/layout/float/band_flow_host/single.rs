@@ -30,30 +30,35 @@ pub(super) async fn build(
         return None;
     }
     let c = node.style.used();
-    let side = c.float.filter(|f| *f != 0)?;
+    let side = c.reset_box_layout.float.filter(|f| *f != 0)?;
     let zero = |v| matches!(v, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     // Доли и особые форматирующие контексты пока требуют ширины из плана полос.
     let absolute = |v| matches!(v, None | Some(Len::Auto) | Some(Len::Px(_)));
     if own_layout_mode(&c)
         || replaced_tag(node)
-        || c.display == Some(Display::ListItem)
+        || c.reset_box_layout.display == Some(Display::ListItem)
         || c.wm().vertical()
         || c.clamp_lines().is_some()
         || c.clamp_by_height()
-        || ![c.margin.top, c.margin.right, c.margin.bottom, c.margin.left]
-            .into_iter()
-            .all(zero)
         || ![
-            c.width,
-            c.height,
-            c.min_width,
-            c.max_width,
-            c.min_height,
-            c.max_height,
-            c.padding.top,
-            c.padding.right,
-            c.padding.bottom,
-            c.padding.left,
+            c.reset_box_layout.margin.top,
+            c.reset_box_layout.margin.right,
+            c.reset_box_layout.margin.bottom,
+            c.reset_box_layout.margin.left,
+        ]
+        .into_iter()
+        .all(zero)
+        || ![
+            c.reset_box_layout.width,
+            c.reset_box_layout.height,
+            c.reset_box_layout.min_width,
+            c.reset_box_layout.max_width,
+            c.reset_box_layout.min_height,
+            c.reset_box_layout.max_height,
+            c.reset_box_layout.padding.top,
+            c.reset_box_layout.padding.right,
+            c.reset_box_layout.padding.bottom,
+            c.reset_box_layout.padding.left,
         ]
         .into_iter()
         .all(absolute)
@@ -62,19 +67,19 @@ pub(super) async fn build(
     }
     let mut copy = node.clone();
     let c = copy.style.used_mut();
-    c.float = None;
-    c.floated_box = true;
-    c.flex_shrink = Some(0.0);
-    c.band_kid = true;
-    c.clear = None;
-    c.margin = Default::default();
-    c.flow_root = Some(true);
+    c.reset_box_layout.float = None;
+    c.reset_context.floated_box = true;
+    c.reset_flex.flex_shrink = Some(0.0);
+    c.reset_context.band_kid = true;
+    c.reset_box_layout.clear = None;
+    c.reset_box_layout.margin = Default::default();
+    c.reset_context.flow_root = Some(true);
     let mut parent = inherited.clone();
     if let Some(h) = host.cbh {
-        parent.height = Some(Len::Px(h));
+        parent.reset_box_layout.height = Some(Len::Px(h));
     }
     if let Some(w) = host.cbw {
-        parent.width = Some(Len::Px(w));
+        parent.reset_box_layout.width = Some(Len::Px(w));
     }
     let child_opts = opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
     let child =
@@ -183,8 +188,8 @@ mod tests {
             pending.extend(node.children.iter());
         };
         let mut copy = source.clone();
-        copy.style.used_mut().float = None;
-        copy.style.used_mut().floated_box = true;
+        copy.style.used_mut().reset_box_layout.float = None;
+        copy.style.used_mut().reset_context.floated_box = true;
         let opts = RenderOpts {
             text: gpui::TextStyle::default(),
             viewport: (100., 100.),

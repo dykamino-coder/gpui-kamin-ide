@@ -24,7 +24,7 @@ impl Computed {
             None => h,
         };
         self.accept_declaration();
-        self.radius = h;
+        self.reset_border.radius = h;
         // CSS Backgrounds 3 §5.1: the slash supplies independent vertical radii.
         // Preserve the units; percentage bases are only available at paint time.
         let pair = |a, b| match (a, b) {
@@ -37,7 +37,7 @@ impl Computed {
             pair(h.br, v.br),
             pair(h.bl, v.bl),
         ];
-        self.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
+        self.reset_border.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
     }
 
     pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str, vcx: ValueCx<'_>) {
@@ -58,17 +58,17 @@ impl Computed {
             _ => 3,
         };
         match slot {
-            0 => self.radius.tl = x,
-            1 => self.radius.tr = x,
-            2 => self.radius.br = x,
-            _ => self.radius.bl = x,
+            0 => self.reset_border.radius.tl = x,
+            1 => self.reset_border.radius.tr = x,
+            2 => self.reset_border.radius.br = x,
+            _ => self.reset_border.radius.bl = x,
         }
-        let mut ell = self.radius_ell.unwrap_or([None; 4]);
+        let mut ell = self.reset_border.radius_ell.unwrap_or([None; 4]);
         ell[slot] = match (x, y) {
             (Some(x), Some(y)) if x != y => Some((x, y)),
             _ => None,
         };
-        self.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
+        self.reset_border.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
     }
 
     pub fn resolve_radius_lengths(&mut self, fix: impl Fn(&mut Option<Len>)) {
@@ -78,15 +78,18 @@ impl Computed {
                 *value = value.max(0.0);
             }
         };
-        for corner in [
-            &mut self.radius.tl,
-            &mut self.radius.tr,
-            &mut self.radius.br,
-            &mut self.radius.bl,
-        ] {
+        for corner in {
+            let group_0 = &mut *self.reset_border;
+            [
+                &mut group_0.radius.tl,
+                &mut group_0.radius.tr,
+                &mut group_0.radius.br,
+                &mut group_0.radius.bl,
+            ]
+        } {
             resolve(corner);
         }
-        if let Some(corners) = self.radius_ell.as_mut() {
+        if let Some(corners) = self.reset_border.radius_ell.as_mut() {
             for (x, y) in corners.iter_mut().flatten() {
                 let mut rx = Some(*x);
                 let mut ry = Some(*y);

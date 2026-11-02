@@ -29,7 +29,7 @@ fn tracks(t: &mut TrackSize, k: f32) {
 }
 
 pub(super) fn scale(c: &mut Computed, k: f32) {
-    if let Some(corners) = &mut c.radius_ell {
+    if let Some(corners) = &mut c.reset_border.radius_ell {
         for (x, y) in corners.iter_mut().flatten() {
             for len in [x, y] {
                 match len {
@@ -39,22 +39,25 @@ pub(super) fn scale(c: &mut Computed, k: f32) {
             }
         }
     }
-    if let Some(image) = &mut c.border_image {
+    if let Some(image) = &mut c.reset_border.border_image {
         for width in image.width.iter_mut().chain(image.outset.iter_mut()) {
             if let BorderImageWidth::Px(v) = width {
                 *v *= k;
             }
         }
     }
-    if let Some(filter) = &mut c.filter {
+    if let Some(filter) = &mut c.reset_effects.filter {
         filter.blur *= k;
     }
-    for list in [
-        &mut c.grid_tracks,
-        &mut c.grid_rows,
-        &mut c.auto_repeat_body_cols,
-        &mut c.auto_repeat_body_rows,
-    ]
+    for list in {
+        let group_0 = &mut *c.reset_grid;
+        [
+            &mut group_0.grid_tracks,
+            &mut group_0.grid_rows,
+            &mut group_0.auto_repeat_body_cols,
+            &mut group_0.auto_repeat_body_rows,
+        ]
+    }
     .into_iter()
     .flatten()
     {
@@ -62,31 +65,44 @@ pub(super) fn scale(c: &mut Computed, k: f32) {
             tracks(t, k);
         }
     }
-    for t in [&mut c.grid_auto_cols, &mut c.grid_auto_rows]
-        .into_iter()
-        .flatten()
+    for t in {
+        let group_0 = &mut *c.reset_grid;
+        [&mut group_0.grid_auto_cols, &mut group_0.grid_auto_rows]
+    }
+    .into_iter()
+    .flatten()
     {
         tracks(t, k);
     }
-    for t in c
+    let grid = &mut *c.reset_grid;
+    for t in grid
         .grid_auto_cols_list
         .iter_mut()
-        .chain(c.grid_auto_rows_list.iter_mut())
+        .chain(grid.grid_auto_rows_list.iter_mut())
     {
         tracks(t, k);
     }
-    for value in [&mut c.grid_auto_fill_min, &mut c.grid_auto_fill_row]
-        .into_iter()
-        .flatten()
+    for value in {
+        let group_0 = &mut *c.reset_grid;
+        [
+            &mut group_0.grid_auto_fill_min,
+            &mut group_0.grid_auto_fill_row,
+        ]
+    }
+    .into_iter()
+    .flatten()
     {
         *value *= k;
     }
-    for value in &mut c.grid_auto_fill_tracks {
+    for value in &mut c.reset_grid.grid_auto_fill_tracks {
         *value *= k;
     }
-    for repeat in [&mut c.auto_repeat_cols, &mut c.auto_repeat_rows]
-        .into_iter()
-        .flatten()
+    for repeat in {
+        let group_0 = &mut *c.reset_grid;
+        [&mut group_0.auto_repeat_cols, &mut group_0.auto_repeat_rows]
+    }
+    .into_iter()
+    .flatten()
     {
         repeat.track = repeat.track.map(|v| v * k);
         repeat.fit_px = repeat.fit_px.map(|v| v * k);
@@ -106,14 +122,14 @@ mod tests {
         c.apply_one("border-image-width", "2 10px 20% auto", vcx);
         scale(&mut c, 2.0);
         assert_eq!(
-            c.grid_tracks,
+            c.reset_grid.grid_tracks,
             Some(vec![
                 TrackSize::MinMax(Track::Px(20.0), Track::Fr(1.0)),
                 TrackSize::Single(Track::Pct(0.25)),
             ])
         );
         assert_eq!(
-            c.border_image.unwrap().width,
+            c.reset_border.border_image.clone().unwrap().width,
             [
                 BorderImageWidth::Times(2.0),
                 BorderImageWidth::Px(20.0),

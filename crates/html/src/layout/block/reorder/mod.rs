@@ -17,7 +17,7 @@ pub(crate) use orthogonal::orthogonal_vertical_children;
 /// разметки, как того требует CSS.
 pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     let ordered = nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.used().order.is_some(),
+        Node::Element(e) => e.style.used().reset_flex.order.is_some(),
         Node::Text(_) => false,
     });
     if !ordered {
@@ -76,14 +76,14 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     nodes.sort_by_key(|n| match n {
         Node::Element(e)
             if matches!(
-                e.style.used().position,
+                e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             0
         }
-        Node::Element(e) => e.style.used().order.unwrap_or(0),
+        Node::Element(e) => e.style.used().reset_flex.order.unwrap_or(0),
         Node::Text(_) => 0,
     });
     nodes
@@ -123,7 +123,7 @@ pub(crate) fn resolve_inline_pct(
     vertical: bool,
 ) -> Vec<Node> {
     if matches!(
-        container.display,
+        container.reset_box_layout.display,
         Some(Display::Grid) | Some(Display::InlineGrid)
     ) {
         return children;
@@ -136,8 +136,8 @@ pub(crate) fn resolve_inline_pct(
             [
                 b.top,
                 b.bottom,
-                container.padding.top,
-                container.padding.bottom,
+                container.reset_box_layout.padding.top,
+                container.reset_box_layout.padding.bottom,
             ],
         )
     } else {
@@ -146,8 +146,8 @@ pub(crate) fn resolve_inline_pct(
             [
                 b.left,
                 b.right,
-                container.padding.left,
-                container.padding.right,
+                container.reset_box_layout.padding.left,
+                container.reset_box_layout.padding.right,
             ],
         )
     };
@@ -169,16 +169,17 @@ pub(crate) fn resolve_inline_pct(
             continue;
         }
         let s = &mut *ch.style.used_mut();
-        for side in [
-            &mut s.margin.top,
-            &mut s.margin.right,
-            &mut s.margin.bottom,
-            &mut s.margin.left,
-            &mut s.padding.top,
-            &mut s.padding.right,
-            &mut s.padding.bottom,
-            &mut s.padding.left,
-        ] {
+        for style_field_index in 0..8 {
+            let side = match style_field_index {
+                0 => &mut s.reset_box_layout.margin.top,
+                1 => &mut s.reset_box_layout.margin.right,
+                2 => &mut s.reset_box_layout.margin.bottom,
+                3 => &mut s.reset_box_layout.margin.left,
+                4 => &mut s.reset_box_layout.padding.top,
+                5 => &mut s.reset_box_layout.padding.right,
+                6 => &mut s.reset_box_layout.padding.bottom,
+                _ => &mut s.reset_box_layout.padding.left,
+            };
             if let Some(Len::Pct(k)) = side {
                 *side = Some(Len::Px(*k * base));
             }

@@ -134,15 +134,17 @@ pub(super) async fn cell_contents(
         ]
     } else if clipped {
         vec![table_clipped_content::wrap(&mut d, inside)]
-    } else if matches!(cm.vertical_align, Some(Align::Center) | Some(Align::End))
-        && !e.style.used().wm().vertical()
+    } else if matches!(
+        cm.inh.text_flow.vertical_align,
+        Some(Align::Center) | Some(Align::End)
+    ) && !e.style.used().wm().vertical()
         && cell.children.iter().any(|n| {
             matches!(n, Node::Element(c) if matches!(
-                c.style.used().position,
+                c.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && matches!(c.style.used().inset.top, None | Some(Len::Auto))
-                && matches!(c.style.used().inset.bottom, None | Some(Len::Auto)))
+            ) && matches!(c.style.used().reset_positioned.inset.top, None | Some(Len::Auto))
+                && matches!(c.style.used().reset_positioned.inset.bottom, None | Some(Len::Auto)))
         })
     {
         // CSS 2.1 §17.5.3 aligns the cell's IN-FLOW content; an

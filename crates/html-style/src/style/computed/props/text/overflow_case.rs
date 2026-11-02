@@ -15,10 +15,15 @@ impl Computed {
         match key {
             "text-overflow" => {
                 if v.trim().eq_ignore_ascii_case("inherit") {
-                    self.text_overflow_inherit = true;
+                    self.reset_text_box.text_overflow_inherit = true;
                     return;
                 }
-                css_wide_reset!(self, ellipsis, overflow_marker, text_overflow_inherit);
+                css_wide_reset!(
+                    self,
+                    reset_text_box.ellipsis,
+                    reset_text_box.overflow_marker,
+                    reset_text_box.text_overflow_inherit
+                );
                 // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
                 // сторон. Наша обрезка — конец строки: берётся последнее
                 // не-clip значение.
@@ -59,7 +64,7 @@ impl Computed {
                 {
                     return;
                 }
-                self.text_overflow_inherit = false;
+                self.reset_text_box.text_overflow_inherit = false;
                 for t in tokens {
                     if let Some(text) = t.strip_prefix('\u{0}') {
                         on = true;
@@ -75,8 +80,8 @@ impl Computed {
                         marker = None;
                     }
                 }
-                self.ellipsis = accept_parsed!(self, Some(on));
-                self.overflow_marker = marker;
+                self.reset_text_box.ellipsis = accept_parsed!(self, Some(on));
+                self.reset_text_box.overflow_marker = marker;
             }
             _ => self.apply_text_vertical_clamp(key, v, hit, vcx),
         }

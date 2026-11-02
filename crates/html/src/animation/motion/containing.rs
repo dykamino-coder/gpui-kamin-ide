@@ -28,13 +28,13 @@ pub(super) fn apply_offset_transforms(
         let mine = cb_of(&e.style.used())
             .map(|g| (g, crate::text::inline::establishes_cb(&e.style.used())));
         let est = crate::text::inline::establishes_cb(&e.style.used());
-        let in_icb = match e.style.used().position {
+        let in_icb = match e.style.used().reset_positioned.position {
             Some(Position::Absolute) => icb_open,
             Some(Position::Fixed) => true,
             _ => false,
         };
         if super::motion_style(&e.style.used()).offset_path.is_some() && in_icb {
-            e.style.used_mut().offset_icb = true;
+            e.style.used_mut().reset_transforms.offset_icb = true;
         } else if super::motion_style(&e.style.used()).offset_path.is_some() {
             let cb = parent
                 .filter(|(_, est)| cb_is_parent(&e.style.used(), *est))
@@ -52,7 +52,7 @@ pub(super) fn apply_offset_transforms(
 /// Во всех прочих случаях геометрию содержащего блока этот проход не знает и
 /// работает без неё.
 pub(super) fn cb_is_parent(c: &Computed, parent_establishes: bool) -> bool {
-    match c.position {
+    match c.reset_positioned.position {
         Some(Position::Absolute) => parent_establishes,
         Some(Position::Fixed) => false,
         _ => true,
@@ -66,27 +66,27 @@ pub(super) fn cb_is_parent(c: &Computed, parent_establishes: bool) -> bool {
 /// и путь строится ровно теми ветками, которым содержащий блок не нужен.
 pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
     let px = px_lossy_zero;
-    let (w, h) = match (p.width, p.height) {
+    let (w, h) = match (p.reset_box_layout.width, p.reset_box_layout.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w, h),
         _ => return None,
     };
     let b = p.borders();
     let (bt, br, bb, bl) = (px(b.top), px(b.right), px(b.bottom), px(b.left));
     let (pt, pr, pb, pl) = (
-        px(p.padding.top),
-        px(p.padding.right),
-        px(p.padding.bottom),
-        px(p.padding.left),
+        px(p.reset_box_layout.padding.top),
+        px(p.reset_box_layout.padding.right),
+        px(p.reset_box_layout.padding.bottom),
+        px(p.reset_box_layout.padding.left),
     );
     let (mt, mr, mb, ml) = (
-        px(p.margin.top),
-        px(p.margin.right),
-        px(p.margin.bottom),
-        px(p.margin.left),
+        px(p.reset_box_layout.margin.top),
+        px(p.reset_box_layout.margin.right),
+        px(p.reset_box_layout.margin.bottom),
+        px(p.reset_box_layout.margin.left),
     );
     // `box-sizing: border-box` — записанная длина уже включает рамку и поля
     // (css-sizing-3 §3.1).
-    let (cw, ch) = if p.border_box == Some(true) {
+    let (cw, ch) = if p.reset_border.border_box == Some(true) {
         (
             (w - bl - br - pl - pr).max(0.0),
             (h - bt - bb - pt - pb).max(0.0),
@@ -102,10 +102,22 @@ pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
         _ => 0.0,
     };
     let rad = [
-        (r(p.radius.tl, bw), r(p.radius.tl, bh)),
-        (r(p.radius.tr, bw), r(p.radius.tr, bh)),
-        (r(p.radius.br, bw), r(p.radius.br, bh)),
-        (r(p.radius.bl, bw), r(p.radius.bl, bh)),
+        (
+            r(p.reset_border.radius.tl, bw),
+            r(p.reset_border.radius.tl, bh),
+        ),
+        (
+            r(p.reset_border.radius.tr, bw),
+            r(p.reset_border.radius.tr, bh),
+        ),
+        (
+            r(p.reset_border.radius.br, bw),
+            r(p.reset_border.radius.br, bh),
+        ),
+        (
+            r(p.reset_border.radius.bl, bw),
+            r(p.reset_border.radius.bl, bh),
+        ),
     ];
     Some(Cb {
         boxes: [
@@ -129,7 +141,7 @@ pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
 /// потоке не будет прокинуто с раскладки.
 pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
     let px = px_lossy_zero;
-    let abs = matches!(c.position, Some(Position::Absolute));
+    let abs = matches!(c.reset_positioned.position, Some(Position::Absolute));
     // Вставки абсолюта считаются от PADDING-коробки блока (§10.1 п.4), сдвиг
     // относительного — от статической позиции в content-коробке (§9.4.3).
     let base = if abs { g.boxes[2] } else { g.boxes[3] };
@@ -139,16 +151,24 @@ pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
         _ => 0.0,
     };
     g.self_off = (
-        base.0 + len(c.inset.left, base.2),
-        base.1 + len(c.inset.top, base.3),
+        base.0 + len(c.reset_positioned.inset.left, base.2),
+        base.1 + len(c.reset_positioned.inset.top, base.3),
     );
     let b = c.borders();
-    g.self_size = if c.border_box == Some(true) {
-        (px(c.width), px(c.height))
+    g.self_size = if c.reset_border.border_box == Some(true) {
+        (px(c.reset_box_layout.width), px(c.reset_box_layout.height))
     } else {
         (
-            px(c.width) + px(c.padding.left) + px(c.padding.right) + px(b.left) + px(b.right),
-            px(c.height) + px(c.padding.top) + px(c.padding.bottom) + px(b.top) + px(b.bottom),
+            px(c.reset_box_layout.width)
+                + px(c.reset_box_layout.padding.left)
+                + px(c.reset_box_layout.padding.right)
+                + px(b.left)
+                + px(b.right),
+            px(c.reset_box_layout.height)
+                + px(c.reset_box_layout.padding.top)
+                + px(c.reset_box_layout.padding.bottom)
+                + px(b.top)
+                + px(b.bottom),
         )
     };
     g
@@ -157,7 +177,7 @@ pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
 /// Левый верх `fill-box`/`stroke-box` SVG-фигуры (css-transforms-1
 /// §transform-box); у остальных элементов и при `view-box` — нулевой.
 fn svg_origin(e: &crate::dom::Element) -> (f32, f32) {
-    let stroke = match e.style.used().transform_box {
+    let stroke = match e.style.used().reset_transforms.transform_box {
         Some(1) => false,
         Some(2) => true,
         _ => return (0.0, 0.0),

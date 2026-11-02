@@ -57,6 +57,7 @@ pub(super) fn pseudo_style(
     let mut style = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     crate::dom::content::inherit_generated(&mut style, Some(me));
     // Без содержимого коробки нет, а значит нет и счётчиков.
-    (crate::dom::host_content(&style, me, vcx).is_some() && style.display != Some(Display::None))
-        .then_some(style)
+    (crate::dom::host_content(&style, me, vcx).is_some()
+        && style.reset_box_layout.display != Some(Display::None))
+    .then_some(style)
 }

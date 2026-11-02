@@ -9,9 +9,10 @@ pub(super) fn paint_shadows(mut d: Div, c: &BoxStyle) -> Div {
     // У `border-shape` обе тени повторяют фигуру и рисуются растром
     // (`render::grouped` — наружные, `render::decorations` — внутренние);
     // прямоугольные примитивы квада легли бы поверх и мимо фигуры.
-    if !c.inset_shadows.is_empty() && c.border_shape.is_none() {
+    if !c.reset_effects.inset_shadows.is_empty() && c.reset_border.border_shape.is_none() {
         d.style().inset_box_shadow = Some(
-            c.inset_shadows
+            c.reset_effects
+                .inset_shadows
                 .iter()
                 // css-backgrounds-3 §7.1: «The first shadow is on top»; the
                 // list is painted bottom-up, so the last one goes first.
@@ -36,7 +37,7 @@ pub(super) fn paint_shadows(mut d: Div, c: &BoxStyle) -> Div {
                 .collect(),
         );
     }
-    if !c.paint_shadows().is_empty() && c.border_shape.is_none() {
+    if !c.paint_shadows().is_empty() && c.reset_border.border_shape.is_none() {
         d = d.shadow(
             c.paint_shadows()
                 .iter()

@@ -67,13 +67,14 @@ impl SharedStyle {
     /// ancestor's value down to the text runs inside it, which a box must not
     /// take as its own.
     pub fn own_vertical_align(&self) -> Option<crate::style::computed::Align> {
-        let declared = self.cascaded.vertical_align.is_some()
+        let declared = self.cascaded.inh.text_flow.vertical_align.is_some()
             || self
                 .cascaded
+                .reset_cascade
                 .explicit_inherit
                 .contains(&crate::style::cascade::inherited_value::Property::VerticalAlign);
         if declared {
-            self.used().vertical_align
+            self.used().inh.text_flow.vertical_align
         } else {
             None
         }

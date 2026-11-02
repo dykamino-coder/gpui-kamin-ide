@@ -19,16 +19,16 @@ pub(crate) fn own_context(e: &Element) -> bool {
         // HTML §15.3.13: анонимная коробка fieldset — независимый BFC;
         // её дочерние поля не переходят в поля fieldset до измерения копии.
         || (e.tag == "fieldset"
-            && matches!(e.style.used().display, None | Some(crate::style::computed::Display::Block)
+            && matches!(e.style.used().reset_box_layout.display, None | Some(crate::style::computed::Display::Block)
                 | Some(crate::style::computed::Display::ListItem)))
-        || (e.tag == "caption" && e.style.used().display.is_none())
-        || e.style.used().is_caption == Some(true)
+        || (e.tag == "caption" && e.style.used().reset_box_layout.display.is_none())
+        || e.style.used().reset_context.is_caption == Some(true)
         // A table (UA `display: table`, not written into `display`) never
         // collapses through (CSS 2.2 section 17.4: the table wrapper box
         // establishes a block formatting context); as a body's last child it
         // let the preceding paragraph's end margin escape
         // (`visibility-collapse-border-spacing-002`).
-        || (e.tag == "table" && e.style.used().display.is_none())
+        || (e.tag == "table" && e.style.used().reset_box_layout.display.is_none())
         // `continue: collapse` (`line-clamp: <N>`/`auto`, у легаси — пара
         // `-webkit-box` по вертикали) делает блочный контейнер line-clamp
         // контейнером — НЕЗАВИСИМЫМ блочным контекстом (css-overflow-4
@@ -76,7 +76,7 @@ mod tests {
         let mut tree = crate::document::parsed::parse("<div style='float:left'></div>", "");
         let float = find(&mut tree).unwrap();
         assert!(own_context(float));
-        float.style.used_mut().float = None;
+        float.style.used_mut().reset_box_layout.float = None;
         float.marks.float_block = true;
         assert!(own_context(float));
         assert!(bfc_root(float));
@@ -108,7 +108,7 @@ mod tests {
 pub(crate) fn bfc_root(c: &Element) -> bool {
     use crate::style::computed::Display;
     matches!(
-        c.style.used().display,
+        c.style.used().reset_box_layout.display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) && !c.inline
         && (crate::layout::box_kind::own_context(c) || c.tag == "fieldset")

@@ -26,9 +26,19 @@ fn waits_for_later_inflow_anchor_and_all_candidate_dependencies() {
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
-        width: Len::parse("anchor-size(--base width, 1px)", vcx),
-        position_try_fallbacks: parse_try_fallbacks("--other"),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                position_try_fallbacks: parse_try_fallbacks("--other"),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Len::parse("anchor-size(--base width, 1px)", vcx),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_key = 3;
@@ -51,7 +61,7 @@ fn waits_for_later_inflow_anchor_and_all_candidate_dependencies() {
         .borrow_mut()
         .push(("--other".into(), 5, record(5, 0)));
     assert!(deps.ready());
-    c.position_try_fallbacks.clear();
+    c.reset_positioned.position_try_fallbacks.clear();
     assert!(Dependencies::of(&c, &BoxStyle::default(), vcx, &doc.layout).ready());
     doc.layout.anchors.named_seq.borrow_mut().clear();
     assert!(!deps.ready());
@@ -62,8 +72,18 @@ fn later_oof_or_own_descendant_does_not_break_dependency_cycle() {
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
     let mut c = BoxStyle::new(Computed {
-        position: Some(Position::Absolute),
-        width: Len::parse("anchor-size(--a width, 1px)", vcx),
+        reset_positioned: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetPositioned {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+        ),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Len::parse("anchor-size(--a width, 1px)", vcx),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     });
     c.anchor_key = 3;

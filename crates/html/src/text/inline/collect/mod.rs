@@ -20,7 +20,7 @@ mod tests {
         fn positioned(nodes: &[Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|node| match node {
                 Node::Element(e)
-                    if e.style.used().position
+                    if e.style.used().reset_positioned.position
                         == Some(crate::style::computed::Position::Relative) =>
                 {
                     Some(e)
@@ -173,8 +173,8 @@ async fn collect_stack(
         match child {
             Node::Text(t) => {
                 let after_ruby_space = std::mem::take(&mut cx.ruby_space);
-                let collapsible = inherited.keep_spaces != Some(true)
-                    && inherited.preserve_newlines != Some(true);
+                let collapsible = inherited.inh.text_flow.keep_spaces != Some(true)
+                    && inherited.inh.text_flow.preserve_newlines != Some(true);
                 let t = if after_ruby_space && collapsible {
                     t.trim_start_matches([' ', '\t', '\n', '\r'])
                 } else {

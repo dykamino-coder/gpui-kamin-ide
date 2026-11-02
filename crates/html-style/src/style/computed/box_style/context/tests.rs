@@ -8,8 +8,13 @@ use std::rc::Rc;
 #[test]
 fn shared_constructor_keeps_computed_identity_and_height_hints() {
     let computed = Rc::new(Computed {
-        cb_height_def_hint: true,
-        quirk_pct_base_hint: Some(123.0),
+        reset_context: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetContext {
+                cb_height_def_hint: true,
+                quirk_pct_base_hint: Some(123.0),
+                ..Default::default()
+            },
+        ),
         ..Computed::default()
     });
     let boxed = BoxStyle::shared(computed.clone());
@@ -49,7 +54,7 @@ fn context_uses_the_box_parent_and_keeps_computed_inheritance() {
         assert_eq!(boxed.context.parent_grid, grid);
         assert_eq!(boxed.context.parent_flex_grid, flex_grid);
         assert_eq!(boxed.context.cb_wm, parent.wm().line());
-        assert_eq!(boxed.font_size, before.font_size);
+        assert_eq!(boxed.inh.font.font_size, before.inh.font.font_size);
         assert!(Rc::ptr_eq(&before, &own.computed()));
         let ordinary = box_style(&BoxStyle::default(), own, parsed.values());
         assert_eq!(ordinary.context.parent_grid, 0);
@@ -106,11 +111,14 @@ fn contents_keeps_element_inheritance_while_the_box_uses_the_flex_parent() {
     assert!(boxed.context.applicability.flex);
     assert!(boxed.context.applicability.rtl);
     assert!(boxed.context.applicability.wrap_reverse);
-    assert_eq!(boxed.font_size, find("section").style.computed().font_size);
+    assert_eq!(
+        boxed.inh.font.font_size,
+        find("section").style.computed().inh.font.font_size
+    );
     let mut bridge = crate::dom::SharedStyle::layout_made(boxed);
-    bridge.used_mut().width = Some(crate::style::values::value::Len::Px(50.0));
+    bridge.used_mut().reset_box_layout.width = Some(crate::style::values::value::Len::Px(50.0));
     assert!(BoxStyle::shared(bridge.used()).context.applicability.flex);
-    assert!(own.computed().width.is_none());
+    assert!(own.computed().reset_box_layout.width.is_none());
 }
 
 #[test]
@@ -135,8 +143,18 @@ fn anonymous_wrappers_replace_parent_facts_without_rewriting_the_element() {
         let anonymous = crate::style::cascade::inherit::inherit(
             &parent,
             &Computed {
-                display,
-                ruby_role,
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        display,
+                        ..Default::default()
+                    },
+                ),
+                reset_text_box: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetTextBox {
+                        ruby_role,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             },
             parsed.values(),
@@ -145,7 +163,7 @@ fn anonymous_wrappers_replace_parent_facts_without_rewriting_the_element() {
         let boxed = box_style(&anonymous, &child.style, parsed.values());
         assert!(!boxed.context.parent_flex_grid);
         assert_eq!(boxed.context.parent_grid, 0);
-        assert_eq!(boxed.font_size, identity.font_size);
+        assert_eq!(boxed.inh.font.font_size, identity.inh.font.font_size);
         assert!(Rc::ptr_eq(&child.style.computed(), &identity));
     }
 }
@@ -161,10 +179,10 @@ fn paint_input_copies_keep_the_context_and_shared_computed_allocation() {
     assert!(restored.context.parent_flex_grid);
     assert_eq!(restored.context.parent_grid, 3);
     assert!(Rc::ptr_eq(boxed.style_rc(), restored.style_rc()));
-    restored.opacity = Some(0.5);
+    restored.reset_effects.opacity = Some(0.5);
     assert!(restored.context.parent_flex_grid);
     assert_eq!(restored.context.parent_grid, 3);
-    assert_eq!(boxed.opacity, None);
+    assert_eq!(boxed.reset_effects.opacity, None);
 }
 
 #[test]
@@ -187,10 +205,10 @@ fn quirks_height_preserves_materialized_values_and_box_ancestor_inputs() {
     let identity = own.computed();
     let boxed = box_style(&parent, own, parsed.values());
     assert_eq!(parent.quirk_pct_base, Some(200.0));
-    assert_eq!(boxed.height, Some(Len::Px(100.0)));
+    assert_eq!(boxed.reset_box_layout.height, Some(Len::Px(100.0)));
     assert_eq!(boxed.context.cb_wm, parent.wm().line());
     assert!(boxed.context.applicability.rtl);
     // Existing DOM quirks fixup resolves this percentage before materialization.
-    assert_eq!(identity.height, Some(Len::Px(100.0)));
+    assert_eq!(identity.reset_box_layout.height, Some(Len::Px(100.0)));
     assert!(Rc::ptr_eq(&identity, &own.computed()));
 }

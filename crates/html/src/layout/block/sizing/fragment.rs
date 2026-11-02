@@ -38,17 +38,27 @@ mod tests {
         let mut e = Element::synthetic(
             "div",
             Computed {
-                height: Some(Len::Px(80.)),
-                min_height: Some(Len::Px(150.)),
-                max_height: Some(Len::Px(180.)),
-                border_box: Some(true),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        height: Some(Len::Px(80.)),
+                        min_height: Some(Len::Px(150.)),
+                        max_height: Some(Len::Px(180.)),
+                        ..Default::default()
+                    },
+                ),
+                reset_border: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBorder {
+                        border_box: Some(true),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             Default::default(),
             vec![],
         );
-        e.style.used_mut().padding.top = Some(Len::Px(10.));
-        e.style.used_mut().padding.bottom = Some(Len::Px(20.));
+        e.style.used_mut().reset_box_layout.padding.top = Some(Len::Px(10.));
+        e.style.used_mut().reset_box_layout.padding.bottom = Some(Len::Px(20.));
         e.marks.spanner_content_box = true;
         let style = BoxStyle::shared(e.style.used());
         let sizes = BoxDimensions::for_element(&e, &style);
@@ -69,8 +79,14 @@ mod tests {
             &e,
             crate::layout::block::margins::MarginCx::new(doc.values())
         ));
-        assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));
-        assert_eq!(e.style.used().max_height, Some(Len::Px(180.)));
-        assert_eq!(e.style.used().border_box, Some(true));
+        assert_eq!(
+            e.style.used().reset_box_layout.min_height,
+            Some(Len::Px(150.))
+        );
+        assert_eq!(
+            e.style.used().reset_box_layout.max_height,
+            Some(Len::Px(180.))
+        );
+        assert_eq!(e.style.used().reset_border.border_box, Some(true));
     }
 }

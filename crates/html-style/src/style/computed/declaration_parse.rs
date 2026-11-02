@@ -45,16 +45,19 @@ impl Computed {
             };
         }
         let mut parser = Self {
-            declaration_parse: ParseResult::Invalid,
+            reset_cascade: super::StyleGroup::new(super::ResetCascade {
+                declaration_parse: ParseResult::Invalid,
+                ..Default::default()
+            }),
             ..Self::default()
         };
         parser.apply_one(key, value, vcx);
-        parser.declaration_parse
+        parser.reset_cascade.declaration_parse
     }
 
     pub fn accept_declaration(&mut self) {
-        if self.declaration_parse != ParseResult::Inactive {
-            self.declaration_parse = ParseResult::Accepted;
+        if self.reset_cascade.declaration_parse != ParseResult::Inactive {
+            self.reset_cascade.declaration_parse = ParseResult::Accepted;
         }
     }
 
@@ -92,18 +95,32 @@ mod tests {
     #[test]
     fn acceptance_does_not_depend_on_the_parsed_value() {
         let mut parser = Computed {
-            declaration_parse: ParseResult::Invalid,
+            reset_cascade: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetCascade {
+                    declaration_parse: ParseResult::Invalid,
+                    ..Default::default()
+                },
+            ),
             ..Computed::default()
         };
         parser.note_parsed(&None::<bool>);
-        assert_eq!(parser.declaration_parse, ParseResult::Invalid);
+        assert_eq!(parser.reset_cascade.declaration_parse, ParseResult::Invalid);
         parser.note_parsed(&Some(false));
-        assert_eq!(parser.declaration_parse, ParseResult::Accepted);
-        parser.declaration_parse = ParseResult::Invalid;
+        assert_eq!(
+            parser.reset_cascade.declaration_parse,
+            ParseResult::Accepted
+        );
+        parser.reset_cascade.declaration_parse = ParseResult::Invalid;
         parser.note_parsed(&Some(0));
-        assert_eq!(parser.declaration_parse, ParseResult::Accepted);
-        parser.declaration_parse = ParseResult::Inactive;
+        assert_eq!(
+            parser.reset_cascade.declaration_parse,
+            ParseResult::Accepted
+        );
+        parser.reset_cascade.declaration_parse = ParseResult::Inactive;
         parser.note_parsed(&Some(0));
-        assert_eq!(parser.declaration_parse, ParseResult::Inactive);
+        assert_eq!(
+            parser.reset_cascade.declaration_parse,
+            ParseResult::Inactive
+        );
     }
 }
