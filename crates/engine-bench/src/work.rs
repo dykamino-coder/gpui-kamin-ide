@@ -70,9 +70,9 @@ mod tests {
     use super::*;
     #[test]
     fn warm_absence_is_distinct_from_zero_work_and_integers_are_exact() {
+        let doc = kamin_html::Document::builder("", "").build().unwrap();
         let capture = Capture::begin((0, 0)).unwrap();
         kamin_html::work::add!(RebuiltNodes, 9_007_199_254_740_993u64);
-        let doc = kamin_html::Document::builder("", "").build().unwrap();
         let (out, usage) = capture.finish(false, &doc);
         assert!(usage["phases"]["parse"].is_null());
         assert!(out["parse"].is_null());
