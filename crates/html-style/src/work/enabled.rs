@@ -1,4 +1,4 @@
-//! Потоковый сборщик целых счётчиков: одна сессия кадра, исключающие друг друга фазы.
+//! РџРѕС‚РѕРєРѕРІС‹Р№ СЃР±РѕСЂС‰РёРє С†РµР»С‹С… СЃС‡С‘С‚С‡РёРєРѕРІ: РѕРґРЅР° СЃРµСЃСЃРёСЏ РєР°РґСЂР°, РёСЃРєР»СЋС‡Р°СЋС‰РёРµ РґСЂСѓРі РґСЂСѓРіР° С„Р°Р·С‹.
 
 use std::{
     marker::PhantomData,
@@ -32,6 +32,22 @@ macro_rules! vocabulary {
 }
 
 vocabulary!(Counter {
+    SvgSerializeCalls => "svg_serialize_calls",
+    SvgSerializeNodes => "svg_serialize_nodes",
+    SvgSerializeNs => "svg_serialize_ns",
+    SvgSerializeAllocations => "svg_serialize_allocations",
+    SvgSerializeAllocatedBytes => "svg_serialize_allocated_bytes",
+    SvgParseCalls => "svg_parse_calls",
+    SvgParseNs => "svg_parse_ns",
+    SvgParseAllocations => "svg_parse_allocations",
+    SvgParseAllocatedBytes => "svg_parse_allocated_bytes",
+    SvgRenderCalls => "svg_render_calls",
+    SvgRenderPixels => "svg_render_pixels",
+    SvgRenderNs => "svg_render_ns",
+    SvgRenderAllocations => "svg_render_allocations",
+    SvgRenderAllocatedBytes => "svg_render_allocated_bytes",
+    SvgRasterCacheHits => "svg_raster_cache_hits",
+    SvgRasterCacheMisses => "svg_raster_cache_misses",
     StyleSharingHits => "style_sharing_hits",
     MaterializedSharingHits => "materialized_sharing_hits",
     StyleGroupClones => "style_group_clones",
@@ -81,7 +97,7 @@ vocabulary!(Phase {
     PipelineOther => "pipeline_other",
 });
 
-/// Только работа текущего потока между begin и finish, без диагностических обходов.
+/// РўРѕР»СЊРєРѕ СЂР°Р±РѕС‚Р° С‚РµРєСѓС‰РµРіРѕ РїРѕС‚РѕРєР° РјРµР¶РґСѓ begin Рё finish, Р±РµР· РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёС… РѕР±С…РѕРґРѕРІ.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot(pub [[u64; Counter::COUNT]; Phase::COUNT]);
 impl Default for Snapshot {
@@ -89,15 +105,16 @@ impl Default for Snapshot {
         Self([[0; Counter::COUNT]; Phase::COUNT])
     }
 }
-/// Владелец — явно открытая диагностическая сессия, не документ или layout.
+/// Р’Р»Р°РґРµР»РµС† вЂ” СЏРІРЅРѕ РѕС‚РєСЂС‹С‚Р°СЏ РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєР°СЏ СЃРµСЃСЃРёСЏ, РЅРµ РґРѕРєСѓРјРµРЅС‚ РёР»Рё layout.
 struct Totals {
     phase: AtomicUsize,
     counts: [[AtomicU64; Counter::COUNT]; Phase::COUNT],
     observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
+    allocations: Option<fn() -> (u64, u64)>,
 }
 struct Collector(Arc<Totals>);
-// Dispatch хранит область наблюдения и восстанавливает предыдущего подписчика.
-// Обычные trace-события не нужны: hooks адресуют типизированные счётчики напрямую.
+// Dispatch С…СЂР°РЅРёС‚ РѕР±Р»Р°СЃС‚СЊ РЅР°Р±Р»СЋРґРµРЅРёСЏ Рё РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РїСЂРµРґС‹РґСѓС‰РµРіРѕ РїРѕРґРїРёСЃС‡РёРєР°.
+// РћР±С‹С‡РЅС‹Рµ trace-СЃРѕР±С‹С‚РёСЏ РЅРµ РЅСѓР¶РЅС‹: hooks Р°РґСЂРµСЃСѓСЋС‚ С‚РёРїРёР·РёСЂРѕРІР°РЅРЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё РЅР°РїСЂСЏРјСѓСЋ.
 impl Subscriber for Collector {
     fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
         false
@@ -114,7 +131,7 @@ impl Subscriber for Collector {
 fn current<T>(mut f: impl FnMut(&Totals) -> T) -> Option<T> {
     get_default(|dispatch| dispatch.downcast_ref::<Collector>().map(|c| f(&c.0)))
 }
-/// Сессия не переносится между потоками; вложенная сессия не загрязняет внешнюю.
+/// РЎРµСЃСЃРёСЏ РЅРµ РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ РјРµР¶РґСѓ РїРѕС‚РѕРєР°РјРё; РІР»РѕР¶РµРЅРЅР°СЏ СЃРµСЃСЃРёСЏ РЅРµ Р·Р°РіСЂСЏР·РЅСЏРµС‚ РІРЅРµС€РЅСЋСЋ.
 pub struct Session {
     _scope: DefaultGuard,
     totals: Arc<Totals>,
@@ -124,12 +141,20 @@ impl Session {
     pub fn begin() -> Self {
         Self::begin_observed(None)
     }
-    /// Наблюдатель границ для стенда; вызывается только при смене фазы.
+    /// РќР°Р±Р»СЋРґР°С‚РµР»СЊ РіСЂР°РЅРёС† РґР»СЏ СЃС‚РµРЅРґР°; РІС‹Р·С‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё СЃРјРµРЅРµ С„Р°Р·С‹.
     pub fn begin_observed(observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>) -> Self {
+        Self::begin_measured(observer, None)
+    }
+    /// РЎС‚РµРЅРґ РјРѕР¶РµС‚ РїРѕРґРєР»СЋС‡РёС‚СЊ РЅР°РєРѕРїРёС‚РµР»СЊРЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё Р°Р»Р»РѕРєР°С‚РѕСЂР°; РѕР±С‹С‡РЅС‹Р№ РґРІРёР¶РѕРє РёС… РЅРµ С‡РёС‚Р°РµС‚.
+    pub fn begin_measured(
+        observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
+        allocations: Option<fn() -> (u64, u64)>,
+    ) -> Self {
         let totals = Arc::new(Totals {
             phase: AtomicUsize::new(Phase::PipelineOther as usize),
             counts: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             observer,
+            allocations,
         });
         let dispatch = Dispatch::new(Collector(totals.clone()));
         Self {
@@ -144,7 +169,7 @@ impl Session {
         }))
     }
 }
-/// Маркер исключительной фазы; unwind также восстанавливает атрибуцию.
+/// РњР°СЂРєРµСЂ РёСЃРєР»СЋС‡РёС‚РµР»СЊРЅРѕР№ С„Р°Р·С‹; unwind С‚Р°РєР¶Рµ РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ Р°С‚СЂРёР±СѓС†РёСЋ.
 pub struct PhaseGuard {
     totals: Option<Arc<Totals>>,
     previous: usize,
@@ -159,7 +184,7 @@ pub fn enter(phase: Phase) -> PhaseGuard {
         thread: PhantomData,
     }
 }
-/// Граница между lifecycle callbacks, где RAII-области уже завершились.
+/// Р“СЂР°РЅРёС†Р° РјРµР¶РґСѓ lifecycle callbacks, РіРґРµ RAII-РѕР±Р»Р°СЃС‚Рё СѓР¶Рµ Р·Р°РІРµСЂС€РёР»РёСЃСЊ.
 pub fn set_phase(phase: Phase) {
     let _ = current(|s| change_phase(s, phase));
 }
@@ -172,7 +197,7 @@ fn change_phase(totals: &Totals, phase: Phase) -> usize {
 impl Drop for PhaseGuard {
     fn drop(&mut self) {
         if let Some(totals) = &self.totals {
-            // Предыдущий индекс получен из того же закрытого словаря фаз.
+            // РџСЂРµРґС‹РґСѓС‰РёР№ РёРЅРґРµРєСЃ РїРѕР»СѓС‡РµРЅ РёР· С‚РѕРіРѕ Р¶Рµ Р·Р°РєСЂС‹С‚РѕРіРѕ СЃР»РѕРІР°СЂСЏ С„Р°Р·.
             let phase = Phase::ALL[self.previous];
             change_phase(totals, phase);
         }
