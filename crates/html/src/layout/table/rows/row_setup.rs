@@ -234,7 +234,8 @@ pub(super) fn hides_empty_cell(
         && {
             let mut текст = String::new();
             gather_text(&cell.children, &mut текст);
-            текст.trim().is_empty() && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
+            crate::dom::whitespace::blank_text(&текст)
+                && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
         }
 }
 

@@ -40,7 +40,7 @@ pub(super) fn collapse_flow_kids(
     for node in out.iter_mut() {
         let child = match node {
             Node::Element(child) => child,
-            Node::Text(text) if !text.trim().is_empty() => {
+            Node::Text(text) if !crate::dom::whitespace::blank_text(text) => {
                 trailing = None;
                 continue;
             }

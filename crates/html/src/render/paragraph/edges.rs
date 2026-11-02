@@ -17,7 +17,7 @@ pub(crate) use crate::layout::options::own_size;
 /// `Piece::Overlay`, оба своего текста в строку не отдают.
 pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
-        Node::Text(t) => !t.trim().is_empty(),
+        Node::Text(t) => !crate::dom::whitespace::blank_text(t),
         Node::Element(e) => {
             !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                 && has_flow_text(&e.children)
@@ -93,4 +93,19 @@ pub(crate) fn in_edge(
     edges
         .iter()
         .any(|(e, _, _)| e.start < r.end.max(r.start + 1) && r.start < e.end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_flow_text;
+    use crate::dom::Node;
+
+    #[test]
+    fn uncollapsible_spaces_are_flow_text() {
+        // CSS Text 3 §4.1.1: U+00A0, U+3000 and form feed do not collapse.
+        for text in ["\u{a0}", "\u{3000}", "\u{c}", " \u{a0} "] {
+            assert!(has_flow_text(&[Node::Text(text.into())]), "{text:?}");
+        }
+        assert!(!has_flow_text(&[Node::Text(" \t\r\n".into())]));
+    }
 }
