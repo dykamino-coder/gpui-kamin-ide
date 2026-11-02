@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// длины и сложные inline-коробки остаются на общем пути схлопывания.
 #[derive(Default)]
 pub(crate) struct SubtreeFacts {
-    children: HashMap<usize, (std::rc::Weak<Vec<Node>>, u8)>,
+    children: HashMap<usize, (crate::dom::ChildrenMark, u8)>,
     base: Option<std::rc::Rc<SubtreeFacts>>,
 }
 

@@ -8,8 +8,10 @@
 
 mod anonymous;
 mod children;
+mod intrinsic;
+pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod traversal;
-pub use children::Children;
+pub use children::{Children, ChildrenMark};
 mod direction;
 pub mod early_admission;
 mod shared_style;

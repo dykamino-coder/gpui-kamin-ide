@@ -1,6 +1,6 @@
 //! Сборка каркаса BandFlow по измеренному плану в текущем кадре.
 use super::element::BandFlow;
-use super::{COORD_EPS, Probe, plan};
+use super::{Probe, plan};
 use gpui::{
     App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px,
     size,
@@ -25,18 +25,15 @@ impl BandFlow {
             unr.width
         });
         let origin = window.layout_origin_unrounded(*state);
-        let cached = self
-            .plan
-            .borrow()
-            .as_ref()
-            .filter(|p| (p.width - cb).abs() < COORD_EPS)
-            .cloned();
+        let cached = self.plan.get(cb);
         let p = match cached {
             Some(p) => p,
             None => {
                 let kids = self.kids.clone();
-                window.with_nested_layout(|window| {
-                    let p = &mut Probe::new(
+                let mut engine = gpui::RetainedLayout::default();
+                let retained = engine.clone();
+                let plan = window.with_retained_layout(&mut engine, |window| {
+                    let mut p = Probe::new(
                         window,
                         cx,
                         vert.is_some(),
@@ -45,8 +42,10 @@ impl BandFlow {
                         self.probe_scopes(),
                         self.build,
                     );
-                    plan(&kids, cb, contain_floats, p)
-                })
+                    p.engine = Some(retained);
+                    plan(&kids, cb, contain_floats, &mut p)
+                });
+                self.plan.insert(plan)
             }
         };
         self.built.clear();

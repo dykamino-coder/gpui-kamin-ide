@@ -18,10 +18,23 @@ pub(super) fn walk(
     vcx: ValueCx<'_>,
 ) -> bool {
     let mut changed = false;
-    let mut pending = vec![(nodes.iter(), parent.clone())];
-    while let Some((nodes, inherited)) = pending.last_mut() {
+    let mut pending = vec![(
+        nodes.iter(),
+        parent.clone(),
+        None::<&crate::dom::Children>,
+        false,
+    )];
+    while let Some((nodes, inherited, _, dirty)) = pending.last_mut() {
         let Some(node) = nodes.next() else {
-            pending.pop();
+            let (_, _, owner, dirty) = pending.pop().unwrap();
+            if dirty {
+                if let Some(owner) = owner {
+                    owner.dirty_intrinsic_sizes();
+                }
+                if let Some((_, _, _, parent_dirty)) = pending.last_mut() {
+                    *parent_dirty = true;
+                }
+            }
             continue;
         };
         crate::work::add!(TreeNodesVisited, 1);
@@ -43,6 +56,7 @@ pub(super) fn walk(
             .published()
             .is_some_and(|old| old.ptr_eq(&computed.handle));
         changed |= republished;
+        *dirty |= republished;
         if republished
             || !slot
                 .0
@@ -64,7 +78,7 @@ pub(super) fn walk(
         } else {
             computed.legacy
         };
-        pending.push((e.children.iter(), inside));
+        pending.push((e.children.iter(), inside, Some(&e.children), republished));
     }
     changed
 }

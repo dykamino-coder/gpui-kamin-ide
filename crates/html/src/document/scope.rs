@@ -1,56 +1,56 @@
-//! Сборка кадра документа для хоста: опции сборки с этим документом, сборка
-//! кадра и блоков, обёртка `Scoped` для фаз GPUI, значения и правила `@page`
-//! для листов.
+//! РЎР±РѕСЂРєР° РєР°РґСЂР° РґРѕРєСѓРјРµРЅС‚Р° РґР»СЏ С…РѕСЃС‚Р°: РѕРїС†РёРё СЃР±РѕСЂРєРё СЃ СЌС‚РёРј РґРѕРєСѓРјРµРЅС‚РѕРј, СЃР±РѕСЂРєР°
+//! РєР°РґСЂР° Рё Р±Р»РѕРєРѕРІ, РѕР±С‘СЂС‚РєР° `Scoped` РґР»СЏ С„Р°Р· GPUI, Р·РЅР°С‡РµРЅРёСЏ Рё РїСЂР°РІРёР»Р° `@page`
+//! РґР»СЏ Р»РёСЃС‚РѕРІ.
 
 use super::Document;
 use super::state::Scoped;
 use crate::values::ValueCx;
 
 impl Document {
-    /// Документ завершил работу текущего кадра. Читать после завершения кадра
-    /// хостом, включая deferred paint; анимационное время хост фиксирует сам.
-    /// Это не подтверждение презентации GPU и не разрешение пропустить её.
+    /// Р”РѕРєСѓРјРµРЅС‚ Р·Р°РІРµСЂС€РёР» СЂР°Р±РѕС‚Сѓ С‚РµРєСѓС‰РµРіРѕ РєР°РґСЂР°. Р§РёС‚Р°С‚СЊ РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РєР°РґСЂР°
+    /// С…РѕСЃС‚РѕРј, РІРєР»СЋС‡Р°СЏ deferred paint; Р°РЅРёРјР°С†РёРѕРЅРЅРѕРµ РІСЂРµРјСЏ С…РѕСЃС‚ С„РёРєСЃРёСЂСѓРµС‚ СЃР°Рј.
+    /// Р­С‚Рѕ РЅРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РїСЂРµР·РµРЅС‚Р°С†РёРё GPU Рё РЅРµ СЂР°Р·СЂРµС€РµРЅРёРµ РїСЂРѕРїСѓСЃС‚РёС‚СЊ РµС‘.
     pub fn frame_ready(&self) -> bool {
         self.state.values.frame_ready()
     }
 
-    /// Начать кадр и вернуть опции сборки с этим документом: с ними хост
-    /// вызывает `render::*` по `nodes()` (стопка страниц) сам.
+    /// РќР°С‡Р°С‚СЊ РєР°РґСЂ Рё РІРµСЂРЅСѓС‚СЊ РѕРїС†РёРё СЃР±РѕСЂРєРё СЃ СЌС‚РёРј РґРѕРєСѓРјРµРЅС‚РѕРј: СЃ РЅРёРјРё С…РѕСЃС‚
+    /// РІС‹Р·С‹РІР°РµС‚ `render::*` РїРѕ `nodes()` (СЃС‚РѕРїРєР° СЃС‚СЂР°РЅРёС†) СЃР°Рј.
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
         frame_opts(&self.state, &self.nodes, opts)
     }
 
-    /// Значения кадра документа: ими хост разбирает объявления листа
-    /// (`Len::parse` и `Color::parse` по правилам `@page`).
+    /// Р—РЅР°С‡РµРЅРёСЏ РєР°РґСЂР° РґРѕРєСѓРјРµРЅС‚Р°: РёРјРё С…РѕСЃС‚ СЂР°Р·Р±РёСЂР°РµС‚ РѕР±СЉСЏРІР»РµРЅРёСЏ Р»РёСЃС‚Р°
+    /// (`Len::parse` Рё `Color::parse` РїРѕ РїСЂР°РІРёР»Р°Рј `@page`).
     pub fn values(&self) -> ValueCx<'_> {
         self.state.frame_values()
     }
 
-    /// Обернуть элемент, собранный по `frame_opts`: документ доживает до
-    /// краски и отмечается покрашенным.
+    /// РћР±РµСЂРЅСѓС‚СЊ СЌР»РµРјРµРЅС‚, СЃРѕР±СЂР°РЅРЅС‹Р№ РїРѕ `frame_opts`: РґРѕРєСѓРјРµРЅС‚ РґРѕР¶РёРІР°РµС‚ РґРѕ
+    /// РєСЂР°СЃРєРё Рё РѕС‚РјРµС‡Р°РµС‚СЃСЏ РїРѕРєСЂР°С€РµРЅРЅС‹Рј.
     pub fn scoped(&self, element: gpui::AnyElement) -> gpui::AnyElement {
         Scoped::wrap(&self.state, element)
     }
 
-    /// Собрать кадр всего документа (`render::render`).
+    /// РЎРѕР±СЂР°С‚СЊ РєР°РґСЂ РІСЃРµРіРѕ РґРѕРєСѓРјРµРЅС‚Р° (`render::render`).
     pub fn render(&self, opts: &crate::RenderOpts) -> Vec<gpui::AnyElement> {
         render(&self.state, &self.nodes, opts)
     }
 
-    /// Собрать один блок верхнего уровня (`render::render_block`).
+    /// РЎРѕР±СЂР°С‚СЊ РѕРґРёРЅ Р±Р»РѕРє РІРµСЂС…РЅРµРіРѕ СѓСЂРѕРІРЅСЏ (`render::render_block`).
     pub fn render_block(&self, index: usize, opts: &crate::RenderOpts) -> Option<gpui::AnyElement> {
         crate::render::render_block(&self.nodes, index, &self.frame_opts(opts))
             .map(|e| self.scoped(e))
     }
 
-    /// Правила `@page` документа — по ним хост строит листы
+    /// РџСЂР°РІРёР»Р° `@page` РґРѕРєСѓРјРµРЅС‚Р° вЂ” РїРѕ РЅРёРј С…РѕСЃС‚ СЃС‚СЂРѕРёС‚ Р»РёСЃС‚С‹
     /// (`css::page_decls_in`, `css::page_margins_in`).
     pub fn page_rules(&self) -> Vec<crate::style::css::PageRule> {
         self.state.page_rules()
     }
 }
 
-/// Начать кадр документа `state` с деревом `nodes` (`Document::frame_opts`).
+/// РќР°С‡Р°С‚СЊ РєР°РґСЂ РґРѕРєСѓРјРµРЅС‚Р° `state` СЃ РґРµСЂРµРІРѕРј `nodes` (`Document::frame_opts`).
 pub(super) fn frame_opts(
     state: &std::rc::Rc<super::state::DocState>,
     nodes: &[crate::dom::Node],
@@ -62,11 +62,12 @@ pub(super) fn frame_opts(
     opts.cx.clamp.input = None;
     opts.cx.values.inert_clear = false;
     opts.cx.contracts.document_root = Some((nodes.as_ptr() as usize, nodes.len()));
+    opts.cx.contracts.paragraph_frame_started = true;
     opts.cx.values.doc = crate::layout::cx::BuildDoc(state.clone());
     opts
 }
 
-/// Собрать кадр всего документа (`Document::render`).
+/// РЎРѕР±СЂР°С‚СЊ РєР°РґСЂ РІСЃРµРіРѕ РґРѕРєСѓРјРµРЅС‚Р° (`Document::render`).
 pub(super) fn render(
     state: &std::rc::Rc<super::state::DocState>,
     nodes: &[crate::dom::Node],

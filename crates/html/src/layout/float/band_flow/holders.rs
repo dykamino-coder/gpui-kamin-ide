@@ -5,7 +5,7 @@ use super::kid::{Kid, Kind};
 use super::{Layer, Slot, flatten, frame};
 use crate::layout::build_contracts::ChildBuild;
 use crate::layout::cx::deferred::Deferred;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, point, px};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -41,15 +41,6 @@ pub(super) fn holders(
 }
 
 fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
-    let el = frame(
-        kid.kind,
-        s.avail,
-        (kid.build)(at.cb, s.avail, s.shapes.clone(), s.h, None),
-        Rc::new(Cell::new(None)),
-        at.vert.is_some(),
-        at.paint,
-        at.build,
-    );
     // Логическое место → физическое (Blink
     // `writing_mode_converter.cc:80-110`): line-left is the bottom
     // edge in sideways-lr, so subtract the measured inline extent.
@@ -62,6 +53,24 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
         .nest
         .as_ref()
         .and_then(|n| n.group.as_ref().map(|g| (n, g)));
+    let offset = point(px(left - origin.0), px(top - origin.1));
+    if group.is_none()
+        && let Some(el) = s.prepared.take(Some(offset))
+    {
+        return el;
+    }
+    let el = s.prepared.take(None).unwrap_or_else(|| {
+        crate::work::add!(FloatChildBuilds, 1);
+        frame(
+            kid.kind,
+            s.avail,
+            (kid.build)(at.cb, s.avail, s.shapes.clone(), s.h, None),
+            Rc::new(Cell::new(None)),
+            at.vert.is_some(),
+            at.paint,
+            at.build,
+        )
+    });
     let el = match group {
         // A nested block is horizontal (`band_nest_block`): the group's
         // container is its border box, and its descendants are placed from
@@ -79,8 +88,8 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
     };
     let held = div()
         .absolute()
-        .left(px(left - origin.0))
-        .top(px(top - origin.1))
+        .left(offset.x)
+        .top(offset.y)
         .child(el)
         .into_any_element();
     // A paint group is painted on the level of positioned boxes, after the

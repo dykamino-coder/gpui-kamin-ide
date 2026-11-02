@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 fn kid(id: u64, kind: Kind) -> Kid {
     Kid {
+        intrinsic: Default::default(),
         flow: None,
         watched: None,
         flow_key: 0,

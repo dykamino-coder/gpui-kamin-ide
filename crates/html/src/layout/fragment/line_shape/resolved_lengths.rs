@@ -133,7 +133,7 @@ fn relative(style: &crate::style::computed::Computed) -> bool {
 /// метка не даёт адресу перейти к другому списку и не удерживает узлы.
 #[derive(Default)]
 pub(crate) struct LengthFacts {
-    children: std::collections::HashMap<usize, (std::rc::Weak<Vec<Node>>, bool)>,
+    children: std::collections::HashMap<usize, (crate::dom::ChildrenMark, bool)>,
 }
 
 impl LengthFacts {

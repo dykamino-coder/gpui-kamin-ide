@@ -6,9 +6,45 @@ use std::rc::Rc;
 
 /// Дети элемента с копированием при изменении списка.
 #[derive(Clone, Debug, Default)]
-pub struct Children(Rc<Vec<Node>>);
+pub struct Children(Rc<Snapshot>);
+
+/// Метка идентичности снимка без владения узлами и intrinsic-результатом.
+#[derive(Clone, Debug)]
+pub struct ChildrenMark(std::rc::Weak<Snapshot>);
+
+impl ChildrenMark {
+    /// Последний владелец снимка ещё не освободил его содержимое.
+    pub fn is_alive(&self) -> bool {
+        self.0.strong_count() != 0
+    }
+}
+
+#[derive(Debug, Default)]
+struct Snapshot {
+    nodes: Vec<Node>,
+    intrinsic: super::intrinsic::IntrinsicCache,
+}
+
+impl Clone for Snapshot {
+    fn clone(&self) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            intrinsic: Default::default(),
+        }
+    }
+}
 
 impl Children {
+    /// Слот узла переживает кадры, пока неизменны стиль и входы intrinsic-меры.
+    pub fn intrinsic_sizes(&self, input: super::IntrinsicInput) -> super::IntrinsicSizes {
+        self.0.intrinsic.sizes(input)
+    }
+
+    /// Изменение computed-стиля самого узла или его потомка.
+    pub fn dirty_intrinsic_sizes(&self) {
+        self.0.intrinsic.dirty();
+    }
+
     /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
     pub fn identity(&self) -> usize {
         Rc::as_ptr(&self.0) as usize
@@ -16,21 +52,28 @@ impl Children {
 
     /// Метка снимка без владения узлами: пока она жива, адрес `identity` не
     /// достаётся другому списку, а поддерево освобождает последний владелец.
-    pub fn mark(&self) -> std::rc::Weak<Vec<Node>> {
-        Rc::downgrade(&self.0)
+    pub fn mark(&self) -> ChildrenMark {
+        ChildrenMark(Rc::downgrade(&self.0))
     }
 
     pub fn into_vec(mut self) -> Vec<Node> {
         match Rc::try_unwrap(std::mem::take(&mut self.0)) {
-            Ok(nodes) => nodes,
-            Err(nodes) => nodes.as_ref().clone(),
+            Ok(snapshot) => snapshot.nodes,
+            Err(snapshot) => snapshot.nodes.clone(),
         }
     }
 }
 
 impl From<Vec<Node>> for Children {
-    fn from(nodes: Vec<Node>) -> Self {
-        Self(Rc::new(nodes))
+    fn from(mut nodes: Vec<Node>) -> Self {
+        // Опубликованный COW-снимок удерживается вместе с intrinsic-кэшем.
+        // Запас ёмкости построителя больше не нужен: при следующей правке
+        // Vec снова растёт обычным способом, а неизменённые копии делят снимок.
+        nodes.shrink_to_fit();
+        Self(Rc::new(Snapshot {
+            nodes,
+            intrinsic: Default::default(),
+        }))
     }
 }
 
@@ -43,13 +86,17 @@ impl FromIterator<Node> for Children {
 impl Deref for Children {
     type Target = Vec<Node>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.0.nodes
     }
 }
 
 impl DerefMut for Children {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        Rc::make_mut(&mut self.0)
+        // Правка текста, стиля потомка или списка отделяет только изменяемую
+        // ветвь. Копии старого снимка сохраняют свой корректный результат.
+        let snapshot = Rc::make_mut(&mut self.0);
+        snapshot.intrinsic.dirty();
+        &mut snapshot.nodes
     }
 }
 
@@ -79,12 +126,16 @@ impl<'a> IntoIterator for &'a mut Children {
 
 /// Единственный владелец списка; слабые метки снимков отделяются от узлов
 /// без их копирования, чтобы drop оставался итеративным.
-fn sole(nodes: &mut Rc<Vec<Node>>) -> Option<Vec<Node>> {
-    if let Some(nodes) = Rc::get_mut(nodes) {
-        return Some(std::mem::take(nodes));
+fn sole(snapshot: &mut Rc<Snapshot>) -> Option<Vec<Node>> {
+    if let Some(snapshot) = Rc::get_mut(snapshot) {
+        return Some(std::mem::take(&mut snapshot.nodes));
     }
-    (Rc::strong_count(nodes) == 1)
-        .then(|| Rc::try_unwrap(std::mem::take(nodes)).ok())
+    (Rc::strong_count(snapshot) == 1)
+        .then(|| {
+            Rc::try_unwrap(std::mem::take(snapshot))
+                .ok()
+                .map(|s| s.nodes)
+        })
         .flatten()
 }
 

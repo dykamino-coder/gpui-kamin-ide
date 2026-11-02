@@ -139,8 +139,8 @@ pub(super) fn band_flow_rest(
     band_flow_rest_lift(rest, em, None, wm, cb, vcx)
 }
 
-/// Сборка измеряемого хоста: каждому ребёнку — построитель, который
-/// `band_flow` зовёт на каждую пробу и на `prepaint`.
+/// Сборка измеряемого хоста: построитель ребёнка подготавливает дерево
+/// пробы, которое план сохраняет для `prepaint` и `paint`.
 pub(crate) async fn band_flow_host(
     stk: &mut reblessive::Stk,
     e: &Element,

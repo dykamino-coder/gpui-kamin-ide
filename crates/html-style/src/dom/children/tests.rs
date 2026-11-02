@@ -3,6 +3,22 @@
 use super::*;
 
 #[test]
+fn published_snapshot_releases_builder_capacity_and_still_detaches_on_growth() {
+    let mut nodes = Vec::with_capacity(64);
+    nodes.push(Node::Text("original".into()));
+    let mut children = Children::from(nodes);
+    assert_eq!(children.capacity(), children.len());
+    let copy = children.clone();
+    assert_eq!(children.identity(), copy.identity());
+    children.push(Node::Text("new".into()));
+    assert_ne!(children.identity(), copy.identity());
+    assert_eq!(copy.capacity(), 1);
+    assert_eq!(copy.len(), 1);
+    assert_eq!(children.len(), 2);
+    assert!(matches!(&copy[0], Node::Text(text) if text == "original"));
+}
+
+#[test]
 fn mutations_detach_only_the_changed_list() {
     let mut children: Children = vec![Node::Text("original".into())].into();
     let copy = children.clone();
@@ -58,8 +74,8 @@ fn snapshot_marks_release_nodes_and_keep_deep_drop_iterative() {
             let mark = nodes.mark();
             drop(nodes);
             // Узлы освобождены, но адрес снимка не может достаться новому списку.
-            assert!(mark.upgrade().is_none());
-            assert!(marks.iter().all(|m| m.upgrade().is_none()));
+            assert!(!mark.is_alive());
+            assert!(marks.iter().all(|m| !m.is_alive()));
             let fresh: Children = vec![Node::Text("other".into())].into();
             assert_ne!(fresh.identity(), identity);
         })

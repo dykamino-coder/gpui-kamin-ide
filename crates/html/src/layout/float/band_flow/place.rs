@@ -73,25 +73,27 @@ pub(super) fn place_seq(
                 // (`:2209`: блочный размер фрагмента не больше возможности);
                 // ниже по высоте окно у́же — проба в нём ещё раз (Servo
                 // `try_to_expand_for_auto_block_size`, `flow/float.rs:260`).
-                let try_at = |top: f32, p: &mut Probe| -> Option<(f32, f32)> {
+                let try_at = |top: f32, p: &mut Probe| -> Option<(f32, f32, f32, f32)> {
                     let (l, r) = bands.available(top, 0.0);
                     let edge = piece::Edges::new(l, r, root, (x0, x1), (ml, mr));
                     let avail = edge.available();
                     let (bw, bh) = probe(kid, cbw, avail, None, p);
-                    let bw = bw.max(floor);
-                    let x = edge.origin(bw, rtl);
+                    let fit_width = bw.max(floor);
+                    let x = edge.origin(fit_width, rtl);
                     let (l2, r2) = bands.available(top, bh);
                     if (l2 - l).abs() < COORD_EPS && (r2 - r).abs() < COORD_EPS {
-                        return edge.fits(l, r, x, bw).then_some((x, avail));
+                        return edge.fits(l, r, x, fit_width).then_some((x, avail, bw, bh));
                     }
                     let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
                     let avail2 = edge2.available();
                     let (bw2, bh2) = probe(kid, cbw, avail2, None, p);
-                    let bw2 = bw2.max(floor);
-                    let x2 = edge2.origin(bw2, rtl);
+                    let fit_width2 = bw2.max(floor);
+                    let x2 = edge2.origin(fit_width2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
-                    (l3 <= l2 + COORD_EPS && r3 >= r2 - COORD_EPS && edge2.fits(l2, r2, x2, bw2))
-                        .then_some((x2, avail2))
+                    (l3 <= l2 + COORD_EPS
+                        && r3 >= r2 - COORD_EPS
+                        && edge2.fits(l2, r2, x2, fit_width2))
+                    .then_some((x2, avail2, bw2, bh2))
                 };
                 // Примыкающие флоаты (Blink `block_layout_algorithm.cc`
                 // `HasClearancePastAdjoiningFloats`; для нового контекста —
@@ -117,18 +119,22 @@ pub(super) fn place_seq(
                 // ровно на их низ (Blink `AdjustToClearance`,
                 // `space_utils.cc:22-30`).
                 let mut top = bands.clearance(kid.clear, y + mt_eff);
-                let (x, t, avail) = loop {
-                    if let Some((x, avail)) = try_at(top, p) {
-                        break (x, top, avail);
+                let (x, t, avail, bw, bh) = loop {
+                    if let Some((x, avail, bw, bh)) = try_at(top, p) {
+                        break (x, top, avail, bw, bh);
                     }
                     match bands.next_edge(top) {
                         Some(t) => top = t,
                         // Ниже всех флоатов — на всю ширину.
-                        None => break (x0 + ml, top, (cbw - ml - mr).max(0.0)),
+                        None => {
+                            let avail = (cbw - ml - mr).max(0.0);
+                            let (bw, bh) = probe(kid, cbw, avail, None, p);
+                            break (x0 + ml, top, avail, bw, bh);
+                        }
                     }
                 };
-                let (bw, bh) = probe(kid, cbw, avail, None, p);
                 slots[k] = Slot {
+                    prepared: p.last_prepared.clone(),
                     x,
                     y: t,
                     geometry: p.last_geometry.clone(),
