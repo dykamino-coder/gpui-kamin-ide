@@ -27,8 +27,27 @@ fn update(old: &str, new: &str, theme: &str) -> bool {
     let fresh = Document::builder(new, theme).build().unwrap();
     assert_eq!(tree(&doc), tree(&fresh), "{old} -> {new}");
     assert_eq!(doc.salt(), fresh.salt());
+    assert_eq!(state(&doc), state(&fresh), "{old} -> {new}");
     Rc::ptr_eq(&values, &doc.state.values)
 }
+
+/// Факты `DocState`, которые пишет сборка дерева: режим, метрики корня,
+/// at-правила `@page`, диагностики и число адресуемых исходных элементов.
+fn state(doc: &Document) -> String {
+    let values = &doc.state.values;
+    let elements = values.traversal.elements();
+    format!(
+        "{} {:?} {} {:?} {} {}",
+        values.quirks(),
+        values.root.borrow(),
+        values.page_rules().len(),
+        values.diagnostics_snapshot(),
+        elements.len(),
+        elements.iter().filter(|&&a| a != 0).count(),
+    )
+}
+
+mod differential;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\
     .on{font-weight:bold}</style></head><body><p>a</p><div><p id=x>b<span>c</span></p>\
