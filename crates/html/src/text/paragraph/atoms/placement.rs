@@ -32,6 +32,7 @@ impl Paragraph {
         }
         self.refresh_run_metrics(window);
         self.atom_boxes.clear();
+        let old_advances = self.letter_spans.len();
         let mut nested_layers = (0.0f32, 0.0f32);
         // Ruby atoms whose annotation may overhang neighbours: resolved after
         // the loop (the computation needs the whole paragraph).
@@ -146,10 +147,11 @@ impl Paragraph {
                 under,
                 shift: 0.0,
             });
-            // Продвижение распорки — ширина атома. Идёт ПЕРВЫМ: поиск
-            // диапазона берёт первое попадание.
-            self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
+            // Пакет получит тот же приоритет, что последовательные вставки
+            // в начало: последнее продвижение атома должно побеждать первым.
+            self.letter_spans.push((slot.at..slot.at + len, px(w)));
         }
+        super::advances::prepend_appended(&mut self.letter_spans, old_advances);
         // Свес аннотации руби над соседями (css-ruby-1 §4.4): распорка
         // уже на свес, атом сдвинут влево на начальный свес.
         if let Some(layers) = &self.ruby_layers {
