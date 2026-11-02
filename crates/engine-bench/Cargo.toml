@@ -6,6 +6,7 @@ publish = false
 
 [features]
 engine-bench = ["timing-only", "work-counters"]
+allocation-audit = ["engine-bench"]
 timing-only = ["dep:kamin-html"]
 work-counters = ["kamin-html/work-counters"]
 
