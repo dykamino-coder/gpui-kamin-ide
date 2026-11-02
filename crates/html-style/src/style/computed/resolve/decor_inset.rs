@@ -33,6 +33,9 @@ impl Computed {
         font: f32,
         vcx: ValueCx<'_>,
     ) {
+        if !matches!(self.reset_text_box.td_inset, Some(Some(_))) {
+            return;
+        }
         let line = match self.inh.font.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * font,
@@ -77,6 +80,9 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
+        if !self.has_decor_insets() {
+            return;
+        }
         if let Some(Some(pair)) = &mut self.reset_text_box.td_inset {
             for value in pair {
                 *value = map_length(*value, fix, vcx);
@@ -89,5 +95,20 @@ impl Computed {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absent_insets_do_not_detach_text_group() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let base = Computed::default();
+        let mut value = base.clone();
+        value.resolve_decor_inset_font(|_| {}, "", 16.0, doc.values());
+        value.resolve_decor_inset_viewport((800.0, 600.0), doc.values());
+        assert!(base.shares_storage(&value));
     }
 }

@@ -22,7 +22,7 @@ impl Computed {
             || self
                 .reset_background
                 .bg_lists
-                .position_expressions()
+                .position_expressions_ref()
                 .any(|value| value.needs_font_resolution());
         if !position_units {
             return;
@@ -93,4 +93,19 @@ pub(in crate::style::computed) fn lengths(
     }
     flush(&mut token, &mut output);
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absolute_background_positions_keep_group_owners() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let mut base = Computed::default();
+        base.apply_one("background-position", "20% 4px, 30% 8px", doc.values());
+        let mut value = base.clone();
+        value.resolve_image_lengths(doc.values());
+        assert!(base.shares_storage(&value));
+    }
 }

@@ -105,6 +105,20 @@ impl BgLists {
                 .flat_map(|layer| layer.position_math.iter_mut().flatten())
         })
     }
+    pub fn position_expressions_ref(
+        &self,
+    ) -> impl Iterator<Item = &super::super::background_position::PositionExpression> {
+        self.lists.iter().flat_map(|(_, layers)| {
+            layers
+                .iter()
+                .flat_map(|layer| layer.position_math.iter().flatten())
+        })
+    }
+    pub fn images_ref(&self) -> impl Iterator<Item = &super::super::ImageSource> {
+        self.lists
+            .iter()
+            .flat_map(|(_, layers)| layers.iter().filter_map(|layer| layer.image.as_ref()))
+    }
     pub fn images(&mut self) -> impl Iterator<Item = &mut super::super::ImageSource> {
         self.lists
             .iter_mut()

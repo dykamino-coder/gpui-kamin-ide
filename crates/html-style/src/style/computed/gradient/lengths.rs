@@ -92,7 +92,7 @@ impl Computed {
         .flatten()
         .any(|l| l.needs_line_height(vcx))
             || self.reset_background.bg_lists.needs_line_height(vcx)
-            || self.image_operands().any(|i| i.needs_line_height(vcx))
+            || self.image_operands_ref().any(|i| i.needs_line_height(vcx))
             || [
                 self.reset_background.gradient.as_ref(),
                 self.reset_background.gradient_current.as_ref(),
