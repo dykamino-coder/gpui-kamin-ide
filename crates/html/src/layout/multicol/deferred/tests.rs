@@ -176,6 +176,7 @@ thread_local! {
 
 #[gpui::test]
 fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui::TestAppContext) {
+    use crate::hooks::IntoHooked;
     use crate::layout::fragment::types::Intrinsic;
     use gpui::{ParentElement, Styled};
     let cx = cx.add_empty_window();
@@ -210,7 +211,7 @@ fn only_an_intrinsically_sized_stack_builds_its_measured_children(cx: &mut gpui:
                     Default::default(),
                 )
                 .with_deferred(Some(recipe));
-                gpui::div().w(gpui::px(200.)).child(stack)
+                gpui::div().w(gpui::px(200.)).child(stack.into_hooked())
             },
         );
         assert_eq!(INTRINSIC_BUILDS.with(|n| n.get()), builds);
