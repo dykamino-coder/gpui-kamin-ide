@@ -51,10 +51,13 @@ impl Lines {
             axis,
             window,
         );
+        Self::from_flow(flow, r.laid.lines.get(&b.id)?.clone(), child.h)
+    }
+
+    pub(super) fn from_flow(flow: FlowGeometry, pushes: Vec<LinePush>, end: f32) -> Option<Self> {
         let [paragraph] = flow.inline.as_slice() else {
             return None;
         };
-        let pushes = r.laid.lines.get(&b.id)?.clone();
         if !flow.floats.is_empty()
             || !flow.line_boxes.is_empty()
             || paragraph.lines.len() != pushes.len()
@@ -63,7 +66,7 @@ impl Lines {
             || paragraph
                 .lines
                 .last()
-                .is_none_or(|l| (l.bottom - child.h).abs() > COORD_EPS)
+                .is_none_or(|l| (l.bottom - end).abs() > COORD_EPS)
             || paragraph
                 .lines
                 .iter()
@@ -92,11 +95,27 @@ impl Lines {
     }
 
     pub(super) fn grow(&mut self, child: &mut StackChild, base: &Kid, grows: Vec<Growth>) {
+        self.add(&grows);
+        let flow = self.geometry(0.);
+        let total = self.total();
+        child.h = base.h + total;
+        child.over = base.over + total;
+        let r = child.regrow.as_mut().expect("measured line model");
+        let b = r.watched.blocks().expect("measured line scope");
+        if let Some(&(top, _)) = r.laid.boxes.get(&b.id) {
+            r.laid.boxes.insert(b.id, (top, top + child.h));
+        }
+        r.laid.lines.insert(b.id, flow.line_pushes.clone());
+        let breaks = b.breaks(child.h, &r.laid).finish(flow, child.h);
+        super::model::record(child, breaks);
+    }
+
+    pub(super) fn add(&mut self, grows: &[Growth]) {
         // Как Regrow::push_many: одинаковые адреса получают максимум, не сумму.
         let mut amounts = vec![0f32; self.extra.len()];
         for growth in grows {
-            if let Pushed::Line(line) = growth.target
-                && let Some(index) = self.pushes.iter().position(|p| p == &line)
+            if let Pushed::Line(line) = &growth.target
+                && let Some(index) = self.pushes.iter().position(|p| p == line)
             {
                 amounts[index] = amounts[index].max(growth.amount);
             }
@@ -104,23 +123,33 @@ impl Lines {
         for (extra, amount) in self.extra.iter_mut().zip(amounts) {
             *extra += amount;
         }
+    }
+
+    pub(super) fn total(&self) -> f32 {
+        self.extra.iter().sum()
+    }
+
+    /// Смещение владельца не меняет локальный consumed prefix самого IFC.
+    pub(super) fn geometry(&self, offset: f32) -> FlowGeometry {
         let mut flow = self.flow.clone();
         // Координаты окончания предыдущей строки исключают новое место;
         // начало следующей и точки продолжения включают его (§5.3).
         let shift = |at: f32, inclusive: bool| -> f32 {
-            at + self
-                .pushes
-                .iter()
-                .zip(&self.extra)
-                .filter(|(p, _)| {
-                    if inclusive {
-                        p.at <= at + COORD_EPS
-                    } else {
-                        p.at < at - COORD_EPS
-                    }
-                })
-                .map(|(_, extra)| *extra)
-                .sum::<f32>()
+            offset
+                + at
+                + self
+                    .pushes
+                    .iter()
+                    .zip(&self.extra)
+                    .filter(|(p, _)| {
+                        if inclusive {
+                            p.at <= at + COORD_EPS
+                        } else {
+                            p.at < at - COORD_EPS
+                        }
+                    })
+                    .map(|(_, extra)| *extra)
+                    .sum::<f32>()
         };
         for cut in &mut flow.cuts {
             *cut = (shift(cut.0, true), shift(cut.1, true));
@@ -128,11 +157,13 @@ impl Lines {
         for range in &mut flow.solid {
             *range = (shift(range.0, true), shift(range.1, false));
         }
+        let mut prefix = 0.;
         for (line, extra) in flow.inline[0].lines.iter_mut().zip(&self.extra) {
-            line.prefix = shift(line.prefix, false);
+            line.prefix += prefix;
             line.top = shift(line.top, true);
             line.bottom = shift(line.bottom, false);
             line.consumed_before = *extra;
+            prefix += extra;
         }
         let mut pushes = self.pushes.clone();
         for push in &mut pushes {
@@ -141,24 +172,9 @@ impl Lines {
         if self.extra[0] > 0. {
             flow.cuts.push((pushes[0].at, pushes[0].at));
         }
+        flow.line_pushes = pushes;
         flow.normalize();
-        let total: f32 = self.extra.iter().sum();
-        child.h = base.h + total;
-        child.over = base.over + total;
-        let r = child.regrow.as_mut().expect("measured line model");
-        let b = r.watched.blocks().expect("measured line scope");
-        if let Some(&(top, _)) = r.laid.boxes.get(&b.id) {
-            r.laid.boxes.insert(b.id, (top, top + child.h));
-        }
-        r.laid.lines.insert(b.id, pushes);
-        let breaks = b.breaks(child.h, &r.laid).finish(flow, child.h);
-        child.cuts = breaks.cuts;
-        child.forced = breaks.forced;
-        child.solid = breaks.solid;
-        child.avoid = breaks.avoid;
-        child.keep = breaks.keep;
-        child.line_keep = breaks.line_keep;
-        child.table_rows = breaks.table_rows;
+        flow
     }
 
     pub(super) fn commit(&self) -> bool {
