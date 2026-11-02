@@ -7,6 +7,7 @@ mod patch;
 mod shape;
 #[cfg(test)]
 mod tests;
+mod text;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
 
