@@ -1,4 +1,5 @@
-//! Защита рекурсивных проходов представления; исходный DOM принадлежит revision.
+//! Защита рекурсивных проходов представления; исходный DOM принадлежит revision,
+//! как и соответствие его элементов узлам дерева коробок (`Element::node_id`).
 
 use super::DocumentValues;
 use crate::dom::input::Admitted;
@@ -13,6 +14,9 @@ pub const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
 #[derive(Default)]
 pub struct TraversalState {
     source: RefCell<Option<Admitted>>,
+    /// Адрес исходного узла элемента по его `node_id - 1`; ноль — не записан.
+    /// Адреса узлов удерживаемого `source` устойчивы, пока он удерживается.
+    elements: RefCell<Vec<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
 }
@@ -20,6 +24,33 @@ pub struct TraversalState {
 impl TraversalState {
     pub fn retain(&self, source: Admitted) {
         self.source.replace(Some(source));
+    }
+
+    /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
+    pub fn record_element(&self, handle: &Handle, node_id: u64) {
+        let Some(slot) = usize::try_from(node_id)
+            .ok()
+            .and_then(|id| id.checked_sub(1))
+        else {
+            return;
+        };
+        let mut elements = self.elements.borrow_mut();
+        if elements.len() <= slot {
+            elements.resize(slot + 1, 0);
+        }
+        elements[slot] = std::rc::Rc::as_ptr(handle) as usize;
+    }
+
+    /// Адреса исходных элементов удерживаемого DOM по `node_id - 1`.
+    pub fn elements(&self) -> std::cell::Ref<'_, Vec<usize>> {
+        self.elements.borrow()
+    }
+
+    /// Следующая ревизия с тем же деревом коробок: её исходный DOM и адреса его
+    /// элементов по тем же `node_id`.
+    pub fn readopt(&self, source: Admitted, elements: Vec<usize>) {
+        self.source.replace(Some(source));
+        self.elements.replace(elements);
     }
 
     pub fn set_embedded(&self) {
