@@ -80,6 +80,10 @@ impl Hooks for BandFlow {
         // Intrinsic sizes depend only on the children, never on the measure
         // inputs (CSS Sizing 3 §5): one probe pair per element instance.
         let intrinsic = Rc::new(Cell::new(None));
+        // Probes run during the root's layout, outside this element's text
+        // style scopes; they build the children with the inherited text style
+        // that `prepaint` sees, so both phases plan the same boxes.
+        let text = window.text_style_scope();
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let v = vert.is_some();
             // A final layout pass whose parent already fixed the inline size
@@ -106,7 +110,7 @@ impl Hooks for BandFlow {
                 (None, AvailableSpace::Definite(w)) if fixed_inline => f32::from(w),
                 (None, AvailableSpace::Definite(w)) => {
                     let w = f32::from(w);
-                    let (mn, mx) = window.with_nested_layout(|window| {
+                    let (mn, mx) = nested(window, &text, |window| {
                         let p = &mut Probe::new(
                             window,
                             cx,
@@ -121,7 +125,7 @@ impl Hooks for BandFlow {
                     // §10.3.5: `min(max(min-content, available), max-content)`.
                     mx.max(mn).min(mn.max(w))
                 }
-                (None, a) => window.with_nested_layout(|window| {
+                (None, a) => nested(window, &text, |window| {
                     let p = &mut Probe::new(
                         window,
                         cx,
@@ -148,7 +152,7 @@ impl Hooks for BandFlow {
                 super::clamp::publish(&output, p, vert, inline_up);
                 return phys(cb, p.height);
             }
-            let p = window.with_nested_layout(|window| {
+            let p = nested(window, &text, |window| {
                 plan(
                     &kids,
                     cb,
@@ -209,6 +213,15 @@ impl Hooks for BandFlow {
             }
         });
     }
+}
+
+/// A probe layout under the requesting element's inherited text style.
+fn nested<R>(
+    window: &mut Window,
+    text: &[gpui::TextStyleRefinement],
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    window.with_text_style_scope(text, |window| window.with_nested_layout(f))
 }
 
 /// Min-content and max-content of the children, probed once per element instance.

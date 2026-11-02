@@ -6167,9 +6167,35 @@ impl Window {
         self.measured_size_fixed
     }
 
+    /// KaminIDE patch: the inherited text style refinements in force now. A
+    /// measure callback runs during the root's layout, after the ancestors'
+    /// text-style scopes were popped; elements it builds for probing must
+    /// see the scopes of the element that requested the measured layout.
+    pub fn text_style_scope(&self) -> Rc<[TextStyleRefinement]> {
+        self.text_style_stack.iter().cloned().collect()
+    }
+
+    /// KaminIDE patch: run `f` with the inherited text style replaced by
+    /// `scope` (see [`Window::text_style_scope`]), then restore it.
+    pub fn with_text_style_scope<R>(
+        &mut self,
+        scope: &[TextStyleRefinement],
+        f: impl FnOnce(&mut Window) -> R,
+    ) -> R {
+        let outer = std::mem::replace(&mut self.text_style_stack, scope.to_vec());
+        let r = f(self);
+        self.text_style_stack = outer;
+        r
+    }
+
+    /// Lay out an independent element tree on a fresh layout engine.
     pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
         let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
+        // KaminIDE patch: a nested tree is laid out independently; the outer
+        // measure callback's fixed axes do not apply to its nodes.
+        let fixed = std::mem::take(&mut self.measured_size_fixed);
         let r = f(self);
+        self.measured_size_fixed = fixed;
         self.layout_engine = outer;
         r
     }

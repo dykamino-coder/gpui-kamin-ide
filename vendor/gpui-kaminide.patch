@@ -16167,7 +16167,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe85f00ec0
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..7c20b67c74acf971d8005fd1795a5f32b653cf6f
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -17581,7 +17581,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6148,190 @@
+@@ -5116,0 +6148,216 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -17604,9 +17604,35 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +        self.measured_size_fixed
 +    }
 +
++    /// KaminIDE patch: the inherited text style refinements in force now. A
++    /// measure callback runs during the root's layout, after the ancestors'
++    /// text-style scopes were popped; elements it builds for probing must
++    /// see the scopes of the element that requested the measured layout.
++    pub fn text_style_scope(&self) -> Rc<[TextStyleRefinement]> {
++        self.text_style_stack.iter().cloned().collect()
++    }
++
++    /// KaminIDE patch: run `f` with the inherited text style replaced by
++    /// `scope` (see [`Window::text_style_scope`]), then restore it.
++    pub fn with_text_style_scope<R>(
++        &mut self,
++        scope: &[TextStyleRefinement],
++        f: impl FnOnce(&mut Window) -> R,
++    ) -> R {
++        let outer = std::mem::replace(&mut self.text_style_stack, scope.to_vec());
++        let r = f(self);
++        self.text_style_stack = outer;
++        r
++    }
++
++    /// Lay out an independent element tree on a fresh layout engine.
 +    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
 +        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
++        // KaminIDE patch: a nested tree is laid out independently; the outer
++        // measure callback's fixed axes do not apply to its nodes.
++        let fixed = std::mem::take(&mut self.measured_size_fixed);
 +        let r = f(self);
++        self.measured_size_fixed = fixed;
 +        self.layout_engine = outer;
 +        r
 +    }
@@ -17772,7 +17798,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6354,48 @@
+@@ -5132,0 +6380,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -17821,7 +17847,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6416,6 @@
+@@ -5147,2 +6442,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -17830,7 +17856,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6442,6 @@
+@@ -5169 +6468,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -17838,7 +17864,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6490,16 @@
+@@ -5211,0 +6516,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -17855,30 +17881,30 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d21271b7727cd94a2d12527a30aaf4fe
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6518 @@
+@@ -5223,0 +6544 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6520 @@
+@@ -5225,3 +6546 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6529 @@
+@@ -5235,0 +6555 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6531 @@
+@@ -5237,3 +6557 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +6751,2 @@
+@@ -5458,0 +6777,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7087,5 @@
+@@ -5792,0 +7113,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -7752,0 +9052,31 @@
+@@ -7752,0 +9078,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
