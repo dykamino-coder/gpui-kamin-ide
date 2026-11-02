@@ -11,6 +11,9 @@
 mod accounting;
 mod args;
 mod diagnostics;
+mod edit;
+#[cfg(windows)]
+mod edits;
 #[cfg(windows)]
 mod frames;
 #[cfg(windows)]
