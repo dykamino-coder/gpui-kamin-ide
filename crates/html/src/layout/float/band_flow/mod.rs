@@ -43,6 +43,8 @@ pub use element::BandFlow;
 mod tap;
 use tap::Tap;
 mod probe;
+#[cfg(all(test, feature = "work-counters"))]
+mod stretch_tests;
 mod temporary;
 use probe::{intrinsic, intrinsic_of, probe, probe_of};
 

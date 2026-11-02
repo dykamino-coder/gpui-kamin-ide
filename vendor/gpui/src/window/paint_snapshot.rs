@@ -8,7 +8,7 @@ use super::*;
 pub struct PaintCtx {
     identity: paint_scope::Identity,
     element_id_stack: SmallVec<[ElementId; 32]>,
-    text_style_stack: Vec<TextStyleRefinement>,
+    text_style_stack: TextStyleScope,
     render_contexts: render_context::Snapshot,
     rendered_entity_stack: Vec<EntityId>,
     element_offset_stack: Vec<Point<Pixels>>,
