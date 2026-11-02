@@ -126,7 +126,7 @@ fn two_live_documents_keep_facts_across_other_document_bootstrap_reset_and_updat
         snapshot.environment,
         b.state.values.font_snapshot().environment
     );
-    assert!(b.update("<p>B updated</p>", "").unwrap().changed());
+    assert!(b.update("<p>B</p><p>updated</p>", "").unwrap().changed());
     assert_eq!(instances.get(), 3);
     set_root_metrics(&b.state.values, 20.0, 25.0);
     assert_eq!(unit(&b.state, "ch"), 30.0);
