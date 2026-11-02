@@ -17,6 +17,8 @@ pub struct TraversalState {
     /// Адрес исходного узла элемента по его `node_id - 1`; ноль — не записан.
     /// Адреса узлов удерживаемого `source` устойчивы, пока он удерживается.
     elements: RefCell<Vec<usize>>,
+    /// Адрес исходного текстового узла по его `TextId - 1`.
+    texts: RefCell<Vec<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
 }
@@ -28,6 +30,22 @@ impl TraversalState {
         // блок, выделенный после обхода, а промежуточные блоки освобождаются.
         let exact = self.elements.borrow().as_slice().to_vec();
         self.elements.replace(exact);
+        let exact = self.texts.borrow().as_slice().to_vec();
+        self.texts.replace(exact);
+    }
+
+    /// Обход дошёл до исходного текста `handle`: его номер, следующий по
+    /// порядку обхода (`None` после `u32::MAX` текстов).
+    pub fn record_text(&self, handle: &Handle) -> Option<crate::dom::TextId> {
+        let mut texts = self.texts.borrow_mut();
+        let id = u32::try_from(texts.len() + 1).ok()?;
+        texts.push(std::rc::Rc::as_ptr(handle) as usize);
+        crate::dom::TextId::new(id)
+    }
+
+    /// Адреса исходных текстов удерживаемого DOM по `TextId - 1`.
+    pub fn texts(&self) -> std::cell::Ref<'_, Vec<usize>> {
+        self.texts.borrow()
     }
 
     /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
@@ -51,10 +69,11 @@ impl TraversalState {
     }
 
     /// Следующая ревизия с тем же деревом коробок: её исходный DOM и адреса его
-    /// элементов по тем же `node_id`.
-    pub fn readopt(&self, source: Admitted, elements: Vec<usize>) {
+    /// элементов и текстов по тем же `node_id` и `TextId`.
+    pub fn readopt(&self, source: Admitted, elements: Vec<usize>, texts: Vec<usize>) {
         self.source.replace(Some(source));
         self.elements.replace(elements);
+        self.texts.replace(texts);
     }
 
     pub fn set_embedded(&self) {

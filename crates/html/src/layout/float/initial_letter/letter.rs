@@ -20,7 +20,7 @@ pub(super) fn emit_initial_letter(
     let mut letter = synthetic(
         "div",
         style,
-        vec![Node::Text(text[pos..end].to_string())],
+        vec![Node::Text(text[pos..end].to_string().into())],
         false,
     );
     // Метка буквицы: её место — исключение строки (css-inline-3
@@ -35,7 +35,7 @@ pub(super) fn emit_initial_letter(
         out.push(synthetic("br", Computed::default(), vec![], true));
     }
     if end < text.len() {
-        out.push(Node::Text(text[end..].to_string()));
+        out.push(Node::Text(text[end..].to_string().into()));
     }
     out.extend(nodes[at + 1..].iter().cloned());
     out

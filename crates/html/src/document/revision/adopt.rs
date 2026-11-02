@@ -91,18 +91,22 @@ impl Document {
         if !patch(&mut nodes, &targets) || !patch_texts(&mut nodes, &texts) {
             return Err(Box::new(source));
         }
-        let moved: HashMap<usize, usize> = shape.elements.iter().copied().collect();
-        let elements = values
-            .traversal
-            .elements()
-            .iter()
-            .map(|old| moved.get(old).copied().unwrap_or(0))
-            .collect();
+        let moved: HashMap<usize, usize> = shape.nodes.iter().copied().collect();
+        let remap = |old: &[usize]| -> Vec<usize> {
+            old.iter()
+                .map(|old| moved.get(old).copied().unwrap_or(0))
+                .collect()
+        };
+        let elements = remap(&values.traversal.elements());
+        let source_texts = remap(&values.traversal.texts());
         let state = DocState::adopting(&self.state);
         state
             .values
             .admit_revision(revision.clone(), source.base.as_ref());
-        state.values.traversal.readopt(source.input, elements);
+        state
+            .values
+            .traversal
+            .readopt(source.input, elements, source_texts);
         Ok(Document {
             state,
             nodes: Rc::new(nodes),

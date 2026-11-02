@@ -63,8 +63,8 @@ pub(super) fn split(mut nodes: Vec<Node>, preserve: bool) -> (Option<Vec<Node>>,
                     let after = text[at + 1..].to_owned();
                     let before = text[..at + 1].to_owned();
                     let mut line = nodes.split_off(i + 1);
-                    nodes[i] = Node::Text(before);
-                    line.insert(0, Node::Text(after));
+                    nodes[i] = Node::Text(before.into());
+                    line.insert(0, Node::Text(after.into()));
                     return (Some(nodes), line);
                 }
             }

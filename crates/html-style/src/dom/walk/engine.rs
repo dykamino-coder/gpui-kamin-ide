@@ -175,7 +175,10 @@ pub fn walk_children(
                 }
                 match &v.handle().data {
                     NodeData::Text { contents } => super::text_nodes::walk_text(
-                        contents.borrow().to_string(),
+                        crate::dom::Text::from_source(
+                            contents.borrow().to_string(),
+                            v.vcx.doc.traversal.record_text(v.handle()),
+                        ),
                         v.preserve,
                         &v.survey.nodes,
                         v.index,

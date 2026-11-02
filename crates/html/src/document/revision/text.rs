@@ -152,7 +152,7 @@ pub(super) fn patch_texts(nodes: &mut Vec<Node>, targets: &HashMap<u64, Texts>) 
     }
     for (path, new) in paths {
         match apply(nodes, &path) {
-            Some(Node::Text(text)) => *text = new,
+            Some(Node::Text(text)) => **text = new,
             _ => return false,
         }
     }

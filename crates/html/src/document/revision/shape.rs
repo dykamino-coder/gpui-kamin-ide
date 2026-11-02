@@ -30,8 +30,8 @@ pub(super) struct Edited {
 pub(super) struct Shape {
     pub(super) changed: Vec<Changed>,
     pub(super) texts: Vec<Edited>,
-    /// Адреса элементов прежнего и нового DOM в одном порядке обхода.
-    pub(super) elements: Vec<(usize, usize)>,
+    /// Адреса элементов и текстов прежнего и нового DOM в одном порядке обхода.
+    pub(super) nodes: Vec<(usize, usize)>,
     /// Тексты всех `<style>` нового DOM, включая содержимое шаблонов.
     pub(super) sheets: Vec<String>,
 }
@@ -41,7 +41,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
     let mut shape = Shape {
         changed: Vec::new(),
         texts: Vec::new(),
-        elements: Vec::new(),
+        nodes: Vec::new(),
         sheets: Vec::new(),
     };
     // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
@@ -63,6 +63,9 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 },
             ) if name == n && public_id == p && system_id == s => frozen,
             (NodeData::Text { contents }, NodeData::Text { contents: c }) => {
+                shape
+                    .nodes
+                    .push((Rc::as_ptr(&a) as usize, Rc::as_ptr(&b) as usize));
                 if *contents.borrow() != *c.borrow() {
                     let Some(parent) = parent.filter(|_| !frozen) else {
                         return None;
@@ -119,7 +122,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                     });
                 }
                 shape
-                    .elements
+                    .nodes
                     .push((Rc::as_ptr(&a) as usize, Rc::as_ptr(&b) as usize));
                 if &*name.local == "style" {
                     shape.sheets.push(text_of(&b));
