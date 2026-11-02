@@ -99,7 +99,7 @@ pub(super) fn subtree_has_text(e: &Element) -> bool {
     let mut pending = vec![e.children.iter()];
     while let Some(children) = pending.last_mut() {
         match children.next() {
-            Some(Node::Text(t)) if !t.trim().is_empty() => return true,
+            Some(Node::Text(t)) if !crate::dom::whitespace::blank_text(t) => return true,
             Some(Node::Element(c)) => pending.push(c.children.iter()),
             Some(_) => {}
             None => {

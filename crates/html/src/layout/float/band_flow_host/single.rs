@@ -22,7 +22,7 @@ pub(super) async fn build(
     let mut children = e
         .children
         .iter()
-        .filter(|n| !matches!(n, Node::Text(t) if t.trim().is_empty()));
+        .filter(|n| !matches!(n, Node::Text(t) if crate::dom::whitespace::blank_text(t)));
     let Node::Element(node) = children.next()? else {
         return None;
     };

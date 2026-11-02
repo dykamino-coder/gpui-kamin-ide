@@ -19,7 +19,7 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
     // (`box-generation-002`: флоат обязан встать на строку прогона
     // слева от неё, §9.5.1 правило 6).
     let text = run.iter().any(|n| match n {
-        Node::Text(t) => !t.trim().is_empty(),
+        Node::Text(t) => !crate::dom::whitespace::blank_text(t),
         Node::Element(c) => {
             // CSS 2.1 sections 9.2.2, 10.3.9: atomic inline containers
             // are measured by the paragraph even without inline text.
