@@ -32,12 +32,12 @@ pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bo
         };
         let mut list: &mut Vec<Node> = nodes;
         for &i in parents {
-            let Some(Node::Element(e)) = list.get_mut(i) else {
+            let Some(Node::Element(e)) = list.iter_mut().nth(i) else {
                 return false;
             };
             list = &mut e.children;
         }
-        match (list.get_mut(*last), targets.get(&id)) {
+        match (list.iter_mut().nth(*last), targets.get(&id)) {
             (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
             _ => return false,
         }

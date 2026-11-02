@@ -28,7 +28,7 @@ impl Document {
         source: Source,
         theme_css: &str,
         revision: &crate::budget::RevisionBudget,
-    ) -> Result<Document, Source> {
+    ) -> Result<Document, Box<Source>> {
         #[cfg(feature = "engine-bench")]
         let started = std::time::Instant::now();
         let values = &self.state.values;
@@ -40,13 +40,13 @@ impl Document {
             && self.embedded_failure().is_none()
             && revision.failure().is_none();
         if !quiet || *self.theme_css != *theme_css {
-            return Err(source);
+            return Err(Box::new(source));
         }
         let Some(old) = values.source_dom() else {
-            return Err(source);
+            return Err(Box::new(source));
         };
         let Some(shape) = shape::compare(&old, &source.input.dom.document) else {
-            return Err(source);
+            return Err(Box::new(source));
         };
         let mut sheets = vec![crate::style::ua::user_agent_css(), theme_css];
         if values.quirks() {
@@ -68,12 +68,12 @@ impl Document {
                         },
                     );
                 }
-                _ => return Err(source),
+                _ => return Err(Box::new(source)),
             }
         }
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, &targets) {
-            return Err(source);
+            return Err(Box::new(source));
         }
         let moved: HashMap<usize, usize> = shape.elements.iter().copied().collect();
         let elements = values

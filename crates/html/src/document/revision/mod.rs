@@ -69,7 +69,7 @@ impl Document {
                 *self = next;
                 return Ok(self.report());
             }
-            Err(source) => source,
+            Err(source) => *source,
         };
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
