@@ -16,15 +16,15 @@ impl Computed {
                 // отрисовка замещаемого его учитывает (`image_with::ratio_of`).
                 let (auto, ratio) = parsed_value!(self, aspect_ratio(v));
                 if auto {
-                    self.aspect_ratio_auto = ratio;
-                    self.aspect_ratio = None;
+                    self.reset_shapes.aspect_ratio_auto = ratio;
+                    self.reset_shapes.aspect_ratio = None;
                 } else {
-                    self.aspect_ratio_auto = None;
-                    self.aspect_ratio = ratio;
+                    self.reset_shapes.aspect_ratio_auto = None;
+                    self.reset_shapes.aspect_ratio = ratio;
                 }
             }
             "frame-sizing" => {
-                self.frame_sizing_height = parsed_value!(
+                self.reset_context.frame_sizing_height = parsed_value!(
                     self,
                     match v {
                         "content-height" => Some(true),

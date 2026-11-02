@@ -53,7 +53,7 @@ fn synthetic_input_overrides_parent_band_without_projecting_css() {
         boxed.inline_decoration.corner_radius,
         parent.inline_decoration.corner_radius
     );
-    assert!(boxed.background.is_none());
-    assert!(input.used().background.is_none());
+    assert!(boxed.reset_background.background.is_none());
+    assert!(input.used().reset_background.background.is_none());
     assert_eq!(*input.computed(), Computed::default());
 }

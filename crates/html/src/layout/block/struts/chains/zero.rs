@@ -54,10 +54,10 @@ pub(crate) fn zero_paths(
             if let Some(deep) = paths.0[next].deep {
                 pin_inherited_margins(child, top || deep, !top || deep, vcx);
                 if top || deep {
-                    child.style.used_mut().margin.top = Some(Len::Px(0.0));
+                    child.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(0.0));
                 }
                 if !top || deep {
-                    child.style.used_mut().margin.bottom = Some(Len::Px(0.0));
+                    child.style.used_mut().reset_box_layout.margin.bottom = Some(Len::Px(0.0));
                 }
             }
             if !paths.0[next].next.is_empty() {
@@ -76,8 +76,8 @@ fn needs_write(children: &[Node], paths: &ZeroPaths, top: bool) -> bool {
             };
             if let Some(deep) = paths.0[next].deep {
                 let style = child.style.used();
-                if (top || deep) && style.margin.top != Some(Len::Px(0.0))
-                    || (!top || deep) && style.margin.bottom != Some(Len::Px(0.0))
+                if (top || deep) && style.reset_box_layout.margin.top != Some(Len::Px(0.0))
+                    || (!top || deep) && style.reset_box_layout.margin.bottom != Some(Len::Px(0.0))
                 {
                     return true;
                 }
@@ -89,7 +89,7 @@ fn needs_write(children: &[Node], paths: &ZeroPaths, top: bool) -> bool {
                         .into_iter()
                         .any(|(side, wanted)| {
                             wanted
-                                && e.style.cascaded().inherit_longhands.contains(
+                                && e.style.cascaded().reset_cascade.inherit_longhands.contains(
                                     crate::style::css::LonghandId::physical(
                                         crate::style::css::BoxGroup::Margin,
                                         side,

@@ -36,11 +36,11 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Computed::default()
                 };
-                with_inherited.writing_mode =
+                with_inherited.inh.writing.writing_mode =
                     Some(crate::style::computed::writing_mode::WritingModeKw::new(
                         vertical, rl, sideways,
                     ));
-                with_inherited.rtl = Some(rtl);
+                with_inherited.inh.writing.rtl = Some(rtl);
                 with_inherited
             };
             assert_eq!(reversed(&c), expected);
@@ -61,24 +61,25 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
-            with_inherited.writing_mode = Some(
+            with_inherited.inh.writing.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
-            with_inherited.rtl = Some(true);
-            with_inherited.text_orientation =
+            with_inherited.inh.writing.rtl = Some(true);
+            with_inherited.inh.writing.text_orientation =
                 Some(crate::style::computed::writing_mode::TextOrientation::Upright);
             with_inherited
         };
         assert_eq!(reversed(&c), [false, false]);
-        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            false,
-            c.wm().block_rl(),
-            c.wm().sideways(),
-        ));
+        c.inh.writing.writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                false,
+                c.wm().block_rl(),
+                c.wm().sideways(),
+            ));
         assert_eq!(reversed(&c), [true, false]);
-        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, true, true,
-        ));
+        c.inh.writing.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, true, true),
+        );
         assert_eq!(reversed(&c), [true, true]);
     }
 }

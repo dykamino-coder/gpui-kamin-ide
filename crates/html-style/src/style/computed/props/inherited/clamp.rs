@@ -72,31 +72,37 @@ impl Computed {
         match id {
             MaxLines => {
                 if let Some((lines, auto)) = max_lines(v) {
-                    self.line_clamp = lines;
-                    self.clamp_auto = Some(auto);
+                    self.reset_fragmentation.line_clamp = lines;
+                    self.reset_fragmentation.clamp_auto = Some(auto);
                 }
             }
             BlockEllipsis => {
                 if let Some(mark) = block_ellipsis(v) {
-                    self.clamp_mark = Some(mark);
+                    self.inh.text_flow.clamp_mark = Some(mark);
                 }
             }
             Continue => {
                 if let Some((collapse, legacy, discard)) = continue_value(v) {
-                    self.clamp_continue = Some(collapse);
-                    self.clamp_legacy = Some(legacy);
-                    self.clamp_discard = Some(discard);
+                    self.reset_fragmentation.clamp_continue = Some(collapse);
+                    self.inh.text_flow.clamp_legacy = Some(legacy);
+                    self.reset_fragmentation.clamp_discard = Some(discard);
                 }
             }
             TextBoxTrim => {
                 if let Some((start, end)) = parse_trim(&v.to_ascii_lowercase()) {
-                    (self.text_box_trim_start, self.text_box_trim_end) = (start, end);
+                    (
+                        self.reset_text_box.text_box_trim_start,
+                        self.reset_text_box.text_box_trim_end,
+                    ) = (start, end);
                 }
             }
             TextBoxEdge => {
                 if let Some((over, under)) = parse_edge(&v.to_ascii_lowercase()) {
-                    self.text_box_edge_set = true;
-                    (self.text_box_over, self.text_box_under) = (over, under);
+                    self.inh.text_flow.text_box_edge_set = true;
+                    (
+                        self.inh.text_flow.text_box_over,
+                        self.inh.text_flow.text_box_under,
+                    ) = (over, under);
                 }
             }
             _ => return false,
@@ -106,8 +112,8 @@ impl Computed {
 
     pub(super) fn inherit_clamp(&mut self, id: LonghandId) -> bool {
         match id {
-            LonghandId::BlockEllipsis => self.clamp_mark = None,
-            LonghandId::TextBoxEdge => self.text_box_edge_set = false,
+            LonghandId::BlockEllipsis => self.inh.text_flow.clamp_mark = None,
+            LonghandId::TextBoxEdge => self.inh.text_flow.text_box_edge_set = false,
             _ => return false,
         }
         true

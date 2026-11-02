@@ -32,7 +32,7 @@ pub(super) fn collapse_top(
     let mut eat = ZeroPaths::default();
     // Дети `e` лежат в `e`: его ширина точками — содержащий блок для
     // `bfc_no_fit` внутри цепи.
-    let cb = match e.style.used().width {
+    let cb = match e.style.used().reset_box_layout.width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
         _ => cb,
     };
@@ -44,11 +44,16 @@ pub(super) fn collapse_top(
     );
     if let (Some(s), Some(own)) = (
         chain,
-        margin_or_bail(e.style.used().margin.top, &e.style.used(), vcx),
+        margin_or_bail(
+            e.style.used().reset_box_layout.margin.top,
+            &e.style.used(),
+            vcx,
+        ),
     ) && !eat.is_empty()
     {
         pin_inherited_margins(e, true, false, vcx);
-        e.style.used_mut().margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
+        e.style.used_mut().reset_box_layout.margin.top =
+            Some(Len::Px(solve(adjoin(strut_of(own), s))));
         zero_paths(&mut e.children, &eat, true, vcx);
     }
 }
@@ -62,11 +67,16 @@ pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::layout::block::margin
         |vcx| bottom_chain(&e.children, &mut eat, vcx),
     );
     let Some(chain) = chain else { return };
-    let Some(own) = margin_or_bail(e.style.used().margin.bottom, &e.style.used(), vcx) else {
+    let Some(own) = margin_or_bail(
+        e.style.used().reset_box_layout.margin.bottom,
+        &e.style.used(),
+        vcx,
+    ) else {
         return;
     };
     pin_inherited_margins(e, false, true, vcx);
-    e.style.used_mut().margin.bottom = Some(Len::Px(solve(adjoin(strut_of(own), chain))));
+    e.style.used_mut().reset_box_layout.margin.bottom =
+        Some(Len::Px(solve(adjoin(strut_of(own), chain))));
     zero_paths(&mut e.children, &eat, false, vcx);
 }
 
@@ -116,7 +126,7 @@ fn bottom_chain(
             strut = adjoin(
                 strut,
                 strut_of(margin_or_bail(
-                    child.style.used().margin.bottom,
+                    child.style.used().reset_box_layout.margin.bottom,
                     &child.style.used(),
                     vcx,
                 )?),
@@ -138,12 +148,15 @@ fn bottom_chain(
             }
             let next = eat.add(parent, i, false);
             if !own_context(child)
-                && zero_len(child.style.used().padding.bottom)
+                && zero_len(child.style.used().reset_box_layout.padding.bottom)
                 && zero_len(child.style.used().borders().bottom)
                 && zero_len(BoxDimensions::for_element(child, &child.style.used()).minimum[1])
-                && matches!(child.style.used().height, None | Some(Len::Auto))
+                && matches!(
+                    child.style.used().reset_box_layout.height,
+                    None | Some(Len::Auto)
+                )
                 && !margin_height::lowers(child, vcx)
-                && child.style.used().margin_trim & 2 == 0
+                && child.style.used().reset_fragmentation.margin_trim & 2 == 0
             {
                 vcx = with_inner_dimensions(
                     &child.style.used(),
@@ -168,7 +181,13 @@ fn anchors_floats(children: &[Node]) -> bool {
     while let Some(children) = pending.pop() {
         for node in children {
             let Node::Element(ch) = node else { continue };
-            if ch.style.used().float.is_some_and(|f| f != 0) {
+            if ch
+                .style
+                .used()
+                .reset_box_layout
+                .float
+                .is_some_and(|f| f != 0)
+            {
                 return true;
             }
             if in_flow(&ch.style.used()) && !own_context(ch) {

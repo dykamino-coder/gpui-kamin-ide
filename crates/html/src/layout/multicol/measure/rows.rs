@@ -50,7 +50,7 @@ pub(crate) fn row_plan_in(
     // `remaining_content_block_size_`, issue 11754 вариант 2);
     // `column-wrap: auto` = `wrap` при заданном
     // `column-height`. `row-gap: normal` в колонках — 1em (§rg).
-    let col_h = match e.style.used().column_height {
+    let col_h = match e.style.used().reset_fragmentation.column_height {
         Some(Len::Px(h)) if h >= 0.0 => Some(h),
         _ => None,
     };
@@ -63,12 +63,17 @@ pub(crate) fn row_plan_in(
         Some(Len::Px(h)) if h > 0.0 => Some(h),
         _ => None,
     };
-    let wrap = e.style.used().column_wrap.unwrap_or(col_h.is_some());
-    let em = match e.style.used().font_size {
+    let wrap = e
+        .style
+        .used()
+        .reset_fragmentation
+        .column_wrap
+        .unwrap_or(col_h.is_some());
+    let em = match e.style.used().inh.font.font_size {
         Some(Len::Px(size)) => size,
         _ => opts.base_size(),
     };
-    let row_gap = match e.style.used().gap.and_then(|g| g.0) {
+    let row_gap = match e.style.used().reset_flex.gap.and_then(|g| g.0) {
         Some(Len::Px(v)) => v.max(0.0),
         Some(Len::Em(k)) => k * em,
         _ => em,
@@ -125,7 +130,7 @@ pub(crate) fn row_plan_in(
     // режет внешний фрагментаинер: линия — остаток ряда, но не дальше его края
     // (`Rows::outer`); колонки переносятся в новый ряд и при `nowrap` — Blink
     // переносит всякий раз, когда содержимое продолжается во внешнем следующем.
-    let own_rows = col_h.is_some() || e.style.used().column_wrap.is_some();
+    let own_rows = col_h.is_some() || e.style.used().reset_fragmentation.column_wrap.is_some();
     let nested = outer_space.filter(|_| !col_vert);
     let nest_phase = nested.as_ref().map_or(0., |r| r.offset);
     let nest_rows = nested.as_ref().map(|r| {
@@ -152,7 +157,7 @@ pub(crate) fn row_plan_in(
     };
     let rows = rows.or_else(|| {
         (cap_h.is_some()
-            && e.style.used().column_fill_auto != Some(true)
+            && e.style.used().reset_fragmentation.column_fill_auto != Some(true)
             && !opts.frag.in_stack_copy)
             .then_some(crate::layout::fragment::types::Rows {
                 h: cap_h,

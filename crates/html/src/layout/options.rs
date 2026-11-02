@@ -58,8 +58,13 @@ impl RenderOpts {
     /// с `line-height: 1em` при одном и том же шрифте.
     pub(crate) fn root_style(&self) -> BoxStyle {
         BoxStyle::new(Computed {
-            icb: true,
-            ..Computed::default()
+            reset_context: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetContext {
+                    icb: true,
+                    ..Default::default()
+                },
+            ),
+            ..self.cx.vcx().doc.initial_style()
         })
     }
 }

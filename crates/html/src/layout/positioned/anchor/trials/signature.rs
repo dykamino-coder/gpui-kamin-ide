@@ -21,12 +21,13 @@ impl Signature {
     pub(super) fn of(c: &BoxStyle, vcx: ValueCx<'_>) -> Self {
         Self {
             accepted: Owned::of(c, vcx),
-            position: c.position,
-            display: c.display,
+            position: c.reset_positioned.position,
+            display: c.reset_box_layout.display,
             cb: c.cb_node,
-            order: c.position_try_order,
-            fallbacks: c.position_try_fallbacks.clone(),
+            order: c.reset_positioned.position_try_order,
+            fallbacks: c.reset_positioned.position_try_fallbacks.clone(),
             rules: c
+                .reset_positioned
                 .position_try_fallbacks
                 .iter()
                 .filter_map(|f| {

@@ -22,7 +22,7 @@ fn mixed_font_stops_compute_once_before_inheritance() {
     own.apply_one("background-image", "inherit", vcx);
     own.apply_one("color", "green", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
-    let gradient = child.gradient.clone().unwrap();
+    let gradient = child.reset_background.gradient.clone().unwrap();
     assert!(gradient.stop_lengths.is_empty());
     assert_eq!(
         gradient
@@ -51,7 +51,7 @@ fn radial_radii_center_and_line_stops_are_computed_lengths() {
         vcx,
     );
     let computed = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
-    let gradient = computed.gradient.clone().unwrap();
+    let gradient = computed.reset_background.gradient.clone().unwrap();
     let GradientShape::Radial { position, size, .. } = gradient.shape else {
         panic!("radial gradient")
     };
@@ -83,7 +83,7 @@ fn viewport_and_font_terms_share_the_computed_stop() {
     let mut computed = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
     computed.resolve_viewport((200.0, 100.0), vcx);
     computed.resolve_em(16.0, vcx);
-    let gradient = computed.gradient.clone().unwrap();
+    let gradient = computed.reset_background.gradient.clone().unwrap();
     assert_eq!(
         (gradient.stops_raw[0].1, gradient.stops_raw[0].2),
         (None, Some(60.0))

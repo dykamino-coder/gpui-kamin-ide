@@ -145,8 +145,10 @@ pub(super) fn scroll_marker_pass(
     }
     let scrolls =
         |o: Option<Overflow>| matches!(o, Some(Overflow::Scroll) | Some(Overflow::Hidden));
-    let scroller = tag == "html" || scrolls(style.overflow_x) || scrolls(style.overflow_y);
-    let Some(before) = style.scroll_marker_group else {
+    let scroller = tag == "html"
+        || scrolls(style.reset_box_layout.overflow_x)
+        || scrolls(style.reset_box_layout.overflow_y);
+    let Some(before) = style.reset_generated.scroll_marker_group else {
         if scroller {
             purge_scroll_markers(&admission, children)?;
         }
@@ -162,9 +164,9 @@ pub(super) fn scroll_marker_pass(
     let mut markers = vec![];
     {
         let abs_ok = crate::style::computed::box_predicates::establishes_cb(style);
-        let fixed_ok = style.transform.is_some()
-            || style.contain_layout == Some(true)
-            || style.contain_paint == Some(true);
+        let fixed_ok = style.reset_transforms.transform.is_some()
+            || style.reset_context.contain_layout == Some(true)
+            || style.reset_context.contain_paint == Some(true);
         collect_scroll_markers(&admission, children, abs_ok, fixed_ok, &mut markers)?;
     }
     let matched: Vec<&Rule> = rules()
@@ -172,22 +174,22 @@ pub(super) fn scroll_marker_pass(
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
     let mut gstyle = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
-    if gstyle.display == Some(Display::None) {
+    if gstyle.reset_box_layout.display == Some(Display::None) {
         return Ok(out);
     }
-    gstyle.display = match gstyle.display {
+    gstyle.reset_box_layout.display = match gstyle.reset_box_layout.display {
         Some(Display::InlineBlock) => Some(Display::Block),
         Some(Display::InlineFlex) => Some(Display::Flex),
         Some(Display::InlineGrid) => Some(Display::Grid),
         Some(Display::InlineTable) => Some(Display::Table),
         other => other,
     };
-    gstyle.contain_layout = Some(true);
+    gstyle.reset_context.contain_layout = Some(true);
     if !matches!(
-        gstyle.position,
+        gstyle.reset_positioned.position,
         Some(Position::Absolute) | Some(Position::Fixed)
     ) {
-        gstyle.contain_size = Some(true);
+        gstyle.reset_context.contain_size = Some(true);
     }
     let group = Element {
         marks: Default::default(),

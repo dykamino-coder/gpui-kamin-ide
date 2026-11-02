@@ -11,7 +11,7 @@ impl BoxStyle {
     pub fn foreground_paint(&self) -> ForegroundPaint {
         self.paint.as_ref().map_or(
             ForegroundPaint {
-                color: self.color,
+                color: self.inh.ui.color,
                 ..Default::default()
             },
             |p| p.foreground,
@@ -23,13 +23,15 @@ impl BoxStyle {
     }
 
     pub fn paint_filter(&self) -> Option<Filter> {
-        self.paint.as_ref().map_or(self.filter, |p| p.filter)
+        self.paint
+            .as_ref()
+            .map_or(self.reset_effects.filter, |p| p.filter)
     }
 
     pub fn paint_filter_ops(&self) -> &[Filter] {
         self.paint
             .as_ref()
-            .map_or(&self.scrollbar_filter_ops, |p| &p.filter_ops)
+            .map_or(&self.reset_effects.scrollbar_filter_ops, |p| &p.filter_ops)
     }
 
     pub fn paint_background(&self) -> Cow<'_, BackgroundValues> {
@@ -52,14 +54,22 @@ impl BoxStyle {
     }
 
     pub fn used_caret_color(&self) -> Option<Color> {
-        match self.caret_color.as_ref().and_then(ColorOrAuto::color) {
+        match self
+            .inh
+            .ui
+            .caret_color
+            .as_ref()
+            .and_then(ColorOrAuto::color)
+        {
             Some(color) => Some(self.used_color(color)),
             None => self.ink(),
         }
     }
 
     pub fn used_accent_color(&self) -> Option<Color> {
-        self.accent_color
+        self.inh
+            .ui
+            .accent_color
             .as_ref()
             .and_then(ColorOrAuto::color)
             .map(|c| self.used_color(c))
@@ -74,7 +84,7 @@ impl BoxStyle {
     }
 
     pub fn used_scrollbar_colors(&self) -> Option<[Color; 2]> {
-        let colors = self.scroll.colors.as_ref()?.as_ref()?;
+        let colors = self.reset_box_layout.scroll.colors.as_ref()?.as_ref()?;
         Some(colors.each_ref().map(|c| self.used_color(c)))
     }
 
@@ -93,12 +103,12 @@ impl BoxStyle {
         Some((
             width,
             offset,
-            self.used_outline_color(self.outline.as_ref()?),
+            self.used_outline_color(self.reset_border.outline.as_ref()?),
         ))
     }
 
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
-        self.border_shape.as_ref()?;
+        self.reset_border.border_shape.as_ref()?;
         self.contour_outline_params()
     }
 
@@ -106,7 +116,9 @@ impl BoxStyle {
         self.used_color(
             self.paint
                 .as_ref()
-                .map_or(&self.border_colors[side], |p| &p.border_colors[side]),
+                .map_or(&self.reset_border.border_colors[side], |p| {
+                    &p.border_colors[side]
+                }),
         )
     }
 
@@ -118,7 +130,9 @@ impl BoxStyle {
     }
 
     pub fn paint_shadows(&self) -> &[Shadow] {
-        self.paint.as_ref().map_or(&self.shadows, |p| &p.shadows)
+        self.paint
+            .as_ref()
+            .map_or(&self.reset_effects.shadows, |p| &p.shadows)
     }
 
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
@@ -126,7 +140,7 @@ impl BoxStyle {
             return Vec::new();
         }
         let shadows = if inset {
-            &self.inset_shadows
+            &self.reset_effects.inset_shadows
         } else {
             self.paint_shadows()
         };
@@ -140,7 +154,7 @@ impl BoxStyle {
         self.style_rc().border_shape_ext_with(
             self.paint_shadows(),
             if self.paints_decorations() {
-                &self.inset_shadows
+                &self.reset_effects.inset_shadows
             } else {
                 &[]
             },

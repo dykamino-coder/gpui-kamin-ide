@@ -13,15 +13,15 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
 
 pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
-    let Some(first) = parent.first_letter_own.as_deref() else {
+    let Some(first) = parent.reset_text_box.first_letter_own.as_deref() else {
         return nodes;
     };
     // Floating initials and overlapping first-line layers use separate layout.
-    if parent.first_letter.is_none()
-        || first.float.is_some_and(|f| f != 0)
-        || first.initial_letter.is_some()
-        || parent.first_line.is_some()
-        || parent.preserve_newlines == Some(true)
+    if parent.reset_text_box.first_letter.is_none()
+        || first.reset_box_layout.float.is_some_and(|f| f != 0)
+        || first.reset_text_box.initial_letter.is_some()
+        || parent.reset_text_box.first_line.is_some()
+        || parent.inh.text_flow.preserve_newlines == Some(true)
     {
         return nodes;
     }
@@ -31,10 +31,10 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
             Node::Element(e) if out_of_flow(&e.style.used()) || e.tag == "::marker" => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
-                    && e.style.used().position.is_none()
+                    && e.style.used().reset_positioned.position.is_none()
                     && !table_box(e)
                     && matches!(
-                        e.style.used().display,
+                        e.style.used().reset_box_layout.display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_letter.is_none()
@@ -44,7 +44,7 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                 // #first-letter-tree put this fictitious inline inside the
                 // descendant. Keep relative fonts relative to that text.
                 let layer = first.clone();
-                e.style.used_mut().first_letter_own = Some(Box::new(layer.clone()));
+                e.style.used_mut().reset_text_box.first_letter_own = Some(Box::new(layer.clone()));
                 e.first_letter = Some(layer.into());
             }
             _ => {}

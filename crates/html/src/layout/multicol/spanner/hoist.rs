@@ -60,32 +60,32 @@ pub(crate) fn hoist_spanners(
 /// `max-content` (css-flexbox-1 §9.2 п.3.A).
 pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     if matches!(
-        c.width,
+        c.reset_box_layout.width,
         Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
     ) {
         return true;
     }
-    if !matches!(c.width, None | Some(Len::Auto)) {
+    if !matches!(c.reset_box_layout.width, None | Some(Len::Auto)) {
         return false;
     }
     // A band host removes placement properties from its measured copy; the
     // box still has the float's shrink-to-fit intrinsic sizing (Multicol 1 §4).
-    c.float.unwrap_or(0) != 0
-        || c.floated_box
+    c.reset_box_layout.float.unwrap_or(0) != 0
+        || c.reset_context.floated_box
         || matches!(
-            c.position,
+            c.reset_positioned.position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
         || matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
                 | Some(Display::InlineTable)
         )
         || matches!(
-            parent.display,
+            parent.reset_box_layout.display,
             Some(Display::Flex)
                 | Some(Display::InlineFlex)
                 | Some(Display::Grid)
@@ -98,9 +98,11 @@ pub(crate) fn multicol_container(c: &Computed) -> bool {
     // Заданный `column-height` тоже делает коробку многоколоночной
     // (css-multicol-2 §multi-column-model: «whose column-width, column-count,
     // or column-height property is not auto»; `column-height-012`).
-    (c.column_count.is_some() || c.column_width.is_some() || c.column_height.is_some())
+    (c.reset_fragmentation.column_count.is_some()
+        || c.reset_fragmentation.column_width.is_some()
+        || c.reset_fragmentation.column_height.is_some())
         && !matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::Grid)
                 | Some(Display::InlineGrid)
                 | Some(Display::GridLanes)

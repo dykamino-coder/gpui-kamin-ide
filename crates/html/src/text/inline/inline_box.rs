@@ -55,7 +55,13 @@ pub(super) fn mark_inline_box(
     if e.node_id == 0 {
         return pieces;
     }
-    let names = e.style.used().anchor_name.clone().unwrap_or_default();
+    let names = e
+        .style
+        .used()
+        .reset_positioned
+        .anchor_name
+        .clone()
+        .unwrap_or_default();
     let cb = super::establishes_cb(&e.style.used())
         && pieces.iter().any(|p| {
             matches!(p, Piece::Overlay(_, h) if h.cb_marker.is_none() && h.box_marker.is_none() && h.inline_box.is_none())
@@ -66,7 +72,7 @@ pub(super) fn mark_inline_box(
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let b = e.style.used().borders();
-    let p = &e.style.used().padding;
+    let p = &e.style.used().reset_box_layout.padding;
     let info = Rc::new(InlineBoxInfo {
         node: e.node_id,
         names,
@@ -75,7 +81,7 @@ pub(super) fn mark_inline_box(
         seq: crate::layout::positioned::anchor::next_seq(anchors),
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
-        hidden: merged.hidden == Some(true),
+        hidden: merged.inh.ui.hidden == Some(true),
         font_style: (**merged).clone(),
     });
     let marker = |start: bool| {

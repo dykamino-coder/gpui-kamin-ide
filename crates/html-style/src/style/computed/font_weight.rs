@@ -8,8 +8,8 @@ use super::Computed;
 pub fn inherit(result: &mut Computed, parent: &Computed, own: &Computed) {
     // CSS Fonts 4 section 2.2.1: relative weights use the parent's computed
     // number, independently of which physical faces are available.
-    let weight = parent.font_weight.unwrap_or(400);
-    result.font_weight = match own.font_weight_step {
+    let weight = parent.inh.font.font_weight.unwrap_or(400);
+    result.inh.font.font_weight = match own.reset_cascade.font_weight_step {
         1 => Some(match weight {
             0..350 => 400,
             350..550 => 700,
@@ -22,8 +22,8 @@ pub fn inherit(result: &mut Computed, parent: &Computed, own: &Computed) {
             550..750 => 400,
             _ => 700,
         }),
-        _ => own.font_weight.or(parent.font_weight),
+        _ => own.inh.font.font_weight.or(parent.inh.font.font_weight),
     };
     // Descendants inherit the resolved number, not another relative step.
-    result.font_weight_step = 0;
+    result.reset_cascade.font_weight_step = 0;
 }

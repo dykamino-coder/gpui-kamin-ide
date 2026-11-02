@@ -72,7 +72,10 @@ pub(super) fn column_stack_div(
             opts.frag.paged.is_none()
                 && crate::layout::multicol::stack_child::replay::table_free(e),
         )
-        .with_discard(rows.is_none_or(|r| r.cap) && e.style.used().clamp_discard == Some(true))
+        .with_discard(
+            rows.is_none_or(|r| r.cap)
+                && e.style.used().reset_fragmentation.clamp_discard == Some(true),
+        )
         .with_nest_report(nest_report)
         .with_lead_report(opts.frag.watch.clone().map(|w| (w, e.node_id)))
         .with_row_extent(if nest_rows.is_some() {
@@ -88,8 +91,11 @@ pub(super) fn column_stack_div(
                 && rows.is_none()
                 && nest_rows.is_none()
                 && !col_vert
-                && e.style.used().column_height.is_none()
-                && matches!(e.style.used().height, None | Some(Len::Auto)),
+                && e.style.used().reset_fragmentation.column_height.is_none()
+                && matches!(
+                    e.style.used().reset_box_layout.height,
+                    None | Some(Len::Auto)
+                ),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
         .with_row_limit(
@@ -101,9 +107,9 @@ pub(super) fn column_stack_div(
         // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(
             match if col_vert {
-                merged.width
+                merged.reset_box_layout.width
             } else {
-                merged.height
+                merged.reset_box_layout.height
             } {
                 Some(Len::Px(h))
                     if h > 0.0
@@ -134,8 +140,9 @@ pub(super) fn finish_column_stack(
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
-    let cb_h: Option<f32> = (e.style.used().position.is_some()
-        && e.style.used().position != Some(crate::style::computed::Position::Static)
+    let cb_h: Option<f32> = (e.style.used().reset_positioned.position.is_some()
+        && e.style.used().reset_positioned.position
+            != Some(crate::style::computed::Position::Static)
         && !col_vert)
         .then(|| {
             let px = |l: Option<Len>| match l {
@@ -144,9 +151,10 @@ pub(super) fn finish_column_stack(
                 _ => None,
             };
             let b = e.style.used().borders();
-            let pad = px(e.style.used().padding.top)? + px(e.style.used().padding.bottom)?;
+            let pad = px(e.style.used().reset_box_layout.padding.top)?
+                + px(e.style.used().reset_box_layout.padding.bottom)?;
             let bor = px(b.top)? + px(b.bottom)?;
-            match e.style.used().height {
+            match e.style.used().reset_box_layout.height {
                 Some(Len::Px(h)) if BoxDimensions::for_element(e, &e.style.used()).border_box => {
                     Some((h - bor).max(pad))
                 }
@@ -161,14 +169,16 @@ pub(super) fn finish_column_stack(
         }
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
-            && oof.style.used().position == Some(crate::style::computed::Position::Absolute)
+            && oof.style.used().reset_positioned.position
+                == Some(crate::style::computed::Position::Absolute)
         {
             let style = &mut *oof.style.used_mut();
-            for l in [
-                &mut style.height,
-                &mut style.min_height,
-                &mut style.max_height,
-            ] {
+            for style_field_index in 0..3 {
+                let l = match style_field_index {
+                    0 => &mut style.reset_box_layout.height,
+                    1 => &mut style.reset_box_layout.min_height,
+                    _ => &mut style.reset_box_layout.max_height,
+                };
                 if let Some(Len::Pct(k)) = *l {
                     *l = Some(Len::Px(k * ch));
                 }

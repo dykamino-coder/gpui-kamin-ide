@@ -58,7 +58,7 @@ pub(super) fn user_to_css(e: &Element, w: f32, h: f32) -> Option<(f32, f32, f32)
         }
         return Some((sx, -p[0] * sx, -p[1] * sx));
     }
-    Some((e.style.used().zoom_eff.unwrap_or(1.0), 0.0, 0.0))
+    Some((e.style.used().inh.font.zoom_eff.unwrap_or(1.0), 0.0, 0.0))
 }
 
 /// Дети `<svg>` с CSS-маской (`mask-image` из каскада): единица и её
@@ -74,7 +74,9 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
     let mut out = Vec::new();
     // Рамки ребёнка в CSS-точках: stroke-box (коробка слоя) и fill-box.
     let box_of = |c: &Element, dx: f32, dy: f32| -> Option<(Rect, Rect)> {
-        if c.style.used().transform.is_some() || c.style.used().translate.is_some() {
+        if c.style.used().reset_transforms.transform.is_some()
+            || c.style.used().reset_transforms.translate.is_some()
+        {
             return None;
         }
         let (tx, ty) = match c.attr("transform") {
@@ -93,7 +95,7 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
     };
     for (i, n) in e.children.iter().enumerate() {
         let Node::Element(c) = n else { continue };
-        if c.style.used().mask_image.is_some() {
+        if c.style.used().reset_mask.mask_image.is_some() {
             let (sb, fb) = box_of(c, 0.0, 0.0)?;
             out.push((
                 Unit {
@@ -107,8 +109,8 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
             continue;
         }
         if c.tag.eq_ignore_ascii_case("g")
-            && c.style.used().transform.is_none()
-            && c.style.used().translate.is_none()
+            && c.style.used().reset_transforms.transform.is_none()
+            && c.style.used().reset_transforms.translate.is_none()
         {
             let (gx, gy) = match c.attr("transform") {
                 Some(t) => match translate_only(t) {
@@ -119,7 +121,7 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
             };
             for (j, m) in c.children.iter().enumerate() {
                 let Node::Element(k) = m else { continue };
-                if k.style.used().mask_image.is_some() {
+                if k.style.used().reset_mask.mask_image.is_some() {
                     let (sb, fb) = box_of(k, gx, gy)?;
                     out.push((
                         Unit {

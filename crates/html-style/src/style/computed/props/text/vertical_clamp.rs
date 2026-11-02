@@ -38,7 +38,7 @@ impl Computed {
                 }
                 // Sub/super shift within the line. Font fractions approximate
                 // normal line-height; percentage shifts retain their own slot.
-                self.vertical_shift = match v {
+                self.reset_text_box.vertical_shift = match v {
                     "super" => Some(-1.0 / 3.0),
                     "sub" => Some(1.0 / 5.0),
                     other => match Len::parse(other, vcx) {
@@ -46,7 +46,7 @@ impl Computed {
                         Some(Len::Pct(k)) => {
                             // Процент — доля `line-height`, и считается он
                             // позже: кладём в своё поле.
-                            self.vertical_shift_pct = (k != 0.0).then_some(-k);
+                            self.reset_text_box.vertical_shift_pct = (k != 0.0).then_some(-k);
                             None
                         }
                         Some(Len::Em(k)) => (k != 0.0).then_some(-k),
@@ -56,19 +56,23 @@ impl Computed {
                 // Font metrics arrive after inheritance; retain relative units.
                 match Len::parse(v, vcx) {
                     // Точки не зависят ни от чего — сразу в поле.
-                    Some(Len::Px(px)) => self.vertical_shift_px = (px != 0.0).then_some(-px),
+                    Some(Len::Px(px)) => {
+                        self.reset_text_box.vertical_shift_px = (px != 0.0).then_some(-px)
+                    }
                     // Единицы шрифта ждут набора: у строчного своих метрик
                     // обычно нет, они приходят наследованием уже после
                     // разбора, и здесь вышли бы от чужой гарнитуры.
-                    Some(l @ (Len::Ex(_) | Len::Ch(_))) => self.vertical_shift_len = Some(l),
+                    Some(l @ (Len::Ex(_) | Len::Ch(_))) => {
+                        self.reset_text_box.vertical_shift_len = Some(l)
+                    }
                     _ => {}
                 }
-                self.vertical_align_text = match v {
+                self.reset_text_box.vertical_align_text = match v {
                     "text-top" => Some(true),
                     "text-bottom" => Some(false),
                     _ => None,
                 };
-                self.vertical_align = match v {
+                self.inh.text_flow.vertical_align = match v {
                     "middle" | "center" => Some(Align::Center),
                     "top" => Some(Align::Start),
                     "bottom" => Some(Align::End),
@@ -80,7 +84,7 @@ impl Computed {
                 if !matches!(v, "horizontal" | "vertical" | "inline-axis" | "block-axis") {
                     return;
                 }
-                self.webkit_box_vertical =
+                self.inh.text_flow.webkit_box_vertical =
                     accept_parsed!(self, Some(v.eq_ignore_ascii_case("vertical")))
             }
 
@@ -95,7 +99,7 @@ impl Computed {
             // слов свободный (`drop 3`). Кегль и строку буквицы считает
             // раскладка (`render::initial_letter_float`).
             "initial-letter" => {
-                self.initial_letter = parsed_value!(self, initial_letter(v));
+                self.reset_text_box.initial_letter = parsed_value!(self, initial_letter(v));
             }
 
             // css-rhythm-1 §2: значение кроме `none`/`auto` создаёт независимый
@@ -108,7 +112,7 @@ impl Computed {
                     return;
                 }
                 if v != "none" && v != "auto" {
-                    self.flow_root = Some(true);
+                    self.reset_context.flow_root = Some(true);
                 }
             }
             _ => *hit = false,

@@ -25,7 +25,7 @@ pub(super) fn fit_local_image(
 ) -> AnyElement {
     let (picture, узкая) = sizing.picture();
     let mut image = draw(image, picture, vectorize);
-    image = match e.style.used().object_fit.as_deref() {
+    image = match e.style.used().reset_shapes.object_fit.as_deref() {
         Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
         Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
         Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
@@ -54,7 +54,7 @@ pub(super) fn fit_local_image(
     {
         let mut style = (**e.style.used()).clone();
         if fills_holder {
-            style.object_fit = Some("fill".into());
+            style.reset_shapes.object_fit = Some("fill".into());
         }
         return d
             .child(super::filtered::FilteredImage::new(
@@ -138,9 +138,10 @@ pub(super) fn local_image_source<'a>(
             }?;
             Some((raster, size))
         });
-    let wants_pipe = e.style.used().object_position.is_some()
+    let wants_pipe = e.style.used().reset_shapes.object_position.is_some()
         || e.style
             .used()
+            .reset_shapes
             .object_fit
             .as_deref()
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
@@ -170,7 +171,7 @@ pub(super) fn local_image_source<'a>(
         .h(px(size.1))
         .preserve_natural_pixels(true);
     // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
-    image = image.pixelated(e.style.cascaded().image_pixelated == Some(true));
+    image = image.pixelated(e.style.cascaded().inh.ui.image_pixelated == Some(true));
     if crate::style::computed::BoxStyle::shared(e.style.used())
         .paint_filter()
         .is_some_and(|f| f.grayscale > 0.5)
@@ -203,7 +204,7 @@ fn position(
     style: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,
 ) -> gpui::Img {
-    if let Some(position) = style.object_position {
+    if let Some(position) = style.reset_shapes.object_position {
         image = image.object_position(gpui::point(
             crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
             crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),

@@ -50,7 +50,7 @@ pub(super) fn band_orthogonal(c: &Computed, wm: WritingMode) -> bool {
 pub(super) fn own_layout_mode(c: &Computed) -> bool {
     crate::layout::multicol::spanner::multicol_container(c)
         || matches!(
-            c.display,
+            c.reset_box_layout.display,
             Some(Display::Flex)
                 | Some(Display::InlineFlex)
                 | Some(Display::Grid)
@@ -73,19 +73,25 @@ pub(super) fn fit_own_layout(
     cb: f32,
     vcx: crate::values::ValueCx<'_>,
 ) {
-    if !own_layout_mode(c) || avail <= 0.0 || !matches!(c.width, None | Some(Len::Auto)) {
+    if !own_layout_mode(c)
+        || avail <= 0.0
+        || !matches!(c.reset_box_layout.width, None | Some(Len::Auto))
+    {
         return;
     }
-    let edges = if c.border_box == Some(true) {
+    let edges = if c.reset_border.border_box == Some(true) {
         0.0
     } else {
         let merged = crate::style::cascade::inherit::inherit(inherited, c, vcx);
         let font = merged.font_cx(vcx);
         let px = |l: Option<Len>| l.and_then(|l| l.to_px(Some(cb), font, vcx)).unwrap_or(0.0);
         let b = c.borders();
-        px(b.left) + px(b.right) + px(c.padding.left) + px(c.padding.right)
+        px(b.left)
+            + px(b.right)
+            + px(c.reset_box_layout.padding.left)
+            + px(c.reset_box_layout.padding.right)
     };
-    c.width = Some(Len::Px((avail - edges).max(0.0)));
+    c.reset_box_layout.width = Some(Len::Px((avail - edges).max(0.0)));
 }
 
 /// Есть ли в поддереве непустой текст.
@@ -113,12 +119,12 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
         && !c.children.iter().any(has_ruby)
         // Заголовок таблицы вне таблицы — анонимная таблица (§17.2.1), то
         // есть коробка, флоаты не перекрывающая (`clear-applies-to-015`).
-        && c.style.used().is_caption != Some(true)
+        && c.style.used().reset_context.is_caption != Some(true)
         && c.tag != "caption"
         && flow_interior_plain(c)
-        && (c.style.used().clear.is_none() || band_clear_supported(c))
+        && (c.style.used().reset_box_layout.clear.is_none() || band_clear_supported(c))
         && matches!(
-            c.style.used().display,
+            c.style.used().reset_box_layout.display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
         && band_margins(&c.style.used(), em).is_some()
@@ -156,10 +162,10 @@ pub(crate) async fn band_flow_host(
     let (cbh, cbw) = (host.cbh, host.cbw);
     let mut inherited = inherited.clone();
     if let Some(h) = cbh {
-        inherited.height = Some(Len::Px(h));
+        inherited.reset_box_layout.height = Some(Len::Px(h));
     }
     if let Some(w) = cbw {
-        inherited.width = Some(Len::Px(w));
+        inherited.reset_box_layout.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
     let node = opts.frag.watch.as_ref().map(|w| {

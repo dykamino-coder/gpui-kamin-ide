@@ -36,11 +36,11 @@ pub(super) fn border_px(
             // Кегль берётся у ВЫЗЫВАЮЩЕГО: сюда приходит собственный стиль
             // элемента, а `font-size` у `<span>` чаще всего не объявлен —
             // единицы считаются по слитому кеглю строки.
-            let size = match c.font_size {
+            let size = match c.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => font_px,
             };
-            let family = c.font_family.clone().unwrap_or_default();
+            let family = c.inh.font.font_family.clone().unwrap_or_default();
             Some(crate::text::metrics::spacing_px(
                 Some(u),
                 &family,

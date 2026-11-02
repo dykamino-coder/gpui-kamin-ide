@@ -104,7 +104,12 @@ mod tests {
             },
             IntrinsicInput {
                 styles: vec![Rc::new(Computed {
-                    float: Some(1),
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            float: Some(1),
+                            ..Default::default()
+                        },
+                    ),
                     ..Default::default()
                 })],
                 ..input()
@@ -191,7 +196,7 @@ mod tests {
         let Node::Element(first) = &mut children[0] else {
             unreachable!()
         };
-        first.style.cascaded_mut().float = Some(1);
+        first.style.cascaded_mut().reset_box_layout.float = Some(1);
         assert!(children.intrinsic_sizes(input()).get().is_none());
         let Node::Element(sibling) = &children[1] else {
             unreachable!()

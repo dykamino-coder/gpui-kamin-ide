@@ -123,8 +123,8 @@ pub fn block_letter_spacing(
     vcx: crate::values::ValueCx<'_>,
 ) -> Pixels {
     gpui::px(crate::text::metrics::spacing_px(
-        style.letter_spacing,
-        &style.font_family.clone().unwrap_or_default(),
+        style.inh.text_flow.letter_spacing,
+        &style.inh.font.font_family.clone().unwrap_or_default(),
         size,
         vcx,
     ))

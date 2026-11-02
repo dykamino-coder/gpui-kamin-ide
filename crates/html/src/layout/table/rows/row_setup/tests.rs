@@ -36,7 +36,7 @@ fn row_group_limit_and_collapsed_columns_keep_distinct_flags() {
     );
     assert!(spans.spans_collapsed);
     assert!(spans.clipped);
-    cell.style.used_mut().overflow_y = Some(Overflow::Hidden);
+    cell.style.used_mut().reset_box_layout.overflow_y = Some(Overflow::Hidden);
     let spans = cell_spans(
         CellSlot {
             element: &cell,

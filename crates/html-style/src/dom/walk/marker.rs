@@ -37,8 +37,8 @@ pub(super) fn apply(
         language::pseudo(counters, &m, &me, path);
         apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
         if let Some(items) = host_content(&m, &me, vcx) {
-            let quotes = m.quotes.as_ref();
-            style.marker_text = Some(content_text(
+            let quotes = m.reset_generated.quotes.as_ref();
+            style.reset_generated.marker_text = Some(content_text(
                 &items,
                 counters,
                 &attrs,
@@ -47,11 +47,11 @@ pub(super) fn apply(
                 crate::style::generated::counter_style::Context::new(&m, me.counter_context),
                 vcx,
             ));
-            style.no_marker = Some(false);
-        } else if m.content_none == Some(true) {
-            style.no_marker = Some(true);
+            style.reset_generated.no_marker = Some(false);
+        } else if m.reset_generated.content_none == Some(true) {
+            style.reset_generated.no_marker = Some(true);
         }
         counters.leave();
-        style.marker_layer = Some(m);
+        style.reset_generated.marker_layer = Some(m);
     }
 }

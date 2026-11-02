@@ -28,7 +28,7 @@ pub(super) fn separate(e: &mut Element, vcx: crate::layout::block::margins::Marg
             && in_flow(&child.style.used())
         {
             pin_inherited_margins(child, false, true, vcx);
-            child.style.used_mut().margin.bottom = Some(Len::Px(0.0));
+            child.style.used_mut().reset_box_layout.margin.bottom = Some(Len::Px(0.0));
             break;
         }
     }
@@ -62,8 +62,8 @@ pub(super) fn raises(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
                         };
                         let own = match (
                             margin_px_in(child_sizes.preferred[1], &cs, vcx),
-                            side(cs.padding.top),
-                            side(cs.padding.bottom),
+                            side(cs.reset_box_layout.padding.top),
+                            side(cs.reset_box_layout.padding.bottom),
                             side(b.top),
                             side(b.bottom),
                         ) {

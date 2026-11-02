@@ -28,7 +28,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // (`fragment::replay::admission::items`).
         // Сросшиеся кромки таблицы решают стыки по фрагменту каждого куска записи
         // (`EdgePainter`), как копия — по маске своего куска.
-        let collapsed = table_part(e) && s.border_collapse == Some(true);
+        let collapsed = table_part(e) && s.inh.table_list.border_collapse == Some(true);
         // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
         // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
@@ -36,24 +36,29 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // фрагментаинера каждого куска в его сегмент (`continuation::replayed`); под
         // плоским преобразованием поддерево пишется вложенной записью кусков, куда
         // сегменты слотов не входят, — такой ребёнок остаётся на копиях.
-        let oof = matches!(s.position, Some(Position::Absolute | Position::Fixed));
-        let plane = s.transform.is_some() || s.rotate_prop.is_some() || s.scale_prop.is_some();
-        let solid = s.transform.is_some_and(|t| t.has_3d)
-            || s.perspective.is_some()
-            || s.preserve_3d == Some(true);
-        if (oof && planed) || solid || s.backdrop_filter_set {
+        let oof = matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        );
+        let plane = s.reset_transforms.transform.is_some()
+            || s.reset_transforms.rotate_prop.is_some()
+            || s.reset_transforms.scale_prop.is_some();
+        let solid = s.reset_transforms.transform.is_some_and(|t| t.has_3d)
+            || s.reset_transforms.perspective.is_some()
+            || s.reset_transforms.preserve_3d == Some(true);
+        if (oof && planed) || solid || s.reset_effects.backdrop_filter_set {
             return (false, false);
         }
         effects |= collapsed
-            || !s.shadows.is_empty()
-            || s.transform.is_some()
-            || s.rotate_prop.is_some()
-            || s.scale_prop.is_some()
-            || s.filter.is_some()
-            || s.column_rule_width.is_some()
-            || s.column_rule_styles.is_some()
-            || s.row_rule_width.is_some()
-            || s.row_rule_styles.is_some();
+            || !s.reset_effects.shadows.is_empty()
+            || s.reset_transforms.transform.is_some()
+            || s.reset_transforms.rotate_prop.is_some()
+            || s.reset_transforms.scale_prop.is_some()
+            || s.reset_effects.filter.is_some()
+            || s.reset_fragmentation.column_rule_width.is_some()
+            || s.reset_fragmentation.column_rule_styles.is_some()
+            || s.reset_fragmentation.row_rule_width.is_some()
+            || s.reset_fragmentation.row_rule_styles.is_some();
         stack.extend(e.children.iter().filter_map(|n| match n {
             Node::Element(c) => Some((c, planed || plane)),
             _ => None,
@@ -91,9 +96,11 @@ fn page_free(root: &Element) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
         let s = e.style.used();
-        if matches!(s.position, Some(Position::Absolute | Position::Fixed))
-            || s.column_count.is_some()
-            || s.column_width.is_some()
+        if matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        ) || s.reset_fragmentation.column_count.is_some()
+            || s.reset_fragmentation.column_width.is_some()
         {
             return false;
         }
@@ -108,7 +115,7 @@ fn page_free(root: &Element) -> bool {
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
 fn table_part(e: &Element) -> bool {
     matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(
             Display::Table
                 | Display::InlineTable
@@ -127,14 +134,14 @@ fn table_part(e: &Element) -> bool {
 fn orphan_part(parent: &Element, e: &Element) -> bool {
     let table = |e: &Element| {
         matches!(
-            e.style.used().display,
+            e.style.used().reset_box_layout.display,
             Some(
                 Display::Table | Display::InlineTable | Display::TableRowGroup | Display::TableRow
             )
         ) || matches!(e.tag.as_str(), "table" | "thead" | "tbody" | "tfoot" | "tr")
     };
     let whole = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::Table | Display::InlineTable)
     ) || e.tag == "table";
     table_part(e) && !whole && !table(parent)
@@ -159,88 +166,4 @@ pub(crate) fn table_free(root: &Element) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::replayable;
-
-    fn first(html: &str) -> crate::dom::Element {
-        let tree = crate::document::parsed::parse(html, "");
-        fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
-            nodes.iter().find_map(|n| match n {
-                crate::dom::Node::Element(e) if e.tag == "section" => Some(e),
-                crate::dom::Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        find(&tree).unwrap().clone()
-    }
-
-    #[test]
-    fn fragment_aware_painters_keep_their_copies() {
-        let of = |html: &str| replayable(&first(html));
-        assert_eq!(
-            of("<section><p style='background:green'>a</p></section>"),
-            (true, false)
-        );
-        assert_eq!(
-            of("<section><p style='box-shadow:0 0 4px red'>a</p></section>"),
-            (true, true)
-        );
-        assert_eq!(
-            of("<section><div style='transform:rotate(1deg)'>a</div></section>"),
-            (true, true)
-        );
-        assert_eq!(
-            of("<section><div style='transform:rotateX(1deg)'>a</div></section>"),
-            (false, false)
-        );
-        assert_eq!(
-            of("<section><div style='columns:2'>a</div></section>"),
-            (true, false)
-        );
-        assert_eq!(
-            of("<section><div style='position:absolute'>a</div></section>"),
-            (true, false)
-        );
-        assert_eq!(
-            of(
-                "<section><div style='transform:translateX(0)'><p style='position:fixed'>a</p></div></section>"
-            ),
-            (false, false)
-        );
-        assert_eq!(
-            of("<section><div style='position:relative;opacity:0.5'>a</div></section>"),
-            (true, false)
-        );
-        assert_eq!(
-            of("<section><div style='display:grid'>a</div></section>"),
-            (true, false)
-        );
-        assert_eq!(
-            of(
-                "<section><table style='border-collapse:collapse'><tr><td>a</td></tr></table></section>"
-            ),
-            (true, true)
-        );
-        assert_eq!(
-            of("<section><div style='filter:url(#f)'></div></section>"),
-            (true, true)
-        );
-        assert_eq!(
-            of("<section><div style='backdrop-filter:blur(2px)'>a</div></section>"),
-            (false, false)
-        );
-    }
-
-    #[test]
-    fn sheet_groups_without_fragment_painters_or_layers_replay() {
-        let of = |html: &str| super::page_replayable(&[crate::dom::Node::Element(first(html))]);
-        assert!(of("<section><p style='background:green'>a</p></section>"));
-        assert!(!of(
-            "<section><p style='box-shadow:0 0 4px red'>a</p></section>"
-        ));
-        assert!(!of(
-            "<section><div style='position:absolute'>a</div></section>"
-        ));
-        assert!(!of("<section><div style='columns:2'>a</div></section>"));
-    }
-}
+mod tests;

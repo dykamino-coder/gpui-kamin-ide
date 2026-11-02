@@ -47,10 +47,10 @@ pub(crate) fn initial_letter_float(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Vec<Node> {
-    let Some(first) = inherited.first_letter.as_deref() else {
+    let Some(first) = inherited.reset_text_box.first_letter.as_deref() else {
         return nodes;
     };
-    let Some((size_lines, sink)) = first.initial_letter else {
+    let Some((size_lines, sink)) = first.reset_text_box.initial_letter else {
         return nodes;
     };
     // Вертикальное письмо больше НЕ отсекается. Эталоны семейства пишут в
@@ -72,7 +72,7 @@ pub(crate) fn initial_letter_float(
     let block_rl = inherited.wm().block_rl();
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
-        Node::Element(e) => e.style.used().float.is_none_or(|f| f == 0),
+        Node::Element(e) => e.style.used().reset_box_layout.float.is_none_or(|f| f == 0),
     });
     let Some(at) = at else {
         return nodes;
@@ -84,14 +84,14 @@ pub(crate) fn initial_letter_float(
         return nodes;
     };
     let end = pos + ch.len_utf8();
-    let font_px = match inherited.font_size {
+    let font_px = match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     };
-    let family = inherited.font_family.clone().unwrap_or_default();
+    let family = inherited.inh.font.font_family.clone().unwrap_or_default();
     let (asc, desc, cap) =
         crate::text::metrics::vmetrics_px(&family, font_px, opts.cx.text_fonts(), opts.cx.vcx());
-    let line = match inherited.line_height {
+    let line = match inherited.inh.font.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font_px,
         _ => crate::text::metrics::normal_px(
@@ -101,7 +101,12 @@ pub(crate) fn initial_letter_float(
         ),
     };
     // Доля прописной — у шрифта БУКВИЦЫ: слой может сменить семейство.
-    let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());
+    let letter_family = first
+        .inh
+        .font
+        .font_family
+        .clone()
+        .unwrap_or_else(|| family.clone());
     let (_, _, cap_frac) =
         crate::text::metrics::vmetrics_px(&letter_family, 1.0, opts.cx.text_fonts(), opts.cx.vcx());
     if cap_frac <= 0.0 || line <= 0.0 {
@@ -143,15 +148,16 @@ pub(crate) fn initial_letter_float(
         Some(Len::Px(v)) if layer != base => v,
         _ => 0.0,
     };
-    let color = match first.color {
-        Some(c) if Some(c) != inherited.color => Some(c),
+    let color = match first.inh.ui.color {
+        Some(c) if Some(c) != inherited.inh.ui.color => Some(c),
         // `::first-letter` наследует у `::first-line`
         // (`initial-letter-with-first-line`: `color: inherit` → цвет строки).
         _ => inherited
+            .reset_text_box
             .first_line
             .as_deref()
-            .and_then(|l| l.color)
-            .or(inherited.color),
+            .and_then(|l| l.inh.ui.color)
+            .or(inherited.inh.ui.color),
     };
     let rtl = inherited.wm().rtl();
     // Отступ первой строки (css-inline-3 §initial-letter-indentation:
@@ -167,8 +173,8 @@ pub(crate) fn initial_letter_float(
     // флоат, строки 2-4 обтекали по 80 с нахлёстом. Только горизонталь ltr:
     // `-indentation-rtl` зелёный (0.41) на зеркальной ошибке `float: right`
     // в rtl, и менять его сторону нечем.
-    let para_indent = match inherited.text_indent {
-        Some(Len::Px(v)) if inherited.text_indent_hanging != Some(true) => v,
+    let para_indent = match inherited.inh.text_flow.text_indent {
+        Some(Len::Px(v)) if inherited.inh.text_flow.text_indent_hanging != Some(true) => v,
         _ => 0.0,
     };
     let indent = if !vert && !rtl && para_indent > 0.0 {

@@ -19,19 +19,20 @@ impl Computed {
         match key {
             "grid-template-rows" => {
                 let tracks = parsed_value!(self, super::templates::template_tracks(v, vcx));
-                self.subgrid_rows = super::subgrid::valid(v, vcx);
-                self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                self.grid_row_line_names = if self.subgrid_rows {
+                self.reset_grid.subgrid_rows = super::subgrid::valid(v, vcx);
+                self.reset_grid.subgrid =
+                    self.reset_grid.subgrid_cols || self.reset_grid.subgrid_rows;
+                self.reset_grid.grid_row_line_names = if self.reset_grid.subgrid_rows {
                     super::subgrid::parse(v, vcx)
                 } else {
                     parse_line_names(v)
                 };
-                self.grid_rows = tracks;
+                self.reset_grid.grid_rows = tracks;
                 // Поля авто-повтора рядов принадлежат этому же свойству.
-                self.grid_auto_fill_row = None;
-                self.auto_repeat_body_rows = None;
-                self.auto_repeat_rows = None;
-                if self.subgrid_rows || v == "none" {
+                self.reset_grid.grid_auto_fill_row = None;
+                self.reset_grid.auto_repeat_body_rows = None;
+                self.reset_grid.auto_repeat_rows = None;
+                if self.reset_grid.subgrid_rows || v == "none" {
                     self.accept_declaration();
                 }
             }
@@ -42,25 +43,25 @@ impl Computed {
                 // rows-002`, `grid-floats-no-intrude-002`).
                 let all =
                     apply_parsed!(self, super::values::auto_tracks(v, vcx)).unwrap_or_default();
-                self.grid_auto_cols_list = if all.len() > 1 {
+                self.reset_grid.grid_auto_cols_list = if all.len() > 1 {
                     all.clone()
                 } else {
                     Vec::new()
                 };
-                self.grid_auto_cols = all.into_iter().next();
+                self.reset_grid.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
                 let all =
                     apply_parsed!(self, super::values::auto_tracks(v, vcx)).unwrap_or_default();
-                self.grid_auto_rows_list = if all.len() > 1 {
+                self.reset_grid.grid_auto_rows_list = if all.len() > 1 {
                     all.clone()
                 } else {
                     Vec::new()
                 };
-                self.grid_auto_rows = all.into_iter().next();
+                self.reset_grid.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
-                self.grid_auto_flow = apply_parsed!(self, super::values::auto_flow(v));
+                self.reset_grid.grid_auto_flow = apply_parsed!(self, super::values::auto_flow(v));
             }
             "grid-row-start" | "grid-row-end" | "grid-column-start" | "grid-column-end" => {
                 if !placement_list(v, 1) {
@@ -79,7 +80,7 @@ impl Computed {
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
                 let rows = apply_parsed!(self, super::values::areas(v));
-                self.grid_areas = rows.filter(|r| !r.is_empty());
+                self.reset_grid.grid_areas = rows.filter(|r| !r.is_empty());
             }
             _ => *hit = false,
         }
@@ -99,9 +100,15 @@ impl Computed {
             _ => (false, true),
         };
         let (lines, named) = if row {
-            (&mut self.grid_row, &mut self.grid_row_named)
+            {
+                let group_0 = &mut *self.reset_grid;
+                (&mut group_0.grid_row, &mut group_0.grid_row_named)
+            }
         } else {
-            (&mut self.grid_col, &mut self.grid_col_named)
+            {
+                let group_0 = &mut *self.reset_grid;
+                (&mut group_0.grid_col, &mut group_0.grid_col_named)
+            }
         };
         let mut pair = lines.unwrap_or((Placement::Auto, Placement::Auto));
         let i = usize::from(end);
@@ -115,6 +122,9 @@ impl Computed {
             && pair.1 == Placement::Auto
             && named.iter().all(Option::is_none);
         *lines = (!unset).then_some(pair);
-        self.grid_area_name = super::values::area_name(&self.grid_row_named, &self.grid_col_named);
+        self.reset_grid.grid_area_name = super::values::area_name(
+            &self.reset_grid.grid_row_named,
+            &self.reset_grid.grid_col_named,
+        );
     }
 }

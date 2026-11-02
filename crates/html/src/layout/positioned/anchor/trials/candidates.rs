@@ -11,7 +11,12 @@ pub(super) fn build(
     vcx: ValueCx<'_>,
 ) -> Vec<(usize, BoxStyle)> {
     let mut styles = vec![(0, base.clone())];
-    for (index, fb) in base.position_try_fallbacks.iter().enumerate() {
+    for (index, fb) in base
+        .reset_positioned
+        .position_try_fallbacks
+        .iter()
+        .enumerate()
+    {
         let mut resolved = base.clone();
         if let Some(name) = &fb.name {
             let Some(rule) = vcx.doc.try_rule(name) else {
@@ -22,7 +27,7 @@ pub(super) fn build(
         let mut c = base.clone();
         apply_style(&mut c, &resolved);
         if let Some(area) = fb.area {
-            c.position_area = Some(area);
+            c.reset_positioned.position_area = Some(area);
         }
         tactics::apply(&mut c, inherited, fb.tactics, vcx);
         // Потомки наследуют computed-вариант элемента, не used-геометрию пробы.
@@ -36,7 +41,7 @@ pub(super) fn build(
                 .unwrap_or(&resolved);
             apply_style(&mut raw, source);
             if let Some(area) = fb.area {
-                raw.position_area = Some(area);
+                raw.reset_positioned.position_area = Some(area);
             }
             tactics::apply(&mut raw, inherited, fb.tactics, vcx);
             element.computed = Rc::new(raw);

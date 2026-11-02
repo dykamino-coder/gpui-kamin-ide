@@ -41,7 +41,7 @@ pub fn element_source(
     style: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,
 ) -> Option<Source> {
-    let orient = style.image_orient_none != Some(true);
+    let orient = style.inh.ui.image_orient_none != Some(true);
     match style.content_image() {
         Some(image) => computed_source(image, orient, vcx),
         None => load_url(src, orient, vcx),
@@ -114,10 +114,10 @@ mod tests {
         let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
-        c.color = Color::parse("rgba(0, 128, 0, 0.5)", vcx);
+        c.inh.ui.color = Color::parse("rgba(0, 128, 0, 0.5)", vcx);
         let mut src =
             ImageSource::parse("image('data:text/plain,invalid', currentColor)", vcx).unwrap();
-        src.resolve_colors(c.color.unwrap());
+        src.resolve_colors(c.inh.ui.color.unwrap());
         let Some(Source::Gradient { image }) = computed_source(&src, true, vcx) else {
             panic!("fallback missing")
         };
@@ -126,7 +126,7 @@ mod tests {
                 crate::style::computed::ImageSource::Color(c) => Some(c.value),
                 _ => None,
             },
-            c.color
+            c.inh.ui.color
         );
     }
 }

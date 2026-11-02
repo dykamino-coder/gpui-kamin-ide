@@ -107,7 +107,7 @@ pub(super) fn enter<'a>(
             vcx,
         )
     };
-    let hidden = style.display == Some(Display::None);
+    let hidden = style.reset_box_layout.display == Some(Display::None);
     if hidden && tag == "html" {
         out.push(Node::Element(Element {
             marks: Default::default(),
@@ -125,15 +125,15 @@ pub(super) fn enter<'a>(
         }));
         return None;
     }
-    if hidden && style.col_role.is_none() {
+    if hidden && style.reset_context.col_role.is_none() {
         return None;
     }
-    let box_level = style.display != Some(Display::Contents);
+    let box_level = style.reset_box_layout.display != Some(Display::Contents);
     if box_level {
         counters.enter();
         if !hidden {
             counters.set_quote_language(&language::parent(&me, path));
-            if let Some(q) = &style.quotes {
+            if let Some(q) = &style.reset_generated.quotes {
                 counters.set_quotes(q.clone());
             }
         }
@@ -148,7 +148,7 @@ pub(super) fn enter<'a>(
         &reversed_start,
     );
     let list_item = (!hidden && is_list_item).then(|| counters.value_of("list-item"));
-    let style_scope = (!hidden && box_level && style.contain_style == Some(true))
+    let style_scope = (!hidden && box_level && style.reset_context.contain_style == Some(true))
         .then(|| counters.enter_style_scope());
     let mut children = vec![];
     if !hidden {

@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 /// applies before BandFlow computes clearance. An authored empty block still
 /// stops the search (the first/last formatted line rules).
 pub(super) fn route_end(seq: &mut [Node], inherited: &Computed) {
-    if !inherited.text_box_trim_end {
+    if !inherited.reset_text_box.text_box_trim_end {
         return;
     }
     for n in seq.iter_mut().rev() {
@@ -22,14 +22,14 @@ pub(super) fn route_end(seq: &mut [Node], inherited: &Computed) {
             continue;
         }
         if c.marks.anon && holds_line_box(&c.children) {
-            c.style.used_mut().text_box_trim_end = true;
+            c.style.used_mut().reset_text_box.text_box_trim_end = true;
         }
         return;
     }
 }
 
 fn clearing(c: &Element) -> bool {
-    c.marks.anon && c.style.used().clear.is_some() && c.children.is_empty()
+    c.marks.anon && c.style.used().reset_box_layout.clear.is_some() && c.children.is_empty()
 }
 
 #[cfg(test)]
@@ -52,19 +52,33 @@ mod tests {
         let line = anon(Computed::default(), vec![Node::Text("last line".into())]);
         let clear = anon(
             Computed {
-                clear: Some(0),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        clear: Some(0),
+                        ..Default::default()
+                    },
+                ),
                 ..Default::default()
             },
             vec![],
         );
         let inherited = Computed {
-            text_box_trim_end: true,
+            reset_text_box: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetTextBox {
+                    text_box_trim_end: true,
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         };
         let mut seq = vec![line.clone(), clear];
         route_end(&mut seq, &inherited);
-        assert!(matches!(&seq[0], Node::Element(c) if c.style.used().text_box_trim_end));
-        assert!(matches!(&seq[1], Node::Element(c) if !c.style.used().text_box_trim_end));
+        assert!(
+            matches!(&seq[0], Node::Element(c) if c.style.used().reset_text_box.text_box_trim_end)
+        );
+        assert!(
+            matches!(&seq[1], Node::Element(c) if !c.style.used().reset_text_box.text_box_trim_end)
+        );
         // Authored empty boxes, unlike generated clearance, stop ownership.
         let mut blocked = vec![
             line,
@@ -76,6 +90,8 @@ mod tests {
             )),
         ];
         route_end(&mut blocked, &inherited);
-        assert!(matches!(&blocked[0], Node::Element(c) if !c.style.used().text_box_trim_end));
+        assert!(
+            matches!(&blocked[0], Node::Element(c) if !c.style.used().reset_text_box.text_box_trim_end)
+        );
     }
 }

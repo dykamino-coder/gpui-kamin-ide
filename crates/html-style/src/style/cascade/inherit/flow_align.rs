@@ -40,19 +40,22 @@ pub fn note(c: &mut Computed, key: &str, v: &str) {
         Some("flow-start" | "flow-end" | "flex-start" | "flex-end")
     );
     if flow {
-        c.align_flow |= bit;
+        c.reset_flex.align_flow |= bit;
     } else {
-        c.align_flow &= !bit;
+        c.reset_flex.align_flow &= !bit;
     }
 }
 
 /// Whether the inline (`justify`) and block (`align`) axes of grid lanes
 /// container `s` run against the writing mode's start-to-end direction.
 fn reversed_axes(s: &Computed) -> Option<(bool, bool)> {
-    if s.display != Some(Display::GridLanes) && !s.lanes_taffy {
+    if s.reset_box_layout.display != Some(Display::GridLanes) && !s.reset_grid.lanes_taffy {
         return None;
     }
-    let (grid, stack) = (s.lanes_track_reverse, s.lanes_fill_reverse);
+    let (grid, stack) = (
+        s.reset_grid.lanes_track_reverse,
+        s.reset_grid.lanes_fill_reverse,
+    );
     // Column lanes: the grid axis is the inline axis.
     Some(if crate::dom::lanes_row_dir(s) {
         (stack, grid)
@@ -82,10 +85,10 @@ fn flip_justify(j: &mut Option<Justify>) {
 /// Resolves the flow keywords of `c` against its own and its parent's lanes
 /// direction.
 pub(super) fn resolve(parent: &Computed, c: &mut BoxStyle) {
-    if c.align_flow == 0 {
+    if c.reset_flex.align_flow == 0 {
         return;
     }
-    let flow = c.align_flow;
+    let flow = c.reset_flex.align_flow;
     let has = |bit: u8| flow & bit != 0;
     if let Some((inline_rev, block_rev)) = reversed_axes(c) {
         let (jc, ac, ji, ai) = (
@@ -95,24 +98,24 @@ pub(super) fn resolve(parent: &Computed, c: &mut BoxStyle) {
             has(ALIGN_ITEMS) && block_rev,
         );
         if jc {
-            flip_justify(&mut c.justify_content);
+            flip_justify(&mut c.reset_flex.justify_content);
         }
         if ac {
-            flip_justify(&mut c.align_content);
+            flip_justify(&mut c.reset_flex.align_content);
         }
         if ji {
-            flip_align(&mut c.justify_items);
+            flip_align(&mut c.reset_flex.justify_items);
         }
         if ai {
-            flip_align(&mut c.align_items);
+            flip_align(&mut c.reset_flex.align_items);
         }
     }
     if let Some((inline_rev, block_rev)) = reversed_axes(parent) {
         if has(JUSTIFY_SELF) && inline_rev {
-            flip_align(&mut c.justify_self);
+            flip_align(&mut c.reset_flex.justify_self);
         }
         if has(ALIGN_SELF) && block_rev {
-            flip_align(&mut c.align_self);
+            flip_align(&mut c.reset_flex.align_self);
         }
     }
 }
@@ -123,9 +126,19 @@ mod tests {
 
     fn lanes(track_reverse: bool, fill_reverse: bool) -> Computed {
         Computed {
-            display: Some(Display::GridLanes),
-            lanes_track_reverse: track_reverse,
-            lanes_fill_reverse: fill_reverse,
+            reset_box_layout: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetBoxLayout {
+                    display: Some(Display::GridLanes),
+                    ..Default::default()
+                },
+            ),
+            reset_grid: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetGrid {
+                    lanes_track_reverse: track_reverse,
+                    lanes_fill_reverse: fill_reverse,
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         }
     }
@@ -135,11 +148,11 @@ mod tests {
         let mut c = BoxStyle::new(lanes(true, false));
         note(&mut c, "justify-content", "flow-start");
         note(&mut c, "align-content", "flow-start");
-        c.justify_content = Some(Justify::WmStart);
-        c.align_content = Some(Justify::WmStart);
+        c.reset_flex.justify_content = Some(Justify::WmStart);
+        c.reset_flex.align_content = Some(Justify::WmStart);
         resolve(&Computed::default(), &mut c);
-        assert_eq!(c.justify_content, Some(Justify::WmEnd));
-        assert_eq!(c.align_content, Some(Justify::WmStart));
+        assert_eq!(c.reset_flex.justify_content, Some(Justify::WmEnd));
+        assert_eq!(c.reset_flex.align_content, Some(Justify::WmStart));
     }
 
     #[test]
@@ -147,13 +160,13 @@ mod tests {
         let parent = lanes(false, true);
         let mut c = BoxStyle::default();
         note(&mut c, "align-self", "flow-end");
-        c.align_self = Some(Align::End);
+        c.reset_flex.align_self = Some(Align::End);
         resolve(&parent, &mut c);
-        assert_eq!(c.align_self, Some(Align::Start));
+        assert_eq!(c.reset_flex.align_self, Some(Align::Start));
         // `start` is not flow relative.
         note(&mut c, "align-self", "start");
-        c.align_self = Some(Align::Start);
+        c.reset_flex.align_self = Some(Align::Start);
         resolve(&parent, &mut c);
-        assert_eq!(c.align_self, Some(Align::Start));
+        assert_eq!(c.reset_flex.align_self, Some(Align::Start));
     }
 }

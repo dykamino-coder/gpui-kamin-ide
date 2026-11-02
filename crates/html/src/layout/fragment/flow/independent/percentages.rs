@@ -21,7 +21,7 @@ pub(crate) fn page_percentages(
         .map(|n| match n {
             Node::Element(e)
                 if !matches!(
-                    e.style.used().position,
+                    e.style.used().reset_positioned.position,
                     Some(Position::Absolute | Position::Fixed)
                 ) =>
             {
@@ -37,7 +37,7 @@ fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Eleme
     let mut parent = parent.clone();
     parent.resolve_viewport(opts.viewport, opts.cx.vcx());
     let constraints = &opts.cx.constraints;
-    let height = if parent.icb {
+    let height = if parent.reset_context.icb {
         Some(opts.viewport.1)
     } else {
         available_height::inner(
@@ -47,7 +47,7 @@ fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Eleme
             opts.viewport.1,
         )
     };
-    let width = if parent.icb {
+    let width = if parent.reset_context.icb {
         Some(opts.viewport.0)
     } else {
         available_width::inner(&parent, constraints.avail_w)
@@ -64,8 +64,8 @@ pub(crate) fn column_percentages(
 ) -> Vec<Node> {
     let mut ordinary = parent.clone();
     ordinary.resolve_viewport(opts.viewport, opts.cx.vcx());
-    ordinary.column_count = None;
-    ordinary.column_width = None;
+    ordinary.reset_fragmentation.column_count = None;
+    ordinary.reset_fragmentation.column_width = None;
     let height = available_height::inner(
         &ordinary,
         opts.cx.constraints.avail_h,
@@ -112,7 +112,7 @@ fn resolve(
     if used.wm().vertical() {
         return element;
     }
-    let base = if used.root_box {
+    let base = if used.reset_context.root_box {
         Some(opts.viewport.1)
     } else {
         height
@@ -137,11 +137,11 @@ fn resolve(
     // Flex/grid/table вычисляют определённость размеров своих items собственным
     // алгоритмом; CSS2 §10.5 относится здесь к детям блочного содержащего блока.
     if matches!(
-        used.display,
+        used.reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem | Display::Contents | Display::InlineBlock)
     ) && !used.wm().vertical()
-        && used.column_count.is_none()
-        && used.column_width.is_none()
+        && used.reset_fragmentation.column_count.is_none()
+        && used.reset_fragmentation.column_width.is_none()
     {
         let sizes = BoxDimensions::for_element(e, &used);
         let next_height =
@@ -165,7 +165,7 @@ fn resolve(
 // Positioned-коробки разрешают проценты своим алгоритмом, float — обычным CB.
 fn percentage_child(e: &Element) -> bool {
     !matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(Position::Absolute | Position::Fixed)
     )
 }
@@ -176,16 +176,16 @@ fn transparent(e: &Element) -> bool {
 }
 
 fn freeze(style: &mut Computed, base: Option<f32>) {
-    if let Some(Len::Pct(k)) = style.height {
-        style.height = base.map(|h| Len::Px(k * h));
+    if let Some(Len::Pct(k)) = style.reset_box_layout.height {
+        style.reset_box_layout.height = base.map(|h| Len::Px(k * h));
     }
     // CSS2 §10.7: при неопределённом CB процентный min-height равен 0,
     // max-height — none. Min-height родителя не делает его height определённым.
-    if let Some(Len::Pct(k)) = style.min_height {
-        style.min_height = Some(Len::Px(base.map_or(0.0, |h| k * h)));
+    if let Some(Len::Pct(k)) = style.reset_box_layout.min_height {
+        style.reset_box_layout.min_height = Some(Len::Px(base.map_or(0.0, |h| k * h)));
     }
-    if let Some(Len::Pct(k)) = style.max_height {
-        style.max_height = base.map(|h| Len::Px(k * h));
+    if let Some(Len::Pct(k)) = style.reset_box_layout.max_height {
+        style.reset_box_layout.max_height = base.map(|h| Len::Px(k * h));
     }
 }
 

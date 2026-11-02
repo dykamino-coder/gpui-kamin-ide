@@ -13,7 +13,10 @@ pub(crate) fn prepared(
     width: Option<f32>,
 ) -> Element {
     let positioned = |s: &crate::style::computed::Computed| {
-        matches!(s.position, Some(Position::Absolute | Position::Fixed))
+        matches!(
+            s.reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
     };
     // Строчные прогоны среди блоков — анонимными блоками (CSS 2.1
     // §9.2.1.1); неизвестная ширина разрешается в deferred layout.

@@ -36,9 +36,15 @@ pub(super) fn measure_col_widths(
                     // inline-size — физически это ВЫСОТА, не колонка
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
-                    (cell.style.cascaded().height, cell.style.used().height)
+                    (
+                        cell.style.cascaded().reset_box_layout.height,
+                        cell.style.used().reset_box_layout.height,
+                    )
                 } else {
-                    (cell.style.cascaded().width, cell.style.used().width)
+                    (
+                        cell.style.cascaded().reset_box_layout.width,
+                        cell.style.used().reset_box_layout.width,
+                    )
                 };
                 // `ch` ячейки таблица решает сама — кеглем и шрифтом ячейки
                 // по горизонтальному нулю (ветка ниже, как `cell_heights`).
@@ -61,7 +67,7 @@ pub(super) fn measure_col_widths(
                     Some(Len::Px(p)) => p,
                     _ => 0.0,
                 };
-                let extra = if cell.style.used().border_box == Some(true) {
+                let extra = if cell.style.used().reset_border.border_box == Some(true) {
                     0.0
                 } else {
                     let b = cell.style.used().borders();
@@ -73,14 +79,16 @@ pub(super) fn measure_col_widths(
                         side(b.left) + side(b.right)
                     };
                     let pad = if table_vertical {
-                        side(cell.style.used().padding.top) + side(cell.style.used().padding.bottom)
+                        side(cell.style.used().reset_box_layout.padding.top)
+                            + side(cell.style.used().reset_box_layout.padding.bottom)
                     } else {
-                        side(cell.style.used().padding.left) + side(cell.style.used().padding.right)
+                        side(cell.style.used().reset_box_layout.padding.left)
+                            + side(cell.style.used().reset_box_layout.padding.right)
                     };
                     // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
                     // линии — ту же, что легла в паддинг ячейки; своя кромка
                     // могла быть у́же соседней.
-                    pad + if e.style.cascaded().border_collapse == Some(true) {
+                    pad + if e.style.cascaded().inh.table_list.border_collapse == Some(true) {
                         let w = win_edges.get(&cell.node_id).copied().unwrap_or([
                             side(cell.style.used().borders().top),
                             side(cell.style.used().borders().right),
@@ -111,13 +119,21 @@ pub(super) fn measure_col_widths(
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
-                            cell.style.used().font_size,
-                            row.element.style.used().font_size.or(inherited.font_size),
+                            cell.style.used().inh.font.font_size,
+                            row.element
+                                .style
+                                .used()
+                                .inh
+                                .font
+                                .font_size
+                                .or(inherited.inh.font.font_size),
                             table_font,
                         );
                         let family = cell
                             .style
                             .cascaded()
+                            .inh
+                            .font
                             .font_family
                             .clone()
                             .unwrap_or_else(|| table_family.clone());

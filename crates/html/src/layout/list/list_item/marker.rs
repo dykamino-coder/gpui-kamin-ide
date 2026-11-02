@@ -32,14 +32,13 @@ pub(crate) fn resolve(
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = merged
-        .marker_text
-        .clone()
-        .or_else(|| match &merged.list_style_type {
+    let text_marker = merged.reset_generated.marker_text.clone().or_else(|| {
+        match &merged.inh.table_list.list_style_type {
             Some(MarkerType::Text(text)) => Some(text.clone()),
             _ => None,
-        });
-    let kind = match &merged.list_style_type {
+        }
+    });
+    let kind = match &merged.inh.table_list.list_style_type {
         Some(MarkerType::Counter(name)) => Some(name.as_str()),
         _ => None,
     };
@@ -48,9 +47,10 @@ pub(crate) fn resolve(
             && li
                 .style
                 .used()
+                .reset_generated
                 .marker_layer
                 .as_deref()
-                .is_none_or(|m| m.content.is_none()),
+                .is_none_or(|m| m.reset_generated.content.is_none()),
         kind,
     );
     let marker = if let Some(t) = text_marker {
@@ -81,21 +81,28 @@ pub(crate) fn resolve(
     let mut style = li
         .style
         .used()
+        .reset_generated
         .marker_layer
         .as_deref()
         .map(|m| inherit(merged, m, vcx));
     let li_style = li.style.used();
-    let layer = li_style.marker_layer.as_deref();
-    let normal = layer.is_none_or(|m| m.content.is_none() && m.content_none != Some(true));
+    let layer = li_style.reset_generated.marker_layer.as_deref();
+    let normal = layer.is_none_or(|m| {
+        m.reset_generated.content.is_none() && m.reset_generated.content_none != Some(true)
+    });
     let image = normal
         .then(|| image::resolve(merged, style.as_deref(), vcx))
         .flatten();
-    let no_marker = (!matches!(li_style.display, None | Some(Display::ListItem)))
-        || merged.no_marker == Some(true)
-        || (normal && image.is_none() && merged.list_style_type == Some(MarkerType::None));
+    let no_marker = (!matches!(
+        li_style.reset_box_layout.display,
+        None | Some(Display::ListItem)
+    )) || merged.reset_generated.no_marker == Some(true)
+        || (normal
+            && image.is_none()
+            && merged.inh.table_list.list_style_type == Some(MarkerType::None));
     // Внешний геометрический знак не использует advance текстового пробела;
     // строковые и внутренние маркеры остаются частью текстового форматирования.
-    if symbol && merged.list_style_inside != Some(true) {
+    if symbol && merged.inh.table_list.list_style_inside != Some(true) {
         style = Some(crate::style::cascade::inherit::marker_symbol(
             style, merged, vcx,
         ));
@@ -133,21 +140,25 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
 /// The `::marker` box with the UA rules of CSS Lists 3 §3.1.1 that the
 /// marker's own style does not override.
 fn box_input(li: &Element, merged: &Computed, mut style: BoxStyle) -> BoxStyle {
-    tabular_marker(&mut style, merged, li.style.used().marker_layer.as_deref());
-    style.content = None;
-    style.marker_layer = None;
+    tabular_marker(
+        &mut style,
+        merged,
+        li.style.used().reset_generated.marker_layer.as_deref(),
+    );
+    style.reset_generated.content = None;
+    style.reset_generated.marker_layer = None;
     // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
     // isolate }`: Arabic-Indic digits and the suffix stay one run
     // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
-    if style.bidi_isolate.is_none()
-        && style.bidi_embed.is_none()
-        && style.bidi_override.is_none()
-        && style.bidi_plaintext.is_none()
+    if style.reset_cascade.bidi_isolate.is_none()
+        && style.reset_cascade.bidi_embed.is_none()
+        && style.reset_cascade.bidi_override.is_none()
+        && style.reset_cascade.bidi_plaintext.is_none()
     {
-        style.bidi_isolate = Some(true);
+        style.reset_cascade.bidi_isolate = Some(true);
     }
     // CSS Pseudo 4 #first-letter-application excludes marker content.
-    style.first_letter_excluded = true;
+    style.reset_text_box.first_letter_excluded = true;
     style
 }
 

@@ -9,6 +9,7 @@
 
 #[cfg(windows)]
 mod accounting;
+mod allocations;
 mod args;
 mod diagnostics;
 mod edit;
@@ -40,6 +41,10 @@ mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
 #[global_allocator]
+#[cfg(feature = "allocation-audit")]
+static ALLOC: allocations::Counted = allocations::Counted;
+#[global_allocator]
+#[cfg(not(feature = "allocation-audit"))]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {

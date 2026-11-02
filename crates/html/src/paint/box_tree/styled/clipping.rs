@@ -10,6 +10,8 @@ use crate::dom::Node;
 pub(super) fn shows_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(_) => false,
-        Node::Element(e) => e.style.cascaded().hidden == Some(false) || shows_inside(&e.children),
+        Node::Element(e) => {
+            e.style.cascaded().inh.ui.hidden == Some(false) || shows_inside(&e.children)
+        }
     })
 }

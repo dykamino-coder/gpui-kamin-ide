@@ -26,24 +26,38 @@ fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
             &Default::default(),
             doc.values(),
         );
-        assert_eq!(style.column_width, Some(expected), "{css}");
+        assert_eq!(
+            style.reset_fragmentation.column_width,
+            Some(expected),
+            "{css}"
+        );
         let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
         let merged =
             crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());
         let plan = column_plan(&e, &merged, &opts);
         assert_eq!(plan.column_width, Some(Len::Px(1.0)), "{css}");
         assert_eq!(plan.used_count, Some(50), "{css}");
-        assert_eq!(style.column_width, Some(expected));
+        assert_eq!(style.reset_fragmentation.column_width, Some(expected));
     }
 }
 
 #[test]
 fn measured_inline_size_controls_count_and_percentage_gap_without_css_writes() {
     let style = Computed {
-        width: Some(Len::Pct(0.5)),
-        height: Some(Len::Px(100.)),
-        column_width: Some(Len::Px(40.)),
-        column_gap: Some(Len::Pct(0.1)),
+        reset_box_layout: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetBoxLayout {
+                width: Some(Len::Pct(0.5)),
+                height: Some(Len::Px(100.)),
+                ..Default::default()
+            },
+        ),
+        reset_fragmentation: crate::style::computed::StyleGroup::new(
+            crate::style::computed::ResetFragmentation {
+                column_width: Some(Len::Px(40.)),
+                column_gap: Some(Len::Pct(0.1)),
+                ..Default::default()
+            },
+        ),
         ..Default::default()
     };
     let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
@@ -59,6 +73,6 @@ fn measured_inline_size_controls_count_and_percentage_gap_without_css_writes() {
     assert_eq!(plan.used_gap, 20.);
     assert_eq!(plan.used_count, Some(3));
     assert_eq!(plan.col_inline_size, Some(Len::Px(200.)));
-    assert_eq!(e.style.used().width, Some(Len::Pct(0.5)));
-    assert_eq!(style.height, Some(Len::Px(100.)));
+    assert_eq!(e.style.used().reset_box_layout.width, Some(Len::Pct(0.5)));
+    assert_eq!(style.reset_box_layout.height, Some(Len::Px(100.)));
 }

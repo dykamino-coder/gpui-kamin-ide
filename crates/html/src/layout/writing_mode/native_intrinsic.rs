@@ -16,19 +16,19 @@ fn keyword(value: Option<Len>) -> bool {
 pub(crate) fn eligible(element: &Element) -> bool {
     let style = &element.style.used();
     let grid = matches!(
-        style.display,
+        style.reset_box_layout.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
     );
     (grid
-        || (matches!(style.display, None | Some(Display::Block))
-            && style.inline_display != Some(true)))
-        && !matches!(style.position, Some(Position::Absolute | Position::Fixed))
-        && style.float.is_none_or(|value| value == 0)
-        && !style.intrinsic_wrapper_required
+        || (matches!(style.reset_box_layout.display, None | Some(Display::Block))
+            && style.reset_context.inline_display != Some(true)))
+        && !matches!(style.reset_positioned.position, Some(Position::Absolute | Position::Fixed))
+        && style.reset_box_layout.float.is_none_or(|value| value == 0)
+        && !style.reset_context.intrinsic_wrapper_required
         && !style.contains_width() && !style.contains_height()
-        && style.calc_size.iter().chain(style.calc_size_max.iter()).all(Option::is_none)
-        && (keyword(style.width) || keyword(style.height))
-        && ![style.min_width, style.max_width, style.min_height, style.max_height]
+        && style.reset_box_layout.calc_size.iter().chain(style.reset_box_layout.calc_size_max.iter()).all(Option::is_none)
+        && (keyword(style.reset_box_layout.width) || keyword(style.reset_box_layout.height))
+        && ![style.reset_box_layout.min_width, style.reset_box_layout.max_width, style.reset_box_layout.min_height, style.reset_box_layout.max_height]
             .into_iter().any(keyword)
         && !crate::layout::box_kind::replaced_tag(element)
         // These tags use independent form/table/list formatting builders.
@@ -45,13 +45,13 @@ mod tests {
     #[test]
     fn ordinary_keyword_items_keep_margins_placement_and_numeric_limits() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.used_mut().width = Some(Len::MinContent);
-        element.style.used_mut().height = Some(Len::MaxContent);
-        element.style.used_mut().margin.left = Some(Len::Px(-10.0));
-        element.style.used_mut().margin.right = Some(Len::Auto);
-        element.style.used_mut().min_width = Some(Len::Px(20.0));
-        element.style.used_mut().max_width = Some(Len::Px(100.0));
-        element.style.used_mut().writing_mode =
+        element.style.used_mut().reset_box_layout.width = Some(Len::MinContent);
+        element.style.used_mut().reset_box_layout.height = Some(Len::MaxContent);
+        element.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(-10.0));
+        element.style.used_mut().reset_box_layout.margin.right = Some(Len::Auto);
+        element.style.used_mut().reset_box_layout.min_width = Some(Len::Px(20.0));
+        element.style.used_mut().reset_box_layout.max_width = Some(Len::Px(100.0));
+        element.style.used_mut().inh.writing.writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 element.style.cascaded().wm().block_rl(),
@@ -61,7 +61,11 @@ mod tests {
         assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
             &element
         ));
-        element.style.used_mut().intrinsic_wrapper_required = true;
+        element
+            .style
+            .used_mut()
+            .reset_context
+            .intrinsic_wrapper_required = true;
         assert!(!eligible(&element));
         assert!(crate::layout::intrinsic_wrap::content_sized_wraps(&element));
     }
@@ -69,41 +73,41 @@ mod tests {
     #[test]
     fn intrinsic_grid_containers_keep_keywords_on_their_actual_node() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.used_mut().height = Some(Len::MaxContent);
-        element.style.used_mut().inline_display = Some(true);
-        element.style.used_mut().grid_row = Some((
+        element.style.used_mut().reset_box_layout.height = Some(Len::MaxContent);
+        element.style.used_mut().reset_context.inline_display = Some(true);
+        element.style.used_mut().reset_grid.grid_row = Some((
             crate::style::computed::Placement::Line(2),
             crate::style::computed::Placement::Span(3),
         ));
-        element.style.used_mut().margin.top = Some(Len::Px(10.0));
+        element.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(10.0));
         for display in [Display::Grid, Display::InlineGrid, Display::GridLanes] {
-            element.style.used_mut().display = Some(display);
+            element.style.used_mut().reset_box_layout.display = Some(display);
             assert!(eligible(&element));
             assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
                 &element
             ));
         }
-        element.style.used_mut().max_height = Some(Len::MinContent);
+        element.style.used_mut().reset_box_layout.max_height = Some(Len::MinContent);
         assert!(!eligible(&element));
     }
 
     #[test]
     fn specialized_roles_and_intrinsic_constraints_keep_their_existing_contracts() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.used_mut().width = Some(Len::FitContent);
-        element.style.used_mut().display = Some(Display::Block);
+        element.style.used_mut().reset_box_layout.width = Some(Len::FitContent);
+        element.style.used_mut().reset_box_layout.display = Some(Display::Block);
         for tag in ["table", "td", "img", "input", "canvas", "li"] {
             element.tag = tag.into();
             assert!(!eligible(&element), "{tag}");
         }
         element.tag = "div".into();
-        element.style.used_mut().max_width = Some(Len::MaxContent);
+        element.style.used_mut().reset_box_layout.max_width = Some(Len::MaxContent);
         assert!(!eligible(&element));
-        element.style.used_mut().max_width = None;
-        element.style.used_mut().contain_inline_size = Some(true);
+        element.style.used_mut().reset_box_layout.max_width = None;
+        element.style.used_mut().reset_context.contain_inline_size = Some(true);
         assert!(!eligible(&element));
-        element.style.used_mut().contain_inline_size = None;
-        element.style.used_mut().float = Some(1);
+        element.style.used_mut().reset_context.contain_inline_size = None;
+        element.style.used_mut().reset_box_layout.float = Some(1);
         assert!(!eligible(&element));
     }
 }

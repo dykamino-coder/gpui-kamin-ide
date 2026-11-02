@@ -30,7 +30,7 @@ pub(super) fn recorder(
                 && (vertical.is_none() || measured)
                 && !e.inline
                 && !matches!(
-                    e.style.used().position,
+                    e.style.used().reset_positioned.position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
                 && (measured

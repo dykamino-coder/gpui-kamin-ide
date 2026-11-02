@@ -26,9 +26,9 @@ impl Computed {
         let family = font.family;
         // `larger`/`smaller` шагают по таблице, если кегль родителя в ней
         // стоит (§15.7); иначе работает запасной множитель `Len::Em`.
-        if self.font_size_step != 0
+        if self.reset_cascade.font_size_step != 0
             && let Some(i) = KEYWORD_PX.iter().position(|t| (t - parent_px).abs() < 0.01)
-            && let Ok(j) = usize::try_from(i as i32 + i32::from(self.font_size_step))
+            && let Ok(j) = usize::try_from(i as i32 + i32::from(self.reset_cascade.font_size_step))
             && let Some(px) = KEYWORD_PX.get(j)
         {
             return Some(*px);
@@ -45,7 +45,7 @@ impl Computed {
                 |units| units[3],
             )
         };
-        let size = self.font_size?;
+        let size = self.inh.font.font_size?;
         let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
             size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
         } else {

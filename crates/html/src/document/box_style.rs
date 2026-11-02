@@ -16,20 +16,20 @@ use super::any_side;
 pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
     // Page margin counters read the document's counter scope. Removing these
     // wrappers would erase the directives before render_paged sees the tree.
-    c.counter_reset.is_some()
-        || c.container_type.is_size_query()
-        || c.counter_increment.is_some()
-        || c.counter_set.is_some()
-        || c.width.is_some()
-        || c.height.is_some()
-        || c.min_width.is_some()
-        || c.min_height.is_some()
-        || c.max_width.is_some()
-        || c.max_height.is_some()
-        || c.position.is_some()
-        || c.display.is_some()
-        || c.overflow_x.is_some()
-        || c.overflow_y.is_some()
+    c.reset_generated.counter_reset.is_some()
+        || c.reset_box_layout.container_type.is_size_query()
+        || c.reset_generated.counter_increment.is_some()
+        || c.reset_generated.counter_set.is_some()
+        || c.reset_box_layout.width.is_some()
+        || c.reset_box_layout.height.is_some()
+        || c.reset_box_layout.min_width.is_some()
+        || c.reset_box_layout.min_height.is_some()
+        || c.reset_box_layout.max_width.is_some()
+        || c.reset_box_layout.max_height.is_some()
+        || c.reset_positioned.position.is_some()
+        || c.reset_box_layout.display.is_some()
+        || c.reset_box_layout.overflow_x.is_some()
+        || c.reset_box_layout.overflow_y.is_some()
         // Вертикальное письмо задаёт ОСЬ ПОТОКА детей: без коробки её задать
         // некому, а дети об этом знают только через родителя. ЯВНОЕ
         // `horizontal-tb` — ось как у всех, коробки не требует: обёртка с
@@ -38,18 +38,18 @@ pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
         // Поля и внутренние отступы обёртки сдвигают ВСЁ содержимое: браузер
         // держит на `body` умолчание в 8 точек, и снятая обёртка уносила этот
         // сдвиг с собой — страница прижималась к краю окна.
-        || any_side(&c.margin)
-        || any_side(&c.padding)
+        || any_side(&c.reset_box_layout.margin)
+        || any_side(&c.reset_box_layout.padding)
         // Фон обёртки — её собственная краска: снятая обёртка уносила
         // `html { background: … }` с собой, и корневой фон пропадал
         // (страница выходила белой при пустом теле). Фоновая КАРТИНКА — та же
         // краска: область её раскладки — сама коробка корня
         // (background-size-document-root-vrl-*).
-        || c.background.is_some()
-        || c.gradient.is_some()
-        || c.bg_image.is_some()
-        || c.background_color.is_some()
+        || c.reset_background.background.is_some()
+        || c.reset_background.gradient.is_some()
+        || c.reset_background.bg_image.is_some()
+        || c.reset_background.background_color.is_some()
         // Зум обёртки домножает длины всего содержимого: он живёт в
         // вычисленном стиле коробки и без неё до потомков не дойдёт.
-        || c.zoom.is_some_and(|z| (z - 1.0).abs() > f32::EPSILON)
+        || c.reset_cascade.zoom.is_some_and(|z| (z - 1.0).abs() > f32::EPSILON)
 }

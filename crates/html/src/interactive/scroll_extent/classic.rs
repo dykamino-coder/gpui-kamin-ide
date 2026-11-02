@@ -13,11 +13,11 @@ pub(crate) fn model(
 ) -> super::super::scrollbar_gutter::Model {
     let frame = frame.filter(|f| f.root.get() == Some(id));
     let cached = frame.as_ref().map_or([false; 2], |f| f.bars.get());
-    let overflow = [c.overflow_x, c.overflow_y];
+    let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
     let bars = std::array::from_fn(|axis| {
         frame.is_some()
             && overflow[axis] == Some(Overflow::Scroll)
-            && (c.scroll.forced[axis] || cached[axis])
+            && (c.reset_box_layout.scroll.forced[axis] || cached[axis])
     });
     let model = super::super::scrollbar_gutter::Model::new(c, bars);
     if let Some(frame) = frame {
@@ -36,10 +36,10 @@ pub(crate) fn reserve(frame: Option<&Frame>, id: u64, c: &Computed) -> [bool; 2]
 }
 
 pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {
-    let overflow = [c.overflow_x, c.overflow_y];
+    let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
     let bars = std::array::from_fn(|axis| {
         overflow[axis] == Some(Overflow::Scroll)
-            && (c.scroll.forced[axis]
+            && (c.reset_box_layout.scroll.forced[axis]
                 || view.into_iter().all(|v| v > 0.0) && frame.range.get()[axis] > 0.0)
     });
     frame.bars.replace(bars) != bars

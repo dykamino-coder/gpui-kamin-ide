@@ -23,9 +23,9 @@ pub(super) fn reset(style: &mut Computed, key: &str) {
 
 fn slot<'a>(style: &'a mut Computed, key: &str) -> &'a mut Option<String> {
     match key {
-        "counter-reset" => &mut style.counter_reset,
-        "counter-increment" => &mut style.counter_increment,
-        _ => &mut style.counter_set,
+        "counter-reset" => &mut style.reset_generated.counter_reset,
+        "counter-increment" => &mut style.reset_generated.counter_increment,
+        _ => &mut style.reset_generated.counter_set,
     }
 }
 

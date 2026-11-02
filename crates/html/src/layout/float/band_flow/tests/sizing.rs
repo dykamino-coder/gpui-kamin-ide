@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::hooks::Hooks;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{
+    Computed, Display, Position, ResetBoxLayout, ResetContext, ResetFlex, ResetPositioned,
+    StyleGroup,
+};
 
 struct IntrinsicBox;
 
@@ -95,11 +98,17 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
 ) {
     let block = Computed::default();
     let float = Computed {
-        float: Some(-1),
+        reset_box_layout: StyleGroup::new(ResetBoxLayout {
+            float: Some(-1),
+            ..Default::default()
+        }),
         ..Default::default()
     };
     let absolute = Computed {
-        position: Some(Position::Absolute),
+        reset_positioned: StyleGroup::new(ResetPositioned {
+            position: Some(Position::Absolute),
+            ..Default::default()
+        }),
         ..Default::default()
     };
     let roles = [
@@ -107,7 +116,10 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
         (float, false),
         (
             Computed {
-                floated_box: true,
+                reset_context: StyleGroup::new(ResetContext {
+                    floated_box: true,
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
@@ -115,35 +127,50 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
         (absolute, false),
         (
             Computed {
-                display: Some(Display::TableCell),
+                reset_box_layout: StyleGroup::new(ResetBoxLayout {
+                    display: Some(Display::TableCell),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
         ),
         (
             Computed {
-                display: Some(Display::InlineBlock),
+                reset_box_layout: StyleGroup::new(ResetBoxLayout {
+                    display: Some(Display::InlineBlock),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
         ),
         (
             Computed {
-                display: Some(Display::Flex),
+                reset_box_layout: StyleGroup::new(ResetBoxLayout {
+                    display: Some(Display::Flex),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
         ),
         (
             Computed {
-                display: Some(Display::Grid),
+                reset_box_layout: StyleGroup::new(ResetBoxLayout {
+                    display: Some(Display::Grid),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
         ),
         (
             Computed {
-                flex_item: true,
+                reset_flex: StyleGroup::new(ResetFlex {
+                    flex_item: true,
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             false,
@@ -157,7 +184,11 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
                 let mut context = block_cx();
                 context.constraints.avail_w = crate::layout::block::available_width::inner(
                     &style,
-                    if style.flex_item { None } else { Some(100.) },
+                    if style.reset_flex.flex_item {
+                        None
+                    } else {
+                        Some(100.)
+                    },
                 );
                 let mut child = kid(Kind::Flow, Default::default(), Default::default());
                 intrinsic = child.intrinsic.clone();

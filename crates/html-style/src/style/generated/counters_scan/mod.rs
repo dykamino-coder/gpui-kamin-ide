@@ -43,16 +43,16 @@ fn tag_of(h: &Handle) -> String {
 
 /// Whether this node establishes a separate scope for this counter.
 fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
-    if style.display == Some(Display::Contents) {
+    if style.reset_box_layout.display == Some(Display::Contents) {
         return false;
     }
-    if decl_has(&style.counter_reset, name) {
+    if decl_has(&style.reset_generated.counter_reset, name) {
         return true;
     }
     // Списочный контейнер заводит `list-item` правилом таблицы агента — но
     // только пока авторский `counter-reset` его не перебил.
     name == "list-item"
-        && style.counter_reset.is_none()
+        && style.reset_generated.counter_reset.is_none()
         && matches!(tag_of(h).as_str(), "ol" | "ul" | "menu" | "dir")
 }
 
@@ -62,10 +62,10 @@ impl Scan<'_> {
     fn step(&mut self, style: &Computed, is_item: bool) {
         // CSS Lists 3 §4.4.2: the first counter-set ends the scan, including
         // that element's pseudo-elements and ancestors' trailing pseudos.
-        if self.done || style.display == Some(Display::Contents) {
+        if self.done || style.reset_box_layout.display == Some(Display::Contents) {
             return;
         }
-        let neg = match decl_value(&style.counter_increment, self.name, 1) {
+        let neg = match decl_value(&style.reset_generated.counter_increment, self.name, 1) {
             Some(v) => v.saturating_neg(),
             // Неявный шаг пункта у обратного счётчика равен −1, значит его
             // отрицание — плюс единица.
@@ -75,7 +75,7 @@ impl Scan<'_> {
         if neg != 0 {
             self.last = neg;
         }
-        if let Some(set) = decl_value(&style.counter_set, self.name, 0) {
+        if let Some(set) = decl_value(&style.reset_generated.counter_set, self.name, 0) {
             self.num = self.num.saturating_add(set);
             self.done = true;
             return;
@@ -107,7 +107,9 @@ impl Scan<'_> {
         let me = &computed_me;
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
-        if style.display == Some(Display::None) && style.col_role.is_none() {
+        if style.reset_box_layout.display == Some(Display::None)
+            && style.reset_context.col_role.is_none()
+        {
             return None;
         }
         if !root && instantiates(&style, h, self.name) {
@@ -120,12 +122,14 @@ impl Scan<'_> {
         // CSS Lists 3 §4.6: only a box with `display: list-item` increments
         // `list-item`; an `li` keeps that role only while no author display
         // replaces the UA `list-item` (`li { display: block }`).
-        let is_item =
-            (tag == "li" && style.display.is_none()) || style.display == Some(Display::ListItem);
+        let is_item = (tag == "li" && style.reset_box_layout.display.is_none())
+            || style.reset_box_layout.display == Some(Display::ListItem);
         self.step(&style, is_item);
         // CSS Containment 2 §3.4: descendant increments create local counters;
         // they cannot contribute to an outer reversed counter's initial value.
-        if style.contain_style == Some(true) && style.display != Some(Display::Contents) {
+        if style.reset_context.contain_style == Some(true)
+            && style.reset_box_layout.display != Some(Display::Contents)
+        {
             return None;
         }
         // Порядок как в отрисовке: `::before`, дети, `::after`.

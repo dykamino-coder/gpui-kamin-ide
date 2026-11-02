@@ -59,13 +59,15 @@ pub(super) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
 pub fn align_for(c: &crate::style::computed::Computed) -> Align {
     let rtl = c.wm().rtl();
     let value = c
+        .inh
+        .text_flow
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)
         .physical(rtl);
     let align = align_of_value(value);
     // `text-justify: none` — растягивать запрещено, и строка идёт к началу:
     // у письма справа налево началом служит правый край.
-    if align == Align::Justify && c.no_justify == Some(true) {
+    if align == Align::Justify && c.inh.text_flow.no_justify == Some(true) {
         return if rtl { Align::Right } else { Align::Left };
     }
     align

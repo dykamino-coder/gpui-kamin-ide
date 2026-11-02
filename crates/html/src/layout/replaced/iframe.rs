@@ -95,20 +95,20 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         .used_mut()
         .resolve_viewport(opts.viewport, vcx);
     let in_flow = !matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     );
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.used().width
+        && let Some(Len::Pct(k)) = resolved.style.used().reset_box_layout.width
         && let Some(width) = opts.cx.constraints.avail_w
     {
-        resolved.style.used_mut().width = Some(Len::Px(k * width));
+        resolved.style.used_mut().reset_box_layout.width = Some(Len::Px(k * width));
     }
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.used().height
+        && let Some(Len::Pct(k)) = resolved.style.used().reset_box_layout.height
         && let Some(height) = opts.cx.constraints.avail_h
     {
-        resolved.style.used_mut().height = Some(Len::Px(k * height));
+        resolved.style.used_mut().reset_box_layout.height = Some(Len::Px(k * height));
     }
     let e = &resolved;
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
@@ -132,12 +132,22 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         (0.0, 0.0)
     } else {
         (
-            px_sum(&[st.padding.left, st.padding.right, bw.left, bw.right]),
-            px_sum(&[st.padding.top, st.padding.bottom, bw.top, bw.bottom]),
+            px_sum(&[
+                st.reset_box_layout.padding.left,
+                st.reset_box_layout.padding.right,
+                bw.left,
+                bw.right,
+            ]),
+            px_sum(&[
+                st.reset_box_layout.padding.top,
+                st.reset_box_layout.padding.bottom,
+                bw.top,
+                bw.bottom,
+            ]),
         )
     };
-    let border_box = st.border_box == Some(true);
-    let (w, outer_w) = match st.width {
+    let border_box = st.reset_border.border_box == Some(true);
+    let (w, outer_w) = match st.reset_box_layout.width {
         Some(Len::Px(v)) if border_box => ((v - ex).max(0.0), v),
         Some(Len::Px(v)) => (v, v + ex),
         _ => {
@@ -145,7 +155,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             (v, v + ex)
         }
     };
-    let (h, outer_h) = match st.height {
+    let (h, outer_h) = match st.reset_box_layout.height {
         Some(Len::Px(v)) if border_box => ((v - ey).max(0.0), v),
         Some(Len::Px(v)) => (v, v + ey),
         _ => {
@@ -156,8 +166,8 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
     // Правила, метрики корня и режим quirks у вложенного документа свои:
     // его дерево собирается в ЕГО области, внешняя возвращается сама.
-    let responsive = st.frame_sizing_height
-        && matches!(st.height, None | Some(Len::Auto))
+    let responsive = st.reset_context.frame_sizing_height
+        && matches!(st.reset_box_layout.height, None | Some(Len::Auto))
         && e.attr("height").is_none()
         && responsive_embedded_sizing(&html);
     let embedded = match crate::document::parse_embedded_sized(
@@ -169,8 +179,8 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         !e.attr("scrolling")
             .is_some_and(|v| v.eq_ignore_ascii_case("no")),
         Some(crate::document::EmbeddingScheme {
-            preferred_dark: st.embedding_dark_scheme,
-            owner_dark: st.dark_color_scheme,
+            preferred_dark: st.reset_cascade.embedding_dark_scheme,
+            owner_dark: st.reset_cascade.dark_color_scheme,
         }),
         &opts.cx.text_fonts().metrics.font_context(),
         opts.cx.doc().values.input_context(),

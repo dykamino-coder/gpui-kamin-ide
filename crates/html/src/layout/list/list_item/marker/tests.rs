@@ -53,7 +53,8 @@ fn marker_type_is_inherited_through_elements_without_markers() {
         let Node::Element(parent) = &mut nodes[0] else {
             unreachable!()
         };
-        parent.style.used_mut().list_style_type = Some(MarkerType::Text("layout ".into()));
+        parent.style.used_mut().inh.table_list.list_style_type =
+            Some(MarkerType::Text("layout ".into()));
         let Node::Element(wrapper) = &parent.children[0] else {
             unreachable!()
         };
@@ -75,8 +76,8 @@ fn local_marker_content_and_suppression_are_not_inherited() {
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
     let mut parent = style("list-style-type:'inherited '", vcx);
-    parent.marker_text = Some("local ".into());
-    parent.no_marker = Some(true);
+    parent.reset_generated.marker_text = Some("local ".into());
+    parent.reset_generated.no_marker = Some(true);
     let item = Element::synthetic(
         "li",
         style("display:list-item", vcx),
@@ -84,8 +85,8 @@ fn local_marker_content_and_suppression_are_not_inherited() {
         vec![],
     );
     let merged = inherit(&BoxStyle::new(parent), &item.style.used(), vcx);
-    assert_eq!(merged.marker_text, None);
-    assert_eq!(merged.no_marker, None);
+    assert_eq!(merged.reset_generated.marker_text, None);
+    assert_eq!(merged.reset_generated.no_marker, None);
     assert_eq!(
         resolve(&item, &Computed::default(), &merged, vcx)
             .unwrap()
@@ -119,12 +120,12 @@ fn only_outside_generated_symbols_discard_text_spacing() {
         let marker = resolve(&item, &merged, &merged, vcx).unwrap();
         let used = marker.style.as_ref().unwrap_or(&merged);
         assert_eq!(
-            used.letter_spacing,
+            used.inh.text_flow.letter_spacing,
             Some(Len::Px(if symbol { 0. } else { 4. })),
             "{css}"
         );
         assert_eq!(
-            used.word_spacing,
+            used.inh.text_flow.word_spacing,
             Some(Len::Px(if symbol { 0. } else { 160. })),
             "{css}"
         );

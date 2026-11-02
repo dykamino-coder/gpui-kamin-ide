@@ -62,8 +62,8 @@ impl RowRecord {
                 watch.flow.clone(),
                 StackAxis::of(inherited.wm()),
                 (
-                    usize::from(inherited.orphans.unwrap_or(2)),
-                    usize::from(inherited.widows.unwrap_or(2)),
+                    usize::from(inherited.inh.text_flow.orphans.unwrap_or(2)),
+                    usize::from(inherited.inh.text_flow.widows.unwrap_or(2)),
                 ),
             )
         })

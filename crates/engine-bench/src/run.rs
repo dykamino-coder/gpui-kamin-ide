@@ -140,7 +140,7 @@ pub(super) async fn sample(
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let work = work.finish(step.cold());
+    let work = window.read_with(cx, |view, _| work.finish(step.cold(), &view.doc))?;
     let after = Counters::read(capture);
     let frame = capture
         .take_first()
@@ -252,7 +252,8 @@ pub(super) async fn run(
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
-        "runs_per_mode": args.runs, "modes": modes,
+        "runs_per_mode": args.runs,
+        "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
         "startup_process_memory": startup.json(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",

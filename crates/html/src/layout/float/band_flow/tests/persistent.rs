@@ -60,14 +60,20 @@ fn intrinsic_slot_survives_rebuilding_the_host(cx: &mut gpui::TestAppContext) {
 #[test]
 fn auto_flex_and_grid_items_leave_intrinsic_sizing_to_their_owner() {
     use crate::layout::block::available_width::inner;
-    use crate::style::computed::{Computed, Display};
+    use crate::style::computed::{Computed, Display, ResetBoxLayout, ResetFlex, StyleGroup};
     for display in [Display::Flex, Display::Grid] {
         let parent = Computed {
-            display: Some(display),
+            reset_box_layout: StyleGroup::new(ResetBoxLayout {
+                display: Some(display),
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let item = Computed {
-            flex_item: true,
+            reset_flex: StyleGroup::new(ResetFlex {
+                flex_item: true,
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let parent_width = inner(&parent, Some(100.));

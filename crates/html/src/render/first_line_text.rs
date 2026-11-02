@@ -23,6 +23,8 @@ pub(super) fn gather(nodes: &[Node], preserve_newlines: bool, out: &mut String) 
                 let preserve = element
                     .style
                     .cascaded()
+                    .inh
+                    .text_flow
                     .preserve_newlines
                     .unwrap_or(preserve_newlines);
                 if gather(&element.children, preserve, out) {
@@ -43,7 +45,12 @@ pub(super) fn lines(nodes: &[Node], preserve: bool, out: &mut String) {
             Node::Element(e) if e.tag == "br" => out.push('\n'),
             Node::Element(e) => lines(
                 &e.children,
-                e.style.cascaded().preserve_newlines.unwrap_or(preserve),
+                e.style
+                    .cascaded()
+                    .inh
+                    .text_flow
+                    .preserve_newlines
+                    .unwrap_or(preserve),
                 out,
             ),
         }

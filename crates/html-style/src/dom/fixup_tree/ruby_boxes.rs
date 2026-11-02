@@ -14,10 +14,10 @@ use crate::style::computed::{Computed, Position};
 /// без авторского `display` (A.1). Зеркало `text::ruby::ruby_role`.
 pub fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style::computed::RubyRole> {
     use crate::style::computed::RubyRole;
-    if let Some(role) = style.ruby_role {
+    if let Some(role) = style.reset_text_box.ruby_role {
         return Some(role);
     }
-    if style.display.is_some() {
+    if style.reset_box_layout.display.is_some() {
         return None;
     }
     match tag {
@@ -96,7 +96,7 @@ pub fn wrap_misparented_ruby(
 /// Задаёт ли элемент отсчёт для абсолютных потомков.
 pub fn own_containing_block(c: &Computed) -> bool {
     matches!(
-        c.position,
+        c.reset_positioned.position,
         Some(Position::Relative)
             | Some(Position::Absolute)
             | Some(Position::Fixed)

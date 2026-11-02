@@ -79,8 +79,8 @@ pub(super) fn paint_layer_in(
     };
     let size = layer.size;
     let repeat = layer.repeat.unwrap_or(BgRepeat::Repeat);
-    let family = c.font_family.clone().unwrap_or_default();
-    let font = match c.font_size {
+    let family = c.inh.font.font_family.clone().unwrap_or_default();
+    let font = match c.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
@@ -109,7 +109,7 @@ pub(super) fn paint_layer_in(
         }
     };
     let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font, vcx);
-    let border = c.bg_border_insets.map_or_else(
+    let border = c.reset_background.bg_border_insets.map_or_else(
         || c.borders(),
         |[t, r, b, l]| crate::style::computed::Sides {
             top: Some(Len::Px(t)),
@@ -135,10 +135,10 @@ pub(super) fn paint_layer_in(
             -px_of(border.left),
         ],
         Some(crate::style::computed::BgClip::ContentBox) => [
-            px_of(c.padding.top),
-            px_of(c.padding.right),
-            px_of(c.padding.bottom),
-            px_of(c.padding.left),
+            px_of(c.reset_box_layout.padding.top),
+            px_of(c.reset_box_layout.padding.right),
+            px_of(c.reset_box_layout.padding.bottom),
+            px_of(c.reset_box_layout.padding.left),
         ],
         _ => [0.0; 4],
     };
@@ -147,10 +147,12 @@ pub(super) fn paint_layer_in(
     // картинки с разным природным размером, и ключ обязан их различать
     // (`image-orientation-none-content-images`: четыре `<img>` с
     // `background-image` под `image-orientation: none`).
-    let Some(found) =
-        crate::resources::css_images::computed_source(&src, c.image_orient_none != Some(true), vcx)
-            .map(Source::from_cpu)
-    else {
+    let Some(found) = crate::resources::css_images::computed_source(
+        &src,
+        c.inh.ui.image_orient_none != Some(true),
+        vcx,
+    )
+    .map(Source::from_cpu) else {
         return;
     };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки
@@ -164,7 +166,7 @@ pub(super) fn paint_layer_in(
     // transparent dotted border of `background-origin-006` shows the tile).
     let paint_base = if fixed_area {
         canvas.unwrap_or(bounds)
-    } else if c.bg_border_insets.is_some() {
+    } else if c.reset_background.bg_border_insets.is_some() {
         // Expand before snapping: half a collapsed border can occupy a
         // fractional device pixel even when the layer's inner edge is snapped.
         positioning
@@ -176,14 +178,18 @@ pub(super) fn paint_layer_in(
         | Some(crate::style::computed::BgClip::Text) => paint_base,
         Some(crate::style::computed::BgClip::ContentBox) => Bounds {
             origin: gpui::point(
-                paint_base.origin.x + px(px_of(c.padding.left)),
-                paint_base.origin.y + px(px_of(c.padding.top)),
+                paint_base.origin.x + px(px_of(c.reset_box_layout.padding.left)),
+                paint_base.origin.y + px(px_of(c.reset_box_layout.padding.top)),
             ),
             size: gpui::size(
-                (paint_base.size.width - px(px_of(c.padding.left) + px_of(c.padding.right)))
-                    .max(px(0.0)),
-                (paint_base.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom)))
-                    .max(px(0.0)),
+                (paint_base.size.width
+                    - px(px_of(c.reset_box_layout.padding.left)
+                        + px_of(c.reset_box_layout.padding.right)))
+                .max(px(0.0)),
+                (paint_base.size.height
+                    - px(px_of(c.reset_box_layout.padding.top)
+                        + px_of(c.reset_box_layout.padding.bottom)))
+                .max(px(0.0)),
             ),
         },
         _ => {
@@ -197,7 +203,7 @@ pub(super) fn paint_layer_in(
             let covers = |i: usize| {
                 let opaque = paint.opaque_borders[i];
                 // solid / inset / outset / groove / ridge — сплошная краска.
-                matches!(c.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
+                matches!(c.reset_border.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
             };
             let ext = |side: Option<Len>, i: usize| if covers(i) { 0.0 } else { px_of(side) };
             let (t, r, b, l) = (

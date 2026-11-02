@@ -98,8 +98,8 @@ pub(super) fn start_of(
 /// `O − Anchor` тогда нулевой и не пишется вовсе, и строка для сегодняшних
 /// зелёных не меняется ни байтом.
 pub(super) fn origin_shift(c: &Computed, p: (f32, f32), rot: f32, vcx: ValueCx<'_>) -> String {
-    let (ofx, ofy) = c.transform_origin.unwrap_or((0.5, 0.5));
-    let (opx, opy) = c.transform_origin_px;
+    let (ofx, ofy) = c.reset_transforms.transform_origin.unwrap_or((0.5, 0.5));
+    let (opx, opy) = c.reset_transforms.transform_origin_px;
     let mut css = format!("translate({}px, {}px)", p.0, p.1);
     if opx.is_some() || opy.is_some() {
         css.push_str(&format!(

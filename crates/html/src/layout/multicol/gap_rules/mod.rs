@@ -26,7 +26,7 @@ pub(crate) fn gap_rule_spec(
     use crate::layout::multicol::gap_rules::GapAxisRule;
     use crate::style::computed::{GapInset, GapList};
     if !matches!(
-        merged.display,
+        merged.reset_box_layout.display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
@@ -35,7 +35,7 @@ pub(crate) fn gap_rule_spec(
     ) {
         return None;
     }
-    let size = match merged.font_size {
+    let size = match merged.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     };
@@ -44,37 +44,41 @@ pub(crate) fn gap_rule_spec(
         Len::Em(k) => k * size,
         _ => 3.0,
     };
-    let fallback = merged.color.unwrap_or(crate::style::values::value::Color {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    });
+    let fallback = merged
+        .inh
+        .ui
+        .color
+        .unwrap_or(crate::style::values::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
     let s = &*e.style.used();
     let axis = |column: bool| -> GapAxisRule {
         let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
             (
-                s.column_rule_visible,
-                &s.column_rule_width,
-                &s.column_rule_color,
-                &s.column_rule_widths,
-                &s.column_rule_styles,
-                &s.column_rule_colors,
-                s.column_rule_break,
-                s.column_rule_inset,
-                s.column_rule_visibility,
+                s.reset_fragmentation.column_rule_visible,
+                &s.reset_fragmentation.column_rule_width,
+                &s.reset_fragmentation.column_rule_color,
+                &s.reset_fragmentation.column_rule_widths,
+                &s.reset_fragmentation.column_rule_styles,
+                &s.reset_fragmentation.column_rule_colors,
+                s.reset_fragmentation.column_rule_break,
+                s.reset_fragmentation.column_rule_inset,
+                s.reset_fragmentation.column_rule_visibility,
             )
         } else {
             (
-                s.row_rule_visible,
-                &s.row_rule_width,
-                &s.row_rule_color,
-                &s.row_rule_widths,
-                &s.row_rule_styles,
-                &s.row_rule_colors,
-                s.row_rule_break,
-                s.row_rule_inset,
-                s.row_rule_visibility,
+                s.reset_fragmentation.row_rule_visible,
+                &s.reset_fragmentation.row_rule_width,
+                &s.reset_fragmentation.row_rule_color,
+                &s.reset_fragmentation.row_rule_widths,
+                &s.reset_fragmentation.row_rule_styles,
+                &s.reset_fragmentation.row_rule_colors,
+                s.reset_fragmentation.row_rule_break,
+                s.reset_fragmentation.row_rule_inset,
+                s.reset_fragmentation.row_rule_visibility,
             )
         };
         let styles = ss
@@ -102,14 +106,14 @@ pub(crate) fn gap_rule_spec(
             inset,
             visibility: visibility.unwrap_or(0),
             double: if column {
-                s.column_rule_double
+                s.reset_fragmentation.column_rule_double
             } else {
-                s.row_rule_double
+                s.reset_fragmentation.row_rule_double
             },
             kinds: if column {
-                &s.column_rule_kinds
+                &s.reset_fragmentation.column_rule_kinds
             } else {
-                &s.row_rule_kinds
+                &s.reset_fragmentation.row_rule_kinds
             }
             .clone()
             .unwrap_or(crate::style::computed::GapList::single(0)),
@@ -144,7 +148,7 @@ pub(super) fn multicol_gap_rule_spec(
     row_gap: f32,
 ) -> Option<crate::layout::multicol::gap_rules::GapRuleSpec> {
     let mut probe = merged.clone();
-    probe.display = Some(Display::Flex);
+    probe.reset_box_layout.display = Some(Display::Flex);
     let mut spec = gap_rule_spec(e, &probe, opts)?;
     let vertical = spec.vertical;
     spec.kind = crate::layout::multicol::gap_rules::GapLayout::Multicol;

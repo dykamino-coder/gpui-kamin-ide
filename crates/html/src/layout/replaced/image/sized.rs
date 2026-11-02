@@ -13,7 +13,9 @@ impl PictureSizing<'_> {
         let (sub_w, sub_h) = self.sub;
         let (max_w, max_h) = (self.max_w, self.max_h);
         let mut узкая = None;
-        let picture = if let (Some(Len::Px(w)), Some(Len::Px(h))) = (style.width, style.height) {
+        let picture = if let (Some(Len::Px(w)), Some(Len::Px(h))) =
+            (style.reset_box_layout.width, style.reset_box_layout.height)
+        {
             let raster = ((w - sub_w).max(1.0), (h - sub_h).max(1.0));
             // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
             // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
@@ -23,16 +25,18 @@ impl PictureSizing<'_> {
             // `-vert-001`).
             Picture::Authored {
                 raster,
-                size: (!style.flex_item).then_some((w, h)),
+                size: (!style.reset_flex.flex_item).then_some((w, h)),
             }
-        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (style.width, style.height) {
+        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) =
+            (style.reset_box_layout.width, style.reset_box_layout.height)
+        {
             // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
             // без соотношения — своя, резерв 150.
             // §10.7: пределы зажимают и НАЗВАННУЮ сторону тоже. Коробку
             // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
             let cw = self.limit(
                 (w - sub_w).max(0.0),
-                self.clamp(style.min_width, sub_w),
+                self.clamp(style.reset_box_layout.min_width, sub_w),
                 max_w,
             );
             let ch = match self.ratio() {
@@ -47,7 +51,11 @@ impl PictureSizing<'_> {
             // в свой потолок и пол. Правка по спеке: на снимках она ничего не
             // меняет.
             let ch_free = ch;
-            let ch = self.limit(ch, self.clamp(style.min_height, sub_h), max_h);
+            let ch = self.limit(
+                ch,
+                self.clamp(style.reset_box_layout.min_height, sub_h),
+                max_h,
+            );
             // §10.4: когда потолок или пол ИЗМЕНИЛИ выведенную сторону,
             // заданная пересчитывается по соотношению — коробка остаётся
             // пропорциональной, а не растягивается. `width: 200px` при
@@ -57,7 +65,7 @@ impl PictureSizing<'_> {
                 Some(r) if r > 0.0 && (ch - ch_free).abs() > COORD_EPS => {
                     let w = self.limit(
                         self.transfer(ch, r, false),
-                        self.clamp(style.min_width, sub_w),
+                        self.clamp(style.reset_box_layout.min_width, sub_w),
                         max_w,
                     );
                     // Коробка ужимается ТОЛЬКО когда предел и правда изменил
@@ -73,11 +81,13 @@ impl PictureSizing<'_> {
                 raster: (cw.max(1.0), ch.max(1.0)),
                 size: (cw, ch),
             }
-        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (style.width, style.height) {
+        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) =
+            (style.reset_box_layout.width, style.reset_box_layout.height)
+        {
             // Зеркально: заданная высота + auto-ширина (§10.3.2).
             let ch = self.limit(
                 (h - sub_h).max(0.0),
-                self.clamp(style.min_height, sub_h),
+                self.clamp(style.reset_box_layout.min_height, sub_h),
                 max_h,
             );
             let cw = match self.ratio() {
@@ -88,13 +98,17 @@ impl PictureSizing<'_> {
                     .unwrap_or(DEFAULT_REPLACED_WIDTH_PX),
             };
             let cw_free = cw;
-            let cw = self.limit(cw, self.clamp(style.min_width, sub_w), max_w);
+            let cw = self.limit(
+                cw,
+                self.clamp(style.reset_box_layout.min_width, sub_w),
+                max_w,
+            );
             // Зеркально §10.4: изменённая ширина тянет за собой высоту.
             let ch = match self.ratio() {
                 Some(r) if r > 0.0 && (cw - cw_free).abs() > COORD_EPS => {
                     let h = self.limit(
                         self.transfer(cw, r, true),
-                        self.clamp(style.min_height, sub_h),
+                        self.clamp(style.reset_box_layout.min_height, sub_h),
                         max_h,
                     );
                     узкая = Some((cw, h));
@@ -106,7 +120,9 @@ impl PictureSizing<'_> {
                 raster: (cw.max(1.0), ch.max(1.0)),
                 size: (cw, ch),
             }
-        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) = (style.width, style.height) {
+        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) =
+            (style.reset_box_layout.width, style.reset_box_layout.height)
+        {
             // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
             // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
             // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
@@ -118,26 +134,28 @@ impl PictureSizing<'_> {
             Picture::FullWidth {
                 ratio: self.ratio().filter(|r| *r > 0.0),
             }
-        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) = (style.width, style.height) {
+        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) =
+            (style.reset_box_layout.width, style.reset_box_layout.height)
+        {
             // Зеркально: доля высоты при auto-ширине.
             Picture::FullHeight {
                 ratio: self.ratio().filter(|r| *r > 0.0),
             }
-        } else if !matches!(style.width, None | Some(Len::Auto))
-            && !matches!(style.height, None | Some(Len::Auto))
+        } else if !matches!(style.reset_box_layout.width, None | Some(Len::Auto))
+            && !matches!(style.reset_box_layout.height, None | Some(Len::Auto))
         {
             // Обе стороны заданы, но не обе в точках: каждая ось — своим
             // значением. `width:100%; height:100%` растягивается на коробку
             // (sizing-percentages-replaced-orthogonal-001), а смешанная
             // запись `width:50%; height:15px` раньше падала в size_full и
             // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
-            match (style.width, style.height) {
+            match (style.reset_box_layout.width, style.reset_box_layout.height) {
                 (Some(Len::Pct(_)), Some(Len::Px(h))) => Picture::FullWidthPxHeight(h),
                 (Some(Len::Px(w)), Some(Len::Pct(_))) => Picture::PxWidthFullHeight(w),
                 _ => Picture::Full,
             }
-        } else if !matches!(style.width, Some(Len::Px(_)))
-            && !matches!(style.height, Some(Len::Px(_)))
+        } else if !matches!(style.reset_box_layout.width, Some(Len::Px(_)))
+            && !matches!(style.reset_box_layout.height, Some(Len::Px(_)))
         {
             self.auto_picture()
         } else {

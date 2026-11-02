@@ -34,12 +34,12 @@ pub(super) fn atom_element_raw(
     // мимо сторожа общего пути. `display: inline` после каскада — это
     // `InlineBlock` с `inline_display` — атомом не является.
     let clamp_bfc = matches!(
-        e.style.used().display,
+        e.style.used().reset_box_layout.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && e.style.used().inline_display != Some(true);
+    ) && e.style.used().reset_context.inline_display != Some(true);
     let opts = &*opts.inner(|cx| {
         if clamp_bfc {
             cx.clamp.build = cx.clamp.build.bfc();
@@ -74,7 +74,7 @@ pub(super) fn atom_element_raw(
     // содержащим блоком стала бы она сама, и края отсчитывались бы от неё.
     // Пока он был обычной коробкой куска, строка росла под его высоту.
     if matches!(
-        e.style.used().position,
+        e.style.used().reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -164,7 +164,7 @@ pub(super) fn atom_element_raw(
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(
             &e.style.used(),
-            match inherited.font_size {
+            match inherited.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => MEDIUM_FONT_SIZE_PX,
             },
@@ -173,7 +173,7 @@ pub(super) fn atom_element_raw(
             // css-writing-modes-4 §3.1 «its display computes instead to
             // inline-block»: коробка со своими размерами
             // (`different-block-flow-dir-001/002`).
-            || (e.style.cascaded().writing_mode.is_some() && e.style.cascaded().vertical_decl() != inherited.vertical_decl()) =>
+            || (e.style.cascaded().inh.writing.writing_mode.is_some() && e.style.cascaded().vertical_decl() != inherited.vertical_decl()) =>
         {
             own_box_atom(inherited, e, opts)
         }

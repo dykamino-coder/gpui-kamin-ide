@@ -8,13 +8,13 @@ use crate::style::values::value::Len;
 
 fn kid(tag: &str, height: Len) -> Node {
     let mut el = anon_element(tag, vec![]);
-    el.style.used_mut().height = Some(height);
+    el.style.used_mut().reset_box_layout.height = Some(height);
     Node::Element(el)
 }
 
 fn height(n: &Node) -> Option<Len> {
     match n {
-        Node::Element(el) => el.style.used().height,
+        Node::Element(el) => el.style.used().reset_box_layout.height,
         _ => None,
     }
 }
@@ -30,7 +30,7 @@ fn plain_percentage_child_is_left_to_the_cell_final_height() {
 fn replaced_and_scrollable_children_resolve_against_the_specified_height() {
     let mut scroller = kid("div", Len::Pct(1.0));
     if let Node::Element(el) = &mut scroller {
-        el.style.used_mut().overflow_y = Some(Overflow::Scroll);
+        el.style.used_mut().reset_box_layout.overflow_y = Some(Overflow::Scroll);
     }
     let mut cell = anon_element("td", vec![kid("canvas", Len::Pct(2.0)), scroller]);
     resolve_child_percents(&mut cell, 50.0);

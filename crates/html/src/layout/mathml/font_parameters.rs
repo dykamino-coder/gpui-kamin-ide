@@ -14,7 +14,7 @@ pub(super) struct FontParameters {
 impl FontParameters {
     pub fn new(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Self {
         let font = strut_font(style, &opts.text, opts.cx.vcx());
-        let size = px_strict(style.font_size).unwrap_or(opts.base_size());
+        let size = px_strict(style.inh.font.font_size).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size, opts.cx.text_fonts());
         let constants = math::for_family(&font.family, opts.cx.text_fonts());
         let c = |index: usize, fallback| {
@@ -22,7 +22,7 @@ impl FontParameters {
                 .as_ref()
                 .map_or(fallback, |v| v.values[index] * size)
         };
-        let display = style.math_compact == Some(false);
+        let display = style.inh.ui.math_compact == Some(false);
         let thickness = e
             .attr("linethickness")
             .and_then(|v| {
@@ -82,7 +82,14 @@ impl FontParameters {
                 sub_shift: c(4, x / 3.0),
                 sub_drop: c(6, x / 2.0),
                 sub_top: c(5, 4.0 * x / 5.0),
-                sup_shift: c(if style.math_shift == Some(true) { 8 } else { 7 }, x),
+                sup_shift: c(
+                    if style.inh.ui.math_shift == Some(true) {
+                        8
+                    } else {
+                        7
+                    },
+                    x,
+                ),
                 sup_drop: c(10, x / 2.0),
                 sup_bottom: c(9, x / 4.0),
                 sup_bottom_with_sub: c(12, 4.0 * x / 5.0),

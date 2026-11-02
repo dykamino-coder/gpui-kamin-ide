@@ -8,20 +8,22 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     // Неявные дорожки: элементов больше, чем описано — их размер задаёт
     // `grid-auto-*`, иначе они выходят по содержимому.
     let (auto_line, auto_flow_axis) = if flip {
-        (&c.grid_auto_cols, &c.grid_auto_rows)
+        (&c.reset_grid.grid_auto_cols, &c.reset_grid.grid_auto_rows)
     } else {
-        (&c.grid_auto_rows, &c.grid_auto_cols)
+        (&c.reset_grid.grid_auto_rows, &c.reset_grid.grid_auto_cols)
     };
     if let Some(t) = auto_line {
         d.style().grid_auto_rows = Some(track(t));
-        if !c.grid_auto_rows_list.is_empty() {
-            d.style().grid_auto_rows_list = Some(c.grid_auto_rows_list.iter().map(track).collect());
+        if !c.reset_grid.grid_auto_rows_list.is_empty() {
+            d.style().grid_auto_rows_list =
+                Some(c.reset_grid.grid_auto_rows_list.iter().map(track).collect());
         }
     }
     if let Some(t) = auto_flow_axis {
         d.style().grid_auto_cols = Some(track(t));
-        if !c.grid_auto_cols_list.is_empty() {
-            d.style().grid_auto_cols_list = Some(c.grid_auto_cols_list.iter().map(track).collect());
+        if !c.reset_grid.grid_auto_cols_list.is_empty() {
+            d.style().grid_auto_cols_list =
+                Some(c.reset_grid.grid_auto_cols_list.iter().map(track).collect());
         }
     }
     // Лунки на пути сетки: одинокий `repeat(auto-*)` с дорожками ПО
@@ -29,12 +31,20 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     // Overview.bs:444-500) отдаётся раскладке телом как есть — число повторов
     // по гипотетическим размерам считает `taffy::compute::grid::lanes`. Ветки
     // выше умеют только точечное тело и подменяли его счётом колонок.
-    if c.lanes_taffy {
+    if c.reset_grid.lanes_taffy {
         let row_dir = crate::dom::lanes_row_dir(c);
         let (repeat, body, list) = if row_dir {
-            (c.auto_repeat_rows, &c.auto_repeat_body_rows, &c.grid_rows)
+            (
+                c.reset_grid.auto_repeat_rows,
+                &c.reset_grid.auto_repeat_body_rows,
+                &c.reset_grid.grid_rows,
+            )
         } else {
-            (c.auto_repeat_cols, &c.auto_repeat_body_cols, &c.grid_tracks)
+            (
+                c.reset_grid.auto_repeat_cols,
+                &c.reset_grid.auto_repeat_body_cols,
+                &c.reset_grid.grid_tracks,
+            )
         };
         if let (None, Some(r), Some(body)) = (list, repeat, body)
             && r.track.is_none()
@@ -65,7 +75,7 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     // row flow, so the initial value needs the same projection as a declaration
     // (Blink grid_placement.cc:38-49 keeps both placement axes logical).
     {
-        let f = c.grid_auto_flow.unwrap_or(AutoFlow::Row);
+        let f = c.reset_grid.grid_auto_flow.unwrap_or(AutoFlow::Row);
         // Направление наполнения тоже логическое: «по рядам» значит «вдоль
         // строки», а строка при вертикальном письме идёт сверху вниз.
         let f = if flip {
@@ -93,20 +103,26 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     // вертикальном письме колонки подсетки — физические ряды (Blink
     // `grid_item.cc:192-197`). Обособленная подсетка подсеткой не является
     // (§subgrid-listing, `dom::subgrid_inhibited`).
-    if (c.subgrid_cols || c.subgrid_rows) && !crate::dom::subgrid_inhibited(c) {
-        let col_gap_normal = c.gap.and_then(|g| g.1).or(c.column_gap).is_none();
-        let row_gap_normal = c.gap.and_then(|g| g.0).is_none();
+    if (c.reset_grid.subgrid_cols || c.reset_grid.subgrid_rows) && !crate::dom::subgrid_inhibited(c)
+    {
+        let col_gap_normal = c
+            .reset_flex
+            .gap
+            .and_then(|g| g.1)
+            .or(c.reset_fragmentation.column_gap)
+            .is_none();
+        let row_gap_normal = c.reset_flex.gap.and_then(|g| g.0).is_none();
         let (cols, rows, col_gap, row_gap) = if flip {
             (
-                c.subgrid_rows,
-                c.subgrid_cols,
+                c.reset_grid.subgrid_rows,
+                c.reset_grid.subgrid_cols,
                 row_gap_normal,
                 col_gap_normal,
             )
         } else {
             (
-                c.subgrid_cols,
-                c.subgrid_rows,
+                c.reset_grid.subgrid_cols,
+                c.reset_grid.subgrid_rows,
                 col_gap_normal,
                 row_gap_normal,
             )
@@ -147,9 +163,11 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
         } else {
             d.grid_template_rows(line)
         };
-    } else if let (None, Some(r), Some(body)) =
-        (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
-        && body.len() > 1
+    } else if let (None, Some(r), Some(body)) = (
+        &c.reset_grid.grid_rows,
+        c.reset_grid.auto_repeat_rows,
+        &c.reset_grid.auto_repeat_body_rows,
+    ) && body.len() > 1
         && body
             .iter()
             .all(|t| matches!(t, TrackSize::Single(crate::style::computed::Track::Px(_))))
@@ -175,9 +193,9 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
     // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до
     // края страницы вместо 100px). gpui-размер — border-box: паддинги и
     // рамки сверху.
-    if c.display == Some(Display::InlineGrid)
-        && c.width.is_none()
-        && let Some(tracks) = &c.grid_tracks
+    if c.reset_box_layout.display == Some(Display::InlineGrid)
+        && c.reset_box_layout.width.is_none()
+        && let Some(tracks) = &c.reset_grid.grid_tracks
     {
         let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
             crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(w)) => {
@@ -188,9 +206,10 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
         if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
             let px_of = px_lossy_zero;
             let b = c.borders();
-            total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
-                + px_of(c.padding.left)
-                + px_of(c.padding.right)
+            total += px_of(c.reset_fragmentation.column_gap)
+                * (tracks.len().saturating_sub(1)) as f32
+                + px_of(c.reset_box_layout.padding.left)
+                + px_of(c.reset_box_layout.padding.right)
                 + px_of(b.left)
                 + px_of(b.right);
             d = d.w(px(total));

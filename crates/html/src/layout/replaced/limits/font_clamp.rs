@@ -17,11 +17,11 @@ use crate::style::values::value::{Len, px_strict};
 /// прямоугольниками).
 pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
     let mut copy = e.clone();
-    if copy.style.cascaded().font_family.is_none() {
-        copy.style.used_mut().font_family = inherited.font_family.clone();
+    if copy.style.cascaded().inh.font.font_family.is_none() {
+        copy.style.used_mut().inh.font.font_family = inherited.inh.font.font_family.clone();
     }
-    if copy.style.cascaded().monospace.is_none() {
-        copy.style.used_mut().monospace = inherited.monospace;
+    if copy.style.cascaded().inh.font.monospace.is_none() {
+        copy.style.used_mut().inh.font.monospace = inherited.inh.font.monospace;
     }
     // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4, «Inherited: yes»),
     // а копия несёт только собственный стиль элемента. Замещаемая коробка
@@ -32,24 +32,24 @@ pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element 
     // равно (`image-orientation-none`, `-none-content-images`).
     // Ранний возврат снят намеренно: он экономил только клон, а перенос
     // обязан идти и у элемента со своим шрифтом.
-    if copy.style.cascaded().image_orient_none.is_none() {
-        copy.style.used_mut().image_orient_none = inherited.image_orient_none;
+    if copy.style.cascaded().inh.ui.image_orient_none.is_none() {
+        copy.style.used_mut().inh.ui.image_orient_none = inherited.inh.ui.image_orient_none;
     }
     // `color` наследуется (CSS 2.1 §14.1), а цвет рамки по умолчанию —
     // `currentColor` (css-backgrounds-3 §4.1): без переноса рамка картинки
     // в белом абзаце рисовалась чёрной (`c44-ln-box-001/002/003`).
     // `image-rendering` тоже наследуется (css-images-3 §image-rendering).
-    if copy.style.cascaded().image_pixelated.is_none() {
-        copy.style.used_mut().image_pixelated = inherited.image_pixelated;
+    if copy.style.cascaded().inh.ui.image_pixelated.is_none() {
+        copy.style.used_mut().inh.ui.image_pixelated = inherited.inh.ui.image_pixelated;
     }
-    if copy.style.cascaded().color.is_none() {
-        copy.style.used_mut().color = inherited.color;
+    if copy.style.cascaded().inh.ui.color.is_none() {
+        copy.style.used_mut().inh.ui.color = inherited.inh.ui.color;
     }
     copy
 }
 
 pub(crate) fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
-    match inherited.font_size {
+    match inherited.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     }
@@ -110,27 +110,35 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
         )
     };
     let c = &*e.style.used();
-    if !(kw(c.min_width) || kw(c.max_width) || kw(c.min_height) || kw(c.max_height)) {
+    if !(kw(c.reset_box_layout.min_width)
+        || kw(c.reset_box_layout.max_width)
+        || kw(c.reset_box_layout.min_height)
+        || kw(c.reset_box_layout.max_height))
+    {
         return e.clone();
     }
     let px = px_strict;
-    let ratio = c.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0);
-    let nat_w = match (px(c.height), ratio) {
+    let ratio = c
+        .reset_shapes
+        .aspect_ratio
+        .filter(|r| r.is_finite() && *r > 0.0);
+    let nat_w = match (px(c.reset_box_layout.height), ratio) {
         (Some(h), Some(r)) => Some(h * r),
-        _ => px(c.attr_width),
+        _ => px(c.reset_box_layout.attr_width),
     };
-    let nat_h = match (px(c.width), ratio) {
+    let nat_h = match (px(c.reset_box_layout.width), ratio) {
         (Some(w), Some(r)) => Some(w / r),
-        _ => px(c.attr_height),
+        _ => px(c.reset_box_layout.attr_height),
     };
     let mut copy = e.clone();
     let s = &mut *copy.style.used_mut();
-    for (lim, nat) in [
-        (&mut s.min_width, nat_w),
-        (&mut s.max_width, nat_w),
-        (&mut s.min_height, nat_h),
-        (&mut s.max_height, nat_h),
-    ] {
+    for style_field_index in 0..4 {
+        let (lim, nat) = match style_field_index {
+            0 => (&mut s.reset_box_layout.min_width, nat_w),
+            1 => (&mut s.reset_box_layout.max_width, nat_w),
+            2 => (&mut s.reset_box_layout.min_height, nat_h),
+            _ => (&mut s.reset_box_layout.max_height, nat_h),
+        };
         if kw(*lim) {
             *lim = nat.map(Len::Px);
         }

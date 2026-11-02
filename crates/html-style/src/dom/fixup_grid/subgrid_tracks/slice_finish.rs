@@ -28,21 +28,21 @@ pub fn finish_slice(
     let bs = child.style.cascaded().borders();
     let (lead, trail) = if row_dir {
         (
-            px(child.style.cascaded().margin.top)
+            px(child.style.cascaded().reset_box_layout.margin.top)
                 + px(bs.top)
-                + px(child.style.cascaded().padding.top),
-            px(child.style.cascaded().margin.bottom)
+                + px(child.style.cascaded().reset_box_layout.padding.top),
+            px(child.style.cascaded().reset_box_layout.margin.bottom)
                 + px(bs.bottom)
-                + px(child.style.cascaded().padding.bottom),
+                + px(child.style.cascaded().reset_box_layout.padding.bottom),
         )
     } else {
         (
-            px(child.style.cascaded().margin.left)
+            px(child.style.cascaded().reset_box_layout.margin.left)
                 + px(bs.left)
-                + px(child.style.cascaded().padding.left),
-            px(child.style.cascaded().margin.right)
+                + px(child.style.cascaded().reset_box_layout.padding.left),
+            px(child.style.cascaded().reset_box_layout.margin.right)
                 + px(bs.right)
-                + px(child.style.cascaded().padding.right),
+                + px(child.style.cascaded().reset_box_layout.padding.right),
         )
     };
     let mut slice = slice;
@@ -64,8 +64,13 @@ pub fn finish_slice(
     // получает половину разницы с каждой стороны внутреннего
     // стыка, а свой зазор остаётся. Менять только симметрично
     // обоим путям.
-    let (prow, pcol) = parent.gap.unwrap_or((None, None));
-    let (crow, ccol) = child.style.cascaded().gap.unwrap_or((None, None));
+    let (prow, pcol) = parent.reset_flex.gap.unwrap_or((None, None));
+    let (crow, ccol) = child
+        .style
+        .cascaded()
+        .reset_flex
+        .gap
+        .unwrap_or((None, None));
     let par = if row_dir { prow } else { pcol };
     let own = if row_dir { crow } else { ccol };
     // Незаданный зазор подсетки — это `normal`, а он по
@@ -81,9 +86,10 @@ pub fn finish_slice(
     let unset = own.is_none();
     let own = own.or(par);
     if own != Some(Len::Px(0.0)) && unset {
-        child.style.cascaded_mut().gap = Some(if row_dir { (par, ccol) } else { (crow, par) });
+        child.style.cascaded_mut().reset_flex.gap =
+            Some(if row_dir { (par, ccol) } else { (crow, par) });
         if !row_dir {
-            child.style.cascaded_mut().column_gap = par;
+            child.style.cascaded_mut().reset_fragmentation.column_gap = par;
         }
     }
     subgrid_gap_slice(&mut slice, par, own);
@@ -124,9 +130,9 @@ pub fn finish_slice(
     // отдельный шаг.
     if !parallel {
         let own = if row_dir {
-            child.style.cascaded().subgrid_cols
+            child.style.cascaded().reset_grid.subgrid_cols
         } else {
-            child.style.cascaded().subgrid_rows
+            child.style.cascaded().reset_grid.subgrid_rows
         };
         let vertical_axis = row_dir != parent.wm().vertical();
         // СРЕЗ в скрещенную ось (колонки родителя → `grid_rows`
@@ -139,52 +145,54 @@ pub fn finish_slice(
         // Скрещивать можно только вместе с `render::generic_box` (Blink
         // `grid_item.cc:192-207`).
         if row_dir {
-            child.style.cascaded_mut().grid_rows = Some(slice);
-            child.style.cascaded_mut().align_self = None;
+            child.style.cascaded_mut().reset_grid.grid_rows = Some(slice);
+            child.style.cascaded_mut().reset_flex.align_self = None;
         } else {
-            child.style.cascaded_mut().grid_tracks = Some(slice);
-            child.style.cascaded_mut().grid_cols = Some(span as u16);
-            child.style.cascaded_mut().justify_self = None;
+            child.style.cascaded_mut().reset_grid.grid_tracks = Some(slice);
+            child.style.cascaded_mut().reset_grid.grid_cols = Some(span as u16);
+            child.style.cascaded_mut().reset_flex.justify_self = None;
         }
         if own {
             if vertical_axis {
-                child.style.cascaded_mut().height = None;
-                child.style.cascaded_mut().max_height = None;
-                child.style.cascaded_mut().min_height = Some(Len::Px(0.0));
+                child.style.cascaded_mut().reset_box_layout.height = None;
+                child.style.cascaded_mut().reset_box_layout.max_height = None;
+                child.style.cascaded_mut().reset_box_layout.min_height = Some(Len::Px(0.0));
             } else {
-                child.style.cascaded_mut().width = None;
-                child.style.cascaded_mut().max_width = None;
-                child.style.cascaded_mut().min_width = Some(Len::Px(0.0));
+                child.style.cascaded_mut().reset_box_layout.width = None;
+                child.style.cascaded_mut().reset_box_layout.max_width = None;
+                child.style.cascaded_mut().reset_box_layout.min_width = Some(Len::Px(0.0));
             }
             let stretch = Some(crate::style::computed::Align::Stretch);
             if row_dir {
-                child.style.cascaded_mut().align_self = stretch;
+                child.style.cascaded_mut().reset_flex.align_self = stretch;
             } else {
-                child.style.cascaded_mut().justify_self = stretch;
+                child.style.cascaded_mut().reset_flex.justify_self = stretch;
             }
         }
     } else if row_dir {
-        child.style.cascaded_mut().grid_rows = Some(slice);
-        child.style.cascaded_mut().align_self = None;
-        if parallel && child.style.cascaded().subgrid_rows {
-            child.style.cascaded_mut().height = None;
-            child.style.cascaded_mut().max_height = None;
+        child.style.cascaded_mut().reset_grid.grid_rows = Some(slice);
+        child.style.cascaded_mut().reset_flex.align_self = None;
+        if parallel && child.style.cascaded().reset_grid.subgrid_rows {
+            child.style.cascaded_mut().reset_box_layout.height = None;
+            child.style.cascaded_mut().reset_box_layout.max_height = None;
             // Не `None`, а НОЛЬ: `None` вернул бы автоминимум
             // элемента сетки, и подсетка раздулась бы шире
             // своей области. Спека требует «размер
             // игнорируется», а не «минимум по содержимому».
-            child.style.cascaded_mut().min_height = Some(Len::Px(0.0));
-            child.style.cascaded_mut().align_self = Some(crate::style::computed::Align::Stretch);
+            child.style.cascaded_mut().reset_box_layout.min_height = Some(Len::Px(0.0));
+            child.style.cascaded_mut().reset_flex.align_self =
+                Some(crate::style::computed::Align::Stretch);
         }
     } else {
-        child.style.cascaded_mut().grid_tracks = Some(slice);
-        child.style.cascaded_mut().grid_cols = Some(span as u16);
-        child.style.cascaded_mut().justify_self = None;
-        if parallel && child.style.cascaded().subgrid_cols {
-            child.style.cascaded_mut().width = None;
-            child.style.cascaded_mut().max_width = None;
-            child.style.cascaded_mut().min_width = Some(Len::Px(0.0));
-            child.style.cascaded_mut().justify_self = Some(crate::style::computed::Align::Stretch);
+        child.style.cascaded_mut().reset_grid.grid_tracks = Some(slice);
+        child.style.cascaded_mut().reset_grid.grid_cols = Some(span as u16);
+        child.style.cascaded_mut().reset_flex.justify_self = None;
+        if parallel && child.style.cascaded().reset_grid.subgrid_cols {
+            child.style.cascaded_mut().reset_box_layout.width = None;
+            child.style.cascaded_mut().reset_box_layout.max_width = None;
+            child.style.cascaded_mut().reset_box_layout.min_width = Some(Len::Px(0.0));
+            child.style.cascaded_mut().reset_flex.justify_self =
+                Some(crate::style::computed::Align::Stretch);
         }
     }
 }

@@ -32,9 +32,9 @@ pub fn tab_stops(
             vcx,
         )
         .size_px;
-    let family = block.font_family.as_deref().unwrap_or_else(|| {
-        if block.monospace == Some(true) {
-            metrics::mono_family_for(block.lang.as_deref(), vcx)
+    let family = block.inh.font.font_family.as_deref().unwrap_or_else(|| {
+        if block.inh.font.monospace == Some(true) {
+            metrics::mono_family_for(block.inh.text_flow.lang.as_deref(), vcx)
         } else {
             ""
         }
@@ -42,11 +42,11 @@ pub fn tab_stops(
     let font = super::strut_font(block, base, vcx);
     let space = metrics::space_advance(&font, size, fonts)
         .unwrap_or_else(|| metrics::ch_ex_px(family, size, fonts, vcx).0)
-        + metrics::spacing_px(block.letter_spacing, family, size, vcx)
-        + metrics::spacing_px(block.word_spacing, family, size, vcx);
-    let step = |style: &Computed| match style.tab_size_len {
+        + metrics::spacing_px(block.inh.text_flow.letter_spacing, family, size, vcx)
+        + metrics::spacing_px(block.inh.text_flow.word_spacing, family, size, vcx);
+    let step = |style: &Computed| match style.inh.text_flow.tab_size_len {
         Some(Len::Px(v)) if v >= 0.0 => v,
-        _ => style.tab_size.unwrap_or(8.0).max(0.0) * space,
+        _ => style.inh.text_flow.tab_size.unwrap_or(8.0).max(0.0) * space,
     };
     let mut stops = TabStops::uniform(step(block));
     // §4.2: позиция ближе `0.5ch` пропускается — следующая.
@@ -85,11 +85,11 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Px(20.0));
-            with_inherited.font_weight = Some(700);
-            with_inherited.letter_spacing = Some(Len::Px(2.0));
-            with_inherited.word_spacing = Some(Len::Px(3.0));
-            with_inherited.tab_size = Some(4.0);
+            with_inherited.inh.font.font_size = Some(Len::Px(20.0));
+            with_inherited.inh.font.font_weight = Some(700);
+            with_inherited.inh.text_flow.letter_spacing = Some(Len::Px(2.0));
+            with_inherited.inh.text_flow.word_spacing = Some(Len::Px(3.0));
+            with_inherited.inh.text_flow.tab_size = Some(4.0);
             with_inherited
         };
         let pieces = vec![Piece::Text {
@@ -98,8 +98,8 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Default::default()
                 };
-                with_inherited.font_size = Some(Len::Px(80.0));
-                with_inherited.tab_size = Some(4.0);
+                with_inherited.inh.font.font_size = Some(Len::Px(80.0));
+                with_inherited.inh.text_flow.tab_size = Some(4.0);
                 BoxStyle::from(with_inherited)
             },
         }];
@@ -139,9 +139,9 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Px(20.0));
-            with_inherited.monospace = Some(true);
-            with_inherited.tab_size = Some(2.0);
+            with_inherited.inh.font.font_size = Some(Len::Px(20.0));
+            with_inherited.inh.font.monospace = Some(true);
+            with_inherited.inh.text_flow.tab_size = Some(2.0);
             with_inherited
         };
         let pieces = vec![Piece::Text {
@@ -162,19 +162,19 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.tab_size_len = Some(Len::Px(200.0));
+            with_inherited.inh.text_flow.tab_size_len = Some(Len::Px(200.0));
             with_inherited
         };
         let own = {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.tab_size = Some(5.0);
+            with_inherited.inh.text_flow.tab_size = Some(5.0);
             with_inherited
         };
         let child = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent), &own, vcx);
-        assert_eq!(child.tab_size, Some(5.0));
-        assert_eq!(child.tab_size_len, None);
+        assert_eq!(child.inh.text_flow.tab_size, Some(5.0));
+        assert_eq!(child.inh.text_flow.tab_size_len, None);
     }
 
     #[test]
@@ -185,10 +185,10 @@ mod tests {
             let mut with_inherited = Computed {
                 ..Default::default()
             };
-            with_inherited.font_size = Some(Len::Px(20.0));
-            with_inherited.letter_spacing = Some(Len::Px(2.0));
-            with_inherited.word_spacing = Some(Len::Px(3.0));
-            with_inherited.tab_size = Some(2.0);
+            with_inherited.inh.font.font_size = Some(Len::Px(20.0));
+            with_inherited.inh.text_flow.letter_spacing = Some(Len::Px(2.0));
+            with_inherited.inh.text_flow.word_spacing = Some(Len::Px(3.0));
+            with_inherited.inh.text_flow.tab_size = Some(2.0);
             with_inherited
         };
         let pieces = vec![Piece::Text {
@@ -197,8 +197,8 @@ mod tests {
                 let mut with_inherited = Computed {
                     ..Default::default()
                 };
-                with_inherited.font_size = Some(Len::Px(80.0));
-                with_inherited.tab_size = Some(5.0);
+                with_inherited.inh.font.font_size = Some(Len::Px(80.0));
+                with_inherited.inh.text_flow.tab_size = Some(5.0);
                 BoxStyle::from(with_inherited)
             },
         }];

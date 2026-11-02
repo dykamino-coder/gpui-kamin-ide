@@ -28,7 +28,7 @@ pub fn split_first_letter(
             Piece::Text {
                 text: part,
                 style: own,
-            } if !own.first_letter_excluded
+            } if !own.reset_text_box.first_letter_excluded
                 && !blocked
                 && part != SPACER
                 && part != ZWSP
@@ -91,14 +91,18 @@ fn letter_style(
 ) -> BoxStyle {
     let mut letter = own.clone();
     letter.overlay_font_size(style);
-    letter.line_height = style.line_height.or(own.line_height);
-    letter.overlay_pseudo_color(style.color);
-    letter.font_weight = style.font_weight.or(own.font_weight);
-    letter.italic = style.italic.or(own.italic);
-    letter.font_family = style.font_family.clone().or(own.font_family.clone());
-    if let Some(bg) = style.background {
+    letter.inh.font.line_height = style.inh.font.line_height.or(own.inh.font.line_height);
+    letter.overlay_pseudo_color(style.inh.ui.color);
+    letter.inh.font.font_weight = style.inh.font.font_weight.or(own.inh.font.font_weight);
+    letter.inh.font.italic = style.inh.font.italic.or(own.inh.font.italic);
+    letter.inh.font.font_family = style.inh.font.font_family.clone().or(own
+        .inh
+        .font
+        .font_family
+        .clone());
+    if let Some(bg) = style.reset_background.background {
         letter.inline_decoration.band_color = Some(bg);
-        if style.float.is_some_and(|f| f != 0) {
+        if style.reset_box_layout.float.is_some_and(|f| f != 0) {
             float_band(&mut letter, fonts, vcx);
         }
     }
@@ -115,11 +119,11 @@ fn float_band(
     vcx: crate::values::ValueCx<'_>,
 ) {
     use crate::style::values::value::Len;
-    let Some(Len::Px(computed)) = letter.font_size else {
+    let Some(Len::Px(computed)) = letter.inh.font.font_size else {
         return;
     };
     let size = letter.used_font(computed, vcx).size_px;
-    let family = letter.font_family.clone().unwrap_or_default();
+    let family = letter.inh.font.font_family.clone().unwrap_or_default();
     let fraction = crate::text::metrics::normal_line(&family, fonts, vcx);
     let line = letter
         .numeric_line_px(computed)

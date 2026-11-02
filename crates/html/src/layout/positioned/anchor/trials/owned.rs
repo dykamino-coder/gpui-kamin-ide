@@ -99,25 +99,34 @@ mod tests {
     fn accepted_expressions_survive_their_arena_by_value() {
         let doc = DocState::new(Default::default());
         let mut c = Computed::default();
-        c.width = Len::parse("anchor-size(--a width, 3px)", doc.frame_values());
-        if let Some(Len::Anchor(id)) = c.width {
+        c.reset_box_layout.width = Len::parse("anchor-size(--a width, 3px)", doc.frame_values());
+        if let Some(Len::Anchor(id)) = c.reset_box_layout.width {
             let mut f = (*anchor_get(id, doc.frame_values()).expect("parsed anchor-size")).clone();
             f.fallback = Len::parse_mixed("calc(3px + 20%)", doc.frame_values());
-            c.width = Some(Len::Anchor(anchor_store(f, doc.frame_values())));
+            c.reset_box_layout.width = Some(Len::Anchor(anchor_store(f, doc.frame_values())));
         }
-        c.inset.top = Len::parse(
+        c.reset_positioned.inset.top = Len::parse(
             "anchor(--a 25%, anchor(--b bottom, 9px))",
             doc.frame_values(),
         );
-        c.margin.left = Len::parse_mixed("calc(7px + 10%)", doc.frame_values());
+        c.reset_box_layout.margin.left = Len::parse_mixed("calc(7px + 10%)", doc.frame_values());
         let saved = Owned::of(&c, doc.frame_values());
         drop(doc);
         let doc = DocState::new(Default::default());
         let mut restored = Computed::default();
         saved.apply(&mut restored, doc.frame_values());
         assert_eq!(Owned::of(&restored, doc.frame_values()), saved);
-        assert!(matches!(restored.width, Some(Len::Anchor(_))));
-        assert!(matches!(restored.inset.top, Some(Len::Anchor(_))));
-        assert!(matches!(restored.margin.left, Some(Len::Calc(_))));
+        assert!(matches!(
+            restored.reset_box_layout.width,
+            Some(Len::Anchor(_))
+        ));
+        assert!(matches!(
+            restored.reset_positioned.inset.top,
+            Some(Len::Anchor(_))
+        ));
+        assert!(matches!(
+            restored.reset_box_layout.margin.left,
+            Some(Len::Calc(_))
+        ));
     }
 }

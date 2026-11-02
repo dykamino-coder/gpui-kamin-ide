@@ -24,17 +24,22 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
                     }
                 }
                 Node::Element(ch) => {
-                    if ch.style.used().display == Some(Display::None) {
+                    if ch.style.used().reset_box_layout.display == Some(Display::None) {
                         continue;
                     }
-                    if ch.style.used().display == Some(Display::Contents) {
+                    if ch.style.used().reset_box_layout.display == Some(Display::Contents) {
                         pending.push(&ch.children);
                         continue;
                     }
                     // Плавающий и абсолютный строчной коробки не рождают.
-                    if ch.style.used().float.is_some_and(|f| f != 0)
+                    if ch
+                        .style
+                        .used()
+                        .reset_box_layout
+                        .float
+                        .is_some_and(|f| f != 0)
                         || matches!(
-                            ch.style.used().position,
+                            ch.style.used().reset_positioned.position,
                             Some(crate::style::computed::Position::Absolute)
                                 | Some(crate::style::computed::Position::Fixed)
                         )
@@ -51,7 +56,7 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
                     // него нет, а строчную рождает его содержимое. Без этой ветки
                     // `<div style="display:inline">` считался блочным ребёнком и
                     // строки «не рождал», хотя текст внутри него её рождает.
-                    if ch.inline || ch.style.used().inline_display == Some(true) {
+                    if ch.inline || ch.style.used().reset_context.inline_display == Some(true) {
                         // Блочный псевдоэлемент — блочный ребёнок: строки родителю
                         // не рождает, его содержимое разбирает `through_strut`.
                         if inline_marked_block(ch) {
@@ -90,12 +95,14 @@ pub(crate) fn phantom_inline(n: &Node) -> bool {
 
 /// Строчный ли элемент по своему `display`.
 pub(crate) fn inline_level(e: &Element) -> bool {
-    match e.style.used().display {
-        Some(Display::ListItem) if e.style.used().inline_display == Some(true) => true,
+    match e.style.used().reset_box_layout.display {
+        Some(Display::ListItem) if e.style.used().reset_context.inline_display == Some(true) => {
+            true
+        }
         Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => true,
         // Строчный контейнер лунок — атом в строке, как inline-grid
         // (grid-lanes-align-content-001: четыре сетки стоят В РЯД).
-        Some(Display::GridLanes) => e.style.used().lanes_inline,
+        Some(Display::GridLanes) => e.style.used().reset_grid.lanes_inline,
         Some(_) => false,
         None => e.inline,
     }
@@ -122,8 +129,10 @@ pub(crate) fn replaced_tag(e: &Element) -> bool {
 /// через него не примыкали — эталоны `flex-direction-column*` разводило на
 /// лишние 16 точек (в них разметка именно такая).
 pub(crate) fn inline_level_box(e: &Element) -> bool {
-    match e.style.used().display {
-        Some(Display::ListItem) if e.style.used().inline_display == Some(true) => true,
+    match e.style.used().reset_box_layout.display {
+        Some(Display::ListItem) if e.style.used().reset_context.inline_display == Some(true) => {
+            true
+        }
         // Строчными считаются только НАСТОЯЩИЕ строчные виды. `Some(_) =>
         // true` сюда не писать: в строчные попадают лунки сетки
         // (`column-align-items-*`, `*-dense-packing-*`).

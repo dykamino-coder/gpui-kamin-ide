@@ -60,13 +60,13 @@ pub(crate) fn overlay_in_row(
 /// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
 /// одним округлением вместе с местом в строке.
 pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
-    if style.position != Some(crate::style::computed::Position::Relative) {
+    if style.reset_positioned.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }
     let px_of = px_lossy_zero;
     let (dx, dy) = (
-        px_of(style.inset.left) - px_of(style.inset.right),
-        px_of(style.inset.top) - px_of(style.inset.bottom),
+        px_of(style.reset_positioned.inset.left) - px_of(style.reset_positioned.inset.right),
+        px_of(style.reset_positioned.inset.top) - px_of(style.reset_positioned.inset.bottom),
     );
     if dx == 0.0 && dy == 0.0 {
         return pieces;

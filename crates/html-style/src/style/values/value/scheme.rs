@@ -4,7 +4,7 @@
 //! `light-dark()`. Вложенный документ получает явную схему хозяина либо предпочтение окружения.
 use crate::values::ValueCx;
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct Scheme {
     pub dark: bool,
     explicit: bool,
@@ -118,15 +118,29 @@ mod tests {
             ("dark", "blue", true),
         ] {
             let el = find(&parsed.nodes, id).unwrap();
-            assert_eq!(el.style.cascaded().color, Color::parse(color, vcx), "{id}");
-            assert_eq!(el.style.cascaded().dark_color_scheme, dark, "{id}");
+            assert_eq!(
+                el.style.cascaded().inh.ui.color,
+                Color::parse(color, vcx),
+                "{id}"
+            );
+            assert_eq!(
+                el.style.cascaded().reset_cascade.dark_color_scheme,
+                dark,
+                "{id}"
+            );
         }
         let other = crate::dom::parse(
             "<span id=other style='color:light-dark(red,blue)'></span>",
             "",
         );
         assert_eq!(
-            find(&other.nodes, "other").unwrap().style.cascaded().color,
+            find(&other.nodes, "other")
+                .unwrap()
+                .style
+                .cascaded()
+                .inh
+                .ui
+                .color,
             Color::parse("red", vcx)
         );
         assert!(
@@ -134,6 +148,7 @@ mod tests {
                 .unwrap()
                 .style
                 .cascaded()
+                .reset_cascade
                 .dark_color_scheme
         );
     }

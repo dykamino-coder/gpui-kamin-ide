@@ -18,11 +18,16 @@ pub fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {
         Grammar::OutlineOffset => outline_offset(value, vcx).is_some(),
         Grammar::BorderImage => {
             let mut parser = Computed {
-                declaration_parse: ParseResult::Invalid,
+                reset_cascade: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetCascade {
+                        declaration_parse: ParseResult::Invalid,
+                        ..Default::default()
+                    },
+                ),
                 ..Computed::default()
             };
             parser.set_border_image(id.name(), value, vcx);
-            parser.declaration_parse == ParseResult::Accepted
+            parser.reset_cascade.declaration_parse == ParseResult::Accepted
         }
         _ => false,
     }

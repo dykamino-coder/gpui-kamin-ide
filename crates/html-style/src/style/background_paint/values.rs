@@ -21,9 +21,9 @@ pub struct BackgroundValues {
 impl BackgroundValues {
     pub fn from_computed(donor: &Computed) -> Self {
         Self {
-            color: donor.background,
-            gradient: donor.gradient.clone(),
-            gradient_image: donor.gradient_raw.clone(),
+            color: donor.reset_background.background,
+            gradient: donor.reset_background.gradient.clone(),
+            gradient_image: donor.reset_background.gradient_raw.clone(),
             top: BgLayer::from_computed(donor),
             layers: donor.background_layers(),
             color_clip: donor.background_color_clip(),

@@ -54,7 +54,7 @@ pub(super) fn select(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElem
     // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:
     // `min-height: auto` = высота содержимого) явным 24, и в колонке высоты 0
     // список сжимался ниже своей строки (`select-element-zero-height-001/002`).
-    if style.min_height.is_none() {
+    if style.reset_box_layout.min_height.is_none() {
         b.style().min_size.height = None;
     }
     // All options contribute to the menu's max-content width; only the
