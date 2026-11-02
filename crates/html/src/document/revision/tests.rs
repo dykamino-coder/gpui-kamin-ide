@@ -69,14 +69,13 @@ fn mentioned_names_and_other_changes_rebuild_the_cascade() {
         ),
         (PAGE.to_string(), d("data-n=5"), "[DATA-N]{color:red}"),
         (d(attr_style), d(&format!("{attr_style} data-n=5")), ""),
-        // Атрибут, который каскад читает сам, текст, дети и комментарии.
+        // Атрибут, который каскад читает сам, дети и комментарии.
         (PAGE.to_string(), PAGE.replace("<p id=x>", "<p id=y>"), ""),
         (
             PAGE.to_string(),
             PAGE.replace("<td>1", "<td colspan=2>1"),
             "",
         ),
-        (PAGE.to_string(), PAGE.replace(">d<", ">e<"), ""),
         (
             PAGE.to_string(),
             PAGE.replace("<p>d</p>", "<p>d</p><p>e</p>"),
@@ -146,4 +145,44 @@ fn root_class_skips_the_viewport_box_that_shares_the_root_number() {
     let classed = page.replace("<html>", "<html class=\"zz-alt\">");
     assert!(update(page, &classed, ""));
     assert!(update(&classed, page, ""));
+}
+
+#[test]
+fn flow_text_edits_keep_the_cascade() {
+    let edits = [
+        PAGE.replace(">d<", ">e<"),
+        PAGE.replace(">b<", ">bb x<"),
+        PAGE.replace(">c<", ">c, d.<"),
+        PAGE.replace(">a<", ">e<").replace(">d<", ">f<"),
+    ];
+    for new in &edits {
+        assert!(update(PAGE, new, ""), "{new}");
+        assert!(update(new, PAGE, ""), "{new}");
+    }
+    // Текст в анонимной обёртке рядом с блоком.
+    let wrapped = PAGE.replace("<div><p id=x>", "<div>w<p id=x>");
+    assert!(update(&wrapped, &wrapped.replace(">w<", ">v<"), ""));
+}
+
+#[test]
+fn text_edits_the_cascade_can_see_rebuild_it() {
+    let auto = PAGE.replace("<p>d", "<p dir=auto>d");
+    let lettered = PAGE.replace("p{color:#123}", "p::first-letter{color:red}");
+    let rebuilt = [
+        // Пустой текст, пробельные края, письмо справа налево, лист.
+        (PAGE.to_string(), PAGE.replace(">d<", "><")),
+        (PAGE.to_string(), PAGE.replace(">d<", "> <")),
+        (PAGE.to_string(), PAGE.replace(">d<", "> d<")),
+        (PAGE.to_string(), PAGE.replace(">d<", ">\u{5d0}<")),
+        (
+            PAGE.to_string(),
+            PAGE.replace("p{color:#123}", "p{color:#124}"),
+        ),
+        // Сторона `dir=auto` и первая буква, режущая текст.
+        (auto.clone(), auto.replace(">d<", ">e<")),
+        (lettered.clone(), lettered.replace(">d<", ">e<")),
+    ];
+    for (old, new) in &rebuilt {
+        assert!(!update(old, new, ""), "{new}");
+    }
 }

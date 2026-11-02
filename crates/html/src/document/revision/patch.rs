@@ -27,17 +27,7 @@ pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bo
         return false;
     }
     for (path, id) in paths {
-        let Some((last, parents)) = path.split_last() else {
-            continue;
-        };
-        let mut list: &mut Vec<Node> = nodes;
-        for &i in parents {
-            let Some(Node::Element(e)) = list.iter_mut().nth(i) else {
-                return false;
-            };
-            list = &mut e.children;
-        }
-        match (list.iter_mut().nth(*last), targets.get(&id)) {
+        match (apply(nodes, &path), targets.get(&id)) {
             (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
             _ => return false,
         }
@@ -45,11 +35,25 @@ pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bo
     true
 }
 
-type Path = (Vec<usize>, u64);
+/// Номера детей от корня до узла дерева коробок.
+pub(super) type Path = Vec<usize>;
+
+/// Узел по пути `path`; копируются только списки детей на пути.
+pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a mut Node> {
+    let (last, parents) = path.split_last()?;
+    let mut list: &mut Vec<Node> = nodes;
+    for &i in parents {
+        let Some(Node::Element(e)) = list.iter_mut().nth(i) else {
+            return None;
+        };
+        list = &mut e.children;
+    }
+    list.iter_mut().nth(*last)
+}
 
 /// Пути ко всем коробкам адресуемых элементов (обход без рекурсии: глубина
 /// дерева коробок ограничена только пределом представления).
-fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<Path>) -> bool {
+fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u64)>) -> bool {
     let mut stack: Vec<(&[Node], usize)> = vec![(nodes, 0)];
     let mut path = Vec::new();
     while let Some((list, next)) = stack.last_mut() {
