@@ -231,7 +231,7 @@ fn font_size_adjust_none_queries_no_adjustment_metrics() {
         "font-family:narrow;font-size:20px;font-size-adjust:none",
         vcx,
     );
-    assert_eq!(none.font_size_adjust, Some((u8::MAX, 0.0)));
+    assert_eq!(none.inh.font.font_size_adjust, Some((u8::MAX, 0.0)));
     assert_eq!(none.font_adjustment(), None);
     let used = none.used_font(16.0, vcx);
     assert_eq!((used.size_px, used.property_scale), (20.0, 1.0));
