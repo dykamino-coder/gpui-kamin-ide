@@ -29,7 +29,7 @@ use crate::geometry::Size;
 use crate::style::{AvailableSpace, Display, Style};
 use crate::sys::DefaultCheapStr;
 use crate::tree::{
-    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree,
+    Cache, ClearState, Layout, MeasureStore, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree,
     RoundTree, RunMode, TraversePartialTree, TraverseTree,
 };
 use crate::util::debug::{debug_log, debug_log_node};
@@ -246,6 +246,9 @@ pub struct TaffyTree<NodeContext = ()> {
     /// The indexes in the outer vector correspond to the position of the child [`NodeData`]
     parents: SlotMap<DefaultKey, Option<NodeId>>,
 
+    /// KaminIDE patch: the measurement entries of the nodes' caches, kept across `clear`.
+    measure: MeasureStore,
+
     /// Layout mode configuration
     config: TaffyConfig,
 
@@ -411,11 +414,11 @@ impl<NodeContext> TraverseTree for TaffyTree<NodeContext> {}
 // CacheTree impl for TaffyTree
 impl<NodeContext> CacheTree for TaffyTree<NodeContext> {
     fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
-        self.nodes[node_id.into()].cache.get(input)
+        self.nodes[node_id.into()].cache.get_in(&self.measure, input)
     }
 
     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
-        self.nodes[node_id.into()].cache.store(input, layout_output)
+        self.nodes[node_id.into()].cache.store_in(&mut self.measure, input, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -692,11 +695,11 @@ where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
-        self.taffy.nodes[node_id.into()].cache.get(input)
+        self.taffy.nodes[node_id.into()].cache.get_in(&self.taffy.measure, input)
     }
 
     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
+        self.taffy.nodes[node_id.into()].cache.store_in(&mut self.taffy.measure, input, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -925,6 +928,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             nodes: SlotMap::with_capacity(capacity),
             children: SlotMap::with_capacity(capacity),
             parents: SlotMap::with_capacity(capacity),
+            measure: MeasureStore::new(),
             node_context_data: SecondaryMap::with_capacity(capacity),
             config: TaffyConfig::default(),
             #[cfg(feature = "std")]
@@ -1005,6 +1009,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.clear();
         self.children.clear();
         self.parents.clear();
+        self.measure.clear();
         // A context belongs to the node that owns it. Leaving it behind keeps arbitrary
         // user data -- for a measure function, a boxed closure and everything it
         // captures -- alive after the node it belonged to is gone.
@@ -1037,7 +1042,9 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
         let _ = self.children.remove(key);
         let _ = self.parents.remove(key);
-        let _ = self.nodes.remove(key);
+        if let Some(mut data) = self.nodes.remove(key) {
+            self.measure.release(&mut data.cache);
+        }
         let _ = self.node_context_data.remove(key);
 
         Ok(node)

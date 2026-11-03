@@ -17552,11 +17552,11 @@ index 0000000000000000000000000000000000000000..57982f945270c6761605269a2604a293
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/cache.rs b/vendor/taffy/src/tree/cache.rs
-index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0e863ff35
+index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..cf15ef9099b261e6260539a881e3a840c4dce23b
 --- a/vendor/taffy/src/tree/cache.rs
 +++ b/vendor/taffy/src/tree/cache.rs
 @@ -7,0 +8 @@
-+use crate::util::sys::Box;
++use crate::util::sys::{Box, Vec};
 @@ -139 +140,3 @@
 -                .zip_map(input.known_dimensions, |is_definite, kd| is_definite || kd.is_none()),
 +                .zip_map(input.known_dimensions, |is_definite, kd| {
@@ -17569,7 +17569,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +        let intrinsic_size = matches!(input.sizing_mode, SizingMode::IntrinsicSize) as u8;
 @@ -173,0 +180 @@
 +                | (intrinsic_size * Self::INTRINSIC_SIZE_BIT)
-@@ -210,0 +218,42 @@
+@@ -210,0 +218,98 @@
 +/// Size-only results retain the margin information required by their parent.
 +#[derive(Debug, Clone, PartialEq)]
 +#[cfg_attr(feature = "serde", derive(Serialize))]
@@ -17612,15 +17612,78 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +/// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
 +const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
 +
-@@ -217,2 +266,5 @@
++/// KaminIDE patch: a cache without measurement storage yet.
++const NO_MEASURE_SLOT: u32 = u32::MAX;
++
++/// KaminIDE patch: the measurement entries of the caches of one tree, in one contiguous store.
++///
++/// Most nodes of a frame tree are only laid out, never measured, so a cache takes a slot on
++/// its first measurement. The slots of a tree live in one vector rather than in a block per
++/// node: a tree that is cleared and rebuilt every frame keeps the vector's capacity, so
++/// measuring allocates nothing in the steady state and no small blocks are freed per frame.
++#[derive(Debug, Clone, Default, PartialEq)]
++#[cfg_attr(feature = "serde", derive(Serialize))]
++pub struct MeasureStore {
++    /// Measurement entries, one array per slot.
++    slots: Vec<MeasureEntries>,
++    /// Slots released by removed nodes, reused before the vector grows.
++    free: Vec<u32>,
++}
++
++impl MeasureStore {
++    /// Create an empty store
++    pub const fn new() -> Self {
++        Self { slots: Vec::new(), free: Vec::new() }
++    }
++
++    /// Drop every slot, keeping the capacity for the next tree.
++    pub fn clear(&mut self) {
++        self.slots.clear();
++        self.free.clear();
++    }
++
++    /// Return the slot of a cache whose node is removed; the cache must not be used again.
++    pub fn release(&mut self, cache: &mut Cache) {
++        if cache.measure_slot != NO_MEASURE_SLOT {
++            self.free.push(cache.measure_slot);
++            cache.measure_slot = NO_MEASURE_SLOT;
++            cache.occupied_entries = 0;
++        }
++    }
++
++    /// The entries of `slot`, empty for a cache that was never measured.
++    fn entries(&self, slot: u32) -> &[Option<CacheEntry<Measurement>>] {
++        self.slots.get(slot as usize).map_or(&[], |entries| entries.as_slice())
++    }
++
++    /// The entries of the cache's slot, taking a slot on its first measurement.
++    fn entries_mut(&mut self, slot: &mut u32) -> &mut MeasureEntries {
++        if *slot == NO_MEASURE_SLOT {
++            *slot = self.free.pop().unwrap_or_else(|| {
++                self.slots.push([NONE_MEASURE_ENTRY; CACHE_SIZE]);
++                (self.slots.len() - 1) as u32
++            });
++        }
++        &mut self.slots[*slot as usize]
++    }
++}
++
+@@ -217,2 +322,12 @@
 -    /// The cache entries for the node's preliminary size measurements
 -    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
 +    /// The cache entries for the node's preliminary size measurements.
 +    ///
-+    /// KaminIDE patch: allocated on the first measurement. The entries are 576 of the 648 bytes
-+    /// of a cache inline, and most nodes of a frame tree are only laid out, never measured.
-+    measure_entries: Option<Box<MeasureEntries>>,
-@@ -237,0 +290,7 @@
++    /// KaminIDE patch: a slot of the tree's [`MeasureStore`], taken on the first measurement.
++    /// The entries are 576 of the 648 bytes of a cache inline, and most nodes of a frame tree
++    /// are only laid out, never measured.
++    measure_slot: u32,
++    /// KaminIDE patch: which entries of the slot hold a measurement of this cache. Clearing
++    /// resets the mask, so a clear neither touches nor needs the store.
++    occupied_entries: u16,
++    /// KaminIDE patch: the measurements of a cache used without a tree's store (`get`,
++    /// `store`), as by trees that own their nodes.
++    own: Option<Box<MeasureStore>>,
+@@ -237,0 +353,7 @@
 +    /// The most recent full layout output, never an intrinsic size-only result.
 +    pub(crate) fn performed_layout_output(&self) -> Option<LayoutOutput> {
 +        self.final_layout_entry
@@ -17628,13 +17691,39 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +            .map(|entry| entry.content.clone())
 +    }
 +
-@@ -240,2 +298,0 @@
+@@ -240,2 +361,0 @@
 -        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
-@@ -244 +301 @@
+@@ -244 +364,3 @@
 -            measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
-+            measure_entries: None,
-@@ -260,3 +317,5 @@
++            measure_slot: NO_MEASURE_SLOT,
++            occupied_entries: 0,
++            own: None,
+@@ -252 +374 @@
+-    /// Try to retrieve a cached result from the cache
++    /// Try to retrieve a cached result from a cache that keeps its own measurements
+@@ -254,0 +377,20 @@
++        match self.own.take() {
++            Some(own) => {
++                let output = self.get_in(&own, input);
++                self.own = Some(own);
++                output
++            }
++            None => self.get_in(&MeasureStore::new(), input),
++        }
++    }
++
++    /// Store a computed size in a cache that keeps its own measurements
++    pub fn store(&mut self, input: &LayoutInput, layout_output: LayoutOutput) {
++        let mut own = self.own.take().unwrap_or_default();
++        self.store_in(&mut own, input, layout_output);
++        self.own = Some(own);
++    }
++
++    /// KaminIDE patch: try to retrieve a cached result; `store` holds the tree's measurements.
++    #[inline]
++    pub fn get_in(&mut self, store: &MeasureStore, input: &LayoutInput) -> Option<LayoutOutput> {
+@@ -260,3 +402,5 @@
 -            RunMode::PerformLayout => {
 -                self.final_layout_entry.as_ref().filter(|entry| entry.key == key).map(|e| e.content.clone())
 -            }
@@ -17643,14 +17732,22 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +                .as_ref()
 +                .filter(|entry| entry.key == key)
 +                .map(|e| e.content.clone()),
-@@ -264 +323,2 @@
+@@ -264,2 +408,4 @@
 -                for (index, entry) in self.measure_entries.iter().enumerate() {
-+                let slots = self.measure_entries.as_deref().map_or(&[][..], |entries| entries.as_slice());
-+                for (index, entry) in slots.iter().enumerate() {
-@@ -272 +332 @@
+-                    let Some(entry) = entry else { continue };
++                for (index, entry) in store.entries(self.measure_slot).iter().enumerate() {
++                    let Some(entry) = entry.as_ref().filter(|_| self.occupied_entries & (1 << index) != 0) else {
++                        continue;
++                    };
+@@ -272 +418 @@
 -                        return Some(LayoutOutput::from_outer_size(entry.content));
 +                        return Some(entry.content.output());
-@@ -303,10 +362,0 @@
+@@ -282,2 +428,2 @@
+-    /// Store a computed size in the cache
+-    pub fn store(&mut self, input: &LayoutInput, layout_output: LayoutOutput) {
++    /// KaminIDE patch: store a computed size; `store` holds the tree's measurements.
++    pub fn store_in(&mut self, store: &mut MeasureStore, input: &LayoutInput, layout_output: LayoutOutput) {
+@@ -303,10 +448,0 @@
 -                // Measure entries only store the size, and cache hits are reconstructed with
 -                // `LayoutOutput::from_outer_size`, which resets the margin-collapse metadata
 -                // (`top_margin`, `bottom_margin`, `margins_can_collapse_through`). Results that
@@ -17661,53 +17758,112 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 -                {
 -                    return;
 -                }
-@@ -314,4 +364,3 @@
+@@ -314,4 +450,6 @@
 -                if let Some(index) =
 -                    self.measure_entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key))
 -                {
 -                    self.measure_entries[index].as_mut().unwrap().content = layout_output.size;
-+                let entries = self.measure_entries.get_or_insert_with(|| Box::new([NONE_MEASURE_ENTRY; CACHE_SIZE]));
-+                if let Some(index) = entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key)) {
++                let occupied = self.occupied_entries;
++                let entries = store.entries_mut(&mut self.measure_slot);
++                if let Some(index) = entries.iter().enumerate().position(|(index, entry)| {
++                    occupied & (1 << index) != 0 && entry.as_ref().is_some_and(|entry| entry.key == key)
++                }) {
 +                    entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
-@@ -329 +378 @@
+@@ -329 +467,2 @@
 -                self.measure_entries[entry_index] = Some(CacheEntry { key, content: layout_output.size });
 +                entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
-@@ -347,3 +396,4 @@
++                self.occupied_entries |= 1 << entry_index;
+@@ -347,3 +486,3 @@
 -        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
 -        self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
-+        // KaminIDE patch: a measured node keeps its entry storage for the next measurements.
-+        if let Some(entries) = &mut self.measure_entries {
-+            **entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
-+        }
-@@ -357 +407,6 @@
++        // KaminIDE patch: a measured node keeps its slot for the next measurements; the mask
++        // alone says that its entries are gone.
++        self.occupied_entries = 0;
+@@ -357 +496 @@
 -        self.final_layout_entry.is_none() && !self.measure_entries.iter().any(|entry| entry.is_some())
-+        self.final_layout_entry.is_none() && !self.measure_slots().iter().any(|entry| entry.is_some())
++        self.final_layout_entry.is_none() && self.occupied_entries == 0
+@@ -373,0 +513,35 @@
++
++    /// A cache with the measurement store of its own one-node tree.
++    #[derive(Default)]
++    pub(super) struct Tested {
++        cache: Cache,
++        store: MeasureStore,
 +    }
 +
-+    /// KaminIDE patch: the measurement slots, empty before the first measurement.
-+    fn measure_slots(&self) -> &[Option<CacheEntry<Measurement>>] {
-+        self.measure_entries.as_deref().map_or(&[], |entries| entries.as_slice())
-@@ -392,0 +448,15 @@
++    impl Tested {
++        pub(super) fn get(&mut self, input: &LayoutInput) -> Option<LayoutOutput> {
++            self.cache.get_in(&self.store, input)
++        }
++
++        pub(super) fn store(&mut self, input: &LayoutInput, output: LayoutOutput) {
++            self.cache.store_in(&mut self.store, input, output)
++        }
++
++        fn measure_slots(&self) -> Vec<&CacheEntry<Measurement>> {
++            let entries = self.store.entries(self.cache.measure_slot).iter().enumerate();
++            entries.filter(|(index, _)| self.cache.occupied_entries & (1 << index) != 0).filter_map(|(_, e)| e.as_ref()).collect()
++        }
++    }
++
++    impl core::ops::Deref for Tested {
++        type Target = Cache;
++        fn deref(&self) -> &Cache {
++            &self.cache
++        }
++    }
++
++    impl core::ops::DerefMut for Tested {
++        fn deref_mut(&mut self) -> &mut Cache {
++            &mut self.cache
++        }
++    }
+@@ -392,0 +567,34 @@
 +    fn measure_storage_is_allocated_by_the_first_measurement_and_kept_by_clear() {
-+        let mut cache = Cache::new();
++        let mut cache = Tested::default();
 +        cache.store(&LayoutInput { run_mode: RunMode::PerformLayout, ..input(1.0) }, output(1.0));
-+        assert!(cache.measure_entries.is_none());
++        assert_eq!(cache.measure_slot, NO_MEASURE_SLOT);
 +        cache.store(&input(2.0), output(2.0));
-+        assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
++        assert_eq!(cache.measure_slots().len(), 1);
 +        let _ = cache.clear();
 +        assert!(cache.is_empty());
-+        assert!(cache.measure_entries.is_some());
++        assert_ne!(cache.measure_slot, NO_MEASURE_SLOT);
 +        assert_eq!(cache.get(&input(2.0)), None);
 +        cache.store(&input(3.0), output(3.0));
 +        assert_eq!(cache.get(&input(3.0)), Some(output(3.0)));
 +    }
 +
 +    #[test]
-@@ -414 +484 @@
++    fn measure_slots_of_one_store_are_reused_after_release_and_clear() {
++        let mut store = MeasureStore::new();
++        let (mut first, mut second) = (Cache::new(), Cache::new());
++        first.store_in(&mut store, &input(1.0), output(1.0));
++        second.store_in(&mut store, &input(2.0), output(2.0));
++        assert_eq!(store.slots.len(), 2);
++        store.release(&mut first);
++        let mut third = Cache::new();
++        third.store_in(&mut store, &input(3.0), output(3.0));
++        assert_eq!(store.slots.len(), 2, "a released slot is taken before the store grows");
++        assert_eq!(third.get_in(&store, &input(1.0)), None, "the previous owner's entries are not visible");
++        assert_eq!(third.get_in(&store, &input(3.0)), Some(output(3.0)));
++        assert_eq!(second.get_in(&store, &input(2.0)), Some(output(2.0)));
++        let capacity = store.slots.capacity();
++        store.clear();
++        assert_eq!(store.slots.capacity(), capacity, "a cleared tree keeps the storage");
++    }
++
++    #[test]
+@@ -394 +602 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -409 +617 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -414 +622 @@
 -        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
-+        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -419,12 +489,15 @@
++        assert_eq!(cache.measure_slots().len(), 2);
+@@ -419,12 +627,15 @@
 -    fn measurements_with_margin_collapse_metadata_are_not_cached() {
 -        let mut cache = Cache::new();
 -
@@ -17721,7 +17877,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 -        cache.store(&input(2.0), carried_margin);
 -        assert_eq!(cache.get(&input(2.0)), None);
 +    fn measurements_preserve_and_update_margin_collapse_metadata() {
-+        let mut cache = Cache::new();
++        let mut cache = Tested::default();
 +        let mut through = output(1.0);
 +        through.margins_can_collapse_through = true;
 +        cache.store(&input(1.0), through.clone());
@@ -17734,17 +17890,42 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +        assert_eq!(cache.get(&input(2.0)), Some(carried));
 +        cache.store(&input(1.0), output(3.0));
 +        assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
-+        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -507 +580 @@
++        assert_eq!(cache.measure_slots().len(), 2);
+@@ -435 +646 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -439 +650 @@
+-        let entries = cache.measure_entries.clone();
++        let entries = cache.store.clone();
+@@ -442 +653 @@
+-        assert_eq!(cache.measure_entries, entries);
++        assert_eq!(cache.store, entries);
+@@ -482 +693 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -500 +711 @@
+-            let mut cache = Cache::new();
++            let mut cache = Tested::default();
+@@ -507 +718 @@
 -            assert_eq!(cache.measure_entries.iter().flatten().count(), 1);
-+            assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
-@@ -524 +597 @@
++            assert_eq!(cache.measure_slots().len(), 1);
+@@ -518 +729 @@
+-            let mut cache = Cache::new();
++            let mut cache = Tested::default();
+@@ -524 +735 @@
 -            assert!(cache.measure_entries.iter().all(|entry| entry.is_none()));
-+            assert!(cache.measure_slots().iter().all(|entry| entry.is_none()));
-@@ -555,0 +629,70 @@
++            assert!(cache.measure_slots().is_empty());
+@@ -531 +742 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -543 +754 @@
+-        let mut cache = Cache::new();
++        let mut cache = Tested::default();
+@@ -555,0 +767,71 @@
 +
 +#[cfg(test)]
 +mod kamin_cache_regressions {
++    use super::tests::Tested;
 +    use super::*;
 +    use crate::style_helpers::TaffyMaxContent;
 +
@@ -17758,7 +17939,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +            },
 +            ..LayoutInput::HIDDEN
 +        };
-+        let mut cache = Cache::new();
++        let mut cache = Tested::default();
 +        cache.store(
 +            &input,
 +            LayoutOutput::from_outer_size(Size {
@@ -17793,7 +17974,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +            available_space: Size::MAX_CONTENT,
 +            ..LayoutInput::HIDDEN
 +        };
-+        let mut cache = Cache::new();
++        let mut cache = Tested::default();
 +        cache.store(
 +            &definite,
 +            LayoutOutput::from_outer_size(Size {
@@ -24484,7 +24665,7 @@ index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d50
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/mod.rs b/vendor/taffy/src/tree/mod.rs
-index 1d70419936e58bdaeda090b9f73188c0f7999985..faf1f580b0c47b3366e8ec3d0f43c2d0a687fe8c
+index 1d70419936e58bdaeda090b9f73188c0f7999985..14ec23f0aaf78075c88d50e807545542489f8471
 --- a/vendor/taffy/src/tree/mod.rs
 +++ b/vendor/taffy/src/tree/mod.rs
 @@ -9,0 +10,5 @@
@@ -24493,6 +24674,9 @@ index 1d70419936e58bdaeda090b9f73188c0f7999985..faf1f580b0c47b3366e8ec3d0f43c2d0
 +mod flex;
 +#[cfg(feature = "flexbox")]
 +pub use flex::{DetailedFlexInfo, DetailedFlexItem, DetailedFlexLine};
+@@ -15 +20 @@
+-pub use cache::{Cache, ClearState};
++pub use cache::{Cache, ClearState, MeasureStore};
 @@ -17,2 +22,3 @@
 -    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Baselines, CollapsibleMarginSet, Layout, LayoutInput,
 -    LayoutOutput, OofCandidate, OofCandidates, OofPositioningArea, RequestedAxis, RunMode, SizingMode,
@@ -25566,7 +25750,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab1c411ef1
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..23f6ec09517da8750480bfe2c929cb1731dea875
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25588,6 +25772,9 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +mod computed_output;
 +#[path = "node_lifetime.rs"]
 +mod node_lifetime;
+@@ -14 +32 @@
+-    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree,
++    Cache, ClearState, Layout, MeasureStore, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree,
 @@ -69,2 +87,6 @@
 -            TaffyError::InvalidChildNode(child) => write!(f, "Child Node {child:?} is not in the TaffyTree instance"),
 -            TaffyError::InvalidInputNode(node) => write!(f, "Supplied Node {node:?} is not in the TaffyTree instance"),
@@ -25673,13 +25860,17 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            fragmentation_monolithic: false,
 +            #[cfg(feature = "grid")]
 +            grid_track_growth: (crate::geometry::AbsoluteAxis::Vertical, Vec::new()),
-@@ -168,0 +251,5 @@
+@@ -166,0 +249,3 @@
++    /// KaminIDE patch: the measurement entries of the nodes' caches, kept across `clear`.
++    measure: MeasureStore,
++
+@@ -168,0 +254,5 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +261,110 @@
+@@ -173,0 +264,110 @@
 +    }
 +}
 +
@@ -25790,10 +25981,16 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +457 @@
+@@ -217 +417 @@
+-        self.nodes[node_id.into()].cache.get(input)
++        self.nodes[node_id.into()].cache.get_in(&self.measure, input)
+@@ -221 +421 @@
+-        self.nodes[node_id.into()].cache.store(input, layout_output)
++        self.nodes[node_id.into()].cache.store_in(&mut self.measure, input, layout_output)
+@@ -260 +460 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -283,0 +481,19 @@
+@@ -283,0 +484,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -25813,10 +26010,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        )
 +    }
 +
-@@ -287 +503 @@
+@@ -287 +506 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +516,13 @@
+@@ -299,0 +519,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -25830,17 +26027,17 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            }
 +        }
 +
-@@ -313 +542 @@
+@@ -313 +545 @@
 -            let mut output = match (display_mode, has_children) {
 +            let output = match (display_mode, has_children) {
-@@ -322,0 +552,6 @@
+@@ -322,0 +555,6 @@
 +                // An empty grid without a measurement context still has explicit
 +                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
 +                #[cfg(feature = "grid")]
 +                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
 +                    compute_grid_layout(tree, node_id, inputs)
 +                }
-@@ -331,11 +566 @@
+@@ -331,11 +569 @@
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -25853,7 +26050,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 -
 -            output
 +            tree.finish_child_layout(node_id, inputs.run_mode, output)
-@@ -342,0 +568,19 @@
+@@ -342,0 +571,19 @@
 +    }
 +
 +    // KaminIDE patch: output adaptation and OOF temporaries must not live
@@ -25873,12 +26070,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +645,2 @@
+@@ -401,2 +648,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +765,34 @@
+@@ -451 +698 @@
+-        self.taffy.nodes[node_id.into()].cache.get(input)
++        self.taffy.nodes[node_id.into()].cache.get_in(&self.taffy.measure, input)
+@@ -455 +702 @@
+-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
++        self.taffy.nodes[node_id.into()].cache.store_in(&mut self.taffy.measure, input, layout_output)
+@@ -520,0 +768,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -25913,7 +26116,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].flex_fragmentation
 +    }
-@@ -546,0 +825,21 @@
+@@ -546,0 +828,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -25935,10 +26138,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }
 +    }
 +
-@@ -565 +864 @@
+@@ -565 +867 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +886,25 @@
+@@ -586,0 +889,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -25964,7 +26167,9 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        })
 +    }
 +
-@@ -606 +930,18 @@
+@@ -603,0 +931 @@
++            measure: MeasureStore::new(),
+@@ -606 +934,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -25984,12 +26189,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +961,2 @@
+@@ -620,2 +965,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +972,6 @@
+@@ -631,2 +976,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -25998,18 +26203,25 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +990,2 @@
+@@ -645,2 +994,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1012,5 @@
+@@ -662,0 +1012 @@
++        self.measure.clear();
+@@ -666,0 +1017,5 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -873,0 +1224,17 @@
+@@ -690 +1045,3 @@
+-        let _ = self.nodes.remove(key);
++        if let Some(mut data) = self.nodes.remove(key) {
++            self.measure.release(&mut data.cache);
++        }
+@@ -873,0 +1231,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26027,22 +26239,22 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }
 +    }
 +
-@@ -897,2 +1264,2 @@
+@@ -897,2 +1271,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1276,6 @@
+@@ -908,0 +1283,6 @@
 +    /// KaminIDE patch: the shared style of `node`, to give another node the same style.
 +    #[inline]
 +    pub fn shared_style(&self, node: NodeId) -> TaffyResult<SharedStyle> {
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1286 @@
+@@ -913 +1293 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1290,8 @@
+@@ -916,0 +1297,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26051,7 +26263,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1358,6 @@
+@@ -977 +1365,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26059,7 +26271,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1371,26 @@
+@@ -984,0 +1378,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26086,15 +26298,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1400 @@
+@@ -988 +1407 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1415,3 @@
+@@ -1003 +1422,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1444,28 @@
+@@ -1029,0 +1451,28 @@
 +    }
 +
 +    #[test]
@@ -26123,7 +26335,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +1985,50 @@
+@@ -1543 +1992,50 @@
 -}
 +
 +    #[test]
