@@ -474,6 +474,19 @@ impl Scene {
         }
     }
 
+    /// KaminIDE patch: finish a frame. Its bounds tree only orders inserts
+    /// into this frame (a later frame replays from `blocks`), so the grafts it
+    /// holds are released now rather than at the next `clear`: the trees of
+    /// paint records that died during the frame die with them, as when every
+    /// primitive was inserted (the capacity stays for the next frame).
+    pub(crate) fn finish_frame(&mut self) {
+        self.finish();
+        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
+            Some(tree) => tree.clear(),
+            None => self.primitive_bounds = Default::default(),
+        }
+    }
+
     /// Copy `range` of an earlier scene (the rendered frame) into this one.
     ///
     /// KaminIDE patch: a range copied the same way into that scene grafts the
@@ -481,11 +494,19 @@ impl Scene {
     /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         let operations = &prev_scene.paint_operations[range.clone()];
+        // A block whose borrowed tree died with its record is packed again.
         let source = prev_scene
             .blocks
             .iter()
             .find(|block| block.ops == range)
-            .map(|block| (block.tree.clone(), block.order));
+            .and_then(|block| match &block.index {
+                BlockIndex::Empty => Some(ReplaySource::Graft(None, false)),
+                BlockIndex::Owned(graft) => Some(ReplaySource::Graft(Some(graft.clone()), true)),
+                BlockIndex::Shared(graft) => {
+                    graft.upgrade().map(|graft| ReplaySource::Graft(Some(graft), false))
+                }
+            })
+            .unwrap_or(ReplaySource::Pack);
         if !self.replay_shifted(operations, source, |_| true) {
             for operation in operations {
                 self.replay_operation(operation.clone());
@@ -496,7 +517,8 @@ impl Scene {
     /// KaminIDE patch: copy every command of a finished, isolated `scene`
     /// (a paint record or its copy) into this one, grafting its tree.
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
-        let source = Some((scene.primitive_bounds.clone(), 0));
+        let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
+        let source = ReplaySource::Graft(graft, false);
         if !self.replay_shifted(&scene.paint_operations, source, |_| true) {
             for operation in &scene.paint_operations {
                 self.replay_operation(operation.clone());
@@ -524,14 +546,8 @@ impl Scene {
         if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
             return false;
         }
-        let mut copy = BoundsTree::default();
-        if let Some(graft) =
-            crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0)
-        {
-            copy.insert_graft(graft);
-        }
-        copy.freeze();
-        let source = Some((std::rc::Rc::new(copy), 0));
+        let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
+        let source = ReplaySource::Graft(graft, false);
         self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
@@ -599,16 +615,21 @@ impl Scene {
 
     /// KaminIDE patch: copy `operations` with their recorded orders, raised
     /// above everything earlier they overlap, and graft the tree that indexed
-    /// them (`source`: the tree and how far the commands' orders are above
-    /// it; packed from the commands when `None`). Every order keeps the
+    /// them (`source`: the graft of that tree, or a tree packed from the
+    /// commands). Every order keeps the
     /// overlap rule of `insert_primitive` (later and overlapping means
     /// higher), so the frame draws the same pixels, and later inserts see the
     /// copied rectangles exactly through the graft. `false` when the commands
     /// or this scene's open state need the per-primitive replay.
+    ///
+    /// The block remembering the copy for a later frame (`replay`) shares
+    /// only a tree this scene made (a packed one, or one inherited from such a
+    /// block); a borrowed tree (a paint record's) is remembered weakly, so the
+    /// rendered frame does not keep a record's index alive after the record.
     fn replay_shifted(
         &mut self,
         operations: &[PaintOperation],
-        source: Option<(std::rc::Rc<BoundsTree<ScaledPixels>>, DrawOrder)>,
+        source: ReplaySource,
         mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
         if !self.layer_stack.is_empty()
@@ -618,24 +639,24 @@ impl Scene {
         {
             return false;
         }
-        let (tree, base) = match source {
-            Some(source) => source,
-            None => {
+        let (graft, owned) = match source {
+            ReplaySource::Graft(graft, owned) => (graft, owned),
+            ReplaySource::Pack => {
                 let mut packed = Self::packed(operations);
                 packed.freeze();
-                (std::rc::Rc::new(packed), 0)
+                let tree = std::rc::Rc::new(packed);
+                (crate::bounds_tree::Graft::new(tree, Point::default(), None, 0), true)
             }
         };
         let mut raise = 0;
-        let graft = crate::bounds_tree::Graft::new(tree.clone(), Point::default(), None, base)
-            .map(|mut graft| {
-                let above = self.tree_mut().max_meeting(graft.cover());
-                if above >= graft.min_order() {
-                    raise = above + 1 - graft.min_order();
-                    graft.raise(raise);
-                }
-                graft
-            });
+        let graft = graft.map(|mut graft| {
+            let above = self.tree_mut().max_meeting(graft.cover());
+            if above >= graft.min_order() {
+                raise = above + 1 - graft.min_order();
+                graft.raise(raise);
+            }
+            graft
+        });
         let shift = raise * ORDER_STEP;
         let start = self.paint_operations.len();
         let mut ink: Option<Bounds<ScaledPixels>> = None;
@@ -670,13 +691,21 @@ impl Scene {
                 sink.add(ink);
             }
         }
-        if let Some(graft) = graft {
-            self.tree_mut().insert_graft(graft);
-        }
+        let index = match graft {
+            None => BlockIndex::Empty,
+            Some(graft) => {
+                let index = if owned {
+                    BlockIndex::Owned(graft.clone())
+                } else {
+                    BlockIndex::Shared(graft.downgrade())
+                };
+                self.tree_mut().insert_graft(graft);
+                index
+            }
+        };
         self.blocks.push(ReplayedBlock {
             ops: start..self.paint_operations.len(),
-            tree,
-            order: base + raise,
+            index,
         });
         true
     }
@@ -987,12 +1016,32 @@ impl Primitive {
     }
 }
 
-/// KaminIDE patch: commands copied by `Scene::replay_shifted`, the frozen tree
-/// that indexes them, and how far their orders are above that tree's.
+/// KaminIDE patch: commands copied by `Scene::replay_shifted` and the graft
+/// that indexed them (with their orders above the grafted tree's).
 struct ReplayedBlock {
     ops: Range<usize>,
-    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
-    order: DrawOrder,
+    index: BlockIndex,
+}
+
+/// KaminIDE patch: the index of a `ReplayedBlock`.
+enum BlockIndex {
+    /// Nothing of the grafted tree was visible.
+    Empty,
+    /// A tree this scene made (packed from the commands, or inherited from a
+    /// block of the scene it replayed): the block keeps it.
+    Owned(crate::bounds_tree::Graft<ScaledPixels>),
+    /// A tree owned elsewhere (a paint record's): alive only as long as its
+    /// owner, so a frame does not extend a record's lifetime.
+    Shared(crate::bounds_tree::WeakGraft<ScaledPixels>),
+}
+
+/// KaminIDE patch: how `Scene::replay_shifted` indexes copied commands.
+enum ReplaySource {
+    /// A tree packed from the commands, owned by this scene.
+    Pack,
+    /// A graft of the tree that indexed them (`None`: nothing visible) and
+    /// whether that tree belongs to the scene the commands come from.
+    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
 }
 
 #[cfg_attr(

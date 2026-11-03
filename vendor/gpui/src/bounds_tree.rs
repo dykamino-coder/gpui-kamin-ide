@@ -3,7 +3,7 @@ use std::{
     cmp,
     fmt::Debug,
     ops::{Add, Sub},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 /// Maximum children per internal node (R-tree style branching factor).
@@ -216,6 +216,20 @@ where
         self.max += by;
     }
 
+    /// KaminIDE patch: this graft without a share of its frozen tree, for an
+    /// index that must not keep the tree's owner (a paint record) alive.
+    pub fn downgrade(&self) -> WeakGraft<U> {
+        WeakGraft {
+            tree: Rc::downgrade(&self.tree),
+            offset: self.offset.clone(),
+            clip: self.clip.clone(),
+            order: self.order,
+            cover: self.cover.clone(),
+            min: self.min,
+            max: self.max,
+        }
+    }
+
     /// The highest ordering above `floor` of a grafted rectangle meeting
     /// `query`, in the space of a tree seen through `outer`; `floor` if none.
     fn max_above(
@@ -250,6 +264,41 @@ where
         } else {
             floor
         }
+    }
+}
+
+/// KaminIDE patch: a `Graft` whose frozen tree is held weakly. A frozen tree
+/// is immutable while shared, so the graft's cover and orderings stay exact
+/// for as long as the tree is alive.
+#[derive(Debug, Clone)]
+pub(crate) struct WeakGraft<U>
+where
+    U: Clone + Debug + Default + PartialEq,
+{
+    tree: Weak<BoundsTree<U>>,
+    offset: Point<U>,
+    clip: Option<Bounds<U>>,
+    order: u32,
+    cover: Bounds<U>,
+    min: u32,
+    max: u32,
+}
+
+impl<U> WeakGraft<U>
+where
+    U: Clone + Debug + Default + PartialEq,
+{
+    /// The graft again, if its tree is still alive.
+    pub fn upgrade(&self) -> Option<Graft<U>> {
+        Some(Graft {
+            tree: self.tree.upgrade()?,
+            offset: self.offset.clone(),
+            clip: self.clip.clone(),
+            order: self.order,
+            cover: self.cover.clone(),
+            min: self.min,
+            max: self.max,
+        })
     }
 }
 
