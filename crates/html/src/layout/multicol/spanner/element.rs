@@ -21,7 +21,19 @@ pub(crate) struct SpannerFlow {
     pub(crate) intrinsic: Rc<Intrinsic>,
     child: Option<AnyElement>,
     definite_height: Rc<Cell<Option<Pixels>>>,
+    measured: Rc<MeasureMemo>,
 }
+
+/// The last measure-pass result of this element, by its resolved space.
+///
+/// A `SpannerPass::Measure` build is isolated (fresh positioning and paint
+/// collectors, no fragmentation recorder), so the content it measures is a
+/// function of the available space alone, in the requester's text scope.
+/// Taffy asks the same leaf several times per layout (sizing, then the
+/// final pass); every repeat at an equal space would rebuild every row and
+/// re-balance every column set (Blink keeps one `LayoutResult` per box and
+/// constraint space for the same reason, `layout_result_caching.cc`).
+type MeasureMemo = Cell<Option<(Size<AvailableSpace>, gpui::MeasuredContent)>>;
 
 impl SpannerFlow {
     pub(crate) fn deferred(
@@ -33,6 +45,7 @@ impl SpannerFlow {
             intrinsic: Rc::new(intrinsic),
             child: None,
             definite_height: Default::default(),
+            measured: Default::default(),
         }
         .hooked()
     }
@@ -46,6 +59,7 @@ impl Hooks for SpannerFlow {
         let build = self.build.clone();
         let intrinsic = self.intrinsic.clone();
         let definite_height = self.definite_height.clone();
+        let measured = self.measured.clone();
         let mut style: gpui::Style = gpui::Style::default();
         // Анонимный поток сохраняет определённую высоту своего CSS-хоста;
         // при auto-высоте циклический процент остаётся неопределённым.
@@ -67,9 +81,20 @@ impl Hooks for SpannerFlow {
                                 other => intrinsic(size(other, height), window, cx),
                             });
                     let available = size(AvailableSpace::Definite(px(width)), height);
+                    let last = measured.take();
+                    if let Some((space, content)) = last.as_ref()
+                        && *space == available
+                    {
+                        crate::work::add!(SpannerMeasureReuses, 1);
+                        let content = content.clone();
+                        measured.set(last);
+                        return content;
+                    }
                     let mut child = build(available, SpannerPass::Measure, window, cx);
                     let mut snapshot = child.snapshot_layout_measurement(window, cx);
-                    snapshot.measure_physical_baselines(available, window, cx)
+                    let content = snapshot.measure_physical_baselines(available, window, cx);
+                    measured.set(Some((available, content.clone())));
+                    content
                 })
             },
         );
@@ -110,3 +135,7 @@ impl Hooks for SpannerFlow {
         }
     }
 }
+
+#[cfg(all(test, feature = "work-counters"))]
+#[path = "element_tests.rs"]
+mod tests;

@@ -161,17 +161,13 @@ pub(super) fn leaf(
                 taffy::RequestedAxis::Both => None,
             }
         } else { None };
-        let fixed = if performed {
-            Size {
+        if performed {
+            geometry.fixed = Size {
                 width: input.known_dimensions.width.is_some(),
                 height: input.known_dimensions.height.is_some(),
-            }
-        } else {
-            Size::default()
-        };
-        let outer = std::mem::replace(&mut window.measured_size_fixed, fixed);
+            };
+        }
         let measured = (context.measure.borrow_mut())(known, available, geometry, window, cx);
-        window.measured_size_fixed = outer;
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {

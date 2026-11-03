@@ -1247,10 +1247,6 @@ pub struct Window {
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
     layout_owner: RetainedLayout,
-    /// KaminIDE patch: axes whose size the parent algorithm fixed for the
-    /// measured leaf of the current final-layout pass (see
-    /// [`Window::measured_size_fixed`]).
-    pub(crate) measured_size_fixed: Size<bool>,
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
     pub(crate) text_style_stack: TextStyleScope,
@@ -2204,7 +2200,6 @@ impl Window {
             viewport_size: content_size,
             layout_engine: Some(TaffyLayoutEngine::new()),
             layout_owner: RetainedLayout::active(),
-            measured_size_fixed: Size::default(),
             root: None,
             element_id_stack: SmallVec::default(),
             text_style_stack: TextStyleScope::default(),
@@ -6176,16 +6171,6 @@ impl Window {
             .request_measured_layout_with_baselines(style, rem_size, scale_factor, move |known, available, window, cx| {
                 scope.enter(window, |window| measure(known, available, window, cx))
             })
-    }
-
-    /// KaminIDE patch: inside a measure callback, the axes whose border-box
-    /// size the parent already fixed for this final layout pass. Taffy passes
-    /// no known dimensions to measure functions when performing layout (only
-    /// the definite available space), so a box that would otherwise size
-    /// itself to fit-content can tell that its size is already decided and
-    /// skip the intrinsic-size probes that only re-derive it.
-    pub fn measured_size_fixed(&self) -> Size<bool> {
-        self.measured_size_fixed
     }
 
     /// KaminIDE patch: размер узла без округления к физической точке (см.

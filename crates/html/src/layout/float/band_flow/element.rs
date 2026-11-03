@@ -88,7 +88,7 @@ impl Hooks for BandFlow {
             // A final layout pass whose parent already fixed the inline size
             // lays the children out at that size: shrink-to-fit would only
             // re-derive it from min/max-content probes.
-            let fixed = window.measured_size_fixed();
+            let fixed = geometry.fixed;
             window.with_element_layout_context(&context, |window| {
                 let v = vert.is_some();
                 let fixed_inline = if v { fixed.height } else { fixed.width };
@@ -112,6 +112,17 @@ impl Hooks for BandFlow {
                         f32::from(w)
                     }
                     (None, a) => {
+                        // The min/max-content pair takes no measure input,
+                        // so one pair per element is exact: `intrinsic_sizes`
+                        // builds every child with no containing-block size
+                        // (`build(0.0, 0.0, ..)`) and lays it out under an
+                        // indefinite block size (`MaxContent`), never the
+                        // `known`/`available` block size of this call; a
+                        // kid's retained pair (`band_flow_host::kids`) is keyed
+                        // by build inputs only. Blink
+                        // keys its cache by `initial_block_size`
+                        // (`layout_box.h`) because its algorithms may receive
+                        // a definite one; these probes cannot.
                         let (min, max) = intrinsic.get().unwrap_or_else(|| {
                             window.with_nested_layout(|window| {
                                 let p = &mut Probe::new(
