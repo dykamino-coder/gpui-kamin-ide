@@ -66,17 +66,18 @@ impl Paragraph {
         // `line-break: loose` в китайском/японском письме снимает запрет и
         // после ШИРОКИХ префиксов (css-text-3 §5.2: «breaks after prefixes
         // (PR) with East Asian Width A/F/W», `line-break-loose-018`).
+        // Распорка атома (U+FEFF, класс WJ) здесь не запрет: за атомом
+        // точку ставит `linebreaks`. Принадлежность — по индексу коробок,
+        // а не перебором всех атомов на каждую точку.
+        let atoms = &self.prepared().atoms;
+        let atom_at = |at: usize| atoms.first(at).is_some();
         out.retain(|s| {
             let w = self.wrap_at(s.at);
-            // Распорка атома (U+FEFF, класс WJ) здесь не запрет: за атомом
-            // точку ставит `linebreaks`.
             s.mandatory
                 || w.anywhere
                 || w.wrap_anywhere
-                || self
-                    .atom_boxes
-                    .iter()
-                    .any(|b| b.at + 3 == s.at || b.at == s.at)
+                || atom_at(s.at)
+                || s.at.checked_sub(3).is_some_and(atom_at)
                 || self.text[..s.at].chars().next_back().is_none_or(|c| {
                     !no_break_after(c) || (w.loose >= 2 && w.cjk_lang && wide_prefix(c))
                 })

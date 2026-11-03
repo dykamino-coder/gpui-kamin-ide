@@ -93,6 +93,15 @@ vocabulary!(Counter {
     SubtreeQueries => "subtree_queries",
     SubtreeNodesVisited => "subtree_nodes_visited",
     StyleMatchAttempts => "style_match_attempts",
+    ParagraphAtomQueries => "paragraph_atom_queries",
+    ParagraphAtomSteps => "paragraph_atom_steps",
+    ParagraphRubyQueries => "paragraph_ruby_queries",
+    ParagraphRubySteps => "paragraph_ruby_steps",
+    ParagraphAdvanceMoves => "paragraph_advance_moves",
+    ParagraphLineQueries => "paragraph_line_queries",
+    ParagraphLineSteps => "paragraph_line_steps",
+    ParagraphSpacerQueries => "paragraph_spacer_queries",
+    ParagraphSpacerSteps => "paragraph_spacer_steps",
 });
 vocabulary!(Phase {
     HostResources => "host_resources", Parse => "parse", Style => "style",
