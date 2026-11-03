@@ -2,8 +2,8 @@
 //! внешнего ряда. Временные LayoutId не переживают вложенный layout.
 
 use super::super::columns::column_plan_in;
-use super::settled;
 use crate::layout::multicol::dimensions::MulticolDimensions;
+mod build;
 mod intrinsic;
 mod probe;
 use crate::dom::{Element, Node};
@@ -14,8 +14,8 @@ use crate::layout::multicol::spanner::{
 };
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
-use crate::style::values::value::Len;
-use gpui::{AnyElement, AvailableSpace, IntoElement, Styled, div, px, size};
+use build::build;
+use gpui::{AnyElement, AvailableSpace, px, size};
 use std::rc::Rc;
 
 pub(super) fn deferred(
@@ -214,47 +214,4 @@ pub(super) fn deferred(
 
 fn is_span(n: &Node) -> bool {
     matches!(n, Node::Element(e) if spanner_box(e))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build(
-    host: &Element,
-    style: BoxStyle,
-    inherited: &Computed,
-    opts: &RenderOpts,
-    outer: Option<Rc<Nested>>,
-    rest: Option<f32>,
-    (dimensions, own): (MulticolDimensions, MulticolDimensions),
-) -> AnyElement {
-    let p = column_plan_in(host, &style, opts, dimensions, own);
-    let mut d = div();
-    let vertical = style.wm().vertical();
-    let axes = style.wm().reversed_axes();
-    d.style().block_flow = Some([vertical, vertical && axes[0], axes[usize::from(vertical)]]);
-    // Размер анонимного потока задаёт CSS-хост; декорации остаются снаружи.
-    if let Some(Len::Px(h)) = dimensions.preferred[1] {
-        d = d.h(px(h));
-    }
-    match settled(
-        d,
-        host,
-        style,
-        inherited,
-        opts,
-        p.column_width,
-        p.used_count.unwrap_or(0),
-        p.used_gap,
-        p.col_axis,
-        p.col_vert,
-        p.col_rl,
-        p.col_inline_size,
-        outer,
-        p.lone_span,
-        rest,
-        Some((dimensions, own)),
-        None,
-    ) {
-        Ok((d, _)) => d.into_any_element(),
-        Err(el) => el,
-    }
 }
