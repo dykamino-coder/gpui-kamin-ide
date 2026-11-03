@@ -39,8 +39,11 @@ pub(super) struct Pending {
     lines: Rc<LineSink>,
     /// Вывод prepaint и краски этого кадра и маска краски.
     prepaint: RefCell<Option<RetainedPrepaint>>,
-    paint: RefCell<Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>>,
+    paint: RefCell<Option<Painted>>,
 }
+
+/// Вывод краски блока, его отложенные строки и маска краски.
+type Painted = (RetainedPaint, Rc<LineCapture>, Bounds<Pixels>);
 
 impl Pending {
     pub(super) fn new(
