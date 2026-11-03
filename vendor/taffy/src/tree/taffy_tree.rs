@@ -1003,6 +1003,46 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.get(node.into()).is_some_and(|data| data.has_context)
     }
 
+    /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
+    /// `context`, reusing its storage. The node leaves its previous parent
+    /// (it becomes a root, the parent's list is left as is), its previous
+    /// children that still point at it become roots, and its cache is empty.
+    /// Like `new_with_children`, the new children are adopted without editing
+    /// their previous parents' lists.
+    pub fn reset_node(
+        &mut self,
+        node: NodeId,
+        style: Style,
+        children: &[NodeId],
+        context: Option<NodeContext>,
+    ) -> TaffyResult<()> {
+        let key = node.into();
+        for child in self.children[key].iter() {
+            if self.parents[(*child).into()] == Some(node) {
+                self.parents[(*child).into()] = None;
+            }
+        }
+        self.parents[key] = None;
+        let data = &mut self.nodes[key];
+        *data = NodeData::new(style);
+        data.has_context = context.is_some();
+        match context {
+            Some(context) => {
+                self.node_context_data.insert(key, context);
+            }
+            None => {
+                self.node_context_data.remove(key);
+            }
+        }
+        for child in children {
+            self.parents[(*child).into()] = Some(node);
+        }
+        let list = &mut self.children[key];
+        list.clear();
+        list.extend_from_slice(children);
+        Ok(())
+    }
+
     /// KaminIDE patch: drop every node for which `keep` is false, in one pass.
     ///
     /// Kept nodes keep their style, children, context and layout cache. A kept

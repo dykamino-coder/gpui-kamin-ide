@@ -80,7 +80,6 @@ impl Paragraph {
             && !self.vertical
             && self.vertical_inline.is_none()
             && self.ortho_limit.is_none()
-            && self.anchor_values.is_none()
             && !self.paint_context.is_rotated()
             && self.spacers.is_empty()
             && self.spacer_edges.is_empty()

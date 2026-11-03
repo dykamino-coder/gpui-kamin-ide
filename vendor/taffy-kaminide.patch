@@ -25499,7 +25499,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d526fef60c0
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..31dfbf66360f83c1b5b4447a06f3e38e10622222
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -25878,13 +25878,101 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -666,0 +989,5 @@
+@@ -666,0 +989,93 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -873,0 +1201,17 @@
++    }
++
++    /// KaminIDE patch: the children of `parent`, without allocating.
++    pub fn children_slice(&self, parent: NodeId) -> &[NodeId] {
++        self.children.get(parent.into()).map_or(&[], |children| children.as_slice())
++    }
++
++    /// KaminIDE patch: whether `node` carries a context (a measured leaf).
++    pub fn has_node_context(&self, node: NodeId) -> bool {
++        self.nodes.get(node.into()).is_some_and(|data| data.has_context)
++    }
++
++    /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
++    /// `context`, reusing its storage. The node leaves its previous parent
++    /// (it becomes a root, the parent's list is left as is), its previous
++    /// children that still point at it become roots, and its cache is empty.
++    /// Like `new_with_children`, the new children are adopted without editing
++    /// their previous parents' lists.
++    pub fn reset_node(
++        &mut self,
++        node: NodeId,
++        style: Style,
++        children: &[NodeId],
++        context: Option<NodeContext>,
++    ) -> TaffyResult<()> {
++        let key = node.into();
++        for child in self.children[key].iter() {
++            if self.parents[(*child).into()] == Some(node) {
++                self.parents[(*child).into()] = None;
++            }
++        }
++        self.parents[key] = None;
++        let data = &mut self.nodes[key];
++        *data = NodeData::new(style);
++        data.has_context = context.is_some();
++        match context {
++            Some(context) => {
++                self.node_context_data.insert(key, context);
++            }
++            None => {
++                self.node_context_data.remove(key);
++            }
++        }
++        for child in children {
++            self.parents[(*child).into()] = Some(node);
++        }
++        let list = &mut self.children[key];
++        list.clear();
++        list.extend_from_slice(children);
++        Ok(())
++    }
++
++    /// KaminIDE patch: drop every node for which `keep` is false, in one pass.
++    ///
++    /// Kept nodes keep their style, children, context and layout cache. A kept
++    /// node whose parent is dropped becomes a root; a kept node that loses a
++    /// child is marked dirty. Unlike `remove`, a dropped node never unlinks a
++    /// child that another node has adopted since (`new_with_children` moves a
++    /// child without editing its previous parent's list). The calc registry is
++    /// kept: its pairs are interned by value, so handles stay valid for the
++    /// kept styles.
++    pub fn retain_nodes(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
++        let dropped: Vec<DefaultKey> =
++            self.nodes.keys().filter(|key| !keep(NodeId::from(*key))).collect();
++        if dropped.is_empty() {
++            return;
++        }
++        for key in &dropped {
++            let _ = self.children.remove(*key);
++            let _ = self.parents.remove(*key);
++            let _ = self.nodes.remove(*key);
++            let _ = self.node_context_data.remove(*key);
++        }
++        let mut orphaned = Vec::new();
++        for (key, parent) in self.parents.iter_mut() {
++            if parent.is_some_and(|p| !self.nodes.contains_key(p.into())) {
++                *parent = None;
++            }
++            let children = &mut self.children[key];
++            let before = children.len();
++            children.retain(|child| self.nodes.contains_key((*child).into()));
++            if children.len() != before {
++                orphaned.push(NodeId::from(key));
++            }
++        }
++        for node in orphaned {
++            let _ = self.mark_dirty(node);
++        }
+@@ -873,0 +1289,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -25902,7 +25990,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +        }
 +    }
 +
-@@ -916,0 +1261,8 @@
+@@ -916,0 +1349,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -25911,7 +25999,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1329,6 @@
+@@ -977 +1417,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -25919,7 +26007,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1342,26 @@
+@@ -984,0 +1430,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -25946,15 +26034,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1371 @@
+@@ -988 +1459 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1386,3 @@
+@@ -1003 +1474,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1415,28 @@
+@@ -1029,0 +1503,28 @@
 +    }
 +
 +    #[test]
@@ -25983,7 +26071,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d52
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +1956,17 @@
+@@ -1543 +2044,17 @@
 -}
 +
 +    #[test]

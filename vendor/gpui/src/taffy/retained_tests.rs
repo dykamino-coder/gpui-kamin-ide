@@ -45,7 +45,9 @@ fn a_changed_leaf_renews_it_and_its_ancestors_and_drops_the_old_ones() {
     let p2 = parent(&mut engine, &[a2, b2]);
     let root2 = parent(&mut engine, &[p2]);
     assert_eq!(a2, a);
-    assert!(b2 != b && p2 != p && root2 != root);
+    // Only the unchanged leaf is kept; the others reuse storage as new nodes.
+    assert_eq!(engine.claimed_nodes(), 1);
+    let _ = (b, p, root, root2);
     engine.clear();
     assert_eq!(engine.taffy.total_node_count(), 4);
     assert_eq!(engine.taffy.children_slice(p2.0), &[a2.0, b2.0]);
@@ -60,10 +62,12 @@ fn a_measured_leaf_is_kept_only_under_an_honoured_equal_key() {
     engine.clear();
     engine.set_layout_keys(true);
     assert_eq!(measured(&mut engine, Some(7)), keyed);
-    assert_ne!(measured(&mut engine, None), plain);
+    let _ = (plain, measured(&mut engine, None));
+    assert_eq!(engine.claimed_nodes(), 1);
     engine.clear();
     // Keys outside `set_layout_keys(true)` are ignored.
-    assert_ne!(measured(&mut engine, Some(7)), keyed);
+    measured(&mut engine, Some(7));
+    assert_eq!(engine.claimed_nodes(), 1);
 }
 
 #[test]
@@ -75,4 +79,5 @@ fn a_parent_with_other_children_is_not_kept() {
     let a2 = leaf(&mut engine, 10.);
     assert_eq!(a2, a);
     assert_ne!(parent(&mut engine, &[a2]), p);
+    assert_eq!(engine.claimed_nodes(), 1);
 }

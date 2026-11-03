@@ -84,11 +84,18 @@ impl TaffyLayoutEngine {
         if let Some(id) = key.and_then(|key| self.claim_measured(key, &taffy_style, &mut context)) {
             return id;
         }
-        let id = self
-            .taffy
-            .new_leaf_with_context(taffy_style, context.expect("measured leaf context"))
-            .expect(EXPECT_MESSAGE)
-            .into();
+        let context = context.expect("measured leaf context");
+        let id = if let Some(node) = self.recycle() {
+            self.taffy
+                .reset_node(node, taffy_style, &[], Some(context))
+                .expect(EXPECT_MESSAGE);
+            LayoutId(node)
+        } else {
+            self.taffy
+                .new_leaf_with_context(taffy_style, context)
+                .expect(EXPECT_MESSAGE)
+                .into()
+        };
         self.created(id, key)
     }
 

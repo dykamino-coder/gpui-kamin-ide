@@ -105,8 +105,10 @@ impl TaffyLayoutEngine {
             return None;
         }
         let candidates = self.retained.by_key.get_mut(&key)?;
+        let live = &self.retained.live;
         let at = candidates.iter().rposition(|node| {
-            self.taffy.style(*node).is_ok_and(|old| old == style)
+            !live.contains(node)
+                && self.taffy.style(*node).is_ok_and(|old| old == style)
                 && self.taffy.children_slice(*node).is_empty()
         })?;
         let node = candidates.swap_remove(at);
@@ -115,6 +117,21 @@ impl TaffyLayoutEngine {
             old.measure = fresh.measure;
         }
         Some(self.claim(node))
+    }
+
+    /// An unclaimed previous node at this request's position, whose storage a
+    /// new node takes (TaffyTree::reset_node): a pass that claims little
+    /// then holds about one tree, not the previous and the new one.
+    pub(super) fn recycle(&mut self) -> Option<NodeId> {
+        if !self.frame_tree {
+            return None;
+        }
+        let node = *self.retained.prev.get(self.retained.seq.len())?;
+        if self.retained.live.contains(&node) {
+            return None;
+        }
+        self.retained.keys.remove(&node);
+        Some(node)
     }
 
     fn claim(&mut self, node: NodeId) -> LayoutId {

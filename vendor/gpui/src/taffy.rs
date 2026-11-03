@@ -238,7 +238,12 @@ impl TaffyLayoutEngine {
         if let Some(id) = claimed {
             return id;
         }
-        let id = if children.is_empty() {
+        let id = if let Some(node) = self.recycle() {
+            self.taffy
+                .reset_node(node, taffy_style, LayoutId::to_taffy_slice(children), None)
+                .expect(EXPECT_MESSAGE);
+            LayoutId(node)
+        } else if children.is_empty() {
             self.taffy
                 .new_leaf(taffy_style)
                 .expect(EXPECT_MESSAGE)
