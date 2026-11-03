@@ -177,6 +177,7 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
         .map(|(_, c)| *c)
 }
 
+mod atoms;
 mod collect;
 mod continuations;
 mod floats;
