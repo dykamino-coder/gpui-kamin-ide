@@ -57,10 +57,11 @@ fn extended_lang_filter(range: &str, tag: &str) -> bool {
     true
 }
 
-/// Выполняется ли ОДИН псевдокласс на узле — для дополнительных
-/// псевдоклассов компаунда (основной решает `matches`, слои — отбор
-/// по имени). Неизвестный или слойный (`:hover`) здесь считается
-/// НЕвыполненным: базовый каскад такое правило не применяет.
+/// Выполняется ли ОДИН псевдокласс на узле: предметный (`matches`) и
+/// дополнительные псевдоклассы компаунда решаются по виду, разобранному
+/// вместе с селектором. Неизвестный или слойный (`:hover`) здесь считается
+/// НЕвыполненным: базовый каскад такое правило не применяет, а `:host` вне
+/// тени «matches nothing» (css-shadow-1 §3.1).
 pub(super) fn pseudo_holds(
     sel: &Selector,
     pseudo: &str,
@@ -68,64 +69,49 @@ pub(super) fn pseudo_holds(
     path: &[Ancestor],
     sibs: Sibs,
 ) -> bool {
-    if let Some(_inner) = pseudo
-        .strip_prefix("not(")
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        return sel
-            .prepared(pseudo)
+    let (prepared, kind) = sel.pseudo_of(pseudo);
+    match kind {
+        PseudoKind::Not => prepared
             .filter(|p| p.single)
             .and_then(|p| p.list.first())
-            .is_some_and(|inner| !matches(inner, me, path, sibs));
+            .is_some_and(|inner| !matches(inner, me, path, sibs)),
+        PseudoKind::Is => list_holds(prepared, me, path, sibs),
+        PseudoKind::Empty => me.empty,
+        // `:visited` — адрес в истории (`link_visited`, с ограничением
+        // `:visited` каскада элемента).
+        PseudoKind::Link => me.href.is_some() && !me.visited,
+        PseudoKind::Visited => me.href.is_some() && me.visited,
+        // Своё направление, иначе ближайшего предка с `dir`; по умолчанию
+        // слева направо (селекторы-4 §direction-pseudo).
+        PseudoKind::Dir(rtl) => {
+            rtl == me
+                .dir
+                .or_else(|| path.iter().rev().find_map(|a| a.dir))
+                .unwrap_or(false)
+        }
+        PseudoKind::TargetCurrent => me.target_current,
+        // Корень документа — `<html>`: не структурный по месту среди соседей.
+        PseudoKind::Root => me.tag == "html",
+        PseudoKind::HasSlotted => has_slotted_holds(sel, pseudo, me),
+        PseudoKind::Lang => pseudo
+            .strip_prefix("lang(")
+            .and_then(|r| r.strip_suffix(')'))
+            .is_some_and(|want| lang_matches(want, me, path)),
+        PseudoKind::Has(id) => me.has_marks.contains(&id),
+        PseudoKind::NthOf(backwards) => {
+            nth_of_holds_prepared(sel, pseudo, prepared, backwards, me, path, sibs)
+        }
+        PseudoKind::Structural(position, of_type) => {
+            structural_at(position, of_type, prepared, me.spot)
+        }
+        PseudoKind::Host | PseudoKind::UserAction | PseudoKind::Other => false,
     }
-    if let Some(ok) = is_holds(sel, pseudo, me, path, sibs) {
-        return ok;
-    }
-    if pseudo == "empty" {
-        return me.empty;
-    }
-    if pseudo == "link" || pseudo == "visited" {
-        return me.href.is_some() && (pseudo == "visited") == me.visited;
-    }
-    if let Some(want) = pseudo
-        .strip_prefix("dir(")
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        let rtl = me
-            .dir
-            .or_else(|| path.iter().rev().find_map(|a| a.dir))
-            .unwrap_or(false);
-        return want.trim().eq_ignore_ascii_case("rtl") == rtl;
-    }
-    if pseudo == "target-current" {
-        return me.target_current;
-    }
-    if pseudo == "root" {
-        return me.tag == "html";
-    }
-    if pseudo.starts_with("has-slotted") {
-        return has_slotted_holds(sel, pseudo, me);
-    }
-    if let Some(want) = pseudo
-        .strip_prefix("lang(")
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        return lang_matches(want, me, path);
-    }
-    if let Some(arg) = pseudo
-        .strip_prefix("has(")
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        return me.has_marks.contains(&has_id(arg));
-    }
-    if let Some(ok) = nth_of_holds(sel, pseudo, me, path, sibs) {
-        return ok;
-    }
-    structural(sel, pseudo, me.spot).unwrap_or(false)
 }
 
-pub(super) fn is_host_pseudo(pseudo: &str) -> bool {
-    pseudo == "host" || pseudo.starts_with("host(")
+/// Хоть один годный селектор списка `:is()`/`:where()` совпадает
+/// (selectors-4 §4.2 «forgiving selector list»).
+fn list_holds(prepared: Option<&Prepared>, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+    prepared.is_some_and(|p| p.list.iter().any(|inner| matches(inner, me, path, sibs)))
 }
 
 /// `:host` / `:host(S)` на безликом хосте: голый совпадает всегда, с
@@ -187,9 +173,8 @@ pub(super) fn has_slotted_holds(sel: &Selector, pseudo: &str, me: &Ancestor) -> 
     })
 }
 
-/// `:is()`/`:where()` (и устаревшие `:matches()`/`:any()`): узел совпадает
-/// хоть с одним ГОДНЫМ селектором списка; негодные части прощаются
-/// (selectors-4 §4.2 «forgiving selector list»). `None` — не этот псевдокласс.
+/// `:is()`/`:where()` (и устаревшие `:matches()`/`:any()`) по виду
+/// псевдокласса. `None` — не этот псевдокласс.
 pub(super) fn is_holds(
     sel: &Selector,
     pseudo: &str,
@@ -197,13 +182,8 @@ pub(super) fn is_holds(
     path: &[Ancestor],
     sibs: Sibs,
 ) -> Option<bool> {
-    let (name, arg) = pseudo.split_once('(')?;
-    if !matches!(name, "is" | "where" | "matches" | "any") {
-        return None;
+    match sel.pseudo_of(pseudo) {
+        (prepared, PseudoKind::Is) => Some(list_holds(prepared, me, path, sibs)),
+        _ => None,
     }
-    let _arg = arg.strip_suffix(')')?;
-    Some(
-        sel.prepared(pseudo)
-            .is_some_and(|p| p.list.iter().any(|inner| matches(inner, me, path, sibs))),
-    )
 }

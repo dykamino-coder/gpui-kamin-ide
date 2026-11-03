@@ -57,19 +57,17 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         },
         None => Sibs::EMPTY,
     };
-    sel.pseudo.iter().chain(sel.also.iter()).all(|p| {
-        if p == "root" {
-            return node.tag == "html";
-        }
-        if p == "empty" {
-            return node.empty;
-        }
-        // Состояние ссылки предка (`a:visited span`): то же, что у предмета.
-        if p == "link" || p == "visited" {
-            return node.href.is_some() && (p == "visited") == node.visited;
-        }
-        is_holds(sel, p, node, &path[..at], sibs).unwrap_or(true)
-    })
+    sel.pseudo
+        .iter()
+        .chain(sel.also.iter())
+        .all(|p| match sel.pseudo_of(p).1 {
+            PseudoKind::Root => node.tag == "html",
+            PseudoKind::Empty => node.empty,
+            // Состояние ссылки предка (`a:visited span`): то же, что у предмета.
+            PseudoKind::Link => node.href.is_some() && !node.visited,
+            PseudoKind::Visited => node.href.is_some() && node.visited,
+            _ => is_holds(sel, p, node, &path[..at], sibs).unwrap_or(true),
+        })
 }
 
 fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
@@ -92,8 +90,8 @@ fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
     // designates an element»), а пропуск делал предка всегда наведённым —
     // правило красило всех потомков. Слой наведения строится только для
     // предметного `:hover` (`dom`, `pseudo == "hover"`).
-    let user_action = |p: &str| matches!(p, "hover" | "active");
-    if sel.pseudo.as_deref().is_some_and(user_action) || sel.also.iter().any(|p| user_action(p)) {
+    let user_action = |p: &String| sel.pseudo_of(p).1 == PseudoKind::UserAction;
+    if sel.pseudo.iter().chain(&sel.also).any(user_action) {
         return false;
     }
     matches_compound(sel, node)
@@ -121,9 +119,9 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // `:has()` НЕ-предметного компаунда (`div:has(.x) p`): отметка лежит
     // на самом узле - раньше псевдокласс здесь пропускался, и правило
     // красило все `div p` подряд.
-    if let Some(p) = &sel.pseudo
-        && let Some(arg) = p.strip_prefix("has(").and_then(|r| r.strip_suffix(')'))
-        && !node.has_marks.contains(&has_id(arg))
+    let pseudo = sel.pseudo.as_deref().map(|p| sel.pseudo_of(p));
+    if let Some((_, PseudoKind::Has(id))) = pseudo
+        && !node.has_marks.contains(&id)
     {
         return false;
     }
@@ -134,10 +132,8 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // (logical-physical-mapping-001). Нестуктурные (`:hover`) здесь
     // по-прежнему пропускаются, of-форма — тоже: её решает предметный
     // путь по списку братьев, а по одному `spot` она не считается.
-    if let Some(p) = &sel.pseudo
-        && !nth_of_form(sel, p)
-        && let Some(ok) = structural(sel, p, node.spot)
-        && !ok
+    if let Some((prepared, PseudoKind::Structural(position, of_type))) = pseudo
+        && !structural_at(position, of_type, prepared, node.spot)
     {
         return false;
     }

@@ -12,11 +12,20 @@ pub struct Prepared {
     pub anb: Option<AnB>,
     pub single: bool,
     pub specificity: (u32, u32, u32),
+    /// What matching evaluates, decided here once.
+    pub kind: PseudoKind,
 }
 
 impl Selector {
     pub fn prepared(&self, raw: &str) -> Option<&Prepared> {
         self.arguments.iter().find(|p| p.raw == raw).map(Rc::as_ref)
+    }
+
+    /// Prepared argument and kind of the pseudo-class text `raw` of this selector.
+    pub fn pseudo_of(&self, raw: &str) -> (Option<&Prepared>, PseudoKind) {
+        let prepared = self.prepared(raw);
+        let kind = prepared.map_or_else(|| PseudoKind::of(raw, false), |p| p.kind);
+        (prepared, kind)
     }
 
     pub(super) fn prepare_arguments(&mut self) {
@@ -96,7 +105,9 @@ impl Selector {
                 let nth_cacheable = !["link", "visited", "target", "host", "slotted"]
                     .iter()
                     .any(|name| lower.contains(name));
+                let kind = PseudoKind::of(raw, nth.is_some());
                 Rc::new(Prepared {
+                    kind,
                     raw: raw.clone(),
                     nth_cacheable,
                     list,
