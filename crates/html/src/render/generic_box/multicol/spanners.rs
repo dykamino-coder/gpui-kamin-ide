@@ -9,7 +9,9 @@ mod probe;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::multicol::measure::{SpannerRow, row_plan_in, tail_rest_height};
-use crate::layout::multicol::spanner::{SpannerFlow, SpannerPass, hoist_spanners, spanner_box};
+use crate::layout::multicol::spanner::{
+    RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners, spanner_box,
+};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
@@ -27,6 +29,7 @@ pub(super) fn deferred(
     opts.cx.position.state = opts.cx.position.state.retain().resume();
     let (e, merged, inherited) = (e.clone(), merged.clone(), inherited.clone());
     let (intrinsic_e, intrinsic_style, intrinsic_opts) = (e.clone(), merged.clone(), opts.clone());
+    let row_measures = Rc::new(RowMeasures::default());
     SpannerFlow::deferred(
         move |available, pass, window, cx| {
             let AvailableSpace::Definite(width) = available.width else {
@@ -179,6 +182,13 @@ pub(super) fn deferred(
             };
             final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
             final_opts.cx.position.row_geometry = row_geometry;
+            final_opts.cx.fragmentation.spanner_rows = RowSlot::build(
+                &row_measures,
+                e.node_id,
+                (width.to_bits(), height.map(f32::to_bits)),
+                pass == SpannerPass::Measure,
+                final_opts.frag.watch.is_some(),
+            );
             build(
                 &host,
                 style,
