@@ -9908,16 +9908,18 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e2146cba7e6
+index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a9414f78a
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
-@@ -2,0 +3,5 @@
+@@ -2,0 +3,7 @@
 +
 +mod record;
 +mod vector_transform;
 +pub(crate) mod affine_transform;
 +pub(crate) mod segments;
-@@ -38,0 +44,58 @@
++#[cfg(test)]
++mod replay_tests;
+@@ -38,0 +46,58 @@
 +/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 +/// step, leaving room below each level for per-primitive bottom-layer orders
 +/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
@@ -9976,9 +9978,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    pub fragments: Vec<Vec<Point<ScaledPixels>>>,
 +}
 +
-@@ -41,0 +105 @@
+@@ -41,0 +107 @@
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
-@@ -43 +107,14 @@
+@@ -43 +109,14 @@
 -    primitive_bounds: BoundsTree<ScaledPixels>,
 +    /// KaminIDE patch: группы, нарисованные в отдельные буферы.
 +    ///
@@ -9994,10 +9996,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    /// tree indexing each, with the offset of the ops' orders above it, so a
 +    /// later frame replaying the same range grafts it again.
 +    blocks: Vec<ReplayedBlock>,
-@@ -44,0 +122,2 @@
+@@ -44,0 +124,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +132,45 @@
+@@ -52,0 +134,45 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -10043,7 +10045,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +181,140 @@
+@@ -56,0 +183,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -10184,9 +10186,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +        }
 +    }
 +
-@@ -57,0 +322 @@
+@@ -57,0 +324 @@
 +        self.segment_capture = None;
-@@ -59 +324,6 @@
+@@ -59 +326,6 @@
 -        self.primitive_bounds.clear();
 +        self.groups.clear();
 +        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
@@ -10194,20 +10196,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +331 @@
+@@ -60,0 +333 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +340,4 @@
+@@ -68,0 +342,4 @@
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
 +        self.ink.clear();
 +        self.ink_allowed = (0, 0);
-@@ -76 +351 @@
+@@ -76 +353 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -79 +354 @@
+@@ -79 +356 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +362,15 @@
+@@ -86,0 +364,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -10223,7 +10225,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -89,3 +379,6 @@
+@@ -89,3 +381,6 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -10233,7 +10235,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +            sink.add(placed_bounds);
 +        }
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +390,10 @@
+@@ -97,5 +392,10 @@
 -        let order = self
 -            .layer_stack
 -            .last()
@@ -10249,7 +10251,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +            Some(o) => o,
 +            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +435,16 @@
+@@ -136,0 +437,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -10266,7 +10268,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +453,15 @@
+@@ -139,2 +455,15 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -10284,7 +10286,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +469,30 @@
+@@ -142 +471,72 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        let source = prev_scene
@@ -10292,7 +10294,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +            .iter()
 +            .find(|block| block.ops == range)
 +            .map(|block| (block.tree.clone(), block.order));
-+        if !self.replay_shifted(operations, source) {
++        if !self.replay_shifted(operations, source, |_| true) {
 +            for operation in operations {
 +                self.replay_operation(operation.clone());
 +            }
@@ -10303,11 +10305,53 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    /// (a paint record or its copy) into this one, grafting its tree.
 +    pub(crate) fn replay_record(&mut self, scene: &Scene) {
 +        let source = Some((scene.primitive_bounds.clone(), 0));
-+        if !self.replay_shifted(&scene.paint_operations, source) {
++        if !self.replay_shifted(&scene.paint_operations, source, |_| true) {
 +            for operation in &scene.paint_operations {
 +                self.replay_operation(operation.clone());
 +            }
 +        }
++    }
++
++    /// KaminIDE patch: `replay_record` of `scene.copy_record(offset, clip)`
++    /// without the intermediate copy: every command is placed (moved by
++    /// `offset`, clipped by `clip`; primitives clipped away are dropped as
++    /// `copy_grafted` drops them) and appended here in one pass, and the
++    /// record's tree is grafted through the same offset and clip. The orders
++    /// and the index are those of the two-step path (a graft of a graft
++    /// collapses into one), and the copy's `finish` sort is not observable,
++    /// since this scene sorts at its own `finish`. `false` (nothing written)
++    /// when the record has paint groups or hoisted backdrops, which need the
++    /// intermediate scene for `Window::adopt_scene`, or when the commands or
++    /// this scene's open state need the per-primitive replay.
++    pub(crate) fn replay_placed(
++        &mut self,
++        scene: &Scene,
++        offset: Point<ScaledPixels>,
++        clip: Option<Bounds<ScaledPixels>>,
++    ) -> bool {
++        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
++            return false;
++        }
++        let mut copy = BoundsTree::default();
++        if let Some(graft) =
++            crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0)
++        {
++            copy.insert_graft(graft);
++        }
++        let source = Some((std::rc::Rc::new(copy), 0));
++        self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
++            PaintOperation::Primitive(primitive) => {
++                record::geometry::primitive(primitive, offset, clip);
++                !placed_bounds(primitive)
++                    .intersect(&primitive.content_mask().bounds)
++                    .is_empty()
++            }
++            PaintOperation::StartLayer(bounds, _) => {
++                *bounds = record::geometry::bounds(*bounds, offset);
++                true
++            }
++            _ => true,
++        })
 +    }
 +
 +    /// KaminIDE patch: whether every order in `operations` comes from the
@@ -10316,7 +10360,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +500,175 @@
+@@ -144,4 +544,179 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -10376,6 +10420,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +        &mut self,
 +        operations: &[PaintOperation],
 +        source: Option<(std::rc::Rc<BoundsTree<ScaledPixels>>, DrawOrder)>,
++        mut place: impl FnMut(&mut PaintOperation) -> bool,
 +    ) -> bool {
 +        if !self.layer_stack.is_empty()
 +            || !self.depth.contexts.is_empty()
@@ -10404,6 +10449,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +        self.paint_operations.reserve(operations.len());
 +        for operation in operations {
 +            let mut operation = operation.clone();
++            if !place(&mut operation) {
++                continue;
++            }
 +            match &mut operation {
 +                PaintOperation::Primitive(primitive) => {
 +                    if !self.ink.is_empty() {
@@ -10496,7 +10544,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +721,92 @@
+@@ -193,0 +769,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -10589,20 +10637,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +        }
 +}
 +
-@@ -213,0 +833 @@
+@@ -213,0 +881 @@
 +#[derive(Clone)]
-@@ -216 +836,4 @@
+@@ -216 +884,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +841,4 @@
+@@ -217,0 +889,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +887,35 @@
+@@ -259,0 +935,35 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -10638,7 +10686,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    ops: Range<usize>,
 +    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
 +    order: DrawOrder,
-@@ -543,0 +1206,10 @@
+@@ -543,0 +1254,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -10649,19 +10697,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1253,5 @@
+@@ -580,0 +1301,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1280,5 @@
+@@ -602,0 +1328,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1332,12 @@
+@@ -649,0 +1380,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -10674,10 +10722,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1445 @@
+@@ -751 +1493 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1452,54 @@
+@@ -757,0 +1500,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -10732,7 +10780,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1522,23 @@
+@@ -773,0 +1570,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -10756,12 +10804,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e21
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1567,2 @@
+@@ -795,0 +1615,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1589 @@
+@@ -815,0 +1637 @@
 +            color_mapping: None,
-@@ -835,0 +1610,6 @@
+@@ -835,0 +1658,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -11038,6 +11086,137 @@ index 0000000000000000000000000000000000000000..6d2ea81a9a139481107fc909826a19d7
 +    [a, b, c - a * x - b * y,
 +     d, e, f - d * x - e * y,
 +     m[6], m[7], m[8] - m[6] * x - m[7] * y]
++}
+diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..59e90daacd8223404bb05f178a37897dec7adbf9
+--- /dev/null
++++ b/vendor/gpui/src/scene/replay_tests.rs
+@@ -0,0 +1,125 @@
++//! KaminIDE patch: the one-pass placed replay equals copy + replay.
++
++use super::*;
++
++fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
++    let bounds = Bounds {
++        origin: point(ScaledPixels(x), ScaledPixels(y)),
++        size: Size { width: ScaledPixels(w), height: ScaledPixels(h) },
++    };
++    Quad {
++        bounds,
++        content_mask: ContentMask { bounds },
++        transformation: TransformationMatrix::unit(),
++        ..Default::default()
++    }
++}
++
++fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
++    quad(x, y, w, h).bounds
++}
++
++/// A finished record: overlapping quads, a layer, one quad that the
++/// output clip removes.
++fn record() -> Scene {
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(0., 0., 40., 40.));
++    scene.insert_primitive(quad(10., 10., 40., 40.));
++    scene.push_layer(rect(0., 50., 30., 30.));
++    scene.insert_primitive(quad(0., 50., 30., 30.));
++    scene.insert_primitive(quad(5., 55., 10., 10.));
++    scene.pop_layer();
++    scene.insert_primitive(quad(200., 0., 10., 10.));
++    scene.insert_primitive(quad(20., 20., 5., 5.));
++    scene.finish();
++    scene
++}
++
++/// The destination already holds content under part of the copy.
++fn destination() -> Scene {
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(100., 100., 30., 30.));
++    scene.insert_primitive(quad(110., 110., 30., 30.));
++    scene
++}
++
++fn summary(scene: &Scene) -> Vec<String> {
++    scene
++        .paint_operations
++        .iter()
++        .map(|operation| match operation {
++            PaintOperation::Primitive(Primitive::Quad(q)) => format!(
++                "quad {} {:?} {:?} {:?}",
++                q.order, q.bounds, q.content_mask.bounds, q.transformation.translation
++            ),
++            PaintOperation::StartLayer(bounds, order) => format!("layer {order} {bounds:?}"),
++            PaintOperation::EndLayer => "end".into(),
++            _ => "other".into(),
++        })
++        .collect()
++}
++
++fn quads(scene: &Scene) -> Vec<(DrawOrder, [f32; 2])> {
++    scene.quads.iter().map(|q| (q.order, q.transformation.translation)).collect()
++}
++
++#[test]
++fn placed_replay_matches_copy_then_replay() {
++    let offset = point(ScaledPixels(100.), ScaledPixels(100.));
++    let clip = Some(rect(90., 90., 150., 150.));
++    let record = record();
++
++    let mut two_step = destination();
++    two_step.replay_record(&record.copy_record(offset, clip));
++    let mut fused = destination();
++    assert!(fused.replay_placed(&record, offset, clip));
++
++    assert_eq!(summary(&fused), summary(&two_step));
++    // The quad at x=200 is moved to 300, outside the clip, and dropped.
++    assert_eq!(fused.paint_operations.len(), destination().paint_operations.len() + 7);
++    // Later inserts see the copy exactly as they see the two-step copy.
++    for probe in [quad(115., 115., 2., 2.), quad(105., 155., 3., 3.), quad(300., 100., 5., 5.)] {
++        fused.insert_primitive(probe);
++        two_step.insert_primitive(probe);
++    }
++    assert_eq!(summary(&fused), summary(&two_step));
++    fused.finish();
++    two_step.finish();
++    assert_eq!(quads(&fused), quads(&two_step));
++}
++
++#[test]
++fn placed_replay_of_a_fully_clipped_record_writes_only_kept_commands() {
++    let record = record();
++    let clip = Some(rect(1000., 1000., 10., 10.));
++    let mut two_step = destination();
++    two_step.replay_record(&record.copy_record(Point::default(), clip));
++    let mut fused = destination();
++    assert!(fused.replay_placed(&record, Point::default(), clip));
++    assert_eq!(summary(&fused), summary(&two_step));
++}
++
++#[test]
++fn placed_replay_declines_records_with_groups_and_open_layers() {
++    let mut grouped = record();
++    grouped.groups.push(PaintGroup {
++        scene: Scene::default(),
++        bounds: rect(0., 0., 1., 1.),
++        blur_radius: 0.,
++        blend: 0,
++        polygon: Vec::new(),
++        polygon_inverse: false,
++        mask: None,
++        mask_bounds: rect(0., 0., 1., 1.),
++        mask_once: 0,
++        mask_clip: None,
++        projection: None,
++        fragments: Vec::new(),
++    });
++    let mut scene = destination();
++    let before = scene.paint_operations.len();
++    assert!(!scene.replay_placed(&grouped, Point::default(), None));
++    scene.push_layer(rect(0., 0., 10., 10.));
++    assert!(!scene.replay_placed(&record(), Point::default(), None));
++    assert_eq!(scene.paint_operations.len(), before + 1);
 +}
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644
@@ -20568,10 +20747,10 @@ index 0000000000000000000000000000000000000000..6a1794918b3be567d1fad54d7a61bb09
 +or unwind; an abort invalidates the draw rather than granting replay rights.
 diff --git a/vendor/gpui/src/window/paint_record/invocation.rs b/vendor/gpui/src/window/paint_record/invocation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1995455421700d4c08981f5975ac4e611acfd476
+index 0000000000000000000000000000000000000000..9170cd6c3465aa2bfbe7b36c41fa043d9b63e98b
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/invocation.rs
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,118 @@
 +//! Запись один раз и атомарный вызов плана в свежей композиционной области.
 +
 +use super::*;
@@ -20656,9 +20835,11 @@ index 0000000000000000000000000000000000000000..1995455421700d4c08981f5975ac4e61
 +        };
 +        // No destination writes occur until the complete invocation has succeeded.
 +        paint_scope::Identity::capture(self).check_pass(self)?;
-+        let scene = scene.copy_record(scaled, Some(clip));
-+        let scene = self.adopt_scene(scene);
-+        self.next_frame.scene.replay_record(&scene);
++        if !self.next_frame.scene.replay_placed(&scene, scaled, Some(clip)) {
++            let scene = scene.copy_record(scaled, Some(clip));
++            let scene = self.adopt_scene(scene);
++            self.next_frame.scene.replay_record(&scene);
++        }
 +        Ok(invocation)
 +    }
 +
@@ -20770,10 +20951,10 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +}
 diff --git a/vendor/gpui/src/window/paint_record/plan.rs b/vendor/gpui/src/window/paint_record/plan.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ee34a81a061fc813bf44a4e7fa2af049c6118c2f
+index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47efc8aa2d
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/plan.rs
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,185 @@
 +//! Плоское неизменяемое дерево команд и переоткрываемых механических scopes.
 +
 +use super::*;
@@ -20900,6 +21081,11 @@ index 0000000000000000000000000000000000000000..ee34a81a061fc813bf44a4e7fa2af049
 +            match command {
 +                Command::Record(record) => {
 +                    let mask = window.content_mask().scale(window.scale_factor());
++                    if presentation.is_none()
++                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
++                    {
++                        continue;
++                    }
 +                    let scene = match presentation {
 +                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
 +                            .copy_record(Point::default(), Some(mask.bounds)),

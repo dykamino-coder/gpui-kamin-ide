@@ -5,6 +5,8 @@ mod record;
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
+#[cfg(test)]
+mod replay_tests;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -472,7 +474,7 @@ impl Scene {
             .iter()
             .find(|block| block.ops == range)
             .map(|block| (block.tree.clone(), block.order));
-        if !self.replay_shifted(operations, source) {
+        if !self.replay_shifted(operations, source, |_| true) {
             for operation in operations {
                 self.replay_operation(operation.clone());
             }
@@ -483,11 +485,53 @@ impl Scene {
     /// (a paint record or its copy) into this one, grafting its tree.
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
         let source = Some((scene.primitive_bounds.clone(), 0));
-        if !self.replay_shifted(&scene.paint_operations, source) {
+        if !self.replay_shifted(&scene.paint_operations, source, |_| true) {
             for operation in &scene.paint_operations {
                 self.replay_operation(operation.clone());
             }
         }
+    }
+
+    /// KaminIDE patch: `replay_record` of `scene.copy_record(offset, clip)`
+    /// without the intermediate copy: every command is placed (moved by
+    /// `offset`, clipped by `clip`; primitives clipped away are dropped as
+    /// `copy_grafted` drops them) and appended here in one pass, and the
+    /// record's tree is grafted through the same offset and clip. The orders
+    /// and the index are those of the two-step path (a graft of a graft
+    /// collapses into one), and the copy's `finish` sort is not observable,
+    /// since this scene sorts at its own `finish`. `false` (nothing written)
+    /// when the record has paint groups or hoisted backdrops, which need the
+    /// intermediate scene for `Window::adopt_scene`, or when the commands or
+    /// this scene's open state need the per-primitive replay.
+    pub(crate) fn replay_placed(
+        &mut self,
+        scene: &Scene,
+        offset: Point<ScaledPixels>,
+        clip: Option<Bounds<ScaledPixels>>,
+    ) -> bool {
+        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
+            return false;
+        }
+        let mut copy = BoundsTree::default();
+        if let Some(graft) =
+            crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0)
+        {
+            copy.insert_graft(graft);
+        }
+        let source = Some((std::rc::Rc::new(copy), 0));
+        self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
+            PaintOperation::Primitive(primitive) => {
+                record::geometry::primitive(primitive, offset, clip);
+                !placed_bounds(primitive)
+                    .intersect(&primitive.content_mask().bounds)
+                    .is_empty()
+            }
+            PaintOperation::StartLayer(bounds, _) => {
+                *bounds = record::geometry::bounds(*bounds, offset);
+                true
+            }
+            _ => true,
+        })
     }
 
     /// KaminIDE patch: whether every order in `operations` comes from the
@@ -552,6 +596,7 @@ impl Scene {
         &mut self,
         operations: &[PaintOperation],
         source: Option<(std::rc::Rc<BoundsTree<ScaledPixels>>, DrawOrder)>,
+        mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
         if !self.layer_stack.is_empty()
             || !self.depth.contexts.is_empty()
@@ -580,6 +625,9 @@ impl Scene {
         self.paint_operations.reserve(operations.len());
         for operation in operations {
             let mut operation = operation.clone();
+            if !place(&mut operation) {
+                continue;
+            }
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
                     if !self.ink.is_empty() {

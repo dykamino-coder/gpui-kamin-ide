@@ -82,9 +82,11 @@ impl Window {
         };
         // No destination writes occur until the complete invocation has succeeded.
         paint_scope::Identity::capture(self).check_pass(self)?;
-        let scene = scene.copy_record(scaled, Some(clip));
-        let scene = self.adopt_scene(scene);
-        self.next_frame.scene.replay_record(&scene);
+        if !self.next_frame.scene.replay_placed(&scene, scaled, Some(clip)) {
+            let scene = scene.copy_record(scaled, Some(clip));
+            let scene = self.adopt_scene(scene);
+            self.next_frame.scene.replay_record(&scene);
+        }
         Ok(invocation)
     }
 

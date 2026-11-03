@@ -124,6 +124,11 @@ impl PaintPlan {
             match command {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
+                    if presentation.is_none()
+                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
+                    {
+                        continue;
+                    }
                     let scene = match presentation {
                         Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
                             .copy_record(Point::default(), Some(mask.bounds)),
