@@ -215,27 +215,8 @@ fn cacheable(
     (bytes <= 65536).then_some(bytes)
 }
 
-/// Простые цветовые функции чистые; неизвестная функция сохраняет обычный путь.
-fn pure_value(value: &str) -> bool {
-    if value.contains('\\') {
-        return false;
-    }
-    for (at, _) in value.match_indices('(') {
-        let name = value[..at]
-            .rsplit(|c: char| !c.is_ascii_alphabetic())
-            .next()
-            .unwrap_or("");
-        if ![
-            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
-        ]
-        .iter()
-        .any(|pure| name.eq_ignore_ascii_case(pure))
-        {
-            return false;
-        }
-    }
-    true
-}
+mod pure;
+use pure::pure_value;
 
 #[cfg(test)]
 mod tests;
