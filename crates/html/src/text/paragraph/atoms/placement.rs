@@ -170,7 +170,7 @@ impl Paragraph {
                 .find(|(r, _)| *r == (at..at + len))
             {
                 span.1 = px((w - start_oh - end_oh).max(0.0));
-                self.prepared.take();
+                self.invalidate_prepared();
             }
         }
         self.prepare_atom_fit(window, cx);

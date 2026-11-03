@@ -5,7 +5,7 @@ use super::lines::{LineSink, with_sink};
 use super::width::{Width, reusable_range};
 use super::{Counters, FlowKey, Record, Replay, placed, scaled};
 use crate::dom::Element;
-use crate::hooks::Wrap;
+use crate::hooks::{DeferredPaint, Wrap};
 use gpui::{
     AnyElement, App, Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, RetainedPaint,
     RetainedPrepaint, ScaledPixels, Window, point, px, size,
@@ -39,7 +39,7 @@ pub(super) struct Pending {
     lines: Rc<LineSink>,
     /// Вывод prepaint и краски этого кадра и маска краски.
     prepaint: RefCell<Option<RetainedPrepaint>>,
-    paint: RefCell<Option<(RetainedPaint, Bounds<Pixels>)>>,
+    paint: RefCell<Option<(RetainedPaint, Rc<DeferredPaint>, Bounds<Pixels>)>>,
 }
 
 impl Pending {
@@ -97,10 +97,13 @@ impl Pending {
         });
         let far = far(ink, origin, screen);
         let replay = match (self.prepaint.take(), self.paint.take()) {
-            (Some(prepaint), Some((paint, at))) if at == mask && paint.replayable() => {
+            (Some(prepaint), Some((paint, deferred, at)))
+                if at == mask && paint.replayable() && deferred.complete() =>
+            {
                 Some(Replay {
                     prepaint,
                     paint,
+                    deferred,
                     origin,
                     mask,
                     epoch,
@@ -189,7 +192,7 @@ impl Wrap for Recorder {
             && window.element_offset() == point(px(0.0), px(0.0));
         let lines = self.pending.lines.clone();
         let (_, range) = window.record_retained_prepaint(|window| {
-            let _ = with_sink(lines, || self.child.prepaint(window, cx));
+            with_sink(lines, window, |window| self.child.prepaint(window, cx));
         });
         let hits = range
             .quiet(window)
@@ -216,10 +219,13 @@ impl Wrap for Recorder {
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let sink = self.pending.sink.clone();
         let mask = window.content_mask().bounds;
-        let (_, paint) = window.with_ink_sink(sink, |window| {
-            window.record_retained_paint(|window| self.child.paint(window, cx))
+        // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
+        let ((_, paint), deferred) = crate::hooks::paint_capturing(window, |window| {
+            window.with_ink_sink(sink, |window| {
+                window.record_retained_paint(|window| self.child.paint(window, cx))
+            })
         });
-        self.pending.paint.replace(Some((paint, mask)));
+        self.pending.paint.replace(Some((paint, deferred, mask)));
         self.pending.painted.set(true);
     }
 }

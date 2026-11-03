@@ -1,6 +1,7 @@
 //! Один CSS paint pass: Appendix E, atomic export и непрозрачные границы.
 //! GPUI хранит только окружение и вызывает обход внутри прежних scopes.
 
+mod capture;
 mod children;
 mod collector;
 mod deferred;
@@ -10,6 +11,7 @@ mod root;
 pub(crate) mod segments;
 mod state;
 
+pub(crate) use capture::{Deferred, capture, replay};
 pub(crate) use children::{atomic, box_policy};
 pub(crate) use collector::PaintCollect;
 pub(crate) use deferred::{PaintInline, PaintLast, REPLAY};

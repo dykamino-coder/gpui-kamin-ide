@@ -68,6 +68,7 @@ impl Paragraph {
         }
         self.lines = self.split(Some(limit), window);
         crate::layout::reuse::lines::report(
+            window,
             f32::from(bounds.size.width),
             self.vertical,
             self.lines.iter().map(|l| f32::from(l.width + l.indent)),

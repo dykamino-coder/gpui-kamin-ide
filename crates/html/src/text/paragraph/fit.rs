@@ -14,14 +14,14 @@ impl Paragraph {
     /// through, never past `line_start`: `東&#x2066;京` keeps the opportunity
     /// before `京` (`text-align-justify-bidi-control`).
     pub(crate) fn justify_boundary(&self, line_start: usize, at: usize) -> bool {
-        self.prepared().opportunities.boundary(line_start, at)
+        self.justification().boundary(line_start, at)
     }
 
     /// Justification opportunities of the line `range` before `pos`: word
     /// separators left of it plus character boundaries up to and including
     /// `pos` (a piece starting at a boundary takes its expansion).
     pub(crate) fn justify_opps(&self, range: &std::ops::Range<usize>, pos: usize) -> usize {
-        self.prepared().opportunities.count(range, pos)
+        self.justification().count(range, pos)
     }
 
     /// Подобрать кегль так, чтобы строки заполнили коробку (css-text-5).

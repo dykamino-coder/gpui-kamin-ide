@@ -39,7 +39,12 @@ pub(super) struct Prepared {
     pub(super) measure_key: OnceCell<u64>,
     pub(super) split_key: OnceCell<u64>,
     pub(super) joined: OnceCell<bool>,
-    pub(super) opportunities: justification::Opportunities,
+    /// Justification opportunities: only justified lines and text-fit read
+    /// them, so other paragraphs never scan their graphemes.
+    justification: OnceCell<justification::Opportunities>,
+    /// Soft and forced break opportunities, without and with the
+    /// hyphenation fallback (`opportunities_with_fallback`).
+    pub(super) stops: [OnceCell<std::rc::Rc<[u32]>>; 2],
     // Уровни UAX9 нужны только абзацам с переупорядочиванием: место под
     // них занимает лишь разрешённый вариант.
     bidi: OnceCell<Box<ResolvedBidi>>,
@@ -81,7 +86,8 @@ impl Prepared {
         box_edges.sort_unstable();
         box_edges.dedup();
         Self {
-            opportunities: justification::Opportunities::new(p),
+            justification: OnceCell::new(),
+            stops: Default::default(),
             run_edges: Self::run_edges(p, &run_ends),
             box_index: boxes::Boxes::new(p),
             has_bands: p.runs.iter().any(|r| r.background_color.is_some()),
@@ -144,13 +150,47 @@ impl Prepared {
     }
 }
 
+/// The paragraph's preparation and the hash of its text. The text never
+/// changes after construction, so its hash outlives every invalidation and
+/// content keys (`measure_key`, break opportunities) hash 8 bytes instead of
+/// the whole text again after each phase.
+#[derive(Default)]
+pub(crate) struct Slot {
+    prepared: OnceCell<Box<Prepared>>,
+    text_hash: OnceCell<u64>,
+}
+
+impl Slot {
+    /// A copy of a paragraph's text (layout probe) takes its known hash.
+    pub(crate) fn seed_text_hash(&self, hash: u64) {
+        let _ = self.text_hash.set(hash);
+    }
+}
+
 impl Paragraph {
     pub(super) fn prepared(&self) -> &Prepared {
-        self.prepared.get_or_init(|| Box::new(Prepared::new(self)))
+        self.prepared
+            .prepared
+            .get_or_init(|| Box::new(Prepared::new(self)))
     }
 
     pub(super) fn invalidate_prepared(&mut self) {
-        self.prepared.take();
+        self.prepared.prepared.take();
+    }
+
+    pub(super) fn text_hash(&self) -> u64 {
+        *self.prepared.text_hash.get_or_init(|| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            self.text.hash(&mut h);
+            h.finish()
+        })
+    }
+
+    pub(super) fn justification(&self) -> &justification::Opportunities {
+        self.prepared()
+            .justification
+            .get_or_init(|| justification::Opportunities::new(self))
     }
 
     pub(super) fn run_indices(&self, range: &Range<usize>) -> Range<usize> {

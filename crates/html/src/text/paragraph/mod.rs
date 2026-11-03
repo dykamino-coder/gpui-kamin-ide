@@ -149,12 +149,12 @@ mod tests {
     #[test]
     fn spacer_keeps_the_break_before_it() {
         let text = "aaa \u{feff}bbb";
-        let mut para = para(text, Wrap::default());
+        let para = para(text, Wrap::default());
         assert!(
             !para.opportunities().iter().any(|s| s.at == 4),
             "пока распорка не объявлена, разрыв по пробелу запрещён"
         );
-        para.spacers = vec![4];
+        let para = para.spacers(vec![4]);
         let stops: Vec<usize> = para.opportunities().iter().map(|s| s.at).collect();
         // Разрыв встаёт НА распорку: поле коробки уходит на новую строку
         // вместе со своим текстом.

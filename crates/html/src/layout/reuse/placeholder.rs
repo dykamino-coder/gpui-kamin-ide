@@ -1,11 +1,34 @@
 //! Заместитель пропущенного блока: точный лист раскладки, а краска либо
 //! пропущена (блок вне экрана), либо повторена из прошлого кадра.
 
-use super::{Record, Replay};
-use crate::hooks::Hooks;
-use gpui::{App, Bounds, LayoutId, Pixels, Window};
+use super::Record;
+use crate::hooks::{DeferredPaint, Hooks};
+use gpui::{
+    App, Bounds, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint, ScaledPixels, Window,
+};
 use std::cell::Cell;
 use std::rc::Rc;
+
+/// Вывод блока в кадре `epoch`, который можно повторить в следующем кадре,
+/// если блок стоит на том же месте под той же маской (`FlowReuse::validate`):
+/// краска GPUI несёт координаты окна и маску. Так повторяется и видимый блок.
+#[derive(Clone)]
+pub(crate) struct Replay {
+    pub(super) prepaint: RetainedPrepaint,
+    pub(super) paint: RetainedPaint,
+    /// Краска блока, отложенная за его вывод: строки (`paint::coordinator`).
+    pub(super) deferred: Rc<DeferredPaint>,
+    pub(super) origin: Point<ScaledPixels>,
+    pub(super) mask: Bounds<Pixels>,
+    pub(super) epoch: u64,
+}
+
+impl Replay {
+    /// Вывод записан в кадре перед `epoch` и весь нарисован в нём.
+    pub(super) fn follows(&self, epoch: u64) -> bool {
+        self.epoch + 1 == epoch && self.deferred.complete()
+    }
+}
 
 /// Место заместителя в кадре: его лист и запись, которую он повторяет.
 pub(super) struct Slot {
@@ -120,17 +143,22 @@ impl Hooks for Placeholder {
         let Some(epoch) = self.slot.replay.get() else {
             return;
         };
-        let paint = self
+        let replay = self
             .slot
             .record
             .replay
             .borrow()
             .as_ref()
-            .map(|r| r.paint.clone());
-        if let Some(paint) = paint {
-            let paint = window.replay_retained_paint(&paint);
+            .map(|r| (r.paint.clone(), r.deferred.clone()));
+        if let Some((paint, deferred)) = replay {
+            // Строки вне открытого кадра рисуются на месте: в выводе блока.
+            let (deferred, paint) = window.record_retained_paint(|window| {
+                window.replay_retained_paint(&paint);
+                crate::hooks::replay_deferred(window, &deferred)
+            });
             self.update(|r| {
                 r.paint = paint;
+                r.deferred = deferred;
                 r.epoch = epoch;
             });
         }

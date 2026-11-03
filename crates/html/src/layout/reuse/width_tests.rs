@@ -1,3 +1,5 @@
+//! Зависимость раскладки блока от ширины потока (`width::independent`).
+
 use super::*;
 use crate::dom::Marks;
 use crate::style::computed::Computed;

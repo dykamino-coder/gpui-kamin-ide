@@ -35,18 +35,12 @@ const TAGS: &[&str] = &[
     "nav",
     "aside",
     "blockquote",
-    // Таблица раскладывается внутри своей коробки (CSS 2.1 §17.4): её
-    // ячейки — обычный поток, а сетка — только геометрия.
-    "table",
-    "caption",
-    "colgroup",
-    "col",
-    "thead",
-    "tbody",
-    "tfoot",
-    "tr",
-    "td",
-    "th",
+];
+
+/// Таблица раскладывается внутри своей коробки (CSS 2.1 §17.4): её ячейки —
+/// обычный поток, а сетка — только геометрия.
+const TABLE: &[&str] = &[
+    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
 ];
 
 /// Каждый элемент поддерева `e` инертен (см. модуль).
@@ -54,7 +48,8 @@ pub(super) fn plain(e: &Element) -> bool {
     let mut pending = vec![e];
     while let Some(e) = pending.pop() {
         let style = e.style.used();
-        let own = TAGS.contains(&e.tag.as_str())
+        let tag = e.tag.as_str();
+        let own = (TAGS.contains(&tag) || TABLE.contains(&tag))
             && e.hover.is_none()
             && e.anim.is_none()
             && e.first_letter.is_none()
@@ -127,4 +122,23 @@ mod tests {
         floated.style.used_mut().reset_box_layout.float = Some(1);
         assert!(floats(&el("div", vec![Node::Element(floated)])));
     }
+}
+
+/// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
+/// строк крайних детей потока: блочная коробка без псевдоэлементов первой
+/// строки и буквы, без обрезки текстовых краёв (css-inline-3 §5) и без
+/// обрезки содержимого, под которой повтор краски был бы под другой маской.
+pub(super) fn edges_free(e: Option<&Element>) -> bool {
+    use crate::style::computed::{Display, Overflow};
+    let Some(e) = e else { return true };
+    let style = e.style.used();
+    let b = &style.reset_box_layout;
+    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+    e.first_line.is_none()
+        && e.first_letter.is_none()
+        && matches!(b.display, None | Some(Display::Block))
+        && visible(b.overflow_x)
+        && visible(b.overflow_y)
+        && !style.reset_text_box.text_box_trim_start
+        && !style.reset_text_box.text_box_trim_end
 }

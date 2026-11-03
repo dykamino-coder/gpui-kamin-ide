@@ -2,7 +2,8 @@
 //! которого каждый абзац уложился в одну строку, раскладывается так же в
 //! любом потоке, где эти строки не короче места (`width::Width::Stretch`).
 
-use std::cell::{Cell, RefCell};
+use gpui::Window;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Строки абзацев одного записываемого блока.
@@ -32,39 +33,51 @@ impl LineSink {
     pub(super) fn slack(&self) -> Option<f32> {
         (!self.broken.get() && self.paragraphs.get() == 1).then(|| self.slack.get())
     }
+
+    /// Абзац ширины `width` из одной строки `one` (`None` — иначе).
+    fn note(&self, width: f32, one: Option<f32>) {
+        self.paragraphs.set(self.paragraphs.get() + 1);
+        match one {
+            Some(line) => self.slack.set(self.slack.get().min(width - line)),
+            None => self.broken.set(true),
+        }
+    }
 }
 
-thread_local! {
-    static OPEN: RefCell<Vec<Rc<LineSink>>> = const { RefCell::new(Vec::new()) };
+/// Открытые приёмники prepaint: внутренний и внешние записи.
+struct Open {
+    sink: Rc<LineSink>,
+    outer: Option<Rc<Open>>,
 }
 
-/// Выполнить prepaint `f` со строками абзацев, собранными в `sink`.
-pub(super) fn with_sink<R>(sink: Rc<LineSink>, f: impl FnOnce() -> R) -> R {
-    OPEN.with(|open| open.borrow_mut().push(sink));
-    let result = f();
-    OPEN.with(|open| open.borrow_mut().pop());
-    result
+/// Выполнить prepaint `f` со строками абзацев, собранными и в `sink`.
+pub(super) fn with_sink<R>(
+    sink: Rc<LineSink>,
+    window: &mut Window,
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    let outer = window.render_context::<Open>();
+    window.with_render_context(Some(Rc::new(Open { sink, outer })), f)
 }
 
 /// Абзац ширины `width` уложен в строки шириной (с отступом) `lines`.
-pub(crate) fn report(width: f32, vertical: bool, lines: impl ExactSizeIterator<Item = f32>) {
-    OPEN.with(|open| {
-        let open = open.borrow();
-        if open.is_empty() {
-            return;
-        }
-        let mut lines = lines;
-        let one = (lines.len() == 1 && !vertical)
-            .then(|| lines.next())
-            .flatten();
-        for sink in open.iter() {
-            sink.paragraphs.set(sink.paragraphs.get() + 1);
-            match one {
-                Some(line) => sink.slack.set(sink.slack.get().min(width - line)),
-                None => sink.broken.set(true),
-            }
-        }
-    });
+pub(crate) fn report(
+    window: &Window,
+    width: f32,
+    vertical: bool,
+    mut lines: impl ExactSizeIterator<Item = f32>,
+) {
+    let mut open = window.render_context::<Open>();
+    if open.is_none() {
+        return;
+    }
+    let one = (lines.len() == 1 && !vertical)
+        .then(|| lines.next())
+        .flatten();
+    while let Some(scope) = open {
+        scope.sink.note(width, one);
+        open = scope.outer.clone();
+    }
 }
 
 #[cfg(test)]
@@ -73,24 +86,15 @@ mod tests {
 
     #[test]
     fn the_only_single_line_paragraph_gives_its_slack_and_a_wrap_breaks_it() {
-        let sink = Rc::new(LineSink::default());
+        let sink = LineSink::default();
         assert_eq!(sink.slack(), None, "no paragraph reported");
-        with_sink(sink.clone(), || report(300.0, false, [250.0].into_iter()));
+        sink.note(300.0, Some(250.0));
         assert_eq!(sink.slack(), Some(50.0));
-        report(300.0, false, [10.0, 20.0].into_iter());
-        assert_eq!(sink.slack(), Some(50.0), "a closed sink hears nothing");
-        let two = Rc::new(LineSink::default());
-        with_sink(two.clone(), || {
-            report(300.0, false, [120.0].into_iter());
-            report(300.0, false, [250.0].into_iter());
-        });
+        let two = LineSink::default();
+        two.note(300.0, Some(120.0));
+        two.note(300.0, Some(250.0));
         assert_eq!(two.slack(), None, "one anonymous paragraph per text block");
-        with_sink(sink.clone(), || {
-            report(300.0, false, [10.0, 20.0].into_iter())
-        });
-        assert_eq!(sink.slack(), None);
-        let vertical = Rc::new(LineSink::default());
-        with_sink(vertical.clone(), || report(300.0, true, [10.0].into_iter()));
-        assert_eq!(vertical.slack(), None);
+        sink.note(300.0, None);
+        assert_eq!(sink.slack(), None, "a wrapped or vertical paragraph");
     }
 }

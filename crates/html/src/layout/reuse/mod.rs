@@ -20,10 +20,12 @@
 //! и стили с деревом кадра, а лист — несколько чисел.
 
 mod flow;
+mod frame;
 mod key;
 pub(crate) mod lines;
 mod placeholder;
 mod plain;
+mod record;
 mod recorder;
 #[cfg(test)]
 mod tests;
@@ -31,11 +33,10 @@ mod width;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
-use gpui::{
-    Bounds, LayoutSnapshot, Pixels, Point, RetainedPaint, RetainedPrepaint, ScaledPixels, Window,
-    point, px, size,
-};
+use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
+pub(crate) use placeholder::Replay;
+pub(crate) use record::Record;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -80,61 +81,6 @@ pub struct ReuseStats {
     pub rebuilt_frames: u64,
     /// Из пропущенных — повторены из прошлого кадра (видимые).
     pub replayed: u64,
-}
-
-/// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
-pub(crate) struct Record {
-    /// Вход сборки блока; в куче, чтобы переходить из ожидания без копии.
-    element: Box<Element>,
-    key: Rc<FlowKey>,
-    start: Counters,
-    end: Counters,
-    snapshot: LayoutSnapshot,
-    /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
-    ink: Option<Bounds<ScaledPixels>>,
-    /// Ширины потока, при которых годна запись (`width::reusable_range`);
-    /// `None` — только при ширине записи.
-    resizable: Option<(f32, f32)>,
-    /// Ширина листа — растяжение потока (`width::Width::Stretch`): при
-    /// другой ширине краска записи не годна.
-    stretch: bool,
-    /// Блок был далеко от экрана (`recorder::far`): его пропуск вероятен и
-    /// без повтора краски.
-    far: bool,
-    /// Вывод prepaint и краски блока в последнем кадре, где он рисовался.
-    replay: RefCell<Option<Replay>>,
-}
-
-/// Вывод блока в кадре `epoch`, который можно повторить в следующем кадре,
-/// если блок стоит на том же месте под той же маской (`FlowReuse::validate`):
-/// краска GPUI несёт координаты окна и маску. Так повторяется и видимый блок.
-#[derive(Clone)]
-pub(crate) struct Replay {
-    prepaint: RetainedPrepaint,
-    paint: RetainedPaint,
-    origin: Point<ScaledPixels>,
-    mask: Bounds<Pixels>,
-    epoch: u64,
-}
-
-impl Record {
-    /// Запись годна в потоке ключа `key` другой ширины.
-    fn fits_width(&self, key: &FlowKey) -> bool {
-        match self.resizable {
-            Some((lo, hi)) if lo <= 0.0 && hi.is_infinite() => true,
-            Some((lo, hi)) => key.constraints.avail_w.is_some_and(|w| lo <= w && w <= hi),
-            None => false,
-        }
-    }
-
-    /// Повтор записан в последнем кадре prepaint документа до этого.
-    fn current(&self, flow: &FlowReuse) -> bool {
-        let epoch = flow.store.epoch.get() - u64::from(flow.drawn);
-        self.replay
-            .borrow()
-            .as_ref()
-            .is_some_and(|r| r.epoch == epoch)
-    }
 }
 
 fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
@@ -257,106 +203,6 @@ impl FlowReuse {
         } else if e.node_id == body && self.seen.1.get().is_none() {
             let _ = self.seen.1.set(key::box_only(e));
         }
-    }
-
-    /// Окно перед prepaint дерева: запомнить экран и проверить заместителей.
-    /// Заместитель годен, если его чернила на новом месте вне экрана либо
-    /// его вывод прошлого кадра повторяем на том же месте под той же маской
-    /// (тогда он помечается к повтору). `false` — кадр нужно собрать заново:
-    /// негодные заместители отказаны (`Store::refused`) и будут собраны, а
-    /// годные остаются. Отказанный лист имеет точный размер собранного блока,
-    /// поэтому новая раскладка ставит остальные на те же места.
-    pub(crate) fn validate(&self, window: &mut Window) -> bool {
-        let scale = window.scale_factor();
-        let mask = window.content_mask().bounds;
-        let screen = Bounds {
-            origin: scaled(mask.origin, scale),
-            size: size(
-                ScaledPixels(mask.size.width.as_f32() * scale),
-                ScaledPixels(mask.size.height.as_f32() * scale),
-            ),
-        };
-        self.screen.set(Some(screen));
-        self.mask.set(Some(mask));
-        let root = window.element_offset() == point(px(0.0), px(0.0));
-        let replayable = root && window.retained_root_environment();
-        let epoch = self.store.epoch.get();
-        let mut refused = std::collections::HashSet::new();
-        for slot in self.placeholders.borrow().iter() {
-            let record = slot.record();
-            let fits = root
-                && slot.layout().is_some_and(|id| {
-                    let origin = scaled(window.layout_origin_unrounded(id), scale);
-                    let replay = replayable
-                        && !slot.stretched()
-                        && record.replay.borrow().as_ref().is_some_and(|r| {
-                            r.epoch + 1 == epoch
-                                && r.origin == origin
-                                && r.mask == mask
-                                && window.retained_replayable(&r.prepaint, &r.paint)
-                        });
-                    slot.set_replay(replay.then_some(epoch));
-                    // Чернила растянутого листа — до любого правого края.
-                    let ink = |ink: Bounds<ScaledPixels>| match slot.stretched() {
-                        true => Bounds {
-                            size: size(ScaledPixels(f32::MAX / 4.0), ink.size.height),
-                            ..ink
-                        },
-                        false => ink,
-                    };
-                    replay
-                        || record
-                            .ink
-                            .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
-                });
-            if !fits {
-                refused.insert(record.element.node_id);
-            }
-        }
-        let ok = refused.is_empty();
-        self.store.refused.borrow_mut().extend(refused);
-        ok
-    }
-    /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
-    /// записи отдают элемент записи и освобождаются.
-    pub(crate) fn finish(&self) {
-        let (Some(screen), Some(mask)) = (self.screen.get(), self.mask.get()) else {
-            return;
-        };
-        self.store.refused.take();
-        let mut next = self.next.take();
-        let skipped = next.len() as u64;
-        let replayed = self
-            .placeholders
-            .borrow()
-            .iter()
-            .filter(|slot| slot.replayed())
-            .count() as u64;
-        let mut recorded = 0;
-        let epoch = self.store.epoch.get();
-        for (pending, element) in self.pending.take() {
-            if let Some(record) = pending.finish(element, screen, mask, epoch) {
-                next.insert(record.element.node_id, Rc::new(record));
-                recorded += 1;
-            }
-        }
-        // Кадр без записей и пропусков под тем же ключом оставляет прежние:
-        // они подойдут следующему кадру, а их сброс стоил бы этому.
-        if recorded > 0 || skipped > 0 {
-            self.store.records.replace(next);
-        }
-        let mut stats = self.store.stats.get();
-        stats.recorded += recorded;
-        stats.skipped += skipped;
-        stats.replayed += replayed;
-        self.store.stats.set(stats);
-    }
-
-    /// Кадр собран заново без заместителей (`validate`).
-    pub(crate) fn note_rebuild(&self) {
-        let mut stats = self.store.stats.get();
-        stats.rebuilt_frames += 1;
-        self.store.stats.set(stats);
     }
 }
 

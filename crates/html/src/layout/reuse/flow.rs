@@ -1,6 +1,7 @@
 //! Корневой поток с повтором: заместители и записи его блочных детей.
 
 use super::placeholder::{Placeholder, Slot};
+use super::plain::edges_free;
 use super::recorder::{Pending, Recorder};
 use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
@@ -138,24 +139,6 @@ impl FlowReuse {
     }
 }
 
-/// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
-/// строк крайних детей потока: блочная коробка без псевдоэлементов первой
-/// строки и буквы, без обрезки текстовых краёв (css-inline-3 §5) и без
-/// обрезки содержимого, под которой повтор краски был бы под другой маской.
-fn edges_free(e: Option<&Element>) -> bool {
-    use crate::style::computed::{Display, Overflow};
-    let Some(e) = e else { return true };
-    let style = e.style.used();
-    let b = &style.reset_box_layout;
-    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
-    e.first_line.is_none()
-        && e.first_letter.is_none()
-        && matches!(b.display, None | Some(Display::Block))
-        && visible(b.overflow_x)
-        && visible(b.overflow_y)
-        && !style.reset_text_box.text_box_trim_start
-        && !style.reset_text_box.text_box_trim_end
-}
 impl FlowCx {
     /// Заместитель ребёнка `e`, если его запись (блока, бывшего далеко от
     /// экрана) подходит.
