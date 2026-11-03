@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::budget::admission::{Admission, Buffer};
+use crate::style::select::ascii_lower as lower;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -23,9 +24,9 @@ impl Index {
         for class in &node.classes {
             self.add(1, class, i, admission)?;
         }
-        self.add(2, &node.tag.to_ascii_lowercase(), i, admission)?;
+        self.add(2, &lower(&node.tag), i, admission)?;
         for (attr, _) in &node.attrs {
-            self.add(3, &attr.to_ascii_lowercase(), i, admission)?;
+            self.add(3, &lower(attr), i, admission)?;
         }
         Ok(())
     }
@@ -44,7 +45,11 @@ impl Index {
         self.buckets[kind]
             .try_reserve(1)
             .map_err(|_| Error::Allocation)?;
-        let bucket = self.buckets[kind].entry(key.to_string()).or_default();
+        // An existing token is found without copying its text.
+        let bucket = match self.buckets[kind].get_mut(key) {
+            Some(bucket) => bucket,
+            None => self.buckets[kind].entry(key.to_string()).or_default(),
+        };
         if bucket.last() == Some(&i) {
             return Ok(());
         }
@@ -75,10 +80,10 @@ impl Index {
             consider(1, class);
         }
         if let Some(tag) = &sel.tag {
-            consider(2, &tag.to_ascii_lowercase());
+            consider(2, &lower(tag));
         }
         for attr in &sel.attrs {
-            consider(3, &attr.name.to_ascii_lowercase());
+            consider(3, &lower(&attr.name));
         }
         let mut out = Buffer::default();
         if let Some(list) = narrowest {
