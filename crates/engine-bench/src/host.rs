@@ -29,6 +29,18 @@ pub(super) fn peak_memory() -> Result<u64, Box<dyn std::error::Error>> {
     Ok(counters.PeakWorkingSetSize as u64)
 }
 
+/// Возвращает ОС страницы, освобождённые прежним документом, после первого кадра нового.
+///
+/// mimalloc держит свободные страницы закоммиченными `purge_delay` (1000 мс), и при
+/// смене документов чаще раза в секунду рабочий набор копит память старых документов
+/// в зависимости от темпа, а не от живой кучи. Как Gecko (`jemalloc_free_dirty_pages`)
+/// и PartitionAlloc (`MemoryReclaimer`), хост возвращает их явно — один раз на замену
+/// документа и вне фаз замера; цена повторного коммита ложится на следующую загрузку.
+pub(super) fn release_freed_pages() {
+    // SAFETY: mi_collect обходит только структуры mimalloc и не трогает живые блоки.
+    unsafe { libmimalloc_sys::mi_collect(true) };
+}
+
 pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Error>> {
     use windows::Win32::{
         Foundation::{HWND, RECT},
@@ -148,4 +160,55 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .take()
         .ok_or("benchmark exited before completion")?
         .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use libmimalloc_sys::{mi_free, mi_malloc, mi_process_info};
+    use std::ptr::null_mut;
+
+    fn resident() -> usize {
+        let mut rss = 0;
+        // SAFETY: mi_process_info пишет только в переданные ненулевые указатели.
+        unsafe {
+            mi_process_info(
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut rss,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+            )
+        };
+        rss
+    }
+
+    #[test]
+    fn freed_pages_of_a_dropped_document_leave_the_working_set() {
+        const BLOCK: usize = 16 * 1024;
+        const BLOCKS: usize = 4096; // 64 MiB блоками, как узлы документа.
+        let before = resident();
+        let blocks: Vec<_> = (0..BLOCKS)
+            .map(|index| {
+                // SAFETY: блок размера BLOCK, заполняется целиком до освобождения.
+                unsafe {
+                    let block = mi_malloc(BLOCK).cast::<u8>();
+                    assert!(!block.is_null());
+                    block.write_bytes(index as u8, BLOCK);
+                    block
+                }
+            })
+            .collect();
+        let touched = resident();
+        for block in blocks {
+            // SAFETY: каждый блок получен от mi_malloc и освобождается один раз.
+            unsafe { mi_free(block.cast()) };
+        }
+        super::release_freed_pages();
+        let released = resident();
+        assert!(touched >= before + 48 * 1024 * 1024, "{before} -> {touched}");
+        assert!(released <= before + 16 * 1024 * 1024, "{before} -> {touched} -> {released}");
+    }
 }

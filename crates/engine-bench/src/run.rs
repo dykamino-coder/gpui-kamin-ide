@@ -186,6 +186,10 @@ pub(super) async fn sample(
         },
         &phases.borrow(),
     )?;
+    if step.cold() {
+        // Прежний документ уже освобождён заменой; его страницы возвращаются вне замера.
+        host::release_freed_pages();
+    }
     Ok((out, frame, work))
 }
 
