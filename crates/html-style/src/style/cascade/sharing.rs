@@ -27,12 +27,13 @@ impl StyleSharing {
     /// `finish` дописывает поля, которые зависят только от входов ключа (окружения и
     /// совпавших блоков). Запись идёт до сохранения, поэтому попадание не пишет в общие
     /// группы и не отделяет их копией.
+    /// Карту каскада `map` строит лишь промах: попаданию она не нужна.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn resolve(
+    pub(crate) fn resolve<'m, 'a: 'm>(
         &self,
         rules: &[&Rule],
         inline: &DeclBlock,
-        map: &CascadeMap<'_>,
+        map: impl FnOnce() -> &'m CascadeMap<'a>,
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
@@ -137,11 +138,11 @@ struct Entry {
 
 impl Cache {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn resolve(
+    pub(crate) fn resolve<'m, 'a: 'm>(
         &mut self,
         rules: &[&Rule],
         inline: &DeclBlock,
-        map: &CascadeMap<'_>,
+        map: impl FnOnce() -> &'m CascadeMap<'a>,
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
@@ -162,7 +163,7 @@ impl Cache {
             return hit.style.clone();
         }
         let mut style = vcx.doc.initial_style();
-        style.apply_map(map, vars, cx, vcx);
+        style.apply_map(map(), vars, cx, vcx);
         finish(&mut style);
         if let Some(bytes) = bytes {
             let admission = vcx

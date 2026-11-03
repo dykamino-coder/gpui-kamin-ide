@@ -9,7 +9,7 @@ fn resolve(cache: &mut StyleSharing, inline: &DeclBlock, vcx: ValueCx<'_>) -> Co
     cache.resolve(
         &[],
         inline,
-        &map,
+        || &map,
         &VarMap::new(),
         CascadeCx::NONE,
         vcx,
@@ -133,7 +133,7 @@ fn finish_runs_before_caching_and_hits_keep_shared_groups() {
         cache.resolve(
             &[],
             &inline,
-            &map,
+            || &map,
             &VarMap::new(),
             CascadeCx::NONE,
             vcx,
@@ -233,4 +233,32 @@ fn shared_gradients_compute_like_unshared_ones() {
             a.1.reset_background.gradient_current
         );
     }
+}
+
+#[test]
+fn hits_do_not_build_the_cascade_map() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let inline = parse_decls_in("width: 8px; color: red", vcx);
+    let map = CascadeMap::collect(&[], &inline);
+    let cache = StyleSharing::default();
+    let built = std::cell::Cell::new(0);
+    let run = || {
+        cache.resolve(
+            &[],
+            &inline,
+            || {
+                built.set(built.get() + 1);
+                &map
+            },
+            &VarMap::new(),
+            CascadeCx::NONE,
+            vcx,
+            |_| {},
+        )
+    };
+    let first = run();
+    let second = run();
+    assert_eq!(built.get(), 1);
+    assert!(first.reset_box_layout.ptr_eq(&second.reset_box_layout));
 }
