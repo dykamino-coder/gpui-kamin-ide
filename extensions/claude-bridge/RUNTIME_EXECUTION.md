@@ -83,8 +83,16 @@ acceptance → сверка → один проверенный release. Жив�
 | Deliverable | State / artifact | Gate и следующий шаг |
 | --- | --- | --- |
 | INC-0080 retention decision / #605 | done / none | [Контракт](server/MCP_TASK_RETENTION.md) принят в `b68458fa`: TTL, reservation, bounded ordinary fallback |
-| INC-0080 server fix / #606 | in progress / change | Local Docker: typecheck/lint и 651 tests passed / 6 existing skips; actual store/HTTP + delivery regressions. Перед merge — required CI и Docker health; клиент не меняется |
-| Reconciliation / one release | waiting | После принятого fix: exact merged PR, честный остаток INC-0080, coordinated release и post-publish checks |
+| INC-0080 server fix / #606 | done / none для retention source contract | Merge `d1206b79d2836d028090f16457315d3db14716c7`; candidate `84c97a095aef6ded7cef56ba20fa974f34779d87`: required CI, server/extension checks и Docker dry run passed. Local Docker: typecheck/lint и 651 tests passed / 6 existing skips; actual store/HTTP + delivery regressions. Клиент не меняется; native gate не требуется |
+| Reconciliation / one release | in progress / release | Source сверка после fetch выполнена; следующий artifact — один coordinated release и post-publish checks. INC-0080 field attribution остаётся open; deployment observation у владельца |
+
+**Остаток:** Task retention fix принят по automated source contract, но пока не
+опубликован. Background retention остаётся конечным budget; при его заполнении
+новая explicit background задача отклоняется до запуска, ordinary foreground
+продолжает работать через bounded SSE path. Это не повтор старого глобального
+admission outage. Windows UI и deployment не проверялись; владелец проверит
+обычную работу после выкладки по checklist в INC-0080. Историческая причина
+field hangs, native/CEF и BR-02/03 не закрыты этим результатом.
 
 ## История `RC-2026-10-30-INC82-83` — сверка завершена 2026-10-31
 
