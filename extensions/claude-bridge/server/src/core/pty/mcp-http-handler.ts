@@ -16,6 +16,7 @@ import crypto from 'crypto'
 import { MODERN_MCP, TASK_EXTENSION, modernRequest, record, supportsTasks } from './mcp-modern'
 import { awaitMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
 import { TASK_LIMITS, taskView } from './mcp-task-store'
+import { TaskAdmissionError, TaskPersistenceQueueError, isTaskRetentionPressure } from './mcp-task-admission'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
 import { eventBus } from '../events/bus'
@@ -218,8 +219,17 @@ export function jsonRpcResponse(id: string | number | undefined, result: unknown
   return { jsonrpc: '2.0', id, result }
 }
 
-export function jsonRpcError(id: string | number | undefined, code: number, message: string) {
-  return { jsonrpc: '2.0', id, error: { code, message } }
+export function jsonRpcError(
+  id: string | number | undefined,
+  code: number,
+  message: string,
+  data?: Record<string, unknown>,
+) {
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: { code, message, ...(data ? { data } : {}) },
+  }
 }
 
 /** Constant-time string equality for the bearer-token check. A length mismatch
@@ -303,7 +313,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             ...record(result),
             _meta: {
               ...record(record(result)?._meta),
-              'io.modelcontextprotocol/serverInfo': { name: 'open-claude-bridge-user-tools', version: '4.0.0' },
+              'io.modelcontextprotocol/serverInfo': {
+                name: 'open-claude-bridge-user-tools',
+                version: '4.0.0',
+              },
             },
           }
         : result,
@@ -615,31 +628,63 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       }
       observeMcpCall(session, toolName)
 
+      let releaseInline: (() => void) | undefined
       if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {
-        let handle: Record<string, unknown>
+        const rejectAdmission = (error: unknown): Response => {
+          const known = error instanceof TaskAdmissionError
+          const reason = known
+            ? error.reason
+            : error instanceof TaskPersistenceQueueError
+              ? 'persistence_queue'
+              : 'persistence_unavailable'
+          warnLog('MCP task admission refused', { sessionId, reason })
+          return jsonResponse(
+            jsonRpcError(
+              body.id,
+              known && reason === 'input_bytes' ? -32602 : -32000,
+              known
+                ? `Task admission refused (${reason}); command was not started. Existing tasks remain available until expiry.`
+                : 'Task persistence unavailable; execution is not confirmed. Inspect the command outcome before retrying.',
+              { reason, executionStarted: known ? false : 'unknown' },
+            ),
+            known && reason === 'input_bytes' ? 400 : 503,
+          )
+        }
+        let handle: Record<string, unknown> | undefined
         try {
           handle = await createMcpTask(session, toolName, toolInput)
-        } catch {
-          return jsonResponse(jsonRpcError(body.id, -32000, 'Task admission unavailable or capacity exceeded'), 503)
-        }
-        if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
-        // The task keeps the run durable, but a command that finishes within the
-        // grace window answers inline: returning a handle for every short command
-        // makes the CLI background it and the agent wait on a notification.
-        return sseStreamResponse(body.id ?? null, async () => {
-          const owner = session.mcpEndpoint!.id
-          const task = await awaitMcpTask(owner, String(handle.taskId), TASK_LIMITS.foregroundGraceMs, requestSignal)
-          if (task?.status === 'completed' && task.result) {
-            logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
-            return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+        } catch (error) {
+          // A negotiated client accepts either a Task or an ordinary result.
+          // Never fall back after uncertain persistence or an active-limit refusal.
+          if (toolInput.run_in_background === true || !isTaskRetentionPressure(error)) return rejectAdmission(error)
+          try {
+            releaseInline = await mcpTasks.acquireInline(session.mcpEndpoint!.id)
+          } catch (leaseError) {
+            return rejectAdmission(leaseError)
           }
-          if (task?.status === 'failed' && task.error) return jsonRpcError(body.id, task.error.code, task.error.message)
-          if (task?.status === 'working')
-            await mcpTasks.update(owner, task.taskId, (record) => {
-              record.background = true
-            })
-          return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
-        })
+          warnLog('MCP foreground uses ordinary result under retention pressure', { sessionId, reason: error.reason })
+        }
+        if (handle) {
+          if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
+          // The task keeps the run durable, but a command that finishes within the
+          // grace window answers inline: returning a handle for every short command
+          // makes the CLI background it and the agent wait on a notification.
+          return sseStreamResponse(body.id ?? null, async () => {
+            const owner = session.mcpEndpoint!.id
+            const task = await awaitMcpTask(owner, String(handle!.taskId), TASK_LIMITS.foregroundGraceMs, requestSignal)
+            if (task?.status === 'completed' && task.result) {
+              logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
+              return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+            }
+            if (task?.status === 'failed' && task.error)
+              return jsonRpcError(body.id, task.error.code, task.error.message)
+            if (task?.status === 'working')
+              await mcpTasks.update(owner, task.taskId, (record) => {
+                record.background = true
+              })
+            return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
+          })
+        }
       }
 
       // Stream the response as SSE so the headers reach the CLI within
@@ -671,14 +716,23 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             body.id,
             truncateMcpResult(
               {
-                content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }],
+                content: [
+                  {
+                    type: 'text',
+                    text: typeof result === 'string' ? result : JSON.stringify(result),
+                  },
+                ],
               },
               toolName,
             ),
           )
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err)
-          errorLog('MCP tool call failed', { sessionId, toolName, error: errMsg })
+          errorLog('MCP tool call failed', {
+            sessionId,
+            toolName,
+            error: errMsg,
+          })
           logMcpRequest(session, `tools/call:${toolName}`, 'error', errMsg, Date.now() - reqStart)
 
           // Return error as tool result (not JSON-RPC error) so Claude can see it
@@ -686,6 +740,8 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             content: [{ type: 'text', text: `Error: ${errMsg}` }],
             isError: true,
           })
+        } finally {
+          releaseInline?.()
         }
       })
     }
@@ -704,7 +760,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       const message = params?.message || ''
       const requestedSchema = params?.requestedSchema
 
-      debugLog('Elicitation request', { sessionId, message: message.slice(0, 100) })
+      debugLog('Elicitation request', {
+        sessionId,
+        message: message.slice(0, 100),
+      })
 
       const requestId = `elicit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 

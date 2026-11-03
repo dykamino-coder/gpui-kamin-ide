@@ -20,7 +20,10 @@ afterEach(async () => {
 describe('durable bounded task lifecycle', () => {
   it('retains a background deadline across restart and past the foreground execution limit', async () => {
     const fg = await store.create('owner', 'Bash', { command: 'foreground' })
-    const bg = await store.create('owner-bg', 'PowerShell', { command: 'background', run_in_background: true })
+    const bg = await store.create('owner-bg', 'PowerShell', {
+      command: 'background',
+      run_in_background: true,
+    })
     expect(taskDeadline(fg)).toBe(clock + TASK_LIMITS.executionMs)
     expect(taskDeadline(bg)).toBe(clock + TASK_LIMITS.backgroundExecutionMs)
     expect(taskDeadline(bg) + 60_000).toBe(clock + TASK_LIMITS.ttlMs)
@@ -36,12 +39,17 @@ describe('durable bounded task lifecycle', () => {
     const task = await store.create('owner', 'Bash', { command: 'echo test' })
     expect(taskView(task)).not.toHaveProperty('input')
     expect(await store.get('other', task.taskId)).toBeUndefined()
-    await store.settle('owner', task.taskId, { content: [{ type: 'text', text: 'done' }] })
+    await store.settle('owner', task.taskId, {
+      content: [{ type: 'text', text: 'done' }],
+    })
     store = new McpTaskStore(directory, () => clock)
     const persisted = await store.get('owner', task.taskId)
     expect(persisted).toMatchObject({
       status: 'completed',
-      result: { resultType: 'complete', content: [{ type: 'text', text: 'done' }] },
+      result: {
+        resultType: 'complete',
+        content: [{ type: 'text', text: 'done' }],
+      },
     })
     expect(await store.settle('owner', task.taskId, 'duplicate')).toEqual(persisted)
     expect(
@@ -76,12 +84,16 @@ describe('durable bounded task lifecycle', () => {
     await expect(store.create('new-owner', 'Bash', {})).resolves.toHaveProperty('taskId')
   })
   it('expires from creation time and rejects excessive inputs/results', async () => {
-    await expect(store.create('owner', 'Bash', { command: 'x'.repeat(TASK_LIMITS.inputBytes) })).rejects.toThrow(
-      'input too large',
-    )
+    await expect(
+      store.create('owner', 'Bash', {
+        command: 'x'.repeat(TASK_LIMITS.inputBytes),
+      }),
+    ).rejects.toThrow('input_bytes')
     const task = await store.create('owner', 'Bash', {})
     await store.settle('owner', task.taskId, 'x'.repeat(TASK_LIMITS.resultBytes))
-    expect((await store.get('owner', task.taskId))?.result).toMatchObject({ isError: true })
+    expect((await store.get('owner', task.taskId))?.result).toMatchObject({
+      isError: true,
+    })
     clock += TASK_LIMITS.ttlMs
     expect(await store.get('owner', task.taskId)).toBeUndefined()
     expect(await fs.readdir(directory)).toEqual([])
@@ -94,11 +106,16 @@ describe('durable bounded task lifecycle', () => {
   })
 })
 
-describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
+describe('bounded retention preserves outcomes without blocking ordinary execution (INC-2026-0080)', () => {
   // Real limits are sized for ~50 sessions; the contract is the same at a small scale.
   const real = { ...TASK_LIMITS }
   beforeEach(() => {
-    Object.assign(TASK_LIMITS, { retained: 48, perOwner: 16, active: 8, activePerOwner: 2 })
+    Object.assign(TASK_LIMITS, {
+      retained: 48,
+      perOwner: 16,
+      active: 8,
+      activePerOwner: 2,
+    })
   })
   afterEach(() => {
     Object.assign(TASK_LIMITS, real)
@@ -111,25 +128,36 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
     return task.taskId
   }
 
-  it('admits a fresh owner into a store full of settled tasks and evicts the oldest settled one', async () => {
+  it('refuses a new durable handle at global capacity but preserves results and permits an ordinary lease', async () => {
     const ids: string[] = []
     for (let i = 0; i < TASK_LIMITS.retained; i++) ids.push(await settledTask('owner-' + (i % 4)))
-    const fresh = await store.create('fresh-owner', 'Bash', {})
-    expect(fresh.status).toBe('working')
-    expect(await store.get('owner-0', ids[0]!)).toBeUndefined()
-    expect(await store.get('owner-1', ids[1]!)).toMatchObject({ status: 'completed' })
+    await expect(store.create('fresh-owner', 'Bash', {})).rejects.toMatchObject({ reason: 'retained_global' })
+    const release = await store.acquireInline('fresh-owner')
+    release()
+    expect(await store.get('owner-0', ids[0]!)).toMatchObject({
+      status: 'completed',
+    })
+    expect(await store.get('owner-1', ids[1]!)).toMatchObject({
+      status: 'completed',
+    })
     expect((await fs.readdir(directory)).length).toBe(TASK_LIMITS.retained)
   }, 60_000)
 
-  it('lets an owner with a full settled history start new commands', async () => {
+  it('permits ordinary execution when the same owner has a full retained history', async () => {
     for (let i = 0; i < TASK_LIMITS.perOwner; i++) await settledTask('owner')
-    await expect(store.create('owner', 'Bash', {})).resolves.toHaveProperty('taskId')
+    await expect(store.create('owner', 'Bash', {})).rejects.toMatchObject({
+      reason: 'retained_owner',
+    })
+    const release = await store.acquireInline('owner')
+    release()
   }, 60_000)
 
-  it('admits after restart over an already full settled store', async () => {
+  it('permits ordinary execution after restart over a full retained store', async () => {
     for (let i = 0; i < TASK_LIMITS.retained; i++) await settledTask('owner-' + (i % 4))
     store = new McpTaskStore(directory, () => clock)
-    await expect(store.create('fresh-owner', 'Bash', {})).resolves.toHaveProperty('taskId')
+    await expect(store.create('fresh-owner', 'Bash', {})).rejects.toMatchObject({ reason: 'retained_global' })
+    const release = await store.acquireInline('fresh-owner')
+    release()
   }, 60_000)
 
   it('never evicts working tasks', async () => {
@@ -141,7 +169,7 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
     expect((await fs.readdir(directory)).length).toBe(TASK_LIMITS.retained)
   }, 60_000)
 
-  it('makes byte room for a settling result from older settled outcomes', async () => {
+  it('reserves result bytes before execution instead of evicting an unexpired outcome', async () => {
     const big = 'x'.repeat(TASK_LIMITS.resultBytes - 1024)
     TASK_LIMITS.bytes = 2.5 * TASK_LIMITS.resultBytes
     const first = await store.create('owner-a', 'Bash', {})
@@ -150,20 +178,36 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
     const second = await store.create('owner-b', 'Bash', {})
     await store.settle('owner-b', second.taskId, big)
     clock += 1
-    const third = await store.create('owner-c', 'Bash', {})
-    expect((await store.settle('owner-c', third.taskId, big))?.status).toBe('completed')
-    expect(await store.get('owner-a', first.taskId)).toBeUndefined()
-    expect(await store.get('owner-b', second.taskId)).toMatchObject({ status: 'completed' })
+    await expect(store.create('owner-c', 'Bash', {})).rejects.toMatchObject({
+      reason: 'retained_bytes',
+    })
+    expect(await store.get('owner-a', first.taskId)).toMatchObject({
+      status: 'completed',
+    })
+    expect(await store.get('owner-b', second.taskId)).toMatchObject({
+      status: 'completed',
+    })
   })
 })
 
 it('preserves descriptions and full commands, and persists clearing without destroying agent results', async () => {
   const command = 'echo ' + 'x'.repeat(12000)
-  const done = await store.create('owner', 'Bash', { command, description: 'Long build', run_in_background: true })
+  const done = await store.create('owner', 'Bash', {
+    command,
+    description: 'Long build',
+    run_in_background: true,
+  })
   const active = await store.create('owner', 'Bash', { command: 'sleep 90' })
-  await store.settle('owner', done.taskId, { exitCode: 0, content: [{ type: 'text', text: 'output' }] })
+  await store.settle('owner', done.taskId, {
+    exitCode: 0,
+    content: [{ type: 'text', text: 'output' }],
+  })
   const projection = (await store.commands('owner')).find((t) => t.taskId === done.taskId)!
-  expect(projection).toMatchObject({ command, description: 'Long build', result: { exitCode: 0 } })
+  expect(projection).toMatchObject({
+    command,
+    description: 'Long build',
+    result: { exitCode: 0 },
+  })
   expect(projection.result).not.toHaveProperty('content')
   expect(await store.commands('other')).toEqual([])
   await store.clearCommands('other')
