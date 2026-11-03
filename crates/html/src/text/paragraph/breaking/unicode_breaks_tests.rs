@@ -2,7 +2,10 @@
 use super::*;
 use gpui::{IntoElement, div, px};
 
-fn paragraph(text: &str, atoms: &[(usize, Option<(Option<char>, Option<char>)>)]) -> Paragraph {
+/// Byte position of an atom carrier and the ruby base edges of its live slot.
+type AtomAt = (usize, Option<(Option<char>, Option<char>)>);
+
+fn paragraph(text: &str, atoms: &[AtomAt]) -> Paragraph {
     let mut p = Paragraph::new(
         text.to_owned().into(),
         vec![],
@@ -56,7 +59,7 @@ fn ruby_lookup_preserves_first_slot_and_empty_probe_semantics() {
     assert_eq!(p.ruby_edges(0), None);
     assert_eq!(p.ruby_edges(1), None);
     let mut probe = paragraph("\u{feff}\u{feff}x", &[]);
-    probe.atom_boxes = p.atom_boxes.clone();
+    probe.atom_boxes = p.atom_boxes;
     assert_eq!(probe.ruby_edges(3), None);
 }
 
