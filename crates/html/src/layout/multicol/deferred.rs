@@ -36,6 +36,8 @@ pub(crate) struct Recipe {
     /// Builds of the children measured for the stack's intrinsic size.
     #[cfg(test)]
     pub(crate) intrinsic_builds: std::cell::Cell<usize>,
+    /// The row extents of the spanner flow this stack is a row of.
+    row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
 }
 
 impl Recipe {
@@ -54,10 +56,12 @@ impl Recipe {
         // Каждый поточный ребёнок получает запись: при известной ширине его меру
         // даёт раскладка копии (`plan_at`).
         laid::pending_mixed(&prepared, merged, opts.cx.frame())?;
+        let mut opts = opts.clone();
+        let row = (opts.cx.fragmentation.spanner_rows.take()).filter(|s| s.is_row_of(host.node_id));
         Some(std::rc::Rc::new(Self {
             host: host.clone(),
             merged: merged.clone(),
-            opts: opts.clone(),
+            opts,
             count,
             fixed,
             axis,
@@ -65,6 +69,7 @@ impl Recipe {
             statics: Default::default(),
             #[cfg(test)]
             intrinsic_builds: Default::default(),
+            row,
         }))
     }
 
@@ -141,7 +146,11 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) -> (f32, Option<Pixels>, Option<Pixels>) {
-        gpui::with_temporary_element_arena(|| {
+        if let Some(extent) = self.row.as_ref().and_then(|row| row.get(width)) {
+            crate::work::add!(SpannerRowReuses, 1);
+            return extent;
+        }
+        let extent = gpui::with_temporary_element_arena(|| {
             window.with_nested_layout(|window| {
                 let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
                     / stack.count as f32)
@@ -149,7 +158,11 @@ impl Recipe {
                 self.prepare(stack, col_width, window, cx);
                 self.measured_extent(stack, width, window, cx)
             })
-        })
+        });
+        if let Some(row) = &self.row {
+            row.put(width, extent);
+        }
+        extent
     }
 
     /// Высота и базовые линии подготовленной стопки — отдельным кадром после
