@@ -245,4 +245,6 @@ mod pure;
 use pure::pure_value;
 
 #[cfg(test)]
+mod gradient_tests;
+#[cfg(test)]
 mod tests;
