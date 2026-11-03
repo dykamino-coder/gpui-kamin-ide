@@ -29,26 +29,40 @@ pub(crate) struct ExactLeaf {
     margin: Rect<LengthPercentageAuto>,
     align_self: Option<AlignSelf>,
     justify_self: Option<AlignSelf>,
+    /// The width is the parent's stretch fit, not `size.width`.
+    stretch: bool,
 }
 
 impl ExactLeaf {
+    pub(crate) fn width(&self) -> f32 {
+        self.size.width
+    }
+
+    pub(crate) fn stretched(self) -> Self {
+        Self { stretch: true, ..self }
+    }
+
     fn style(&self) -> Style {
         let size = self.size;
+        let width = |definite: Dimension| if self.stretch { Dimension::auto() } else { definite };
+        let limit = |definite: LengthPercentageAuto| {
+            if self.stretch { LengthPercentageAuto::auto() } else { definite }
+        };
         Style {
             display: self.display,
             box_sizing: BoxSizing::BorderBox,
             direction: self.direction,
             block_flow: self.block_flow,
             size: Size {
-                width: Dimension::length(size.width),
+                width: width(Dimension::length(size.width)),
                 height: Dimension::length(size.height),
             },
             min_size: Size {
-                width: LengthPercentageAuto::length(size.width),
+                width: limit(LengthPercentageAuto::length(size.width)),
                 height: LengthPercentageAuto::length(size.height),
             },
             max_size: Size {
-                width: LengthPercentageAuto::length(size.width),
+                width: limit(LengthPercentageAuto::length(size.width)),
                 height: LengthPercentageAuto::length(size.height),
             },
             margin: self.margin,
@@ -113,6 +127,7 @@ impl TaffyLayoutEngine {
             margin: style.margin,
             align_self: style.align_self,
             justify_self: style.justify_self,
+            stretch: false,
         })
     }
 

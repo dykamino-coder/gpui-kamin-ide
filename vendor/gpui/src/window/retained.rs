@@ -234,6 +234,18 @@ impl LayoutSnapshot {
     pub fn scale(&self) -> f32 {
         self.scale
     }
+
+    /// Border-box width of the snapshot leaf, in logical pixels.
+    pub fn width(&self) -> f32 {
+        self.leaf.width()
+    }
+
+    /// The same leaf with its width left to the parent: the stretch-fit
+    /// width of a block-level box (CSS2 §10.3.3), for a host that knows the
+    /// subtree's height and overflow do not depend on that width.
+    pub fn stretched(self) -> Self {
+        Self { leaf: self.leaf.stretched(), ..self }
+    }
 }
 
 impl Window {

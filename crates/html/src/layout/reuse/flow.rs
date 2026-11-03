@@ -98,16 +98,27 @@ impl FlowReuse {
         // Первая сборка документа ничего не пишет: её кадр и так самый дорогой
         // (каскад, шейпинг), а устоявшийся поток видно только со второй сборки
         // с тем же ключом.
-        let last = self.store.last.replace(Some(key.clone()));
+        let last = if self.again {
+            self.store.prev.borrow().clone()
+        } else {
+            let last = self.store.last.replace(Some(key.clone()));
+            self.store.prev.replace(last.clone());
+            last
+        };
         let (settled, resized) = match last {
             Some(last) => (last.same(&key), last.same_except_width(&key)),
             None => (false, false),
         };
         let wm = inherited.wm();
         let resized = !settled && resized && !wm.rtl() && !wm.vertical();
-        if resized {
+        if self.again {
+            // Записи уже сверены первой сборкой кадра.
+        } else if resized {
             // Записи, чья раскладка от ширины не зависит, годны и при новой.
-            self.store.records.borrow_mut().retain(|_, r| r.resizable);
+            self.store
+                .records
+                .borrow_mut()
+                .retain(|_, r| r.fits_width(&key));
         } else if !settled {
             // Записи другого ключа не подойдут, а держат стили кадра записи.
             self.store.records.take();
@@ -163,10 +174,13 @@ impl FlowCx {
             return None;
         }
         let record = self.reuse.store.records.borrow().get(&e.node_id).cloned()?;
-        let width = || self.resized && record.resizable && record.key.same_except_width(&self.key);
+        let width = || {
+            self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
+        };
         // Ближний блок без свежего повтора почти наверняка попадёт на экран.
         let paintable = record.far || record.current(&self.reuse);
-        let fits = (record.key.same(&self.key) || width())
+        let same = record.key.same(&self.key);
+        let fits = (same || width())
             && paintable
             && Counters::read(&opts.cx) == record.start
             && crate::dom::same_tree(&record.element, e);
@@ -177,7 +191,10 @@ impl FlowCx {
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
-        let slot = Rc::new(Slot::new(record));
+        // Растянутый блок при другой ширине — та же раскладка в коробке
+        // другой ширины: лист по потоку, краска записи не годна.
+        let stretched = !same && record.stretch;
+        let slot = Rc::new(Slot::new(record, stretched));
         super::push(&self.reuse.placeholders, slot.clone());
         Some(Placeholder::new(slot).hooked())
     }
@@ -221,8 +238,8 @@ impl FlowCx {
             return;
         }
         // Запись при другой ширине потока годна лишь независимому от неё блоку.
-        let resizable = super::width::independent(e, opts.cx.vcx());
-        if !self.settled && !resizable {
+        let width = super::width::independent(e, opts.cx.vcx());
+        if !self.settled && width == super::width::Width::Dependent {
             return;
         }
         let Some(child) = out.pop() else { return };
@@ -230,7 +247,8 @@ impl FlowCx {
             self.key.clone(),
             mark.start,
             now.start,
-            resizable,
+            width,
+            self.settled,
         ));
         super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
         out.push(Recorder::new(child, pending).hooked());

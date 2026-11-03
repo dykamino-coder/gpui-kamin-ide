@@ -109,6 +109,7 @@ pub(super) fn finish_table_outer(
     cx: &LayoutCx,
 ) -> AnyElement {
     let mut outer = outer;
+    let fit_wrapper = !root_table && caps_top.is_empty() && caps_bot.is_empty() && wrapper_fits(e);
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
     // §17.5.2.2: «the used width is the greater of W and MIN» при W =
     // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
@@ -155,9 +156,38 @@ pub(super) fn finish_table_outer(
         let mut wrap = div().flex().flex_row();
         if root_table {
             wrap = wrap.w_full();
+        } else if fit_wrapper {
+            // Обёртка — это table wrapper box: её ширина — ширина рамки
+            // коробки таблицы внутри (css-tables-3, Fixup Algorithm: «The width of the
+            // table-wrapper box is the border-edge width of the table grid
+            // box inside it»), то есть та же `fit-content`, а не ширина
+            // потока. Иначе коробка переполненной таблицы вылезала из
+            // обёртки, и блок потока зависел от его ширины.
+            wrap.style().sizing_keywords = Some([Some(gpui::CssSizingKeyword::FitContent), None]);
+            // Блок потока по блочной оси не сжимается (CSS 2.1 §10.6.3), как
+            // и прочие блоки нашей гибкой колонки потока.
+            wrap.style().flex_shrink = Some(0.0);
         }
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }
     outer.into_any_element()
+}
+
+/// Обёртка может быть шириной своей таблицы без смены геометрии: поля
+/// таблицы стоят на её внешней коробке внутри обёртки, и только поля без
+/// `auto` и процентов (их база — ширина обёртки, а ставят они таблицу по
+/// ширине потока) кладутся одинаково в обёртке любой ширины. Подписи
+/// шире таблицы раздвинули бы обёртку (Fixup Algorithm оставляет её ширину по
+/// таблице), а справа налево и в вертикальном письме обёртку ставит у
+/// начального края поток, а не она сама.
+fn wrapper_fits(e: &Element) -> bool {
+    let style = e.style.used();
+    let m = &style.reset_box_layout.margin;
+    let wm = style.wm();
+    !wm.vertical()
+        && !wm.rtl()
+        && [m.left, m.right]
+            .into_iter()
+            .all(|m| matches!(m, None | Some(Len::Px(_))))
 }

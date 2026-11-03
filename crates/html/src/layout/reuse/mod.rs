@@ -21,6 +21,7 @@
 
 mod flow;
 mod key;
+pub(crate) mod lines;
 mod placeholder;
 mod plain;
 mod recorder;
@@ -48,6 +49,9 @@ pub(crate) struct Store {
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
     last: RefCell<Option<Rc<FlowKey>>>,
+    /// Ключ кадра до `last`: повторная сборка того же кадра сравнивает с
+    /// ним, как первая (`FlowReuse::again`).
+    prev: RefCell<Option<Rc<FlowKey>>>,
     /// Блоки, чей заместитель не прошёл проверку кадра (`FlowReuse::
     /// validate`): пересборка того же кадра собирает их, а не замещает.
     refused: RefCell<std::collections::HashSet<u64>>,
@@ -88,9 +92,12 @@ pub(crate) struct Record {
     snapshot: LayoutSnapshot,
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
     ink: Option<Bounds<ScaledPixels>>,
-    /// Раскладка не зависит от ширины потока (`width`): запись годна и при
-    /// другой ширине.
-    resizable: bool,
+    /// Ширины потока, при которых годна запись (`width::reusable_range`);
+    /// `None` — только при ширине записи.
+    resizable: Option<(f32, f32)>,
+    /// Ширина листа — растяжение потока (`width::Width::Stretch`): при
+    /// другой ширине краска записи не годна.
+    stretch: bool,
     /// Блок был далеко от экрана (`recorder::far`): его пропуск вероятен и
     /// без повтора краски.
     far: bool,
@@ -111,6 +118,15 @@ pub(crate) struct Replay {
 }
 
 impl Record {
+    /// Запись годна в потоке ключа `key` другой ширины.
+    fn fits_width(&self, key: &FlowKey) -> bool {
+        match self.resizable {
+            Some((lo, hi)) if lo <= 0.0 && hi.is_infinite() => true,
+            Some((lo, hi)) => key.constraints.avail_w.is_some_and(|w| lo <= w && w <= hi),
+            None => false,
+        }
+    }
+
     /// Повтор записан в последнем кадре prepaint документа до этого.
     fn current(&self, flow: &FlowReuse) -> bool {
         let epoch = flow.store.epoch.get() - u64::from(flow.drawn);
@@ -163,6 +179,9 @@ pub(crate) struct FlowReuse {
     allow: bool,
     /// Сборка внутри prepaint: номер кадра уже продвинут.
     drawn: bool,
+    /// Не первая сборка кадра (после отказа заместителей): ключ потока и
+    /// записи первая уже сверила и обновила.
+    again: bool,
     doc: (usize, usize),
     root: Root,
     seen: (OnceCell<Element>, OnceCell<Element>),
@@ -192,6 +211,7 @@ impl FlowReuse {
         nodes: &[Node],
         allow: bool,
         drawn: bool,
+        again: bool,
     ) -> Option<Rc<Self>> {
         let root = match find(nodes.iter(), "html") {
             Some(html) => Root::Body {
@@ -210,6 +230,7 @@ impl FlowReuse {
             store,
             allow,
             drawn,
+            again,
             doc: (nodes.as_ptr() as usize, nodes.len()),
             root,
             seen: Default::default(),
@@ -267,6 +288,7 @@ impl FlowReuse {
                 && slot.layout().is_some_and(|id| {
                     let origin = scaled(window.layout_origin_unrounded(id), scale);
                     let replay = replayable
+                        && !slot.stretched()
                         && record.replay.borrow().as_ref().is_some_and(|r| {
                             r.epoch + 1 == epoch
                                 && r.origin == origin
@@ -274,10 +296,18 @@ impl FlowReuse {
                                 && window.retained_replayable(&r.prepaint, &r.paint)
                         });
                     slot.set_replay(replay.then_some(epoch));
+                    // Чернила растянутого листа — до любого правого края.
+                    let ink = |ink: Bounds<ScaledPixels>| match slot.stretched() {
+                        true => Bounds {
+                            size: size(ScaledPixels(f32::MAX / 4.0), ink.size.height),
+                            ..ink
+                        },
+                        false => ink,
+                    };
                     replay
                         || record
                             .ink
-                            .is_none_or(|ink| !placed(ink, origin, SNAP).intersects(&screen))
+                            .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
                 refused.insert(record.element.node_id);

@@ -12551,10 +12551,10 @@ index 0000000000000000000000000000000000000000..69380fa97dd43ac581dc57a020c9642d
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d421ae54ee4d1eec9cc2f569a6fd5c9a1802cbb3
+index 0000000000000000000000000000000000000000..60d82b6947ef094f8bb39c8dfddb45f886700449
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,179 @@
 +//! KaminIDE patch: an exact leaf standing in for a laid out subtree.
 +//!
 +//! A host that skips building a settled subtree still needs its parent to
@@ -12586,26 +12586,40 @@ index 0000000000000000000000000000000000000000..d421ae54ee4d1eec9cc2f569a6fd5c9a
 +    margin: Rect<LengthPercentageAuto>,
 +    align_self: Option<AlignSelf>,
 +    justify_self: Option<AlignSelf>,
++    /// The width is the parent's stretch fit, not `size.width`.
++    stretch: bool,
 +}
 +
 +impl ExactLeaf {
++    pub(crate) fn width(&self) -> f32 {
++        self.size.width
++    }
++
++    pub(crate) fn stretched(self) -> Self {
++        Self { stretch: true, ..self }
++    }
++
 +    fn style(&self) -> Style {
 +        let size = self.size;
++        let width = |definite: Dimension| if self.stretch { Dimension::auto() } else { definite };
++        let limit = |definite: LengthPercentageAuto| {
++            if self.stretch { LengthPercentageAuto::auto() } else { definite }
++        };
 +        Style {
 +            display: self.display,
 +            box_sizing: BoxSizing::BorderBox,
 +            direction: self.direction,
 +            block_flow: self.block_flow,
 +            size: Size {
-+                width: Dimension::length(size.width),
++                width: width(Dimension::length(size.width)),
 +                height: Dimension::length(size.height),
 +            },
 +            min_size: Size {
-+                width: LengthPercentageAuto::length(size.width),
++                width: limit(LengthPercentageAuto::length(size.width)),
 +                height: LengthPercentageAuto::length(size.height),
 +            },
 +            max_size: Size {
-+                width: LengthPercentageAuto::length(size.width),
++                width: limit(LengthPercentageAuto::length(size.width)),
 +                height: LengthPercentageAuto::length(size.height),
 +            },
 +            margin: self.margin,
@@ -12670,6 +12684,7 @@ index 0000000000000000000000000000000000000000..d421ae54ee4d1eec9cc2f569a6fd5c9a
 +            margin: style.margin,
 +            align_self: style.align_self,
 +            justify_self: style.justify_self,
++            stretch: false,
 +        })
 +    }
 +
@@ -20982,10 +20997,10 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..78695c7a953063f0d01a34f45f6dbcacd44ee83c
+index 0000000000000000000000000000000000000000..9903d286ae50d3d1e0964c642facc8ccdff2781d
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,296 @@
+@@ -0,0 +1,308 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -21221,6 +21236,18 @@ index 0000000000000000000000000000000000000000..78695c7a953063f0d01a34f45f6dbcac
 +    /// Device scale of the layout the snapshot was taken from.
 +    pub fn scale(&self) -> f32 {
 +        self.scale
++    }
++
++    /// Border-box width of the snapshot leaf, in logical pixels.
++    pub fn width(&self) -> f32 {
++        self.leaf.width()
++    }
++
++    /// The same leaf with its width left to the parent: the stretch-fit
++    /// width of a block-level box (CSS2 §10.3.3), for a host that knows the
++    /// subtree's height and overflow do not depend on that width.
++    pub fn stretched(self) -> Self {
++        Self { leaf: self.leaf.stretched(), ..self }
 +    }
 +}
 +

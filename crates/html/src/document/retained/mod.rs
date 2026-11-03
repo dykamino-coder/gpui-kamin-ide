@@ -82,13 +82,14 @@ impl Builder {
     /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
     fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
         let (w, h) = self.opts.viewport;
+        let again = self.counters.get().is_some();
         match self.counters.get() {
             Some(counters) => counters.write(&self.opts.cx),
             None => self
                 .counters
                 .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
         }
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn);
+        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
         let mut opts = self.opts.clone();
         opts.cx.contracts.reuse = flow.clone();
         let tree = div()

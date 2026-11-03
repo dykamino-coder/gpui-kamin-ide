@@ -14,15 +14,23 @@ pub(super) struct Slot {
     /// Кадр, в который повторяется вывод записи (`FlowReuse::validate`);
     /// `None` — блок вне экрана и не рисуется.
     replay: Cell<Option<u64>>,
+    /// Лист берёт ширину от потока (`Record::stretch` при другой ширине):
+    /// краска записи не повторяется, а чернила шире записанных.
+    stretched: bool,
 }
 
 impl Slot {
-    pub(super) fn new(record: Rc<Record>) -> Self {
+    pub(super) fn new(record: Rc<Record>, stretched: bool) -> Self {
         Self {
             record,
             layout: Cell::new(None),
             replay: Cell::new(None),
+            stretched,
         }
+    }
+
+    pub(super) fn stretched(&self) -> bool {
+        self.stretched
     }
 
     pub(super) fn record(&self) -> &Record {
@@ -75,7 +83,11 @@ impl Hooks for Placeholder {
             // Лист другого масштаба неточен: проверка кадра отвергнет его.
             return (window.request_layout(gpui::Style::default(), [], cx), ());
         }
-        let id = window.request_snapshot_layout(snapshot);
+        let id = if self.slot.stretched {
+            window.request_snapshot_layout(&snapshot.stretched())
+        } else {
+            window.request_snapshot_layout(snapshot)
+        };
         self.slot.layout.set(Some(id));
         (id, ())
     }

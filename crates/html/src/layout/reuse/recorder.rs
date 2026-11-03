@@ -1,6 +1,8 @@
 //! Запись блока: прозрачная обёртка снимает лист раскладки, начало коробки,
 //! инертность prepaint и чернила краски, включая отложенную краску строк.
 
+use super::lines::{LineSink, with_sink};
+use super::width::{Width, reusable_range};
 use super::{Counters, FlowKey, Record, Replay, placed, scaled};
 use crate::dom::Element;
 use crate::hooks::Wrap;
@@ -26,15 +28,28 @@ pub(super) struct Pending {
     quiet: Cell<bool>,
     painted: Cell<bool>,
     sink: Rc<InkSink>,
-    /// Раскладка блока не зависит от ширины потока (`width::independent`).
-    resizable: bool,
+    /// Зависимость раскладки блока от ширины потока (`width::independent`).
+    width: Width,
+    /// Ключ потока прошлой сборки тот же: запись годна хотя бы при нём.
+    /// Иначе (ширина меняется) пишется лишь запись, годная и при другой.
+    settled: bool,
+    /// Ширина рамки блока в этом кадре.
+    border: Cell<f32>,
+    /// Строки абзацев блока в этом кадре.
+    lines: Rc<LineSink>,
     /// Вывод prepaint и краски этого кадра и маска краски.
     prepaint: RefCell<Option<RetainedPrepaint>>,
     paint: RefCell<Option<(RetainedPaint, Bounds<Pixels>)>>,
 }
 
 impl Pending {
-    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters, resizable: bool) -> Self {
+    pub(super) fn new(
+        key: Rc<FlowKey>,
+        start: Counters,
+        end: Counters,
+        width: Width,
+        settled: bool,
+    ) -> Self {
         Self {
             key,
             start,
@@ -46,7 +61,10 @@ impl Pending {
             quiet: Cell::new(false),
             painted: Cell::new(false),
             sink: Rc::default(),
-            resizable,
+            width,
+            settled,
+            border: Cell::new(0.0),
+            lines: Rc::default(),
             prepaint: RefCell::new(None),
             paint: RefCell::new(None),
         }
@@ -93,8 +111,16 @@ impl Pending {
         if !far && replay.is_none() {
             return None;
         }
+        let resizable = reusable_range(
+            self.width,
+            self.border.get(),
+            self.key.constraints.avail_w,
+            self.lines.slack(),
+        );
+        if !self.settled && resizable.is_none() {
+            return None;
+        }
         let snapshot = self.snapshot.take()?;
-
         Some(Record {
             element,
             key: self.key.clone(),
@@ -102,7 +128,14 @@ impl Pending {
             end: self.end,
             snapshot,
             ink,
-            resizable: self.resizable,
+            resizable,
+            // Блок шире потока держит пол (`Width::Floor`), а не поток.
+            stretch: self.width == Width::Stretch
+                && self
+                    .key
+                    .constraints
+                    .avail_w
+                    .is_some_and(|flow| self.border.get() <= flow + 0.5),
             far,
             replay: RefCell::new(replay),
         })
@@ -149,12 +182,14 @@ impl Wrap for Recorder {
         id
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        self.pending.border.set(bounds.size.width.as_f32());
         let callbacks = window.next_frame_callback_count();
         let root = window.retained_root_environment()
             && window.element_offset() == point(px(0.0), px(0.0));
+        let lines = self.pending.lines.clone();
         let (_, range) = window.record_retained_prepaint(|window| {
-            let _ = self.child.prepaint(window, cx);
+            let _ = with_sink(lines, || self.child.prepaint(window, cx));
         });
         let hits = range
             .quiet(window)
