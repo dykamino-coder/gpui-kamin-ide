@@ -12511,10 +12511,10 @@ index 0000000000000000000000000000000000000000..69380fa97dd43ac581dc57a020c9642d
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c06f541edce7c94f0e973b47753497177635d18f
+index 0000000000000000000000000000000000000000..b472c765df21b1f063ef8d829ebcdbfcc210614b
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,131 @@
 +//! KaminIDE patch: an exact leaf standing in for a laid out subtree.
 +//!
 +//! A host that skips building a settled subtree still needs its parent to
@@ -12547,7 +12547,8 @@ index 0000000000000000000000000000000000000000..c06f541edce7c94f0e973b4775349717
 +        let flow = match parent.block_flow {
 +            None => true,
 +            Some(flow) => {
-+                flow == taffy::BlockFlow::default()
++                !flow.vertical
++                    && !flow.block_reverse
 +                    && self.own_margins(node, true)
 +                    && self.own_margins(node, false)
 +            }
@@ -12577,6 +12578,7 @@ index 0000000000000000000000000000000000000000..c06f541edce7c94f0e973b4775349717
 +            display: style.display,
 +            box_sizing: BoxSizing::BorderBox,
 +            direction: style.direction,
++            block_flow: style.block_flow,
 +            size: Size {
 +                width: Dimension::length(size.width),
 +                height: Dimension::length(size.height),

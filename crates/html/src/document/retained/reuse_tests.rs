@@ -109,3 +109,17 @@ fn a_flow_resized_every_frame_records_nothing_and_keeps_its_records(cx: &mut Tes
     // Back at the recorded width the kept records still fit.
     assert!(skipped > 300 && rebuilt == 0, "{skipped} {rebuilt}");
 }
+
+#[gpui::test]
+fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
+    let page = |text: &str| format!("<html dir=rtl>{}</html>", rows(300, text));
+    let (view, cx) = open(cx, &page("row 300"));
+    frame(cx);
+    update(&view, cx, &page("row edited"));
+    let (_, skipped, rebuilt) = reused(&view, cx);
+    assert!(
+        skipped > 300,
+        "right-to-left blocks were rebuilt: {skipped}"
+    );
+    assert_eq!(rebuilt, 0);
+}

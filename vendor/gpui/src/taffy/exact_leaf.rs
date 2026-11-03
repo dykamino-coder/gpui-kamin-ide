@@ -30,7 +30,8 @@ impl TaffyLayoutEngine {
         let flow = match parent.block_flow {
             None => true,
             Some(flow) => {
-                flow == taffy::BlockFlow::default()
+                !flow.vertical
+                    && !flow.block_reverse
                     && self.own_margins(node, true)
                     && self.own_margins(node, false)
             }
@@ -60,6 +61,7 @@ impl TaffyLayoutEngine {
             display: style.display,
             box_sizing: BoxSizing::BorderBox,
             direction: style.direction,
+            block_flow: style.block_flow,
             size: Size {
                 width: Dimension::length(size.width),
                 height: Dimension::length(size.height),
