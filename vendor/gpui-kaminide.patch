@@ -9922,7 +9922,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13027689c0
+index 160587a4ad924f80c2dd01b90a8300febbc13105..f5a48a3172e38d44afbfd10214675731262f6d4e
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,7 @@
@@ -10387,7 +10387,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +557,187 @@
+@@ -144,4 +557,192 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -10546,8 +10546,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +        clip: Option<Bounds<ScaledPixels>>,
 +        mut place: impl FnMut(&mut PaintOperation),
 +    ) -> Self {
-+        // No reservation for every command: clipped ones are dropped.
 +        let mut scene = Self { in_group: self.in_group, ..Self::default() };
++        // Without an output clip every command is kept (a composition
++        // group's copy, which the frame keeps): reserve exactly. With one,
++        // most may be dropped, so grow by the kept ones.
++        if clip.is_none() {
++            scene.paint_operations.reserve_exact(self.paint_operations.len());
++        }
 +        for operation in &self.paint_operations {
 +            let mut operation = operation.clone();
 +            place(&mut operation);
@@ -10579,7 +10584,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +790,92 @@
+@@ -193,0 +795,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -10672,20 +10677,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +        }
 +}
 +
-@@ -213,0 +902 @@
+@@ -213,0 +907 @@
 +#[derive(Clone)]
-@@ -216 +905,4 @@
+@@ -216 +910,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +910,4 @@
+@@ -217,0 +915,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +956,35 @@
+@@ -259,0 +961,35 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -10721,7 +10726,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    ops: Range<usize>,
 +    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
 +    order: DrawOrder,
-@@ -543,0 +1275,10 @@
+@@ -543,0 +1280,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -10732,19 +10737,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1322,5 @@
+@@ -580,0 +1327,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1349,5 @@
+@@ -602,0 +1354,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1401,12 @@
+@@ -649,0 +1406,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -10757,10 +10762,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1514 @@
+@@ -751 +1519 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1521,54 @@
+@@ -757,0 +1526,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -10815,7 +10820,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1591,23 @@
+@@ -773,0 +1596,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -10839,12 +10844,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a025ca35c50ff84ea9e2a90a9b17ae13
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1636,2 @@
+@@ -795,0 +1641,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1658 @@
+@@ -815,0 +1663 @@
 +            color_mapping: None,
-@@ -835,0 +1679,6 @@
+@@ -835,0 +1684,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -11124,10 +11129,10 @@ index 0000000000000000000000000000000000000000..6d2ea81a9a139481107fc909826a19d7
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4a29b4f9b96ffd7d89d7b5167a09e4ed787a4bb5
+index 0000000000000000000000000000000000000000..85278255de18788fd4aadc5d6d023aa868b1749a
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,148 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -11271,6 +11276,10 @@ index 0000000000000000000000000000000000000000..4a29b4f9b96ffd7d89d7b5167a09e4ed
 +    let copy = record.copy_record(Point::default(), Some(rect(0., 0., 100., 50.)));
 +    assert_eq!(copy.paint_operations.len(), 3);
 +    assert!(copy.paint_operations.capacity() < 100, "{}", copy.paint_operations.capacity());
++    // Unclipped (a composition group's copy, kept by the frame): exact.
++    let full = record.copy_record(Point::default(), None);
++    assert_eq!(full.paint_operations.len(), 1000);
++    assert_eq!(full.paint_operations.capacity(), 1000);
 +}
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644

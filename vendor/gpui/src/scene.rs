@@ -708,8 +708,13 @@ impl Scene {
         clip: Option<Bounds<ScaledPixels>>,
         mut place: impl FnMut(&mut PaintOperation),
     ) -> Self {
-        // No reservation for every command: clipped ones are dropped.
         let mut scene = Self { in_group: self.in_group, ..Self::default() };
+        // Without an output clip every command is kept (a composition
+        // group's copy, which the frame keeps): reserve exactly. With one,
+        // most may be dropped, so grow by the kept ones.
+        if clip.is_none() {
+            scene.paint_operations.reserve_exact(self.paint_operations.len());
+        }
         for operation in &self.paint_operations {
             let mut operation = operation.clone();
             place(&mut operation);

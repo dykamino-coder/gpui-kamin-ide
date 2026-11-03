@@ -141,4 +141,8 @@ fn placed_replay_reserves_only_what_it_keeps() {
     let copy = record.copy_record(Point::default(), Some(rect(0., 0., 100., 50.)));
     assert_eq!(copy.paint_operations.len(), 3);
     assert!(copy.paint_operations.capacity() < 100, "{}", copy.paint_operations.capacity());
+    // Unclipped (a composition group's copy, kept by the frame): exact.
+    let full = record.copy_record(Point::default(), None);
+    assert_eq!(full.paint_operations.len(), 1000);
+    assert_eq!(full.paint_operations.capacity(), 1000);
 }
