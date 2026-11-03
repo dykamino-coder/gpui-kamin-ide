@@ -153,6 +153,7 @@ impl ColumnStack {
         let nest_report = self.nest_report.clone();
         let lead_report = self.lead_report.clone();
         let discard = self.discard;
+        let replay = self.replay;
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
@@ -176,7 +177,7 @@ impl ColumnStack {
                     gap_items: None,
                     intrinsic: None,
                     discard,
-                    replay: false,
+                    replay,
                     plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
                     oof: oof.fresh(),

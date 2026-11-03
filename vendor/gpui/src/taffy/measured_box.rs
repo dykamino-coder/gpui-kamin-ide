@@ -8,6 +8,13 @@ use taffy::util::ResolveOrZero;
 pub struct MeasuredBox {
     /// A size-only query for this axis; absent when both dimensions or final layout are needed.
     pub intrinsic_axis: Option<crate::Axis>,
+    /// Axes whose border-box size the parent algorithm already fixed for this
+    /// final layout pass. Taffy passes a leaf performing layout no known
+    /// dimensions, only the definite available space, so a box that would
+    /// otherwise size itself to fit-content can tell that its size is decided
+    /// and skip the intrinsic probes that only re-derive it (Blink
+    /// `ConstraintSpace::IsFixedInlineSize`). Always false for size queries.
+    pub fixed: Size<bool>,
     /// Containing block dimensions, before resolving this leaf's preferred size.
     pub parent_size: Size<Option<Pixels>>,
     /// Used padding, resolved against the containing block inline size.
@@ -30,6 +37,7 @@ impl MeasuredBox {
         };
         Self {
             intrinsic_axis: None,
+            fixed: Size::default(),
             parent_size: size(
                 parent.width.map(|v| Pixels(v / scale)),
                 parent.height.map(|v| Pixels(v / scale)),

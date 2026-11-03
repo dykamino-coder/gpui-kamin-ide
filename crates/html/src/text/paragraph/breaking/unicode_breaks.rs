@@ -41,7 +41,10 @@ impl Paragraph {
             let space = |ch: char| matches!(ch, ' ' | '\t' | '\n' | '\u{200b}');
             // Соседний знак — мимо распорок полей (их перенос не видит, см.
             // `linebreaks_uax`); соседний атом читается знаком-заместителем.
-            let atom_at = |at: usize| self.atom_boxes.iter().any(|x| x.at == at);
+            let atom_at = |at: usize| {
+                crate::work::add!(ParagraphAtomQueries, 1);
+                self.prepared().atoms.first(at).is_some()
+            };
             let skip = |at: usize| self.spacers.binary_search(&at).is_ok();
             // Руби — строчная коробка: соседом служит знак её базы, пустая
             // база прозрачна (`text::ruby::base_edges`).
@@ -170,9 +173,18 @@ impl Paragraph {
 impl Paragraph {
     /// Base-level edge characters of the ruby container atom at `at`.
     fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
-        self.atoms
-            .iter()
-            .find(|a| a.at == at)
+        crate::work::add!(ParagraphRubyQueries, 1);
+        if self.atoms.is_empty() {
+            // Щуп замера имеет коробки, но не живые элементы: как и прежде,
+            // его распорки не получают семантику руби из чужого абзаца.
+            return None;
+        }
+        // lay_atoms строит коробки в порядке слотов; индекс сохраняет первое
+        // попадание даже у неупорядоченных позиций и дубликатов.
+        self.prepared()
+            .atoms
+            .first(at)
+            .and_then(|i| self.atoms.get(i))
             .and_then(|a| a.extents.base_edges)
     }
 }
@@ -194,14 +206,5 @@ pub(super) fn break_all_class(ch: char) -> char {
 }
 
 #[cfg(test)]
-mod ruby_tests {
-    /// Ruby edges break like the base text: `<ruby>a<rt>x</rt></ruby>b` has
-    /// no opportunity, a space or CJK neighbours do.
-    #[test]
-    fn ruby_edges_follow_uax14_between_base_and_neighbour() {
-        assert!(!super::pair_breaks('a', 'b'));
-        assert!(super::pair_breaks(' ', 'a'));
-        assert!(super::pair_breaks('漢', '字'));
-        assert!(!super::pair_breaks('a', ','));
-    }
-}
+#[path = "unicode_breaks_tests.rs"]
+mod tests;

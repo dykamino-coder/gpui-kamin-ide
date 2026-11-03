@@ -143,9 +143,21 @@ pub(super) fn cascade_element(
     } else {
         pre
     };
-    let mut style = tree
-        .style_sharing
-        .resolve(&matched, &inline_decls, &map, vars, element, vcx);
+    // Признаки схемы — функция собственного `color-scheme` и схемы родителя,
+    // то есть входов ключа кэша: они пишутся до сохранения в кэш.
+    let mut style =
+        tree.style_sharing
+            .resolve(&matched, &inline_decls, &map, vars, element, vcx, |style| {
+                let used = used_scheme(style, vcx);
+                let value = crate::style::values::value::dark_scheme(used);
+                if style.reset_cascade.dark_color_scheme != value {
+                    style.reset_cascade.dark_color_scheme = value;
+                }
+                let value = crate::style::values::value::embedding_dark_scheme(used);
+                if style.reset_cascade.embedding_dark_scheme != value {
+                    style.reset_cascade.embedding_dark_scheme = value;
+                }
+            });
     // Важные объявления сильнее анимаций (css-cascade-5 §6.2): кадры
     // `@keyframes` кладутся под них. Лист форм
     // (`appearance: base`) важных объявлений не несёт.
@@ -159,12 +171,7 @@ pub(super) fn cascade_element(
     // `ComputeCx`), иначе родительская — свойство наследуемое. При
     // `light dark` берётся предпочтение текущего документа, включая схему
     // embedding element. Держится на время узла и его потомков.
-    let vcx = style
-        .inh
-        .ui
-        .color_scheme
-        .as_deref()
-        .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
+    let vcx = used_scheme(&style, vcx);
     let value = crate::dom::mathml::is_mathml(handle);
     if style.reset_svg_math.mathml != value {
         style.reset_svg_math.mathml = value;
@@ -181,14 +188,6 @@ pub(super) fn cascade_element(
         if style.reset_svg_math.math_layout.is_some() {
             style.reset_svg_math.math_layout = None;
         }
-    }
-    let value = crate::style::values::value::dark_scheme(vcx);
-    if style.reset_cascade.dark_color_scheme != value {
-        style.reset_cascade.dark_color_scheme = value;
-    }
-    let value = crate::style::values::value::embedding_dark_scheme(vcx);
-    if style.reset_cascade.embedding_dark_scheme != value {
-        style.reset_cascade.embedding_dark_scheme = value;
     }
     // css-color-4 §4.1: the initial `color` is `CanvasText` of the used color
     // scheme. Below the root an empty slot inherits; at the root it is the
@@ -212,4 +211,18 @@ pub(super) fn cascade_element(
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
     (Box::new(style), own_vars, vcx.scheme, shadow, important)
+}
+
+/// Используемая схема цвета элемента (css-color-adjust-1 §color-scheme-prop):
+/// собственное вычисленное `color-scheme`, иначе схема родителя.
+fn used_scheme<'a>(
+    style: &Computed,
+    vcx: crate::values::ValueCx<'a>,
+) -> crate::values::ValueCx<'a> {
+    style
+        .inh
+        .ui
+        .color_scheme
+        .as_deref()
+        .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx))
 }

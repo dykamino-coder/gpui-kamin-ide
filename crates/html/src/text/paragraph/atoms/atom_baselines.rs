@@ -17,8 +17,7 @@ impl Paragraph {
         use gpui::{ParentElement, Styled};
         // Распорка атома — не распорка полей: из текста для переноса её не
         // вынимают, а читают знаком-заместителем (см. `linebreaks`).
-        self.spacers
-            .retain(|s| !atoms.iter().any(|(at, _, _, _)| at == s));
+        super::positions::remove_atom_spacers(&mut self.spacers, atoms.iter().map(|a| a.0));
         self.atoms = atoms
             .into_iter()
             .map(|(at, el, align, extents)| {

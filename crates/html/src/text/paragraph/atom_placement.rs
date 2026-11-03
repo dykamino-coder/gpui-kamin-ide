@@ -36,6 +36,8 @@ impl Paragraph {
                 *top = total - *top - (lh + p + q);
             }
         }
+        let mut cursor = 0;
+        let mut row_geometry = None;
         for k in 0..self.atoms.len() {
             let Some(b) = self.atom_boxes.get(k).copied() else {
                 continue;
@@ -43,30 +45,43 @@ impl Paragraph {
             // Атом за концом последней строки остался в оборванном
             // `line-clamp` хвосте: прежде он вставал на последнюю видимую
             // строку поверх её текста (`line-clamp-auto-with-ruby-002`).
-            let Some(row) = self.lines.iter().position(|l| b.at < l.range.end) else {
+            let Some(row) = atom_row(&self.lines, &mut cursor, b.at) else {
                 self.atoms[k].hidden = true;
                 continue;
             };
             self.atoms[k].hidden = false;
             let line = self.lines[row].clone();
             let (p, q) = pads.get(row).copied().unwrap_or((0.0, 0.0));
-            let align = self.line_align(row, &line);
-            let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
-            let hang = self.hang_first(line.range.start);
-            let shift = self.span(&segs, line.range.start, line.range.start + hang);
-            let lead = line.indent - shift;
-            let dx = if align == Align::Justify {
-                lead
-            } else {
-                line_offset(align, self.wrap.rtl, free_raw) + lead
-            };
-            let x = dx + self.x_at(&segs, b.at, Edge::Start)
-                - self.x_at(&segs, line.range.start, Edge::Start)
-                - px(b.shift);
+            if row_geometry
+                .as_ref()
+                .is_some_and(|&(cached, _, _, _)| cached != row)
+            {
+                row_geometry = None;
+            }
+            let (_, dx, baseline, start_x) = *row_geometry.get_or_insert_with(|| {
+                let align = self.line_align(row, &line);
+                let free_raw =
+                    bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+                let hang = self.hang_first(line.range.start);
+                let shift = self.span(&segs, line.range.start, line.range.start + hang);
+                let lead = line.indent - shift;
+                let dx = if align == Align::Justify {
+                    lead
+                } else {
+                    line_offset(align, self.wrap.rtl, free_raw) + lead
+                };
+                (
+                    row,
+                    dx,
+                    self.line_base(&line.range),
+                    self.x_at(&segs, line.range.start, Edge::Start),
+                )
+            });
+            let x = dx + self.x_at(&segs, b.at, Edge::Start) - start_x - px(b.shift);
             let top = match b.align {
                 AtomAlign::Top => tops[row] + f32::from(line.clearance),
                 AtomAlign::Bottom => tops[row] + lh + p + q - b.h,
-                _ => tops[row] + p + self.line_base(&line.range) + self.atom_top(&b),
+                _ => tops[row] + p + baseline + self.atom_top(&b),
             };
             // Корень атома ставится на ДРОБНОЕ абсолютное место, и края
             // всех его коробок округляются на абсолютной координате — как в
@@ -87,5 +102,59 @@ impl Paragraph {
                 }
             }
         }
+    }
+}
+
+/// Первый конец строки строго после атома. Порядок строк логический даже
+/// при vertical-lr; произвольный порядок публичных слотов допускает откат.
+fn atom_row(lines: &[Line], cursor: &mut usize, at: usize) -> Option<usize> {
+    crate::work::add!(ParagraphLineQueries, 1);
+    let mut _steps = 0;
+    if *cursor > 0 && lines[*cursor - 1].range.end > at {
+        *cursor = lines.partition_point(|line| {
+            _steps += 1;
+            line.range.end <= at
+        });
+    } else {
+        while *cursor < lines.len() {
+            _steps += 1;
+            if at < lines[*cursor].range.end {
+                break;
+            }
+            *cursor += 1;
+        }
+    }
+    crate::work::add!(ParagraphLineSteps, _steps);
+    (*cursor < lines.len()).then_some(*cursor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atom_rows_keep_first_end_semantics_across_gaps_empty_lines_and_clamp() {
+        let lines: Vec<_> = [0..0, 0..3, 3..5, 7..10]
+            .into_iter()
+            .map(|r| Line::test(r, px(8.)))
+            .collect();
+        let mut cursor = 0;
+        for (at, expected) in [
+            (0, Some(1)),
+            (2, Some(1)),
+            (3, Some(2)),
+            (5, Some(3)),
+            (6, Some(3)),
+            (9, Some(3)),
+            (10, None),
+            (13, None),
+            (0, Some(1)),
+            (9, Some(3)),
+            (3, Some(2)),
+            (3, Some(2)),
+        ] {
+            assert_eq!(atom_row(&lines, &mut cursor, at), expected, "at={at}");
+        }
+        assert_eq!(atom_row(&[], &mut 0, 0), None);
     }
 }
