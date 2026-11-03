@@ -199,7 +199,11 @@ impl FlowReuse {
                 recorded += 1;
             }
         }
-        self.store.records.replace(next);
+        // Кадр без записей и пропусков (ключ не устоялся) оставляет прежние:
+        // они не подойдут к другому ключу, а их сброс стоил бы кадру.
+        if recorded > 0 || skipped > 0 {
+            self.store.records.replace(next);
+        }
         let mut stats = self.store.stats.get();
         stats.recorded += recorded;
         stats.skipped += skipped;
