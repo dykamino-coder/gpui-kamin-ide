@@ -20,8 +20,6 @@ kamin-html = { workspace = true, optional = true, features = ["engine-bench"] }
 gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
-# mi_collect: возврат страниц прежнего документа после его замены (host::release_freed_pages).
-libmimalloc-sys = { version = "0.1.49", features = ["extended"] }
 futures = "0.3"
 log = "0.4"
 encoding_rs = "0.8.35"
