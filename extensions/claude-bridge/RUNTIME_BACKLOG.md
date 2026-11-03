@@ -1,5 +1,25 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Выборочная сверка INC-0080 retention — 2026-11-03
+
+Source `origin/main` `d1206b79d2836d028090f16457315d3db14716c7`.
+Контракт [#605](https://github.com/dykamino-coder/gpui-kamin-ide/pull/605)
+и server fix [#606](https://github.com/dykamino-coder/gpui-kamin-ide/pull/606)
+приняты: результаты Task handles сохраняются до TTL, место резервируется до
+dispatch, terminal payloads читаются с диска; foreground retention overload
+использует bounded ordinary SSE, explicit background отклоняется до исполнения.
+Candidate `84c97a09`: required CI/Docker dry run passed; local Docker typecheck,
+lint, 651 passed / 6 existing skips. Windows native acceptance не требуется и
+не заявлена; deployment observation у владельца после публикации.
+
+**INC-0080:** retention source contract done; release pending. Сам incident остаётся
+open для неизвестной причины historical field hangs и точно описанного next
+capture. **INC-0082:** не повторять старый admission fix; новый retention contract
+заменяет early-eviction policy, а не объявляет безлимитную background очередь.
+Следующий artifact — один release `RC-2026-11-03-MCP-RETENTION`, затем обычная
+выкладка/наблюдение владельца. Остальные строки и их historical baselines ниже
+не выдаются за повторно проверенные; BR-02/03 и native/CEF scope не изменены.
+
 ## Выборочная сверка доставки INC-0082 — 2026-10-30
 
 Проверены merged [#537](https://github.com/dykamino-coder/gpui-kamin-ide/pull/537)
