@@ -12,6 +12,9 @@ mod line_baselines;
 mod content_line;
 mod measured_content;
 mod measured_box;
+// KaminIDE patch: exact leaves standing in for skipped retained subtrees.
+mod exact_leaf;
+pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
 mod final_geometry;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};

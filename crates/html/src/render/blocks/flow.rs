@@ -56,6 +56,15 @@ pub(super) async fn blocks_flow(
         child_opts = opts.inner(|cx| cx.inline.trim_requests = std::rc::Rc::new(requests));
         &*child_opts
     };
+    // Поток `body` с повтором устоявшихся блоков (`layout::reuse`).
+    let reuse = opts
+        .cx
+        .contracts
+        .reuse
+        .as_ref()
+        .and_then(|r| r.claim(inherited, opts));
+    let last_element = nodes.iter().rposition(|n| matches!(n, Node::Element(_)));
+    let mut first_element = true;
     let mut late_layer =
         crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.position.state);
     let mut first_para = true;
@@ -76,6 +85,9 @@ pub(super) async fn blocks_flow(
         }
         let is_inline = inline_node(n, inherited, ordered_context, &pending);
         if is_inline {
+            if let Some(flow) = &reuse {
+                flow.built(n);
+            }
             pending.push(n.clone());
             continue;
         }
@@ -136,6 +148,14 @@ pub(super) async fn blocks_flow(
             } else {
                 e
             };
+            let edge = std::mem::take(&mut first_element) || Some(idx) == last_element;
+            if let Some(flow) = &reuse
+                && let Some(el) = flow.placeholder(e, edge, opts)
+            {
+                out.push(el);
+                continue;
+            }
+            let mark = reuse.as_ref().map(|flow| flow.mark(opts, out.len()));
             paint_element(
                 stk,
                 e,
@@ -150,6 +170,10 @@ pub(super) async fn blocks_flow(
                 &mut below,
             )
             .await;
+            if let (Some(flow), Some(mark)) = (&reuse, mark) {
+                flow.record(e, edge, mark, opts, &mut out);
+                flow.built(n);
+            }
         }
     }
     if !pending.is_empty() {

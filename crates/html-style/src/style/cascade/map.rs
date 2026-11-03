@@ -12,10 +12,11 @@
 //! имена).
 
 use super::key::{CascadeKey, KeySource};
-use crate::style::css::{DeclBlock, Declaration, LinkMatch, Origin, Rule, Specified};
-use std::collections::HashMap;
-
+use crate::style::css::{DeclBlock, Declaration, LinkMatch, LonghandId, Origin, Rule, Specified};
+mod groups;
+mod important;
 mod picks;
+use groups::Groups;
 pub use picks::{Pick, Picks};
 
 /// Одно объявление-кандидат.
@@ -36,8 +37,9 @@ impl<'a> Candidate<'a> {
 /// Карта каскада одного элемента.
 #[derive(Default)]
 pub struct CascadeMap<'a> {
-    names: Vec<&'a str>,
-    lists: HashMap<&'a str, Vec<Candidate<'a>>>,
+    /// Объявления в порядке поступления, пока карта собирается.
+    pending: Vec<(&'a str, Option<LonghandId>, Candidate<'a>)>,
+    groups: Groups<'a>,
     /// Кандидаты `all` с ограничением `:visited` их правила.
     all: Vec<(Candidate<'a>, LinkMatch)>,
     /// Кандидаты `all` без ограничения: они задают и неназванные свойства.
@@ -130,26 +132,13 @@ impl<'a> CascadeMap<'a> {
             if !link.admits(&decl.name) {
                 continue;
             }
-            let list = self.lists.entry(decl.name.as_str()).or_default();
-            if list.is_empty() {
-                self.names.push(decl.name.as_str());
-            }
-            list.push(cand);
+            debug_assert_eq!(decl.id, LonghandId::from_name(&decl.name));
+            self.pending.push((decl.name.as_str(), decl.id, cand));
         }
     }
 
     fn finish(&mut self) {
-        for (name, list) in self.lists.iter_mut() {
-            if !name.starts_with("--") && !matches!(*name, "direction" | "unicode-bidi") {
-                list.extend(
-                    self.all
-                        .iter()
-                        .filter(|(_, link)| link.admits(name))
-                        .map(|(c, _)| *c),
-                );
-            }
-            list.sort_by_key(|c| std::cmp::Reverse(c.key));
-        }
+        self.groups = Groups::build(std::mem::take(&mut self.pending), &self.all);
         self.all.sort_by_key(|(c, _)| std::cmp::Reverse(c.key));
         self.all_any = self
             .all
@@ -161,7 +150,14 @@ impl<'a> CascadeMap<'a> {
 
     /// Имена свойств карты в порядке первого появления.
     pub fn names(&self) -> &[&'a str] {
-        &self.names
+        self.groups.names()
+    }
+
+    /// Имена в порядке первого появления вместе с их выбором каскада.
+    pub fn named(&self) -> impl Iterator<Item = (&'a str, Picks<'_, 'a>)> + '_ {
+        self.groups
+            .named()
+            .map(|(name, list)| (name, Picks::new(list)))
     }
 
     /// Выбор каскада для имени: первый элемент — победитель; следующие —
@@ -169,42 +165,8 @@ impl<'a> CascadeMap<'a> {
     /// применении (негодное объявление не участвует в каскаде, CSS Syntax
     /// §4.1.7 / CSS 2.1 §4.2).
     pub fn picks(&self, name: &str) -> Picks<'_, 'a> {
-        Picks::new(self.lists.get(name).map_or(&[], Vec::as_slice))
+        Picks::new(self.groups.get(name))
     }
-
-    /// Важные победители блоком обычных объявлений в порядке каскада —
-    /// то, что сильнее происхождения анимаций (css-cascade-5 §6.2): кадр
-    /// анимации их не перебивает (`important-prop`).
-    pub fn important_block(&self) -> DeclBlock {
-        let mut wins: Vec<(CascadeKey, &str, Candidate<'a>, &str)> = self
-            .names
-            .iter()
-            .filter(|k| !k.starts_with("--"))
-            .filter_map(|&k| match self.picks(k).next()? {
-                Pick::Value(c, v) if c.key.important() => Some((c.key, k, c, v)),
-                _ => None,
-            })
-            .collect();
-        wins.sort_by_key(|w| w.0);
-        let mut block = DeclBlock::new();
-        for (_, k, c, v) in wins {
-            let pos = block.next_pos();
-            // Значение с подстановкой у длинного свойства сокращения — текст
-            // сокращения: объявление переносится с его видом значения.
-            let decl = if c.decl.name == k {
-                Declaration {
-                    important: false,
-                    pos,
-                    ..c.decl.clone()
-                }
-            } else {
-                Declaration::new(k, v, false, pos)
-            };
-            block.push_decl(decl);
-        }
-        block
-    }
-
     /// Выбор каскада для самого `all`: значение, которое получают свойства,
     /// не названные ни одним объявлением.
     pub fn all_picks(&self) -> Picks<'_, 'a> {

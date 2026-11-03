@@ -2,14 +2,9 @@
 
 use super::*;
 
-/// Псевдокласс — of-форма `:nth-child(… of S)`?
-pub(super) fn nth_of_form(sel: &Selector, pseudo: &str) -> bool {
-    sel.prepared(pseudo).is_some_and(|p| p.nth.is_some())
-}
-
-/// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
-/// узел обязан сам совпасть с S, а номер считается только среди совпавших
-/// братьев — с начала либо с конца. `None` — псевдокласс не of-формы.
+/// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` по сырому тексту
+/// псевдокласса. `None` — псевдокласс не of-формы.
+#[cfg(test)]
 pub(super) fn nth_of_holds(
     sel: &Selector,
     pseudo: &str,
@@ -17,21 +12,36 @@ pub(super) fn nth_of_holds(
     path: &[Ancestor],
     sibs: Sibs,
 ) -> Option<bool> {
-    let (name, _arg) = pseudo.split_once('(')?;
-    let backwards = match name {
-        "nth-child" => false,
-        "nth-last-child" => true,
-        _ => return None,
+    match sel.pseudo_of(pseudo) {
+        (prepared, PseudoKind::NthOf(backwards)) => Some(nth_of_holds_prepared(
+            sel, pseudo, prepared, backwards, me, path, sibs,
+        )),
+        _ => None,
+    }
+}
+
+/// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
+/// узел обязан сам совпасть с S, а номер считается только среди совпавших
+/// братьев — с начала либо с конца (`backwards`).
+pub(super) fn nth_of_holds_prepared(
+    sel: &Selector,
+    pseudo: &str,
+    prepared: Option<&Prepared>,
+    backwards: bool,
+    me: &Ancestor,
+    path: &[Ancestor],
+    sibs: Sibs,
+) -> bool {
+    let Some(prepared) = prepared else {
+        return false;
     };
-    let prepared = sel.prepared(pseudo)?;
-    prepared.nth.as_ref()?;
     let Some(anb) = prepared.anb else {
-        return Some(false);
+        return false;
     };
     let list = &prepared.list;
     let hit = |a: &Ancestor, s: Sibs| list.iter().any(|sel| matches(sel, a, path, s));
     if !sibs.is_elem || list.is_empty() {
-        return Some(false);
+        return false;
     }
     // Состояния ссылок/маркеров и overlay меняются в пределах прохода.
     let stable = !me.matching.has_anchor() && prepared.nth_cacheable;
@@ -41,7 +51,7 @@ pub(super) fn nth_of_holds(
             .nth_ranks(sel.argument_namespace as u8, pseudo, sibs, hit)
         else {
             // Отказ бюджета не превращает распознанную of-форму в обычную nth.
-            return Some(false);
+            return false;
         };
         let rank = ranks[sibs.pos];
         let index = if backwards {
@@ -49,10 +59,10 @@ pub(super) fn nth_of_holds(
         } else {
             rank
         };
-        return Some(rank > 0 && anb.matches(index));
+        return rank > 0 && anb.matches(index);
     }
     if !hit(me, sibs) {
-        return Some(false);
+        return false;
     }
     let (peers, base) = if backwards {
         (sibs.next(), sibs.pos + 1)
@@ -64,42 +74,51 @@ pub(super) fn nth_of_holds(
         .enumerate()
         .filter(|(i, a)| hit(a, sibs.at(base + i)))
         .count();
-    Some(anb.matches(idx))
+    anb.matches(idx)
 }
 
-/// Структурные псевдоклассы: место узла среди соседей.
-///
+/// Структурные псевдоклассы по сырому тексту: место узла среди соседей.
 /// `None` — псевдокласс не структурный, решение принимает вызывающий.
+#[cfg(test)]
 pub(super) fn structural(sel: &Selector, pseudo: &str, spot: Spot) -> Option<bool> {
-    let name = pseudo.split_once('(').map_or(pseudo, |(name, _)| name);
-    let anb_matches = |index| {
-        sel.prepared(pseudo)
-            .and_then(|p| p.anb)
-            .is_some_and(|a| a.matches(index))
-    };
-    let (index, total) = match name {
-        "first-child" | "last-child" | "only-child" | "nth-child" | "nth-last-child" => {
-            (spot.index, spot.total)
+    match sel.pseudo_of(pseudo) {
+        (prepared, PseudoKind::Structural(position, of_type)) => {
+            Some(structural_at(position, of_type, prepared, spot))
         }
-        "first-of-type" | "last-of-type" | "only-of-type" | "nth-of-type" | "nth-last-of-type" => {
-            (spot.of_type, spot.of_type_total)
-        }
-        _ => return None,
+        _ => None,
+    }
+}
+
+/// Структурный псевдокласс разобранного вида: место узла среди соседей
+/// (`of_type` — среди соседей с тем же тегом).
+pub(super) fn structural_at(
+    position: Position,
+    of_type: bool,
+    prepared: Option<&Prepared>,
+    spot: Spot,
+) -> bool {
+    let (index, total) = if of_type {
+        (spot.of_type, spot.of_type_total)
+    } else {
+        (spot.index, spot.total)
     };
     // Узел без места — не элемент; таким структурные правила не адресуются.
     if index == 0 {
-        return Some(false);
+        return false;
     }
-    Some(match name {
-        "first-child" | "first-of-type" => index == 1,
-        "last-child" | "last-of-type" => index == total,
-        "only-child" | "only-of-type" => total == 1,
-        "nth-child" | "nth-of-type" => anb_matches(index),
-        "nth-last-child" | "nth-last-of-type" => anb_matches(total + 1 - index),
-        _ => false,
-    })
+    let anb_matches = |index| {
+        prepared
+            .and_then(|p| p.anb)
+            .is_some_and(|a| a.matches(index))
+    };
+    match position {
+        Position::First => index == 1,
+        Position::Last => index == total,
+        Position::Only => total == 1,
+        Position::Nth => anb_matches(index),
+        Position::NthLast => anb_matches(total + 1 - index),
+    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

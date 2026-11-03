@@ -111,6 +111,7 @@ impl Document {
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),
+            reuse: Default::default(),
             root,
             key,
             theme_css: theme_css.into(),

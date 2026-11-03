@@ -138,5 +138,14 @@ impl<'a> Sibs<'a> {
 mod node;
 pub use node::{ancestor_of, census_of, is_empty_node, link_visited};
 
+/// ASCII lowercase of a token, copying only text that has an uppercase letter.
+pub(crate) fn ascii_lower(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.bytes().any(|b| b.is_ascii_uppercase()) {
+        std::borrow::Cow::Owned(text.to_ascii_lowercase())
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
 #[cfg(test)]
 mod tests;

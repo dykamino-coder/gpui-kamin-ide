@@ -14,6 +14,9 @@
 //! Иначе кадр собирается заново, как `Document::render`.
 
 mod element;
+mod record;
+#[cfg(test)]
+mod reuse_tests;
 #[cfg(test)]
 mod tests;
 mod window_key;
@@ -21,6 +24,7 @@ mod window_key;
 use super::Document;
 use super::state::DocState;
 use crate::dom::Node;
+use crate::layout::reuse::FlowReuse;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -64,21 +68,28 @@ struct Builder {
     state: Rc<DocState>,
     nodes: Rc<Vec<Node>>,
     opts: crate::RenderOpts,
+    store: Rc<crate::layout::reuse::Store>,
 }
 
 impl Builder {
     /// Коробка области просмотра с деревом документа: начальный содержащий
     /// блок точного размера, белый холст UA и текст окна из опций хоста.
-    fn build(&self) -> AnyElement {
+    /// Блоки корневого потока записываются для следующих кадров, а при
+    /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
+    fn build(&self, allow: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
         let (w, h) = self.opts.viewport;
-        div()
+        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow);
+        let mut opts = self.opts.clone();
+        opts.cx.contracts.reuse = flow.clone();
+        let tree = div()
             .w(px(w))
             .h(px(h))
             .bg(rgb(0xffffff))
             .text_size(self.opts.text.font_size)
             .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(&self.state, &self.nodes, &self.opts))
-            .into_any_element()
+            .children(super::scope::render(&self.state, &self.nodes, &opts))
+            .into_any_element();
+        (tree, flow)
     }
 }
 
@@ -94,6 +105,7 @@ impl Document {
             state: self.state.clone(),
             nodes: self.nodes.clone(),
             opts: opts.clone(),
+            store: self.reuse.clone(),
         };
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
     }
@@ -101,5 +113,12 @@ impl Document {
     /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).
     pub fn retained_frames(&self) -> (u64, u64) {
         (self.retained.builds.get(), self.retained.replays.get())
+    }
+
+    /// Блоки корневого потока: записано, пропущено вне экрана, кадров
+    /// собрано заново после промаха проверки экрана (`layout::reuse`).
+    pub fn reused_blocks(&self) -> (u64, u64, u64) {
+        let stats = self.reuse.stats.get();
+        (stats.recorded, stats.skipped, stats.rebuilt_frames)
     }
 }

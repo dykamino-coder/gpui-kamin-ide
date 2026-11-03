@@ -66,6 +66,17 @@ impl AnB {
         if index == 0 {
             return false;
         }
+        // Sibling indices and authored formulas fit i64 in practice: exact i64
+        // arithmetic answers when nothing overflows; i128 covers the rest.
+        if let Ok(index) = i64::try_from(index)
+            && let Some(diff) = index.checked_sub(self.b)
+        {
+            if self.a == 0 {
+                return diff == 0;
+            }
+            return diff.checked_rem(self.a) == Some(0)
+                && (diff == 0 || (diff < 0) == (self.a < 0));
+        }
         // Разность и деление не переполняются даже при i64::MIN и usize::MAX.
         let (a, b, index) = (i128::from(self.a), i128::from(self.b), index as i128);
         if a == 0 {
@@ -107,6 +118,10 @@ mod tests {
         assert!(AnB::parse("n-9223372036854775807").unwrap().matches(1));
         assert!(!AnB::parse("-9223372036854775808n+1").unwrap().matches(2));
         assert!(AnB::parse("n").unwrap().matches(usize::MAX));
+        // Overflowing differences leave the i64 path for the exact i128 one.
+        assert!(!AnB::parse("-n-9223372036854775807").unwrap().matches(1));
+        assert!(!AnB::parse("-9223372036854775808n").unwrap().matches(1));
+        assert!(AnB::parse("-n+9223372036854775807").unwrap().matches(1));
     }
 
     #[test]

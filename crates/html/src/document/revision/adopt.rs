@@ -122,6 +122,7 @@ impl Document {
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),
+            reuse: self.reuse.clone(),
             root: self.root.clone(),
             key: source.key,
             theme_css: self.theme_css.clone(),

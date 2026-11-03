@@ -86,6 +86,8 @@ pub struct Document {
     nodes: Rc<Vec<Node>>,
     /// Записи сохраняемого кадра этого дерева (`render_viewport`).
     retained: Rc<retained::Slot>,
+    /// Записи блоков корневого потока; переживают `update` (`layout::reuse`).
+    reuse: Rc<crate::layout::reuse::Store>,
     /// Текстовый стиль `body`: им набирается текст верхнего уровня, у
     /// которого своего элемента нет.
     root: crate::style::computed::Computed,

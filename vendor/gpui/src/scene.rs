@@ -133,6 +133,13 @@ pub struct Scene {
     /// KaminIDE patch: объёмные контексты (`transform-style: preserve-3d`),
     /// плоскости и метки примитивов — см. `push_depth_context`.
     depth: DepthSort,
+    /// KaminIDE patch: ink sinks of retained subtrees open at this point of the
+    /// paint (Window::with_ink_sink); each one takes the placed bounds of every
+    /// primitive offered to the scene, before culling.
+    pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
+    /// Mouse listeners and element state reads declared inert while unseen
+    /// (Window::offscreen_inert), counted so ink probes can allow them.
+    pub(crate) ink_allowed: (usize, usize),
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -322,6 +329,8 @@ impl Scene {
         self.surfaces.clear();
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
+        self.ink.clear();
+        self.ink_allowed = (0, 0);
     }
 
     pub fn len(&self) -> usize {
@@ -444,6 +453,10 @@ impl Scene {
             }
             _ => *primitive.bounds(),
         };
+        // KaminIDE patch: ink of open retained subtrees, culled or not.
+        for sink in &self.ink {
+            sink.add(placed_bounds);
+        }
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {

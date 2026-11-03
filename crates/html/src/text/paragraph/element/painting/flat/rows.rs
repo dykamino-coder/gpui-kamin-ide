@@ -16,9 +16,13 @@ impl Paragraph {
     ) -> PaintRuns {
         let selection = id
             .map(|global| {
-                window.with_element_state::<Selection, _>(global, |state, _| {
-                    let st = state.unwrap_or_default();
-                    (st.range(), st)
+                // Пустое выделение не меняет прогонов (см. `track_selection`).
+                window.offscreen_inert(|window| {
+                    let range = window.with_element_state::<Selection, _>(global, |state, _| {
+                        let st = state.unwrap_or_default();
+                        (st.range(), st)
+                    });
+                    (range, range.0 >= range.1)
                 })
             })
             .unwrap_or((0, 0));
