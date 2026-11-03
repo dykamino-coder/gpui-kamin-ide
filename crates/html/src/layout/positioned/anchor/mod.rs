@@ -62,6 +62,7 @@ mod frame;
 pub(crate) use frame::misses_of;
 pub(crate) use frame::next_seq;
 pub(crate) use frame::reset;
+pub(crate) use frame::{seq, set_seq};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой

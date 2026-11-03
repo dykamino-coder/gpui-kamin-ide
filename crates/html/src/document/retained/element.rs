@@ -7,14 +7,16 @@
 //! раскладывается отдельным корнем в тех же границах. Коробка имеет точный
 //! размер, поэтому её содержимое раскладывается так же, как в потоке.
 
+use super::record::Record;
 use super::window_key::WindowKey;
 use super::{Builder, FrameKey, Slot};
+use crate::layout::reuse::FlowReuse;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, RetainedPaint, RetainedPrepaint, Style,
     Window, px, size,
 };
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 pub(super) struct Retained {
     slot: Rc<Slot>,
@@ -22,37 +24,11 @@ pub(super) struct Retained {
     builder: Builder,
     /// Дерево этого кадра; `None` — кандидат повтора.
     tree: Option<AnyElement>,
+    /// Повтор блоков корневого потока дерева этого кадра.
+    flow: Option<Rc<FlowReuse>>,
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
-}
-
-/// Запись кадра в состоянии элемента окна: живёт, только пока элемент
-/// рисуется каждый кадр, поэтому индексы всегда указывают в прошлый кадр.
-#[derive(Default)]
-struct Record {
-    slot: Weak<Slot>,
-    key: Option<FrameKey>,
-    window: Option<WindowKey>,
-    prepaint: RetainedPrepaint,
-    paint: RetainedPaint,
-    /// Prepaint шёл в корневом окружении окна.
-    root: bool,
-    settled: bool,
-}
-
-impl Record {
-    fn reusable(&self, slot: &Rc<Slot>, key: &Option<FrameKey>, window: &WindowKey) -> bool {
-        self.settled
-            && self.paint.replayable()
-            && self
-                .slot
-                .upgrade()
-                .is_some_and(|own| Rc::ptr_eq(&own, slot))
-            && key.is_some()
-            && self.key == *key
-            && self.window.as_ref() == Some(window)
-    }
 }
 
 impl Retained {
@@ -62,15 +38,19 @@ impl Retained {
         builder: Builder,
         candidate: bool,
     ) -> Self {
-        let tree = (!candidate).then(|| {
+        let (tree, flow) = if candidate {
+            (None, None)
+        } else {
             slot.builds.set(slot.builds.get() + 1);
-            builder.build()
-        });
+            let (tree, flow) = builder.build(true);
+            (Some(tree), flow)
+        };
         Self {
             slot,
             key,
             builder,
             tree,
+            flow,
             scheduled: 0,
             replay: false,
         }
@@ -92,7 +72,7 @@ impl Retained {
         cx: &mut App,
     ) -> RetainedPrepaint {
         self.slot.builds.set(self.slot.builds.get() + 1);
-        let mut tree = self.builder.build();
+        let (mut tree, flow) = self.builder.build(false);
         let (_, prepaint) = window.record_retained_prepaint(|window| {
             tree.layout_as_root(
                 size(
@@ -102,9 +82,14 @@ impl Retained {
                 window,
                 cx,
             );
+            // Без заместителей проверка только запоминает экран кадра.
+            if let Some(flow) = &flow {
+                flow.validate(window);
+            }
             tree.prepaint_at(bounds.origin, window, cx);
         });
         self.tree = Some(tree);
+        self.flow = flow;
         prepaint
     }
 }
@@ -178,6 +163,15 @@ impl Element for Retained {
                 let prepaint = window.replay_retained_prepaint(&record.prepaint);
                 return ((), Record { prepaint, ..record });
             }
+            // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
+            // собирается заново без заместителей (`layout::reuse`).
+            if let Some(flow) = self.flow.as_ref()
+                && self.tree.is_some()
+                && !flow.validate(window)
+            {
+                flow.note_rebuild();
+                self.tree = None;
+            }
             let prepaint = match self.tree.as_mut() {
                 Some(tree) => {
                     window
@@ -222,6 +216,9 @@ impl Element for Retained {
             };
             let before = window.next_frame_callback_count();
             let (_, paint) = window.record_retained_paint(|window| tree.paint(window, cx));
+            if let Some(flow) = &self.flow {
+                flow.finish();
+            }
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
             record.settled = record.root
                 && paint.replayable()

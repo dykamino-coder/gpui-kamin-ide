@@ -62,8 +62,39 @@ pub(super) async fn run(
             luid,
         )
         .await?;
-        checks.push(json!({"variant": variant,
-            "different_rgb_pixels": pixels::differing(incremental, &fresh.pixels)?}));
+        let different = pixels::differing(incremental, &fresh.pixels)?;
+        let mut check = json!({"variant": variant, "different_rgb_pixels": different});
+        if different != 0 {
+            // Второй свежий кадр отличает недетерминизм свежей сборки от
+            // ошибки инкрементального пути.
+            let (_, again, _) = sample(
+                cx,
+                window,
+                fonts,
+                args,
+                Step::Cold(Some(markup)),
+                capture,
+                luid,
+            )
+            .await?;
+            check["fresh_vs_fresh_rgb_pixels"] =
+                json!(pixels::differing(&fresh.pixels, &again.pixels)?);
+            check["incremental_vs_second_fresh_rgb_pixels"] =
+                json!(pixels::differing(incremental, &again.pixels)?);
+            check["detail"] = pixels::detail(incremental, &fresh.pixels);
+            if let Some(dir) = &args.frame_diff_dir {
+                std::fs::create_dir_all(dir)?;
+                pixels::save(
+                    incremental,
+                    &dir.join(format!("edit-{variant}-incremental.png")),
+                )?;
+                pixels::save(
+                    &fresh.pixels,
+                    &dir.join(format!("edit-{variant}-fresh.png")),
+                )?;
+            }
+        }
+        checks.push(check);
     }
     let mut mode = report::mode(&samples);
     mode["diagnostic_scopes"] = report::mode(&diagnostics);

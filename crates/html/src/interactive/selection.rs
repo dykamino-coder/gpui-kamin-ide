@@ -54,8 +54,21 @@ pub(crate) fn track_selection(
     index_at: impl Fn(Point<Pixels>) -> Option<usize> + Clone + 'static,
     window: &mut Window,
 ) {
+    // Вне экрана слушатели без попадания и без жеста ничего не делают, а
+    // пустое выделение равно новому: пропуск такого абзаца ничего не теряет.
+    window.offscreen_inert(|window| track(global, inside, index_at, window));
+}
+
+fn track(
+    global: &GlobalElementId,
+    inside: bool,
+    index_at: impl Fn(Point<Pixels>) -> Option<usize> + Clone + 'static,
+    window: &mut Window,
+) -> ((), bool) {
     window.with_element_state::<Selection, _>(global, |state, window| {
-        let st = std::rc::Rc::new(std::cell::Cell::new(state.unwrap_or_default()));
+        let state = state.unwrap_or_default();
+        let inert = !inside && !state.dragging && state.anchor == state.head;
+        let st = std::rc::Rc::new(std::cell::Cell::new(state));
         let down = st.clone();
         let at_down = index_at.clone();
         window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _cx| {
@@ -92,8 +105,8 @@ pub(crate) fn track_selection(
 
         super::drag::release_on_mouse_up(st.clone(), |s| &mut s.dragging, window);
 
-        ((), st.get())
-    });
+        (((), inert), st.get())
+    })
 }
 
 #[cfg(test)]

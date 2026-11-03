@@ -20,6 +20,8 @@ pub struct PaintCtx {
     element_opacity: f32,
     content_mask_stack: Vec<ContentMask<Pixels>>,
     image_cache_stack: Vec<AnyImageCache>,
+    /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
+    ink: Vec<Rc<InkSink>>,
 }
 
 /// Full paint environment, including device scale and exact raster placement.
@@ -67,6 +69,7 @@ impl PaintCtx {
         mem::swap(&mut window.element_opacity, &mut self.element_opacity);
         mem::swap(&mut window.content_mask_stack, &mut self.content_mask_stack);
         mem::swap(&mut window.image_cache_stack, &mut self.image_cache_stack);
+        mem::swap(&mut window.next_frame.scene.ink, &mut self.ink);
     }
 }
 
@@ -88,6 +91,7 @@ impl Window {
             element_opacity: self.element_opacity,
             content_mask_stack: self.content_mask_stack.clone(),
             image_cache_stack: self.image_cache_stack.clone(),
+            ink: self.next_frame.scene.ink.clone(),
         }
     }
 
@@ -148,6 +152,15 @@ impl Window {
         let mut state = Box::new(state);
         let _contexts = self.render_contexts.enter_snapshot(mem::take(&mut state.base.render_contexts));
         state.restore(self);
+        // KaminIDE patch: effects of deferred paint taint the sinks it feeds.
+        let f = |window: &mut Self| {
+            let probe = super::retained::InkProbe::open(window);
+            let result = f(window);
+            if let Some(probe) = probe {
+                probe.close(window);
+            }
+            result
+        };
         Ok(self.with_retained_layout(&mut layout_owner, |window| {
             window.with_restore(state, |window, state| state.restore(window), f).0
         }))
