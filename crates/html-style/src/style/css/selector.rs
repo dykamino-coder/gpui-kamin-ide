@@ -8,8 +8,10 @@ mod compound;
 mod prepared;
 pub use prepared::Prepared;
 mod pseudo;
+mod pseudo_kind;
 use pseudo::{is_element_backed, is_pseudo_element, known_pseudo, pseudo_specificity};
 pub use pseudo::{nth_of_parts, split_selector_list};
+pub use pseudo_kind::{Position, PseudoKind, has_argument_id};
 
 /// Ограничение пространства имён типа; имя хранится отдельно от него.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

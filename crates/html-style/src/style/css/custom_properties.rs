@@ -21,8 +21,8 @@ pub fn cascade_map(
     // старше встроенного авторского, `revert`/`revert-layer` откатывают по
     // истории кандидатов, откат без цели — `unset`.
     let mut selected = VarMap::new();
-    for name in map.names().iter().filter(|k| k.starts_with("--")) {
-        match map.picks(name).next() {
+    for (name, mut picks) in map.named().filter(|(k, _)| k.starts_with("--")) {
+        match picks.next() {
             Some(Pick::Value(c, _)) => {
                 selected.insert(name.to_string(), c.decl.value.clone());
             }

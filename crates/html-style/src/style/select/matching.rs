@@ -6,8 +6,7 @@
 //! `:hover`, `::before` и прочие состояния применяет отдельный слой отрисовки.
 
 use crate::dom::language;
-use crate::style::css::Selector;
-use crate::style::select::has::has_id;
+use crate::style::css::{Position, Prepared, PseudoKind, Selector};
 use crate::style::select::{Ancestor, Sibs, Spot};
 
 mod compound;
@@ -15,8 +14,8 @@ mod featureless;
 mod nth;
 mod pseudo;
 use compound::{ancestor_holds, matches_compound};
-use nth::{nth_of_form, nth_of_holds, structural};
-use pseudo::{has_slotted_holds, host_holds, is_holds, is_host_pseudo, lang_matches, pseudo_holds};
+use nth::{nth_of_holds_prepared, structural_at};
+use pseudo::{host_holds, is_holds, pseudo_holds};
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
 ///
@@ -32,121 +31,12 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
     if me.featureless.is_some() {
         return featureless::matches_featureless(sel, me).unwrap_or(false);
     }
-    if let Some(pseudo) = &sel.pseudo {
-        // `:host` вне тени «matches nothing» (css-shadow-1 §3.1).
-        if is_host_pseudo(pseudo) {
-            return false;
-        }
-        if pseudo.starts_with("has-slotted") {
-            if !has_slotted_holds(sel, pseudo, me) {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
-        // не среди структурных: внутри скобок может стоять тег или класс, а им
-        // нужен сам узел, а не только его место среди соседей.
-        if let Some(_inner) = pseudo
-            .strip_prefix("not(")
-            .and_then(|rest| rest.strip_suffix(')'))
-        {
-            let Some(inner) = sel
-                .prepared(pseudo)
-                .filter(|p| p.single)
-                .and_then(|p| p.list.first())
-            else {
-                return false;
-            };
-            if matches(inner, me, path, sibs) {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if let Some(ok) = is_holds(sel, pseudo, me, path, sibs) {
-            if !ok {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        // Структурный псевдокласс — часть обычного каскада: он зависит только
-        // от места узла в дереве. Остальные (`:hover`, `::before`) сюда не
-        // попадают: их применяет отдельный слой при отрисовке.
-        // `:root` — корень документа, то есть `<html>`. Он не структурный по
-        // месту среди соседей, поэтому решается здесь: без него объявления
-        // вроде `:root { font: 25px/1 Ahem }` не доезжали НИКУДА, и страница
-        // набиралась шрифтом по умолчанию (`text-align-last-015`).
-        // Ссылки: `:visited` — адрес в истории (`link_visited`, с
-        // ограничением `:visited` каскада элемента).
-        if pseudo == "link" || pseudo == "visited" {
-            if me.href.is_none() || (pseudo == "visited") != me.visited {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        // `:dir(rtl|ltr)` — направление узла: свой атрибут `dir`, иначе
-        // ближайшего предка с ним; по умолчанию письмо слева направо
-        // (селекторы-4 §direction-pseudo).
-        if let Some(want) = pseudo
-            .strip_prefix("dir(")
-            .and_then(|r| r.strip_suffix(')'))
-        {
-            let rtl = me
-                .dir
-                .or_else(|| path.iter().rev().find_map(|a| a.dir))
-                .unwrap_or(false);
-            if want.trim().eq_ignore_ascii_case("rtl") != rtl {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if pseudo == "empty" {
-            if !me.empty {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if pseudo == "target-current" {
-            if !me.target_current {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if pseudo == "root" {
-            if me.tag != "html" {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if let Some(want) = pseudo
-            .strip_prefix("lang(")
-            .and_then(|r| r.strip_suffix(')'))
-        {
-            if !lang_matches(want, me, path) {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if let Some(arg) = pseudo
-            .strip_prefix("has(")
-            .and_then(|r| r.strip_suffix(')'))
-        {
-            if !me.has_marks.contains(&has_id(arg)) {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        if let Some(ok) = nth_of_holds(sel, pseudo, me, path, sibs) {
-            if !ok {
-                return false;
-            }
-            return matches_ignoring_pseudo(sel, me, path, sibs);
-        }
-        let Some(ok) = structural(sel, pseudo, me.spot) else {
-            return false;
-        };
-        if !ok {
-            return false;
-        }
+    // The subject compound's pseudo-class is decided by its parsed kind; the
+    // states applied by other layers (`:hover`, `::before`) never hold here.
+    if let Some(pseudo) = &sel.pseudo
+        && !pseudo_holds(sel, pseudo, me, path, sibs)
+    {
+        return false;
     }
     matches_ignoring_pseudo(sel, me, path, sibs)
 }

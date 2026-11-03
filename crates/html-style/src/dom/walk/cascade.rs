@@ -108,11 +108,23 @@ pub(super) fn cascade_element(
     matched.extend(hints.iter());
     let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
     matched.extend(math_hints.iter());
-    let pre = CascadeMap::collect(&matched, &inline_decls);
-    let cascaded =
-        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
-            syntax_accepts(s, v, vcx)
-        });
+    // Карта собирается, только когда её читают: пользовательские свойства
+    // берут из неё одни имена `--*`, формы — `appearance`, промах кэша —
+    // всё. Попадание без них карты не строит.
+    let form = matches!(tag, "input" | "textarea" | "button");
+    let custom = matched
+        .iter()
+        .map(|r| &r.decls)
+        .chain(std::iter::once(&inline_decls))
+        .any(|block| block.iter().any(|d| d.name.starts_with("--")));
+    let pre = (custom || form).then(|| CascadeMap::collect(&matched, &inline_decls));
+    let no_custom = CascadeMap::default();
+    let cascaded = crate::style::css::custom_properties::cascade_map(
+        pre.as_ref().unwrap_or(&no_custom),
+        vars,
+        &registered.rules,
+        |s, v| syntax_accepts(s, v, vcx),
+    );
     let revision = tree.doc.revision_budget();
     let work = crate::style::css::variable_values::Work::new(&revision);
     let own_vars = crate::style::css::variable_values::compute(
@@ -132,22 +144,26 @@ pub(super) fn cascade_element(
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
         root: path.is_empty(),
     };
-    let appearance = matches!(tag, "input" | "textarea" | "button")
-        .then(|| Computed::appearance_from_map(&pre, vars, element, vcx));
+    let appearance = pre
+        .as_ref()
+        .filter(|_| form)
+        .map(|pre| Computed::appearance_from_map(pre, vars, element, vcx));
     let basic = appearance
         .as_ref()
         .and_then(|style| super::form_appearance::rule(tag, attrs, style));
-    let map = if let Some(basic) = &basic {
+    let map = std::cell::OnceCell::new();
+    if let Some(basic) = &basic {
         matched.push(basic);
-        CascadeMap::collect(&matched, &inline_decls)
-    } else {
-        pre
-    };
+        let _ = map.set(CascadeMap::collect(&matched, &inline_decls));
+    } else if let Some(pre) = pre {
+        let _ = map.set(pre);
+    }
+    let map = || map.get_or_init(|| CascadeMap::collect(&matched, &inline_decls));
     // Признаки схемы — функция собственного `color-scheme` и схемы родителя,
     // то есть входов ключа кэша: они пишутся до сохранения в кэш.
     let mut style =
         tree.style_sharing
-            .resolve(&matched, &inline_decls, &map, vars, element, vcx, |style| {
+            .resolve(&matched, &inline_decls, map, vars, element, vcx, |style| {
                 let used = used_scheme(style, vcx);
                 let value = crate::style::values::value::dark_scheme(used);
                 if style.reset_cascade.dark_color_scheme != value {
@@ -165,7 +181,7 @@ pub(super) fn cascade_element(
         .reset_context
         .animation
         .is_some()
-        .then(|| map.important_block());
+        .then(|| map().important_block());
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // вычисленное `color-scheme` элемента (каскад уже решил им свои цвета,
     // `ComputeCx`), иначе родительская — свойство наследуемое. При

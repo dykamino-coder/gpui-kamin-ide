@@ -8,6 +8,11 @@ use crate::style::css::{DeclBlock, LinkMatch, Origin, Rule, VarMap};
 use crate::style::values::value::{RootMetrics, Scheme};
 use crate::values::ValueCx;
 use std::collections::VecDeque;
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+/// Записей в кэше: чередование больше этого числа разных входов (91 разный
+/// `style="flex:…"` по кругу) выбивало бы каждую запись до повторного входа.
+const CAPACITY: usize = 128;
 
 #[derive(Default)]
 struct Cache {
@@ -22,12 +27,13 @@ impl StyleSharing {
     /// `finish` дописывает поля, которые зависят только от входов ключа (окружения и
     /// совпавших блоков). Запись идёт до сохранения, поэтому попадание не пишет в общие
     /// группы и не отделяет их копией.
+    /// Карту каскада `map` строит лишь промах: попаданию она не нужна.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn resolve(
+    pub(crate) fn resolve<'m, 'a: 'm>(
         &self,
         rules: &[&Rule],
         inline: &DeclBlock,
-        map: &CascadeMap<'_>,
+        map: impl FnOnce() -> &'m CascadeMap<'a>,
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
@@ -121,6 +127,8 @@ impl Environment {
 }
 
 struct Entry {
+    /// Свёртка входов ключа ([`input_hash`]): равные входы дают равную свёртку.
+    hash: u64,
     rules: Vec<RuleInput>,
     inline: DeclBlock,
     environment: Environment,
@@ -130,20 +138,22 @@ struct Entry {
 
 impl Cache {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn resolve(
+    pub(crate) fn resolve<'m, 'a: 'm>(
         &mut self,
         rules: &[&Rule],
         inline: &DeclBlock,
-        map: &CascadeMap<'_>,
+        map: impl FnOnce() -> &'m CascadeMap<'a>,
         vars: &VarMap,
         cx: CascadeCx<'_>,
         vcx: ValueCx<'_>,
         finish: impl FnOnce(&mut Computed),
     ) -> Computed {
         let bytes = cacheable(rules, inline, cx, vcx);
+        let hash = bytes.map_or(0, |_| input_hash(rules, inline));
         if bytes.is_some()
             && let Some(hit) = self.entries.iter().rev().find(|entry| {
-                entry.rules.len() == rules.len()
+                entry.hash == hash
+                    && entry.rules.len() == rules.len()
                     && entry.inline == *inline
                     && entry.environment.matches(vcx)
                     && entry.rules.iter().zip(rules).all(|(a, b)| a.matches(b))
@@ -153,7 +163,7 @@ impl Cache {
             return hit.style.clone();
         }
         let mut style = vcx.doc.initial_style();
-        style.apply_map(map, vars, cx, vcx);
+        style.apply_map(map(), vars, cx, vcx);
         finish(&mut style);
         if let Some(bytes) = bytes {
             let admission = vcx
@@ -164,10 +174,11 @@ impl Cache {
                 .map(crate::budget::admission::Admission::new)
                 .unwrap_or_default();
             if let Ok(lease) = admission.storage(bytes) {
-                if self.entries.len() == 32 {
+                if self.entries.len() == CAPACITY {
                     self.entries.pop_front();
                 }
                 self.entries.push_back(Entry {
+                    hash,
                     rules: rules.iter().map(|r| RuleInput::new(r)).collect(),
                     inline: inline.clone(),
                     environment: Environment::new(vcx),
@@ -178,6 +189,21 @@ impl Cache {
         }
         style
     }
+}
+
+/// Свёртка тех входов ключа, что дёшево читать: порядок и слой правил, текст
+/// `style=""`. Полное сравнение входов остаётся за [`RuleInput::matches`].
+fn input_hash(rules: &[&Rule], inline: &DeclBlock) -> u64 {
+    let mut h = DefaultHasher::new();
+    rules.len().hash(&mut h);
+    for rule in rules {
+        rule.order.hash(&mut h);
+        rule.layer.hash(&mut h);
+    }
+    for decl in inline.iter() {
+        (&decl.name, &decl.value, decl.important).hash(&mut h);
+    }
+    h.finish()
 }
 
 /// Ограничения относятся только к памяти ускорителя; отказ не меняет каскад.
@@ -215,27 +241,10 @@ fn cacheable(
     (bytes <= 65536).then_some(bytes)
 }
 
-/// Простые цветовые функции чистые; неизвестная функция сохраняет обычный путь.
-fn pure_value(value: &str) -> bool {
-    if value.contains('\\') {
-        return false;
-    }
-    for (at, _) in value.match_indices('(') {
-        let name = value[..at]
-            .rsplit(|c: char| !c.is_ascii_alphabetic())
-            .next()
-            .unwrap_or("");
-        if ![
-            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
-        ]
-        .iter()
-        .any(|pure| name.eq_ignore_ascii_case(pure))
-        {
-            return false;
-        }
-    }
-    true
-}
+mod pure;
+use pure::pure_value;
 
+#[cfg(test)]
+mod gradient_tests;
 #[cfg(test)]
 mod tests;
