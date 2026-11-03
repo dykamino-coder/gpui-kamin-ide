@@ -208,7 +208,13 @@ mod tests {
         }
         super::release_freed_pages();
         let released = resident();
-        assert!(touched >= before + 48 * 1024 * 1024, "{before} -> {touched}");
-        assert!(released <= before + 16 * 1024 * 1024, "{before} -> {touched} -> {released}");
+        assert!(
+            touched >= before + 48 * 1024 * 1024,
+            "{before} -> {touched}"
+        );
+        assert!(
+            released <= before + 16 * 1024 * 1024,
+            "{before} -> {touched} -> {released}"
+        );
     }
 }
