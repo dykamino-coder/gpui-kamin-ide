@@ -67,7 +67,9 @@ merge/release, не новая runtime-пачка; прежние snapshot и ga
 заменяют и не отменяют принятую task-specific приёмку. Следующий owner при
 новой регрессии — maintainer с evidence на версии, содержащей fix.
 
-## Текущая пачка `RC-2026-11-03-MCP-RETENTION`
+## Завершённая пачка `RC-2026-11-03-MCP-RETENTION`
+
+**Status:** complete. Публикация проверена, наблюдение после выкладки у владельца.
 
 **Snapshot:** `origin/main` `f386ec9a952a87fc08b2abc0b9f59ae5ca34b33e`;
 открытых PR на момент сверки нет. **Scope:** только server-only retention/overload
@@ -84,10 +86,12 @@ acceptance → сверка → один проверенный release. Жив�
 | --- | --- | --- |
 | INC-0080 retention decision / #605 | done / none | [Контракт](server/MCP_TASK_RETENTION.md) принят в `b68458fa`: TTL, reservation, bounded ordinary fallback |
 | INC-0080 server fix / #606 | done / none для retention source contract | Merge `d1206b79d2836d028090f16457315d3db14716c7`; candidate `84c97a095aef6ded7cef56ba20fa974f34779d87`: required CI, server/extension checks и Docker dry run passed. Local Docker: typecheck/lint и 651 tests passed / 6 existing skips; actual store/HTTP + delivery regressions. Клиент не меняется; native gate не требуется |
-| Reconciliation / one release | in progress / release | Source сверка после fetch выполнена; следующий artifact — один coordinated release и post-publish checks. INC-0080 field attribution остаётся open; deployment observation у владельца |
+| Reconciliation / one release | done / none | [KaminIDE 1.0.85](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.85) / server 6.3.162, source `43d2bb31cda8c783dade905ee2d55e2cd9a4c42d`. Exact candidate, main quality и [publication](https://github.com/dykamino-coder/gpui-kamin-ide/actions/runs/41629495504) прошли. Installer, provenance и Docker tags проверены |
 
-**Остаток:** Task retention fix принят по automated source contract, но пока не
-опубликован. Background retention остаётся конечным budget; при его заполнении
+**Остаток:** Task retention fix опубликован. Registry digest для `6.3.162` и
+`latest` на момент проверки —
+`sha256:626dca70d73c38bbffb8b5044bca6aa38dbe17a649fd8c84f33e055a31be33b8`.
+Background retention остаётся конечным budget; при его заполнении
 новая explicit background задача отклоняется до запуска, ordinary foreground
 продолжает работать через bounded SSE path. Это не повтор старого глобального
 admission outage. Windows UI и deployment не проверялись; владелец проверит
