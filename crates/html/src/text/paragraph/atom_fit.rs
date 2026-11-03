@@ -102,6 +102,21 @@ impl Paragraph {
                     continue;
                 };
                 let max = f32::from(window.layout_exact(root).1.width);
+                // A size-only query on the real tree decides whether the
+                // width depends on the containing block at all; only such
+                // atoms need their own copy of the tree.
+                let real_min = window.measure_layout_size(
+                    root,
+                    size(
+                        gpui::AvailableSpace::MinContent,
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    gpui::Axis::Horizontal,
+                    cx,
+                );
+                if f32::from(real_min.width) >= max - COORD_EPS {
+                    continue;
+                }
                 let mut snap = window.snapshot_layout_measurement(root);
                 let (smin, _, _) = snap.measure(
                     size(
@@ -211,3 +226,6 @@ impl Paragraph {
         self.apply_atom_fit(&fitted);
     }
 }
+
+#[cfg(test)]
+mod tests;
