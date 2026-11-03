@@ -46,6 +46,10 @@ record metadata. Do not preload the larger result budget into RAM. Preserve the
 existing record format and identity key; no operator deletion or migration of
 task files is required. Expiry retains its existing creation-time origin.
 
+A downgrade to the previous 128 MiB implementation can refuse a store which has
+grown beyond that old budget. Wait for expiry or restore a coordinated backup
+using the deployment runbook; never delete individual task records to force it.
+
 ## Acceptance
 
 Automated merge gate; no native/CEF/input or installer behavior changes. Tests
