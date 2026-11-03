@@ -1,7 +1,7 @@
 //! Очереди конечных CSS-заданий: FIFO строк и стабильные ключи документа.
 
+use super::capture::LineCapture;
 use super::*;
-use capture::Deferred;
 use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx, RetainedPaint};
 use std::collections::{BTreeMap, VecDeque};
 
@@ -15,7 +15,7 @@ pub(super) struct Inline {
     pub paint: InlinePaint,
     pub context: RasterPaintCtx,
     /// Записи блоков, из вывода которых ушло это задание (`capture`).
-    pub captures: Vec<Rc<Deferred>>,
+    pub captures: Vec<Rc<LineCapture>>,
 }
 
 /// Строки элемента либо их вывод прошлого кадра (повтор записи блока).

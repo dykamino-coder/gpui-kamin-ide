@@ -2,7 +2,7 @@
 //! пропущена (блок вне экрана), либо повторена из прошлого кадра.
 
 use super::Record;
-use crate::hooks::{DeferredPaint, Hooks};
+use crate::hooks::{Hooks, LineCapture};
 use gpui::{
     App, Bounds, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint, ScaledPixels, Window,
 };
@@ -17,7 +17,7 @@ pub(crate) struct Replay {
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
     /// Краска блока, отложенная за его вывод: строки (`paint::coordinator`).
-    pub(super) deferred: Rc<DeferredPaint>,
+    pub(super) deferred: Rc<LineCapture>,
     pub(super) origin: Point<ScaledPixels>,
     pub(super) mask: Bounds<Pixels>,
     pub(super) epoch: u64,

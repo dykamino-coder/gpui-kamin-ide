@@ -116,10 +116,7 @@ impl FlowReuse {
             // Записи уже сверены первой сборкой кадра.
         } else if resized {
             // Записи, чья раскладка от ширины не зависит, годны и при новой.
-            self.store
-                .records
-                .borrow_mut()
-                .retain(|_, r| r.fits_width(&key));
+            self.store.keep_width_independent(&key);
         } else if !settled {
             // Записи другого ключа не подойдут, а держат стили кадра записи.
             self.store.records.take();

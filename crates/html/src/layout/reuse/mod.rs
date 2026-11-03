@@ -71,6 +71,15 @@ impl Store {
         self.epoch
             .set(self.epoch.get() + if continued { 1 } else { 2 });
     }
+
+    /// Ширина потока сменилась: годны только записи, чья раскладка от неё
+    /// не зависит.
+    fn keep_width_independent(&self, key: &FlowKey) {
+        // Записи держат стили: карта меняется целиком, без `&mut` на них.
+        let mut records = self.records.take();
+        records.retain(|_, r| r.fits_width(key));
+        self.records.replace(records);
+    }
 }
 
 /// Счётчики наблюдения повтора блоков.

@@ -142,5 +142,4 @@ fn viewport_dependent(e: &Element, vcx: ValueCx<'_>) -> bool {
 }
 
 #[cfg(test)]
-#[path = "width_tests.rs"]
 mod tests;

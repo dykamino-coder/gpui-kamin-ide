@@ -4,11 +4,11 @@
 
 use super::{Events, collect, draw, probe};
 use crate::hooks::{IntoHooked, Wrap};
-use crate::paint::coordinator::{Deferred, PaintInline, PaintLast, capture};
+use crate::paint::coordinator::{LineCapture, PaintInline, PaintLast, capture};
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Window, div};
 use std::{cell::RefCell, rc::Rc};
 
-type Slot = Rc<RefCell<Option<Rc<Deferred>>>>;
+type Slot = Rc<RefCell<Option<Rc<LineCapture>>>>;
 
 struct Capturing {
     child: AnyElement,
@@ -42,7 +42,7 @@ fn positioned(name: &'static str, events: &Events) -> AnyElement {
 
 /// Draw `block` as a capturing block between two flow siblings of a stacking
 /// context; the record of its deferred paint.
-fn captured(events: &Events, block: impl FnOnce() -> AnyElement) -> Rc<Deferred> {
+fn captured(events: &Events, block: impl FnOnce() -> AnyElement) -> Rc<LineCapture> {
     let slot = Slot::default();
     draw(|| {
         let block = Capturing {

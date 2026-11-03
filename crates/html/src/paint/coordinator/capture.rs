@@ -8,12 +8,15 @@
 use super::*;
 use gpui::RetainedPaint;
 use queue::{Inline, InlinePaint};
-use std::cell::RefCell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 /// Отложенная краска одного блока в одном кадре.
-pub(crate) struct Deferred {
+pub(crate) struct LineCapture {
     /// Внешняя запись: задание, ушедшее и за её вывод, снимает и она.
-    parent: Option<Rc<Deferred>>,
+    parent: Option<Rc<LineCapture>>,
     /// Кадров прохода при начале краски блока: задание кадра ниже уходит.
     base: usize,
     /// Краска блока идёт: задание, ушедшее позже, — краска другого места.
@@ -24,10 +27,10 @@ pub(crate) struct Deferred {
     lines: RefCell<Vec<RetainedPaint>>,
 }
 
-impl Deferred {
+impl LineCapture {
     fn new(window: &Window, base: usize) -> Self {
         Self {
-            parent: window.render_context::<Deferred>(),
+            parent: window.render_context::<LineCapture>(),
             base,
             open: Cell::new(true),
             claimed: Cell::new(0),
@@ -59,10 +62,10 @@ impl Deferred {
 
 /// Записи блоков, из вывода которых уходит задание строк, принимаемое сейчас
 /// в последний кадр `pass`.
-pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Vec<Rc<Deferred>> {
+pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Vec<Rc<LineCapture>> {
     let target = pass.jobs.depth().saturating_sub(1);
     let mut claims = Vec::new();
-    let mut next = window.render_context::<Deferred>();
+    let mut next = window.render_context::<LineCapture>();
     while let Some(deferred) = next {
         if target < deferred.base {
             if deferred.open.get() {
@@ -83,11 +86,11 @@ pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Vec<Rc<Deferred>> {
 pub(crate) fn capture<R>(
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
-) -> (R, Rc<Deferred>) {
+) -> (R, Rc<LineCapture>) {
     let pass = current(window);
     let base = pass.as_ref().map_or(0, |pass| pass.jobs.depth());
     let before = pass.as_ref().map(|pass| pass.jobs.admitted_below(base));
-    let deferred = Rc::new(Deferred::new(window, base));
+    let deferred = Rc::new(LineCapture::new(window, base));
     let result = window.with_render_context(Some(deferred.clone()), f);
     deferred.open.set(false);
     if let (Some(pass), Some(before)) = (pass, before)
@@ -101,7 +104,7 @@ pub(crate) fn capture<R>(
 /// Повтор отложенной краски `record` полной записи прошлого кадра: её строки
 /// встают в очередь строк открытого кадра, вне него рисуются на месте.
 /// Ответ — та же краска этого кадра.
-pub(crate) fn replay(window: &mut Window, record: &Deferred) -> Rc<Deferred> {
+pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCapture> {
     debug_assert!(record.complete(), "incomplete deferred paint record");
     capture(window, |window| {
         for line in record.lines.borrow().iter() {

@@ -5,7 +5,7 @@ use super::lines::{LineSink, with_sink};
 use super::width::{Width, reusable_range};
 use super::{Counters, FlowKey, Record, Replay, placed, scaled};
 use crate::dom::Element;
-use crate::hooks::{DeferredPaint, Wrap};
+use crate::hooks::{LineCapture, Wrap};
 use gpui::{
     AnyElement, App, Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, RetainedPaint,
     RetainedPrepaint, ScaledPixels, Window, point, px, size,
@@ -39,7 +39,7 @@ pub(super) struct Pending {
     lines: Rc<LineSink>,
     /// Вывод prepaint и краски этого кадра и маска краски.
     prepaint: RefCell<Option<RetainedPrepaint>>,
-    paint: RefCell<Option<(RetainedPaint, Rc<DeferredPaint>, Bounds<Pixels>)>>,
+    paint: RefCell<Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>>,
 }
 
 impl Pending {

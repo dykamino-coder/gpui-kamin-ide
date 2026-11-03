@@ -166,7 +166,7 @@ pub(super) fn finish_table_outer(
             wrap.style().sizing_keywords = Some([Some(gpui::CssSizingKeyword::FitContent), None]);
             // Блок потока по блочной оси не сжимается (CSS 2.1 §10.6.3), как
             // и прочие блоки нашей гибкой колонки потока.
-            wrap.style().flex_shrink = Some(0.0);
+            wrap = wrap.flex_shrink_0();
         }
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
