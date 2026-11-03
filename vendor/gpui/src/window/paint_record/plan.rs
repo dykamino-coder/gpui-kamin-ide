@@ -130,7 +130,7 @@ impl PaintPlan {
                         None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
                     };
                     let scene = window.adopt_scene(scene);
-                    window.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
+                    window.next_frame.scene.replay_record(&scene);
                 }
                 Command::Begin(descriptor) => match descriptor.as_ref() {
                     PaintScopeDescriptor::Clip(bounds) => {

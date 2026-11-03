@@ -111,7 +111,13 @@ pub struct Scene {
     /// готов (см. `Window::paint_group`).
     #[doc(hidden)]
     pub groups: Vec<PaintGroup>,
-    primitive_bounds: BoundsTree<ScaledPixels>,
+    /// KaminIDE patch: shared by `Rc` with the grafts of scenes that copy or
+    /// replay this one (`bounds_tree::Graft`); written through `tree_mut`.
+    primitive_bounds: std::rc::Rc<BoundsTree<ScaledPixels>>,
+    /// KaminIDE patch: op ranges copied with `replay_shifted` and the frozen
+    /// tree indexing each, with the offset of the ops' orders above it, so a
+    /// later frame replaying the same range grafts it again.
+    blocks: Vec<ReplayedBlock>,
     layer_stack: Vec<DrawOrder>,
     /// KaminIDE patch: bottom-layer primitives painted so far this frame.
     bottom_seq: DrawOrder,
@@ -272,7 +278,7 @@ impl Scene {
             // выше переписанных номеров.
             if next > hi {
                 if let Some(u) = ctx.union {
-                    self.primitive_bounds.insert_at_least(u, next / ORDER_STEP + 1);
+                    self.tree_mut().insert_at_least(u, next / ORDER_STEP + 1);
                 }
             }
         }
@@ -316,7 +322,11 @@ impl Scene {
         self.segment_capture = None;
         self.paint_operations.clear();
         self.groups.clear();
-        self.primitive_bounds.clear();
+        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
+            Some(tree) => tree.clear(),
+            None => self.primitive_bounds = Default::default(),
+        }
+        self.blocks.clear();
         self.layer_stack.clear();
         self.bottom_seq = 0;
         self.paths.clear();
@@ -338,10 +348,10 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
+        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
         self.layer_stack.push(order);
         self.paint_operations
-            .push(PaintOperation::StartLayer(bounds));
+            .push(PaintOperation::StartLayer(bounds, order));
     }
 
     pub fn pop_layer(&mut self) {
@@ -365,94 +375,8 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
-        // четырёх углов матрицей.
-        fn placed_by(
-            b: Bounds<ScaledPixels>,
-            m: &TransformationMatrix,
-        ) -> Bounds<ScaledPixels> {
-            let corners = [
-                (b.origin.x.0, b.origin.y.0),
-                (b.origin.x.0 + b.size.width.0, b.origin.y.0),
-                (b.origin.x.0, b.origin.y.0 + b.size.height.0),
-                (
-                    b.origin.x.0 + b.size.width.0,
-                    b.origin.y.0 + b.size.height.0,
-                ),
-            ];
-            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-            for (x, y) in corners {
-                let tx = m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
-                let ty = m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
-                x0 = x0.min(tx);
-                y0 = y0.min(ty);
-                x1 = x1.max(tx);
-                y1 = y1.max(ty);
-            }
-            Bounds {
-                origin: point(ScaledPixels(x0), ScaledPixels(y0)),
-                size: crate::Size {
-                    width: ScaledPixels(x1 - x0),
-                    height: ScaledPixels(y1 - y0),
-                },
-            }
-        }
         let mut primitive = primitive.into();
-        // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
-        // У спрайта с трансформацией (повёрнутый текст) границы хранятся
-        // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
-        // соседа получал порядок ПОВЕРХ глифа (table-cell-align-005: с
-        // третьей ортогональной ячейки текст пропадал под градиентом).
-        // Квад и цветной спрайт с трансформацией — так же (коробка за окном
-        // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
-        // `transform-origin`, `transform-table-*`).
-        let placed_bounds = match &primitive {
-            Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
-                placed_by(q.bounds, &q.transformation)
-            }
-            Primitive::PolychromeSprite(s)
-                if s.transformation != TransformationMatrix::unit() =>
-            {
-                placed_by(s.bounds, &s.transformation)
-            }
-            // Субпиксельный (ClearType) спрайт upstream — тот же глиф, что и
-            // монохромный: границы тоже по месту на экране.
-            Primitive::SubpixelSprite(s) if s.transformation != TransformationMatrix::unit() => {
-                placed_by(s.bounds, &s.transformation)
-            }
-            Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
-                let b = s.bounds;
-                let corners = [
-                    (b.origin.x.0, b.origin.y.0),
-                    (b.origin.x.0 + b.size.width.0, b.origin.y.0),
-                    (b.origin.x.0, b.origin.y.0 + b.size.height.0),
-                    (
-                        b.origin.x.0 + b.size.width.0,
-                        b.origin.y.0 + b.size.height.0,
-                    ),
-                ];
-                let m = &s.transformation;
-                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-                for (x, y) in corners {
-                    let tx =
-                        m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
-                    let ty =
-                        m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
-                    x0 = x0.min(tx);
-                    y0 = y0.min(ty);
-                    x1 = x1.max(tx);
-                    y1 = y1.max(ty);
-                }
-                Bounds {
-                    origin: point(ScaledPixels(x0), ScaledPixels(y0)),
-                    size: crate::Size {
-                        width: ScaledPixels(x1 - x0),
-                        height: ScaledPixels(y1 - y0),
-                    },
-                }
-            }
-            _ => *primitive.bounds(),
-        };
+        let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
         for sink in &self.ink {
             sink.add(placed_bounds);
@@ -471,7 +395,7 @@ impl Scene {
                 ORDER_STEP + self.bottom_seq
             }
             Some(o) => o,
-            None => self.primitive_bounds.insert(clipped_bounds) * ORDER_STEP,
+            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
         };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
@@ -531,16 +455,217 @@ impl Scene {
         }
     }
 
+    /// KaminIDE patch: the bounds tree, copied first if a graft shares it.
+    fn tree_mut(&mut self) -> &mut BoundsTree<ScaledPixels> {
+        std::rc::Rc::make_mut(&mut self.primitive_bounds)
+    }
+
+    /// Copy `range` of an earlier scene (the rendered frame) into this one.
+    ///
+    /// KaminIDE patch: a range copied the same way into that scene grafts the
+    /// frozen tree it was indexed with; another range is indexed once by a
+    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
-        for operation in &prev_scene.paint_operations[range] {
-            self.replay_operation(operation.clone());
+        let operations = &prev_scene.paint_operations[range.clone()];
+        let source = prev_scene
+            .blocks
+            .iter()
+            .find(|block| block.ops == range)
+            .map(|block| (block.tree.clone(), block.order));
+        if !self.replay_shifted(operations, source) {
+            for operation in operations {
+                self.replay_operation(operation.clone());
+            }
         }
+    }
+
+    /// KaminIDE patch: copy every command of a finished, isolated `scene`
+    /// (a paint record or its copy) into this one, grafting its tree.
+    pub(crate) fn replay_record(&mut self, scene: &Scene) {
+        let source = Some((scene.primitive_bounds.clone(), 0));
+        if !self.replay_shifted(&scene.paint_operations, source) {
+            for operation in &scene.paint_operations {
+                self.replay_operation(operation.clone());
+            }
+        }
+    }
+
+    /// KaminIDE patch: whether every order in `operations` comes from the
+    /// bounds tree (no bottom layer, no 3D depth sort) and layers are closed,
+    /// so the commands keep their relative orders under one shift.
+    fn shiftable(operations: &[PaintOperation]) -> bool {
+        let mut layers = 0usize;
+        for operation in operations {
+            match operation {
+                PaintOperation::Primitive(_) => {}
+                PaintOperation::StartLayer(..) => layers += 1,
+                PaintOperation::EndLayer => match layers.checked_sub(1) {
+                    Some(open) => layers = open,
+                    None => return false,
+                },
+                PaintOperation::StartBottomLayer
+                | PaintOperation::StartDepthContext
+                | PaintOperation::EndDepthContext
+                | PaintOperation::StartDepthPlane(_)
+                | PaintOperation::EndDepthPlane => return false,
+            }
+        }
+        layers == 0
+    }
+
+    /// KaminIDE patch: the rectangles the bounds tree held for `operations`
+    /// when they were painted, packed into a tree (`shiftable` commands only):
+    /// layer bounds and primitives outside layers, as inserted.
+    fn packed(operations: &[PaintOperation]) -> BoundsTree<ScaledPixels> {
+        let mut rects = Vec::new();
+        let mut layers = 0usize;
+        for operation in operations {
+            match operation {
+                PaintOperation::StartLayer(bounds, order) => {
+                    if layers == 0 {
+                        rects.push((*bounds, order / ORDER_STEP));
+                    }
+                    layers += 1;
+                }
+                PaintOperation::EndLayer => layers -= 1,
+                PaintOperation::Primitive(primitive) if layers == 0 => {
+                    let clipped = placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
+                    if !clipped.is_empty() {
+                        rects.push((clipped, primitive.order() / ORDER_STEP));
+                    }
+                }
+                _ => {}
+            }
+        }
+        BoundsTree::packed(rects, |coordinate| coordinate.0)
+    }
+
+    /// KaminIDE patch: copy `operations` with their recorded orders, raised
+    /// above everything earlier they overlap, and graft the tree that indexed
+    /// them (`source`: the tree and how far the commands' orders are above
+    /// it; packed from the commands when `None`). Every order keeps the
+    /// overlap rule of `insert_primitive` (later and overlapping means
+    /// higher), so the frame draws the same pixels, and later inserts see the
+    /// copied rectangles exactly through the graft. `false` when the commands
+    /// or this scene's open state need the per-primitive replay.
+    fn replay_shifted(
+        &mut self,
+        operations: &[PaintOperation],
+        source: Option<(std::rc::Rc<BoundsTree<ScaledPixels>>, DrawOrder)>,
+    ) -> bool {
+        if !self.layer_stack.is_empty()
+            || !self.depth.contexts.is_empty()
+            || !self.depth.plane_stack.is_empty()
+            || !Self::shiftable(operations)
+        {
+            return false;
+        }
+        let (tree, base) = match source {
+            Some(source) => source,
+            None => (std::rc::Rc::new(Self::packed(operations)), 0),
+        };
+        let mut raise = 0;
+        let graft = crate::bounds_tree::Graft::new(tree.clone(), Point::default(), None, base)
+            .map(|mut graft| {
+                let above = self.tree_mut().max_meeting(graft.cover());
+                if above >= graft.min_order() {
+                    raise = above + 1 - graft.min_order();
+                    graft.raise(raise);
+                }
+                graft
+            });
+        let shift = raise * ORDER_STEP;
+        let start = self.paint_operations.len();
+        let mut ink: Option<Bounds<ScaledPixels>> = None;
+        self.paint_operations.reserve(operations.len());
+        for operation in operations {
+            let mut operation = operation.clone();
+            match &mut operation {
+                PaintOperation::Primitive(primitive) => {
+                    if !self.ink.is_empty() {
+                        let placed = placed_bounds(primitive);
+                        ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
+                    }
+                    *primitive.order_mut() += shift;
+                    self.push_ordered(primitive);
+                    if let Some(capture) = self.segment_capture.as_mut() {
+                        capture.primitive();
+                    }
+                }
+                PaintOperation::StartLayer(_, order) => *order += shift,
+                _ => {}
+            }
+            self.paint_operations.push(operation);
+        }
+        if let Some(ink) = ink {
+            for sink in &self.ink {
+                sink.add(ink);
+            }
+        }
+        if let Some(graft) = graft {
+            self.tree_mut().insert_graft(graft);
+        }
+        self.blocks.push(ReplayedBlock {
+            ops: start..self.paint_operations.len(),
+            tree,
+            order: base + raise,
+        });
+        true
+    }
+
+    /// KaminIDE patch: add an ordered primitive to its kind's list.
+    fn push_ordered(&mut self, primitive: &mut Primitive) {
+        match primitive {
+            Primitive::Shadow(shadow) => self.shadows.push(*shadow),
+            Primitive::Quad(quad) => self.quads.push(*quad),
+            Primitive::Path(path) => {
+                path.id = PathId(self.paths.len());
+                self.paths.push(path.clone());
+            }
+            Primitive::Underline(underline) => self.underlines.push(*underline),
+            Primitive::MonochromeSprite(sprite) => self.monochrome_sprites.push(*sprite),
+            Primitive::SubpixelSprite(sprite) => self.subpixel_sprites.push(*sprite),
+            Primitive::PolychromeSprite(sprite) => self.polychrome_sprites.push(*sprite),
+            Primitive::Surface(surface) => self.surfaces.push(surface.clone()),
+        }
+    }
+
+    /// KaminIDE patch: a copy of every command of this finished scene moved
+    /// by `offset` and clipped by `clip`, with the recorded orders, indexed by
+    /// a graft of this scene's tree. Primitives clipped away are dropped as
+    /// `insert_primitive` drops them.
+    pub(crate) fn copy_grafted(
+        &self,
+        offset: Point<ScaledPixels>,
+        clip: Option<Bounds<ScaledPixels>>,
+        mut place: impl FnMut(&mut PaintOperation),
+    ) -> Self {
+        let mut scene = Self { in_group: self.in_group, ..Self::default() };
+        scene.paint_operations.reserve(self.paint_operations.len());
+        for operation in &self.paint_operations {
+            let mut operation = operation.clone();
+            place(&mut operation);
+            if let PaintOperation::Primitive(primitive) = &mut operation {
+                let clipped = placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
+                if clipped.is_empty() {
+                    continue;
+                }
+                scene.push_ordered(primitive);
+            }
+            scene.paint_operations.push(operation);
+        }
+        if let Some(graft) =
+            crate::bounds_tree::Graft::new(self.primitive_bounds.clone(), offset, clip, 0)
+        {
+            scene.tree_mut().insert_graft(graft);
+        }
+        scene
     }
 
     fn replay_operation(&mut self, operation: PaintOperation) {
         match operation {
             PaintOperation::Primitive(primitive) => self.insert_primitive(primitive),
-            PaintOperation::StartLayer(bounds) => self.push_layer(bounds),
+            PaintOperation::StartLayer(bounds, _) => self.push_layer(bounds),
             PaintOperation::StartBottomLayer => self.push_bottom_layer(),
             PaintOperation::EndLayer => self.pop_layer(),
             PaintOperation::StartDepthContext => self.push_depth_context(),
@@ -593,6 +718,98 @@ impl Scene {
     }
 }
 
+/// KaminIDE patch: bounds of a primitive at its place on screen (after its
+/// transformation), before the content mask.
+fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
+        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
+        // четырёх углов матрицей.
+        fn placed_by(
+            b: Bounds<ScaledPixels>,
+            m: &TransformationMatrix,
+        ) -> Bounds<ScaledPixels> {
+            let corners = [
+                (b.origin.x.0, b.origin.y.0),
+                (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                (
+                    b.origin.x.0 + b.size.width.0,
+                    b.origin.y.0 + b.size.height.0,
+                ),
+            ];
+            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in corners {
+                let tx = m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                let ty = m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                x0 = x0.min(tx);
+                y0 = y0.min(ty);
+                x1 = x1.max(tx);
+                y1 = y1.max(ty);
+            }
+            Bounds {
+                origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                size: crate::Size {
+                    width: ScaledPixels(x1 - x0),
+                    height: ScaledPixels(y1 - y0),
+                },
+            }
+        }
+        // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
+        // У спрайта с трансформацией (повёрнутый текст) границы хранятся
+        // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
+        // соседа получал порядок ПОВЕРХ глифа (table-cell-align-005: с
+        // третьей ортогональной ячейки текст пропадал под градиентом).
+        // Квад и цветной спрайт с трансформацией — так же (коробка за окном
+        // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
+        // `transform-origin`, `transform-table-*`).
+        match primitive {
+            Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
+                placed_by(q.bounds, &q.transformation)
+            }
+            Primitive::PolychromeSprite(s)
+                if s.transformation != TransformationMatrix::unit() =>
+            {
+                placed_by(s.bounds, &s.transformation)
+            }
+            // Субпиксельный (ClearType) спрайт upstream — тот же глиф, что и
+            // монохромный: границы тоже по месту на экране.
+            Primitive::SubpixelSprite(s) if s.transformation != TransformationMatrix::unit() => {
+                placed_by(s.bounds, &s.transformation)
+            }
+            Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
+                let b = s.bounds;
+                let corners = [
+                    (b.origin.x.0, b.origin.y.0),
+                    (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                    (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                    (
+                        b.origin.x.0 + b.size.width.0,
+                        b.origin.y.0 + b.size.height.0,
+                    ),
+                ];
+                let m = &s.transformation;
+                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for (x, y) in corners {
+                    let tx =
+                        m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                    let ty =
+                        m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                    x0 = x0.min(tx);
+                    y0 = y0.min(ty);
+                    x1 = x1.max(tx);
+                    y1 = y1.max(ty);
+                }
+                Bounds {
+                    origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                    size: crate::Size {
+                        width: ScaledPixels(x1 - x0),
+                        height: ScaledPixels(y1 - y0),
+                    },
+                }
+            }
+            _ => *primitive.bounds(),
+        }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
 #[cfg_attr(
     all(
@@ -616,7 +833,8 @@ pub(crate) enum PrimitiveKind {
 #[derive(Clone)]
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
-    StartLayer(Bounds<ScaledPixels>),
+    /// KaminIDE patch: with the layer's order, so a copy can shift it.
+    StartLayer(Bounds<ScaledPixels>, DrawOrder),
     /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
     StartBottomLayer,
     EndLayer,
@@ -666,6 +884,41 @@ impl Primitive {
             Primitive::Surface(surface) => &surface.content_mask,
         }
     }
+
+    /// KaminIDE patch: the draw order assigned when it was inserted.
+    pub(crate) fn order(&self) -> DrawOrder {
+        match self {
+            Primitive::Shadow(p) => p.order,
+            Primitive::Quad(p) => p.order,
+            Primitive::Path(p) => p.order,
+            Primitive::Underline(p) => p.order,
+            Primitive::MonochromeSprite(p) => p.order,
+            Primitive::SubpixelSprite(p) => p.order,
+            Primitive::PolychromeSprite(p) => p.order,
+            Primitive::Surface(p) => p.order,
+        }
+    }
+
+    fn order_mut(&mut self) -> &mut DrawOrder {
+        match self {
+            Primitive::Shadow(p) => &mut p.order,
+            Primitive::Quad(p) => &mut p.order,
+            Primitive::Path(p) => &mut p.order,
+            Primitive::Underline(p) => &mut p.order,
+            Primitive::MonochromeSprite(p) => &mut p.order,
+            Primitive::SubpixelSprite(p) => &mut p.order,
+            Primitive::PolychromeSprite(p) => &mut p.order,
+            Primitive::Surface(p) => &mut p.order,
+        }
+    }
+}
+
+/// KaminIDE patch: commands copied by `Scene::replay_shifted`, the frozen tree
+/// that indexes them, and how far their orders are above that tree's.
+struct ReplayedBlock {
+    ops: Range<usize>,
+    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
+    order: DrawOrder,
 }
 
 #[cfg_attr(

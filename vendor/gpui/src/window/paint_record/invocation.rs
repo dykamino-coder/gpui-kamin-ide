@@ -84,7 +84,7 @@ impl Window {
         paint_scope::Identity::capture(self).check_pass(self)?;
         let scene = scene.copy_record(scaled, Some(clip));
         let scene = self.adopt_scene(scene);
-        self.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
+        self.next_frame.scene.replay_record(&scene);
         Ok(invocation)
     }
 

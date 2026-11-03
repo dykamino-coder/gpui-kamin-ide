@@ -5754,20 +5754,25 @@ index 0000000000000000000000000000000000000000..43852ab765fc7284d4be693d5579de8b
 +    }
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
-index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799c6dc09d8
+index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28681cb73d
 --- a/vendor/gpui/src/bounds_tree.rs
 +++ b/vendor/gpui/src/bounds_tree.rs
-@@ -6 +5,0 @@
+@@ -1 +1 @@
+-use crate::{Bounds, Half};
++use crate::{Bounds, Half, Point};
+@@ -6 +6 @@
 -    ptr::NonNull,
-@@ -11,0 +11,4 @@
++    rc::Rc,
+@@ -11,0 +12,4 @@
 +
 +/// KaminIDE patch: minimum entries of a node made by a split (about 40% of
 +/// `MAX_CHILDREN`, as in the R*-tree).
 +const MIN_CHILDREN: usize = 4;
-@@ -18 +21 @@
+@@ -18 +22 @@
 -/// - Uses higher branching factor (4) for lower tree height
 +/// - Uses higher branching factor (`MAX_CHILDREN`) for lower tree height
-@@ -19,0 +23,13 @@
+@@ -20 +24,20 @@
+-#[derive(Debug)]
 +///
 +/// KaminIDE patch: a balanced R-tree whose nodes hold their entries inline.
 +/// Each entry is the bounds and the highest ordering of a child, or of an
@@ -5781,27 +5786,45 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +/// full parent, so document-order text built chains about 20 levels deep and
 +/// every insert scanned hundreds of children. Queries are exact, so the
 +/// assigned orderings are the same.
-@@ -29,4 +45,7 @@
++///
++/// KaminIDE patch: a bottom entry can also be a *graft*: a whole frozen tree
++/// shared by `Rc`, seen through a translation, an output clip and an ordering
++/// offset (`Graft`). A scene that copies or replays recorded primitives
++/// grafts the record's tree instead of inserting every primitive again;
++/// queries through a graft stay exact (see `Graft`).
++#[derive(Debug, Clone)]
+@@ -29,9 +52,46 @@
 -    /// Index of the leaf with the highest ordering (for fast-path lookups).
 -    max_leaf: Option<usize>,
 -    /// Reusable stack for tree traversal during insertion.
 -    insert_path: Vec<usize>,
+-    /// Reusable stack for search operations.
+-    search_stack: Vec<NonNull<Node<U>>>,
+-}
+-
+-/// A node in the bounds tree.
 +    /// Node levels from the root to the bottom nodes (0 when empty).
 +    height: usize,
 +    /// Bounds and ordering of the rectangle with the highest ordering (for
-+    /// fast-path lookups).
++    /// fast-path lookups). KaminIDE patch: `None` in a non-empty tree when
++    /// the highest ordering belongs to a graft whose top rectangle is clipped
++    /// away; the fast path is then off until a higher ordering is inserted.
 +    max_leaf: Option<(Bounds<U>, u32)>,
++    /// Lowest ordering of any rectangle, grafts included.
++    min_order: Option<u32>,
++    /// Grafted trees; a bottom entry with `child == i + 1` stands for
++    /// `grafts[i]`.
++    grafts: Vec<Graft<U>>,
 +    /// Reusable descent path: node and the entry taken in it.
 +    insert_path: Vec<(usize, usize)>,
-@@ -34 +53,5 @@
--    search_stack: Vec<NonNull<Node<U>>>,
-+    search_stack: Vec<usize>,
++    /// Reusable stacks for search operations, one per graft nesting level.
++    search_pool: Vec<Vec<usize>>,
 +    /// Reusable entries of a node being split.
 +    split_entries: Vec<Entry<U>>,
 +    /// Reusable suffix covers of a node split.
 +    split_covers: Vec<Bounds<U>>,
-@@ -37 +60,16 @@
--/// A node in the bounds tree.
++}
++
 +/// One entry of a node: an inserted rectangle in a bottom node, a child node
 +/// otherwise.
 +#[derive(Debug, Clone, Default)]
@@ -5813,22 +5836,31 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +    bounds: Bounds<U>,
 +    /// The ordering of the rectangle, or the highest one under the child.
 +    max_order: u32,
-+    /// The child node (unused in bottom nodes).
++    /// The child node; in bottom nodes 0 for a rectangle and `i + 1` for
++    /// graft `i`.
 +    child: u32,
 +}
 +
-+/// A node of the bounds tree.
-@@ -43 +81 @@
++/// KaminIDE patch: a frozen tree grafted into another one.
++///
++/// The frozen tree `tree` indexes rectangles `e` with orderings `o`. Seen
++/// through the graft they are the rectangles `(e + offset) ∩ clip` with
++/// orderings `o + order`: exactly what inserting copies of those primitives,
++/// moved by `offset` and clipped by `clip`, would index. A query `q` meets
++/// `(e + offset) ∩ clip` iff `q ∩ clip` meets `e + offset`, so a query
++/// through the graft clips itself once and walks the frozen tree unchanged.
+@@ -39 +99 @@
+-struct Node<U>
++pub(crate) struct Graft<U>
+@@ -43,54 +103,58 @@
 -    /// Bounding box containing this node and all descendants.
-+    /// Bounding box containing every entry.
-@@ -47,2 +85,4 @@
+-    bounds: Bounds<U>,
+-    /// Maximum ordering value in this subtree.
+-    max_order: u32,
 -    /// Node-specific data.
 -    kind: NodeKind,
-+    /// Whether the entries are inserted rectangles rather than child nodes.
-+    bottom: bool,
-+    len: u8,
-+    entries: [Entry<U>; MAX_CHILDREN],
-@@ -51,24 +91,5 @@
+-}
+-
 -#[derive(Debug, Clone)]
 -enum NodeKind {
 -    /// Leaf node containing actual bounds data.
@@ -5853,17 +5885,9 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 -
 -impl NodeChildren {
 -    fn new() -> Self {
-+impl<U> Node<U>
-+where
-+    U: Clone + Debug + Default + PartialEq,
-+{
-+    fn new(bottom: bool) -> Self {
-@@ -76 +97,3 @@
+-        Self {
 -            indices: [0; MAX_CHILDREN],
-+            bounds: Bounds::default(),
-+            max_order: 0,
-+            bottom,
-@@ -78,15 +101,6 @@
+-            len: 0,
 -        }
 -    }
 -
@@ -5879,76 +5903,356 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 -
 -    fn as_slice(&self) -> &[usize] {
 -        &self.indices[..self.len as usize]
+-    }
+-}
+-
+-impl<U> BoundsTree<U>
++    tree: Rc<BoundsTree<U>>,
++    offset: Point<U>,
++    clip: Option<Bounds<U>>,
++    order: u32,
++    /// Cover of the visible rectangles, in the grafting tree's space.
++    cover: Bounds<U>,
++    min: u32,
++    max: u32,
++}
++
++fn moved<U>(bounds: &Bounds<U>, offset: Option<&Point<U>>) -> Bounds<U>
++where
++    U: Clone + Debug + Default + PartialEq + Add<U, Output = U>,
++{
++    match offset {
++        None => bounds.clone(),
++        Some(d) => Bounds {
++            origin: Point {
++                x: bounds.origin.x.clone() + d.x.clone(),
++                y: bounds.origin.y.clone() + d.y.clone(),
++            },
++            size: bounds.size.clone(),
++        },
++    }
++}
++
++fn add_points<U>(a: &Point<U>, b: &Point<U>) -> Point<U>
++where
++    U: Clone + Debug + Default + PartialEq + Add<U, Output = U>,
++{
++    Point {
++        x: a.x.clone() + b.x.clone(),
++        y: a.y.clone() + b.y.clone(),
++    }
++}
++
++/// The common part of `a` and `b` when it has an area (open-interval
++/// overlap, as in `Bounds::intersects`).
++fn meet<U>(a: &Bounds<U>, b: &Bounds<U>) -> Option<Bounds<U>>
++where
++    U: Clone + Debug + Default + PartialEq + PartialOrd + Add<U, Output = U> + Sub<Output = U>,
++{
++    let pick = |x: &U, y: &U, max: bool| {
++        if (x < y) == max { y.clone() } else { x.clone() }
++    };
++    let x0 = pick(&a.origin.x, &b.origin.x, true);
++    let y0 = pick(&a.origin.y, &b.origin.y, true);
++    let a1 = a.bottom_right();
++    let b1 = b.bottom_right();
++    let x1 = pick(&a1.x, &b1.x, false);
++    let y1 = pick(&a1.y, &b1.y, false);
++    (x0 < x1 && y0 < y1).then(|| Bounds {
++        origin: Point { x: x0.clone(), y: y0.clone() },
++        size: crate::Size { width: x1 - x0, height: y1 - y0 },
++    })
++}
++
++impl<U> Graft<U>
+@@ -106,0 +171,131 @@
++    /// The graft of `tree` moved by `offset`, clipped by `clip`, orderings
++    /// raised by `order`; `None` when nothing of it is visible. A tree that
++    /// is a single graft is seen through directly (offsets add, clips meet),
++    /// so copies of copies do not deepen queries.
++    pub fn new(
++        mut tree: Rc<BoundsTree<U>>,
++        mut offset: Point<U>,
++        mut clip: Option<Bounds<U>>,
++        mut order: u32,
++    ) -> Option<Self> {
++        while let Some(inner) = tree.single_graft() {
++            let inner_clip = inner.clip.as_ref().map(|c| moved(c, Some(&offset)));
++            clip = match (inner_clip, clip) {
++                (Some(a), Some(b)) => Some(meet(&a, &b)?),
++                (a, b) => a.or(b),
++            };
++            offset = add_points(&inner.offset, &offset);
++            order += inner.order;
++            let next = inner.tree.clone();
++            tree = next;
++        }
++        let root = &tree.nodes[tree.root?];
++        let cover = moved(&root.bounds, Some(&offset));
++        let cover = match &clip {
++            Some(c) => meet(&cover, c)?,
++            None => cover,
++        };
++        let (min, max) = (tree.min_order? + order, root.max_order + order);
++        Some(Self { tree, offset, clip, order, cover, min, max })
++    }
++
++    /// Cover of the visible rectangles.
++    pub fn cover(&self) -> &Bounds<U> {
++        &self.cover
++    }
++
++    /// Lowest ordering of the grafted rectangles.
++    pub fn min_order(&self) -> u32 {
++        self.min
++    }
++
++    /// Raise every grafted ordering by `by`.
++    pub fn raise(&mut self, by: u32) {
++        self.order += by;
++        self.min += by;
++        self.max += by;
++    }
++
++    /// The highest ordering above `floor` of a grafted rectangle meeting
++    /// `query`, in the space of a tree seen through `outer`; `floor` if none.
++    fn max_above(
++        &self,
++        query: &Bounds<U>,
++        outer: Option<&Point<U>>,
++        floor: u32,
++        pool: &mut Vec<Vec<usize>>,
++        depth: usize,
++    ) -> u32 {
++        let offset = match outer {
++            Some(o) => add_points(&self.offset, o),
++            None => self.offset.clone(),
++        };
++        let clipped;
++        let query = match &self.clip {
++            Some(c) => match meet(query, &moved(c, outer)) {
++                Some(q) => {
++                    clipped = q;
++                    &clipped
++                }
++                None => return floor,
++            },
++            None => query,
++        };
++        let inner_floor = floor.saturating_sub(self.order);
++        let found = self
++            .tree
++            .max_above(query, Some(&offset), inner_floor, pool, depth);
++        if found > inner_floor {
++            cmp::max(floor, found + self.order)
++        } else {
++            floor
++        }
++    }
++}
++
++/// A node of the bounds tree.
++#[derive(Debug, Clone)]
++struct Node<U>
++where
++    U: Clone + Debug + Default + PartialEq,
++{
++    /// Bounding box containing every entry.
++    bounds: Bounds<U>,
++    /// Maximum ordering value in this subtree.
++    max_order: u32,
++    /// Whether the entries are inserted rectangles rather than child nodes.
++    bottom: bool,
++    len: u8,
++    entries: [Entry<U>; MAX_CHILDREN],
++}
++
++impl<U> Node<U>
++where
++    U: Clone + Debug + Default + PartialEq,
++{
++    fn new(bottom: bool) -> Self {
++        Self {
++            bounds: Bounds::default(),
++            max_order: 0,
++            bottom,
++            len: 0,
 +            entries: std::array::from_fn(|_| Entry::default()),
 +        }
 +    }
 +
 +    fn entries(&self) -> &[Entry<U>] {
 +        &self.entries[..self.len as usize]
-@@ -110,0 +125 @@
++    }
++}
++
++impl<U> BoundsTree<U>
++where
++    U: Clone
++        + Debug
++        + PartialEq
++        + PartialOrd
++        + Add<U, Output = U>
++        + Sub<Output = U>
++        + Half
++        + Default,
++{
+@@ -110,0 +306 @@
 +        self.height = 0;
-@@ -113,0 +129,2 @@
+@@ -111,0 +308,2 @@
++        self.min_order = None;
++        self.grafts.clear();
+@@ -113 +311,45 @@
+-        self.search_stack.clear();
 +        self.split_entries.clear();
 +        self.split_covers.clear();
-@@ -120,0 +138,6 @@
++    }
++
++    /// KaminIDE patch: the graft this tree consists of, if it holds exactly
++    /// one entry and that entry is a graft.
++    fn single_graft(&self) -> Option<&Graft<U>> {
++        let root = &self.nodes[self.root?];
++        (self.height == 1 && root.len == 1 && root.entries[0].child > 0)
++            .then(|| &self.grafts[root.entries[0].child as usize - 1])
++    }
++
++    /// KaminIDE patch: the highest ordering of any rectangle meeting `query`
++    /// (0 if none), without inserting anything.
++    pub fn max_meeting(&mut self, query: &Bounds<U>) -> u32 {
++        self.find_max_ordering(query)
++    }
++
++    /// KaminIDE patch: add `graft`, whose orderings the caller already chose
++    /// above everything it overlaps (`max_meeting` of its cover).
++    pub fn insert_graft(&mut self, graft: Graft<U>) {
++        let top = self.root.map_or(0, |root| self.nodes[root].max_order);
++        if graft.max > top {
++            // The frozen tree's top rectangle is the new top when visible.
++            let inner_top = graft.tree.root.map_or(0, |r| graft.tree.nodes[r].max_order);
++            self.max_leaf = graft.tree.max_leaf.as_ref().and_then(|(bounds, order)| {
++                if *order != inner_top {
++                    return None;
++                }
++                let bounds = moved(bounds, Some(&graft.offset));
++                let bounds = match &graft.clip {
++                    Some(c) => meet(&bounds, c)?,
++                    None => bounds,
++                };
++                Some((bounds, graft.max))
++            });
++        }
++        self.min_order = Some(self.min_order.map_or(graft.min, |m| m.min(graft.min)));
++        let entry = Entry {
++            bounds: graft.cover.clone(),
++            max_order: graft.max,
++            child: self.grafts.len() as u32 + 1,
++        };
++        self.grafts.push(graft);
++        self.insert_entry(entry);
+@@ -120,0 +363,6 @@
 +        self.insert_at_least(new_bounds, 1)
 +    }
 +
 +    /// KaminIDE patch: вставка с порядком не ниже `min_order` — после
 +    /// переписанного порядка объёмного контекста (`Scene::pop_depth_context`).
 +    pub fn insert_at_least(&mut self, new_bounds: Bounds<U>, min_order: u32) -> u32 {
-@@ -123,4 +146 @@
+@@ -123,4 +371 @@
 -        let ordering = max_intersecting + 1;
 -
 -        // Insert the new leaf
 -        let new_leaf_idx = self.insert_leaf(new_bounds, ordering);
 +        let ordering = (max_intersecting + 1).max(min_order);
-@@ -129,6 +149,9 @@
+@@ -129,6 +374,11 @@
 -        self.max_leaf = match self.max_leaf {
 -            None => Some(new_leaf_idx),
 -            Some(old_idx) if self.nodes[old_idx].max_order < ordering => Some(new_leaf_idx),
 -            some => some,
 -        };
 -
-+        if self
-+            .max_leaf
-+            .as_ref()
-+            .is_none_or(|(_, order)| *order < ordering)
-+        {
++        let top = self.root.map_or(0, |root| self.nodes[root].max_order);
++        if ordering > top {
 +            self.max_leaf = Some((new_bounds.clone(), ordering));
 +        }
++        self.min_order = Some(self.min_order.map_or(ordering, |m| m.min(ordering)));
 +
-+        self.insert_entry(new_bounds, ordering);
-@@ -144,5 +167,4 @@
++        self.insert_entry(Entry {
++            bounds: new_bounds,
++            max_order: ordering,
++            child: 0,
++        });
+@@ -139,0 +390,17 @@
++        let mut pool = std::mem::take(&mut self.search_pool);
++        let found = self.max_above(query, None, 0, &mut pool, 0);
++        self.search_pool = pool;
++        found
++    }
++
++    /// The highest ordering above `max_found` of a rectangle meeting `query`
++    /// (`max_found` if none), with this tree's rectangles moved by `offset`.
++    /// `pool[depth]` is the search stack of this nesting level.
++    fn max_above(
++        &self,
++        query: &Bounds<U>,
++        offset: Option<&Point<U>>,
++        mut max_found: u32,
++        pool: &mut Vec<Vec<usize>>,
++        depth: usize,
++    ) -> u32 {
+@@ -141,8 +408,10 @@
+-            return 0;
+-        };
+-
 -        // Fast path: check if the max-ordering leaf intersects
 -        if let Some(max_idx) = self.max_leaf {
 -            let max_node = &self.nodes[max_idx];
 -            if query.intersects(&max_node.bounds) {
 -                return max_node.max_order;
++            return max_found;
++        };
++        if self.nodes[root_idx].max_order <= max_found {
++            return max_found;
++        }
++
 +        // Fast path: check if the max-ordering rectangle intersects
 +        if let Some((bounds, order)) = &self.max_leaf {
-+            if query.intersects(bounds) {
++            if query.intersects(&moved(bounds, offset)) {
 +                return *order;
-@@ -154 +176 @@
+@@ -153,9 +422,9 @@
+-        self.search_stack.clear();
 -        self.search_stack.push(NonNull::from(&self.nodes[root_idx]));
-+        self.search_stack.push(root_idx);
-@@ -158,4 +180,2 @@
+-
+-        let mut max_found = 0u32;
+-
 -        while let Some(node) = self.search_stack.pop() {
 -            // SAFETY: `node` is guaranteed to be valid as the `nodes` stack is unmodified in this function
 -            // and the `search_stack` only contains pointers from this function call.
 -            let node = unsafe { node.as_ref() };
-+        while let Some(node_idx) = self.search_stack.pop() {
++        if pool.len() <= depth {
++            pool.resize_with(depth + 1, Vec::new);
++        }
++        let mut stack = std::mem::take(&mut pool[depth]);
++        stack.clear();
++        stack.push(root_idx);
++
++        while let Some(node_idx) = stack.pop() {
 +            let node = &self.nodes[node_idx];
-@@ -168,2 +188,6 @@
+@@ -168,2 +437,13 @@
 -            // Spatial pruning: skip if bounds don't intersect
 -            if !query.intersects(&node.bounds) {
 +            if node.bottom {
 +                for entry in node.entries() {
-+                    if entry.max_order > max_found && query.intersects(&entry.bounds) {
-+                        max_found = entry.max_order;
++                    if entry.max_order <= max_found
++                        || !query.intersects(&moved(&entry.bounds, offset))
++                    {
++                        continue;
 +                    }
++                    max_found = match entry.child {
++                        0 => entry.max_order,
++                        graft => self.grafts[graft as usize - 1]
++                            .max_above(query, offset, max_found, pool, depth + 1),
++                    };
 +                }
-@@ -173,3 +197,6 @@
+@@ -173,3 +453,8 @@
 -            match &node.kind {
 -                NodeKind::Leaf { order } => {
 -                    max_found = cmp::max(max_found, *order);
@@ -5956,9 +6260,11 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +            // searched first and prunes the most.
 +            let mut best: Option<&Entry<U>> = None;
 +            for entry in node.entries() {
-+                if entry.max_order <= max_found || !query.intersects(&entry.bounds) {
++                if entry.max_order <= max_found
++                    || !query.intersects(&moved(&entry.bounds, offset))
++                {
 +                    continue;
-@@ -177,11 +204,9 @@
+@@ -177,11 +462,7 @@
 -                NodeKind::Internal { children } => {
 -                    // Children are maintained with highest max_order at the end.
 -                    // Push in forward order to highest (last) is popped first.
@@ -5971,29 +6277,29 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 -                            .map(NonNull::from),
 -                    );
 +                match best {
-+                    Some(b) if b.max_order >= entry.max_order => {
-+                        self.search_stack.push(entry.child as usize)
-+                    }
++                    Some(b) if b.max_order >= entry.max_order => stack.push(entry.child as usize),
 +                    Some(b) => {
-+                        self.search_stack.push(b.child as usize);
++                        stack.push(b.child as usize);
 +                        best = Some(entry);
 +                    }
 +                    None => best = Some(entry),
-@@ -189,0 +215,3 @@
+@@ -190,2 +471,6 @@
+-        }
+-
 +            if let Some(best) = best {
-+                self.search_stack.push(best.child as usize);
++                stack.push(best.child as usize);
 +            }
-@@ -195,5 +223,4 @@
++        }
++
++        pool[depth] = stack;
+@@ -195,26 +480,126 @@
 -    /// Inserts a leaf node with the given bounds and ordering.
 -    /// Returns the index of the new leaf.
 -    fn insert_leaf(&mut self, bounds: Bounds<U>, order: u32) -> usize {
 -        let new_leaf_idx = self.nodes.len();
 -        self.nodes.push(Node {
-+    /// Inserts a rectangle with the given ordering into a bottom node and
-+    /// splits full nodes up to the root.
-+    fn insert_entry(&mut self, bounds: Bounds<U>, order: u32) {
-+        let entry = Entry {
-@@ -202,19 +229,124 @@
+-            bounds: bounds.clone(),
+-            max_order: order,
 -            kind: NodeKind::Leaf { order },
 -        });
 -
@@ -6013,8 +6319,10 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 -            if order > root_order {
 -                children.push(root_idx);
 -                children.push(new_leaf_idx);
-+            child: 0,
-+        };
++    /// Inserts an entry of a bottom node and splits full nodes up to the root.
++    fn insert_entry(&mut self, entry: Entry<U>) {
++        let bounds = entry.bounds.clone();
++        let order = entry.max_order;
 +        let Some(root) = self.root else {
 +            let mut node = Node::new(true);
 +            node.bounds = bounds;
@@ -6137,7 +6445,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +        for entry in entries {
 +            node.bounds = if node.len == 0 {
 +                entry.bounds.clone()
-@@ -222,22 +354 @@
+@@ -222,22 +607 @@
 -                children.push(new_leaf_idx);
 -                children.push(root_idx);
 -            }
@@ -6161,7 +6469,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 -            let NodeKind::Internal { children } = &current.kind else {
 -                unreachable!("Should only traverse internal nodes");
 +                node.bounds.union(&entry.bounds)
-@@ -245,103 +356,30 @@
+@@ -245,103 +609,30 @@
 -
 -            self.insert_path.push(current_idx);
 -
@@ -6295,7 +6603,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +                        prefix.half_perimeter() + self.split_covers[len - 1 - k].half_perimeter();
 +                    if best.as_ref().is_none_or(|(c, _, _)| cost < *c) {
 +                        best = Some((cost, vertical, k));
-@@ -350,6 +388,27 @@
+@@ -350,6 +641,27 @@
 -            }
 -
 -            updated_child_idx = Some(node_idx);
@@ -6329,12 +6637,85 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +                j -= 1;
 +            }
 +        }
-@@ -366,0 +426 @@
+@@ -366,0 +679 @@
 +            height: 0,
-@@ -369,0 +430,2 @@
+@@ -367,0 +681,2 @@
++            min_order: None,
++            grafts: Vec::new(),
+@@ -369 +684,70 @@
+-            search_stack: Vec::new(),
++            search_pool: Vec::new(),
 +            split_entries: Vec::new(),
 +            split_covers: Vec::new(),
-@@ -471,0 +534,93 @@
++        }
++    }
++}
++
++impl<U> BoundsTree<U>
++where
++    U: Clone
++        + Debug
++        + PartialEq
++        + PartialOrd
++        + Add<U, Output = U>
++        + Sub<Output = U>
++        + Half
++        + Default,
++{
++    /// KaminIDE patch: a tree of `rects` with the given orderings, packed
++    /// bottom-up by Sort-Tile-Recursive (Leutenegger, Edgington, Lopez 1997):
++    /// sort by center x, cut into about sqrt(n / MAX_CHILDREN) vertical
++    /// slices, sort each slice by center y and fill nodes in that order; repeat
++    /// on the node covers. O(n log n) and fully packed nodes, against an
++    /// incremental insert that descends and splits per rectangle. `key` maps a
++    /// coordinate to a total order (NaN sorts last instead of panicking).
++    pub fn packed(rects: Vec<(Bounds<U>, u32)>, key: impl Fn(&U) -> f32) -> Self {
++        let mut tree = Self::default();
++        let Some(top) = rects.iter().max_by_key(|(_, order)| *order).cloned() else {
++            return tree;
++        };
++        tree.min_order = rects.iter().map(|(_, order)| *order).min();
++        tree.max_leaf = Some(top);
++        let mut level: Vec<Entry<U>> = rects
++            .into_iter()
++            .map(|(bounds, max_order)| Entry { bounds, max_order, child: 0 })
++            .collect();
++        let center = |entry: &Entry<U>, vertical: bool| {
++            let (origin, size) = if vertical {
++                (&entry.bounds.origin.y, &entry.bounds.size.height)
++            } else {
++                (&entry.bounds.origin.x, &entry.bounds.size.width)
++            };
++            key(origin) + key(size) * 0.5
++        };
++        let mut bottom = true;
++        loop {
++            let nodes = level.len().div_ceil(MAX_CHILDREN);
++            let slices = (nodes as f64).sqrt().ceil().max(1.0) as usize;
++            level.sort_by(|a, b| center(a, false).total_cmp(&center(b, false)));
++            for slice in level.chunks_mut(slices * MAX_CHILDREN) {
++                slice.sort_by(|a, b| center(a, true).total_cmp(&center(b, true)));
++            }
++            let mut next = Vec::with_capacity(nodes);
++            for group in level.chunks(MAX_CHILDREN) {
++                let mut node = Node::new(bottom);
++                Self::fill(&mut node, group.iter().cloned());
++                next.push(Entry {
++                    bounds: node.bounds.clone(),
++                    max_order: node.max_order,
++                    child: tree.nodes.len() as u32,
++                });
++                tree.nodes.push(node);
++            }
++            tree.height += 1;
++            bottom = false;
++            if next.len() == 1 {
++                tree.root = Some(next[0].child as usize);
++                return tree;
++            }
++            level = next;
+@@ -472 +856,244 @@
+-}
 +
 +    /// Checks the balanced-tree invariants below `node` and returns the number
 +    /// of node levels down to its bottom nodes.
@@ -6428,6 +6809,157 @@ index e95e32477b912b810607b20306be5f7d53c76df2..a00113a0d7dfe8ab24a70fcf159aa799
 +        let bound = (count as f64).log(MIN_CHILDREN as f64).ceil() as usize + 1;
 +        assert!(tree.height <= bound, "height {} > {}", tree.height, bound);
 +    }
++
++    fn random_rect(rng: &mut rand::rngs::StdRng, span: f32, size: f32) -> Bounds<f32> {
++        Bounds {
++            origin: Point {
++                x: rng.random_range(-span..span),
++                y: rng.random_range(-span..span),
++            },
++            size: Size {
++                width: rng.random_range(0.5..size),
++                height: rng.random_range(0.5..size),
++            },
++        }
++    }
++
++    fn brute_max(model: &[(Bounds<f32>, u32)], query: &Bounds<f32>) -> u32 {
++        model
++            .iter()
++            .filter_map(|(b, o)| b.intersects(query).then_some(*o))
++            .max()
++            .unwrap_or(0)
++    }
++
++    /// Inserts `count` random rectangles, returning them with their orderings.
++    fn filled(rng: &mut rand::rngs::StdRng, count: usize) -> (BoundsTree<f32>, Vec<(Bounds<f32>, u32)>) {
++        let mut tree = BoundsTree::default();
++        let mut model = Vec::new();
++        for _ in 0..count {
++            let rect = random_rect(rng, 300.0, 60.0);
++            let order = tree.insert(rect);
++            model.push((rect, order));
++        }
++        (tree, model)
++    }
++
++    #[test]
++    fn packed_tree_answers_like_the_inserted_one() {
++        for seed in 1..=10u64 {
++            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
++            let (mut inserted, model) = filled(&mut rng, 700);
++            let mut packed = BoundsTree::packed(model.clone(), |x| *x);
++            assert_eq!(check_node(&packed, packed.root.unwrap()), packed.height);
++            assert_eq!(packed.min_order, inserted.min_order);
++            for _ in 0..300 {
++                let query = random_rect(&mut rng, 320.0, 40.0);
++                let expected = brute_max(&model, &query);
++                assert_eq!(packed.max_meeting(&query), expected);
++                assert_eq!(inserted.max_meeting(&query), expected);
++            }
++        }
++    }
++
++    /// Grafts `source` (with orderings `source_model`) into `dest` the way a
++    /// scene copies a record: moved, clipped and raised above what it covers.
++    /// Returns the grafted rectangles as a fresh insert would index them.
++    fn graft_into(
++        dest: &mut BoundsTree<f32>,
++        source: Rc<BoundsTree<f32>>,
++        source_model: &[(Bounds<f32>, u32)],
++        offset: Point<f32>,
++        clip: Bounds<f32>,
++    ) -> Vec<(Bounds<f32>, u32)> {
++        let Some(mut graft) = Graft::new(source, offset, Some(clip), 0) else {
++            return Vec::new();
++        };
++        let above = dest.max_meeting(graft.cover());
++        let raise = if above < graft.min_order() { 0 } else { above + 1 - graft.min_order() };
++        graft.raise(raise);
++        dest.insert_graft(graft);
++        source_model
++            .iter()
++            .filter_map(|(b, o)| meet(&moved(b, Some(&offset)), &clip).map(|b| (b, o + raise)))
++            .collect()
++    }
++
++    #[test]
++    fn grafts_answer_like_reinserted_copies() {
++        for seed in 1..=12u64 {
++            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
++            let (source, source_model) = filled(&mut rng, 400);
++            let source = Rc::new(source);
++            // A copy of a copy: a tree that is one graft, grafted again.
++            let first_offset = Point { x: 37.25, y: -12.5 };
++            let first_clip = random_rect(&mut rng, 100.0, 500.0);
++            let mut copy = BoundsTree::default();
++            let copy_model =
++                graft_into(&mut copy, source.clone(), &source_model, first_offset, first_clip);
++            let copy = Rc::new(copy);
++
++            let (mut dest, mut model) = filled(&mut rng, 150);
++            let before = model.clone();
++            let offset = Point { x: -20.0, y: 55.5 };
++            let clip = random_rect(&mut rng, 100.0, 500.0);
++            let grafted = if seed % 2 == 0 {
++                graft_into(&mut dest, copy.clone(), &copy_model, offset, clip)
++            } else {
++                graft_into(&mut dest, source.clone(), &source_model, offset, clip)
++            };
++            if seed % 2 == 0 && copy.root.is_some() {
++                // The copy collapsed: one level of grafts below `dest`.
++                assert!(dest.grafts.iter().all(|g| g.tree.grafts.is_empty()));
++            }
++            // Earlier overlapping rectangles stay below every grafted one.
++            for (b, o) in &grafted {
++                assert!(brute_max(&before, b) < *o);
++            }
++            model.extend(grafted);
++            for _ in 0..300 {
++                let query = random_rect(&mut rng, 320.0, 40.0);
++                assert_eq!(dest.max_meeting(&query), brute_max(&model, &query));
++            }
++            // Later inserts see the grafted rectangles exactly.
++            for _ in 0..200 {
++                let rect = random_rect(&mut rng, 320.0, 60.0);
++                let expected = brute_max(&model, &rect) + 1;
++                assert_eq!(dest.insert(rect), expected);
++                model.push((rect, expected));
++            }
++        }
++    }
++
++    #[test]
++    fn unchanged_regraft_keeps_orderings() {
++        // Nothing earlier overlaps above the graft's lowest ordering: no raise.
++        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
++        let (source, _) = filled(&mut rng, 200);
++        let mut graft = Graft::new(Rc::new(source), Point { x: 0.0, y: 0.0 }, None, 0).unwrap();
++        let mut dest = BoundsTree::<f32>::default();
++        assert_eq!(dest.max_meeting(graft.cover()), 0);
++        graft.raise(0);
++        let max = graft.max;
++        dest.insert_graft(graft);
++        assert_eq!(dest.root.map(|r| dest.nodes[r].max_order), Some(max));
++        assert!(dest.max_leaf.is_some());
++    }
++
++    #[test]
++    fn document_order_text_packs_shallow() {
++        let mut rects = Vec::new();
++        for line in 0..400 {
++            for glyph in 0..60 {
++                let origin = Point { x: glyph as f32 * 6.0, y: line as f32 * 18.0 };
++                rects.push((Bounds { origin, size: Size { width: 6.0, height: 18.0 } }, 1));
++            }
++        }
++        let count = rects.len();
++        let tree = BoundsTree::packed(rects, |x| *x);
++        assert_eq!(check_node(&tree, tree.root.unwrap()), tree.height);
++        let bound = (count as f64).log(MIN_CHILDREN as f64).ceil() as usize + 1;
++        assert!(tree.height <= bound, "height {} > {}", tree.height, bound);
++    }
++}
 diff --git a/vendor/gpui/src/color.rs b/vendor/gpui/src/color.rs
 index 3bd893f99357051e1936f52e22c4c40d6dd24887..9b75f31273d8e5bbbdcf9eab53680dfc8b68ad30
 --- a/vendor/gpui/src/color.rs
@@ -9376,7 +9908,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc26776202dc34a2
+index 160587a4ad924f80c2dd01b90a8300febbc13105..8a345ef8c35f8b8efdfcf525d0b78e2146cba7e6
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,5 @@
@@ -9385,7 +9917,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +mod vector_transform;
 +pub(crate) mod affine_transform;
 +pub(crate) mod segments;
-@@ -38,0 +44,18 @@
+@@ -38,0 +44,58 @@
 +/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 +/// step, leaving room below each level for per-primitive bottom-layer orders
 +/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
@@ -9404,7 +9936,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +/// рисуют теми же конвейерами, только в свою текстуру.
 +/// KaminIDE patch: `pub` + `doc(hidden)` — буферы групп рисует рендерер из
 +/// отдельного крейта `gpui_windows`, которому доступен лишь публичный API.
-@@ -39,0 +63,40 @@
++#[derive(Default)]
 +#[doc(hidden)]
 +#[allow(missing_docs)]
 +pub struct PaintGroup {
@@ -9444,10 +9976,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    pub fragments: Vec<Vec<Point<ScaledPixels>>>,
 +}
 +
-+#[derive(Default)]
 @@ -41,0 +105 @@
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
-@@ -42,0 +107,7 @@
+@@ -43 +107,14 @@
+-    primitive_bounds: BoundsTree<ScaledPixels>,
 +    /// KaminIDE patch: группы, нарисованные в отдельные буферы.
 +    ///
 +    /// Список плоский и упорядочен по зависимости: вложенная группа стоит
@@ -9455,10 +9987,17 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    /// готов (см. `Window::paint_group`).
 +    #[doc(hidden)]
 +    pub groups: Vec<PaintGroup>,
-@@ -44,0 +116,2 @@
++    /// KaminIDE patch: shared by `Rc` with the grafts of scenes that copy or
++    /// replay this one (`bounds_tree::Graft`); written through `tree_mut`.
++    primitive_bounds: std::rc::Rc<BoundsTree<ScaledPixels>>,
++    /// KaminIDE patch: op ranges copied with `replay_shifted` and the frozen
++    /// tree indexing each, with the offset of the ops' orders above it, so a
++    /// later frame replaying the same range grafts it again.
++    blocks: Vec<ReplayedBlock>,
+@@ -44,0 +122,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +126,45 @@
+@@ -52,0 +132,45 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -9504,7 +10043,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +175,140 @@
+@@ -56,0 +181,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -9605,7 +10144,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +            // выше переписанных номеров.
 +            if next > hi {
 +                if let Some(u) = ctx.union {
-+                    self.primitive_bounds.insert_at_least(u, next / ORDER_STEP + 1);
++                    self.tree_mut().insert_at_least(u, next / ORDER_STEP + 1);
 +                }
 +            }
 +        }
@@ -9645,21 +10184,30 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +        }
 +    }
 +
-@@ -57,0 +316 @@
+@@ -57,0 +322 @@
 +        self.segment_capture = None;
-@@ -58,0 +318 @@
+@@ -59 +324,6 @@
+-        self.primitive_bounds.clear();
 +        self.groups.clear();
-@@ -60,0 +321 @@
++        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
++            Some(tree) => tree.clear(),
++            None => self.primitive_bounds = Default::default(),
++        }
++        self.blocks.clear();
+@@ -60,0 +331 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +330,4 @@
+@@ -68,0 +340,4 @@
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
 +        self.ink.clear();
 +        self.ink_allowed = (0, 0);
-@@ -76 +341 @@
+@@ -76 +351 @@
 -        let order = self.primitive_bounds.insert(bounds);
-+        let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
-@@ -86,0 +352,15 @@
++        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
+@@ -79 +354 @@
+-            .push(PaintOperation::StartLayer(bounds));
++            .push(PaintOperation::StartLayer(bounds, order));
+@@ -86,0 +362,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -9675,7 +10223,283 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +368,32 @@
+@@ -89,3 +379,6 @@
+-        let clipped_bounds = primitive
+-            .bounds()
+-            .intersect(&primitive.content_mask().bounds);
++        let placed_bounds = placed_bounds(&primitive);
++        // KaminIDE patch: ink of open retained subtrees, culled or not.
++        for sink in &self.ink {
++            sink.add(placed_bounds);
++        }
++        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
+@@ -97,5 +390,10 @@
+-        let order = self
+-            .layer_stack
+-            .last()
+-            .copied()
+-            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
++        let order = match self.layer_stack.last().copied() {
++            // Above the root background (tree order 1), below everything that
++            // overlaps it, in paint order.
++            Some(BOTTOM_LAYER) => {
++                self.bottom_seq = (self.bottom_seq + 1).min(ORDER_STEP - 1);
++                ORDER_STEP + self.bottom_seq
++            }
++            Some(o) => o,
++            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
++        };
+@@ -136,0 +435,16 @@
++        if let Some(&plane) = self.depth.plane_stack.last() {
++            let (kind, index) = match &primitive {
++                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
++                Primitive::Quad(_) => (1, self.quads.len() - 1),
++                Primitive::Path(_) => (2, self.paths.len() - 1),
++                Primitive::Underline(_) => (3, self.underlines.len() - 1),
++                Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
++                Primitive::PolychromeSprite(_) => (5, self.polychrome_sprites.len() - 1),
++                Primitive::Surface(_) => (6, self.surfaces.len() - 1),
++                Primitive::SubpixelSprite(_) => (7, self.subpixel_sprites.len() - 1),
++            };
++            self.depth.tags.push((kind, index as u32, plane));
++            if let Some(ctx) = self.depth.contexts.last_mut() {
++                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
++            }
++        }
+@@ -139,2 +453,15 @@
+-    }
+-
++        if let Some(capture) = self.segment_capture.as_mut() {
++            capture.primitive();
++        }
++    }
++
++    /// KaminIDE patch: the bounds tree, copied first if a graft shares it.
++    fn tree_mut(&mut self) -> &mut BoundsTree<ScaledPixels> {
++        std::rc::Rc::make_mut(&mut self.primitive_bounds)
++    }
++
++    /// Copy `range` of an earlier scene (the rendered frame) into this one.
++    ///
++    /// KaminIDE patch: a range copied the same way into that scene grafts the
++    /// frozen tree it was indexed with; another range is indexed once by a
++    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
+@@ -142 +469,30 @@
+-        for operation in &prev_scene.paint_operations[range] {
++        let operations = &prev_scene.paint_operations[range.clone()];
++        let source = prev_scene
++            .blocks
++            .iter()
++            .find(|block| block.ops == range)
++            .map(|block| (block.tree.clone(), block.order));
++        if !self.replay_shifted(operations, source) {
++            for operation in operations {
++                self.replay_operation(operation.clone());
++            }
++        }
++    }
++
++    /// KaminIDE patch: copy every command of a finished, isolated `scene`
++    /// (a paint record or its copy) into this one, grafting its tree.
++    pub(crate) fn replay_record(&mut self, scene: &Scene) {
++        let source = Some((scene.primitive_bounds.clone(), 0));
++        if !self.replay_shifted(&scene.paint_operations, source) {
++            for operation in &scene.paint_operations {
++                self.replay_operation(operation.clone());
++            }
++        }
++    }
++
++    /// KaminIDE patch: whether every order in `operations` comes from the
++    /// bounds tree (no bottom layer, no 3D depth sort) and layers are closed,
++    /// so the commands keep their relative orders under one shift.
++    fn shiftable(operations: &[PaintOperation]) -> bool {
++        let mut layers = 0usize;
++        for operation in operations {
+@@ -144,4 +500,175 @@
+-                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
+-                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
+-                PaintOperation::EndLayer => self.pop_layer(),
+-            }
++                PaintOperation::Primitive(_) => {}
++                PaintOperation::StartLayer(..) => layers += 1,
++                PaintOperation::EndLayer => match layers.checked_sub(1) {
++                    Some(open) => layers = open,
++                    None => return false,
++                },
++                PaintOperation::StartBottomLayer
++                | PaintOperation::StartDepthContext
++                | PaintOperation::EndDepthContext
++                | PaintOperation::StartDepthPlane(_)
++                | PaintOperation::EndDepthPlane => return false,
++            }
++        }
++        layers == 0
++    }
++
++    /// KaminIDE patch: the rectangles the bounds tree held for `operations`
++    /// when they were painted, packed into a tree (`shiftable` commands only):
++    /// layer bounds and primitives outside layers, as inserted.
++    fn packed(operations: &[PaintOperation]) -> BoundsTree<ScaledPixels> {
++        let mut rects = Vec::new();
++        let mut layers = 0usize;
++        for operation in operations {
++            match operation {
++                PaintOperation::StartLayer(bounds, order) => {
++                    if layers == 0 {
++                        rects.push((*bounds, order / ORDER_STEP));
++                    }
++                    layers += 1;
++                }
++                PaintOperation::EndLayer => layers -= 1,
++                PaintOperation::Primitive(primitive) if layers == 0 => {
++                    let clipped = placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
++                    if !clipped.is_empty() {
++                        rects.push((clipped, primitive.order() / ORDER_STEP));
++                    }
++                }
++                _ => {}
++            }
++        }
++        BoundsTree::packed(rects, |coordinate| coordinate.0)
++    }
++
++    /// KaminIDE patch: copy `operations` with their recorded orders, raised
++    /// above everything earlier they overlap, and graft the tree that indexed
++    /// them (`source`: the tree and how far the commands' orders are above
++    /// it; packed from the commands when `None`). Every order keeps the
++    /// overlap rule of `insert_primitive` (later and overlapping means
++    /// higher), so the frame draws the same pixels, and later inserts see the
++    /// copied rectangles exactly through the graft. `false` when the commands
++    /// or this scene's open state need the per-primitive replay.
++    fn replay_shifted(
++        &mut self,
++        operations: &[PaintOperation],
++        source: Option<(std::rc::Rc<BoundsTree<ScaledPixels>>, DrawOrder)>,
++    ) -> bool {
++        if !self.layer_stack.is_empty()
++            || !self.depth.contexts.is_empty()
++            || !self.depth.plane_stack.is_empty()
++            || !Self::shiftable(operations)
++        {
++            return false;
++        }
++        let (tree, base) = match source {
++            Some(source) => source,
++            None => (std::rc::Rc::new(Self::packed(operations)), 0),
++        };
++        let mut raise = 0;
++        let graft = crate::bounds_tree::Graft::new(tree.clone(), Point::default(), None, base)
++            .map(|mut graft| {
++                let above = self.tree_mut().max_meeting(graft.cover());
++                if above >= graft.min_order() {
++                    raise = above + 1 - graft.min_order();
++                    graft.raise(raise);
++                }
++                graft
++            });
++        let shift = raise * ORDER_STEP;
++        let start = self.paint_operations.len();
++        let mut ink: Option<Bounds<ScaledPixels>> = None;
++        self.paint_operations.reserve(operations.len());
++        for operation in operations {
++            let mut operation = operation.clone();
++            match &mut operation {
++                PaintOperation::Primitive(primitive) => {
++                    if !self.ink.is_empty() {
++                        let placed = placed_bounds(primitive);
++                        ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
++                    }
++                    *primitive.order_mut() += shift;
++                    self.push_ordered(primitive);
++                    if let Some(capture) = self.segment_capture.as_mut() {
++                        capture.primitive();
++                    }
++                }
++                PaintOperation::StartLayer(_, order) => *order += shift,
++                _ => {}
++            }
++            self.paint_operations.push(operation);
++        }
++        if let Some(ink) = ink {
++            for sink in &self.ink {
++                sink.add(ink);
++            }
++        }
++        if let Some(graft) = graft {
++            self.tree_mut().insert_graft(graft);
++        }
++        self.blocks.push(ReplayedBlock {
++            ops: start..self.paint_operations.len(),
++            tree,
++            order: base + raise,
++        });
++        true
++    }
++
++    /// KaminIDE patch: add an ordered primitive to its kind's list.
++    fn push_ordered(&mut self, primitive: &mut Primitive) {
++        match primitive {
++            Primitive::Shadow(shadow) => self.shadows.push(*shadow),
++            Primitive::Quad(quad) => self.quads.push(*quad),
++            Primitive::Path(path) => {
++                path.id = PathId(self.paths.len());
++                self.paths.push(path.clone());
++            }
++            Primitive::Underline(underline) => self.underlines.push(*underline),
++            Primitive::MonochromeSprite(sprite) => self.monochrome_sprites.push(*sprite),
++            Primitive::SubpixelSprite(sprite) => self.subpixel_sprites.push(*sprite),
++            Primitive::PolychromeSprite(sprite) => self.polychrome_sprites.push(*sprite),
++            Primitive::Surface(surface) => self.surfaces.push(surface.clone()),
++        }
++    }
++
++    /// KaminIDE patch: a copy of every command of this finished scene moved
++    /// by `offset` and clipped by `clip`, with the recorded orders, indexed by
++    /// a graft of this scene's tree. Primitives clipped away are dropped as
++    /// `insert_primitive` drops them.
++    pub(crate) fn copy_grafted(
++        &self,
++        offset: Point<ScaledPixels>,
++        clip: Option<Bounds<ScaledPixels>>,
++        mut place: impl FnMut(&mut PaintOperation),
++    ) -> Self {
++        let mut scene = Self { in_group: self.in_group, ..Self::default() };
++        scene.paint_operations.reserve(self.paint_operations.len());
++        for operation in &self.paint_operations {
++            let mut operation = operation.clone();
++            place(&mut operation);
++            if let PaintOperation::Primitive(primitive) = &mut operation {
++                let clipped = placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
++                if clipped.is_empty() {
++                    continue;
++                }
++                scene.push_ordered(primitive);
++            }
++            scene.paint_operations.push(operation);
++        }
++        if let Some(graft) =
++            crate::bounds_tree::Graft::new(self.primitive_bounds.clone(), offset, clip, 0)
++        {
++            scene.tree_mut().insert_graft(graft);
++        }
++        scene
++    }
++
++    fn replay_operation(&mut self, operation: PaintOperation) {
++        match operation {
++            PaintOperation::Primitive(primitive) => self.insert_primitive(primitive),
++            PaintOperation::StartLayer(bounds, _) => self.push_layer(bounds),
++            PaintOperation::StartBottomLayer => self.push_bottom_layer(),
++            PaintOperation::EndLayer => self.pop_layer(),
++            PaintOperation::StartDepthContext => self.push_depth_context(),
++            PaintOperation::EndDepthContext => self.pop_depth_context(),
++            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
++            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
+@@ -193,0 +721,92 @@
++/// KaminIDE patch: bounds of a primitive at its place on screen (after its
++/// transformation), before the content mask.
++fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
 +        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
 +        // четырёх углов матрицей.
 +        fn placed_by(
@@ -9708,10 +10532,6 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +                },
 +            }
 +        }
-@@ -89,3 +401,60 @@
--        let clipped_bounds = primitive
--            .bounds()
--            .intersect(&primitive.content_mask().bounds);
 +        // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
 +        // У спрайта с трансформацией (повёрнутый текст) границы хранятся
 +        // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
@@ -9720,7 +10540,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +        // Квад и цветной спрайт с трансформацией — так же (коробка за окном
 +        // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
 +        // `transform-origin`, `transform-table-*`).
-+        let placed_bounds = match &primitive {
++        match primitive {
 +            Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
 +                placed_by(q.bounds, &q.transformation)
 +            }
@@ -9766,80 +10586,59 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +                }
 +            }
 +            _ => *primitive.bounds(),
-+        };
-+        // KaminIDE patch: ink of open retained subtrees, culled or not.
-+        for sink in &self.ink {
-+            sink.add(placed_bounds);
 +        }
-+        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +466,10 @@
--        let order = self
--            .layer_stack
--            .last()
--            .copied()
--            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
-+        let order = match self.layer_stack.last().copied() {
-+            // Above the root background (tree order 1), below everything that
-+            // overlaps it, in paint order.
-+            Some(BOTTOM_LAYER) => {
-+                self.bottom_seq = (self.bottom_seq + 1).min(ORDER_STEP - 1);
-+                ORDER_STEP + self.bottom_seq
-+            }
-+            Some(o) => o,
-+            None => self.primitive_bounds.insert(clipped_bounds) * ORDER_STEP,
-+        };
-@@ -136,0 +511,16 @@
-+        if let Some(&plane) = self.depth.plane_stack.last() {
-+            let (kind, index) = match &primitive {
-+                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
-+                Primitive::Quad(_) => (1, self.quads.len() - 1),
-+                Primitive::Path(_) => (2, self.paths.len() - 1),
-+                Primitive::Underline(_) => (3, self.underlines.len() - 1),
-+                Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
-+                Primitive::PolychromeSprite(_) => (5, self.polychrome_sprites.len() - 1),
-+                Primitive::Surface(_) => (6, self.surfaces.len() - 1),
-+                Primitive::SubpixelSprite(_) => (7, self.subpixel_sprites.len() - 1),
-+            };
-+            self.depth.tags.push((kind, index as u32, plane));
-+            if let Some(ctx) = self.depth.contexts.last_mut() {
-+                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
-+            }
-+        }
-@@ -138,0 +529,3 @@
-+        if let Some(capture) = self.segment_capture.as_mut() {
-+            capture.primitive();
-+        }
-@@ -143,5 +536,14 @@
--            match operation {
--                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
--                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
--                PaintOperation::EndLayer => self.pop_layer(),
--            }
-+            self.replay_operation(operation.clone());
-+        }
-+    }
++}
 +
-+    fn replay_operation(&mut self, operation: PaintOperation) {
-+        match operation {
-+            PaintOperation::Primitive(primitive) => self.insert_primitive(primitive),
-+            PaintOperation::StartLayer(bounds) => self.push_layer(bounds),
-+            PaintOperation::StartBottomLayer => self.push_bottom_layer(),
-+            PaintOperation::EndLayer => self.pop_layer(),
-+            PaintOperation::StartDepthContext => self.push_depth_context(),
-+            PaintOperation::EndDepthContext => self.pop_depth_context(),
-+            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
-+            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -213,0 +616 @@
+@@ -213,0 +833 @@
 +#[derive(Clone)]
-@@ -216,0 +620,2 @@
+@@ -216 +836,4 @@
+-    StartLayer(Bounds<ScaledPixels>),
++    /// KaminIDE patch: with the layer's order, so a copy can shift it.
++    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +623,4 @@
+@@ -217,0 +841,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -543,0 +953,10 @@
+@@ -259,0 +887,35 @@
++
++    /// KaminIDE patch: the draw order assigned when it was inserted.
++    pub(crate) fn order(&self) -> DrawOrder {
++        match self {
++            Primitive::Shadow(p) => p.order,
++            Primitive::Quad(p) => p.order,
++            Primitive::Path(p) => p.order,
++            Primitive::Underline(p) => p.order,
++            Primitive::MonochromeSprite(p) => p.order,
++            Primitive::SubpixelSprite(p) => p.order,
++            Primitive::PolychromeSprite(p) => p.order,
++            Primitive::Surface(p) => p.order,
++        }
++    }
++
++    fn order_mut(&mut self) -> &mut DrawOrder {
++        match self {
++            Primitive::Shadow(p) => &mut p.order,
++            Primitive::Quad(p) => &mut p.order,
++            Primitive::Path(p) => &mut p.order,
++            Primitive::Underline(p) => &mut p.order,
++            Primitive::MonochromeSprite(p) => &mut p.order,
++            Primitive::SubpixelSprite(p) => &mut p.order,
++            Primitive::PolychromeSprite(p) => &mut p.order,
++            Primitive::Surface(p) => &mut p.order,
++        }
++    }
++}
++
++/// KaminIDE patch: commands copied by `Scene::replay_shifted`, the frozen tree
++/// that indexes them, and how far their orders are above that tree's.
++struct ReplayedBlock {
++    ops: Range<usize>,
++    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
++    order: DrawOrder,
+@@ -543,0 +1206,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -9850,19 +10649,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1000,5 @@
+@@ -580,0 +1253,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1027,5 @@
+@@ -602,0 +1280,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1079,12 @@
+@@ -649,0 +1332,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -9875,10 +10674,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1192 @@
+@@ -751 +1445 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1199,54 @@
+@@ -757,0 +1452,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -9933,7 +10732,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1269,23 @@
+@@ -773,0 +1522,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -9957,12 +10756,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1314,2 @@
+@@ -795,0 +1567,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1336 @@
+@@ -815,0 +1589 @@
 +            color_mapping: None,
-@@ -835,0 +1357,6 @@
+@@ -835,0 +1610,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -9971,7 +10770,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..dc6ce46639ee2eff469af049cc267762
 +            }),
 diff --git a/vendor/gpui/src/scene/affine_transform.rs b/vendor/gpui/src/scene/affine_transform.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..822e73011f45adc17dab4198de383811f4aee0ec
+index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181002c4629
 --- /dev/null
 +++ b/vendor/gpui/src/scene/affine_transform.rs
 @@ -0,0 +1,108 @@
@@ -10069,7 +10868,7 @@ index 0000000000000000000000000000000000000000..822e73011f45adc17dab4198de383811
 +                    }
 +                },
 +                // Layer bounds are placed like live layers under a matrix.
-+                PaintOperation::StartLayer(b) => *b = placed(*b, matrix),
++                PaintOperation::StartLayer(b, _) => *b = placed(*b, matrix),
 +                _ => {}
 +            }
 +            scene.replay_operation(command);
@@ -10085,10 +10884,10 @@ index 0000000000000000000000000000000000000000..822e73011f45adc17dab4198de383811
 +}
 diff --git a/vendor/gpui/src/scene/record.rs b/vendor/gpui/src/scene/record.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..202f29698d9a103f46492295b5261e90c8e088d2
+index 0000000000000000000000000000000000000000..41235cb1752500e02bd1494ac6f7e29acb8744ab
 --- /dev/null
 +++ b/vendor/gpui/src/scene/record.rs
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,64 @@
 +//! Копирование неизменяемых команд с явным переносом и выходным clip.
 +
 +use super::*;
@@ -10135,16 +10934,14 @@ index 0000000000000000000000000000000000000000..202f29698d9a103f46492295b5261e90
 +        offset: Point<ScaledPixels>,
 +        clip: Option<Bounds<ScaledPixels>>,
 +    ) -> Self {
-+        let mut scene = Self { in_group: self.in_group, ..Self::default() };
-+        for command in &self.paint_operations {
-+            let mut command = command.clone();
-+            match &mut command {
-+                PaintOperation::Primitive(primitive) => geometry::primitive(primitive, offset, clip),
-+                PaintOperation::StartLayer(b) => *b = geometry::bounds(*b, offset),
-+                _ => {},
-+            }
-+            scene.replay_operation(command);
-+        }
++        // KaminIDE patch: the copy keeps the recorded orders and grafts the
++        // record's bounds tree moved and clipped the same way, instead of
++        // inserting every primitive into a new tree (`Scene::copy_grafted`).
++        let mut scene = self.copy_grafted(offset, clip, |command| match command {
++            PaintOperation::Primitive(primitive) => geometry::primitive(primitive, offset, clip),
++            PaintOperation::StartLayer(b, _) => *b = geometry::bounds(*b, offset),
++            _ => {},
++        });
 +        scene.hoisted_backdrops = self.hoisted_backdrops.iter().map(|surface| {
 +            let mut surface = surface.clone();
 +            surface.bounds = geometry::bounds(surface.bounds, offset);
@@ -10468,7 +11265,7 @@ index 0000000000000000000000000000000000000000..a7cd3de1e23cc00cc05ab0a0cc4fbf87
 +}
 diff --git a/vendor/gpui/src/scene/segments/commands.rs b/vendor/gpui/src/scene/segments/commands.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef95823bd5750ac5fa92e2f8d38d47a58b30e2d4
+index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf3474dd200d
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/commands.rs
 @@ -0,0 +1,69 @@
@@ -10528,7 +11325,7 @@ index 0000000000000000000000000000000000000000..ef95823bd5750ac5fa92e2f8d38d47a5
 +                        first.get_or_insert(route);
 +                    }
 +                }
-+                PaintOperation::StartLayer(bounds) => {
++                PaintOperation::StartLayer(bounds, _) => {
 +                    let route = layer_route.or(first);
 +                    let delta = route.map_or(Point::default(), |route| (route.destination - route.source).scale(scale));
 +                    output.push_layer(record::geometry::bounds(*bounds, delta).union(&extent));
@@ -10659,7 +11456,7 @@ index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2b
 +}
 diff --git a/vendor/gpui/src/scene/vector_transform.rs b/vendor/gpui/src/scene/vector_transform.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2abca5065f19f78b88874411f1a11ea481c431ae
+index 0000000000000000000000000000000000000000..d3a62e2bdc1b0167e3ed1b9dcd1389dee3d07dff
 --- /dev/null
 +++ b/vendor/gpui/src/scene/vector_transform.rs
 @@ -0,0 +1,138 @@
@@ -10701,7 +11498,7 @@ index 0000000000000000000000000000000000000000..2abca5065f19f78b88874411f1a11ea4
 +        for mut command in mem::take(&mut self.paint_operations) {
 +            match &mut command {
 +                PaintOperation::Primitive(p) => primitive(p, transform, matrix),
-+                PaintOperation::StartLayer(b) => *b = map_bounds(*b, matrix),
++                PaintOperation::StartLayer(b, _) => *b = map_bounds(*b, matrix),
 +                _ => {},
 +            }
 +            scene.replay_operation(command);
@@ -19771,7 +20568,7 @@ index 0000000000000000000000000000000000000000..6a1794918b3be567d1fad54d7a61bb09
 +or unwind; an abort invalidates the draw rather than granting replay rights.
 diff --git a/vendor/gpui/src/window/paint_record/invocation.rs b/vendor/gpui/src/window/paint_record/invocation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d7e2023df35a9c2a302ea4b40cb5a349b9eb89dd
+index 0000000000000000000000000000000000000000..1995455421700d4c08981f5975ac4e611acfd476
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/invocation.rs
 @@ -0,0 +1,116 @@
@@ -19861,7 +20658,7 @@ index 0000000000000000000000000000000000000000..d7e2023df35a9c2a302ea4b40cb5a349
 +        paint_scope::Identity::capture(self).check_pass(self)?;
 +        let scene = scene.copy_record(scaled, Some(clip));
 +        let scene = self.adopt_scene(scene);
-+        self.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
++        self.next_frame.scene.replay_record(&scene);
 +        Ok(invocation)
 +    }
 +
@@ -19973,7 +20770,7 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +}
 diff --git a/vendor/gpui/src/window/paint_record/plan.rs b/vendor/gpui/src/window/paint_record/plan.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d7722478055bab662948301ad07cb6ece568ffb
+index 0000000000000000000000000000000000000000..ee34a81a061fc813bf44a4e7fa2af049c6118c2f
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/plan.rs
 @@ -0,0 +1,180 @@
@@ -20109,7 +20906,7 @@ index 0000000000000000000000000000000000000000..4d7722478055bab662948301ad07cb6e
 +                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
 +                    };
 +                    let scene = window.adopt_scene(scene);
-+                    window.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
++                    window.next_frame.scene.replay_record(&scene);
 +                }
 +                Command::Begin(descriptor) => match descriptor.as_ref() {
 +                    PaintScopeDescriptor::Clip(bounds) => {
