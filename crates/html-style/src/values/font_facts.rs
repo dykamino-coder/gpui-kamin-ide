@@ -25,6 +25,7 @@ pub struct DocumentFonts {
     /// вычисленного стиля (`ch`/`ex`/`lh`, `line-height: normal`): семейства
     /// документа, щупов и платформенного контекста шрифтов.
     inputs_generation: Cell<u64>,
+    used: used_memo::UsedFonts,
 }
 
 impl DocumentFonts {
@@ -38,6 +39,7 @@ impl DocumentFonts {
             family: Default::default(),
             installed: Default::default(),
             inputs_generation: Default::default(),
+            used: Default::default(),
         }
     }
 }
@@ -128,6 +130,9 @@ impl DocumentValues {
 
 mod faces;
 pub use faces::FontFaces;
+
+mod used_memo;
+pub use used_memo::UsedFontKey;
 
 mod detached;
 pub use detached::Detached;

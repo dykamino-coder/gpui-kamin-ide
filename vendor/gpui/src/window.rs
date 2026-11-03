@@ -6049,6 +6049,14 @@ impl Window {
         self.request_layout_ref(&style, children, cx)
     }
 
+    /// KaminIDE patch: the frame's element count is the size hint of its layout tree.
+    fn reserve_layout_nodes(&mut self) {
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
+    }
+
     /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
     #[must_use]
     pub fn request_layout_ref(
@@ -6063,6 +6071,7 @@ impl Window {
         cx.layout_id_buffer.extend(children);
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        self.reserve_layout_nodes();
 
         self.layout_engine.as_mut().unwrap().request_layout(
             style,
@@ -6090,6 +6099,7 @@ impl Window {
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
         let scope = self.measure_scope();
+        self.reserve_layout_nodes();
         self.layout_engine
             .as_mut()
             .unwrap()
@@ -6122,6 +6132,7 @@ impl Window {
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
         let scope = self.measure_scope();
+        self.reserve_layout_nodes();
         let mut measure = measure;
         self.layout_engine
             .as_mut()
@@ -6152,6 +6163,7 @@ impl Window {
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
         let scope = self.measure_scope();
+        self.reserve_layout_nodes();
         let mut measure = measure;
         self.layout_engine
             .as_mut()
