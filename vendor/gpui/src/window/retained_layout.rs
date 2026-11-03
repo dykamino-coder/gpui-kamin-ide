@@ -118,23 +118,18 @@ impl Window {
         struct Restore<'a> {
             window: &'a mut Window,
             outer: RetainedLayout,
-            fixed: crate::Size<bool>,
         }
         impl Drop for Restore<'_> {
             fn drop(&mut self) {
                 *self.window.layout_owner.0.borrow_mut() = self.window.layout_engine.take();
                 self.window.layout_engine = self.outer.0.borrow_mut().take();
                 self.window.layout_owner = self.outer.clone();
-                self.window.measured_size_fixed = self.fixed;
             }
         }
         let outer = std::mem::replace(&mut self.layout_owner, retained.clone());
         *outer.0.borrow_mut() = self.layout_engine.take();
         self.layout_engine = retained.0.borrow_mut().take();
-        // An independent tree's nodes are not the outer measured leaf: its
-        // parent-fixed axes do not apply inside.
-        let fixed = std::mem::take(&mut self.measured_size_fixed);
-        let restore = Restore { window: self, outer, fixed };
+        let restore = Restore { window: self, outer };
         f(restore.window)
     }
 }

@@ -72,6 +72,7 @@ vocabulary!(Counter {
     MulticolChildLayoutNs => "multicol_child_layout_ns",
     MulticolBalanceNs => "multicol_balance_ns",
     MulticolNumericRejected => "multicol_numeric_rejected",
+    SpannerMeasureReuses => "spanner_measure_reuses",
     BandProbeCalls => "band_probe_calls",
     BandProbeBuildNs => "band_probe_build_ns",
     BandProbeLayoutNs => "band_probe_layout_ns",

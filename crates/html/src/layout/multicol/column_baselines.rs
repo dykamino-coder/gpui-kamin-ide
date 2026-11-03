@@ -16,11 +16,17 @@ pub(super) struct Measurements {
     children: Vec<Vec<FragmentMeasurement>>,
     relative_y: Vec<f32>,
     repeated: Vec<repeated::RepeatedMeasurements>,
+    /// Kids painted from the record of their main copy (`StackChild::replay`).
+    replayed: Vec<bool>,
 }
 
 impl Measurements {
     pub(super) fn new(children: &mut [StackChild], window: &mut Window, cx: &mut App) -> Self {
         let relative_y = children.iter().map(|child| child.rel.1).collect();
+        let replayed = children
+            .iter()
+            .map(|child| child.replay && child.clone_dec.is_none())
+            .collect();
         let repeated = children
             .iter_mut()
             .map(|child| repeated::RepeatedMeasurements::new(child, window, cx))
@@ -47,6 +53,7 @@ impl Measurements {
             children,
             relative_y,
             repeated,
+            replayed,
         }
     }
 
@@ -72,7 +79,17 @@ impl Measurements {
         }
         for fragment in plan {
             let kid = &kids[fragment.kid];
-            let Some(measure) = self.children[fragment.kid].get_mut(fragment.copy) else {
+            // The columns paint every piece of a replayed kid from its main
+            // copy and no spare copy (`ColumnStack::replays`, same predicate):
+            // each piece is a slice of that continuous layout (css-break-3 §4),
+            // so its baselines come from that tree, not from a spare copy built
+            // only to be measured. A `clone` piece keeps its own copy.
+            let replay = probe.replay
+                && self.replayed[fragment.kid]
+                && parts[fragment.kid] > 1
+                && plan.iter().any(|f| f.kid == fragment.kid && f.copy == 0);
+            let copy = if replay { 0 } else { fragment.copy };
+            let Some(measure) = self.children[fragment.kid].get_mut(copy) else {
                 continue;
             };
             let clone = kid.clone_dec.is_some();
@@ -171,66 +188,4 @@ impl Baselines {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Flow-order baseline selection must survive fragmentation and separate column offsets.
-
-    use super::Baselines;
-
-    #[test]
-    fn repeated_bands_surround_the_body_in_content_order_after_source_translation() {
-        let mut column = Baselines::default();
-        // The header source starts at 100 and is placed in the band at y=20.
-        column.include(Some(105.0), Some(105.0), 100.0, 10.0, 20.0);
-        column.include(Some(115.0), Some(125.0), 110.0, 40.0, 30.0);
-        // The footer is lifted from source y=200 into its visible band at y=80.
-        column.include(Some(207.0), Some(207.0), 200.0, 12.0, 80.0);
-        assert_eq!(column.first, Some(25.0));
-        assert_eq!(column.last, Some(87.0));
-    }
-
-    #[test]
-    fn whole_block_visible_overflow_and_fragment_clipping_export_different_baselines() {
-        let mut whole = Baselines::default();
-        whole.include_unclipped(Some(5.0), Some(75.0), 0.0, 10.0);
-        assert_eq!(whole.first, Some(15.0));
-        assert_eq!(whole.last, Some(85.0));
-        let mut clipped = Baselines::default();
-        clipped.include(Some(5.0), Some(75.0), 0.0, 20.0, 10.0);
-        assert_eq!(clipped.last, Some(15.0));
-    }
-
-    #[test]
-    fn content_order_wins_over_geometry_inside_one_column() {
-        let mut baselines = Baselines::default();
-        baselines.include(Some(20.0), Some(30.0), 0.0, 40.0, 50.0);
-        baselines.include(Some(5.0), Some(15.0), 0.0, 20.0, 0.0);
-        assert_eq!(baselines.first, Some(70.0));
-        assert_eq!(baselines.last, Some(15.0));
-    }
-
-    #[test]
-    fn a_continuation_does_not_export_a_clipped_first_line() {
-        let mut baselines = Baselines::default();
-        baselines.include(Some(10.0), Some(75.0), 60.0, 30.0, 5.0);
-        assert_eq!(baselines.first, Some(20.0));
-        assert_eq!(baselines.last, Some(20.0));
-    }
-
-    #[test]
-    fn columns_and_spanners_export_highest_first_and_lowest_last() {
-        let mut baselines = Baselines {
-            first: Some(30.0),
-            last: Some(70.0),
-        };
-        baselines.encompass(Baselines {
-            first: Some(15.0),
-            last: Some(50.0),
-        });
-        baselines.encompass(Baselines {
-            first: Some(100.0),
-            last: Some(115.0),
-        });
-        assert_eq!(baselines.first, Some(15.0));
-        assert_eq!(baselines.last, Some(115.0));
-    }
-}
+mod tests;

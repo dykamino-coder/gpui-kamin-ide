@@ -1,5 +1,6 @@
-//! Тесты: measure-колбэк видит, какие оси финального прохода родитель уже
-//! зафиксировал, а пробы — наследуемый стиль текста запросившего элемента.
+//! Тесты: measure-колбэк получает в `MeasuredBox::fixed`, какие оси финального
+//! прохода родитель уже зафиксировал, а пробы — наследуемый стиль текста
+//! запросившего элемента.
 
 use gpui::{
     AlignItems, AvailableSpace, Display, FlexDirection, Pixels, Size, Style, point, px, size,
@@ -16,11 +17,13 @@ type Calls = Rc<RefCell<Vec<(Size<bool>, AvailableSpace)>>>;
 fn column(window: &mut gpui::Window, app: &mut gpui::App, align: Option<AlignItems>) -> Calls {
     let calls: Calls = Rc::default();
     let seen = calls.clone();
-    let child = window.request_measured_layout(Style::default(), move |_, available, window, _| {
-        seen.borrow_mut()
-            .push((window.measured_size_fixed(), available.width));
-        size(px(40.), px(10.))
-    });
+    let child = window.request_measured_layout_with_box(
+        Style::default(),
+        move |_, available, geometry, _, _| {
+            seen.borrow_mut().push((geometry.fixed, available.width));
+            size(px(40.), px(10.))
+        },
+    );
     let root = window.request_layout(
         Style {
             display: Display::Flex,
@@ -37,7 +40,6 @@ fn column(window: &mut gpui::Window, app: &mut gpui::App, align: Option<AlignIte
         AvailableSpace::Definite(px(200.)),
     );
     window.compute_layout(root, space, app);
-    assert_eq!(window.measured_size_fixed(), Size::default());
     calls
 }
 
@@ -94,8 +96,7 @@ fn start_aligned_column_item_is_fixed_at_its_fit_content_size(cx: &mut gpui::Tes
     );
 }
 
-/// A measure callback and its probes see the requesting element's text
-/// style, while the nested layout leaves no fixed axes of the outer leaf behind.
+/// A measure callback and its probes see the requesting element's text style.
 #[gpui::test]
 fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
@@ -113,13 +114,11 @@ fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContex
                 let scope = window.element_layout_context();
                 window.request_measured_layout(Style::default(), move |_, _, window, _| {
                     let outer = window.text_style().font_size;
-                    let (probe, fixed) = window.with_element_layout_context(&scope, |window| {
-                        window.with_nested_layout(|window| {
-                            (window.text_style().font_size, window.measured_size_fixed())
-                        })
+                    let probe = window.with_element_layout_context(&scope, |window| {
+                        window.with_nested_layout(|window| window.text_style().font_size)
                     });
                     let mut calls = record.take();
-                    calls.push((outer, probe, fixed));
+                    calls.push((outer, probe));
                     record.set(calls);
                     size(px(10.), px(10.))
                 })
@@ -141,10 +140,9 @@ fn probes_inherit_the_requesting_element_text_style(cx: &mut gpui::TestAppContex
             window.compute_layout(root, space, app);
             let seen = seen.take();
             assert!(!seen.is_empty());
-            for (outer, probe, fixed) in seen.iter() {
+            for (outer, probe) in seen.iter() {
                 assert_eq!(*outer, px(31.).into(), "{seen:?}");
                 assert_eq!(*probe, px(31.).into(), "{seen:?}");
-                assert_eq!(*fixed, Size::default(), "{seen:?}");
             }
             gpui::div()
         },
