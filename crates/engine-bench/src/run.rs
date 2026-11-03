@@ -84,13 +84,6 @@ pub(super) async fn sample(
     kamin_html::host::capture::Frame,
     (serde_json::Value, serde_json::Value),
 )> {
-    if step.cold() {
-        // Прежний документ освобождается до сборки нового и вне замера: новая сборка
-        // переиспользует его ещё закоммиченные страницы, а пик процесса не держит два
-        // документа сразу и не зависит от задержки возврата страниц аллокатором.
-        let blank = Document::builder("", BROWSER_CSS).fonts(fonts).build()?;
-        window.update(cx, |view, _, _| view.doc = blank)?;
-    }
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
