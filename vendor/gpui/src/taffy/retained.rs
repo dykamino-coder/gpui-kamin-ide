@@ -24,7 +24,7 @@
 //! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
 //! were not claimed are dropped in one sweep (`TaffyTree::retain_nodes`).
 
-use super::{LayoutId, NodeContext, TaffyLayoutEngine};
+use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 use collections::{FxHashMap, FxHashSet};
 use taffy::tree::NodeId;
 
@@ -157,6 +157,17 @@ impl TaffyLayoutEngine {
         let retained = &mut self.retained;
         let live = std::mem::take(&mut retained.live);
         self.taffy.retain_nodes(|node| live.contains(&node));
+        // A kept leaf is measured again only by the function of the request
+        // that claims it, so the old function and everything it captured (a
+        // whole paragraph probe) need not outlive the frame.
+        let stub = retired_measure();
+        for node in &live {
+            if self.taffy.has_node_context(*node)
+                && let Some(context) = self.taffy.get_node_context_mut(*node)
+            {
+                context.measure = stub.clone();
+            }
+        }
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
         for (node, key) in &retained.keys {
@@ -178,4 +189,15 @@ impl TaffyLayoutEngine {
     pub fn claimed_nodes(&self) -> u64 {
         self.retained.claimed
     }
+}
+
+/// The measure function of a leaf between passes: a kept leaf gets the function
+/// of the request that claims it before any layout, so this one never measures.
+fn retired_measure() -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
+    std::rc::Rc::new(std::cell::RefCell::new(node_measure(Box::new(
+        |_, _, _, _: &mut crate::Window, _: &mut crate::App| {
+            let none = crate::size(crate::Pixels(0.), crate::Pixels(0.));
+            crate::MeasuredContent::from((none, None, None, None))
+        },
+    ))))
 }
