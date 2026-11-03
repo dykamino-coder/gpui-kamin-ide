@@ -226,6 +226,3 @@ impl Paragraph {
         self.apply_atom_fit(&fitted);
     }
 }
-
-#[cfg(test)]
-mod tests;

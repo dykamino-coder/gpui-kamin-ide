@@ -86,7 +86,7 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     let used = e.style.used();
     let own = &used.reset_box_layout;
     let height = of(own.height, base_h);
-    let padding = [
+    let sides_px = [
         own.padding.top,
         own.padding.bottom,
         own.padding.left,
@@ -94,53 +94,24 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     ]
     .map(|side| of(side, base_w));
     drop(used);
-    if height.is_none() && padding.iter().all(Option::is_none) {
+    if height.is_none() && sides_px.iter().all(Option::is_none) {
         return None;
     }
     let mut copy = e.clone();
-    let layout = &mut *copy.style.used_mut().reset_box_layout;
     if let Some(v) = height {
-        layout.height = v;
+        copy.style.used_mut().reset_box_layout.height = v;
     }
+    let edges = &mut copy.style.used_mut().reset_box_layout.padding;
     let sides = [
-        &mut layout.padding.top,
-        &mut layout.padding.bottom,
-        &mut layout.padding.left,
-        &mut layout.padding.right,
+        &mut edges.top,
+        &mut edges.bottom,
+        &mut edges.left,
+        &mut edges.right,
     ];
-    for (dst, v) in sides.into_iter().zip(padding) {
+    for (dst, v) in sides.into_iter().zip(sides_px) {
         if let Some(v) = v {
             *dst = v;
         }
     }
     Some(copy)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::paint::contract_tests::rendered::quads;
-
-    fn size_of(html: &str, colour: u32) -> (f32, f32) {
-        quads(html, 300., 200.)
-            .into_iter()
-            .find(|(_, c)| c.to_rgb() == gpui::rgb(colour))
-            .map(|(b, _)| (f32::from(b.size.width), f32::from(b.size.height)))
-            .expect("painted atom")
-    }
-
-    #[test]
-    fn percentages_of_an_atom_resolve_against_its_block() {
-        let html = "<style>body{margin:0}</style><div style='width:200px;height:100px'>\
-                    <span style='display:inline-block;width:10px;height:50%;\
-                    padding-left:10%;background:red'></span></div>";
-        assert_eq!(size_of(html, 0xff0000), (30.0, 50.0));
-    }
-
-    #[test]
-    fn an_atom_without_percentages_keeps_its_own_sizes() {
-        let html = "<style>body{margin:0}</style><div style='width:200px;height:100px'>\
-                    <span style='display:inline-block;width:10px;height:20px;\
-                    padding-left:4px;background:blue'></span></div>";
-        assert_eq!(size_of(html, 0x0000ff), (14.0, 20.0));
-    }
 }

@@ -21,4 +21,4 @@ pub mod stacking;
 pub mod table;
 
 #[cfg(test)]
-pub(crate) mod contract_tests;
+mod contract_tests;

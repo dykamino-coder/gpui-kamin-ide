@@ -1,3 +1,5 @@
+//! Used-font memo: equal inputs select once; any changed input selects again.
+
 use super::*;
 use crate::style::computed::Computed;
 use std::cell::Cell;
@@ -62,5 +64,6 @@ fn the_memo_stays_bounded() {
     for i in 0..(CAPACITY * 3) {
         doc.used_font_memo(key(&style.inh.font, "a", i as f32), || used(i as f32));
     }
-    assert_eq!(doc.font_facts.used.entries.borrow().len(), CAPACITY);
+    let entries = doc.font_facts.used.entries.take();
+    assert_eq!(entries.len(), CAPACITY);
 }

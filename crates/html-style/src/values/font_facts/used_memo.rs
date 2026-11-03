@@ -6,7 +6,7 @@
 use super::DocumentValues;
 use crate::style::computed::{InheritedFont, StyleGroup};
 use kamin_font_facts::font_facts::{FontOrientation, UsedFont};
-use std::cell::RefCell;
+use std::cell::Cell;
 
 const CAPACITY: usize = 16;
 
@@ -32,8 +32,9 @@ struct Entry {
 
 #[derive(Default)]
 pub(super) struct UsedFonts {
-    entries: RefCell<Vec<Entry>>,
-    next: std::cell::Cell<usize>,
+    /// Taken out for each lookup, so no borrow outlives it and `select` may re-enter.
+    entries: Cell<Vec<Entry>>,
+    next: Cell<usize>,
 }
 
 impl Entry {
@@ -58,13 +59,14 @@ impl DocumentValues {
         let generation = self.font_generation() + self.font_facts.registry_generation.get();
         let provider = std::rc::Rc::as_ptr(&self.font_provider()) as *const ();
         let memo = &self.font_facts.used;
-        if let Some(hit) = memo
-            .entries
-            .borrow()
+        let entries = memo.entries.take();
+        let hit = entries
             .iter()
             .find(|e| e.matches(&key, generation, provider))
-        {
-            return hit.value.clone();
+            .map(|e| e.value.clone());
+        memo.entries.set(entries);
+        if let Some(value) = hit {
+            return value;
         }
         let value = select();
         let entry = Entry {
@@ -77,7 +79,7 @@ impl DocumentValues {
             provider,
             value: value.clone(),
         };
-        let mut entries = memo.entries.borrow_mut();
+        let mut entries = memo.entries.take();
         if entries.len() < CAPACITY {
             entries.push(entry);
         } else {
@@ -85,6 +87,7 @@ impl DocumentValues {
             entries[at] = entry;
             memo.next.set(at + 1);
         }
+        memo.entries.set(entries);
         value
     }
 }
