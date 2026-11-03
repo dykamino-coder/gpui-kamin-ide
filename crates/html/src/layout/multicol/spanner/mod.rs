@@ -10,6 +10,8 @@ use crate::style::values::value::Len;
 mod element;
 mod fragment;
 pub(crate) use element::{SpannerFlow, SpannerPass};
+mod rows;
+pub(crate) use rows::{RowMeasures, RowSlot};
 mod parent;
 pub(crate) use parent::SpannerMetrics;
 mod hoist;

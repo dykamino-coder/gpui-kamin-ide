@@ -155,3 +155,24 @@ fn custom_properties_revert_through_the_same_history() {
     let map = CascadeMap::collect(&[&a, &c], &none);
     assert_eq!(win(&map, "--x").as_deref(), Some("1px"));
 }
+
+#[test]
+fn names_keep_first_appearance_and_groups_answer_every_name() {
+    let a = author("width: 1px; color: red; --z: 1", 0);
+    let b = author("all: inherit; opacity: 0; color: green; width: 2px", 1);
+    let inline = parse_decls("--a: 2; direction: rtl");
+    let map = CascadeMap::collect(&[&a, &b], &inline);
+    assert_eq!(
+        map.names(),
+        ["width", "color", "--z", "opacity", "--a", "direction"]
+    );
+    assert_eq!(win(&map, "width").as_deref(), Some("2px"));
+    assert_eq!(win(&map, "color").as_deref(), Some("green"));
+    assert_eq!(win(&map, "--z").as_deref(), Some("1"));
+    assert_eq!(win(&map, "direction").as_deref(), Some("rtl"));
+    // `all` joins named properties but not custom ones or `direction`.
+    assert_eq!(map.picks("opacity").count(), 2);
+    assert_eq!(map.picks("--a").count(), 1);
+    assert_eq!(map.picks("direction").count(), 1);
+    assert_eq!(win(&map, "padding"), None);
+}

@@ -61,6 +61,22 @@ impl<'a> Scope<'a> {
     pub fn match_at(&self, sel: &Selector, index: usize, tree: &TreeIndex) -> Result<bool, Error> {
         let admission = tree.admission();
         let record = &self.records[index];
+        let sibs = Sibs {
+            all: &record.all,
+            pos: record.pos,
+            is_elem: true,
+            rc: Some(&record.all),
+        };
+        // A lone compound without pseudo-classes reads only the element
+        // itself (`matches_compound`): its ancestors are not copied.
+        if sel.pseudo.is_none()
+            && sel.also.is_empty()
+            && sel.prev.is_none()
+            && sel.ancestor.is_none()
+        {
+            admission.work(1)?;
+            return Ok(matches(sel, &record.all[record.pos], &[], sibs));
+        }
         let mut chain = Buffer::default();
         let mut parent = record.parent;
         while let Some(i) = parent {
@@ -78,17 +94,7 @@ impl<'a> Scope<'a> {
             path.push(ancestor, &admission)?;
         }
         admission.work(path.len() + 1)?;
-        Ok(matches(
-            sel,
-            &record.all[record.pos],
-            &path,
-            Sibs {
-                all: &record.all,
-                pos: record.pos,
-                is_elem: true,
-                rc: Some(&record.all),
-            },
-        ))
+        Ok(matches(sel, &record.all[record.pos], &path, sibs))
     }
 
     pub fn previous(&self, i: usize) -> Option<usize> {

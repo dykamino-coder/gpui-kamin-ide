@@ -8,7 +8,7 @@ fn resolve(cache: &mut StyleSharing, inline: &DeclBlock, vcx: ValueCx<'_>) -> Co
     cache.resolve(
         &[],
         inline,
-        &map,
+        || &map,
         &VarMap::new(),
         CascadeCx::NONE,
         vcx,
@@ -79,11 +79,28 @@ fn cache_is_bounded() {
     let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let mut cache = StyleSharing::default();
-    for width in 1..80 {
+    for width in 1..300 {
         let inline = parse_decls_in(&format!("width: {width}px"), vcx);
         let _ = resolve(&mut cache, &inline, vcx);
     }
-    assert_eq!(cache.0.borrow().entries.len(), 32);
+    assert_eq!(cache.0.borrow().entries.len(), CAPACITY);
+}
+
+#[test]
+fn a_cycle_of_ninety_one_inputs_hits_on_its_second_round() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let mut cache = StyleSharing::default();
+    let inputs: Vec<_> = (0..91)
+        .map(|i| parse_decls_in(&format!("flex: 1 1 {}px", 60 + i), vcx))
+        .collect();
+    for _ in 0..2 {
+        for inline in &inputs {
+            let _ = resolve(&mut cache, inline, vcx);
+        }
+    }
+    // A miss stores a new entry; the second round found every input.
+    assert_eq!(cache.0.borrow().entries.len(), 91);
 }
 
 #[test]
@@ -115,7 +132,7 @@ fn finish_runs_before_caching_and_hits_keep_shared_groups() {
         cache.resolve(
             &[],
             &inline,
-            &map,
+            || &map,
             &VarMap::new(),
             CascadeCx::NONE,
             vcx,
@@ -156,4 +173,32 @@ fn equal_siblings_share_storage_after_element_cascade() {
     assert_eq!(found.len(), 3);
     assert!(found[0].shares_storage(&found[1]));
     assert!(found[1].shares_storage(&found[2]));
+}
+
+#[test]
+fn hits_do_not_build_the_cascade_map() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let inline = parse_decls_in("width: 8px; color: red", vcx);
+    let map = CascadeMap::collect(&[], &inline);
+    let cache = StyleSharing::default();
+    let built = std::cell::Cell::new(0);
+    let run = || {
+        cache.resolve(
+            &[],
+            &inline,
+            || {
+                built.set(built.get() + 1);
+                &map
+            },
+            &VarMap::new(),
+            CascadeCx::NONE,
+            vcx,
+            |_| {},
+        )
+    };
+    let first = run();
+    let second = run();
+    assert_eq!(built.get(), 1);
+    assert!(first.reset_box_layout.ptr_eq(&second.reset_box_layout));
 }

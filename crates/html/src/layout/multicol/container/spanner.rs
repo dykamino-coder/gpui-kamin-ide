@@ -69,6 +69,10 @@ pub(crate) fn multicol_spanner_segments(
             let row_style = box_style(&merged, &sub.style, vcx);
             let mut row_opts = opts.clone();
             row_opts.cx.position.row_geometry = None;
+            // Only this row's own column set reads the flow's row extents.
+            row_opts.cx.fragmentation.spanner_rows = (opts.cx.fragmentation.spanner_rows)
+                .as_ref()
+                .and_then(|slot| slot.row(e.node_id, row));
             if let Some((_, rows)) = &row_geometry {
                 row_opts.cx.position.geometry = rows.get(row).cloned().flatten();
             }

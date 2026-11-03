@@ -105,10 +105,7 @@ use walk::Walk;
 
 /// Хеш одного аргумента `:has(...)` - ключ отметки.
 pub(super) fn has_id(arg: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    arg.hash(&mut h);
-    h.finish()
+    crate::style::css::has_argument_id(arg)
 }
 
 /// Разобранный аргумент `:has()`: части списка, каждая с ведущим
