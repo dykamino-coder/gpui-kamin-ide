@@ -110,6 +110,11 @@ impl Arena {
         self.chunks.len() * self.chunk_size.get()
     }
 
+    /// KaminIDE patch: values allocated since the last clear (elements of the frame).
+    pub fn allocations(&self) -> usize {
+        self.elements.len()
+    }
+
     /// Marks the start of a scope (e.g. a window draw) whose allocations must stay
     /// live until the scope ends, even if `clear` is called by a nested scope in
     /// the meantime.

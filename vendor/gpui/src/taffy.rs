@@ -31,6 +31,9 @@ mod native_sizing_tests;
 #[cfg(test)]
 mod grid_tracks_tests;
 
+#[cfg(test)]
+mod node_reserve_tests;
+
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
     Style, Window, point, size,
@@ -92,13 +95,22 @@ pub struct TaffyLayoutEngine {
     placed_origins: FxHashMap<LayoutId, (f32, f32)>,
     computed_layouts: FxHashSet<LayoutId>,
     layout_bounds_scratch_space: Vec<LayoutId>,
+    /// KaminIDE patch: the window's frame tree, sized by the frame's elements;
+    /// independent subtrees hold only their own nodes.
+    frame_tree: bool,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
 
+/// KaminIDE patch: node count from which a full frame tree grows to the frame's hint.
+const RESERVE_FROM_NODES: usize = 4096;
+
 impl TaffyLayoutEngine {
     pub fn new() -> Self {
-        Self::with_capacity(16)
+        Self {
+            frame_tree: true,
+            ..Self::with_capacity(16)
+        }
     }
 
     /// KaminIDE patch: retained probes are often tiny; reserve only actual nodes.
@@ -124,6 +136,23 @@ impl TaffyLayoutEngine {
             placed_origins: FxHashMap::default(),
             computed_layouts: FxHashSet::default(),
             layout_bounds_scratch_space: Vec::new(),
+            frame_tree: false,
+        }
+    }
+
+    /// KaminIDE patch: before a node insertion that would grow the full node storage,
+    /// grow it once to the frame's element count (`expected`, a hint read only then)
+    /// instead of doubling: on a first frame of 10^5 elements doubling copied the
+    /// 2 KiB nodes about twice and held the old and new storage together.
+    /// Trees below `RESERVE_FROM_NODES` keep doubling: the element count exceeds
+    /// the node count, and on a small page the larger buffer raised the peak
+    /// working set (p06: 141 -> 153 MB) while doubling there copies under 9 MB.
+    pub(crate) fn reserve_nodes_when_full(&mut self, expected: impl FnOnce() -> usize) {
+        if self.frame_tree
+            && self.taffy.node_storage_full()
+            && self.taffy.total_node_count() >= RESERVE_FROM_NODES
+        {
+            self.taffy.reserve_nodes(expected());
         }
     }
 
