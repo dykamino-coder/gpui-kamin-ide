@@ -124,7 +124,10 @@ struct NodeData {
 
     /// The final results of the layout computation.
     /// These may be rounded or unrounded depending on what the `use_rounding` config setting is set to.
-    pub(crate) final_layout: Layout,
+    ///
+    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
+    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
+    pub(crate) final_layout: Option<Box<Layout>>,
 
     /// Whether the node has context data associated with it or not
     pub(crate) has_context: bool,
@@ -174,6 +177,9 @@ struct NodeData {
     pub(crate) grid_track_growth: (crate::geometry::AbsoluteAxis, Vec<f32>),
 }
 
+/// KaminIDE patch: the final layout of a node that rounding has not written yet.
+static NO_FINAL_LAYOUT: Layout = Layout::new();
+
 impl NodeData {
     /// Create the data for a new node
     #[must_use]
@@ -182,7 +188,7 @@ impl NodeData {
             style,
             cache: Cache::new(),
             unrounded_layout: Layout::new(),
-            final_layout: Layout::new(),
+            final_layout: None,
             has_context: false,
             hoisted_children: new_const_children_vec(),
             detailed_layout_info: DetailedLayoutInfo::None,
@@ -448,7 +454,7 @@ impl<NodeContext> PrintTree for TaffyTree<NodeContext> {
     #[inline(always)]
     fn get_final_layout(&self, node_id: NodeId) -> Layout {
         if self.config.use_rounding {
-            self.nodes[node_id.into()].final_layout
+            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
         } else {
             self.nodes[node_id.into()].unrounded_layout
         }
@@ -855,7 +861,7 @@ where
 
     #[inline(always)]
     fn set_final_layout(&mut self, node_id: NodeId, layout: &Layout) {
-        self.taffy.nodes[node_id.into()].final_layout = *layout;
+        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
     }
 
     #[inline(always)]
@@ -1277,7 +1283,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     #[inline]
     pub fn layout(&self, node: NodeId) -> TaffyResult<&Layout> {
         if self.config.use_rounding {
-            Ok(&self.nodes[node.into()].final_layout)
+            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
         } else {
             Ok(&self.nodes[node.into()].unrounded_layout)
         }
@@ -1975,6 +1981,24 @@ mod tests {
             8,
             "clear() drops all nodes, so it must drop their contexts too"
         );
+    }
+
+    #[test]
+    fn final_layout_storage_is_allocated_only_by_rounding() {
+        let style = Style { size: Size::from_lengths(10.5, 10.5), ..Style::default() };
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        taffy.disable_rounding();
+        let unrounded = taffy.new_leaf(style.clone()).unwrap();
+        taffy.compute_layout(unrounded, Size::MAX_CONTENT).unwrap();
+        assert!(taffy.nodes[unrounded.into()].final_layout.is_none());
+        assert_eq!(taffy.layout(unrounded).unwrap().size.width, 10.5);
+
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let rounded = taffy.new_leaf(style).unwrap();
+        assert_eq!(taffy.layout(rounded).unwrap().size.width, 0.0);
+        taffy.compute_layout(rounded, Size::MAX_CONTENT).unwrap();
+        assert!(taffy.nodes[rounded.into()].final_layout.is_some());
+        assert_eq!(taffy.layout(rounded).unwrap().size.width, 11.0);
     }
 
     #[test]
