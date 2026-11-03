@@ -5753,7 +5753,7 @@ index 0000000000000000000000000000000000000000..43852ab765fc7284d4be693d5579de8b
 +    }
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
-index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f5e50dcd8
+index e95e32477b912b810607b20306be5f7d53c76df2..9aaed5639e767225899598be3e316b888403033e
 --- a/vendor/gpui/src/bounds_tree.rs
 +++ b/vendor/gpui/src/bounds_tree.rs
 @@ -12,0 +13,4 @@
@@ -5794,7 +5794,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +    /// node: it nested a new pair under a full parent, so document-order text
 +    /// built chains about 20 levels deep, and every insert scanned hundreds of
 +    /// children. Queries are exact, so the assigned orderings do not change.
-@@ -198 +225,57 @@
+@@ -198 +225,58 @@
 -        let new_leaf_idx = self.nodes.len();
 +        let leaf = self.push_node(bounds.clone(), order, NodeKind::Leaf { order });
 +        let Some(root) = self.root else {
@@ -5823,7 +5823,8 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +            let Some(sibling) = self.add_child(node, entry) else {
 +                // Every remaining ancestor only grows by the new leaf.
 +                let mut child = node;
-+                for &ancestor in self.insert_path[..level].iter().rev() {
++                for i in (0..level).rev() {
++                    let ancestor = self.insert_path[i];
 +                    self.grow(ancestor, child, &bounds, order);
 +                    child = ancestor;
 +                }
@@ -5853,14 +5854,14 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +    }
 +
 +    fn push_node(&mut self, bounds: Bounds<U>, max_order: u32, kind: NodeKind) -> usize {
-@@ -200,3 +283,3 @@
+@@ -200,3 +284,3 @@
 -            bounds: bounds.clone(),
 -            max_order: order,
 -            kind: NodeKind::Leaf { order },
 +            bounds,
 +            max_order,
 +            kind,
-@@ -204,40 +287,31 @@
+@@ -204,40 +288,31 @@
 -
 -        let Some(root_idx) = self.root else {
 -            // Tree is empty, new leaf becomes root
@@ -5932,7 +5933,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +                Some((enlargement, size)) => {
 +                    cost.0 < *enlargement || (cost.0 == *enlargement && cost.1 < *size)
 +                }
-@@ -245,103 +319,122 @@
+@@ -245,103 +320,122 @@
 -
 -            self.insert_path.push(current_idx);
 -
@@ -6158,7 +6159,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +                        + self.split_covers[MAX_CHILDREN - k].half_perimeter();
 +                    if best.as_ref().is_none_or(|(c, _, _)| cost < *c) {
 +                        best = Some((cost, vertical, k));
-@@ -350,6 +443,29 @@
+@@ -350,6 +444,29 @@
 -            }
 -
 -            updated_child_idx = Some(node_idx);
@@ -6194,10 +6195,10 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +                j -= 1;
 +            }
 +        }
-@@ -369,0 +486,2 @@
+@@ -369,0 +487,2 @@
 +            height: 0,
 +            split_covers: Vec::new(),
-@@ -472 +590,97 @@
+@@ -472 +591,99 @@
 -}
 +
 +    /// Checks the balanced-tree invariants below `node` and returns the depth
@@ -6230,8 +6231,10 @@ index e95e32477b912b810607b20306be5f7d53c76df2..0dc4126bbe7a8876f557ebfea3f1e25f
 +                for &c in children {
 +                    let (outer, inner) = (&tree.nodes[node].bounds, &tree.nodes[c].bounds);
 +                    assert!(outer.origin.x <= inner.origin.x && outer.origin.y <= inner.origin.y);
-+                    assert!(outer.bottom_right().x >= inner.bottom_right().x);
-+                    assert!(outer.bottom_right().y >= inner.bottom_right().y);
++                    // `Bounds::union` stores `origin + size`, so the far edge
++                    // of a cover rounds by an ulp or so.
++                    assert!(outer.bottom_right().x >= inner.bottom_right().x - 1e-3);
++                    assert!(outer.bottom_right().y >= inner.bottom_right().y - 1e-3);
 +                }
 +                depths[0] + 1
 +            }

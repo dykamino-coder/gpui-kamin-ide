@@ -249,7 +249,8 @@ where
             let Some(sibling) = self.add_child(node, entry) else {
                 // Every remaining ancestor only grows by the new leaf.
                 let mut child = node;
-                for &ancestor in self.insert_path[..level].iter().rev() {
+                for i in (0..level).rev() {
+                    let ancestor = self.insert_path[i];
                     self.grow(ancestor, child, &bounds, order);
                     child = ancestor;
                 }
@@ -618,8 +619,10 @@ mod tests {
                 for &c in children {
                     let (outer, inner) = (&tree.nodes[node].bounds, &tree.nodes[c].bounds);
                     assert!(outer.origin.x <= inner.origin.x && outer.origin.y <= inner.origin.y);
-                    assert!(outer.bottom_right().x >= inner.bottom_right().x);
-                    assert!(outer.bottom_right().y >= inner.bottom_right().y);
+                    // `Bounds::union` stores `origin + size`, so the far edge
+                    // of a cover rounds by an ulp or so.
+                    assert!(outer.bottom_right().x >= inner.bottom_right().x - 1e-3);
+                    assert!(outer.bottom_right().y >= inner.bottom_right().y - 1e-3);
                 }
                 depths[0] + 1
             }
