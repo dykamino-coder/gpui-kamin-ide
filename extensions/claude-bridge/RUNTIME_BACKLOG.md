@@ -10,14 +10,13 @@ dispatch, terminal payloads читаются с диска; foreground retention
 использует bounded ordinary SSE, explicit background отклоняется до исполнения.
 Candidate `84c97a09`: required CI/Docker dry run passed; local Docker typecheck,
 lint, 651 passed / 6 existing skips. Windows native acceptance не требуется и
-не заявлена; deployment observation у владельца после публикации.
+не заявлена; deployment observation у владельца после выкладки.
 
-**INC-0080:** retention source contract done; release pending. Сам incident остаётся
+**INC-0080:** retention source contract done; [KaminIDE 1.0.85](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.85) / server 6.3.162 опубликованы. Сам incident остаётся
 open для неизвестной причины historical field hangs и точно описанного next
 capture. **INC-0082:** не повторять старый admission fix; новый retention contract
 заменяет early-eviction policy, а не объявляет безлимитную background очередь.
-Следующий artifact — один release `RC-2026-11-03-MCP-RETENTION`, затем обычная
-выкладка/наблюдение владельца. Остальные строки и их historical baselines ниже
+Следующий шаг — обычная выкладка и наблюдение владельца. Остальные строки и их historical baselines ниже
 не выдаются за повторно проверенные; BR-02/03 и native/CEF scope не изменены.
 
 ## Выборочная сверка доставки INC-0082 — 2026-10-30
