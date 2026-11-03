@@ -82,8 +82,8 @@ acceptance → сверка → один проверенный release. Жив�
 
 | Deliverable | State / artifact | Gate и следующий шаг |
 | --- | --- | --- |
-| INC-0080 retention decision | in progress / decision | [Контракт](server/MCP_TASK_RETENTION.md): TTL, reservation, bounded ordinary fallback; принять до product merge |
-| INC-0080 server fix | waiting / change | После decision: actual store/HTTP + delivery regressions, typecheck/lint/tests, isolated Docker; без изменения клиента |
+| INC-0080 retention decision / #605 | done / none | [Контракт](server/MCP_TASK_RETENTION.md) принят в `b68458fa`: TTL, reservation, bounded ordinary fallback |
+| INC-0080 server fix / #606 | in progress / change | Local Docker: typecheck/lint и 651 tests passed / 6 existing skips; actual store/HTTP + delivery regressions. Перед merge — required CI и Docker health; клиент не меняется |
 | Reconciliation / one release | waiting | После принятого fix: exact merged PR, честный остаток INC-0080, coordinated release и post-publish checks |
 
 ## История `RC-2026-10-30-INC82-83` — сверка завершена 2026-10-31

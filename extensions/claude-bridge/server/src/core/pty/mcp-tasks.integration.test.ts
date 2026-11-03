@@ -1,5 +1,5 @@
 // Real HTTP handler and task persistence, synthetic WS only; no CLI or host profile.
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -293,5 +293,119 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
   })
   it('does not swallow request id zero as an unknown notification', async () => {
     expect((await request('unknown/method', {}, true, 0)).status).toBe(404)
+  })
+})
+
+describe('retention overload through the actual HTTP handler', () => {
+  const limits = { ...TASK_LIMITS }
+  let protectedId: string
+  let protectedResult: unknown
+  beforeAll(async () => {
+    for (const task of await tasks.mcpTasks.working())
+      await tasks.mcpTasks.settle(task.owner, task.taskId, 'test finished')
+    const owner = session.mcpEndpoint!.id
+    const task = await tasks.mcpTasks.create(owner, 'Bash', {})
+    protectedId = task.taskId
+    await tasks.mcpTasks.settle(owner, protectedId, 'unread protected output')
+    protectedResult = (await (await request('tasks/get', { taskId: protectedId })).json()).result
+    let count = (await tasks.mcpTasks.commands(owner)).length
+    while (count++ < TASK_LIMITS.perOwner) {
+      const next = await tasks.mcpTasks.create(owner, 'Bash', {})
+      await tasks.mcpTasks.settle(owner, next.taskId, 'later output')
+    }
+  })
+  afterEach(() => {
+    Object.assign(TASK_LIMITS, limits)
+    vi.restoreAllMocks()
+    mock.call.mockResolvedValue('ordinary result')
+  })
+
+  it.each(['Bash', 'PowerShell'])('answers foreground %s inline when owner retention is full', async (name) => {
+    mock.call.mockClear()
+    const result = rpcResult(await (await request('tools/call', { name, arguments: { command: 'synthetic' } })).text())
+    expect(result).toMatchObject({ resultType: 'complete', content: [{ text: 'ordinary result' }] })
+    expect(result).not.toHaveProperty('taskId')
+    expect(mock.call).toHaveBeenCalledTimes(1)
+    expect((await (await request('tasks/get', { taskId: protectedId })).json()).result).toEqual(protectedResult)
+    expect(await tasks.mcpTasks.settle(session.mcpEndpoint!.id, protectedId, 'lost-ACK duplicate')).toMatchObject({
+      result: { content: [{ text: 'unread protected output' }] },
+    })
+  })
+
+  it('refuses explicit background before dispatch without deleting old results', async () => {
+    mock.call.mockClear()
+    const sent = mock.send.mock.calls.length
+    const response = await request('tools/call', {
+      name: 'Bash',
+      arguments: { command: 'synthetic', run_in_background: true },
+    })
+    expect(response.status).toBe(503)
+    expect((await response.json()).error.data).toEqual({ reason: 'retained_owner', executionStarted: false })
+    expect(mock.call).not.toHaveBeenCalled()
+    expect(mock.send).toHaveBeenCalledTimes(sent)
+    expect((await (await request('tasks/get', { taskId: protectedId })).json()).result).toEqual(protectedResult)
+  })
+
+  it.each(['count', 'bytes'])('preserves foreground execution under global retention %s pressure', async (kind) => {
+    if (kind === 'count') TASK_LIMITS.retained = 1
+    else TASK_LIMITS.bytes = 1
+    expect(rpcResult(await (await request('tools/call', { name: 'Bash', arguments: {} })).text())).toMatchObject({
+      resultType: 'complete',
+      content: [{ text: 'ordinary result' }],
+    })
+  })
+
+  it('shares active capacity with ordinary calls and does not bypass that limit', async () => {
+    mock.call.mockClear()
+    const release = await tasks.mcpTasks.acquireInline(session.mcpEndpoint!.id)
+    TASK_LIMITS.active = 1
+    try {
+      const response = await request('tools/call', { name: 'Bash', arguments: {} })
+      expect(response.status).toBe(503)
+      expect((await response.json()).error.data).toEqual({ reason: 'active_global', executionStarted: false })
+      expect(mock.call).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
+  })
+
+  it('releases an ordinary lease on success and execution failure', async () => {
+    TASK_LIMITS.activePerOwner = 1
+    mock.call.mockRejectedValueOnce(new Error('synthetic execution failed'))
+    const failed = rpcResult(await (await request('tools/call', { name: 'Bash', arguments: {} })).text())
+    expect(failed).toMatchObject({ isError: true, content: [{ text: 'Error: synthetic execution failed' }] })
+    const next = rpcResult(await (await request('tools/call', { name: 'Bash', arguments: {} })).text())
+    expect(next).toMatchObject({ resultType: 'complete', content: [{ text: 'ordinary result' }] })
+    const release = await tasks.mcpTasks.acquireInline(session.mcpEndpoint!.id)
+    release()
+  })
+
+  it.each(['queue', 'write'])('does not fall back after a %s persistence failure', async (kind) => {
+    mock.call.mockClear()
+    if (kind === 'queue') TASK_LIMITS.queued = 0
+    else {
+      TASK_LIMITS.perOwner++
+      vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('synthetic disk failure with a private path'))
+    }
+    const response = await request('tools/call', { name: 'Bash', arguments: {} })
+    expect(response.status).toBe(503)
+    const body = await response.json()
+    expect(body.error.data).toEqual({
+      reason: kind === 'queue' ? 'persistence_queue' : 'persistence_unavailable',
+      executionStarted: 'unknown',
+    })
+    expect(JSON.stringify(body)).not.toContain('private path')
+    expect(mock.call).not.toHaveBeenCalled()
+  })
+
+  it('rejects an oversized input without executing an ordinary fallback', async () => {
+    mock.call.mockClear()
+    const response = await request('tools/call', {
+      name: 'Bash',
+      arguments: { command: 'x'.repeat(TASK_LIMITS.inputBytes) },
+    })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error.data).toEqual({ reason: 'input_bytes', executionStarted: false })
+    expect(mock.call).not.toHaveBeenCalled()
   })
 })
