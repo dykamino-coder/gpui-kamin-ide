@@ -68,6 +68,23 @@ pub(super) fn differing(a: &CapturedFrame, b: &CapturedFrame) -> Result<u64> {
     Ok(difference(a, b).map_or(0, |d| d.pixels))
 }
 
+/// Границы расхождения и первые различающиеся пиксели (RGB `a` → `b`).
+pub(super) fn detail(a: &CapturedFrame, b: &CapturedFrame) -> Value {
+    let first: Vec<Value> = a
+        .bgra
+        .chunks_exact(4)
+        .zip(b.bgra.chunks_exact(4))
+        .enumerate()
+        .filter(|(_, (p, q))| p[..3] != q[..3])
+        .take(8)
+        .map(|(i, (p, q))| {
+            json!({"x": i % a.width as usize, "y": i / a.width as usize,
+                "a": [p[2], p[1], p[0]], "b": [q[2], q[1], q[0]]})
+        })
+        .collect();
+    json!({"bounds": difference(a, b).map(|d| d.bounds), "first": first})
+}
+
 pub(super) struct Recorder {
     first: Option<CapturedFrame>,
     first_hash: Option<String>,

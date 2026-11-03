@@ -1198,6 +1198,23 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.len()
     }
 
+    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
+    #[inline]
+    pub fn node_storage_full(&self) -> bool {
+        self.nodes.len() >= self.nodes.capacity()
+    }
+
+    /// KaminIDE patch: grow the node storage to hold `expected` nodes at once. A node
+    /// is about 2 KiB, so doubling up to a large tree copies the whole tree again.
+    pub fn reserve_nodes(&mut self, expected: usize) {
+        let additional = expected.saturating_sub(self.nodes.len());
+        if expected > self.nodes.capacity() {
+            self.nodes.reserve(additional);
+            self.children.reserve(additional);
+            self.parents.reserve(additional);
+        }
+    }
+
     /// Returns the `NodeId` of the parent node of the specified node (if it exists)
     ///
     /// - Return None if the specified node has no parent
@@ -1935,5 +1952,21 @@ mod tests {
             8,
             "clear() drops all nodes, so it must drop their contexts too"
         );
+    }
+
+    #[test]
+    fn reserve_nodes_grows_the_full_storage_once() {
+        let mut taffy: TaffyTree<()> = TaffyTree::with_capacity(0);
+        assert!(taffy.node_storage_full());
+        taffy.reserve_nodes(1000);
+        assert!(taffy.nodes.capacity() >= 1000);
+        let capacity = taffy.nodes.capacity();
+        let leaves: Vec<_> = (0..1000).map(|_| taffy.new_leaf(Style::DEFAULT).unwrap()).collect();
+        assert_eq!(taffy.nodes.capacity(), capacity, "no reallocation up to the hint");
+        let root = taffy.new_with_children(Style::DEFAULT, &leaves).unwrap();
+        assert_eq!(taffy.child_count(root), 1000);
+        // A smaller hint never shrinks or regrows the storage.
+        taffy.reserve_nodes(10);
+        assert!(taffy.nodes.capacity() >= 1001);
     }
 }

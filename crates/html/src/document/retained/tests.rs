@@ -6,9 +6,9 @@ use gpui::{
     Context, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window, point, px,
 };
 
-struct View {
-    doc: Document,
-    viewport: (f32, f32),
+pub(super) struct View {
+    pub(super) doc: Document,
+    pub(super) viewport: (f32, f32),
 }
 
 impl Render for View {
@@ -25,7 +25,7 @@ impl Render for View {
     }
 }
 
-fn open<'a>(
+pub(super) fn open<'a>(
     cx: &'a mut TestAppContext,
     html: &str,
 ) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
@@ -36,7 +36,7 @@ fn open<'a>(
     })
 }
 
-fn frame(cx: &mut VisualTestContext) {
+pub(super) fn frame(cx: &mut VisualTestContext) {
     cx.update(|window, cx| {
         window.refresh();
         window.draw(cx).clear(cx);

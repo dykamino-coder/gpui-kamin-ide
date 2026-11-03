@@ -80,35 +80,38 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         (Some(Len::Pct(k)), Some(b)) => Some(Some(Len::Px(k * b))),
         _ => None,
     };
-    let mut copy = e.clone();
-    let mut changed = false;
-    if let Some(v) = of(e.style.used().reset_box_layout.height, base_h) {
-        copy.style.used_mut().reset_box_layout.height = v;
-        changed = true;
+    // Решить доли по исходному стилю и копировать элемент только при правке:
+    // обход атомов зовёт это для каждого `inline-block`, и копия на каждом
+    // (вместе с общей группой размеров) стоила сборке столько же, сколько остальное.
+    let used = e.style.used();
+    let own = &used.reset_box_layout;
+    let height = of(own.height, base_h);
+    let sides_px = [
+        own.padding.top,
+        own.padding.bottom,
+        own.padding.left,
+        own.padding.right,
+    ]
+    .map(|side| of(side, base_w));
+    drop(used);
+    if height.is_none() && sides_px.iter().all(Option::is_none) {
+        return None;
     }
-    let padding = &mut copy.style.used_mut().reset_box_layout.padding;
-    for (dst, src) in [
-        (
-            &mut padding.top,
-            e.style.used().reset_box_layout.padding.top,
-        ),
-        (
-            &mut padding.bottom,
-            e.style.used().reset_box_layout.padding.bottom,
-        ),
-        (
-            &mut padding.left,
-            e.style.used().reset_box_layout.padding.left,
-        ),
-        (
-            &mut padding.right,
-            e.style.used().reset_box_layout.padding.right,
-        ),
-    ] {
-        if let Some(v) = of(src, base_w) {
+    let mut copy = e.clone();
+    if let Some(v) = height {
+        copy.style.used_mut().reset_box_layout.height = v;
+    }
+    let edges = &mut copy.style.used_mut().reset_box_layout.padding;
+    let sides = [
+        &mut edges.top,
+        &mut edges.bottom,
+        &mut edges.left,
+        &mut edges.right,
+    ];
+    for (dst, v) in sides.into_iter().zip(sides_px) {
+        if let Some(v) = v {
             *dst = v;
-            changed = true;
         }
     }
-    changed.then_some(copy)
+    Some(copy)
 }

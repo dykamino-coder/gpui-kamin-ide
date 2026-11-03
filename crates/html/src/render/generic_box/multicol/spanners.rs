@@ -2,18 +2,20 @@
 //! внешнего ряда. Временные LayoutId не переживают вложенный layout.
 
 use super::super::columns::column_plan_in;
-use super::settled;
 use crate::layout::multicol::dimensions::MulticolDimensions;
+mod build;
 mod intrinsic;
 mod probe;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::multicol::measure::{SpannerRow, row_plan_in, tail_rest_height};
-use crate::layout::multicol::spanner::{SpannerFlow, SpannerPass, hoist_spanners, spanner_box};
+use crate::layout::multicol::spanner::{
+    RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners, spanner_box,
+};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
-use crate::style::values::value::Len;
-use gpui::{AnyElement, AvailableSpace, IntoElement, Styled, div, px, size};
+use build::build;
+use gpui::{AnyElement, AvailableSpace, px, size};
 use std::rc::Rc;
 
 pub(super) fn deferred(
@@ -27,6 +29,7 @@ pub(super) fn deferred(
     opts.cx.position.state = opts.cx.position.state.retain().resume();
     let (e, merged, inherited) = (e.clone(), merged.clone(), inherited.clone());
     let (intrinsic_e, intrinsic_style, intrinsic_opts) = (e.clone(), merged.clone(), opts.clone());
+    let row_measures = Rc::new(RowMeasures::default());
     SpannerFlow::deferred(
         move |available, pass, window, cx| {
             let AvailableSpace::Definite(width) = available.width else {
@@ -179,6 +182,13 @@ pub(super) fn deferred(
             };
             final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
             final_opts.cx.position.row_geometry = row_geometry;
+            final_opts.cx.fragmentation.spanner_rows = RowSlot::build(
+                &row_measures,
+                e.node_id,
+                (width.to_bits(), height.map(f32::to_bits)),
+                pass == SpannerPass::Measure,
+                final_opts.frag.watch.is_some(),
+            );
             build(
                 &host,
                 style,
@@ -204,47 +214,4 @@ pub(super) fn deferred(
 
 fn is_span(n: &Node) -> bool {
     matches!(n, Node::Element(e) if spanner_box(e))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build(
-    host: &Element,
-    style: BoxStyle,
-    inherited: &Computed,
-    opts: &RenderOpts,
-    outer: Option<Rc<Nested>>,
-    rest: Option<f32>,
-    (dimensions, own): (MulticolDimensions, MulticolDimensions),
-) -> AnyElement {
-    let p = column_plan_in(host, &style, opts, dimensions, own);
-    let mut d = div();
-    let vertical = style.wm().vertical();
-    let axes = style.wm().reversed_axes();
-    d.style().block_flow = Some([vertical, vertical && axes[0], axes[usize::from(vertical)]]);
-    // Размер анонимного потока задаёт CSS-хост; декорации остаются снаружи.
-    if let Some(Len::Px(h)) = dimensions.preferred[1] {
-        d = d.h(px(h));
-    }
-    match settled(
-        d,
-        host,
-        style,
-        inherited,
-        opts,
-        p.column_width,
-        p.used_count.unwrap_or(0),
-        p.used_gap,
-        p.col_axis,
-        p.col_vert,
-        p.col_rl,
-        p.col_inline_size,
-        outer,
-        p.lone_span,
-        rest,
-        Some((dimensions, own)),
-        None,
-    ) {
-        Ok((d, _)) => d.into_any_element(),
-        Err(el) => el,
-    }
 }

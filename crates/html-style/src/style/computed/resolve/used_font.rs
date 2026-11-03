@@ -80,12 +80,27 @@ impl Computed {
         self.used_font_for(family, fallback_px, vcx)
     }
 
+    /// Selection and adjustment depend only on the inputs of the request, so
+    /// equal requests of one document share the result (`used_font_memo`).
     pub fn used_font_for(&self, family: &str, fallback_px: f32, vcx: ValueCx<'_>) -> UsedFont {
         let computed_px = match self.inh.font.font_size {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * fallback_px,
             _ => fallback_px,
         };
+        let request = self.font_request(family, computed_px);
+        let key = crate::values::UsedFontKey {
+            font: &self.inh.font,
+            language: request.language,
+            orientation: request.orientation,
+            family,
+            computed_px,
+        };
+        vcx.doc
+            .used_font_memo(key, || self.select_used_font(family, computed_px, vcx))
+    }
+
+    fn select_used_font(&self, family: &str, computed_px: f32, vcx: ValueCx<'_>) -> UsedFont {
         let snapshot = vcx.doc.font_snapshot();
         let selected = vcx
             .doc

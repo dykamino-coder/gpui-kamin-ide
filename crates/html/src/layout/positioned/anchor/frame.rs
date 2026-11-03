@@ -16,6 +16,15 @@ pub(crate) fn reset(f: &AnchorState) {
     f.tf.borrow_mut().clear();
 }
 
+/// Номер последней сборки кадра; повтор блоков продвигает его сам (layout::reuse).
+pub(crate) fn seq(anchors: &AnchorState) -> u32 {
+    anchors.seq.get()
+}
+
+pub(crate) fn set_seq(anchors: &AnchorState, seq: u32) {
+    anchors.seq.set(seq);
+}
+
 pub(crate) fn next_seq(anchors: &AnchorState) -> u32 {
     let s = &anchors.seq;
     let v = s.get() + 1;

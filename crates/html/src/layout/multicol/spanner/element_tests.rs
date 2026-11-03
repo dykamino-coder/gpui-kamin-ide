@@ -1,7 +1,8 @@
 //! A balanced multicol with spanners lays each row's float host out a bounded
-//! number of times per frame: one measure build (repeated sizing queries reuse
-//! it), one final build and the painted copy. Its baselines come from the main
-//! copy the columns paint, not from spare copies built once per column.
+//! number of times per frame: once in the measure build (repeated sizing
+//! queries reuse it, and so does the final build's size query of each row) and
+//! once for the painted copy. Its baselines come from the main copy the columns
+//! paint, not from spare copies built once per column.
 //! Counted with `crate::work`; run with `--features work-counters`.
 
 use crate::work::{Counter, Session, Snapshot};
@@ -24,8 +25,9 @@ fn sheet(sections: usize, items: usize) -> String {
     )
 }
 
-/// Float-host plans, measure-pass reuses and float-host probes of one frame.
-fn work(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64, u64) {
+/// Float-host plans, measure-pass reuses, float-host probes and row-extent
+/// reuses of one frame.
+fn work(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64, u64, u64) {
     use gpui::{IntoElement, ParentElement, point, px, size};
     let document = crate::Document::builder(html, crate::BROWSER_CSS)
         .build()
@@ -49,20 +51,26 @@ fn work(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64, u64) {
         total(&work, Counter::FloatPlans),
         total(&work, Counter::SpannerMeasureReuses),
         total(&work, Counter::BandProbeCalls),
+        total(&work, Counter::SpannerRowReuses),
     )
 }
 
 #[gpui::test]
-fn spanner_rows_plan_each_float_host_at_most_three_times(cx: &mut gpui::TestAppContext) {
+fn spanner_rows_plan_each_float_host_at_most_twice(cx: &mut gpui::TestAppContext) {
     let sections = 3;
-    let (plans, reuses, probes) = work(cx, &sheet(sections, 12));
+    let (plans, reuses, probes, rows) = work(cx, &sheet(sections, 12));
     assert!(reuses > 0, "repeated measure queries rebuilt the rows");
-    // Measure build, final build, painted main copy: 13 per section before.
     assert!(
-        plans <= 3 * sections as u64,
+        rows >= sections as u64,
+        "the final build re-measured its rows"
+    );
+    // Measure build and painted main copy: 13 per section on 7de6fc0b,
+    // 3 while the final build re-measured every row.
+    assert!(
+        plans <= 2 * sections as u64,
         "{plans} float-host plans for {sections} sections ({probes} probes)"
     );
     // The work grows with the content, not with the number of columns.
-    let (more, _, _) = work(cx, &sheet(sections, 24));
+    let (more, _, _, _) = work(cx, &sheet(sections, 24));
     assert_eq!(more, plans, "plans depend on the item count");
 }
