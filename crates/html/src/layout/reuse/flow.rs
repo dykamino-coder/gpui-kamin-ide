@@ -17,6 +17,8 @@ pub(crate) struct FlowCx {
     /// Уже собранный ребёнок потока содержит флоат: он может вдаваться в
     /// следующих детей, их раскладка тогда зависит не только от ключа.
     floats: std::cell::Cell<bool>,
+    /// Ключ равен ключу прошлой сборки (или она первая): записывать детей.
+    settled: bool,
 }
 
 /// Состояние сборки до блочного ребёнка: его сборка должна изменить только
@@ -68,9 +70,13 @@ impl FlowReuse {
             normal_line_height: opts.normal_line_height,
             fonts: cx.doc().values.font_generation(),
         };
+        let key = Rc::new(key);
+        let settled =
+            (self.store.last.replace(Some(key.clone()))).is_none_or(|last| last.same(&key));
         Some(FlowCx {
             reuse: self.clone(),
-            key: Rc::new(key),
+            key,
+            settled,
             floats: std::cell::Cell::new(false),
         })
     }
@@ -131,7 +137,8 @@ impl FlowCx {
         out: &mut Vec<AnyElement>,
     ) {
         let now = mark_of(opts, out.len());
-        let inert = !edge
+        let inert = self.settled
+            && !edge
             && !self.floats.get()
             && e.node_id != 0
             && now.out == mark.out + 1

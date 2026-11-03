@@ -8,7 +8,7 @@ use gpui::{
 
 pub(super) struct View {
     pub(super) doc: Document,
-    viewport: (f32, f32),
+    pub(super) viewport: (f32, f32),
 }
 
 impl Render for View {

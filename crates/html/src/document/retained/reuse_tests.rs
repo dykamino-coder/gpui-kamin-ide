@@ -94,3 +94,20 @@ fn blocks_after_a_float_are_always_built(cx: &mut TestAppContext) {
     let (_, skipped, _) = reused(&view, cx);
     assert_eq!(skipped, 0, "a float may reach into the blocks after it");
 }
+
+#[gpui::test]
+fn a_flow_resized_every_frame_records_nothing(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, &rows(300, "row 300"));
+    frame(cx);
+    let (recorded, _, _) = reused(&view, cx);
+    for width in [401., 400., 401.] {
+        cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = width));
+        frame(cx);
+    }
+    let (after, skipped, _) = reused(&view, cx);
+    assert_eq!(
+        (after, skipped),
+        (recorded, 0),
+        "records of a changing flow never pay off"
+    );
+}

@@ -35,6 +35,9 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(crate) struct Store {
     records: RefCell<HashMap<u64, Rc<Record>>>,
+    /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
+    /// иначе (ширина меняется каждый кадр) запись не окупается.
+    last: RefCell<Option<Rc<FlowKey>>>,
     /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
     pub(crate) stats: Cell<ReuseStats>,
 }
