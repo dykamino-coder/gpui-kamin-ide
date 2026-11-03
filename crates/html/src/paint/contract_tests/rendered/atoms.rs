@@ -1,6 +1,6 @@
-//! Atomic inlines whose sizing skips work: shrink-to-fit decided by a size-only
-//! query (CSS 2.1 §10.3.9) and percentages resolved against the block only when
-//! present (CSS 2.1 §10.5, §8.4). The painted boxes stay the same.
+//! Atomic inline sizing: shrink-to-fit only for widths that depend on the block
+//! (CSS 2.1 §10.3.9), and percentages resolved against the block only when
+//! present (CSS 2.1 §10.5, §8.4).
 
 use super::quads;
 
