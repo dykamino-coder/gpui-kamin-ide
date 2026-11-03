@@ -167,3 +167,22 @@ fn finished_frame_does_not_keep_a_dead_record_tree() {
     third.replay(range, &next);
     assert!(matches!(third.blocks.last().map(|b| &b.index), Some(BlockIndex::Owned(_))));
 }
+
+/// A placed copy of a mostly clipped record grows the destination by the
+/// commands it keeps, not by the record's length: a frame keeps its
+/// capacity, so a reservation for every recorded command would stay dead.
+#[test]
+fn placed_replay_reserves_only_what_it_keeps() {
+    let mut record = Scene::default();
+    for i in 0..1000 {
+        record.insert_primitive(quad(0., i as f32 * 20., 10., 10.));
+    }
+    record.finish();
+    let mut frame = Scene::default();
+    assert!(frame.replay_placed(&record, Point::default(), Some(rect(0., 0., 100., 50.))));
+    assert_eq!(frame.paint_operations.len(), 3);
+    assert!(frame.paint_operations.capacity() < 100, "{}", frame.paint_operations.capacity());
+    let copy = record.copy_record(Point::default(), Some(rect(0., 0., 100., 50.)));
+    assert_eq!(copy.paint_operations.len(), 3);
+    assert!(copy.paint_operations.capacity() < 100, "{}", copy.paint_operations.capacity());
+}

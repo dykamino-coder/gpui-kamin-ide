@@ -660,7 +660,10 @@ impl Scene {
         let shift = raise * ORDER_STEP;
         let start = self.paint_operations.len();
         let mut ink: Option<Bounds<ScaledPixels>> = None;
-        self.paint_operations.reserve(operations.len());
+        // No `reserve(operations.len())`: `place` may drop most commands (a
+        // clipped record copies only what is visible), and a frame keeps its
+        // capacity for the next frame, so a reservation for every recorded
+        // command would stay as dead capacity in both frames.
         for operation in operations {
             let mut operation = operation.clone();
             if !place(&mut operation) {
@@ -734,8 +737,8 @@ impl Scene {
         clip: Option<Bounds<ScaledPixels>>,
         mut place: impl FnMut(&mut PaintOperation),
     ) -> Self {
+        // No reservation for every command: clipped ones are dropped.
         let mut scene = Self { in_group: self.in_group, ..Self::default() };
-        scene.paint_operations.reserve(self.paint_operations.len());
         for operation in &self.paint_operations {
             let mut operation = operation.clone();
             place(&mut operation);
