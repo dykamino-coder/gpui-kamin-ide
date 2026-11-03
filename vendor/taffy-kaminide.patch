@@ -25498,7 +25498,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9e066c0c1
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f4e81241d45331a8e3122b3922b05d526fef60c0
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -25883,7 +25883,25 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -916,0 +1244,8 @@
+@@ -873,0 +1201,17 @@
++    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
++    #[inline]
++    pub fn node_storage_full(&self) -> bool {
++        self.nodes.len() >= self.nodes.capacity()
++    }
++
++    /// KaminIDE patch: grow the node storage to hold `expected` nodes at once. A node
++    /// is about 2 KiB, so doubling up to a large tree copies the whole tree again.
++    pub fn reserve_nodes(&mut self, expected: usize) {
++        let additional = expected.saturating_sub(self.nodes.len());
++        if expected > self.nodes.capacity() {
++            self.nodes.reserve(additional);
++            self.children.reserve(additional);
++            self.parents.reserve(additional);
++        }
++    }
++
+@@ -916,0 +1261,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -25892,7 +25910,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1312,6 @@
+@@ -977 +1329,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -25900,7 +25918,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1325,26 @@
+@@ -984,0 +1342,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -25927,15 +25945,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1354 @@
+@@ -988 +1371 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1369,3 @@
+@@ -1003 +1386,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1398,28 @@
+@@ -1029,0 +1415,28 @@
 +    }
 +
 +    #[test]
@@ -25964,6 +25982,25 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a15c9ef01a186fc58f97132f27ee29c9
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
+@@ -1543 +1956,17 @@
+-}
++
++    #[test]
++    fn reserve_nodes_grows_the_full_storage_once() {
++        let mut taffy: TaffyTree<()> = TaffyTree::with_capacity(0);
++        assert!(taffy.node_storage_full());
++        taffy.reserve_nodes(1000);
++        assert!(taffy.nodes.capacity() >= 1000);
++        let capacity = taffy.nodes.capacity();
++        let leaves: Vec<_> = (0..1000).map(|_| taffy.new_leaf(Style::DEFAULT).unwrap()).collect();
++        assert_eq!(taffy.nodes.capacity(), capacity, "no reallocation up to the hint");
++        let root = taffy.new_with_children(Style::DEFAULT, &leaves).unwrap();
++        assert_eq!(taffy.child_count(root), 1000);
++        // A smaller hint never shrinks or regrows the storage.
++        taffy.reserve_nodes(10);
++        assert!(taffy.nodes.capacity() >= 1001);
++    }
++}
 diff --git a/vendor/taffy/src/tree/traits.rs b/vendor/taffy/src/tree/traits.rs
 index 7d4adf226accc9339bedf755ca3b60007addecd9..5b427a30d08cd6185e1a9f913035221b024d78b9
 --- a/vendor/taffy/src/tree/traits.rs
