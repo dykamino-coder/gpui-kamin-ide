@@ -80,35 +80,67 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         (Some(Len::Pct(k)), Some(b)) => Some(Some(Len::Px(k * b))),
         _ => None,
     };
-    let mut copy = e.clone();
-    let mut changed = false;
-    if let Some(v) = of(e.style.used().reset_box_layout.height, base_h) {
-        copy.style.used_mut().reset_box_layout.height = v;
-        changed = true;
+    // Решить доли по исходному стилю и копировать элемент только при правке:
+    // обход атомов зовёт это для каждого `inline-block`, и копия на каждом
+    // (вместе с общей группой размеров) стоила сборке столько же, сколько остальное.
+    let used = e.style.used();
+    let own = &used.reset_box_layout;
+    let height = of(own.height, base_h);
+    let padding = [
+        own.padding.top,
+        own.padding.bottom,
+        own.padding.left,
+        own.padding.right,
+    ]
+    .map(|side| of(side, base_w));
+    drop(used);
+    if height.is_none() && padding.iter().all(Option::is_none) {
+        return None;
     }
-    let padding = &mut copy.style.used_mut().reset_box_layout.padding;
-    for (dst, src) in [
-        (
-            &mut padding.top,
-            e.style.used().reset_box_layout.padding.top,
-        ),
-        (
-            &mut padding.bottom,
-            e.style.used().reset_box_layout.padding.bottom,
-        ),
-        (
-            &mut padding.left,
-            e.style.used().reset_box_layout.padding.left,
-        ),
-        (
-            &mut padding.right,
-            e.style.used().reset_box_layout.padding.right,
-        ),
-    ] {
-        if let Some(v) = of(src, base_w) {
+    let mut copy = e.clone();
+    let layout = &mut *copy.style.used_mut().reset_box_layout;
+    if let Some(v) = height {
+        layout.height = v;
+    }
+    let sides = [
+        &mut layout.padding.top,
+        &mut layout.padding.bottom,
+        &mut layout.padding.left,
+        &mut layout.padding.right,
+    ];
+    for (dst, v) in sides.into_iter().zip(padding) {
+        if let Some(v) = v {
             *dst = v;
-            changed = true;
         }
     }
-    changed.then_some(copy)
+    Some(copy)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::paint::contract_tests::rendered::quads;
+
+    fn size_of(html: &str, colour: u32) -> (f32, f32) {
+        quads(html, 300., 200.)
+            .into_iter()
+            .find(|(_, c)| c.to_rgb() == gpui::rgb(colour))
+            .map(|(b, _)| (f32::from(b.size.width), f32::from(b.size.height)))
+            .expect("painted atom")
+    }
+
+    #[test]
+    fn percentages_of_an_atom_resolve_against_its_block() {
+        let html = "<style>body{margin:0}</style><div style='width:200px;height:100px'>\
+                    <span style='display:inline-block;width:10px;height:50%;\
+                    padding-left:10%;background:red'></span></div>";
+        assert_eq!(size_of(html, 0xff0000), (30.0, 50.0));
+    }
+
+    #[test]
+    fn an_atom_without_percentages_keeps_its_own_sizes() {
+        let html = "<style>body{margin:0}</style><div style='width:200px;height:100px'>\
+                    <span style='display:inline-block;width:10px;height:20px;\
+                    padding-left:4px;background:blue'></span></div>";
+        assert_eq!(size_of(html, 0x0000ff), (14.0, 20.0));
+    }
 }
