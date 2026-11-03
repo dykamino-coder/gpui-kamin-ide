@@ -157,9 +157,14 @@ impl FlowCx {
         let width = || {
             self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
         };
-        // Ближний блок без свежего повтора почти наверняка попадёт на экран.
-        let paintable = record.far || record.current(&self.reuse);
         let same = record.key.same(&self.key);
+        // Растянутый блок при другой ширине — та же раскладка в коробке
+        // другой ширины: лист по потоку, краска записи не годна.
+        let stretched = !same && record.stretch;
+        // Ближний блок без свежего повтора почти наверняка попадёт на экран,
+        // а отказ заместителя на экране собирает кадр второй раз. Растянутый
+        // блок не повторяется никогда, поэтому заменяется только далёкий.
+        let paintable = record.far || (!stretched && record.current(&self.reuse));
         let fits = (same || width())
             && paintable
             && Counters::read(&opts.cx) == record.start
@@ -171,9 +176,6 @@ impl FlowCx {
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
-        // Растянутый блок при другой ширине — та же раскладка в коробке
-        // другой ширины: лист по потоку, краска записи не годна.
-        let stretched = !same && record.stretch;
         let slot = Rc::new(Slot::new(record, stretched));
         super::push(&self.reuse.placeholders, slot.clone());
         Some(Placeholder::new(slot).hooked())

@@ -81,10 +81,10 @@ fn table(style: &str) -> String {
 #[gpui::test]
 fn a_fixed_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext) {
     let ((recorded, skipped, rebuilt), replayed) = resized(cx, &table(";width:300px"));
-    // The title is a one-line block: recorded in both frames, stretched at
-    // the other width and, being visible, built once more in the frame.
+    // The title is a visible one-line block: its paint at the other width is
+    // never replayable, so it is built, not refused, and the frame is built once.
     assert_eq!((recorded, skipped), (3, 1), "the table was rebuilt");
-    assert_eq!((replayed, rebuilt), (1, 1));
+    assert_eq!((replayed, rebuilt), (1, 0));
 }
 
 /// An auto-width table wider than the flow is held at its min-content width
@@ -94,7 +94,7 @@ fn a_fixed_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext
 fn an_overflowing_auto_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext) {
     let ((recorded, skipped, rebuilt), replayed) = resized(cx, &table(""));
     assert_eq!((recorded, skipped), (3, 1), "the table was rebuilt");
-    assert_eq!((replayed, rebuilt), (1, 1));
+    assert_eq!((replayed, rebuilt), (1, 0));
 }
 
 /// A table narrower than the flow takes its max-content width; at the
@@ -115,7 +115,7 @@ fn text_rows(style: &str) -> String {
 
 /// A one-line text block keeps its layout in a flow of another width: the
 /// offscreen ones stay placeholders (stretched to the flow), the visible ones
-/// are built again in the same frame (their background is wider).
+/// are built (their background is wider), so the frame is built once.
 #[gpui::test]
 fn one_line_text_blocks_are_reused_across_a_width_change(cx: &mut TestAppContext) {
     let ((recorded, skipped, rebuilt), replayed) = resized(cx, &text_rows(""));
@@ -123,14 +123,15 @@ fn one_line_text_blocks_are_reused_across_a_width_change(cx: &mut TestAppContext
         recorded > 500,
         "one-line blocks were not recorded: {recorded}"
     );
-    assert!(skipped > 500, "one-line blocks were rebuilt: {skipped}");
+    // Blocks near the screen are built too: a stretched one cannot replay.
+    assert!(skipped > 400, "one-line blocks were rebuilt: {skipped}");
     assert_eq!(
         replayed, 0,
         "a stretched block repeated the paint of another width"
     );
     assert_eq!(
-        rebuilt, 1,
-        "the visible stretched blocks are built once more"
+        rebuilt, 0,
+        "a visible stretched block was refused and the frame built again"
     );
 }
 
