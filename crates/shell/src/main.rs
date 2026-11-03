@@ -25,7 +25,8 @@
 //! Событие идёт по кругу: клик в `ui` → канал → `state/events/dispatch.rs` →
 //! обработчик правит `RootView` → следующий кадр собирается заново.
 //!
-//! mimalloc глобально (plan/10: уводит аллокации от DLP/AV heap-хуков).
+//! mimalloc глобально (plan/10: уводит аллокации от DLP/AV heap-хуков);
+//! размер его арен задаёт `kamin-alloc`.
 
 mod actions;
 mod activity;
@@ -74,8 +75,11 @@ use root::RootView;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
-    // ПЕРВАЯ строка: дочерние процессы CEF — это копии нашего exe. Они обязаны
-    // уйти отсюда до probe, сайдкара и окна (`web/process.rs`).
+    // Политика арен mimalloc действует только для арен, зарезервированных
+    // после неё, поэтому — до любой аллокации, в том числе у детей CEF.
+    kamin_alloc::configure();
+    // Дочерние процессы CEF — это копии нашего exe. Они обязаны уйти отсюда
+    // до probe, сайдкара и окна (`web/process.rs`).
     web::exit_if_child_process();
     #[cfg(debug_assertions)]
     if std::env::args().any(|arg| arg == "--native-acceptance-capabilities") {
