@@ -19,9 +19,10 @@ pub(super) struct Inline {
 }
 
 /// Строки элемента либо их вывод прошлого кадра (повтор записи блока).
+/// Вывод — в куче: заданий в кадре стопки тысячи, а повторов среди них мало.
 pub(super) enum InlinePaint {
     Element(AnyElement),
-    Replay(RetainedPaint),
+    Replay(Box<RetainedPaint>),
 }
 
 pub(super) struct Frame {

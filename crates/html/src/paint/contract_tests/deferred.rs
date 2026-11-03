@@ -78,6 +78,28 @@ fn lines_of_a_block_are_captured_where_the_stacking_context_paints_them() {
 }
 
 #[test]
+fn consecutive_lines_of_a_block_are_kept_as_one_output_range() {
+    let events = Events::default();
+    let deferred = captured(&events, || {
+        div()
+            .child(inline(probe("first", &events)))
+            .child(probe("flow", &events))
+            .child(inline(probe("second", &events)))
+            .into_any_element()
+    });
+    let painted: Vec<_> = events
+        .borrow()
+        .iter()
+        .filter_map(|&(phase, name)| (phase == "paint").then_some(name))
+        .collect();
+    assert_eq!(painted, ["before", "flow", "after", "first", "second"]);
+    assert!(deferred.complete());
+    // Both jobs ran one after the other at the end of the stacking context:
+    // their output is one range, not one record per line.
+    assert_eq!(deferred.line_count(), 1);
+}
+
+#[test]
 fn lines_drained_inside_the_block_stay_in_its_output() {
     let events = Events::default();
     let deferred = captured(&events, || {

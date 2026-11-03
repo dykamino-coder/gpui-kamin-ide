@@ -22,7 +22,9 @@ pub(crate) struct Record {
     /// без повтора краски.
     pub(super) far: bool,
     /// Вывод prepaint и краски блока в последнем кадре, где он рисовался.
-    pub(super) replay: RefCell<Option<Replay>>,
+    /// Только у ближнего блока: далёкий на том же месте под той же маской
+    /// и так вне экрана, и его пропуску повтор не нужен (`far`).
+    pub(super) replay: RefCell<Option<Box<Replay>>>,
 }
 
 impl Record {

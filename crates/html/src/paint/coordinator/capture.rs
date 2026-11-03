@@ -56,7 +56,16 @@ impl LineCapture {
         if !own || !range.replayable() {
             self.lost.set(true);
         }
-        self.lines.borrow_mut().push(range);
+        // Задания строк блока рисуются подряд в конце кадра стопки: их вывод
+        // обычно — один непрерывный диапазон, и повтор берёт его целиком.
+        let mut lines = self.lines.borrow_mut();
+        if lines.last_mut().is_some_and(|last| last.append(&range)) {
+            return;
+        }
+        if lines.capacity() == 0 {
+            lines.reserve_exact(1);
+        }
+        lines.push(range);
     }
 }
 
@@ -111,7 +120,7 @@ pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCaptur
             match current(window).filter(|pass| pass.is_open(window)) {
                 Some(pass) => {
                     let job = Inline {
-                        paint: InlinePaint::Replay(line.clone()),
+                        paint: InlinePaint::Replay(Box::new(line.clone())),
                         context: window.raster_paint_ctx(),
                         captures: claim(window, &pass),
                     };

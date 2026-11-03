@@ -42,9 +42,9 @@ pub(super) struct Prepared {
     /// Justification opportunities: only justified lines and text-fit read
     /// them, so other paragraphs never scan their graphemes.
     justification: OnceCell<justification::Opportunities>,
-    /// Soft and forced break opportunities, without and with the
-    /// hyphenation fallback (`opportunities_with_fallback`).
-    pub(super) stops: [OnceCell<std::rc::Rc<[u32]>>; 2],
+    /// Soft and forced break opportunities (`opportunities_with_fallback`),
+    /// packed as `offset << 1 | mandatory`.
+    pub(super) stops: OnceCell<Box<[u32]>>,
     // Уровни UAX9 нужны только абзацам с переупорядочиванием: место под
     // них занимает лишь разрешённый вариант.
     bidi: OnceCell<Box<ResolvedBidi>>,
@@ -87,7 +87,7 @@ impl Prepared {
         box_edges.dedup();
         Self {
             justification: OnceCell::new(),
-            stops: Default::default(),
+            stops: OnceCell::new(),
             run_edges: Self::run_edges(p, &run_ends),
             box_index: boxes::Boxes::new(p),
             has_bands: p.runs.iter().any(|r| r.background_color.is_some()),

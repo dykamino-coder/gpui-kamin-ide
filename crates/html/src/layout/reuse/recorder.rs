@@ -37,13 +37,20 @@ pub(super) struct Pending {
     border: Cell<f32>,
     /// Строки абзацев блока в этом кадре.
     lines: Rc<LineSink>,
-    /// Вывод prepaint и краски этого кадра и маска краски.
-    prepaint: RefCell<Option<RetainedPrepaint>>,
-    paint: RefCell<Option<Painted>>,
+    /// Вывод prepaint и краски этого кадра для повтора; только у блока
+    /// рядом с экраном (Output).
+    output: RefCell<Option<Box<Output>>>,
 }
 
-/// Вывод краски блока, его отложенные строки и маска краски.
-type Painted = (RetainedPaint, Rc<LineCapture>, Bounds<Pixels>);
+/// Вывод блока в кадре для его повтора в следующем. Повтор нужен лишь
+/// блоку рядом с экраном: далёкий пропускается и без него (ar), а
+/// записываемых блоков в кадре тысячи, поэтому вывод — в куче и только у
+/// ближних.
+struct Output {
+    prepaint: RetainedPrepaint,
+    /// Вывод краски, отложенные строки и маска краски.
+    paint: Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>,
+}
 
 impl Pending {
     pub(super) fn new(
@@ -68,8 +75,7 @@ impl Pending {
             settled,
             border: Cell::new(0.0),
             lines: Rc::default(),
-            prepaint: RefCell::new(None),
-            paint: RefCell::new(None),
+            output: RefCell::new(None),
         }
     }
 
@@ -99,18 +105,22 @@ impl Pending {
             size: ink.size,
         });
         let far = far(ink, origin, screen);
-        let replay = match (self.prepaint.take(), self.paint.take()) {
-            (Some(prepaint), Some((paint, deferred, at)))
-                if at == mask && paint.replayable() && deferred.complete() =>
+        // Далёкий блок на том же месте под той же маской вне экрана и без
+        // повтора (`FlowReuse::validate` пропускает его по чернилам), а на
+        // другом месте повтор не годен: его вывод не хранится.
+        let output = self.output.take().map(|o| (o.prepaint, o.paint));
+        let replay = match output {
+            Some((prepaint, Some((paint, deferred, at))))
+                if !far && at == mask && paint.replayable() && deferred.complete() =>
             {
-                Some(Replay {
+                Some(Box::new(Replay {
                     prepaint,
                     paint,
                     deferred,
                     origin,
                     mask,
                     epoch,
-                })
+                }))
             }
             _ => None,
         };
@@ -216,11 +226,39 @@ impl Wrap for Recorder {
         self.pending.quiet.set(snapshot.is_some());
         self.pending.snapshot.replace(snapshot);
         self.pending.origin.set(Some(origin));
-        self.pending.prepaint.replace(Some(range));
+        // Коробка далеко от экрана: блок, скорее всего, далёкий, и повтор ему
+        // не нужен. Чернила шире коробки лишь лишат блок записи (`finish`).
+        let mask = window.content_mask().bounds;
+        let screen = Bounds {
+            origin: scaled(mask.origin, scale),
+            size: size(
+                ScaledPixels(mask.size.width.as_f32() * scale),
+                ScaledPixels(mask.size.height.as_f32() * scale),
+            ),
+        };
+        let own = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(
+                ScaledPixels(bounds.size.width.as_f32() * scale),
+                ScaledPixels(bounds.size.height.as_f32() * scale),
+            ),
+        };
+        if !far(Some(own), origin, screen) {
+            self.pending.output.replace(Some(Box::new(Output {
+                prepaint: range,
+                paint: None,
+            })));
+        }
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let sink = self.pending.sink.clone();
+        let mut output = self.pending.output.borrow_mut();
+        let Some(output) = output.as_mut() else {
+            window.with_ink_sink(sink, |window| self.child.paint(window, cx));
+            self.pending.painted.set(true);
+            return;
+        };
         let mask = window.content_mask().bounds;
         // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
         let ((_, paint), deferred) = crate::hooks::paint_capturing(window, |window| {
@@ -228,7 +266,7 @@ impl Wrap for Recorder {
                 window.record_retained_paint(|window| self.child.paint(window, cx))
             })
         });
-        self.pending.paint.replace(Some((paint, deferred, mask)));
+        output.paint = Some((paint, deferred, mask));
         self.pending.painted.set(true);
     }
 }

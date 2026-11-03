@@ -28,6 +28,19 @@ impl RetainedPaint {
     pub fn replayable(&self) -> bool {
         self.replayable
     }
+
+    /// Extend this output by `next`, recorded right after it in the same
+    /// frame: one replay of the joined range copies exactly the commands of
+    /// both, in order. `false` leaves this output unchanged when `next` does
+    /// not start where this one ends.
+    pub fn append(&mut self, next: &RetainedPaint) -> bool {
+        if self.range.end != next.range.start {
+            return false;
+        }
+        self.range.end = next.range.end.clone();
+        self.replayable &= next.replayable;
+        true
+    }
 }
 
 impl Window {
