@@ -66,7 +66,7 @@ impl Pending {
             key: self.key.clone(),
             start: self.start,
             end: self.end,
-            snapshot: self.snapshot.borrow_mut().take()?,
+            snapshot: self.snapshot.take()?,
             ink,
             origin,
             screen,
@@ -124,7 +124,7 @@ impl Wrap for Recorder {
         let snapshot = window.layout_snapshot(id);
         let origin = scaled(window.layout_origin_unrounded(id), scale);
         self.pending.quiet.set(snapshot.is_some());
-        *self.pending.snapshot.borrow_mut() = snapshot;
+        self.pending.snapshot.replace(snapshot);
         self.pending.origin.set(Some(origin));
     }
 

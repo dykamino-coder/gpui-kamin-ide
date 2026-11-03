@@ -59,10 +59,9 @@ impl FlowReuse {
         if inherited.self_node != self.body || !plain || self.claimed.replace(true) {
             return None;
         }
-        let (html, body) = self.seen.borrow().clone();
         let key = FlowKey {
-            html: html?,
-            body: body?,
+            html: self.seen.0.get()?.clone(),
+            body: self.seen.1.get()?.clone(),
             constraints: cx.constraints.clone(),
             viewport: opts.viewport,
             text: opts.text.clone(),
@@ -99,12 +98,11 @@ impl FlowCx {
             return None;
         }
         record.end.write(&opts.cx);
-        self.reuse
-            .next
-            .borrow_mut()
-            .insert(e.node_id, record.clone());
+        let mut next = self.reuse.next.take();
+        next.insert(e.node_id, record.clone());
+        self.reuse.next.replace(next);
         let slot = Rc::new(Slot::new(record));
-        self.reuse.placeholders.borrow_mut().push(slot.clone());
+        super::push(&self.reuse.placeholders, slot.clone());
         Some(Placeholder::new(slot).hooked())
     }
 
@@ -152,7 +150,7 @@ impl FlowCx {
             mark.start,
             now.start,
         ));
-        self.reuse.pending.borrow_mut().push(pending.clone());
+        super::push(&self.reuse.pending, pending.clone());
         out.push(Recorder::new(child, pending).hooked());
     }
 }

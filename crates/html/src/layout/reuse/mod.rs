@@ -16,6 +16,7 @@
 //! которых меняет лишь счётчики ключей краски и якорей.
 
 mod flow;
+mod key;
 mod placeholder;
 mod plain;
 mod recorder;
@@ -23,9 +24,10 @@ mod recorder;
 mod tests;
 
 use crate::dom::{Element, Node};
-use crate::layout::cx::{BoxConstraints, LayoutCx};
+use crate::layout::cx::LayoutCx;
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
-use std::cell::{Cell, RefCell};
+pub(crate) use key::{Counters, FlowKey};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -43,50 +45,6 @@ pub struct ReuseStats {
     pub recorded: u64,
     pub skipped: u64,
     pub rebuilt_frames: u64,
-}
-
-/// Счётчики сборки, которые поддерево продвигает: ключи краски и якорей.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Counters {
-    keys: u64,
-    anchors: u32,
-}
-
-impl Counters {
-    fn read(cx: &LayoutCx) -> Self {
-        Self {
-            keys: cx.deferred.keys.get(),
-            anchors: crate::layout::positioned::anchor::seq(&cx.layout().anchors),
-        }
-    }
-
-    fn write(self, cx: &LayoutCx) {
-        cx.deferred.keys.set(self.keys);
-        crate::layout::positioned::anchor::set_seq(&cx.layout().anchors, self.anchors);
-    }
-}
-
-/// Окружение корневого потока, от которого зависит раскладка его детей.
-pub(crate) struct FlowKey {
-    html: Element,
-    body: Element,
-    constraints: BoxConstraints,
-    viewport: (f32, f32),
-    text: gpui::TextStyle,
-    normal_line_height: f32,
-    fonts: u64,
-}
-
-impl FlowKey {
-    fn same(&self, other: &Self) -> bool {
-        crate::dom::same_box(&self.html, &other.html)
-            && crate::dom::same_box(&self.body, &other.body)
-            && self.constraints == other.constraints
-            && self.viewport == other.viewport
-            && self.text == other.text
-            && self.normal_line_height == other.normal_line_height
-            && self.fonts == other.fonts
-    }
 }
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
@@ -150,7 +108,7 @@ pub(crate) struct FlowReuse {
     root: (usize, usize),
     html: u64,
     body: u64,
-    seen: RefCell<(Option<Element>, Option<Element>)>,
+    seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
     pending: RefCell<Vec<Rc<recorder::Pending>>>,
@@ -189,11 +147,11 @@ impl FlowReuse {
         if cx.contracts.document_root != Some(self.root) || self.claimed.get() {
             return;
         }
-        let mut seen = self.seen.borrow_mut();
-        if e.node_id == self.html && seen.0.is_none() {
-            seen.0 = Some(e.clone());
-        } else if e.node_id == self.body && seen.1.is_none() {
-            seen.1 = Some(e.clone());
+        // Первое появление: потомки с тем же адресом (копии) не в счёт.
+        if e.node_id == self.html && self.seen.0.get().is_none() {
+            let _ = self.seen.0.set(e.clone());
+        } else if e.node_id == self.body && self.seen.1.get().is_none() {
+            let _ = self.seen.1.set(e.clone());
         }
     }
 
@@ -238,7 +196,7 @@ impl FlowReuse {
                 recorded += 1;
             }
         }
-        *self.store.records.borrow_mut() = next;
+        self.store.records.replace(next);
         let mut stats = self.store.stats.get();
         stats.recorded += recorded;
         stats.skipped += skipped;
@@ -251,4 +209,11 @@ impl FlowReuse {
         stats.rebuilt_frames += 1;
         self.store.stats.set(stats);
     }
+}
+
+/// Добавить в конец списка в ячейке, не держа её заём.
+fn push<T>(cell: &RefCell<Vec<T>>, value: T) {
+    let mut all = cell.take();
+    all.push(value);
+    cell.replace(all);
 }
