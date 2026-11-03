@@ -63,11 +63,9 @@ impl Computed {
             reset = Some(c.decl);
         }
         let mut winners: Vec<(Phase, &str, Pick<'_>, Picks<'_, '_>)> = map
-            .names()
-            .iter()
-            .filter(|k| !k.starts_with("--"))
-            .filter_map(|&k| {
-                let mut picks = map.picks(k);
+            .named()
+            .filter(|(k, _)| !k.starts_with("--"))
+            .filter_map(|(k, mut picks)| {
                 let first = picks.next()?;
                 // Имя, где победил тот самый `all`, уже задано сбросом.
                 if let Pick::Value(c, _) = first

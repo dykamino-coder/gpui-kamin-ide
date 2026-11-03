@@ -159,9 +159,9 @@ impl RuleIndex {
         for class in &me.classes {
             append(1, class)?;
         }
-        append(2, &me.tag.to_ascii_lowercase())?;
+        append(2, &super::ascii_lower(&me.tag))?;
         for (name, _) in &me.attrs {
-            append(3, &name.to_ascii_lowercase())?;
+            append(3, &super::ascii_lower(name))?;
         }
         self.admission.work(out.len())?;
         out.sort_unstable();
