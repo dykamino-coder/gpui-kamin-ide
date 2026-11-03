@@ -123,3 +123,47 @@ fn placed_replay_declines_records_with_groups_and_open_layers() {
     assert!(!scene.replay_placed(&record(), Point::default(), None));
     assert_eq!(scene.paint_operations.len(), before + 1);
 }
+
+/// A finished frame releases its grafts, so the tree of a record that died
+/// during the frame dies with it (as when every primitive was inserted), and
+/// a later frame that replays the copy packs it again: same commands, orders
+/// and later-insert orders as replaying it while the record lives.
+#[test]
+fn finished_frame_does_not_keep_a_dead_record_tree() {
+    let offset = point(ScaledPixels(100.), ScaledPixels(100.));
+    let clip = Some(rect(90., 90., 150., 150.));
+    let probes = [quad(115., 115., 2., 2.), quad(105., 155., 3., 3.), quad(300., 100., 5., 5.)];
+    let record = record();
+    let tree = std::rc::Rc::downgrade(&record.primitive_bounds);
+    let mut frame = destination();
+    let start = frame.paint_operations.len();
+    assert!(frame.replay_placed(&record, offset, clip));
+    let copied = start..frame.paint_operations.len();
+    frame.finish_frame();
+
+    let replayed = |frame: &Scene| {
+        let mut next = destination();
+        next.replay(copied.clone(), frame);
+        let owned = matches!(next.blocks.last().map(|b| &b.index), Some(BlockIndex::Owned(_)));
+        for probe in probes {
+            next.insert_primitive(probe);
+        }
+        next.finish_frame();
+        (summary(&next), quads(&next), owned, next)
+    };
+    let (live, live_quads, live_owned, _) = replayed(&frame);
+    assert!(!live_owned, "a live record's tree is grafted again, not owned");
+
+    drop(record);
+    assert!(tree.upgrade().is_none(), "the finished frame kept the record's tree");
+    let (packed, packed_quads, packed_owned, next) = replayed(&frame);
+    assert!(packed_owned);
+    assert_eq!(packed, live);
+    assert_eq!(packed_quads, live_quads);
+
+    // The packed tree belongs to the frames: the next one grafts it again.
+    let range = destination().paint_operations.len()..next.paint_operations.len() - probes.len();
+    let mut third = destination();
+    third.replay(range, &next);
+    assert!(matches!(third.blocks.last().map(|b| &b.index), Some(BlockIndex::Owned(_))));
+}
