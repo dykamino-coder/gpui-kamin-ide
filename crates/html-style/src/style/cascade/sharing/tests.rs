@@ -80,11 +80,28 @@ fn cache_is_bounded() {
     let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let mut cache = StyleSharing::default();
-    for width in 1..80 {
+    for width in 1..300 {
         let inline = parse_decls_in(&format!("width: {width}px"), vcx);
         let _ = resolve(&mut cache, &inline, vcx);
     }
-    assert_eq!(cache.0.borrow().entries.len(), 32);
+    assert_eq!(cache.0.borrow().entries.len(), CAPACITY);
+}
+
+#[test]
+fn a_cycle_of_ninety_one_inputs_hits_on_its_second_round() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let mut cache = StyleSharing::default();
+    let inputs: Vec<_> = (0..91)
+        .map(|i| parse_decls_in(&format!("flex: 1 1 {}px", 60 + i), vcx))
+        .collect();
+    for _ in 0..2 {
+        for inline in &inputs {
+            let _ = resolve(&mut cache, inline, vcx);
+        }
+    }
+    // A miss stores a new entry; the second round found every input.
+    assert_eq!(cache.0.borrow().entries.len(), 91);
 }
 
 #[test]
