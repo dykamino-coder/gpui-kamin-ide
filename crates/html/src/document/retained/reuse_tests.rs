@@ -77,13 +77,22 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     let grown = format!("{}x", "x ".repeat(300));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
+    let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
     assert!(
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    assert_eq!(rebuilt, 0);
+    // The grown block moves the visible blocks below it: their replay is
+    // refused, and one more build of the same frame builds just them.
+    assert_eq!(rebuilt, 1, "moved visible blocks were replayed");
+    let after = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
+    assert_eq!(
+        after,
+        builds + 2,
+        "the refused frame was built more than twice"
+    );
 }
 
 #[gpui::test]
@@ -94,7 +103,11 @@ fn blocks_after_a_float_are_always_built(cx: &mut TestAppContext) {
     let (view, cx) = settled(cx, &page("row 300"), &page("row edited"));
     update(&view, cx, &page("row 300"));
     let (_, skipped, _) = reused(&view, cx);
-    assert_eq!(skipped, 0, "a float may reach into the blocks after it");
+    // Only the two rows before the float are skipped (replayed on screen).
+    assert!(
+        skipped <= 2,
+        "a float may reach into the blocks after it: {skipped}"
+    );
 }
 
 #[gpui::test]
@@ -118,21 +131,21 @@ fn a_flow_resized_every_frame_records_nothing_and_drops_its_records(cx: &mut Tes
     assert!(skipped > 300 && rebuilt == 0, "{skipped} {rebuilt}");
 }
 
+/// Blocks near the screen are recorded with their frame output and replayed
+/// in place by the next frame, the visible ones included.
 #[gpui::test]
-fn blocks_near_the_screen_are_not_recorded(cx: &mut TestAppContext) {
+fn blocks_on_the_screen_are_replayed_from_the_previous_frame(cx: &mut TestAppContext) {
     let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
     let (recorded, _, _) = reused(&view, cx);
-    // 600 rows of 20px in a 1920x1080 test window: the 150 rows within one
-    // screen size of it (y < 3000) could never be skipped by their record.
-    assert!(
-        (400..=600 - 2 - 140).contains(&recorded),
-        "near blocks were recorded: {recorded}"
-    );
+    assert!(recorded > 590, "near blocks were not recorded: {recorded}");
+    update(&view, cx, &rows(300, "row 300"));
+    let (_, skipped, rebuilt) = reused(&view, cx);
+    let replayed = replayed(&view, cx);
+    // 600 rows of 20px in a 1920x1080 test window: 54 rows are visible.
+    assert!(replayed > 50, "visible blocks were rebuilt: {replayed}");
+    assert!(skipped > 590 && rebuilt == 0, "{skipped} {rebuilt}");
 }
 
-/// A standards document without box styles on its wrappers loses both
-/// (`document::embedded::unwrap_document`): its top-level blocks are the root
-/// flow, laid out by a block container. With a padded `body` only `html` goes.
 #[gpui::test]
 fn blocks_of_unwrapped_documents_are_skipped(cx: &mut TestAppContext) {
     for body in ["", " style='padding:3px'"] {
@@ -173,4 +186,85 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
         "right-to-left blocks were rebuilt: {skipped}"
     );
     assert_eq!(rebuilt, 0);
+}
+
+fn resize(view: &gpui::Entity<View>, cx: &mut VisualTestContext, width: f32) {
+    cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = width));
+    frame(cx);
+}
+
+fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
+    cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
+}
+
+/// Open `html` at width 400 and resize it to 401 and back: the second build
+/// records what does not depend on the width, the third reuses it.
+fn resized(cx: &mut TestAppContext, html: &str) -> ((u64, u64, u64), u64) {
+    let (view, cx) = open(cx, html);
+    frame(cx);
+    resize(&view, cx, 401.);
+    resize(&view, cx, 400.);
+    (reused(&view, cx), replayed(&view, cx))
+}
+
+fn fixed_rows(style: &str) -> String {
+    let rows: String = (0..600)
+        .map(|i| format!("<div style='width:300px;height:20px{style}'>row {i}</div>"))
+        .collect();
+    format!("<body style='margin:0'>{rows}</body>")
+}
+
+#[gpui::test]
+fn fixed_width_blocks_are_reused_across_a_width_change(cx: &mut TestAppContext) {
+    let ((recorded, skipped, rebuilt), replayed) = resized(cx, &fixed_rows(""));
+    assert!(
+        recorded > 500,
+        "fixed-width blocks were not recorded: {recorded}"
+    );
+    assert!(skipped > 500, "fixed-width blocks were rebuilt: {skipped}");
+    assert!(
+        replayed > 10,
+        "visible blocks were not replayed: {replayed}"
+    );
+    assert_eq!(rebuilt, 0, "a replayed block failed its check");
+}
+
+#[gpui::test]
+fn width_dependent_blocks_are_rebuilt_after_a_width_change(cx: &mut TestAppContext) {
+    for style in [";margin-left:10%", ";padding:1vw"] {
+        let ((recorded, skipped, _), _) = resized(cx, &fixed_rows(style));
+        assert_eq!((recorded, skipped), (0, 0), "{style}");
+    }
+    let rtl = fixed_rows("").replace("<body ", "<body dir=rtl ");
+    let ((recorded, skipped, _), _) = resized(cx, &rtl);
+    assert_eq!(
+        (recorded, skipped),
+        (0, 0),
+        "a right-to-left flow moves fixed-width blocks"
+    );
+}
+
+fn table(style: &str) -> String {
+    let cells: String = (0..12)
+        .map(|i| format!("<td>unbreakable{i}content</td>"))
+        .collect();
+    let rows: String = (0..40).map(|_| format!("<tr>{cells}</tr>")).collect();
+    format!("<body style='margin:0'><h1>title</h1><table{style}>{rows}</table></body>")
+}
+
+/// A fixed-width table is the only and last block of the flow, on screen:
+/// its frame output is replayed at the other width.
+#[gpui::test]
+fn a_fixed_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext) {
+    let ((recorded, skipped, rebuilt), replayed) = resized(cx, &table(" style='width:300px'"));
+    assert_eq!((recorded, skipped), (1, 1), "the table was rebuilt");
+    assert_eq!((replayed, rebuilt), (1, 0));
+}
+
+/// The box of an auto-width table follows the flow width (the grid overflows
+/// it), so its record never fits another width.
+#[gpui::test]
+fn an_auto_width_table_is_rebuilt_after_a_width_change(cx: &mut TestAppContext) {
+    let ((recorded, skipped, _), _) = resized(cx, &table(""));
+    assert_eq!((recorded, skipped), (0, 0));
 }

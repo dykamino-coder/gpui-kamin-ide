@@ -69,6 +69,9 @@ struct Builder {
     nodes: Rc<Vec<Node>>,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
+    /// Счётчики сборки до первой сборки кадра: повторная (после отказа
+    /// заместителей) начинает с них, как первая.
+    counters: Cell<Option<crate::layout::reuse::Counters>>,
 }
 
 impl Builder {
@@ -76,9 +79,16 @@ impl Builder {
     /// блок точного размера, белый холст UA и текст окна из опций хоста.
     /// Блоки корневого потока записываются для следующих кадров, а при
     /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
-    fn build(&self, allow: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
+    /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
+    fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
         let (w, h) = self.opts.viewport;
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow);
+        match self.counters.get() {
+            Some(counters) => counters.write(&self.opts.cx),
+            None => self
+                .counters
+                .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
+        }
+        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn);
         let mut opts = self.opts.clone();
         opts.cx.contracts.reuse = flow.clone();
         let tree = div()
@@ -106,6 +116,7 @@ impl Document {
             nodes: self.nodes.clone(),
             opts: opts.clone(),
             store: self.reuse.clone(),
+            counters: Cell::new(None),
         };
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
     }
@@ -120,5 +131,10 @@ impl Document {
     pub fn reused_blocks(&self) -> (u64, u64, u64) {
         let stats = self.reuse.stats.get();
         (stats.recorded, stats.skipped, stats.rebuilt_frames)
+    }
+
+    /// Из пропущенных блоков — повторены из прошлого кадра на экране.
+    pub fn replayed_blocks(&self) -> u64 {
+        self.reuse.stats.get().replayed
     }
 }

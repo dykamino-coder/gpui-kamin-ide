@@ -19,6 +19,13 @@ pub(crate) struct FlowCx {
     floats: std::cell::Cell<bool>,
     /// Ключ равен ключу прошлой сборки: записывать детей.
     settled: bool,
+    /// Ключ отличается от прошлого только шириной потока (`FlowKey::
+    /// same_except_width`) слева направо: записывать и замещать детей,
+    /// чья раскладка от ширины не зависит (`width`).
+    resized: bool,
+    /// Первый и последний ребёнок потока замещаемы: базовые линии потока
+    /// никто не читает (`edges_free`).
+    edges: bool,
 }
 
 /// Состояние сборки до блочного ребёнка: его сборка должна изменить только
@@ -92,21 +99,51 @@ impl FlowReuse {
         // (каскад, шейпинг), а устоявшийся поток видно только со второй сборки
         // с тем же ключом.
         let last = self.store.last.replace(Some(key.clone()));
-        let settled = match last {
-            Some(last) => last.same(&key),
-            None => false,
+        let (settled, resized) = match last {
+            Some(last) => (last.same(&key), last.same_except_width(&key)),
+            None => (false, false),
         };
-        if !settled {
+        let wm = inherited.wm();
+        let resized = !settled && resized && !wm.rtl() && !wm.vertical();
+        if resized {
+            // Записи, чья раскладка от ширины не зависит, годны и при новой.
+            self.store.records.borrow_mut().retain(|_, r| r.resizable);
+        } else if !settled {
             // Записи другого ключа не подойдут, а держат стили кадра записи.
             self.store.records.take();
         }
+        let edges = match self.root {
+            Root::Body { .. } => edges_free(key.html.as_ref()) && edges_free(key.body.as_ref()),
+            Root::TopLevel => false,
+        };
         Some(FlowCx {
             reuse: self.clone(),
             key,
             settled,
+            resized,
+            edges,
             floats: std::cell::Cell::new(false),
         })
     }
+}
+
+/// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
+/// строк крайних детей потока: блочная коробка без псевдоэлементов первой
+/// строки и буквы, без обрезки текстовых краёв (css-inline-3 §5) и без
+/// обрезки содержимого, под которой повтор краски был бы под другой маской.
+fn edges_free(e: Option<&Element>) -> bool {
+    use crate::style::computed::{Display, Overflow};
+    let Some(e) = e else { return true };
+    let style = e.style.used();
+    let b = &style.reset_box_layout;
+    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+    e.first_line.is_none()
+        && e.first_letter.is_none()
+        && matches!(b.display, None | Some(Display::Block))
+        && visible(b.overflow_x)
+        && visible(b.overflow_y)
+        && !style.reset_text_box.text_box_trim_start
+        && !style.reset_text_box.text_box_trim_end
 }
 impl FlowCx {
     /// Заместитель ребёнка `e`, если его запись (блока, бывшего далеко от
@@ -119,11 +156,18 @@ impl FlowCx {
         edge: bool,
         opts: &RenderOpts,
     ) -> Option<AnyElement> {
-        if !self.reuse.allow || edge || e.node_id == 0 || self.floats.get() {
+        if !self.reuse.allow || edge && !self.edges || e.node_id == 0 || self.floats.get() {
+            return None;
+        }
+        if self.reuse.store.refused.borrow().contains(&e.node_id) {
             return None;
         }
         let record = self.reuse.store.records.borrow().get(&e.node_id).cloned()?;
-        let fits = record.key.same(&self.key)
+        let width = || self.resized && record.resizable && record.key.same_except_width(&self.key);
+        // Ближний блок без свежего повтора почти наверняка попадёт на экран.
+        let paintable = record.far || record.current(&self.reuse);
+        let fits = (record.key.same(&self.key) || width())
+            && paintable
             && Counters::read(&opts.cx) == record.start
             && crate::dom::same_tree(&record.element, e);
         if !fits {
@@ -163,8 +207,8 @@ impl FlowCx {
         out: &mut Vec<AnyElement>,
     ) {
         let now = mark_of(opts, out.len());
-        let inert = self.settled
-            && !edge
+        let inert = (self.settled || self.resized)
+            && (!edge || self.edges)
             && !self.floats.get()
             && e.node_id != 0
             && now.out == mark.out + 1
@@ -176,8 +220,18 @@ impl FlowCx {
         if !inert {
             return;
         }
+        // Запись при другой ширине потока годна лишь независимому от неё блоку.
+        let resizable = super::width::independent(e, opts.cx.vcx());
+        if !self.settled && !resizable {
+            return;
+        }
         let Some(child) = out.pop() else { return };
-        let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
+        let pending = Rc::new(Pending::new(
+            self.key.clone(),
+            mark.start,
+            now.start,
+            resizable,
+        ));
         super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
         out.push(Recorder::new(child, pending).hooked());
     }

@@ -12,14 +12,14 @@ pub(crate) struct Counters {
 }
 
 impl Counters {
-    pub(super) fn read(cx: &LayoutCx) -> Self {
+    pub(crate) fn read(cx: &LayoutCx) -> Self {
         Self {
             keys: cx.deferred.keys.get(),
             anchors: crate::layout::positioned::anchor::seq(&cx.layout().anchors),
         }
     }
 
-    pub(super) fn write(self, cx: &LayoutCx) {
+    pub(crate) fn write(self, cx: &LayoutCx) {
         cx.deferred.keys.set(self.keys);
         crate::layout::positioned::anchor::set_seq(&cx.layout().anchors, self.anchors);
     }
@@ -58,11 +58,24 @@ fn same_boxes(a: &Option<Element>, b: &Option<Element>) -> bool {
 
 impl FlowKey {
     pub(super) fn same(&self, other: &Self) -> bool {
+        self.same_except_width(other)
+            && self.constraints == other.constraints
+            && self.viewport == other.viewport
+    }
+
+    /// Тот же поток, кроме инлайн-размера окна и содержащего блока: так
+    /// меняется ключ при смене ширины окна (Blink `ConstraintSpace` с другим
+    /// `AvailableSize().inline_size`). Ребёнку такого потока подходит запись,
+    /// только если его раскладка от этой ширины не зависит (`Width`).
+    pub(super) fn same_except_width(&self, other: &Self) -> bool {
         *self.root == *other.root
             && same_boxes(&self.html, &other.html)
             && same_boxes(&self.body, &other.body)
-            && self.constraints == other.constraints
-            && self.viewport == other.viewport
+            && self.constraints.avail_h == other.constraints.avail_h
+            && self.constraints.cell_bfc == other.constraints.cell_bfc
+            && self.constraints.cb_width.is_some() == other.constraints.cb_width.is_some()
+            && self.constraints.avail_w.is_some() == other.constraints.avail_w.is_some()
+            && self.viewport.1 == other.viewport.1
             && self.text == other.text
             && self.normal_line_height == other.normal_line_height
             && self.fonts == other.fonts

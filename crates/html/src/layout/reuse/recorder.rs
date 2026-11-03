@@ -1,12 +1,12 @@
 //! Запись блока: прозрачная обёртка снимает лист раскладки, начало коробки,
 //! инертность prepaint и чернила краски, включая отложенную краску строк.
 
-use super::{Counters, FlowKey, Record, placed, scaled};
+use super::{Counters, FlowKey, Record, Replay, placed, scaled};
 use crate::dom::Element;
 use crate::hooks::Wrap;
 use gpui::{
-    AnyElement, App, Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, ScaledPixels,
-    Window, point, px, size,
+    AnyElement, App, Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, RetainedPaint,
+    RetainedPrepaint, ScaledPixels, Window, point, px, size,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -26,10 +26,15 @@ pub(super) struct Pending {
     quiet: Cell<bool>,
     painted: Cell<bool>,
     sink: Rc<InkSink>,
+    /// Раскладка блока не зависит от ширины потока (`width::independent`).
+    resizable: bool,
+    /// Вывод prepaint и краски этого кадра и маска краски.
+    prepaint: RefCell<Option<RetainedPrepaint>>,
+    paint: RefCell<Option<(RetainedPaint, Bounds<Pixels>)>>,
 }
 
 impl Pending {
-    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
+    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters, resizable: bool) -> Self {
         Self {
             key,
             start,
@@ -41,15 +46,21 @@ impl Pending {
             quiet: Cell::new(false),
             painted: Cell::new(false),
             sink: Rc::default(),
+            resizable,
+            prepaint: RefCell::new(None),
+            paint: RefCell::new(None),
         }
     }
 
     /// Готовая запись блока `element`, если он прошёл prepaint и краску
-    /// инертно и был далеко от экрана `screen`.
+    /// инертно и либо был далеко от экрана `screen`, либо его вывод кадра
+    /// `epoch` повторяем под маской корня `mask`.
     pub(super) fn finish(
         &self,
         element: Box<Element>,
         screen: Bounds<ScaledPixels>,
+        mask: Bounds<Pixels>,
+        epoch: u64,
     ) -> Option<Record> {
         if !self.quiet.get() || !self.painted.get() || self.sink.tainted() {
             return None;
@@ -66,16 +77,34 @@ impl Pending {
             ),
             size: ink.size,
         });
-        if !far(ink, origin, screen) {
+        let far = far(ink, origin, screen);
+        let replay = match (self.prepaint.take(), self.paint.take()) {
+            (Some(prepaint), Some((paint, at))) if at == mask && paint.replayable() => {
+                Some(Replay {
+                    prepaint,
+                    paint,
+                    origin,
+                    mask,
+                    epoch,
+                })
+            }
+            _ => None,
+        };
+        if !far && replay.is_none() {
             return None;
         }
+        let snapshot = self.snapshot.take()?;
+
         Some(Record {
             element,
             key: self.key.clone(),
             start: self.start,
             end: self.end,
-            snapshot: self.snapshot.take()?,
+            snapshot,
             ink,
+            resizable: self.resizable,
+            far,
+            replay: RefCell::new(replay),
         })
     }
 }
@@ -146,11 +175,16 @@ impl Wrap for Recorder {
         self.pending.quiet.set(snapshot.is_some());
         self.pending.snapshot.replace(snapshot);
         self.pending.origin.set(Some(origin));
+        self.pending.prepaint.replace(Some(range));
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let sink = self.pending.sink.clone();
-        window.with_ink_sink(sink, |window| self.child.paint(window, cx));
+        let mask = window.content_mask().bounds;
+        let (_, paint) = window.with_ink_sink(sink, |window| {
+            window.record_retained_paint(|window| self.child.paint(window, cx))
+        });
+        self.pending.paint.replace(Some((paint, mask)));
         self.pending.painted.set(true);
     }
 }
