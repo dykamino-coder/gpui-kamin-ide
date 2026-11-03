@@ -16,10 +16,8 @@ pub(super) struct Changed {
     pub(super) new: Handle,
 }
 
-/// Текстовый узел, содержимое которого в новой ревизии другое.
+/// Текстовый узел элемента HTML, содержимое которого в новой ревизии другое.
 pub(super) struct Edited {
-    /// Родитель в прежнем DOM.
-    pub(super) parent: Handle,
     /// Адрес текстового узла в прежнем DOM.
     pub(super) node: usize,
     pub(super) old: String,
@@ -45,9 +43,9 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         sheets: Vec::new(),
     };
     // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
-    // прежний родитель.
-    let mut stack = vec![(old.clone(), new.clone(), false, None::<Handle>)];
-    while let Some((a, b, frozen, parent)) = stack.pop() {
+    // есть ли у узла родитель.
+    let mut stack = vec![(old.clone(), new.clone(), false, false)];
+    while let Some((a, b, frozen, child)) = stack.pop() {
         let frozen = match (&a.data, &b.data) {
             (NodeData::Document, NodeData::Document) => frozen,
             (
@@ -67,12 +65,11 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                     .nodes
                     .push((Rc::as_ptr(&a) as usize, Rc::as_ptr(&b) as usize));
                 if *contents.borrow() != *c.borrow() {
-                    let Some(parent) = parent.filter(|_| !frozen) else {
+                    if frozen || !child {
                         return None;
-                    };
+                    }
                     shape.texts.push(Edited {
                         node: Rc::as_ptr(&a) as usize,
-                        parent,
                         old: contents.borrow().to_string(),
                         new: c.borrow().to_string(),
                     });
@@ -129,7 +126,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 match (&*template_contents.borrow(), &*t.borrow()) {
                     (None, None) => {}
-                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true, None)),
+                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true, false)),
                     _ => return None,
                 }
                 frozen
@@ -141,7 +138,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
             return None;
         }
         for (x, y) in ka.iter().zip(kb.iter()).rev() {
-            stack.push((x.clone(), y.clone(), frozen, Some(a.clone())));
+            stack.push((x.clone(), y.clone(), frozen, true));
         }
     }
     Some(shape)

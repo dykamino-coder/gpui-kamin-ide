@@ -32,22 +32,31 @@ fn update(old: &str, new: &str, theme: &str) -> bool {
 }
 
 /// Факты `DocState`, которые пишет сборка дерева: режим, метрики корня,
-/// at-правила `@page`, диагностики и число адресуемых исходных элементов.
+/// at-правила `@page`, диагностики, число адресуемых исходных элементов и
+/// номера прочитанных сборкой исходных текстов.
 fn state(doc: &Document) -> String {
     let values = &doc.state.values;
     let elements = values.traversal.elements();
+    let texts = values.traversal.texts();
+    let read = values.traversal.read_texts();
+    let read: Vec<usize> = (0..texts.len())
+        .filter(|&i| read.contains(&texts[i]))
+        .collect();
     format!(
-        "{} {:?} {} {:?} {} {}",
+        "{} {:?} {} {:?} {} {} {:?} {}",
         values.quirks(),
         values.root.borrow(),
         values.page_rules().len(),
         values.diagnostics_snapshot(),
         elements.len(),
         elements.iter().filter(|&&a| a != 0).count(),
+        read,
+        values.traversal.read_texts().len(),
     )
 }
 
 mod differential;
+mod text_edits;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\
     .on{font-weight:bold}</style></head><body><p>a</p><div><p id=x>b<span>c</span></p>\
@@ -164,44 +173,4 @@ fn root_class_skips_the_viewport_box_that_shares_the_root_number() {
     let classed = page.replace("<html>", "<html class=\"zz-alt\">");
     assert!(update(page, &classed, ""));
     assert!(update(&classed, page, ""));
-}
-
-#[test]
-fn flow_text_edits_keep_the_cascade() {
-    let edits = [
-        PAGE.replace(">d<", ">e<"),
-        PAGE.replace(">b<", ">bb x<"),
-        PAGE.replace(">c<", ">c, d.<"),
-        PAGE.replace(">a<", ">e<").replace(">d<", ">f<"),
-    ];
-    for new in &edits {
-        assert!(update(PAGE, new, ""), "{new}");
-        assert!(update(new, PAGE, ""), "{new}");
-    }
-    // Текст в анонимной обёртке рядом с блоком.
-    let wrapped = PAGE.replace("<div><p id=x>", "<div>w<p id=x>");
-    assert!(update(&wrapped, &wrapped.replace(">w<", ">v<"), ""));
-}
-
-#[test]
-fn text_edits_the_cascade_can_see_rebuild_it() {
-    let auto = PAGE.replace("<p>d", "<p dir=auto>d");
-    let lettered = PAGE.replace("p{color:#123}", "p::first-letter{color:red}");
-    let rebuilt = [
-        // Пустой текст, пробельные края, письмо справа налево, лист.
-        (PAGE.to_string(), PAGE.replace(">d<", "><")),
-        (PAGE.to_string(), PAGE.replace(">d<", "> <")),
-        (PAGE.to_string(), PAGE.replace(">d<", "> d<")),
-        (PAGE.to_string(), PAGE.replace(">d<", ">\u{5d0}<")),
-        (
-            PAGE.to_string(),
-            PAGE.replace("p{color:#123}", "p{color:#124}"),
-        ),
-        // Сторона `dir=auto` и первая буква, режущая текст.
-        (auto.clone(), auto.replace(">d<", ">e<")),
-        (lettered.clone(), lettered.replace(">d<", ">e<")),
-    ];
-    for (old, new) in &rebuilt {
-        assert!(!update(old, new, ""), "{new}");
-    }
 }
