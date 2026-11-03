@@ -993,6 +993,54 @@ impl<NodeContext> TaffyTree<NodeContext> {
             .clear();
     }
 
+    /// KaminIDE patch: the children of `parent`, without allocating.
+    pub fn children_slice(&self, parent: NodeId) -> &[NodeId] {
+        self.children.get(parent.into()).map_or(&[], |children| children.as_slice())
+    }
+
+    /// KaminIDE patch: whether `node` carries a context (a measured leaf).
+    pub fn has_node_context(&self, node: NodeId) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| data.has_context)
+    }
+
+    /// KaminIDE patch: drop every node for which `keep` is false, in one pass.
+    ///
+    /// Kept nodes keep their style, children, context and layout cache. A kept
+    /// node whose parent is dropped becomes a root; a kept node that loses a
+    /// child is marked dirty. Unlike `remove`, a dropped node never unlinks a
+    /// child that another node has adopted since (`new_with_children` moves a
+    /// child without editing its previous parent's list). The calc registry is
+    /// kept: its pairs are interned by value, so handles stay valid for the
+    /// kept styles.
+    pub fn retain_nodes(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
+        let dropped: Vec<DefaultKey> =
+            self.nodes.keys().filter(|key| !keep(NodeId::from(*key))).collect();
+        if dropped.is_empty() {
+            return;
+        }
+        for key in &dropped {
+            let _ = self.children.remove(*key);
+            let _ = self.parents.remove(*key);
+            let _ = self.nodes.remove(*key);
+            let _ = self.node_context_data.remove(*key);
+        }
+        let mut orphaned = Vec::new();
+        for (key, parent) in self.parents.iter_mut() {
+            if parent.is_some_and(|p| !self.nodes.contains_key(p.into())) {
+                *parent = None;
+            }
+            let children = &mut self.children[key];
+            let before = children.len();
+            children.retain(|child| self.nodes.contains_key((*child).into()));
+            if children.len() != before {
+                orphaned.push(NodeId::from(key));
+            }
+        }
+        for node in orphaned {
+            let _ = self.mark_dirty(node);
+        }
+    }
+
     /// Remove a specific node from the tree and drop it
     ///
     /// Returns the id of the node removed.

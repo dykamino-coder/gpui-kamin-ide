@@ -6081,6 +6081,45 @@ impl Window {
         )
     }
 
+    /// KaminIDE patch: key the next measured leaf request of the frame tree.
+    ///
+    /// A leaf requested with the same key and style as a leaf of the previous
+    /// pass keeps that leaf and its layout cache instead of a new node, so the
+    /// key must cover every input of the measure function. The window's rem
+    /// size and scale factor are part of the key.
+    pub fn set_next_layout_key(&mut self, key: u64) {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = collections::FxHasher::default();
+        key.hash(&mut hasher);
+        self.rem_size().0.to_bits().hash(&mut hasher);
+        self.scale_factor().to_bits().hash(&mut hasher);
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_next_layout_key(hasher.finish());
+        }
+    }
+
+    /// KaminIDE patch: layout nodes the frame tree kept from previous passes.
+    pub fn claimed_layout_nodes(&self) -> u64 {
+        self.layout_engine
+            .as_ref()
+            .map_or(0, |engine| engine.claimed_nodes())
+    }
+
+    /// KaminIDE patch: honour layout keys (`set_next_layout_key`) inside `f`
+    /// only when `enabled`: the host vouches that no input outside its keys
+    /// (loaded fonts, images) changed since the previous pass.
+    pub fn with_layout_keys<R>(&mut self, enabled: bool, f: impl FnOnce(&mut Self) -> R) -> R {
+        let previous = self
+            .layout_engine
+            .as_mut()
+            .map(|engine| engine.set_layout_keys(enabled));
+        let result = f(self);
+        if let (Some(previous), Some(engine)) = (previous, self.layout_engine.as_mut()) {
+            engine.set_layout_keys(previous);
+        }
+        result
+    }
+
     /// Add a node to the layout tree for the current frame. Instead of taking a `Style` and children,
     /// this variant takes a function that is invoked during layout so you can use arbitrary logic to
     /// determine the element's size. One place this is used internally is when measuring text.

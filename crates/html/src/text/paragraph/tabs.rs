@@ -7,7 +7,7 @@ use std::{
     ops::Range,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TabStops {
     pub default: f32,
     pub spans: Vec<(Range<usize>, f32)>,
