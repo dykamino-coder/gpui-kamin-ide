@@ -3,6 +3,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { TaskAdmissionError, TaskPersistenceQueueError } from './mcp-task-admission'
 
 // Sized for one server's ceiling of about 50 Bridge sessions. Commands run on the
 // users' machines, so a working task costs the server only its record.
@@ -12,7 +13,9 @@ export const TASK_LIMITS = {
   active: SESSION_CEILING * 8,
   retained: 2048,
   perOwner: 256,
-  bytes: 128 * 1024 * 1024,
+  // Includes worst-case reservations for 400 working results plus the old
+  // 128 MiB store on upgrade. Terminal payloads are not held in the RAM index.
+  bytes: 512 * 1024 * 1024,
   resultBytes: 512 * 1024,
   inputBytes: 64 * 1024,
   ttlMs: 86_400_000,
@@ -71,13 +74,14 @@ export class McpTaskStore {
   private tail: Promise<unknown> = Promise.resolve()
   private queued = 0
   private loaded = false
+  private inlineOwners = new Map<string, string>()
   constructor(
     private directory: string,
     private now = Date.now,
   ) {}
 
   private run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.queued >= TASK_LIMITS.queued) return Promise.reject(new Error('Task persistence queue full'))
+    if (this.queued >= TASK_LIMITS.queued) return Promise.reject(new TaskPersistenceQueueError())
     this.queued++
     const result = this.tail.then(async () => {
       await this.load()
@@ -124,7 +128,7 @@ export class McpTaskStore {
         !['working', 'completed', 'failed', 'cancelled'].includes(task.status)
       )
         throw new Error('Invalid task record')
-      loaded.set(task.taskId, task)
+      loaded.set(task.taskId, this.metadata(task))
       sizes.set(task.taskId, size)
     }
     this.records = loaded
@@ -146,31 +150,57 @@ export class McpTaskStore {
     this.bytes -= this.sizes.get(id) ?? 0
     this.sizes.delete(id)
   }
-  // Retention bounds storage, not admission: settled outcomes stay readable until
-  // room is needed, then the least recently settled ones make way for new work.
-  // Only working tasks count against admission (INC-2026-0082).
-  private async evictSettled(owner: string | undefined, incomingBytes: number, keep?: string): Promise<void> {
-    const settled = [...this.records.values()]
-      .filter((task) => task.status !== 'working' && task.taskId !== keep)
-      .sort((a, b) => Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt))
-    let ownCount = owner === undefined ? 0 : [...this.records.values()].filter((task) => task.owner === owner).length
-    for (const task of settled) {
-      const full =
-        (owner !== undefined && this.records.size >= TASK_LIMITS.retained) ||
-        (task.owner === owner && ownCount >= TASK_LIMITS.perOwner) ||
-        this.bytes + incomingBytes > TASK_LIMITS.bytes
-      if (!full) continue
-      if (task.owner === owner) ownCount--
-      await this.remove(task.taskId)
+  private metadata(task: TaskRecord): TaskRecord {
+    const { result, ...metadata } = task
+    return {
+      ...metadata,
+      ...(result ? { result: { isError: result.isError, exitCode: result.exitCode } } : {}),
     }
+  }
+  private async read(task: TaskRecord): Promise<TaskRecord> {
+    if (task.status !== 'completed' || !task.result) return structuredClone(task)
+    return JSON.parse(await fs.readFile(path.join(this.directory, `${task.taskId}.json`), 'utf8')) as TaskRecord
+  }
+  private cost(task: TaskRecord, size: number): number {
+    // Input is released on settlement, but the full original command is retained.
+    const maximumRecord = TASK_LIMITS.resultBytes + TASK_LIMITS.inputBytes + 8192
+    return task.status === 'working' ? Math.max(size, maximumRecord) : size
+  }
+  private accountedBytes(): number {
+    let bytes = 0
+    for (const [id, task] of this.records) bytes += this.cost(task, this.sizes.get(id)!)
+    return bytes
+  }
+  private checkActive(owner: string): void {
+    const working = [...this.records.values()].filter((task) => task.status === 'working')
+    const inlines = [...this.inlineOwners.values()]
+    if (working.length + inlines.length >= TASK_LIMITS.active) throw new TaskAdmissionError('active_global')
+    if (
+      working.filter((task) => task.owner === owner).length + inlines.filter((id) => id === owner).length >=
+      TASK_LIMITS.activePerOwner
+    )
+      throw new TaskAdmissionError('active_owner')
+  }
+  // Ordinary SSE calls cannot bypass working limits when durable retention is full.
+  // Their leases are process-local, just like the existing ordinary request path.
+  acquireInline(owner: string): Promise<() => void> {
+    return this.run(async () => {
+      this.checkActive(owner)
+      const id = randomUUID()
+      this.inlineOwners.set(id, owner)
+      return () => {
+        this.inlineOwners.delete(id)
+      }
+    })
   }
   private async save(task: TaskRecord): Promise<void> {
     const text = JSON.stringify(task)
     const size = Buffer.byteLength(text)
     const growth = size - (this.sizes.get(task.taskId) ?? 0)
-    // A settling result may need room too; only other settled outcomes make way.
-    if (this.bytes + growth > TASK_LIMITS.bytes) await this.evictSettled(undefined, growth, task.taskId)
-    if (this.bytes + growth > TASK_LIMITS.bytes) throw new Error('Task storage byte capacity exceeded')
+    const previous = this.records.get(task.taskId)
+    const previousCost = previous ? this.cost(previous, this.sizes.get(task.taskId)!) : 0
+    if (this.accountedBytes() - previousCost + this.cost(task, size) > TASK_LIMITS.bytes)
+      throw new TaskAdmissionError('retained_bytes')
     const file = path.join(this.directory, `${task.taskId}.json`)
     const temporary = file + '.tmp'
     try {
@@ -196,27 +226,19 @@ export class McpTaskStore {
         if (error.code !== 'ENOENT') throw error
       })
     }
-    this.records.set(task.taskId, task)
+    this.records.set(task.taskId, this.metadata(task))
     this.bytes += growth
     this.sizes.set(task.taskId, size)
   }
   create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
     return this.run(async () => {
       const inputBytes = Buffer.byteLength(JSON.stringify(input))
-      if (inputBytes > TASK_LIMITS.inputBytes) throw new Error('Task input too large')
-      const working = [...this.records.values()].filter((task) => task.status === 'working')
-      if (
-        working.length >= TASK_LIMITS.active ||
-        working.filter((task) => task.owner === owner).length >= TASK_LIMITS.activePerOwner
-      )
-        throw new Error('Task capacity exceeded')
-      await this.evictSettled(owner, inputBytes + 2048)
+      if (inputBytes > TASK_LIMITS.inputBytes) throw new TaskAdmissionError('input_bytes')
+      this.checkActive(owner)
       const all = [...this.records.values()]
-      if (
-        all.length >= TASK_LIMITS.retained ||
-        all.filter((task) => task.owner === owner).length >= TASK_LIMITS.perOwner
-      )
-        throw new Error('Task capacity exceeded')
+      if (all.length >= TASK_LIMITS.retained) throw new TaskAdmissionError('retained_global')
+      if (all.filter((task) => task.owner === owner).length >= TASK_LIMITS.perOwner)
+        throw new TaskAdmissionError('retained_owner')
       const timestamp = new Date(this.now()).toISOString()
       const task: TaskRecord = {
         taskId: randomUUID(),
@@ -241,7 +263,7 @@ export class McpTaskStore {
   get(owner: string, id: string): Promise<TaskRecord | undefined> {
     return this.run(async () => {
       const task = this.records.get(id)
-      return task?.owner === owner ? structuredClone(task) : undefined
+      return task?.owner === owner ? this.read(task) : undefined
     })
   }
   hasWorkingOwner(owner: string): boolean {
@@ -269,7 +291,10 @@ export class McpTaskStore {
     return this.run(async () => {
       for (const task of this.records.values()) {
         if (task.owner !== owner || task.status === 'working' || task.hiddenFromCommands) continue
-        await this.save({ ...task, hiddenFromCommands: true })
+        await this.save({
+          ...(await this.read(task)),
+          hiddenFromCommands: true,
+        })
       }
     })
   }
@@ -277,7 +302,7 @@ export class McpTaskStore {
     return this.run(async () => {
       const previous = this.records.get(id)
       if (!previous || previous.owner !== owner) return undefined
-      if (previous.status !== 'working') return structuredClone(previous)
+      if (previous.status !== 'working') return this.read(previous)
       const task = structuredClone(previous)
       change(task)
       // Every terminal path releases input, including execution deadlines.
@@ -306,11 +331,23 @@ export class McpTaskStore {
         !Array.isArray(result) &&
         Array.isArray((result as Record<string, unknown>).content)
           ? (result as Record<string, unknown>)
-          : { content: [{ type: 'text', text: typeof result === 'string' ? result : (JSON.stringify(result) ?? '') }] }
+          : {
+              content: [
+                {
+                  type: 'text',
+                  text: typeof result === 'string' ? result : (JSON.stringify(result) ?? ''),
+                },
+              ],
+            }
       if (Buffer.byteLength(JSON.stringify(normalized)) > TASK_LIMITS.resultBytes)
         normalized = {
           isError: true,
-          content: [{ type: 'text', text: 'Tool result exceeded task storage limit; narrow the command output.' }],
+          content: [
+            {
+              type: 'text',
+              text: 'Tool result exceeded task storage limit; narrow the command output.',
+            },
+          ],
         }
       task.status = 'completed'
       task.result = { ...normalized, resultType: 'complete' }

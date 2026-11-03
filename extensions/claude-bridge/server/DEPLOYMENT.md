@@ -110,6 +110,22 @@ volumes и backup не применять. Имена volumes из `docker run` 
 нужны отдельная настройка retention и проверенный backup; одно лишь повторное
 подключение того же volume удалённые файлы не вернёт.
 
+### MCP Task results
+
+`/home/bridge/.claude/bridge-mcp/tasks` и `bridge-mcp/identity-key` находятся
+в сохраняемом Claude volume. При обновлении подключайте тот же volume:
+не удаляйте Task files и identity key ради освобождения лимита.
+
+Выданный Task handle хранит результат до своего TTL (сейчас 24 часа от создания).
+Store резервирует место для результата до запуска и использует bounded disk budget
+512 MiB; полные terminal results не загружаются в постоянный RAM-реестр.
+При исчерпании retained-count/byte budget обычные foreground-команды используют
+существующий SSE-путь и ждут обычного execution timeout; новый explicit background
+получает отказ до запуска. Лимиты одновременно выполняемых команд сохраняются.
+`active_*`, `retained_*` и persistence failures различаются в bounded diagnostics.
+Сбой записи не вызывает автоматического повторного выполнения команды.
+Полный контракт и ограничения — [MCP_TASK_RETENTION.md](MCP_TASK_RETENTION.md).
+
 ## Перед первым запуском или заменой контейнера
 
 1. Уточните у владельца deployment нужные registry/image digest, способ
