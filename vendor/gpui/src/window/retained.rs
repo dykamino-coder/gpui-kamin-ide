@@ -223,9 +223,9 @@ impl RetainedPrepaint {
 
 /// KaminIDE patch: an exact layout leaf standing in for a laid out subtree
 /// (`Window::layout_snapshot`), valid at the device scale it was taken at.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct LayoutSnapshot {
-    style: taffy::Style,
+    leaf: crate::taffy::ExactLeaf,
     scale: f32,
 }
 
@@ -275,11 +275,13 @@ impl Window {
     }
 
     /// The exact leaf of the laid out node `id`: an inflexible normal-flow item
-    /// of a single-line column flex container whose overflow stays inside its
-    /// border box. `None` when the node does not qualify.
+    /// of a single-line column flex container, or a block-level box of a block
+    /// container whose descendant margins do not adjoin its edges, whose
+    /// overflow stays inside its border box. `None` when the node does not
+    /// qualify. The snapshot is a few numbers (`Copy`).
     pub fn layout_snapshot(&self, id: LayoutId) -> Option<LayoutSnapshot> {
-        let style = self.layout_engine.as_ref()?.exact_leaf(id)?;
-        Some(LayoutSnapshot { style, scale: self.scale_factor() })
+        let leaf = self.layout_engine.as_ref()?.exact_leaf(id)?;
+        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
     }
 
     /// Request the leaf of `snapshot` in this frame's layout. The caller
@@ -289,6 +291,6 @@ impl Window {
         self.layout_engine
             .as_mut()
             .expect("layout engine during request_layout")
-            .request_exact_leaf(snapshot.style.clone())
+            .request_exact_leaf(&snapshot.leaf)
     }
 }

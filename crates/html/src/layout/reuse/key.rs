@@ -1,7 +1,8 @@
 //! Ключ корневого потока и счётчики сборки, которые продвигает его ребёнок.
 
-use crate::dom::Element;
+use crate::dom::{Children, Element};
 use crate::layout::cx::{BoxConstraints, LayoutCx};
+use crate::style::computed::BoxStyle;
 
 /// Счётчики сборки, которые поддерево продвигает: ключи краски и якорей.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -24,10 +25,22 @@ impl Counters {
     }
 }
 
+/// Коробка элемента без детей: ключ сравнивает только её (`dom::same_box`),
+/// а дети удержали бы дерево кадра записи.
+pub(super) fn box_only(e: &Element) -> Element {
+    Element {
+        children: Children::default(),
+        ..e.clone()
+    }
+}
+
 /// Окружение корневого потока, от которого зависит раскладка его детей.
 pub(crate) struct FlowKey {
-    pub(super) html: Element,
-    pub(super) body: Element,
+    /// Стиль начального содержащего блока: в него сложены снятые обёртки.
+    pub(super) root: BoxStyle,
+    /// Коробки `html` и `body`, если они не сняты.
+    pub(super) html: Option<Element>,
+    pub(super) body: Option<Element>,
     pub(super) constraints: BoxConstraints,
     pub(super) viewport: (f32, f32),
     pub(super) text: gpui::TextStyle,
@@ -35,10 +48,19 @@ pub(crate) struct FlowKey {
     pub(super) fonts: u64,
 }
 
+fn same_boxes(a: &Option<Element>, b: &Option<Element>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => crate::dom::same_box(a, b),
+        _ => false,
+    }
+}
+
 impl FlowKey {
     pub(super) fn same(&self, other: &Self) -> bool {
-        crate::dom::same_box(&self.html, &other.html)
-            && crate::dom::same_box(&self.body, &other.body)
+        *self.root == *other.root
+            && same_boxes(&self.html, &other.html)
+            && same_boxes(&self.body, &other.body)
             && self.constraints == other.constraints
             && self.viewport == other.viewport
             && self.text == other.text

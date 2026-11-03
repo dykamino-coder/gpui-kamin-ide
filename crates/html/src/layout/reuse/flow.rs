@@ -2,7 +2,7 @@
 
 use super::placeholder::{Placeholder, Slot};
 use super::recorder::{Pending, Recorder};
-use super::{Counters, FlowKey, FlowReuse};
+use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
@@ -17,7 +17,7 @@ pub(crate) struct FlowCx {
     /// Уже собранный ребёнок потока содержит флоат: он может вдаваться в
     /// следующих детей, их раскладка тогда зависит не только от ключа.
     floats: std::cell::Cell<bool>,
-    /// Ключ равен ключу прошлой сборки (или она первая): записывать детей.
+    /// Ключ равен ключу прошлой сборки: записывать детей.
     settled: bool,
 }
 
@@ -43,27 +43,44 @@ fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
 }
 
 impl FlowReuse {
-    /// Занять поток контейнера `inherited`, если это `body` этого документа в
+    /// Занять поток контейнера `inherited`, если это корневой поток этого
+    /// документа (`body` или начальный содержащий блок снятых обёрток) в
     /// обычной сборке: без фрагментации, обрезки строк, руби и отложенных
-    /// внепоточных сборок.
+    /// внепоточных сборок. Ключ, отличный от прошлой сборки, сбрасывает записи.
     pub(crate) fn claim(
         self: &Rc<Self>,
         inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> Option<FlowCx> {
         let cx = &opts.cx;
-        let plain = cx.contracts.document_root == Some(self.root)
+        let plain = cx.contracts.document_root == Some(self.doc)
             && cx.fragmentation.lines.is_none()
             && cx.clamp.input.is_none()
             && cx.ruby.base.is_none()
             && cx.inline.trim_requests.is_empty()
             && cx.position.oof_identities.is_none();
-        if inherited.self_node != self.body || !plain || self.claimed.replace(true) {
+        let target = match self.root {
+            Root::Body { body, .. } => inherited.self_node == body,
+            // Стиль начального содержащего блока есть только у корня.
+            Root::TopLevel => inherited.reset_context.icb,
+        };
+        if !target || !plain || self.claimed.replace(true) {
             return None;
         }
+        let (html, body) = match self.root {
+            Root::Body { html, .. } => (
+                match html {
+                    Some(_) => Some(self.seen.0.get()?.clone()),
+                    None => None,
+                },
+                Some(self.seen.1.get()?.clone()),
+            ),
+            Root::TopLevel => (None, None),
+        };
         let key = FlowKey {
-            html: self.seen.0.get()?.clone(),
-            body: self.seen.1.get()?.clone(),
+            root: opts.root_style(),
+            html,
+            body,
             constraints: cx.constraints.clone(),
             viewport: opts.viewport,
             text: opts.text.clone(),
@@ -71,8 +88,18 @@ impl FlowReuse {
             fonts: cx.doc().values.font_generation(),
         };
         let key = Rc::new(key);
-        let settled =
-            (self.store.last.replace(Some(key.clone()))).is_none_or(|last| last.same(&key));
+        // Первая сборка документа ничего не пишет: её кадр и так самый дорогой
+        // (каскад, шейпинг), а устоявшийся поток видно только со второй сборки
+        // с тем же ключом.
+        let last = self.store.last.replace(Some(key.clone()));
+        let settled = match last {
+            Some(last) => last.same(&key),
+            None => false,
+        };
+        if !settled {
+            // Записи другого ключа не подойдут, а держат стили кадра записи.
+            self.store.records.take();
+        }
         Some(FlowCx {
             reuse: self.clone(),
             key,
@@ -81,9 +108,9 @@ impl FlowReuse {
         })
     }
 }
-
 impl FlowCx {
-    /// Заместитель ребёнка `e`, если его запись подходит и он был вне экрана.
+    /// Заместитель ребёнка `e`, если его запись (блока, бывшего далеко от
+    /// экрана) подходит.
     /// `edge` — первый или последний элемент потока: его базовые линии может
     /// читать контейнер, такой ребёнок всегда собирается.
     pub(crate) fn placeholder(
@@ -98,7 +125,6 @@ impl FlowCx {
         let record = self.reuse.store.records.borrow().get(&e.node_id).cloned()?;
         let fits = record.key.same(&self.key)
             && Counters::read(&opts.cx) == record.start
-            && record.far()
             && crate::dom::same_tree(&record.element, e);
         if !fits {
             return None;
@@ -151,13 +177,8 @@ impl FlowCx {
             return;
         }
         let Some(child) = out.pop() else { return };
-        let pending = Rc::new(Pending::new(
-            e.clone(),
-            self.key.clone(),
-            mark.start,
-            now.start,
-        ));
-        super::push(&self.reuse.pending, pending.clone());
+        let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
+        super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
         out.push(Recorder::new(child, pending).hooked());
     }
 }

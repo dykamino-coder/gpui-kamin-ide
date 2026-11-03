@@ -1,19 +1,23 @@
 //! Пропуск устоявшихся блоков корневого потока документа вне экрана.
 //!
-//! Блочный ребёнок `body`, чьё поддерево после проходов подготовки равно по
-//! значениям записанному (`dom::same_tree`) и чей поток имеет тот же ключ
-//! (`FlowKey`: окружение `html`/`body`, ограничения коробки, опции хоста,
-//! поколение шрифтовых входов), раскладывается так же, как в кадре записи
-//! (Blink `LayoutResult` cache, Taffy `Cache`: результат по ключу
-//! пространства ограничений). Такой ребёнок не собирается: на его месте
-//! точный лист раскладки (`gpui::LayoutSnapshot`) того же размера и полей.
-//! Пропуск допустим, только если ни один его примитив не попал бы на экран:
-//! записанные чернила (`gpui::InkSink`, с отсечёнными) на новом месте
-//! проверяются до prepaint кадра, и любой промах собирает кадр заново без
-//! заместителей (`FlowReuse::validate`). Записываются только инертные
-//! поддеревья: обычный поток без позиционирования, флоатов и эффектов, без
-//! hitbox, состояния элементов, ввода и отложенных отрисовок GPUI, и сборка
-//! которых меняет лишь счётчики ключей краски и якорей.
+//! Корневой поток — дети `body`, а если стандартный документ снял обёртки
+//! `html`/`body` (`document::embedded::unwrap_document`), то сами блоки
+//! верхнего уровня. Блочный ребёнок потока, чьё поддерево после проходов
+//! подготовки равно по значениям записанному (`dom::same_tree`) и чей поток
+//! имеет тот же ключ (`FlowKey`: стиль корня, коробки `html`/`body`,
+//! ограничения, опции хоста, поколение шрифтовых входов), раскладывается так
+//! же, как в кадре записи (Blink `LayoutResult` cache, Taffy `Cache`:
+//! результат по ключу пространства ограничений). Такой ребёнок не
+//! собирается: на его месте точный лист раскладки (`gpui::LayoutSnapshot`)
+//! того же размера и полей. Пропуск допустим, только если ни один его
+//! примитив не попал бы на экран: записанные чернила (`gpui::InkSink`, с
+//! отсечёнными) на новом месте проверяются до prepaint кадра, и любой промах
+//! собирает кадр заново без заместителей (`FlowReuse::validate`).
+//! Записываются только инертные поддеревья: обычный поток без
+//! позиционирования, флоатов и эффектов, без hitbox, состояния элементов,
+//! ввода и отложенных отрисовок GPUI, и сборка которых меняет лишь счётчики
+//! ключей краски и якорей. Запись не копирует поддерево: элемент делит детей
+//! и стили с деревом кадра, а лист — несколько чисел.
 
 mod flow;
 mod key;
@@ -34,6 +38,8 @@ use std::rc::Rc;
 /// Записи блоков одного документа между кадрами; переживают `update`.
 #[derive(Default)]
 pub(crate) struct Store {
+    /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
+    /// ключа их сбрасывает, а не держит устаревшие стили.
     records: RefCell<HashMap<u64, Rc<Record>>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
@@ -51,17 +57,17 @@ pub struct ReuseStats {
 }
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
+/// Пишется только для блока, бывшего далеко от экрана (`recorder::far`):
+/// запись ближнего блока не подошла бы ни одному кадру.
 pub(crate) struct Record {
-    element: Element,
+    /// Вход сборки блока; в куче, чтобы переходить из ожидания без копии.
+    element: Box<Element>,
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
     snapshot: LayoutSnapshot,
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
     ink: Option<Bounds<ScaledPixels>>,
-    /// Точное начало коробки и экран кадра записи.
-    origin: Point<ScaledPixels>,
-    screen: Bounds<ScaledPixels>,
 }
 
 fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
@@ -92,15 +98,11 @@ fn placed(
 /// Запас проверки экрана на округление краёв, в точках устройства.
 const SNAP: f32 = 2.0;
 
-impl Record {
-    /// Блок был далеко от экрана: дальше экрана по каждой оси. Сдвиг кадра
-    /// обычно меньше, а точный ответ даёт `FlowReuse::validate`.
-    fn far(&self) -> bool {
-        let Some(ink) = self.ink else { return true };
-        let s = self.screen.size;
-        let margin = s.width.0.max(s.height.0);
-        !placed(ink, self.origin, margin).intersects(&self.screen)
-    }
+/// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Root {
+    Body { html: Option<u64>, body: u64 },
+    TopLevel,
 }
 
 /// Повтор блоков одной сборки документа.
@@ -108,34 +110,46 @@ pub(crate) struct FlowReuse {
     store: Rc<Store>,
     /// Заместители разрешены; иначе только запись.
     allow: bool,
-    root: (usize, usize),
-    html: u64,
-    body: u64,
+    doc: (usize, usize),
+    root: Root,
     seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
-    pending: RefCell<Vec<Rc<recorder::Pending>>>,
+    /// Ожидающие записи с элементами своих блоков.
+    pending: RefCell<Vec<(Rc<recorder::Pending>, Box<Element>)>>,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
 }
 
+fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Element> {
+    nodes.into_iter().find_map(|n| match n {
+        Node::Element(e) if e.tag == tag => Some(e),
+        _ => None,
+    })
+}
+
 impl FlowReuse {
-    /// Повтор для сборки дерева `nodes`: корень `html` и его `body`.
+    /// Повтор для сборки дерева `nodes`: корень `html` с `body`, `body` без
+    /// снятого `html` или блоки снятых обёрток.
     pub(crate) fn new(store: Rc<Store>, nodes: &[Node], allow: bool) -> Option<Rc<Self>> {
-        let html = nodes.iter().find_map(|n| match n {
-            Node::Element(e) if e.tag == "html" => Some(e),
-            _ => None,
-        })?;
-        let body = html.children.iter().find_map(|n| match n {
-            Node::Element(e) if e.tag == "body" => Some(e.node_id),
-            _ => None,
-        })?;
+        let root = match find(nodes.iter(), "html") {
+            Some(html) => Root::Body {
+                html: Some(html.node_id),
+                body: find(html.children.iter(), "body")?.node_id,
+            },
+            None => match find(nodes.iter(), "body") {
+                Some(body) => Root::Body {
+                    html: None,
+                    body: body.node_id,
+                },
+                None => Root::TopLevel,
+            },
+        };
         Some(Rc::new(Self {
             store,
             allow,
-            root: (nodes.as_ptr() as usize, nodes.len()),
-            html: html.node_id,
-            body,
+            doc: (nodes.as_ptr() as usize, nodes.len()),
+            root,
             seen: Default::default(),
             claimed: Cell::new(false),
             next: Default::default(),
@@ -147,14 +161,17 @@ impl FlowReuse {
 
     /// Элемент этого документа на пути к потоку: запомнить `html` и `body`.
     pub(crate) fn observe(&self, e: &Element, cx: &LayoutCx) {
-        if cx.contracts.document_root != Some(self.root) || self.claimed.get() {
+        let Root::Body { html, body } = self.root else {
+            return;
+        };
+        if cx.contracts.document_root != Some(self.doc) || self.claimed.get() {
             return;
         }
         // Первое появление: потомки с тем же адресом (копии) не в счёт.
-        if e.node_id == self.html && self.seen.0.get().is_none() {
-            let _ = self.seen.0.set(e.clone());
-        } else if e.node_id == self.body && self.seen.1.get().is_none() {
-            let _ = self.seen.1.set(e.clone());
+        if Some(e.node_id) == html && self.seen.0.get().is_none() {
+            let _ = self.seen.0.set(key::box_only(e));
+        } else if e.node_id == body && self.seen.1.get().is_none() {
+            let _ = self.seen.1.set(key::box_only(e));
         }
     }
 
@@ -185,7 +202,8 @@ impl FlowReuse {
                 })
     }
 
-    /// После краски дерева: записи устоявшихся блоков этого кадра.
+    /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
+    /// записи отдают элемент записи и освобождаются.
     pub(crate) fn finish(&self) {
         let Some(screen) = self.screen.get() else {
             return;
@@ -193,14 +211,14 @@ impl FlowReuse {
         let mut next = self.next.take();
         let skipped = next.len() as u64;
         let mut recorded = 0;
-        for pending in self.pending.borrow().iter() {
-            if let Some(record) = pending.finish(screen) {
+        for (pending, element) in self.pending.take() {
+            if let Some(record) = pending.finish(element, screen) {
                 next.insert(record.element.node_id, Rc::new(record));
                 recorded += 1;
             }
         }
-        // Кадр без записей и пропусков (ключ не устоялся) оставляет прежние:
-        // они не подойдут к другому ключу, а их сброс стоил бы кадру.
+        // Кадр без записей и пропусков под тем же ключом оставляет прежние:
+        // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {
             self.store.records.replace(next);
         }

@@ -1,7 +1,7 @@
 //! Запись блока: прозрачная обёртка снимает лист раскладки, начало коробки,
 //! инертность prepaint и чернила краски, включая отложенную краску строк.
 
-use super::{Counters, FlowKey, Record, scaled};
+use super::{Counters, FlowKey, Record, placed, scaled};
 use crate::dom::Element;
 use crate::hooks::Wrap;
 use gpui::{
@@ -11,9 +11,10 @@ use gpui::{
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-/// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
+/// Запись, которая завершится после краски кадра (`FlowReuse::finish`). Её
+/// держит и обёртка в дереве GPUI до следующего кадра, поэтому элемент блока
+/// лежит не здесь, а у `FlowReuse` и переходит в запись без копии.
 pub(super) struct Pending {
-    element: Element,
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
@@ -28,9 +29,8 @@ pub(super) struct Pending {
 }
 
 impl Pending {
-    pub(super) fn new(element: Element, key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
+    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
         Self {
-            element,
             key,
             start,
             end,
@@ -44,8 +44,13 @@ impl Pending {
         }
     }
 
-    /// Готовая запись, если блок прошёл prepaint и краску инертно.
-    pub(super) fn finish(&self, screen: Bounds<ScaledPixels>) -> Option<Record> {
+    /// Готовая запись блока `element`, если он прошёл prepaint и краску
+    /// инертно и был далеко от экрана `screen`.
+    pub(super) fn finish(
+        &self,
+        element: Box<Element>,
+        screen: Bounds<ScaledPixels>,
+    ) -> Option<Record> {
         if !self.quiet.get() || !self.painted.get() || self.sink.tainted() {
             return None;
         }
@@ -61,17 +66,32 @@ impl Pending {
             ),
             size: ink.size,
         });
+        if !far(ink, origin, screen) {
+            return None;
+        }
         Some(Record {
-            element: self.element.clone(),
+            element,
             key: self.key.clone(),
             start: self.start,
             end: self.end,
             snapshot: self.snapshot.take()?,
             ink,
-            origin,
-            screen,
         })
     }
+}
+
+/// Блок с чернилами `ink` (относительно начала `origin`) был дальше экрана
+/// `screen` по каждой оси. Сдвиг следующего кадра обычно меньше, а точный
+/// ответ даёт `FlowReuse::validate`; ближний блок не пропустит ни один кадр,
+/// и его запись только занимала бы память.
+pub(super) fn far(
+    ink: Option<Bounds<ScaledPixels>>,
+    origin: Point<ScaledPixels>,
+    screen: Bounds<ScaledPixels>,
+) -> bool {
+    let Some(ink) = ink else { return true };
+    let s = screen.size;
+    !placed(ink, origin, s.width.0.max(s.height.0)).intersects(&screen)
 }
 
 pub(super) struct Recorder {
