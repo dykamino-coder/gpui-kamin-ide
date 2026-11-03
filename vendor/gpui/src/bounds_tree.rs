@@ -706,6 +706,19 @@ where
     /// on the node covers. O(n log n) and fully packed nodes, against an
     /// incremental insert that descends and splits per rectangle. `key` maps a
     /// coordinate to a total order (NaN sorts last instead of panicking).
+    /// KaminIDE patch: drop the spare capacity of a tree that is final (a
+    /// paint record's or a copy's): such a tree is shared by the grafts of
+    /// every scene that copies it and may outlive its record, so it keeps
+    /// only its nodes and grafts, not growth room and scratch buffers.
+    pub fn freeze(&mut self) {
+        self.nodes.shrink_to_fit();
+        self.grafts.shrink_to_fit();
+        self.insert_path = Vec::new();
+        self.search_pool = Vec::new();
+        self.split_entries = Vec::new();
+        self.split_covers = Vec::new();
+    }
+
     pub fn packed(rects: Vec<(Bounds<U>, u32)>, key: impl Fn(&U) -> f32) -> Self {
         let mut tree = Self::default();
         let Some(top) = rects.iter().max_by_key(|(_, order)| *order).cloned() else {
@@ -978,6 +991,27 @@ mod tests {
             model.push((rect, order));
         }
         (tree, model)
+    }
+
+    #[test]
+    fn frozen_tree_keeps_answers_without_spare_capacity() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let (mut tree, model) = filled(&mut rng, 37);
+        let queries: Vec<_> = (0..50).map(|_| random_rect(&mut rng, 320.0, 40.0)).collect();
+        let before: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
+        tree.freeze();
+        assert_eq!(tree.nodes.capacity(), tree.nodes.len());
+        assert_eq!(tree.insert_path.capacity(), 0);
+        assert_eq!(tree.split_entries.capacity(), 0);
+        let after: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
+        assert_eq!(before, after);
+        for (query, answer) in queries.iter().zip(&after) {
+            assert_eq!(*answer, brute_max(&model, query));
+        }
+        // A frozen tree still takes inserts exactly.
+        let extra = random_rect(&mut rng, 320.0, 40.0);
+        let order = tree.insert(extra);
+        assert_eq!(order, brute_max(&model, &extra) + 1);
     }
 
     #[test]

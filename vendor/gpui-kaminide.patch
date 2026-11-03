@@ -5754,7 +5754,7 @@ index 0000000000000000000000000000000000000000..43852ab765fc7284d4be693d5579de8b
 +    }
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
-index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28681cb73d
+index e95e32477b912b810607b20306be5f7d53c76df2..07f93053821be3357e3be1ff210ca139a1dd6e24
 --- a/vendor/gpui/src/bounds_tree.rs
 +++ b/vendor/gpui/src/bounds_tree.rs
 @@ -1 +1 @@
@@ -5793,7 +5793,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +/// grafts the record's tree instead of inserting every primitive again;
 +/// queries through a graft stay exact (see `Graft`).
 +#[derive(Debug, Clone)]
-@@ -29,9 +52,46 @@
+@@ -29,9 +52,205 @@
 -    /// Index of the leaf with the highest ordering (for fast-path lookups).
 -    max_leaf: Option<usize>,
 -    /// Reusable stack for tree traversal during insertion.
@@ -5849,64 +5849,11 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +/// moved by `offset` and clipped by `clip`, would index. A query `q` meets
 +/// `(e + offset) ∩ clip` iff `q ∩ clip` meets `e + offset`, so a query
 +/// through the graft clips itself once and walks the frozen tree unchanged.
-@@ -39 +99 @@
--struct Node<U>
++#[derive(Debug, Clone)]
 +pub(crate) struct Graft<U>
-@@ -43,54 +103,58 @@
--    /// Bounding box containing this node and all descendants.
--    bounds: Bounds<U>,
--    /// Maximum ordering value in this subtree.
--    max_order: u32,
--    /// Node-specific data.
--    kind: NodeKind,
--}
--
--#[derive(Debug, Clone)]
--enum NodeKind {
--    /// Leaf node containing actual bounds data.
--    Leaf {
--        /// The ordering assigned to this bounds.
--        order: u32,
--    },
--    /// Internal node with children.
--    Internal {
--        /// Indices of child nodes (2 to MAX_CHILDREN).
--        children: NodeChildren,
--    },
--}
--
--/// Fixed-size array for child indices, avoiding heap allocation.
--#[derive(Debug, Clone)]
--struct NodeChildren {
--    // Keeps an invariant where the max order child is always at the end
--    indices: [usize; MAX_CHILDREN],
--    len: u8,
--}
--
--impl NodeChildren {
--    fn new() -> Self {
--        Self {
--            indices: [0; MAX_CHILDREN],
--            len: 0,
--        }
--    }
--
--    fn push(&mut self, index: usize) {
--        debug_assert!((self.len as usize) < MAX_CHILDREN);
--        self.indices[self.len as usize] = index;
--        self.len += 1;
--    }
--
--    fn len(&self) -> usize {
--        self.len as usize
--    }
--
--    fn as_slice(&self) -> &[usize] {
--        &self.indices[..self.len as usize]
--    }
--}
--
--impl<U> BoundsTree<U>
++where
++    U: Clone + Debug + Default + PartialEq,
++{
 +    tree: Rc<BoundsTree<U>>,
 +    offset: Point<U>,
 +    clip: Option<Bounds<U>>,
@@ -5965,7 +5912,16 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +}
 +
 +impl<U> Graft<U>
-@@ -106,0 +171,131 @@
++where
++    U: Clone
++        + Debug
++        + PartialEq
++        + PartialOrd
++        + Add<U, Output = U>
++        + Sub<Output = U>
++        + Half
++        + Default,
++{
 +    /// The graft of `tree` moved by `offset`, clipped by `clip`, orderings
 +    /// raised by `order`; `None` when nothing of it is visible. A tree that
 +    /// is a single graft is seen through directly (offsets add, clips meet),
@@ -6052,18 +6008,40 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +}
 +
 +/// A node of the bounds tree.
-+#[derive(Debug, Clone)]
-+struct Node<U>
-+where
-+    U: Clone + Debug + Default + PartialEq,
-+{
+@@ -43 +262 @@
+-    /// Bounding box containing this node and all descendants.
 +    /// Bounding box containing every entry.
-+    bounds: Bounds<U>,
-+    /// Maximum ordering value in this subtree.
-+    max_order: u32,
+@@ -47,23 +266,2 @@
+-    /// Node-specific data.
+-    kind: NodeKind,
+-}
+-
+-#[derive(Debug, Clone)]
+-enum NodeKind {
+-    /// Leaf node containing actual bounds data.
+-    Leaf {
+-        /// The ordering assigned to this bounds.
+-        order: u32,
+-    },
+-    /// Internal node with children.
+-    Internal {
+-        /// Indices of child nodes (2 to MAX_CHILDREN).
+-        children: NodeChildren,
+-    },
+-}
+-
+-/// Fixed-size array for child indices, avoiding heap allocation.
+-#[derive(Debug, Clone)]
+-struct NodeChildren {
+-    // Keeps an invariant where the max order child is always at the end
+-    indices: [usize; MAX_CHILDREN],
 +    /// Whether the entries are inserted rectangles rather than child nodes.
 +    bottom: bool,
-+    len: u8,
+@@ -71,4 +269,8 @@
+-}
+-
+-impl NodeChildren {
+-    fn new() -> Self {
 +    entries: [Entry<U>; MAX_CHILDREN],
 +}
 +
@@ -6072,31 +6050,33 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +    U: Clone + Debug + Default + PartialEq,
 +{
 +    fn new(bottom: bool) -> Self {
-+        Self {
+@@ -76 +278,3 @@
+-            indices: [0; MAX_CHILDREN],
 +            bounds: Bounds::default(),
 +            max_order: 0,
 +            bottom,
-+            len: 0,
+@@ -78,15 +282,6 @@
+-        }
+-    }
+-
+-    fn push(&mut self, index: usize) {
+-        debug_assert!((self.len as usize) < MAX_CHILDREN);
+-        self.indices[self.len as usize] = index;
+-        self.len += 1;
+-    }
+-
+-    fn len(&self) -> usize {
+-        self.len as usize
+-    }
+-
+-    fn as_slice(&self) -> &[usize] {
+-        &self.indices[..self.len as usize]
 +            entries: std::array::from_fn(|_| Entry::default()),
 +        }
 +    }
 +
 +    fn entries(&self) -> &[Entry<U>] {
 +        &self.entries[..self.len as usize]
-+    }
-+}
-+
-+impl<U> BoundsTree<U>
-+where
-+    U: Clone
-+        + Debug
-+        + PartialEq
-+        + PartialOrd
-+        + Add<U, Output = U>
-+        + Sub<Output = U>
-+        + Half
-+        + Default,
-+{
 @@ -110,0 +306 @@
 +        self.height = 0;
 @@ -111,0 +308,2 @@
@@ -6642,7 +6622,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 @@ -367,0 +681,2 @@
 +            min_order: None,
 +            grafts: Vec::new(),
-@@ -369 +684,70 @@
+@@ -369 +684,83 @@
 -            search_stack: Vec::new(),
 +            search_pool: Vec::new(),
 +            split_entries: Vec::new(),
@@ -6669,6 +6649,19 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +    /// on the node covers. O(n log n) and fully packed nodes, against an
 +    /// incremental insert that descends and splits per rectangle. `key` maps a
 +    /// coordinate to a total order (NaN sorts last instead of panicking).
++    /// KaminIDE patch: drop the spare capacity of a tree that is final (a
++    /// paint record's or a copy's): such a tree is shared by the grafts of
++    /// every scene that copies it and may outlive its record, so it keeps
++    /// only its nodes and grafts, not growth room and scratch buffers.
++    pub fn freeze(&mut self) {
++        self.nodes.shrink_to_fit();
++        self.grafts.shrink_to_fit();
++        self.insert_path = Vec::new();
++        self.search_pool = Vec::new();
++        self.split_entries = Vec::new();
++        self.split_covers = Vec::new();
++    }
++
 +    pub fn packed(rects: Vec<(Bounds<U>, u32)>, key: impl Fn(&U) -> f32) -> Self {
 +        let mut tree = Self::default();
 +        let Some(top) = rects.iter().max_by_key(|(_, order)| *order).cloned() else {
@@ -6714,7 +6707,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +                return tree;
 +            }
 +            level = next;
-@@ -472 +856,244 @@
+@@ -472 +869,265 @@
 -}
 +
 +    /// Checks the balanced-tree invariants below `node` and returns the number
@@ -6841,6 +6834,27 @@ index e95e32477b912b810607b20306be5f7d53c76df2..c3224892f6af30955eeabfaebbc67f28
 +            model.push((rect, order));
 +        }
 +        (tree, model)
++    }
++
++    #[test]
++    fn frozen_tree_keeps_answers_without_spare_capacity() {
++        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
++        let (mut tree, model) = filled(&mut rng, 37);
++        let queries: Vec<_> = (0..50).map(|_| random_rect(&mut rng, 320.0, 40.0)).collect();
++        let before: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
++        tree.freeze();
++        assert_eq!(tree.nodes.capacity(), tree.nodes.len());
++        assert_eq!(tree.insert_path.capacity(), 0);
++        assert_eq!(tree.split_entries.capacity(), 0);
++        let after: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
++        assert_eq!(before, after);
++        for (query, answer) in queries.iter().zip(&after) {
++            assert_eq!(*answer, brute_max(&model, query));
++        }
++        // A frozen tree still takes inserts exactly.
++        let extra = random_rect(&mut rng, 320.0, 40.0);
++        let order = tree.insert(extra);
++        assert_eq!(order, brute_max(&model, &extra) + 1);
 +    }
 +
 +    #[test]
@@ -9908,7 +9922,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a9414f78a
+index 160587a4ad924f80c2dd01b90a8300febbc13105..de6668ef79303db25960bf6a06cd31d9c71a79c1
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,7 @@
@@ -10268,7 +10282,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +455,15 @@
+@@ -139,2 +455,27 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -10281,12 +10295,24 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +        std::rc::Rc::make_mut(&mut self.primitive_bounds)
 +    }
 +
++    /// KaminIDE patch: finish a scene that will not be painted into again
++    /// (a paint record): its bounds tree is shared by the grafts of the scenes
++    /// that copy it and can outlive the record, so it drops its spare
++    /// capacity (`BoundsTree::freeze`). A frame scene keeps its capacity for
++    /// the next frame and is finished with `finish` alone.
++    pub(crate) fn finish_frozen(&mut self) {
++        self.finish();
++        if let Some(tree) = std::rc::Rc::get_mut(&mut self.primitive_bounds) {
++            tree.freeze();
++        }
++    }
++
 +    /// Copy `range` of an earlier scene (the rendered frame) into this one.
 +    ///
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +471,72 @@
+@@ -142 +483,73 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        let source = prev_scene
@@ -10338,6 +10364,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +        {
 +            copy.insert_graft(graft);
 +        }
++        copy.freeze();
 +        let source = Some((std::rc::Rc::new(copy), 0));
 +        self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
 +            PaintOperation::Primitive(primitive) => {
@@ -10360,7 +10387,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +544,179 @@
+@@ -144,4 +557,184 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -10431,7 +10458,11 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +        }
 +        let (tree, base) = match source {
 +            Some(source) => source,
-+            None => (std::rc::Rc::new(Self::packed(operations)), 0),
++            None => {
++                let mut packed = Self::packed(operations);
++                packed.freeze();
++                (std::rc::Rc::new(packed), 0)
++            }
 +        };
 +        let mut raise = 0;
 +        let graft = crate::bounds_tree::Graft::new(tree.clone(), Point::default(), None, base)
@@ -10531,6 +10562,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +        {
 +            scene.tree_mut().insert_graft(graft);
 +        }
++        scene.tree_mut().freeze();
 +        scene
 +    }
 +
@@ -10544,7 +10576,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +769,92 @@
+@@ -193,0 +787,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -10637,20 +10669,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +        }
 +}
 +
-@@ -213,0 +881 @@
+@@ -213,0 +899 @@
 +#[derive(Clone)]
-@@ -216 +884,4 @@
+@@ -216 +902,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +889,4 @@
+@@ -217,0 +907,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +935,35 @@
+@@ -259,0 +953,35 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -10686,7 +10718,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    ops: Range<usize>,
 +    tree: std::rc::Rc<BoundsTree<ScaledPixels>>,
 +    order: DrawOrder,
-@@ -543,0 +1254,10 @@
+@@ -543,0 +1272,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -10697,19 +10729,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1301,5 @@
+@@ -580,0 +1319,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1328,5 @@
+@@ -602,0 +1346,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1380,12 @@
+@@ -649,0 +1398,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -10722,10 +10754,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1493 @@
+@@ -751 +1511 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1500,54 @@
+@@ -757,0 +1518,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -10780,7 +10812,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1570,23 @@
+@@ -773,0 +1588,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -10804,12 +10836,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..50d31db76308c0b75d5f12196fd84e4a
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1615,2 @@
+@@ -795,0 +1633,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1637 @@
+@@ -815,0 +1655 @@
 +            color_mapping: None,
-@@ -835,0 +1658,6 @@
+@@ -835,0 +1676,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -11519,7 +11551,7 @@ index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf34
 +}
 diff --git a/vendor/gpui/src/scene/segments/freeze.rs b/vendor/gpui/src/scene/segments/freeze.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..dedc1d27e6c97154449eb97affb716fe42232418
+index 0000000000000000000000000000000000000000..e5aa691fbb6bac6e6066cb3ba2bc2475f06a7615
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/freeze.rs
 @@ -0,0 +1,48 @@
@@ -11567,7 +11599,7 @@ index 0000000000000000000000000000000000000000..dedc1d27e6c97154449eb97affb716fe
 +        }
 +        let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
 +        scene.groups = groups;
-+        scene.finish();
++        scene.finish_frozen();
 +        scene
 +    }
 +}
@@ -20747,7 +20779,7 @@ index 0000000000000000000000000000000000000000..6a1794918b3be567d1fad54d7a61bb09
 +or unwind; an abort invalidates the draw rather than granting replay rights.
 diff --git a/vendor/gpui/src/window/paint_record/invocation.rs b/vendor/gpui/src/window/paint_record/invocation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9170cd6c3465aa2bfbe7b36c41fa043d9b63e98b
+index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc29e51607c
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/invocation.rs
 @@ -0,0 +1,118 @@
@@ -20796,7 +20828,7 @@ index 0000000000000000000000000000000000000000..9170cd6c3465aa2bfbe7b36c41fa043d
 +            result
 +        });
 +        identity.check_pass(self)?;
-+        scene.finish();
++        scene.finish_frozen();
 +        Ok((result, scene, identity, scale))
 +    }
 +

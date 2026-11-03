@@ -462,6 +462,18 @@ impl Scene {
         std::rc::Rc::make_mut(&mut self.primitive_bounds)
     }
 
+    /// KaminIDE patch: finish a scene that will not be painted into again
+    /// (a paint record): its bounds tree is shared by the grafts of the scenes
+    /// that copy it and can outlive the record, so it drops its spare
+    /// capacity (`BoundsTree::freeze`). A frame scene keeps its capacity for
+    /// the next frame and is finished with `finish` alone.
+    pub(crate) fn finish_frozen(&mut self) {
+        self.finish();
+        if let Some(tree) = std::rc::Rc::get_mut(&mut self.primitive_bounds) {
+            tree.freeze();
+        }
+    }
+
     /// Copy `range` of an earlier scene (the rendered frame) into this one.
     ///
     /// KaminIDE patch: a range copied the same way into that scene grafts the
@@ -518,6 +530,7 @@ impl Scene {
         {
             copy.insert_graft(graft);
         }
+        copy.freeze();
         let source = Some((std::rc::Rc::new(copy), 0));
         self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
@@ -607,7 +620,11 @@ impl Scene {
         }
         let (tree, base) = match source {
             Some(source) => source,
-            None => (std::rc::Rc::new(Self::packed(operations)), 0),
+            None => {
+                let mut packed = Self::packed(operations);
+                packed.freeze();
+                (std::rc::Rc::new(packed), 0)
+            }
         };
         let mut raise = 0;
         let graft = crate::bounds_tree::Graft::new(tree.clone(), Point::default(), None, base)
@@ -707,6 +724,7 @@ impl Scene {
         {
             scene.tree_mut().insert_graft(graft);
         }
+        scene.tree_mut().freeze();
         scene
     }
 

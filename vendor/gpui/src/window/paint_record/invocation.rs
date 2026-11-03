@@ -43,7 +43,7 @@ impl Window {
             result
         });
         identity.check_pass(self)?;
-        scene.finish();
+        scene.finish_frozen();
         Ok((result, scene, identity, scale))
     }
 
