@@ -37,7 +37,7 @@ pub(crate) struct Recipe {
     #[cfg(test)]
     pub(crate) intrinsic_builds: std::cell::Cell<usize>,
     /// The row extents of the spanner flow this stack is a row of.
-    row: Option<crate::layout::multicol::spanner::RowSlot>,
+    row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
 }
 
 impl Recipe {

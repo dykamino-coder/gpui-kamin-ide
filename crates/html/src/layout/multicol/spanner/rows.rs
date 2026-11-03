@@ -29,7 +29,9 @@ pub(crate) struct RowMeasures {
     rows: RefCell<Vec<((usize, u32), RowExtent)>>,
 }
 
-/// The slot of one spanner flow's rows in `FragmentationContext`.
+/// The slot of one spanner flow's rows in `FragmentationContext`, kept
+/// behind an `Rc` there: render options are cloned for every box, and the
+/// slot must not grow them on pages without spanner flows.
 #[derive(Clone)]
 pub(crate) struct RowSlot {
     memo: Rc<RowMeasures>,
@@ -51,7 +53,7 @@ impl RowSlot {
         space: BuildSpace,
         record: bool,
         fragmented: bool,
-    ) -> Option<Self> {
+    ) -> Option<Rc<Self>> {
         if fragmented || host == 0 {
             return None;
         }
@@ -59,20 +61,22 @@ impl RowSlot {
             memo.space.set(Some(space));
             memo.rows.borrow_mut().clear();
         }
-        Some(Self {
+        Some(Rc::new(Self {
             memo: memo.clone(),
             host,
             space,
             row: None,
             record,
-        })
+        }))
     }
 
     /// The same slot for row `row` of `host`, `None` for another element.
-    pub(crate) fn row(&self, host: u64, row: usize) -> Option<Self> {
-        (self.host == host && self.row.is_none()).then(|| Self {
-            row: Some(row),
-            ..self.clone()
+    pub(crate) fn row(&self, host: u64, row: usize) -> Option<Rc<Self>> {
+        (self.host == host && self.row.is_none()).then(|| {
+            Rc::new(Self {
+                row: Some(row),
+                ..self.clone()
+            })
         })
     }
 
@@ -106,5 +110,18 @@ impl RowSlot {
             Some(entry) => entry.1 = extent,
             None => rows.push((key, extent)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::layout::cx::FragmentationContext;
+
+    #[test]
+    fn the_row_slot_adds_one_pointer_to_the_fragmentation_context() {
+        assert_eq!(
+            std::mem::size_of::<FragmentationContext>(),
+            2 * std::mem::size_of::<usize>()
+        );
     }
 }
