@@ -67,7 +67,26 @@ merge/release, не новая runtime-пачка; прежние snapshot и ga
 заменяют и не отменяют принятую task-specific приёмку. Следующий owner при
 новой регрессии — maintainer с evidence на версии, содержащей fix.
 
-## Текущая пачка `RC-2026-10-30-INC82-83` — сверка завершена 2026-10-31
+## Текущая пачка `RC-2026-11-03-MCP-RETENTION`
+
+**Snapshot:** `origin/main` `f386ec9a952a87fc08b2abc0b9f59ae5ca34b33e`;
+открытых PR на момент сверки нет. **Scope:** только server-only retention/overload
+остаток INC-0080. Поручение владельца 2026-11-03 разрешает самому реализовать,
+проверить, смержить и выпустить один coordinated release; deployment observation
+выполнит владелец. Роль — maintainer. Соседние native/CEF, BR-02/03, HTML/WPT и
+историческая атрибуция зависаний в snapshot не входят.
+
+**Completion target:** решение о контракте → отдельный server fix с automated
+acceptance → сверка → один проверенный release. Живой Windows smoke не заявляется;
+обязательные CI и сборка installer сохраняются. История прежних пачек ниже неизменна.
+
+| Deliverable | State / artifact | Gate и следующий шаг |
+| --- | --- | --- |
+| INC-0080 retention decision | in progress / decision | [Контракт](server/MCP_TASK_RETENTION.md): TTL, reservation, bounded ordinary fallback; принять до product merge |
+| INC-0080 server fix | waiting / change | После decision: actual store/HTTP + delivery regressions, typecheck/lint/tests, isolated Docker; без изменения клиента |
+| Reconciliation / one release | waiting | После принятого fix: exact merged PR, честный остаток INC-0080, coordinated release и post-publish checks |
+
+## История `RC-2026-10-30-INC82-83` — сверка завершена 2026-10-31
 
 **Status:** complete — bounded source verification, public/private reconciliation
 and handoff delivered; no new product fix or release required.
