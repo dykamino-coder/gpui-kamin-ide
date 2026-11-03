@@ -38,6 +38,30 @@ fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
     incoming || deferred
 }
 
+/// KaminIDE patch: how a native draw asks GPUI for a frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NativeDraw {
+    /// Rebuild every view (device recovery, a new drawable size).
+    force_render: bool,
+    /// Present even when nothing is dirty, without the inactive-window frame
+    /// rate limit: DWM must receive this frame now.
+    require_presentation: bool,
+}
+
+impl NativeDraw {
+    /// A WM_PAINT. Inside the resize boost DWM may have dropped the last
+    /// present during its animation, so the current scene is presented again;
+    /// re-rendering it as a forced frame would rebuild every view and, for an
+    /// unfocused window, wait out the 30 fps inactive limit (up to 33 ms per
+    /// frame for 600 ms after every WM_SIZE, window creation included).
+    fn paint(boosted: bool) -> Self {
+        Self {
+            force_render: false,
+            require_presentation: boosted,
+        }
+    }
+}
+
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
 /// because the coordination is inherently cross-window: while window A is
@@ -170,7 +194,13 @@ impl WindowsWindowInner {
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
             WM_GPUI_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
-            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
+            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(
+                handle,
+                NativeDraw {
+                    force_render: true,
+                    require_presentation: false,
+                },
+            ),
             WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
             DM_POINTERHITTEST => self.handle_dm_pointer_hit_test(wparam),
             WM_GETOBJECT => self.handle_wm_getobject(wparam, lparam),
@@ -290,7 +320,14 @@ impl WindowsWindowInner {
         self.state.resize_boost_until.set(Some(
             std::time::Instant::now() + std::time::Duration::from_millis(600),
         ));
-        self.draw_window(self.hwnd, true);
+        // The new size is presented now, focused or not.
+        self.draw_window(
+            self.hwnd,
+            NativeDraw {
+                force_render: true,
+                require_presentation: true,
+            },
+        );
         Some(0)
     }
 
@@ -355,14 +392,14 @@ impl WindowsWindowInner {
     }
 
     fn handle_paint_msg(&self, handle: HWND) -> Option<isize> {
-        // KaminIDE patch: см. resize_boost_until — после смены размера кадры
-        // принудительные, пока системная анимация не кончилась.
+        // KaminIDE patch: см. resize_boost_until — после смены размера каждый
+        // кадр презентуется, пока системная анимация не кончилась.
         let boosted = self
             .state
             .resize_boost_until
             .get()
             .is_some_and(|t| std::time::Instant::now() < t);
-        self.draw_window(handle, boosted)
+        self.draw_window(handle, NativeDraw::paint(boosted))
     }
 
     fn handle_close_msg(&self) -> Option<isize> {
@@ -1304,7 +1341,7 @@ impl WindowsWindowInner {
     ) -> Option<isize> {
         self.report_visibility();
         if wparam.0 == 1 {
-            self.draw_window(handle, false);
+            self.draw_window(handle, NativeDraw::paint(false));
         }
         None
     }
@@ -1358,9 +1395,10 @@ impl WindowsWindowInner {
     }
 
     #[inline]
-    fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
-        log::debug!(target: "gpui::frame", "native force={} pending={}",
-            force_render, self.state.force_render_pending.get());
+    fn draw_window(&self, handle: HWND, draw: NativeDraw) -> Option<isize> {
+        let NativeDraw { force_render, require_presentation } = draw;
+        log::debug!(target: "gpui::frame", "native force={} present={} pending={}",
+            force_render, require_presentation, self.state.force_render_pending.get());
         let Some(_guard) = self.state.draw_coordinator.try_begin_draw() else {
             log::debug!("deferring re-entrant draw of window {handle:?}");
             if force_render {
@@ -1400,7 +1438,7 @@ impl WindowsWindowInner {
             |(at, source)| (Some(at), source),
         );
         request_frame(RequestFrameOptions {
-            require_presentation: false,
+            require_presentation,
             force_render,
             signal_at,
             signal_source,
@@ -1847,7 +1885,25 @@ fn notify_frame_changed(handle: HWND) {
 
 #[cfg(test)]
 mod forced_frame_tests {
-    use super::{Cell, consume_force_render};
+    use super::{Cell, NativeDraw, consume_force_render};
+
+    #[test]
+    fn a_boosted_paint_presents_without_forcing_a_rebuild() {
+        assert_eq!(
+            NativeDraw::paint(true),
+            NativeDraw {
+                force_render: false,
+                require_presentation: true,
+            }
+        );
+        assert_eq!(
+            NativeDraw::paint(false),
+            NativeDraw {
+                force_render: false,
+                require_presentation: false,
+            }
+        );
+    }
 
     #[test]
     fn forced_callback_consumes_deferred_request_once() {
