@@ -12,12 +12,12 @@
 //! `Rc` у разделивших родителей), схема цвета и окружение — сравниваются явно.
 
 use super::pseudo_styles::PseudoLayers;
+use super::revalidation::{Check, outcome};
 use crate::budget::admission::{Admission, Buffer};
 use crate::dom::shadow::Scope;
 use crate::style::cascade::sharing::Environment;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, VarMap};
-use crate::style::select::matching::{matches, matches_ignoring_pseudo};
 use crate::style::select::rule_index::positional_text;
 use crate::style::select::{Ancestor, Sibs};
 use crate::style::values::value::Scheme;
@@ -68,7 +68,7 @@ struct Entry {
     environment: Environment,
     /// Перепроверяемые кандидаты: номер правила и исходы `matches` и
     /// `matches_ignoring_pseudo` у владельца записи.
-    checks: Vec<(usize, bool, bool)>,
+    checks: Vec<Check>,
     shared: Shared,
     _lease: Option<crate::budget::LiveReservation>,
 }
@@ -120,6 +120,9 @@ impl<'a> Key<'a> {
 pub(super) struct ElementSharing {
     entries: RefCell<VecDeque<Entry>>,
     next: Cell<u64>,
+    /// Исходы перепроверки текущего элемента: `lookup` начинает их заново,
+    /// `insert` после промаха того же элемента читает готовые.
+    memo: RefCell<Vec<Check>>,
     /// Разобранные блоки `style=""` для промахов.
     pub inline: super::inline_blocks::InlineBlocks,
 }
@@ -141,6 +144,8 @@ impl ElementSharing {
         vcx: ValueCx<'_>,
     ) -> Option<Shared> {
         let entries = self.entries.borrow();
+        let mut memo = self.memo.borrow_mut();
+        memo.clear();
         let hit = entries.iter().rev().find(|e| {
             e.hash == key.hash
                 && e.parent == key.parent
@@ -151,11 +156,9 @@ impl ElementSharing {
                 && e.tag == key.tag
                 && e.attrs == key.attrs
                 && e.environment.matches(vcx)
-                && e.checks.iter().all(|&(i, plain, layer)| {
-                    let sel = &key.scope.rules[i].sel;
-                    matches(sel, me, path, sibs) == plain
-                        && matches_ignoring_pseudo(sel, me, path, sibs) == layer
-                })
+                && e.checks
+                    .iter()
+                    .all(|&check| outcome(&mut memo, key.scope, check.0, me, path, sibs) == check)
         })?;
         crate::work::add!(ElementSharingHits, 1);
         Some(hit.shared.clone())
@@ -181,22 +184,16 @@ impl ElementSharing {
         {
             return;
         }
-        let checks: Vec<(usize, bool, bool)> = shared
+        let mut memo = self.memo.borrow_mut();
+        let checks: Vec<Check> = shared
             .candidates
             .iter()
             .filter(|&&i| facts[i].revalidate)
-            .map(|&i| {
-                let sel = &key.scope.rules[i].sel;
-                (
-                    i,
-                    matches(sel, me, path, sibs),
-                    matches_ignoring_pseudo(sel, me, path, sibs),
-                )
-            })
+            .map(|&i| outcome(&mut memo, key.scope, i, me, path, sibs))
             .collect();
         let bytes = size_of::<Entry>()
             + key.tag.len()
-            + checks.len() * size_of::<(usize, bool, bool)>()
+            + checks.len() * size_of::<Check>()
             + key
                 .attrs
                 .iter()

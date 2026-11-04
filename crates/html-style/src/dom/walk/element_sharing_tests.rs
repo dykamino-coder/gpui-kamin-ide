@@ -106,3 +106,21 @@ fn different_attributes_do_not_share() {
     );
     assert_ne!(s[0], s[1]);
 }
+
+#[test]
+fn several_entries_with_one_key_are_told_apart_by_their_outcomes() {
+    let s = styles(
+        "<style>.r:nth-child(3n+1){color:red}.r:nth-child(3n+2){color:green}\
+         .r:nth-child(3n+2):hover{color:blue}</style><div>\
+         <p class=r>a</p><p class=r>b</p><p class=r>c</p>\
+         <p class=r>d</p><p class=r>e</p><p class=r>f</p></div>",
+        "p",
+    );
+    assert_eq!(s.len(), 6);
+    assert_ne!(s[0], s[1]);
+    assert_ne!(s[1], s[2]);
+    assert_ne!(s[0], s[2]);
+    assert_eq!(s[0], s[3]);
+    assert_eq!(s[1], s[4]);
+    assert_eq!(s[2], s[5]);
+}
