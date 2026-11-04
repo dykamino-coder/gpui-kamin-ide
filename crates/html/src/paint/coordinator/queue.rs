@@ -13,10 +13,7 @@ pub(super) struct Positioned {
 
 pub(super) struct Inline {
     pub paint: InlinePaint,
-    /// Окружение краски — снимок почти в два килобайта: в куче, чтобы
-    /// очередь кадра (тысячи заданий строк) росла и копировалась по
-    /// указателям, а не перекладывала снимки целиком.
-    pub context: Box<RasterPaintCtx>,
+    pub context: RasterPaintCtx,
     /// Записи блоков, из вывода которых ушло это задание (`capture`).
     /// Почти всегда пусто: пустой срез не выделяет памяти и на слово уже
     /// вектора, а заданий в кадре стопки тысячи.
@@ -89,7 +86,7 @@ impl CssPaintPass {
             context.set_fill_transform(window.raster_frame().fill_transform);
             let admitted = self.jobs.admitted_below(depth + 1);
             let range = window
-                .with_raster_paint_ctx(*context, |window| {
+                .with_raster_paint_ctx(context, |window| {
                     window
                         .record_retained_paint(|window| match paint {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
