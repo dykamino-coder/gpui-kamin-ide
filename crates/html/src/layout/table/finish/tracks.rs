@@ -21,7 +21,7 @@ pub(super) fn table_tracks(
     let col_widths = &geom.col_widths;
     let cols_collapsed = &geom.cols_collapsed;
     let cols_pct = &geom.cols_pct;
-    let cb_px = opts.cx.constraints.cb_width();
+    let cb_px = || opts.cx.constraints.cb_width();
     let vcx = opts.cx.vcx();
     let mut col_widths = col_widths.to_vec();
     let vertical = e.style.used().wm().vertical();
@@ -68,7 +68,7 @@ pub(super) fn table_tracks(
         // рамок − 75 зазоров = 400).
         match match inline_size {
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) if !vertical => cb_px.filter(|v| *v > 0.0).map(|cb| cb * k),
+            Some(Len::Pct(k)) if !vertical => cb_px().filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         } {
             Some(v) => {

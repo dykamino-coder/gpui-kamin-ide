@@ -18,7 +18,7 @@ use crate::style::values::value::Len;
 
 pub(super) fn collapse_top(
     e: &mut Element,
-    cb: Option<f32>,
+    cb: crate::layout::cx::WidthBasis<'_>,
     vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
@@ -33,7 +33,7 @@ pub(super) fn collapse_top(
     // Дети `e` лежат в `e`: его ширина точками — содержащий блок для
     // `bfc_no_fit` внутри цепи.
     let cb = match e.style.used().reset_box_layout.width {
-        Some(Len::Px(w)) if w > 0.0 => Some(w),
+        Some(Len::Px(w)) if w > 0.0 => crate::layout::cx::WidthBasis::Known(Some(w)),
         _ => cb,
     };
     let chain = with_inner_dimensions(

@@ -129,6 +129,24 @@ impl BoxConstraints {
     }
 }
 
+/// A width a consumer reads only where it resolves against it (a float fit
+/// check, a percentage): an outside width is read, and so recorded
+/// (`BoxConstraints::track_widths`), only then.
+#[derive(Clone, Copy)]
+pub(crate) enum WidthBasis<'a> {
+    Known(Option<f32>),
+    Read(&'a dyn Fn() -> Option<f32>),
+}
+
+impl WidthBasis<'_> {
+    pub(crate) fn get(self) -> Option<f32> {
+        match self {
+            Self::Known(width) => width,
+            Self::Read(read) => read(),
+        }
+    }
+}
+
 /// Входы повторной меры. Размер страницы не заменяет процентную базу родителя:
 /// оба участвуют в зависимости снимка (CSS Sizing 3 §percentage-sizing).
 #[derive(Clone, Debug, PartialEq)]
@@ -169,5 +187,20 @@ mod tests {
             plain.set_cb_width(Some(800.0));
             plain
         });
+    }
+
+    #[test]
+    fn a_width_basis_records_the_read_only_when_it_is_resolved() {
+        let sink = Rc::new(Cell::new(false));
+        let mut outer = BoxConstraints::default();
+        outer.set_cb_width(Some(640.0));
+        outer.track_widths(sink.clone());
+        let read = || outer.cb_width();
+        let basis = WidthBasis::Read(&read);
+        assert!(!sink.get(), "passing the basis down reads nothing");
+        assert_eq!(WidthBasis::Known(Some(5.0)).get(), Some(5.0));
+        assert!(!sink.get());
+        assert_eq!(basis.get(), Some(640.0));
+        assert!(sink.get(), "a resolved outside width is recorded");
     }
 }
