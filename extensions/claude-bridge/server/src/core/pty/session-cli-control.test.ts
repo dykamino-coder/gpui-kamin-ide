@@ -75,6 +75,54 @@ describe('interactive CLI control', () => {
     f.mod.onTurn(null)
     expect(f.frames.at(-1).isWorking).toBe(false)
   })
+  it('accepts two submissions once the paired main OSC turn ends, even if the mod still reports it', () => {
+    vi.useFakeTimers()
+    try {
+      const f = fixture()
+      f.control.parser.feed('\x1b]7501;state=working:app=claude-code\x07')
+      f.mod.onTurn('finished-turn')
+      f.control.parser.feed('\x1b]7501;state=done:app=claude-code:id=background-task\x07')
+      expect(f.frames.at(-1)).toMatchObject({ isWorking: true, promptReady: false })
+      f.control.parser.feed('\x1b]7501;state=done:app=claude-code\x07')
+      f.mod.onTurn('finished-turn')
+      f.control.replay()
+      expect(f.frames.findLast((frame) => frame.type === 'session:activity')).toMatchObject({
+        isWorking: false,
+        promptReady: true,
+      })
+
+      expect(f.control.submit('first follow-up', 'first')).toBe(true)
+      expect(f.control.submit('second follow-up', 'second')).toBe(true)
+      f.mod.onRead('first', 'first-row')
+      vi.advanceTimersByTime(100)
+      f.mod.onRead('second', 'second-row')
+      vi.advanceTimersByTime(100)
+      expect(vi.mocked(f.mod.submit).mock.calls.map(([prompt, , id]) => [prompt, id])).toEqual([
+        ['first follow-up', 'first'],
+        ['second follow-up', 'second'],
+      ])
+      expect(f.write).not.toHaveBeenCalled()
+      expect(f.mod.abort).not.toHaveBeenCalled()
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+  it('does not use a delayed main OSC completion to mark a newer turn ready', () => {
+    const f = fixture()
+    f.mod.onTurn('old')
+    f.control.parser.feed('\x1b]7501;state=working:app=claude-code\x07')
+    f.mod.onTurn(null)
+    f.mod.onTurn('new')
+    f.control.parser.feed('\x1b]7501;state=done:app=claude-code\x07')
+    expect(f.frames.at(-1)).toMatchObject({ isWorking: true, promptReady: false })
+    f.control.parser.feed('\x1b]7501;state=working:app=claude-code\x07')
+    f.control.parser.feed('\x1b]7501;state=done:app=claude-code\x07')
+    expect(f.frames.at(-1)).toMatchObject({ isWorking: false, promptReady: true })
+    f.control.parser.feed('\x1b]7501;state=blocked:app=claude-code:kind=permission\x07')
+    expect(f.frames.at(-1)).toMatchObject({ waiting: true, promptReady: false })
+    expect(f.control.submit('wait for permission')).toBe(false)
+  })
   it('uses main OSC without a mod and replies outside the input coordinator', () => {
     const f = fixture()
     const control = new SessionCliControl(f.session)

@@ -202,6 +202,7 @@ impl TaffyLayoutEngine {
     /// Add an exact leaf made by `exact_leaf` to this frame's tree.
     pub(crate) fn request_exact_leaf(&mut self, leaf: &ExactLeaf) -> LayoutId {
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.taffy.new_leaf(leaf.style()).expect(super::EXPECT_MESSAGE).into()
+        let style = self.styles.share(leaf.style());
+        self.taffy.new_leaf(style).expect(super::EXPECT_MESSAGE).into()
     }
 }

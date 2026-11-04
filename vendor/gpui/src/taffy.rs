@@ -16,6 +16,8 @@ mod measured_box;
 mod exact_leaf;
 pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
+// KaminIDE patch: equal node styles of a tree share one allocation.
+mod style_share;
 mod final_geometry;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
@@ -101,6 +103,8 @@ pub struct TaffyLayoutEngine {
     /// KaminIDE patch: the window's frame tree, sized by the frame's elements;
     /// independent subtrees hold only their own nodes.
     frame_tree: bool,
+    /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
+    styles: style_share::StyleShare,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
@@ -140,6 +144,7 @@ impl TaffyLayoutEngine {
             computed_layouts: FxHashSet::default(),
             layout_bounds_scratch_space: Vec::new(),
             frame_tree: false,
+            styles: Default::default(),
         }
     }
 
@@ -162,6 +167,7 @@ impl TaffyLayoutEngine {
     pub fn clear(&mut self) {
         self.final_geometry = final_geometry::FinalGeometry::default();
         self.taffy.clear();
+        self.styles.clear();
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
         self.root_origins.clear();
@@ -218,6 +224,7 @@ impl TaffyLayoutEngine {
             let _calc = self.taffy.calc_scope();
             style.to_taffy(rem_size, scale_factor)
         };
+        let taffy_style = self.styles.share(taffy_style);
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         if children.is_empty() {

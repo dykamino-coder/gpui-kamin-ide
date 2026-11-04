@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.0.85"
+version = "1.0.86"
 edition = "2024"
 
 # Keep fallible results visible at every workspace boundary.
@@ -67,6 +67,7 @@ kamin-ws = { path = "crates/ws" }
 kamin-model = { path = "crates/model" }
 kamin-sidecar = { path = "crates/sidecar" }
 kamin-crash = { path = "crates/crash" }
+kamin-alloc = { path = "crates/alloc" }
 kamin-html = { path = "crates/html" }
 
 # Perf-профиль из plan/10 (DLP-иммунитет: mimalloc в shell; размер/скорость)

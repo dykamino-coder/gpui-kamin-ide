@@ -128,7 +128,7 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_down_listeners
+        self.listeners_mut().mouse_down_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == button
@@ -147,7 +147,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_down_listeners
+        self.listeners_mut().mouse_down_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -163,7 +163,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_down_listeners
+        self.listeners_mut().mouse_down_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -179,7 +179,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_pressure_listeners
+        self.listeners_mut().mouse_pressure_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -195,7 +195,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_pressure_listeners
+        self.listeners_mut().mouse_pressure_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -212,7 +212,7 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_up_listeners
+        self.listeners_mut().mouse_up_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == button
@@ -231,7 +231,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_up_listeners
+        self.listeners_mut().mouse_up_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -247,7 +247,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_up_listeners
+        self.listeners_mut().mouse_up_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
@@ -264,7 +264,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_down_listeners
+        self.listeners_mut().mouse_down_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && !window.has_active_prompt()
@@ -285,7 +285,7 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_up_listeners
+        self.listeners_mut().mouse_up_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && event.button == button
@@ -304,7 +304,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_move_listeners
+        self.listeners_mut().mouse_move_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
@@ -320,7 +320,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseExitEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.mouse_exit_listeners
+        self.listeners_mut().mouse_exit_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
@@ -339,7 +339,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&FileDropEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.file_drop_exit_listeners
+        self.listeners_mut().file_drop_exit_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && matches!(event, FileDropEvent::Exited)
@@ -363,7 +363,7 @@ impl Interactivity {
     ) where
         T: 'static,
     {
-        self.mouse_move_listeners
+        self.listeners_mut().mouse_move_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && let Some(drag) = &cx.active_drag
@@ -391,7 +391,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.scroll_wheel_listeners
+        self.listeners_mut().scroll_wheel_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
                     (listener)(event, window, cx);
@@ -403,7 +403,7 @@ impl Interactivity {
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_pinch(&mut self, listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static) {
-        self.pinch_listeners
+        self.listeners_mut().pinch_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
@@ -418,7 +418,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.pinch_listeners
+        self.listeners_mut().pinch_listeners
             .push(Box::new(move |event, phase, _hitbox, window, cx| {
                 if phase == DispatchPhase::Capture {
                     (listener)(event, window, cx);
@@ -436,7 +436,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&A, &mut Window, &mut App) + 'static,
     ) {
-        self.action_listeners.push((
+        self.listeners_mut().action_listeners.push((
             TypeId::of::<A>(),
             Box::new(move |action, phase, window, cx| {
                 let action = action.downcast_ref().unwrap();
@@ -456,7 +456,7 @@ impl Interactivity {
     #[track_caller]
     #[inline(always)]
     pub fn on_action<A: Action>(&mut self, listener: impl Fn(&A, &mut Window, &mut App) + 'static) {
-        self.action_listeners.push((
+        self.listeners_mut().action_listeners.push((
             TypeId::of::<A>(),
             Box::new(move |action, phase, window, cx| {
                 let action = action.downcast_ref().unwrap();
@@ -479,7 +479,7 @@ impl Interactivity {
         listener: impl Fn(&dyn Action, &mut Window, &mut App) + 'static,
     ) {
         let action = action.boxed_clone();
-        self.action_listeners.push((
+        self.listeners_mut().action_listeners.push((
             (*action).type_id(),
             Box::new(move |_, phase, window, cx| {
                 if phase == DispatchPhase::Bubble {
@@ -497,7 +497,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.key_down_listeners
+        self.listeners_mut().key_down_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Bubble {
                     (listener)(event, window, cx)
@@ -513,7 +513,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.key_down_listeners
+        self.listeners_mut().key_down_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Capture {
                     listener(event, window, cx)
@@ -526,7 +526,7 @@ impl Interactivity {
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_key_up(&mut self, listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static) {
-        self.key_up_listeners
+        self.listeners_mut().key_up_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Bubble {
                     listener(event, window, cx)
@@ -542,7 +542,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.key_up_listeners
+        self.listeners_mut().key_up_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Capture {
                     listener(event, window, cx)
@@ -558,7 +558,7 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&ModifiersChangedEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.modifiers_changed_listeners.push(Box::new(listener));
+        self.listeners_mut().modifiers_changed_listeners.push(Box::new(listener));
     }
 
     /// Bind the given callback to drop events of the given type, whether or not the drag started on this element.
@@ -566,7 +566,7 @@ impl Interactivity {
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_drop<T: 'static>(&mut self, listener: impl Fn(&T, &mut Window, &mut App) + 'static) {
-        self.drop_listeners.push((
+        self.listeners_mut().drop_listeners.push((
             TypeId::of::<T>(),
             Box::new(move |dragged_value, window, cx| {
                 listener(dragged_value.downcast_ref().unwrap(), window, cx);
@@ -592,7 +592,7 @@ impl Interactivity {
     where
         Self: Sized,
     {
-        self.click_listeners.push(Rc::new(listener));
+        self.listeners_mut().click_listeners.push(Rc::new(listener));
     }
 
     /// Bind the given callback to non-primary click events of this element.
@@ -603,7 +603,7 @@ impl Interactivity {
     where
         Self: Sized,
     {
-        self.aux_click_listeners.push(Rc::new(listener));
+        self.listeners_mut().aux_click_listeners.push(Rc::new(listener));
     }
 
     /// On drag initiation, this callback will be used to create a new view to render the dragged value for a
@@ -758,8 +758,14 @@ impl Interactivity {
         self.hitbox_behavior = HitboxBehavior::BlockMouseExceptScroll;
     }
 
-    fn has_pinch_listeners(&self) -> bool {
-        !self.pinch_listeners.is_empty()
+    /// KaminIDE patch: the listener block, allocated on the first registration.
+    pub(crate) fn listeners_mut(&mut self) -> &mut InteractivityListeners {
+        self.listeners.get_or_insert_with(Default::default)
+    }
+
+    /// KaminIDE patch: take one listener list without allocating the block.
+    fn take_listeners<T>(&mut self, list: impl FnOnce(&mut InteractivityListeners) -> &mut Vec<T>) -> Vec<T> {
+        self.listeners.as_deref_mut().map(|listeners| mem::take(list(listeners))).unwrap_or_default()
     }
 }
 
@@ -1192,7 +1198,7 @@ pub trait InteractiveElement: Sized {
         mut self,
         f: impl 'static + Fn(StyleRefinement, &S, &mut Window, &mut App) -> StyleRefinement,
     ) -> Self {
-        self.interactivity().drag_over_styles.push((
+        self.interactivity().listeners_mut().drag_over_styles.push((
             TypeId::of::<S>(),
             Box::new(move |currently_dragged: &dyn Any, window, cx| {
                 f(
@@ -1212,7 +1218,7 @@ pub trait InteractiveElement: Sized {
         group_name: impl Into<SharedString>,
         f: impl FnOnce(StyleRefinement) -> StyleRefinement,
     ) -> Self {
-        self.interactivity().group_drag_over_styles.push((
+        self.interactivity().listeners_mut().group_drag_over_styles.push((
             TypeId::of::<S>(),
             GroupStyle {
                 group: group_name.into(),
@@ -1507,6 +1513,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         + 'static,
     ) -> Self {
         self.interactivity()
+            .listeners_mut()
             .a11y_action_listeners
             .push((action, Box::new(listener)));
         self
@@ -2268,6 +2275,8 @@ pub struct Interactivity {
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) group: Option<SharedString>,
+    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
+    pub(crate) listeners: Option<Box<InteractivityListeners>>,
     /// The base style of the element, before any modifications are applied
     /// by focus, active, etc.
     pub base_style: Box<StyleRefinement>,
@@ -2278,6 +2287,37 @@ pub struct Interactivity {
     pub(crate) group_hover_style: Option<GroupStyle>,
     pub(crate) active_style: Option<Box<StyleRefinement>>,
     pub(crate) group_active_style: Option<GroupStyle>,
+    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
+    pub(crate) drag_listener: Option<DragListener>,
+    pub(crate) hover_listener: Option<Box<dyn Fn(&bool, &mut Window, &mut App)>>,
+    pub(crate) hover_listener_mode: HoverListenerMode,
+    pub(crate) tooltip_builder: Option<TooltipBuilder>,
+    pub(crate) tooltip_show_delay: Option<Duration>,
+    pub(crate) window_control: Option<WindowControlArea>,
+    pub(crate) hitbox_behavior: HitboxBehavior,
+    pub(crate) tab_index: Option<isize>,
+    pub(crate) tab_group: bool,
+    pub(crate) tab_stop: bool,
+
+    pub(crate) a11y_synthetic_children: Option<Box<dyn FnOnce(&mut crate::A11ySubtreeBuilder)>>,
+    pub(crate) report_active_descendant_focus: bool,
+    pub(crate) override_role: Option<accesskit::Role>,
+    pub(crate) aria: AriaProperties,
+
+    #[cfg(any(feature = "inspector", debug_assertions))]
+    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
+
+    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
+    pub(crate) debug_selector: Option<String>,
+}
+
+/// KaminIDE patch: the listener and drag-style lists of an [`Interactivity`].
+///
+/// Twenty lists inline were about half of every `Div`, and most boxes of a rendered document
+/// never register a listener, so the lists live in one block allocated by the first
+/// registration; a box without listeners keeps a single null pointer.
+#[derive(Default)]
+pub(crate) struct InteractivityListeners {
     pub(crate) drag_over_styles: Vec<(
         TypeId,
         Box<dyn Fn(&dyn Any, &mut Window, &mut App) -> StyleRefinement>,
@@ -2296,32 +2336,28 @@ pub struct Interactivity {
     pub(crate) modifiers_changed_listeners: Vec<ModifiersChangedListener>,
     pub(crate) action_listeners: Vec<(TypeId, ActionListener)>,
     pub(crate) drop_listeners: Vec<(TypeId, DropListener)>,
-    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
     pub(crate) click_listeners: Vec<ClickListener>,
     pub(crate) aux_click_listeners: Vec<ClickListener>,
-    pub(crate) drag_listener: Option<DragListener>,
-    pub(crate) hover_listener: Option<Box<dyn Fn(&bool, &mut Window, &mut App)>>,
-    pub(crate) hover_listener_mode: HoverListenerMode,
-    pub(crate) tooltip_builder: Option<TooltipBuilder>,
-    pub(crate) tooltip_show_delay: Option<Duration>,
-    pub(crate) window_control: Option<WindowControlArea>,
-    pub(crate) hitbox_behavior: HitboxBehavior,
-    pub(crate) tab_index: Option<isize>,
-    pub(crate) tab_group: bool,
-    pub(crate) tab_stop: bool,
-
     pub(crate) a11y_action_listeners:
         Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-    pub(crate) a11y_synthetic_children: Option<Box<dyn FnOnce(&mut crate::A11ySubtreeBuilder)>>,
-    pub(crate) report_active_descendant_focus: bool,
-    pub(crate) override_role: Option<accesskit::Role>,
-    pub(crate) aria: AriaProperties,
+}
 
-    #[cfg(any(feature = "inspector", debug_assertions))]
-    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
-
-    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
-    pub(crate) debug_selector: Option<String>,
+impl InteractivityListeners {
+    /// Whether a registered list needs the element's hitbox.
+    fn need_hitbox(&self) -> bool {
+        !self.mouse_up_listeners.is_empty()
+            || !self.mouse_pressure_listeners.is_empty()
+            || !self.mouse_down_listeners.is_empty()
+            || !self.mouse_move_listeners.is_empty()
+            || !self.mouse_exit_listeners.is_empty()
+            || !self.file_drop_exit_listeners.is_empty()
+            || !self.click_listeners.is_empty()
+            || !self.aux_click_listeners.is_empty()
+            || !self.scroll_wheel_listeners.is_empty()
+            || !self.pinch_listeners.is_empty()
+            || !self.drop_listeners.is_empty()
+            || !self.drag_over_styles.is_empty()
+    }
 }
 
 impl Interactivity {
@@ -2565,19 +2601,8 @@ impl Interactivity {
             || self.hover_style.is_some()
             || self.group_hover_style.is_some()
             || self.hover_listener.is_some()
-            || !self.mouse_up_listeners.is_empty()
-            || !self.mouse_pressure_listeners.is_empty()
-            || !self.mouse_down_listeners.is_empty()
-            || !self.mouse_move_listeners.is_empty()
-            || !self.mouse_exit_listeners.is_empty()
-            || !self.file_drop_exit_listeners.is_empty()
-            || !self.click_listeners.is_empty()
-            || !self.aux_click_listeners.is_empty()
-            || !self.scroll_wheel_listeners.is_empty()
-            || self.has_pinch_listeners()
+            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
             || self.drag_listener.is_some()
-            || !self.drop_listeners.is_empty()
-            || !self.drag_over_styles.is_empty()
             || self.tooltip_builder.is_some()
             || window.is_inspector_picking(cx)
     }
@@ -2783,9 +2808,10 @@ impl Interactivity {
 
                         if window.a11y.is_active() {
                             if let Some(global_id) = global_id {
-                                if !self.a11y_action_listeners.is_empty() {
+                                let a11y_action_listeners = self.take_listeners(|l| &mut l.a11y_action_listeners);
+                                if !a11y_action_listeners.is_empty() {
                                     let node_id = global_id.accesskit_node_id();
-                                    for (action, listener) in self.a11y_action_listeners.drain(..) {
+                                    for (action, listener) in a11y_action_listeners {
                                         window.on_a11y_action(node_id, action, listener);
                                     }
                                 }
@@ -2956,56 +2982,58 @@ impl Interactivity {
             });
         }
 
-        for listener in self.mouse_down_listeners.drain(..) {
+        let mut no_listeners = InteractivityListeners::default();
+        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
+        for listener in listeners.mouse_down_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.mouse_up_listeners.drain(..) {
+        for listener in listeners.mouse_up_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.mouse_pressure_listeners.drain(..) {
+        for listener in listeners.mouse_pressure_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &MousePressureEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.mouse_move_listeners.drain(..) {
+        for listener in listeners.mouse_move_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.mouse_exit_listeners.drain(..) {
+        for listener in listeners.mouse_exit_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &MouseExitEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.file_drop_exit_listeners.drain(..) {
+        for listener in listeners.file_drop_exit_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &FileDropEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.scroll_wheel_listeners.drain(..) {
+        for listener in listeners.scroll_wheel_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
 
-        for listener in self.pinch_listeners.drain(..) {
+        for listener in listeners.pinch_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &PinchEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
@@ -3014,7 +3042,8 @@ impl Interactivity {
 
         if self.hover_style.is_some()
             || self.base_style.mouse_cursor.is_some()
-            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
+            || cx.active_drag.is_some()
+                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
         {
             let hitbox = hitbox.clone();
             let hover_state = self.hover_style.as_ref().and_then(|_| {
@@ -3065,9 +3094,9 @@ impl Interactivity {
         let drag_cursor_style = self.base_style.as_ref().mouse_cursor;
 
         let mut drag_listener = mem::take(&mut self.drag_listener);
-        let drop_listeners = mem::take(&mut self.drop_listeners);
-        let click_listeners = mem::take(&mut self.click_listeners);
-        let aux_click_listeners = mem::take(&mut self.aux_click_listeners);
+        let drop_listeners = self.take_listeners(|l| &mut l.drop_listeners);
+        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
+        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
         let can_drop_predicate = mem::take(&mut self.can_drop_predicate);
 
         if !drop_listeners.is_empty() {
@@ -3442,10 +3471,10 @@ impl Interactivity {
     }
 
     fn paint_keyboard_listeners(&mut self, window: &mut Window, _cx: &mut App) {
-        let key_down_listeners = mem::take(&mut self.key_down_listeners);
-        let key_up_listeners = mem::take(&mut self.key_up_listeners);
-        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
-        let action_listeners = mem::take(&mut self.action_listeners);
+        let key_down_listeners = self.take_listeners(|l| &mut l.key_down_listeners);
+        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
+        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
+        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
         if let Some(context) = self.key_context.clone() {
             window.set_key_context(context);
         }
@@ -3666,7 +3695,7 @@ impl Interactivity {
                 }
 
                 if can_drop {
-                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
+                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
                         if let Some(group_hitbox_id) =
                             GroupHitboxes::get(&group_drag_style.group, cx)
                             && *state_type == drag.value.as_ref().type_id()
@@ -3676,7 +3705,7 @@ impl Interactivity {
                         }
                     }
 
-                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
+                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
                         if *state_type == drag.value.as_ref().type_id() && hitbox.is_hovered(window)
                         {
                             style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
@@ -3775,13 +3804,13 @@ impl Interactivity {
         if let Some(count) = self.aria.column_count {
             node.set_column_count(count);
         }
-        if !self.click_listeners.is_empty() {
+        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
             node.add_action(accesskit::Action::Click);
         }
         if self.tracked_focus_handle.is_some() || self.focusable {
             node.add_action(accesskit::Action::Focus);
         }
-        for (action, _) in &self.a11y_action_listeners {
+        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
             node.add_action(*action);
         }
     }
@@ -4633,6 +4662,27 @@ mod tests {
         MouseMoveEvent, TestAppContext, TouchEvent, TouchId, canvas, util::FluentBuilder as _,
     };
     use std::{cell::Cell, rc::Weak};
+
+    #[test]
+    fn listener_lists_are_allocated_by_the_first_registration() {
+        let mut interactivity = Interactivity::new();
+        assert!(interactivity.listeners.is_none());
+        assert!(interactivity.take_listeners(|l| &mut l.click_listeners).is_empty());
+        assert!(interactivity.listeners.is_none(), "taking an empty list must not allocate");
+
+        interactivity.on_click(|_, _, _| {});
+        let listeners = interactivity.listeners.as_deref().expect("registered");
+        assert_eq!(listeners.click_listeners.len(), 1);
+        assert!(listeners.need_hitbox());
+        assert_eq!(interactivity.take_listeners(|l| &mut l.click_listeners).len(), 1);
+        assert!(!interactivity.listeners.as_deref().unwrap().need_hitbox());
+
+        // The block replaces twenty inline lists with one pointer.
+        assert!(
+            std::mem::size_of::<InteractivityListeners>()
+                >= 18 * std::mem::size_of::<Vec<()>>()
+        );
+    }
 
     struct GroupHoverTestView {
         render_count: Rc<Cell<usize>>,
