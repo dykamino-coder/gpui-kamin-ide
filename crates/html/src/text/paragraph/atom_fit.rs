@@ -41,9 +41,9 @@ pub(super) struct AtomFit {
     cache: Vec<(f32, Fitted)>,
 }
 
-/// The wrapper (`Paragraph::atoms`) is a row of [probe, atom]: the atom is
-/// child 1.
-const ATOM_CHILD: usize = 1;
+/// The wrapper (`Paragraph::atoms`) is a baseline row whose only child is the
+/// atom.
+const ATOM_CHILD: usize = 0;
 
 impl AtomFit {
     pub(super) fn is_empty(&self) -> bool {
@@ -198,26 +198,32 @@ impl Paragraph {
             );
         }
         // Real geometry wins over the copy's for placement and painting.
+        let mut drops = Vec::with_capacity(fitted.len());
         let fitted: Fitted = fitted
             .iter()
             .map(|&(k, w, h, base)| {
-                let slot = &self.atoms[k];
-                let real_h = slot
-                    .root
-                    .get()
-                    .map_or(h, |id| f32::from(window.layout_exact(id).1.height));
-                let real_base = slot
-                    .probe
-                    .get()
-                    .map_or(base, |id| f32::from(window.layout_exact(id).0.y));
+                let root = self.atoms[k].root.get();
+                let (real_h, real_base, drop) = match root {
+                    Some(id) => {
+                        let row_h = f32::from(window.layout_exact(id).1.height);
+                        atoms::row_geometry::row_geometry(Some(id), row_h, window)
+                    }
+                    None => (h, base, 0.0),
+                };
                 let real_base = if real_base <= 0.0 && real_h > 0.0 {
                     real_h
                 } else {
                     real_base
                 };
+                drops.push((k, drop));
                 (k, w, real_h, real_base)
             })
             .collect();
         self.apply_atom_fit(&fitted);
+        for (k, drop) in drops {
+            if let Some(b) = self.atom_boxes.get_mut(k) {
+                b.drop = drop;
+            }
+        }
     }
 }

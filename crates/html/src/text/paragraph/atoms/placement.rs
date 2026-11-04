@@ -54,21 +54,13 @@ impl Paragraph {
                 .get()
                 .map(|id| window.layout_exact(id).1)
                 .unwrap_or(rounded);
-            let base = slot
-                .probe
-                .get()
-                .map(|id| f32::from(window.layout_exact(id).0.y))
-                .unwrap_or(f32::from(s.height));
+            let (h, base, drop) = super::row_geometry::row_geometry(slot.root.get(), f32::from(s.height), window);
             // Базовая на самом ВЕРХУ коробки — признак того, что раскладка
             // базовой линии не нашла (таблица с пустой ячейкой отдаёт ноль).
             // По CSS 2.1 §17.5.3 и §10.8.1 тогда это низ коробки: «If there is
             // no such line box or table-row, the baseline is the bottom of
             // content edge of the cell box» (`min-height-applies-to-014`).
-            let base = if base <= 0.0 && s.height > px(0.) {
-                f32::from(s.height)
-            } else {
-                base
-            };
+            let base = if base <= 0.0 && h > 0.0 { h } else { base };
             // Vertical mixed/upright lines use the central dominant baseline
             // (css-inline-3 §dominant-baseline auto; Blink
             // `ComputedStyle::GetFontBaseline`): the atom's central baseline —
@@ -83,7 +75,6 @@ impl Paragraph {
             // ComputeEmHeight keeps text and annotations in one baseline set).
             let base = if self.rotated_central && slot.extents.is_empty() {
                 let (asc, desc, _) = self.strut;
-                let h = f32::from(s.height);
                 let central = if (base - h).abs() < COORD_EPS {
                     h / 2.0
                 } else {
@@ -140,8 +131,9 @@ impl Paragraph {
             }
             self.atom_boxes.push(AtomBox {
                 at: slot.at,
-                h: f32::from(s.height),
+                h,
                 base,
+                drop,
                 align: slot.align,
                 over,
                 under,

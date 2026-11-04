@@ -10,6 +10,9 @@ mod intrinsic;
 mod line_baselines;
 // KaminIDE patch: read the first actual content baseline from completed layout.
 mod content_line;
+// KaminIDE patch: the baseline a row gives its single item, from the stored layout output.
+mod row_item;
+pub use row_item::RowItemBaseline;
 mod measured_content;
 mod measured_box;
 // KaminIDE patch: exact leaves standing in for skipped retained subtrees.
