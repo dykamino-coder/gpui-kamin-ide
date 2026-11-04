@@ -164,3 +164,24 @@ fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
     }
     assert_eq!(engine.claimed_nodes(), 12);
 }
+
+#[test]
+fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let a = measured(&mut engine, Some(1));
+    let _ = leaf(&mut engine, 10.);
+    let b = measured(&mut engine, Some(1));
+    engine.clear();
+    engine.set_layout_keys(true);
+    // `a` at its position, `b` from the candidates (its position holds the plain leaf).
+    assert_eq!(measured(&mut engine, Some(1)), a);
+    assert_eq!(measured(&mut engine, Some(1)), b);
+    let retained = &engine.retained;
+    assert!(retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    assert!(retained.key_slots.is_empty());
+    // A third request of the key finds no claimed leaf to take again.
+    let c = measured(&mut engine, Some(1));
+    assert!(c != a && c != b);
+    assert_eq!(engine.claimed_nodes(), 2);
+}

@@ -17285,10 +17285,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9a800f894
+index 0000000000000000000000000000000000000000..98cf45238284d66e7a7ca354fff63ed8c70f5a52
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,318 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17336,7 +17336,11 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +    /// Layout keys of the measured leaves in the tree.
 +    keys: FxHashMap<NodeId, u64>,
 +    /// Unclaimed measured leaves of the previous pass by layout key.
-+    by_key: FxHashMap<u64, Vec<NodeId>>,
++    pub(super) by_key: FxHashMap<u64, Vec<NodeId>>,
++    /// Index of each unclaimed measured leaf in its `by_key` list: a claimed
++    /// or recycled leaf leaves its list in O(1), so a key shared by many
++    /// leaves never makes a request scan the leaves already claimed.
++    pub(super) key_slots: FxHashMap<NodeId, usize>,
 +    /// Layout key for the next measured leaf request.
 +    pub(super) next_key: Option<u64>,
 +    /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
@@ -17362,6 +17366,22 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +    fn note(&mut self, node: NodeId) {
 +        self.live.insert(node);
 +        self.seq.push(node);
++    }
++
++    /// Take the previous measured leaf `node` out of the candidates of `key`.
++    fn unlist(&mut self, key: u64, node: NodeId) {
++        let Some(at) = self.key_slots.remove(&node) else {
++            return;
++        };
++        let Some(list) = self.by_key.get_mut(&key) else {
++            return;
++        };
++        if list.get(at) == Some(&node) {
++            list.swap_remove(at);
++            if let Some(&moved) = list.get(at) {
++                self.key_slots.insert(moved, at);
++            }
++        }
 +    }
 +}
 +
@@ -17431,15 +17451,11 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +        let node = match at_position {
 +            Some(node) => node,
 +            None => {
-+                let candidates = self.retained.by_key.get_mut(&key)?;
-+                // Leaves claimed at their positions stay listed; drop them lazily.
-+                while candidates.last().is_some_and(|node| live.contains(node)) {
-+                    candidates.pop();
-+                }
-+                let at = candidates.iter().rposition(fits)?;
-+                candidates.swap_remove(at)
++                let candidates = self.retained.by_key.get(&key)?;
++                candidates[candidates.iter().rposition(fits)?]
 +            }
 +        };
++        self.retained.unlist(key, node);
 +        let fresh = context.take()?;
 +        if let Some(old) = self.taffy.get_node_context_mut(node) {
 +            old.measure = fresh.measure;
@@ -17458,7 +17474,9 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +        if self.retained.live.contains(&node) {
 +            return None;
 +        }
-+        self.retained.keys.remove(&node);
++        if let Some(key) = self.retained.keys.remove(&node) {
++            self.retained.unlist(key, node);
++        }
 +        Some(node)
 +    }
 +
@@ -17515,8 +17533,11 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +        }
 +        retained.keys.retain(|node, _| live.contains(node));
 +        retained.by_key.clear();
++        retained.key_slots.clear();
 +        for (node, key) in &retained.keys {
-+            retained.by_key.entry(*key).or_default().push(*node);
++            let list = retained.by_key.entry(*key).or_default();
++            retained.key_slots.insert(*node, list.len());
++            list.push(*node);
 +        }
 +        retained.prev = std::mem::take(&mut retained.seq);
 +        retained.next_key = None;
@@ -17588,10 +17609,10 @@ index 0000000000000000000000000000000000000000..ec9066287ae962acbe4751b685e7e8f9
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..038b7628a49b5bbf4b823491a1b6e59fe0d4a895
+index 0000000000000000000000000000000000000000..5b9fdd69b5307ab08d3a444ebd6d1ea545cc5763
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,187 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -17757,6 +17778,27 @@ index 0000000000000000000000000000000000000000..038b7628a49b5bbf4b823491a1b6e59f
 +        assert_eq!(parent(&mut engine, &[probe, a]), old);
 +    }
 +    assert_eq!(engine.claimed_nodes(), 12);
++}
++
++#[test]
++fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let a = measured(&mut engine, Some(1));
++    let _ = leaf(&mut engine, 10.);
++    let b = measured(&mut engine, Some(1));
++    engine.clear();
++    engine.set_layout_keys(true);
++    // `a` at its position, `b` from the candidates (its position holds the plain leaf).
++    assert_eq!(measured(&mut engine, Some(1)), a);
++    assert_eq!(measured(&mut engine, Some(1)), b);
++    let retained = &engine.retained;
++    assert!(retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
++    assert!(retained.key_slots.is_empty());
++    // A third request of the key finds no claimed leaf to take again.
++    let c = measured(&mut engine, Some(1));
++    assert!(c != a && c != b);
++    assert_eq!(engine.claimed_nodes(), 2);
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs

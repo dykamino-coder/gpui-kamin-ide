@@ -45,7 +45,11 @@ pub(super) struct Retained {
     /// Layout keys of the measured leaves in the tree.
     keys: FxHashMap<NodeId, u64>,
     /// Unclaimed measured leaves of the previous pass by layout key.
-    by_key: FxHashMap<u64, Vec<NodeId>>,
+    pub(super) by_key: FxHashMap<u64, Vec<NodeId>>,
+    /// Index of each unclaimed measured leaf in its `by_key` list: a claimed
+    /// or recycled leaf leaves its list in O(1), so a key shared by many
+    /// leaves never makes a request scan the leaves already claimed.
+    pub(super) key_slots: FxHashMap<NodeId, usize>,
     /// Layout key for the next measured leaf request.
     pub(super) next_key: Option<u64>,
     /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
@@ -71,6 +75,22 @@ impl Retained {
     fn note(&mut self, node: NodeId) {
         self.live.insert(node);
         self.seq.push(node);
+    }
+
+    /// Take the previous measured leaf `node` out of the candidates of `key`.
+    fn unlist(&mut self, key: u64, node: NodeId) {
+        let Some(at) = self.key_slots.remove(&node) else {
+            return;
+        };
+        let Some(list) = self.by_key.get_mut(&key) else {
+            return;
+        };
+        if list.get(at) == Some(&node) {
+            list.swap_remove(at);
+            if let Some(&moved) = list.get(at) {
+                self.key_slots.insert(moved, at);
+            }
+        }
     }
 }
 
@@ -140,15 +160,11 @@ impl TaffyLayoutEngine {
         let node = match at_position {
             Some(node) => node,
             None => {
-                let candidates = self.retained.by_key.get_mut(&key)?;
-                // Leaves claimed at their positions stay listed; drop them lazily.
-                while candidates.last().is_some_and(|node| live.contains(node)) {
-                    candidates.pop();
-                }
-                let at = candidates.iter().rposition(fits)?;
-                candidates.swap_remove(at)
+                let candidates = self.retained.by_key.get(&key)?;
+                candidates[candidates.iter().rposition(fits)?]
             }
         };
+        self.retained.unlist(key, node);
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
@@ -167,7 +183,9 @@ impl TaffyLayoutEngine {
         if self.retained.live.contains(&node) {
             return None;
         }
-        self.retained.keys.remove(&node);
+        if let Some(key) = self.retained.keys.remove(&node) {
+            self.retained.unlist(key, node);
+        }
         Some(node)
     }
 
@@ -224,8 +242,11 @@ impl TaffyLayoutEngine {
         }
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
+        retained.key_slots.clear();
         for (node, key) in &retained.keys {
-            retained.by_key.entry(*key).or_default().push(*node);
+            let list = retained.by_key.entry(*key).or_default();
+            retained.key_slots.insert(*node, list.len());
+            list.push(*node);
         }
         retained.prev = std::mem::take(&mut retained.seq);
         retained.next_key = None;
