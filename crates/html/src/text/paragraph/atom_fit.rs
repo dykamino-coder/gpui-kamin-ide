@@ -101,6 +101,12 @@ impl Paragraph {
                 else {
                     continue;
                 };
+                // A width fixed by style never shrinks to fit (§10.3.9): no
+                // copy and no intrinsic measurement. Debug builds still
+                // measure to check that min-content equals max-content.
+                if slot.fixed_inline && !cfg!(debug_assertions) {
+                    continue;
+                }
                 let max = f32::from(window.layout_exact(root).1.width);
                 let mut snap = window.snapshot_layout_measurement(root);
                 let (smin, _, _) = snap.measure(
@@ -115,6 +121,10 @@ impl Paragraph {
                 if min >= max - COORD_EPS {
                     continue;
                 }
+                debug_assert!(
+                    !slot.fixed_inline,
+                    "style-fixed atom width must not depend on the containing block: min {min}, max {max}"
+                );
                 let (smax, sbase, _) = snap.measure(
                     size(
                         gpui::AvailableSpace::MaxContent,

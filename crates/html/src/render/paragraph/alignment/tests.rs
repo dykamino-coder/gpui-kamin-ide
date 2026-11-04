@@ -43,3 +43,28 @@ fn an_atom_takes_its_own_vertical_align_not_the_inline_ancestors() {
     let i = find(&parsed.nodes, "i").unwrap();
     assert_eq!(atom_line_align(i, &parent, &opts), Some(AtomAlign::Bottom));
 }
+
+#[test]
+fn only_a_definite_width_fixes_the_atom_inline_size() {
+    let parsed = crate::document::parsed::parse(
+        r#"<body><p><b style="display: inline-block; width: 8px">x</b><i style="display: inline-block">y</i><u style="display: inline-block; width: 8px; max-width: min-content">z</u><s style="display: inline-table; width: 8px">t</s><q style="display: inline-block; width: 8px; writing-mode: vertical-rl">v</q><em style="display: inline-flex; width: 8px; min-width: 2px; max-width: 9px">f</em><img style="width: 8px"></p></body>"#,
+        "",
+    );
+    crate::style::cascade::materialize::materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
+    let fixed = |tag| atom_inline_size_fixed(find(&parsed.nodes, tag).unwrap());
+    // CSS 2.1 §10.3.9: shrink-to-fit applies only to `width: auto`.
+    assert!(fixed("b"));
+    assert!(fixed("em"));
+    assert!(!fixed("i"));
+    // An intrinsic `max-width` depends on the content.
+    assert!(!fixed("u"));
+    // A table's `width` is only a minimum (§17.5.2); vertical and replaced
+    // boxes keep the measured path.
+    assert!(!fixed("s"));
+    assert!(!fixed("q"));
+    assert!(!fixed("img"));
+}

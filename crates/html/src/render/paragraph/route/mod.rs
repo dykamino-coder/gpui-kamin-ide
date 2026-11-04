@@ -26,12 +26,14 @@ pub(crate) use collect::paragraph_pieces_routed;
 pub(crate) use probed::{paint_inline_step7, paragraph_probed};
 
 /// Атомы, поставленные в строку абзаца: байтовое место распорки в тексте,
-/// элемент, выравнивание по строке и протяжённость руби.
+/// элемент, выравнивание по строке, протяжённость руби и признак ширины,
+/// заданной стилем (`atom_inline_size_fixed`).
 pub(crate) type LineAtoms = Vec<(
     usize,
     AnyElement,
     crate::text::paragraph::AtomAlign,
     crate::text::paragraph::RubyExtents,
+    bool,
 )>;
 
 pub(crate) struct NativeRequest<'a> {
