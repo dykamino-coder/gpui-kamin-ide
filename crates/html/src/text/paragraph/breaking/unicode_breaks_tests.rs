@@ -26,6 +26,7 @@ fn paragraph(text: &str, atoms: &[AtomAt]) -> Paragraph {
                         base_edges,
                         ..Default::default()
                     },
+                    false,
                 )
             })
             .collect(),

@@ -7,7 +7,7 @@ use super::styling::style_pieces;
 use super::{LineAtoms, NativeRequest};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph::alignment::atom_line_align;
+use crate::render::paragraph::alignment::{atom_inline_size_fixed, atom_line_align};
 use crate::render::paragraph::atom_piece::AtomRuby;
 use crate::render::paragraph::atom_piece::atom_piece;
 use crate::render::paragraph::edges::has_flow_text;
@@ -74,6 +74,7 @@ pub(crate) fn paragraph_pieces_routed(
         Option<(
             crate::text::paragraph::AtomAlign,
             crate::text::paragraph::RubyExtents,
+            bool,
         )>,
     > = Vec::new();
     let mut atom_noted =
@@ -102,7 +103,7 @@ pub(crate) fn paragraph_pieces_routed(
                     (!lone_abs)
                         .then(|| atom_line_align(e, inherited, opts))
                         .flatten()
-                        .map(|a| (a, extents)),
+                        .map(|a| (a, extents, atom_inline_size_fixed(e))),
                 );
             }
             piece
@@ -135,7 +136,7 @@ pub(crate) fn paragraph_pieces_routed(
                 inherited,
                 atom_aligns
                     .iter()
-                    .any(|a| a.as_ref().is_some_and(|(_, ex)| !ex.is_empty())),
+                    .any(|a| a.as_ref().is_some_and(|(_, ex, _)| !ex.is_empty())),
                 &opts.cx,
             )
     };
@@ -212,11 +213,12 @@ pub(crate) fn paragraph_pieces_routed(
         for p in pieces {
             match p {
                 inline::Piece::Atom(el) => {
-                    let (align, extents) = aligns.next().unwrap_or((
+                    let (align, extents, fixed) = aligns.next().unwrap_or((
                         crate::text::paragraph::AtomAlign::Shift(0.0),
                         crate::text::paragraph::RubyExtents::default(),
+                        false,
                     ));
-                    line_atoms.push((at, el, align, extents));
+                    line_atoms.push((at, el, align, extents, fixed));
                     out.push(inline::Piece::Text {
                         text: inline::SPACER.to_string(),
                         style: mark.clone(),
