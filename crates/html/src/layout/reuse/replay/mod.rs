@@ -14,8 +14,10 @@
 //! повторяет кэшированные подпоследовательности чистых поддеревьев.
 
 mod element;
+mod slot;
 
 pub(super) use element::{Replay, ReplayRecorder};
+pub(super) use slot::ReplaySlot;
 
 use super::{Counters, FlowKey};
 use crate::dom::Element;
@@ -164,53 +166,45 @@ fn plain_environment(window: &Window) -> bool {
     window.retained_root_environment() && window.element_offset() == point(px(0.0), px(0.0))
 }
 
-/// Место повтора в кадре: узел раскладки, если дерево кадра его отдало.
-pub(super) struct ReplaySlot {
-    record: Rc<ReplayRecord>,
-    layout: Cell<Option<LayoutId>>,
-}
-
-impl ReplaySlot {
-    pub(super) fn new(record: Rc<ReplayRecord>) -> Self {
-        Self {
-            record,
-            layout: Cell::new(None),
-        }
-    }
-
-    /// DOM node of the replayed block.
-    pub(super) fn node(&self) -> u64 {
-        self.record.element.node_id
-    }
-
-    /// Повтор этого кадра точен: узлы заняты, ни одна мера не понадобилась,
-    /// блок лёг на записанное место того же размера в том же окружении, а
-    /// диапазоны записаны в только что показанном кадре.
-    pub(super) fn valid(&self, window: &mut Window) -> bool {
-        let Some(id) = self.layout.get() else {
+impl super::FlowReuse {
+    /// Проверка повторов кадра (`ReplaySlot::valid`); неудачные блоки (все,
+    /// если раскладке понадобилась мера) запрещаются, пока ключ потока тот же.
+    pub(super) fn validate_replays(&self, window: &mut Window) -> bool {
+        let slots = self.replay_slots.take();
+        let failed: Vec<u64> = slots
+            .iter()
+            .filter(|slot| !slot.valid(window))
+            .map(|slot| slot.node())
+            .collect();
+        if !failed.is_empty() {
+            // A stale layout does not say which block needed a measurement.
+            let all = window.layout_stale();
+            let mut banned = self.store.banned.take();
+            banned.extend(
+                slots
+                    .iter()
+                    .map(|slot| slot.node())
+                    .filter(|n| all || failed.contains(n)),
+            );
+            self.store.banned.replace(banned);
             return false;
-        };
-        let fresh = !window.layout_stale() && plain_environment(window);
-        let (origin, size) = (
-            window.layout_origin_unrounded(id),
-            window.layout_size_unrounded(id),
-        );
-        let (serial, scale, mask) = (
-            window.frame_serial(),
-            window.scale_factor(),
-            window.content_mask(),
-        );
-        fresh
-            && self.record.jobs.iter().all(|job| job.ready())
-            && self
-                .record
-                .ranges(|r| {
-                    r.serial + 1 == serial
-                        && r.scale == scale
-                        && r.mask == mask
-                        && r.origin == origin
-                        && r.size == size
-                })
-                .unwrap_or(false)
+        }
+        if !slots.is_empty() {
+            let mut stats = self.store.stats.get();
+            stats.replayed += slots.len() as u64;
+            self.store.stats.set(stats);
+        }
+        true
+    }
+
+    /// Записи повтора этого кадра: повторённые и завершённые у экрана `screen`.
+    pub(super) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
+        let mut replays = self.next_replays.take();
+        for (pending, element) in self.pending_replays.take() {
+            if let Some(record) = pending.finish(element, screen) {
+                replays.insert(record.element.node_id, Rc::new(record));
+            }
+        }
+        self.store.replays.replace(replays);
     }
 }

@@ -11,9 +11,6 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
-/// On-screen replay of root-flow blocks (`replay`).
-const ON_SCREEN_REPLAY: bool = true;
-
 /// Поток `body`, занятый повтором в этой сборке.
 pub(crate) struct FlowCx {
     reuse: Rc<FlowReuse>,
@@ -194,7 +191,7 @@ impl FlowCx {
 
     pub(crate) fn mark(&self, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if ON_SCREEN_REPLAY && self.settled_outside_widths && !self.floats.get() {
+        if self.settled_outside_widths && !self.floats.get() {
             mark.widths = Some(Rc::default());
         }
         mark

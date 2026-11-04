@@ -112,13 +112,9 @@ pub(super) async fn collect_element(
     // end edge — `direction` of the inline itself, not of its parent
     // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
     // controls; the line painter moves them to the visual side by flag.
-    let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_spacing::inline_sides(
-        e,
-        &merged,
-        inherited,
-        || cx.layout.constraints.avail_w(),
-        vcx,
-    );
+    let avail = || cx.layout.constraints.avail_w();
+    let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
+        inline_spacing::inline_sides(e, &merged, inherited, avail, vcx);
     let own_rtl = merged.wm().rtl();
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);

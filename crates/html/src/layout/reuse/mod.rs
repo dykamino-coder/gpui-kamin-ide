@@ -30,8 +30,9 @@ mod tests;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
-use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
+use gpui::{Bounds, LayoutSnapshot, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
+use recorder::{SNAP, placed, scaled};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -89,34 +90,6 @@ pub(crate) struct Record {
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
     ink: Option<Bounds<ScaledPixels>>,
 }
-
-fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
-    point(
-        ScaledPixels(p.x.as_f32() * scale),
-        ScaledPixels(p.y.as_f32() * scale),
-    )
-}
-
-/// Чернила записи, поставленные в начало `origin` и расширенные на `margin`.
-fn placed(
-    ink: Bounds<ScaledPixels>,
-    origin: Point<ScaledPixels>,
-    margin: f32,
-) -> Bounds<ScaledPixels> {
-    Bounds {
-        origin: point(
-            ScaledPixels(ink.origin.x.0 + origin.x.0 - margin),
-            ScaledPixels(ink.origin.y.0 + origin.y.0 - margin),
-        ),
-        size: size(
-            ScaledPixels(ink.size.width.0 + 2.0 * margin),
-            ScaledPixels(ink.size.height.0 + 2.0 * margin),
-        ),
-    }
-}
-
-/// Запас проверки экрана на округление краёв, в точках устройства.
-const SNAP: f32 = 2.0;
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -215,29 +188,8 @@ impl FlowReuse {
         };
         self.screen.set(Some(screen));
         let offset = window.element_offset() == point(px(0.0), px(0.0));
-        let slots = self.replay_slots.take();
-        let failed: Vec<u64> = slots
-            .iter()
-            .filter(|slot| !slot.valid(window))
-            .map(|slot| slot.node())
-            .collect();
-        if !failed.is_empty() {
-            // A stale layout does not say which block needed a measurement.
-            let all = window.layout_stale();
-            let mut banned = self.store.banned.take();
-            banned.extend(
-                slots
-                    .iter()
-                    .map(|slot| slot.node())
-                    .filter(|n| all || failed.contains(n)),
-            );
-            self.store.banned.replace(banned);
+        if !self.validate_replays(window) {
             return false;
-        }
-        if !slots.is_empty() {
-            let mut stats = self.store.stats.get();
-            stats.replayed += slots.len() as u64;
-            self.store.stats.set(stats);
         }
         let placeholders = self.placeholders.borrow();
         placeholders.is_empty()
@@ -272,13 +224,7 @@ impl FlowReuse {
         if recorded > 0 || skipped > 0 {
             self.store.records.replace(next);
         }
-        let mut replays = self.next_replays.take();
-        for (pending, element) in self.pending_replays.take() {
-            if let Some(record) = pending.finish(element, screen) {
-                replays.insert(record.element.node_id, Rc::new(record));
-            }
-        }
-        self.store.replays.replace(replays);
+        self.finish_replays(screen);
         let mut stats = self.store.stats.get();
         stats.recorded += recorded;
         stats.skipped += skipped;

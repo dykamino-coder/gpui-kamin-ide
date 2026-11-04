@@ -1,7 +1,7 @@
 //! Запись блока: прозрачная обёртка снимает лист раскладки, начало коробки,
 //! инертность prepaint и чернила краски, включая отложенную краску строк.
 
-use super::{Counters, FlowKey, Record, placed, scaled};
+use super::{Counters, FlowKey, Record};
 use crate::dom::Element;
 use crate::hooks::Wrap;
 use gpui::{
@@ -154,3 +154,32 @@ impl Wrap for Recorder {
         self.pending.painted.set(true);
     }
 }
+
+/// Точка p в точках устройства масштаба scale.
+pub(super) fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
+    point(
+        ScaledPixels(p.x.as_f32() * scale),
+        ScaledPixels(p.y.as_f32() * scale),
+    )
+}
+
+/// Чернила записи, поставленные в начало `origin` и расширенные на `margin`.
+pub(super) fn placed(
+    ink: Bounds<ScaledPixels>,
+    origin: Point<ScaledPixels>,
+    margin: f32,
+) -> Bounds<ScaledPixels> {
+    Bounds {
+        origin: point(
+            ScaledPixels(ink.origin.x.0 + origin.x.0 - margin),
+            ScaledPixels(ink.origin.y.0 + origin.y.0 - margin),
+        ),
+        size: size(
+            ScaledPixels(ink.size.width.0 + 2.0 * margin),
+            ScaledPixels(ink.size.height.0 + 2.0 * margin),
+        ),
+    }
+}
+
+/// Запас проверки экрана на округление краёв, в точках устройства.
+pub(super) const SNAP: f32 = 2.0;
