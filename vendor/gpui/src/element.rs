@@ -31,6 +31,14 @@
 //! elements when you need to take manual control of the layout and painting process, such as when using
 //! your own custom layout algorithm or rendering a code editor.
 
+#[path = "element/child_traversal.rs"]
+mod child_traversal;
+#[path = "element/prepaint_traversal.rs"]
+mod prepaint_traversal;
+#[path = "element/request_layout_traversal.rs"]
+mod request_layout_traversal;
+#[path = "element/root_traversal.rs"]
+mod root_traversal;
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::InspectorElementPath;
 use crate::{
@@ -139,6 +147,32 @@ pub trait Element: 'static + IntoElement {
                 cx,
             );
         })
+    }
+
+    /// Продолжение построения раскладки с сохранением состояния предков.
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        _stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+        Box::pin(async move { self.request_layout(id, inspector_id, window, cx) })
+    }
+
+    /// Продолжение prepaint с сохранением областей предков.
+    fn prepaint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        _stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, Self::PrepaintState> {
+        Box::pin(async move { self.prepaint(id, inspector_id, bounds, request_layout, window, cx) })
     }
 
     /// Returns the accessible role for this element, if any.
@@ -278,9 +312,18 @@ trait ElementObject {
 
     fn inner_element(&mut self) -> &mut dyn Any;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId;
-
-    fn prepaint(&mut self, window: &mut Window, cx: &mut App);
+    fn request_layout_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, LayoutId>;
+    fn prepaint_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a>;
 
     fn paint_async<'a>(
         &'a mut self,
@@ -289,6 +332,13 @@ trait ElementObject {
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a>;
 
+    fn layout_as_root_async<'a>(
+        &'a mut self,
+        available_space: Size<AvailableSpace>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, Size<Pixels>>;
     fn root_layout_id(&self) -> Option<LayoutId>;
 
     fn layout_as_root(
@@ -344,50 +394,9 @@ impl<E: Element> Drawable<E> {
     }
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        match mem::take(&mut self.phase) {
-            ElementDrawPhase::Start => {
-                let global_id = self
-                    .element
-                    .id()
-                    .map(|element_id| prepare_element_id(element_id, window));
-
-                let inspector_id;
-                #[cfg(any(feature = "inspector", debug_assertions))]
-                {
-                    inspector_id = if window.inspector_enabled() {
-                        self.element
-                            .source_location()
-                            .map(|source| prepare_inspector_id(source, window))
-                    } else {
-                        None
-                    };
-                }
-                #[cfg(not(any(feature = "inspector", debug_assertions)))]
-                {
-                    inspector_id = None;
-                }
-
-                let (layout_id, request_layout) = self.element.request_layout(
-                    global_id.as_ref(),
-                    inspector_id.as_ref(),
-                    window,
-                    cx,
-                );
-
-                if global_id.is_some() {
-                    window.element_id_stack.pop();
-                }
-
-                self.phase = ElementDrawPhase::RequestLayout {
-                    layout_id,
-                    global_id,
-                    inspector_id,
-                    request_layout,
-                };
-                layout_id
-            }
-            _ => panic!("must call request_layout only once"),
-        }
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(window, cx, stack))
+            .finish()
     }
 
     // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
@@ -476,63 +485,9 @@ impl<E: Element> Drawable<E> {
     }
 
     pub(crate) fn prepaint(&mut self, window: &mut Window, cx: &mut App) {
-        // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
-        let _prof = cx
-            .instrumentation()
-            .prepaint
-            .enter(std::any::type_name::<E>());
-        match &mut self.phase {
-            ElementDrawPhase::RequestLayout {
-                layout_id,
-                global_id,
-                inspector_id,
-                request_layout,
-            }
-            | ElementDrawPhase::LayoutComputed {
-                layout_id,
-                global_id,
-                inspector_id,
-                request_layout,
-                ..
-            } => {
-                Self::push_element_id(&self.element, global_id.as_ref(), window);
-
-                let bounds = window.layout_bounds(*layout_id);
-                let pushed_a11y_node = Self::begin_a11y_prepaint(
-                    &mut self.element,
-                    global_id.as_ref(),
-                    bounds,
-                    window,
-                );
-
-                let node_id = window.next_frame.dispatch_tree.push_node();
-                let mut prepaint = self.element.prepaint(
-                    global_id.as_ref(),
-                    inspector_id.as_ref(),
-                    bounds,
-                    request_layout,
-                    window,
-                    cx,
-                );
-                window.next_frame.dispatch_tree.pop_node();
-
-                if pushed_a11y_node {
-                    Self::end_a11y_prepaint(
-                        &mut self.element,
-                        global_id.as_ref(),
-                        &mut prepaint,
-                        window,
-                    );
-                }
-
-                if global_id.is_some() {
-                    window.element_id_stack.pop();
-                }
-
-                self.finish_prepaint(node_id, bounds, prepaint);
-            }
-            _ => panic!("must call request_layout before prepaint"),
-        }
+        reblessive::Stack::new()
+            .enter(|stack| self.prepaint_async(window, cx, stack))
+            .finish()
     }
 
     // KaminIDE patch: move phase payloads only after recursive child prepaint returns.
@@ -693,6 +648,21 @@ where
     E: Element,
     E::RequestLayoutState: 'static,
 {
+    fn layout_as_root_async<'a>(
+        &'a mut self,
+        available_space: Size<AvailableSpace>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, Size<Pixels>> {
+        Box::pin(Drawable::layout_as_root_async(
+            self,
+            available_space,
+            window,
+            cx,
+            stack,
+        ))
+    }
     fn root_layout_id(&self) -> Option<LayoutId> {
         match &self.phase {
             ElementDrawPhase::RequestLayout { layout_id, .. }
@@ -713,16 +683,23 @@ where
     }
 
     #[inline]
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        Drawable::request_layout(self, window, cx)
+    fn request_layout_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, LayoutId> {
+        Box::pin(Drawable::request_layout_async(self, window, cx, stack))
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a> {
+        Box::pin(Drawable::prepaint_async(self, window, cx, stack))
     }
 
-    #[inline]
-    fn prepaint(&mut self, window: &mut Window, cx: &mut App) {
-        Drawable::prepaint(self, window, cx);
-    }
-
-    #[inline]
     fn paint_async<'a>(
         &'a mut self,
         window: &'a mut Window,
@@ -772,21 +749,17 @@ impl AnyElement {
     /// Request the layout ID of the element stored in this `AnyElement`.
     /// Used for laying out child elements in a parent element.
     pub fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        self.0.request_layout(window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(window, cx, stack))
+            .finish()
     }
 
     /// Prepares the element to be painted by storing its bounds, giving it a chance to draw hitboxes and
     /// request autoscroll before the final paint pass is confirmed.
     pub fn prepaint(&mut self, window: &mut Window, cx: &mut App) -> Option<FocusHandle> {
-        let focus_assigned = window.next_frame.focus.is_some();
-
-        self.0.prepaint(window, cx);
-
-        if !focus_assigned && let Some(focus_id) = window.next_frame.focus {
-            return FocusHandle::for_id(focus_id, &cx.focus_handles);
-        }
-
-        None
+        reblessive::Stack::new()
+            .enter(|stack| self.prepaint_async(window, cx, stack))
+            .finish()
     }
 
     /// Paints the element stored in this `AnyElement`.
@@ -849,6 +822,38 @@ impl AnyElement {
 impl Element for AnyElement {
     type RequestLayoutState = ();
     type PrepaintState = ();
+
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+        let _ = (id, inspector_id);
+        Box::pin(async move {
+            (
+                AnyElement::request_layout_async(self, window, cx, stack).await,
+                (),
+            )
+        })
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a, Self::PrepaintState> {
+        let _ = (id, inspector_id, bounds, request_layout);
+        Box::pin(async move {
+            AnyElement::prepaint_async(self, window, cx, stack).await;
+        })
+    }
 
     fn paint_async<'a>(
         &'a mut self,
@@ -1013,3 +1018,5 @@ fn prepare_inspector_id(
     };
     window.build_inspector_element_id(path)
 }
+
+mod layout_traversal;

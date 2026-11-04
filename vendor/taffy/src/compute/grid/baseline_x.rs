@@ -10,20 +10,22 @@ use crate::util::sys::Vec;
 use crate::util::ResolveOrZero;
 
 /// KaminIDE patch: Resolve physical x baselines and shims for grid items.
-pub(super) fn resolve_item_baselines_x(
+pub(super) async fn resolve_item_baselines_x_async(
     tree: &mut impl LayoutPartialTree,
     items: &mut [GridItem],
     inner_node_size: Size<Option<f32>>,
+    stack: &mut reblessive::Stk,
 ) {
-    resolve_x_groups(tree, items, inner_node_size, false);
-    resolve_x_groups(tree, items, inner_node_size, true);
+    resolve_x_groups_async(tree, items, inner_node_size, false, stack).await;
+    resolve_x_groups_async(tree, items, inner_node_size, true, stack).await;
 }
 /// KaminIDE patch: Resolve shared first and last x-baseline groups.
-fn resolve_x_groups(
+async fn resolve_x_groups_async(
     tree: &mut impl LayoutPartialTree,
     items: &mut [GridItem],
     inner_node_size: Size<Option<f32>>,
     last: bool,
+    stack: &mut reblessive::Stk,
 ) {
     let wanted = if last {
         AlignItemsKeyword::LastBaseline
@@ -73,14 +75,17 @@ fn resolve_x_groups(
                 if !in_group(item) {
                     continue;
                 }
-                let measured = tree.perform_child_layout(
-                    item.node,
-                    Size::NONE,
-                    inner_node_size,
-                    Size::MAX_CONTENT,
-                    SizingMode::InherentSize,
-                    Line::FALSE,
-                );
+                let measured = tree
+                    .perform_child_layout_async(
+                        item.node,
+                        Size::NONE,
+                        inner_node_size,
+                        Size::MAX_CONTENT,
+                        SizingMode::InherentSize,
+                        Line::FALSE,
+                        stack,
+                    )
+                    .await;
                 let width = measured.size.width;
                 let own = if item.baseline_x_flags & 4 != 0 {
                     if last {

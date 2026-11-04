@@ -47,8 +47,28 @@ impl Element for Deferred {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(_id, _inspector_id, window, cx, stack))
+            .finish()
+    }
+
+    fn request_layout_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, (LayoutId, ())> {
+        Box::pin(async move {
+            let layout_id = self
+                .child
+                .as_mut()
+                .unwrap()
+                .request_layout_async(window, cx, stack)
+                .await;
+            (layout_id, ())
+        })
     }
 
     fn prepaint(

@@ -18,8 +18,7 @@ pub(crate) use paint::{
     Replay, SlotScopes, presented_hit_scopes, with_copy_area, with_copy_hits, with_copy_segment,
 };
 pub(crate) use paint::{
-    SourceSlices, paint_source_node, paint_source_node_async, paint_source_record_async,
-    prepaint_source_record,
+    SourceSlices, paint_source_node_async, paint_source_record_async, prepaint_source_record,
 };
 pub(crate) use paint::{paint_atomic, paint_last, paint_reopen_async, paint_root};
 pub(crate) use paint::{with_clone_hidden, with_late_jobs, with_replay_pieces};
@@ -44,14 +43,20 @@ pub(crate) trait Hooks: 'static {
     /// State from `prepaint`, handed to `paint`.
     type Prepaint: 'static;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout);
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         layout: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint;
 
     fn paint(
@@ -102,12 +107,23 @@ pub(crate) trait Wrap: 'static {
 
     fn child(&mut self) -> &mut AnyElement;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        self.child().request_layout(window, cx)
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        self.child().request_layout_async(window, cx, stack).await
     }
 
-    fn prepaint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        self.child().prepaint(window, cx);
+    async fn prepaint_async(
+        &mut self,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.child().prepaint_async(window, cx, stack).await;
     }
 
     async fn paint_async(
@@ -144,12 +160,27 @@ impl<T: Wrap> Hooks for T {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        (Wrap::request_layout(self, window, cx), ())
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
+        (
+            Wrap::request_layout_async(self, window, cx, stack).await,
+            (),
+        )
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
-        Wrap::prepaint(self, bounds, window, cx);
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        Wrap::prepaint_async(self, bounds, window, cx, stack).await;
     }
 
     fn paint(

@@ -10,17 +10,23 @@ impl Hooks for Transformed {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let layout_id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout_async(window, cx, stack).await;
         (layout_id, layout_id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         // Плоская матрица — на стек якорей (`anchor::tf_push`): рамку якоря
         // проба снимает на подготовке, а трансформ применяется только в
@@ -49,7 +55,8 @@ impl Hooks for Transformed {
         {
             self.placed = true;
             self.child
-                .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
+                .prepaint_at_async(gpui::point(px(0.0), px(0.0)), window, cx, stack)
+                .await;
             return;
         }
         if let Some(r) = self.ref_box.as_ref() {
@@ -66,7 +73,8 @@ impl Hooks for Transformed {
                 window.set_layout_placed_origin(*layout_id, origin + gpui::point(px(sx), px(sy)));
                 self.placed = true;
                 self.child
-                    .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
+                    .prepaint_at_async(gpui::point(px(0.0), px(0.0)), window, cx, stack)
+                    .await;
                 return;
             }
         }
@@ -96,11 +104,15 @@ impl Hooks for Transformed {
             });
         }
         match hit {
-            Some(matrix) => window.with_hitbox_transform(matrix, |window| {
-                self.child.prepaint(window, cx);
-            }),
+            Some(matrix) => {
+                window
+                    .with_hitbox_transform_async(matrix, async |window| {
+                        self.child.prepaint_async(window, cx, stack).await;
+                    })
+                    .await
+            }
             None => {
-                self.child.prepaint(window, cx);
+                self.child.prepaint_async(window, cx, stack).await;
             }
         }
         if flat {

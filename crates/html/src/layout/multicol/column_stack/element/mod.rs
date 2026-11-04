@@ -63,16 +63,22 @@ impl Hooks for ColumnStack {
     type Layout = LayoutId;
     type Prepaint = Bounds<Pixels>;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         self.request_column_layout(window, cx)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*state),

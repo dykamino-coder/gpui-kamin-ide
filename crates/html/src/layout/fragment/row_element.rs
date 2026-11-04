@@ -12,7 +12,12 @@ impl Hooks for FlowRow {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         let sizes: Vec<(f32, f32)> = self.children.iter().map(|c| (c.w, c.h)).collect();
         let shapes = self.shapes.clone();
         let rtl = self.rtl;
@@ -66,12 +71,13 @@ impl Hooks for FlowRow {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*state),
@@ -113,7 +119,7 @@ impl Hooks for FlowRow {
             .collect();
         for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
             let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
-            c.el.layout_as_root_at(
+            c.el.layout_as_root_at_async(
                 origin,
                 size(
                     gpui::AvailableSpace::Definite(px(c.w)),
@@ -121,8 +127,11 @@ impl Hooks for FlowRow {
                 ),
                 window,
                 cx,
-            );
-            c.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+                stack,
+            )
+            .await;
+            c.el.prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+                .await;
         }
         *self.slots.borrow_mut() = slots;
     }

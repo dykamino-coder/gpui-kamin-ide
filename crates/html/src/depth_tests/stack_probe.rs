@@ -54,9 +54,9 @@ fn native_stack_bytes_per_div_level() {
     }
 }
 
-// Проверяет именно paint: остальные фазы пока используют обычный тестовый стек.
+// Запрос, prepaint и paint обходят детей через общий heap-стек.
 #[test]
-fn div_paint_native_stack_does_not_grow_with_depth() {
+fn div_lifecycle_native_stack_does_not_grow_with_depth() {
     let mut cx = gpui::TestAppContext::single();
     for block in [false, true] {
         let mut addresses = Vec::new();
@@ -72,14 +72,24 @@ fn div_paint_native_stack_does_not_grow_with_depth() {
                 gpui::size(gpui::px(100.), gpui::px(100.)),
                 |_, _| FrameProbe(child, "paint".into()),
             );
-            assert_ne!(samples.paint.get(), 0, "paint должен посетить лист");
-            addresses.push(samples.paint.get());
+            addresses.push([
+                samples.request.get(),
+                samples.prepaint.get(),
+                samples.paint.get(),
+            ]);
         }
-        let spread = addresses.iter().max().unwrap() - addresses.iter().min().unwrap();
-        assert!(
-            spread < 32 * 1024,
-            "paint расходует стек с глубиной: {spread} байт"
-        );
+        for (i, phase) in ["request", "prepaint", "paint"].into_iter().enumerate() {
+            let samples: Vec<_> = addresses.iter().map(|s| s[i]).collect();
+            assert!(
+                samples.iter().all(|&s| s != 0),
+                "{phase} должен посетить лист"
+            );
+            let spread = samples.iter().max().unwrap() - samples.iter().min().unwrap();
+            assert!(
+                spread < 32 * 1024,
+                "{phase} расходует стек с глубиной: {spread} байт"
+            );
+        }
     }
 }
 

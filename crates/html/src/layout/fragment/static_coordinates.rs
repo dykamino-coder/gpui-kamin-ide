@@ -74,19 +74,68 @@ impl crate::layout::multicol::column_stack::ColumnStack {
 }
 
 pub(crate) fn needed(e: &crate::dom::Element) -> bool {
-    !crate::style::computed::stacking::fixed_cb_layer_box(&e.style.used())
-        && (e.style.used().reset_positioned.position
-            == Some(crate::style::computed::Position::Fixed)
-            || e.children.iter().any(|node| match node {
-                crate::dom::Node::Element(child) => needed(child),
-                _ => false,
-            }))
+    let mut next = Some(e);
+    let mut ancestors = Vec::new();
+    loop {
+        if let Some(element) = next.take() {
+            let style = element.style.used();
+            if !crate::style::computed::stacking::fixed_cb_layer_box(&style) {
+                if style.reset_positioned.position == Some(crate::style::computed::Position::Fixed)
+                {
+                    return true;
+                }
+                ancestors.push(element.children.iter());
+            }
+        }
+        let Some(children) = ancestors.last_mut() else {
+            return false;
+        };
+        next = children.find_map(|node| match node {
+            crate::dom::Node::Element(child) => Some(child),
+            _ => None,
+        });
+        if next.is_none() {
+            ancestors.pop();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use gpui::{point, px, size};
+
+    #[test]
+    fn static_probe_search_handles_deep_trees_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                use crate::dom::{Element, Node};
+                let doc = crate::document::state::DocState::new(Default::default());
+                let mut style = crate::style::computed::Computed::default();
+                style.apply_decls(
+                    &crate::style::css::parse_decls("position:fixed"),
+                    doc.values(),
+                );
+                let mut root = Element::synthetic("div", style, Default::default(), vec![]);
+                assert!(needed(&root));
+                for _ in 0..20_000 {
+                    root = Element::synthetic(
+                        "div",
+                        Default::default(),
+                        Default::default(),
+                        vec![Node::Element(root)],
+                    );
+                }
+                assert!(needed(&root));
+                let empty =
+                    Element::synthetic("div", Default::default(), Default::default(), vec![]);
+                assert!(!needed(&empty));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 
     #[test]
     fn static_position_follows_later_fragments_and_keeps_the_terminal_edge() {

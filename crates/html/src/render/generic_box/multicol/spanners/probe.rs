@@ -24,8 +24,13 @@ impl Wrap for Capture {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.id.set(Some(id));
         id
     }

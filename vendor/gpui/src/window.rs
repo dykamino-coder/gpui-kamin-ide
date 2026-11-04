@@ -107,6 +107,7 @@ pub use plane3d::PlaneSpec;
 pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 
 mod element_state_scope;
+mod frame_async;
 mod paint_async;
 mod paint_async_masks;
 mod paint_groups;
@@ -4324,30 +4325,6 @@ impl Window {
         } else {
             f(self)
         }
-    }
-
-    /// Apply borrowed text and overflow context together during child drawing.
-    pub(crate) fn with_child_style<R>(
-        &mut self,
-        style: &Style,
-        bounds: Bounds<Pixels>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        self.invalidator.debug_assert_paint_or_prepaint();
-        let depth = (self.text_style_stack.clone(), self.content_mask_stack.len());
-        if let Some(text) = style.text_style() {
-            self.push_text_style_ref(text);
-        }
-        let _clip_scope = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
-        self.with_restore(
-            depth,
-            |window, depth| {
-                window.text_style_stack = std::mem::take(&mut depth.0);
-                window.content_mask_stack.truncate(depth.1);
-            },
-            f,
-        )
-        .0
     }
 
     #[inline(never)]
@@ -10939,3 +10916,5 @@ mod inspector_tests {
         .expect("closed inspector has no bookkeeping and no style overrides");
     }
 }
+
+mod layout_async;

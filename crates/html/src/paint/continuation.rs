@@ -96,7 +96,13 @@ impl Wrap for Slot {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         // The native placement replayed here is hit through this copy's scope.
         match window.render_context::<CopyHits>() {
             Some(copy) if copy.scopes.natives().contains(self.id) => {
@@ -109,7 +115,7 @@ impl Wrap for Slot {
             }
             // A root no native source replays stays with its copy.
             _ => {
-                self.child.prepaint(window, cx);
+                self.child.prepaint_async(window, cx, stack).await;
                 return;
             }
         }
@@ -119,7 +125,11 @@ impl Wrap for Slot {
             rotation_scale: [[0., 0.], [0., 0.]],
             translation: [0., 0.],
         };
-        window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
+        window
+            .with_hitbox_transform_async(hidden, async |window| {
+                self.child.prepaint_async(window, cx, stack).await
+            })
+            .await;
     }
 
     async fn paint_async(

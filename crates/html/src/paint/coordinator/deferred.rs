@@ -55,24 +55,31 @@ macro_rules! deferred {
             fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
                 $tag
             }
-            fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+            async fn request_layout_async(
+                &mut self,
+                window: &mut Window,
+                cx: &mut App,
+                stack: &mut gpui::PaintStack,
+            ) -> (LayoutId, ()) {
                 (
                     self.child
                         .as_mut()
                         .expect("unpainted CSS child")
-                        .request_layout(window, cx),
+                        .request_layout_async(window, cx, stack)
+                        .await,
                     (),
                 )
             }
-            fn prepaint(
+            async fn prepaint_async(
                 &mut self,
                 _: Bounds<Pixels>,
                 _: &mut (),
                 window: &mut Window,
                 cx: &mut App,
+                stack: &mut gpui::PaintStack,
             ) {
                 if let Some(child) = self.child.as_mut() {
-                    child.prepaint(window, cx);
+                    child.prepaint_async(window, cx, stack).await;
                 }
             }
             fn paint(

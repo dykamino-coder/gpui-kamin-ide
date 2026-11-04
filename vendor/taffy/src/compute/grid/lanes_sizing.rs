@@ -9,7 +9,7 @@ use crate::tree::{
 };
 
 /// KaminIDE patch: Resolve intrinsic lane sizing keywords against available space.
-pub(super) fn resolve_lane_sizing_keywords(
+pub(super) async fn resolve_lane_sizing_keywords_async(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,
     styles: Size<Dimension>,
@@ -17,6 +17,7 @@ pub(super) fn resolve_lane_sizing_keywords(
     stretch: Size<Option<f32>>,
     available: Size<AvailableSpace>,
     known: Size<Option<f32>>,
+    stack: &mut reblessive::Stk,
 ) -> Size<Option<f32>> {
     let width = if known.width.is_none() {
         resolve_sizing_keyword(styles.width, stretch.width, parent.width, |v, b| {
@@ -56,7 +57,7 @@ pub(super) fn resolve_lane_sizing_keywords(
     // Use one joint probe for two keywords, retaining the other authored/exact axis.
     let probe_known = known.or(exact);
     let measured = tree
-        .compute_child_layout(
+        .compute_child_layout_async(
             node,
             LayoutInput {
                 known_dimensions: probe_known,
@@ -74,7 +75,9 @@ pub(super) fn resolve_lane_sizing_keywords(
                 run_mode: RunMode::ComputeSize,
                 vertical_margins_are_collapsible: Line::FALSE,
             },
+            stack,
         )
+        .await
         .size;
     Size {
         width: exact

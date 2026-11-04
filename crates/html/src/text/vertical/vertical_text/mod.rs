@@ -68,12 +68,23 @@ impl Wrap for VerticalText {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        self.request_layout_impl(window, cx)
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        self.request_layout_impl(window, cx, stack).await
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        self.prepaint_impl(bounds, window, cx)
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.prepaint_impl(bounds, window, cx, stack).await
     }
 
     async fn paint_async(

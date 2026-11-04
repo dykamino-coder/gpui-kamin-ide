@@ -60,8 +60,9 @@ impl Element for ContextScope {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let _scope = (self.enter)(ScopePhase::RequestLayout);
-        (self.child.request_layout(window, cx), ())
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(_id, _inspector_id, window, cx, stack))
+            .finish()
     }
 
     fn prepaint(
@@ -73,8 +74,11 @@ impl Element for ContextScope {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let _scope = (self.enter)(ScopePhase::Prepaint);
-        self.child.prepaint(window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(_id, _inspector_id, _bounds, _state, window, cx, stack)
+            })
+            .finish();
     }
 
     fn paint(
@@ -101,6 +105,36 @@ impl Element for ContextScope {
                 )
             })
             .finish();
+    }
+
+    fn request_layout_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, (LayoutId, ())> {
+        Box::pin(async move {
+            let _scope = (self.enter)(ScopePhase::RequestLayout);
+            (self.child.request_layout_async(window, cx, stack).await, ())
+        })
+    }
+
+    fn prepaint_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            let _scope = (self.enter)(ScopePhase::Prepaint);
+            self.child.prepaint_async(window, cx, stack).await;
+        })
     }
 
     fn paint_async<'a>(

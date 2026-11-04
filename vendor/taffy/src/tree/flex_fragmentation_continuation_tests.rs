@@ -37,7 +37,13 @@ fn horizontal_cross_axis_continuations_keep_original_item_sizes() {
             assert_eq!(tree.layout(root).unwrap().size.width, 20.0);
             for (node, consumed) in [(a, 20.0), (b, 10.0)] {
                 let actual = tree.layout(node).unwrap();
-                assert_eq!(actual.size, Size { width: 30.0, height: 40.0 });
+                assert_eq!(
+                    actual.size,
+                    Size {
+                        width: 30.0,
+                        height: 40.0
+                    }
+                );
                 assert_eq!(
                     actual.location.x,
                     if reversed { consumed - 10.0 } else { -consumed },
@@ -111,47 +117,54 @@ fn horizontal_main_axis_offset_keeps_flex_grow_and_absolute_static_position() {
 
 #[test]
 fn main_only_size_probes_include_consumed_space_without_publishing_layout() {
-    use crate::{LayoutInput, LayoutPartialTree, RequestedAxis, RunMode};
-    for (direction, axis) in [
-        (FlexDirection::Row, AbsoluteAxis::Horizontal),
-        (FlexDirection::Column, AbsoluteAxis::Vertical),
-    ] {
-        let mut tree: TaffyTree<()> = TaffyTree::new();
-        tree.disable_rounding();
-        let child = Style {
-            size: Size::from_lengths(30.0, 30.0),
-            flex_shrink: 0.0,
-            ..Style::DEFAULT
-        };
-        let a = tree.new_leaf(child.clone()).unwrap();
-        let b = tree.new_leaf(child).unwrap();
-        let root = tree
-            .new_with_children(
-                Style {
-                    flex_direction: direction,
+    reblessive::Stack::new()
+        .enter(|stack| async move {
+            use crate::{LayoutInput, LayoutPartialTree, RequestedAxis, RunMode};
+            for (direction, axis) in [
+                (FlexDirection::Row, AbsoluteAxis::Horizontal),
+                (FlexDirection::Column, AbsoluteAxis::Vertical),
+            ] {
+                let mut tree: TaffyTree<()> = TaffyTree::new();
+                tree.disable_rounding();
+                let child = Style {
+                    size: Size::from_lengths(30.0, 30.0),
+                    flex_shrink: 0.0,
                     ..Style::DEFAULT
-                },
-                &[a, b],
-            )
-            .unwrap();
-        tree.set_flex_fragmentation_axis(root, axis, false).unwrap();
-        tree.set_flex_item_fragmentation_offset(b, 50.0).unwrap();
-        let input = LayoutInput {
-            run_mode: RunMode::ComputeSize,
-            axis: RequestedAxis::from(axis),
-            ..LayoutInput::HIDDEN
-        };
-        let probe = tree.as_layout_tree().compute_child_layout(root, input);
-        assert_eq!(probe.size.main(direction), 110.0);
-        assert!(matches!(
-            tree.detailed_layout_info(root),
-            DetailedLayoutInfo::None
-        ));
-        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
-        assert_eq!(
-            tree.layout(root).unwrap().size.main(direction),
-            probe.size.main(direction)
-        );
-        assert_eq!(tree.layout(b).unwrap().location.main(direction), 80.0);
-    }
+                };
+                let a = tree.new_leaf(child.clone()).unwrap();
+                let b = tree.new_leaf(child).unwrap();
+                let root = tree
+                    .new_with_children(
+                        Style {
+                            flex_direction: direction,
+                            ..Style::DEFAULT
+                        },
+                        &[a, b],
+                    )
+                    .unwrap();
+                tree.set_flex_fragmentation_axis(root, axis, false).unwrap();
+                tree.set_flex_item_fragmentation_offset(b, 50.0).unwrap();
+                let input = LayoutInput {
+                    run_mode: RunMode::ComputeSize,
+                    axis: RequestedAxis::from(axis),
+                    ..LayoutInput::HIDDEN
+                };
+                let probe = tree
+                    .as_layout_tree()
+                    .compute_child_layout_async(root, input, stack)
+                    .await;
+                assert_eq!(probe.size.main(direction), 110.0);
+                assert!(matches!(
+                    tree.detailed_layout_info(root),
+                    DetailedLayoutInfo::None
+                ));
+                tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+                assert_eq!(
+                    tree.layout(root).unwrap().size.main(direction),
+                    probe.size.main(direction)
+                );
+                assert_eq!(tree.layout(b).unwrap().location.main(direction), 80.0);
+            }
+        })
+        .finish()
 }

@@ -70,7 +70,12 @@ impl Hooks for Child {
         false
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         // Сам держатель несёт offset; второй layout-узел не нужен.
         let (position, inset) = match self.offset {
             Some(offset) => (
@@ -94,22 +99,29 @@ impl Hooks for Child {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         let origin = window.layout_origin_unrounded(*id);
-        window.with_retained_layout(&mut self.engine, |window| {
-            window.with_element_id_context(&self.identity, |window| {
-                self.element
-                    .layout_as_root_at(origin, self.space, window, cx);
-                self.element
-                    .prepaint_at(point(px(0.0), px(0.0)), window, cx);
-            });
-        });
+        window
+            .with_retained_layout_async(&mut self.engine, async |window| {
+                window
+                    .with_element_id_context_async(&self.identity, async |window| {
+                        self.element
+                            .layout_as_root_at_async(origin, self.space, window, cx, stack)
+                            .await;
+                        self.element
+                            .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+                            .await;
+                    })
+                    .await;
+            })
+            .await;
     }
 
     fn paint(

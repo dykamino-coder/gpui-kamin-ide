@@ -9,12 +9,13 @@ use crate::util::MaybeMath;
 use crate::{BoxSizing, CompactLength};
 
 /// KaminIDE patch: Resolve cross-axis space for an intrinsic sizing keyword.
-pub(super) fn available(
+pub(super) async fn available_async(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,
     constants: &AlgoConstants,
     known_main: Option<f32>,
     fallback: AvailableSpace,
+    stack: &mut reblessive::Stk,
 ) -> AvailableSpace {
     let dir = constants.dir;
     let stretch = constants
@@ -47,20 +48,24 @@ pub(super) fn available(
             {
                 argument += (child.padding + child.border).cross_axis_sum(dir);
             }
-            let minimum = probe(
+            let minimum = probe_async(
                 tree,
                 child,
                 constants,
                 known_main,
                 AvailableSpace::MinContent,
-            );
-            let maximum = probe(
+                stack,
+            )
+            .await;
+            let maximum = probe_async(
                 tree,
                 child,
                 constants,
                 known_main,
                 AvailableSpace::MaxContent,
-            );
+                stack,
+            )
+            .await;
             AvailableSpace::Definite(minimum.max(argument.min(maximum)))
         }
         // Explicit stretch is sized against the flex line in the used-cross pass.
@@ -70,10 +75,19 @@ pub(super) fn available(
 
 /// A fit-content keyword's clamped intrinsic result is the used cross size.
 /// Passing it only as available space would let overflowing children enlarge it.
-pub(super) fn fit_content_size(child: &FlexItem, constants: &AlgoConstants, space: AvailableSpace) -> Option<f32> {
-    matches!(child.size_style.cross(constants.dir).tag(),
-        CompactLength::FIT_CONTENT_PX_TAG | CompactLength::FIT_CONTENT_PERCENT_TAG | CompactLength::FIT_CONTENT_KEYWORD_TAG
-    ).then(|| space.into_option()).flatten()
+pub(super) fn fit_content_size(
+    child: &FlexItem,
+    constants: &AlgoConstants,
+    space: AvailableSpace,
+) -> Option<f32> {
+    matches!(
+        child.size_style.cross(constants.dir).tag(),
+        CompactLength::FIT_CONTENT_PX_TAG
+            | CompactLength::FIT_CONTENT_PERCENT_TAG
+            | CompactLength::FIT_CONTENT_KEYWORD_TAG
+    )
+    .then(|| space.into_option())
+    .flatten()
 }
 
 /// KaminIDE patch: Whether the cross-size keyword permits alignment stretching.
@@ -87,14 +101,15 @@ pub(super) fn allows_alignment_stretch(child: &FlexItem, constants: &AlgoConstan
 }
 
 /// KaminIDE patch: Measure the cross-axis contribution under the requested constraint.
-fn probe(
+async fn probe_async(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,
     constants: &AlgoConstants,
     known_main: Option<f32>,
     cross_space: AvailableSpace,
+    stack: &mut reblessive::Stk,
 ) -> f32 {
-    tree.compute_child_layout(
+    tree.compute_child_layout_async(
         child.node,
         LayoutInput {
             run_mode: RunMode::ComputeSize,
@@ -106,7 +121,9 @@ fn probe(
             available_space: Size::MAX_CONTENT.with_cross(constants.dir, cross_space),
             vertical_margins_are_collapsible: Line::FALSE,
         },
+        stack,
     )
+    .await
     .size
     .cross(constants.dir)
 }

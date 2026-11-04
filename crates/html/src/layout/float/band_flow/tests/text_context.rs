@@ -16,14 +16,19 @@ impl Wrap for TextInputs {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> gpui::LayoutId {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> gpui::LayoutId {
         let text = window.text_style();
         self.seen.borrow_mut().push((
             text.font_family,
             text.font_size.to_pixels(window.rem_size()),
             window.rem_size(),
         ));
-        self.child.request_layout(window, cx)
+        self.child.request_layout_async(window, cx, stack).await
     }
 }
 

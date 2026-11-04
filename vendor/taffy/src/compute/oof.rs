@@ -6,14 +6,15 @@
 //! block, which lays the box out using the routine in this module.
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
-    AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace, ContainingBlockClaims, CoreStyle, OofItemStyle,
-    Overflow,
+    AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace, ContainingBlockClaims,
+    CoreStyle, OofItemStyle, Overflow,
 };
 #[cfg(feature = "grid")]
 use crate::tree::DetailedLayoutInfo;
 use crate::tree::{
-    AxisStaticPosition, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTreeExt, NodeId,
-    OofCandidate, OofCandidates, OofPositioningArea, RequestedAxis, RunMode, SizingMode,
+    AxisStaticPosition, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput,
+    LayoutPartialTreeExt, NodeId, OofCandidate, OofCandidates, OofPositioningArea, RequestedAxis,
+    RunMode, SizingMode,
 };
 use crate::util::sys::{f32_max, Vec};
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
@@ -21,7 +22,7 @@ use crate::{AxisStaticEdge, BoxSizing, Direction};
 
 #[cfg(feature = "content_size")]
 use super::common::scrollable_overflow::compute_scrollable_overflow_contribution;
-use super::common::sizing_keyword::resolve_absolute_sizing_keywords;
+use super::common::sizing_keyword::resolve_absolute_sizing_keywords_async;
 
 /// Resolve the final static offset of an out-of-flow box from its static position, given the
 /// box's final size and resolved margins.
@@ -41,12 +42,18 @@ pub fn resolve_static_offset(
         x: resolve_static_offset_axis(
             static_position.x,
             final_size.width,
-            Line { start: resolved_margin.left, end: resolved_margin.right },
+            Line {
+                start: resolved_margin.left,
+                end: resolved_margin.right,
+            },
         ),
         y: resolve_static_offset_axis(
             static_position.y,
             final_size.height,
-            Line { start: resolved_margin.top, end: resolved_margin.bottom },
+            Line {
+                start: resolved_margin.top,
+                end: resolved_margin.bottom,
+            },
         ),
     }
 }
@@ -54,8 +61,13 @@ pub fn resolve_static_offset(
 /// Single-axis version of [`resolve_static_offset`]
 fn resolve_static_offset_axis(sp: AxisStaticPosition, size: f32, margin: Line<f32>) -> f32 {
     let margin_box_size = size + margin.start + margin.end;
-    let overflows = matches!(sp.align.safety, AlignmentSafety::Safe) && margin_box_size > sp.area.end - sp.area.start;
-    let keyword = if overflows { sp.align.fallback } else { sp.align.keyword };
+    let overflows = matches!(sp.align.safety, AlignmentSafety::Safe)
+        && margin_box_size > sp.area.end - sp.area.start;
+    let keyword = if overflows {
+        sp.align.fallback
+    } else {
+        sp.align.keyword
+    };
     align_in_line(sp.area, margin_box_size, keyword) + margin.start
 }
 
@@ -92,7 +104,10 @@ impl OofAlignment {
     /// block's direction (see [`AlignSelf::resolve_self_relative`]).
     fn from_resolved(alignment: AlignSelf) -> Self {
         debug_assert!(
-            !matches!(alignment.keyword, AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd),
+            !matches!(
+                alignment.keyword,
+                AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd
+            ),
             "self-start/self-end must be resolved before computing out-of-flow alignment"
         );
         match alignment.keyword {
@@ -179,17 +194,41 @@ impl OofAxis {
     /// <https://www.w3.org/TR/css-position-3/#resolving-insets>
     fn inset_modified_containing_block(&self) -> Line<f32> {
         let (mut imcb, weaker_edge) = match (self.inset.start, self.inset.end) {
-            (Some(start), Some(end)) => (Line { start, end: self.cb_size - end }, self.end_edge()),
+            (Some(start), Some(end)) => (
+                Line {
+                    start,
+                    end: self.cb_size - end,
+                },
+                self.end_edge(),
+            ),
             // A lone auto inset resolves to zero, and is the weaker inset
-            (Some(start), None) => (Line { start, end: self.cb_size }, AxisStaticEdge::End),
-            (None, Some(end)) => (Line { start: 0.0, end: self.cb_size - end }, AxisStaticEdge::Start),
+            (Some(start), None) => (
+                Line {
+                    start,
+                    end: self.cb_size,
+                },
+                AxisStaticEdge::End,
+            ),
+            (None, Some(end)) => (
+                Line {
+                    start: 0.0,
+                    end: self.cb_size - end,
+                },
+                AxisStaticEdge::Start,
+            ),
             // Both insets are auto: resolve them from the static position rectangle and the
             // alignment within it
             (None, None) => {
                 let sp = self.static_position;
                 let imcb = match sp.align.keyword {
-                    AxisStaticEdge::Start => Line { start: sp.area.start, end: self.cb_size },
-                    AxisStaticEdge::End => Line { start: 0.0, end: sp.area.end },
+                    AxisStaticEdge::Start => Line {
+                        start: sp.area.start,
+                        end: self.cb_size,
+                    },
+                    AxisStaticEdge::End => Line {
+                        start: 0.0,
+                        end: sp.area.end,
+                    },
                     AxisStaticEdge::Center => {
                         // Center the IMCB on the static position rectangle's center, bounded by
                         // the nearer edge of the containing block
@@ -197,9 +236,15 @@ impl OofAxis {
                         let start_distance = center;
                         let end_distance = self.cb_size - center;
                         if start_distance.abs() <= end_distance.abs() {
-                            Line { start: 0.0, end: 2.0 * start_distance }
+                            Line {
+                                start: 0.0,
+                                end: 2.0 * start_distance,
+                            }
                         } else {
-                            Line { start: self.cb_size - 2.0 * end_distance, end: self.cb_size }
+                            Line {
+                                start: self.cb_size - 2.0 * end_distance,
+                                end: self.cb_size,
+                            }
                         }
                     }
                 };
@@ -228,7 +273,10 @@ impl OofAxis {
     /// margins are treated as zero) <https://www.w3.org/TR/css-position-3/#abspos-auto-size>
     fn stretch_fit_size(&self) -> f32 {
         let non_auto_margin_sum = self.margin.start.unwrap_or(0.0) + self.margin.end.unwrap_or(0.0);
-        f32_max(self.inset_modified_containing_block_size() - non_auto_margin_sum, 0.0)
+        f32_max(
+            self.inset_modified_containing_block_size() - non_auto_margin_sum,
+            0.0,
+        )
     }
 
     /// Whether an `auto` size in this axis is the stretch-fit size (rather than fit-content)
@@ -252,19 +300,37 @@ impl OofAxis {
         match (self.margin.start, self.margin.end) {
             (Some(start), Some(end)) => Line { start, end },
             // If either inset is auto then auto margins resolve to zero
-            _ if !both_insets => Line { start: self.margin.start.unwrap_or(0.0), end: self.margin.end.unwrap_or(0.0) },
-            (Some(start), None) => Line { start, end: free_space - start },
-            (None, Some(end)) => Line { start: free_space - end, end },
+            _ if !both_insets => Line {
+                start: self.margin.start.unwrap_or(0.0),
+                end: self.margin.end.unwrap_or(0.0),
+            },
+            (Some(start), None) => Line {
+                start,
+                end: free_space - start,
+            },
+            (None, Some(end)) => Line {
+                start: free_space - end,
+                end,
+            },
             (None, None) => {
                 // In the inline axis, negative free space is absorbed entirely by the end margin
                 if free_space < 0.0 && self.is_inline {
                     if self.reversed {
-                        Line { start: free_space, end: 0.0 }
+                        Line {
+                            start: free_space,
+                            end: 0.0,
+                        }
                     } else {
-                        Line { start: 0.0, end: free_space }
+                        Line {
+                            start: 0.0,
+                            end: free_space,
+                        }
                     }
                 } else {
-                    Line { start: free_space / 2.0, end: free_space / 2.0 }
+                    Line {
+                        start: free_space / 2.0,
+                        end: free_space / 2.0,
+                    }
                 }
             }
         }
@@ -314,7 +380,11 @@ impl OofAxis {
                 let margin_box_start = match self.safety {
                     AlignmentSafety::Unsafe => align_in_line(imcb, margin_box_size, edge),
                     AlignmentSafety::Safe => {
-                        let edge = if margin_box_size > imcb_size { self.start_edge() } else { edge };
+                        let edge = if margin_box_size > imcb_size {
+                            self.start_edge()
+                        } else {
+                            edge
+                        };
                         align_in_line(imcb, margin_box_size, edge)
                     }
                     // Default overflow alignment for absolutely positioned boxes:
@@ -327,7 +397,10 @@ impl OofAxis {
                             // The overflow limit rect is the bounding rect of the IMCB and the
                             // containing block, extended to infinity in the scrollable direction
                             // of a scroll container
-                            let mut limit = Line { start: imcb.start.min(0.0), end: f32_max(imcb.end, self.cb_size) };
+                            let mut limit = Line {
+                                start: imcb.start.min(0.0),
+                                end: f32_max(imcb.end, self.cb_size),
+                            };
                             if self.is_scroll_axis {
                                 if self.reversed {
                                     limit.start = f32::NEG_INFINITY;
@@ -368,10 +441,11 @@ impl OofAxis {
 /// Which candidates the node claims is determined by the node's style via
 /// [`CoreStyle::is_containing_block`]. `position: fixed` boxes unclaimed by every ancestor are
 /// claimed by the final root positioning pass in [`compute_root_layout`](crate::compute_root_layout).
-pub fn compute_oof_layout(
+pub async fn compute_oof_layout_async(
     tree: &mut impl LayoutContainingBlock,
     node_id: NodeId,
     output: &mut LayoutOutput,
+    stack: &mut reblessive::Stk,
 ) {
     // KaminIDE patch: a container can become a leaf after its last child is removed.
     // Clear retained hoisted state even when the new output has no positioning area.
@@ -389,12 +463,23 @@ pub fn compute_oof_layout(
     drop(style);
 
     let candidates = output.oof_candidates.take();
-    let result = compute_oof_layout_for_area(tree, node_id, candidates.as_slice(), area, direction, claims);
+    let result = compute_oof_layout_for_area_async(
+        tree,
+        node_id,
+        candidates.as_slice(),
+        area,
+        direction,
+        claims,
+        stack,
+    )
+    .await;
     tree.add_hoisted_children(node_id, &result.hoisted);
     output.oof_candidates = result.unclaimed;
     #[cfg(feature = "content_size")]
     {
-        output.scrollable_overflow_rect = output.scrollable_overflow_rect.union(result.scrollable_overflow_rect);
+        output.scrollable_overflow_rect = output
+            .scrollable_overflow_rect
+            .union(result.scrollable_overflow_rect);
     }
 }
 
@@ -421,19 +506,20 @@ pub struct OofLayoutResult {
 ///
 /// KaminIDE patch: borrow the candidate slice (upstream #1293) while the host retains
 /// its lazy [`OofCandidates`] owner; surfaced and unclaimed candidates remain owned results.
-pub fn compute_oof_layout_for_area(
+pub async fn compute_oof_layout_for_area_async(
     tree: &mut impl LayoutContainingBlock,
     geometry_owner: NodeId,
     candidates: &[OofCandidate],
     area: OofPositioningArea,
     direction: Direction,
     claims: ContainingBlockClaims,
+    stack: &mut reblessive::Stk,
 ) -> OofLayoutResult {
     let overflow = tree.get_core_container_style(geometry_owner).overflow();
 
     let mut hoisted = Vec::new();
     let mut unclaimed = OofCandidates::new();
-    let scrollable_overflow_rect = perform_oof_layout(
+    let scrollable_overflow_rect = perform_oof_layout_async(
         tree,
         geometry_owner,
         candidates,
@@ -444,9 +530,15 @@ pub fn compute_oof_layout_for_area(
         overflow,
         &mut hoisted,
         &mut unclaimed,
-    );
+        stack,
+    )
+    .await;
 
-    OofLayoutResult { hoisted, unclaimed, scrollable_overflow_rect }
+    OofLayoutResult {
+        hoisted,
+        unclaimed,
+        scrollable_overflow_rect,
+    }
 }
 
 /// The result of laying out a single out-of-flow box with [`layout_oof_box`].
@@ -477,7 +569,7 @@ pub(crate) struct OofBoxLayout {
 ///   allows the caller to inspect the layout cache for the box.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
+pub(crate) async fn layout_oof_box_async<Tree: LayoutContainingBlock>(
     tree: &mut Tree,
     candidate: OofCandidate,
     area_size: Size<f32>,
@@ -486,6 +578,7 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     container_overflow: Point<Overflow>,
     #[cfg(feature = "grid")] grid_owner: Option<NodeId>,
     before_layout: impl FnOnce(&mut Tree, &LayoutInput),
+    stack: &mut reblessive::Stk,
 ) -> OofBoxLayout {
     let child_style = tree.get_oof_item_style(candidate.node);
 
@@ -493,44 +586,71 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     // grid area determined by its grid-placement properties (which falls back to the passed
     // area for `auto` placement)
     #[cfg(feature = "grid")]
-    let (area_size, area_offset) = match grid_owner.map(|owner| tree.get_detailed_layout_info(owner)) {
-        Some(DetailedLayoutInfo::Grid(grid_info)) => {
-            let area_rect = Rect {
-                left: area_offset.x,
-                right: area_offset.x + area_size.width,
-                top: area_offset.y,
-                bottom: area_offset.y + area_size.height,
-            };
-            let grid_area = grid_info.resolve_absolute_grid_area(
-                child_style.grid_row(),
-                child_style.grid_column(),
-                direction,
-                area_rect,
-            );
-            (
-                Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top },
-                Point { x: grid_area.left, y: grid_area.top },
-            )
-        }
-        _ => (area_size, area_offset),
-    };
+    let (area_size, area_offset) =
+        match grid_owner.map(|owner| tree.get_detailed_layout_info(owner)) {
+            Some(DetailedLayoutInfo::Grid(grid_info)) => {
+                let area_rect = Rect {
+                    left: area_offset.x,
+                    right: area_offset.x + area_size.width,
+                    top: area_offset.y,
+                    bottom: area_offset.y + area_size.height,
+                };
+                let grid_area = grid_info.resolve_absolute_grid_area(
+                    child_style.grid_row(),
+                    child_style.grid_column(),
+                    direction,
+                    area_rect,
+                );
+                (
+                    Size {
+                        width: grid_area.right - grid_area.left,
+                        height: grid_area.bottom - grid_area.top,
+                    },
+                    Point {
+                        x: grid_area.left,
+                        y: grid_area.top,
+                    },
+                )
+            }
+            _ => (area_size, area_offset),
+        };
     let area_width = area_size.width;
     let area_height = area_size.height;
 
     let aspect_ratio = child_style.aspect_ratio();
-    let margin =
-        child_style.margin().map(|margin| margin.resolve_to_option(area_width, |val, basis| tree.calc(val, basis)));
-    let padding = child_style.padding().resolve_or_zero(Some(area_width), |val, basis| tree.calc(val, basis));
-    let border = child_style.border().resolve_or_zero(Some(area_width), |val, basis| tree.calc(val, basis));
+    let margin = child_style
+        .margin()
+        .map(|margin| margin.resolve_to_option(area_width, |val, basis| tree.calc(val, basis)));
+    let padding = child_style
+        .padding()
+        .resolve_or_zero(Some(area_width), |val, basis| tree.calc(val, basis));
+    let border = child_style
+        .border()
+        .resolve_or_zero(Some(area_width), |val, basis| tree.calc(val, basis));
     let padding_border_sum = (padding + border).sum_axes();
-    let box_sizing_adjustment =
-        if child_style.box_sizing() == BoxSizing::ContentBox { padding_border_sum } else { Size::ZERO };
+    let box_sizing_adjustment = if child_style.box_sizing() == BoxSizing::ContentBox {
+        padding_border_sum
+    } else {
+        Size::ZERO
+    };
 
     // Resolve inset
-    let left = child_style.inset().left.maybe_resolve(area_width, |val, basis| tree.calc(val, basis));
-    let right = child_style.inset().right.maybe_resolve(area_width, |val, basis| tree.calc(val, basis));
-    let top = child_style.inset().top.maybe_resolve(area_height, |val, basis| tree.calc(val, basis));
-    let bottom = child_style.inset().bottom.maybe_resolve(area_height, |val, basis| tree.calc(val, basis));
+    let left = child_style
+        .inset()
+        .left
+        .maybe_resolve(area_width, |val, basis| tree.calc(val, basis));
+    let right = child_style
+        .inset()
+        .right
+        .maybe_resolve(area_width, |val, basis| tree.calc(val, basis));
+    let top = child_style
+        .inset()
+        .top
+        .maybe_resolve(area_height, |val, basis| tree.calc(val, basis));
+    let bottom = child_style
+        .inset()
+        .bottom
+        .maybe_resolve(area_height, |val, basis| tree.calc(val, basis));
 
     // Compute known dimensions from min/max/inherent size styles
     let size_style = child_style.size();
@@ -558,10 +678,14 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     // Taffy only supports the `horizontal-tb` writing mode, so only the inline axis can be reversed.
     // `auto` (`None`) behaves as `normal` for absolutely positioned boxes: it does not defer to the
     // `*-items` properties of the containing block.
-    let justify_self =
-        child_style.justify_self().unwrap_or(AlignSelf::NORMAL).resolve_self_relative(item_direction, direction, true);
-    let align_self =
-        child_style.align_self().unwrap_or(AlignSelf::NORMAL).resolve_self_relative(item_direction, direction, false);
+    let justify_self = child_style
+        .justify_self()
+        .unwrap_or(AlignSelf::NORMAL)
+        .resolve_self_relative(item_direction, direction, true);
+    let align_self = child_style
+        .align_self()
+        .unwrap_or(AlignSelf::NORMAL)
+        .resolve_self_relative(item_direction, direction, false);
     let overflow = child_style.overflow();
     let scrollbar_width = child_style.scrollbar_width();
     #[cfg(feature = "content_size")]
@@ -584,8 +708,14 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
 
     let horizontal = OofAxis {
         cb_size: area_width,
-        inset: Line { start: left, end: right },
-        margin: Line { start: margin.left, end: margin.right },
+        inset: Line {
+            start: left,
+            end: right,
+        },
+        margin: Line {
+            start: margin.left,
+            end: margin.right,
+        },
         static_position: static_position.x,
         alignment: OofAlignment::from_resolved(justify_self),
         safety: justify_self.safety,
@@ -595,8 +725,14 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     };
     let vertical = OofAxis {
         cb_size: area_height,
-        inset: Line { start: top, end: bottom },
-        margin: Line { start: margin.top, end: margin.bottom },
+        inset: Line {
+            start: top,
+            end: bottom,
+        },
+        margin: Line {
+            start: margin.top,
+            end: margin.bottom,
+        },
         static_position: static_position.y,
         alignment: OofAlignment::from_resolved(align_self),
         safety: align_self.safety,
@@ -604,7 +740,10 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         reversed: false,
         is_scroll_axis: container_overflow.y.is_scroll_container(),
     };
-    let stretch_fit_size = Size { width: horizontal.stretch_fit_size(), height: vertical.stretch_fit_size() };
+    let stretch_fit_size = Size {
+        width: horizontal.stretch_fit_size(),
+        height: vertical.stretch_fit_size(),
+    };
     // The space available to the box's border box is its stretch-fit size (the IMCB minus its
     // non-auto margins). The available space for a table never exceeds that of the containing
     // block (minus the margins) <https://www.w3.org/TR/css-tables-3/#abspos>
@@ -616,13 +755,15 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
             height: f32_max(area_height - non_auto_margin.vertical_axis_sum(), 0.0),
         });
     }
-    let available_space = available_space.maybe_clamp(min_size, max_size).map(AvailableSpace::Definite);
+    let available_space = available_space
+        .maybe_clamp(min_size, max_size)
+        .map(AvailableSpace::Definite);
 
     // Resolve any sizing keywords (min-content, max-content, fit-content, fit-content(...),
     // stretch) in the size styles. An explicitly sized axis takes precedence over the
     // automatic size below.
     if size_style.width.is_sizing_keyword() || size_style.height.is_sizing_keyword() {
-        resolve_absolute_sizing_keywords(
+        resolve_absolute_sizing_keywords_async(
             tree,
             candidate.node,
             &mut known_dimensions,
@@ -630,8 +771,12 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
             area_size,
             stretch_fit_size,
             SizingMode::ContentSize,
-        );
-        known_dimensions = known_dimensions.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
+            stack,
+        )
+        .await;
+        known_dimensions = known_dimensions
+            .maybe_apply_aspect_ratio(aspect_ratio)
+            .maybe_clamp(min_size, max_size);
     }
 
     // Resolve automatic sizes <https://www.w3.org/TR/css-position-3/#abspos-auto-size>
@@ -643,25 +788,37 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     // The block axis is the ratio-dependent axis, so a stretched inline size is transferred
     // through the aspect ratio rather than also stretching the block size. An explicit
     // `stretch` in both axes stretches both and ignores the aspect ratio.
-    let stretch_width = known_dimensions.width.is_none() && horizontal.is_stretch_sized(is_replaced, is_table);
-    let stretch_height = known_dimensions.height.is_none() && vertical.is_stretch_sized(is_replaced, is_table);
-    let both_explicit_stretch =
-        horizontal.alignment == OofAlignment::Stretch && vertical.alignment == OofAlignment::Stretch;
-    let stretch_aspect_ratio =
-        if stretch_width && stretch_height && both_explicit_stretch { None } else { aspect_ratio };
+    let stretch_width =
+        known_dimensions.width.is_none() && horizontal.is_stretch_sized(is_replaced, is_table);
+    let stretch_height =
+        known_dimensions.height.is_none() && vertical.is_stretch_sized(is_replaced, is_table);
+    let both_explicit_stretch = horizontal.alignment == OofAlignment::Stretch
+        && vertical.alignment == OofAlignment::Stretch;
+    let stretch_aspect_ratio = if stretch_width && stretch_height && both_explicit_stretch {
+        None
+    } else {
+        aspect_ratio
+    };
     if stretch_width {
         if is_table {
             // A table cannot be stretched smaller than its content: stretch-fit is a minimum
-            min_size.width = Some(f32_max(min_size.width.unwrap_or(0.0), stretch_fit_size.width));
+            min_size.width = Some(f32_max(
+                min_size.width.unwrap_or(0.0),
+                stretch_fit_size.width,
+            ));
         } else {
             known_dimensions.width = Some(stretch_fit_size.width);
-            known_dimensions =
-                known_dimensions.maybe_apply_aspect_ratio(stretch_aspect_ratio).maybe_clamp(min_size, max_size);
+            known_dimensions = known_dimensions
+                .maybe_apply_aspect_ratio(stretch_aspect_ratio)
+                .maybe_clamp(min_size, max_size);
         }
     }
     if known_dimensions.height.is_none() && stretch_height {
         if is_table {
-            min_size.height = Some(f32_max(min_size.height.unwrap_or(0.0), stretch_fit_size.height));
+            min_size.height = Some(f32_max(
+                min_size.height.unwrap_or(0.0),
+                stretch_fit_size.height,
+            ));
         } else {
             known_dimensions.height = Some(stretch_fit_size.height);
             known_dimensions = known_dimensions
@@ -677,8 +834,8 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     // which is narrower than the available width.
     if known_dimensions.width.is_none() {
         if let AvailableSpace::Definite(available_width) = available_space.width {
-            let mut probe = |width| {
-                tree.measure_child_size(
+            let mut probe = async |width| {
+                tree.measure_child_size_async(
                     candidate.node,
                     known_dimensions,
                     area_size.map(Some),
@@ -689,10 +846,12 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
                     SizingMode::ContentSize,
                     crate::geometry::AbsoluteAxis::Horizontal,
                     Line::FALSE,
+                    stack,
                 )
+                .await
             };
-            let min_content = probe(AvailableSpace::MinContent);
-            let max_content = probe(AvailableSpace::MaxContent);
+            let min_content = probe(AvailableSpace::MinContent).await;
+            let max_content = probe(AvailableSpace::MaxContent).await;
             let fit = max_content.min(min_content.min(max_content).max(available_width));
             known_dimensions.width = Some(fit);
             known_dimensions = known_dimensions
@@ -704,14 +863,17 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     let final_size = match (known_dimensions.width, known_dimensions.height) {
         (Some(width), Some(height)) => Size { width, height },
         _ => {
-            let measured_size = tree.measure_child_size_both(
-                candidate.node,
-                known_dimensions,
-                area_size.map(Some),
-                available_space,
-                SizingMode::ContentSize,
-                Line::FALSE,
-            );
+            let measured_size = tree
+                .measure_child_size_both_async(
+                    candidate.node,
+                    known_dimensions,
+                    area_size.map(Some),
+                    available_space,
+                    SizingMode::ContentSize,
+                    Line::FALSE,
+                    stack,
+                )
+                .await;
             known_dimensions.unwrap_or(measured_size)
         }
     }
@@ -719,7 +881,10 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
 
     let layout_input = LayoutInput {
         known_dimensions: final_size.map(Some),
-        known_dimensions_are_definite: Size { width: true, height: true },
+        known_dimensions_are_definite: Size {
+            width: true,
+            height: true,
+        },
         parent_size: area_size.map(Some),
         available_space,
         sizing_mode: SizingMode::ContentSize,
@@ -728,7 +893,9 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         vertical_margins_are_collapsible: Line::FALSE,
     };
     before_layout(tree, &layout_input);
-    let mut layout_output = tree.compute_child_layout(candidate.node, layout_input);
+    let mut layout_output = tree
+        .compute_child_layout_async(candidate.node, layout_input, stack)
+        .await;
 
     // Resolve auto margins <https://www.w3.org/TR/css-position-3/#abspos-margins>
     let horizontal_margin = horizontal.resolve_margins(final_size.width);
@@ -749,8 +916,16 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     // Note: axis intentionally switched here as scrollbars take up space in the opposite axis
     // to the axis in which scrolling is enabled.
     let scrollbar_size = Size {
-        width: if overflow.y == Overflow::Scroll { scrollbar_width } else { 0.0 },
-        height: if overflow.x == Overflow::Scroll { scrollbar_width } else { 0.0 },
+        width: if overflow.y == Overflow::Scroll {
+            scrollbar_width
+        } else {
+            0.0
+        },
+        height: if overflow.x == Overflow::Scroll {
+            scrollbar_width
+        } else {
+            0.0
+        },
     };
 
     let layout = Layout {
@@ -800,7 +975,7 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
 /// The ids of claimed boxes are appended to `hoisted` in order. Returns the scrollable overflow
 /// contribution of the claimed boxes.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn perform_oof_layout(
+pub(crate) async fn perform_oof_layout_async(
     tree: &mut impl LayoutContainingBlock,
     node_id: NodeId,
     candidates: &[OofCandidate],
@@ -811,6 +986,7 @@ pub(crate) fn perform_oof_layout(
     container_overflow: Point<Overflow>,
     hoisted: &mut Vec<NodeId>,
     unclaimed: &mut OofCandidates,
+    stack: &mut reblessive::Stk,
 ) -> Rect<f32> {
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let mut absolute_overflow_rect = Rect::ZERO;
@@ -820,7 +996,8 @@ pub(crate) fn perform_oof_layout(
     }
 
     #[cfg(feature = "content_size")]
-    let is_scroll_container = container_overflow.x.is_scroll_container() || container_overflow.y.is_scroll_container();
+    let is_scroll_container =
+        container_overflow.x.is_scroll_container() || container_overflow.y.is_scroll_container();
 
     // Split the candidate list into an initial work list of claimed candidates and the unclaimed
     // remainder. Further claimed candidates surfaced while laying out a claimed box are appended
@@ -850,7 +1027,7 @@ pub(crate) fn perform_oof_layout(
             overflow,
             #[cfg(feature = "content_size")]
             contain,
-        } = layout_oof_box(
+        } = layout_oof_box_async(
             tree,
             candidate,
             area_size,
@@ -860,7 +1037,9 @@ pub(crate) fn perform_oof_layout(
             #[cfg(feature = "grid")]
             Some(node_id),
             |_, _| {},
-        );
+            stack,
+        )
+        .await;
         let location = layout.location;
         let final_size = layout.size;
 
@@ -887,16 +1066,20 @@ pub(crate) fn perform_oof_layout(
                     y: location.y - area_offset.y,
                 }
             } else {
-                Point { x: location.x - area_offset.x, y: location.y - area_offset.y }
+                Point {
+                    x: location.x - area_offset.x,
+                    y: location.y - area_offset.y,
+                }
             };
-            absolute_overflow_rect = absolute_overflow_rect.union(compute_scrollable_overflow_contribution(
-                relative_location,
-                final_size,
-                layout.scrollable_overflow_rect,
-                overflow,
-                contain,
-                is_scroll_container,
-            ));
+            absolute_overflow_rect =
+                absolute_overflow_rect.union(compute_scrollable_overflow_contribution(
+                    relative_location,
+                    final_size,
+                    layout.scrollable_overflow_rect,
+                    overflow,
+                    contain,
+                    is_scroll_container,
+                ));
         }
     }
 
@@ -916,35 +1099,81 @@ mod tests {
         safety: AlignmentSafety,
         fallback: AxisStaticEdge,
     ) -> AxisStaticPosition {
-        AxisStaticPosition { area, align: AxisStaticAlign { keyword, safety, fallback } }
+        AxisStaticPosition {
+            area,
+            align: AxisStaticAlign {
+                keyword,
+                safety,
+                fallback,
+            },
+        }
     }
 
     fn resolve_x(sp_x: AxisStaticPosition, width: f32, margin: Rect<f32>) -> f32 {
-        let position = Point { x: sp_x, y: AxisStaticPosition::from_edge(0.0, AxisStaticEdge::Start) };
-        resolve_static_offset(position, Size { width, height: 10.0 }, margin).x
+        let position = Point {
+            x: sp_x,
+            y: AxisStaticPosition::from_edge(0.0, AxisStaticEdge::Start),
+        };
+        resolve_static_offset(
+            position,
+            Size {
+                width,
+                height: 10.0,
+            },
+            margin,
+        )
+        .x
     }
 
-    const AREA: Line<f32> = Line { start: 10.0, end: 110.0 };
-    const NO_MARGIN: Rect<f32> = Rect { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 };
-    const MARGIN: Rect<f32> = Rect { left: 5.0, right: 15.0, top: 0.0, bottom: 0.0 };
+    const AREA: Line<f32> = Line {
+        start: 10.0,
+        end: 110.0,
+    };
+    const NO_MARGIN: Rect<f32> = Rect {
+        left: 0.0,
+        right: 0.0,
+        top: 0.0,
+        bottom: 0.0,
+    };
+    const MARGIN: Rect<f32> = Rect {
+        left: 5.0,
+        right: 15.0,
+        top: 0.0,
+        bottom: 0.0,
+    };
 
     #[test]
     fn start_alignment() {
-        let sp_x = sp(AREA, AxisStaticEdge::Start, AlignmentSafety::Unsafe, AxisStaticEdge::Start);
+        let sp_x = sp(
+            AREA,
+            AxisStaticEdge::Start,
+            AlignmentSafety::Unsafe,
+            AxisStaticEdge::Start,
+        );
         assert_eq!(resolve_x(sp_x, 20.0, NO_MARGIN), 10.0);
         assert_eq!(resolve_x(sp_x, 20.0, MARGIN), 15.0);
     }
 
     #[test]
     fn end_alignment() {
-        let sp_x = sp(AREA, AxisStaticEdge::End, AlignmentSafety::Unsafe, AxisStaticEdge::End);
+        let sp_x = sp(
+            AREA,
+            AxisStaticEdge::End,
+            AlignmentSafety::Unsafe,
+            AxisStaticEdge::End,
+        );
         assert_eq!(resolve_x(sp_x, 20.0, NO_MARGIN), 90.0);
         assert_eq!(resolve_x(sp_x, 20.0, MARGIN), 75.0);
     }
 
     #[test]
     fn center_alignment() {
-        let sp_x = sp(AREA, AxisStaticEdge::Center, AlignmentSafety::Unsafe, AxisStaticEdge::Center);
+        let sp_x = sp(
+            AREA,
+            AxisStaticEdge::Center,
+            AlignmentSafety::Unsafe,
+            AxisStaticEdge::Center,
+        );
         assert_eq!(resolve_x(sp_x, 20.0, NO_MARGIN), 50.0);
         // Center offsets by half the margin difference
         assert_eq!(resolve_x(sp_x, 20.0, MARGIN), 45.0);
@@ -952,7 +1181,12 @@ mod tests {
 
     #[test]
     fn safe_alignment_falls_back_only_on_overflow() {
-        let sp_x = sp(AREA, AxisStaticEdge::End, AlignmentSafety::Safe, AxisStaticEdge::Start);
+        let sp_x = sp(
+            AREA,
+            AxisStaticEdge::End,
+            AlignmentSafety::Safe,
+            AxisStaticEdge::Start,
+        );
         // Fits: aligned to the end
         assert_eq!(resolve_x(sp_x, 20.0, NO_MARGIN), 90.0);
         // Margin box exactly fills the area: no fallback
@@ -964,7 +1198,12 @@ mod tests {
 
     #[test]
     fn unsafe_alignment_never_falls_back() {
-        let sp_x = sp(AREA, AxisStaticEdge::End, AlignmentSafety::Unsafe, AxisStaticEdge::Start);
+        let sp_x = sp(
+            AREA,
+            AxisStaticEdge::End,
+            AlignmentSafety::Unsafe,
+            AxisStaticEdge::Start,
+        );
         assert_eq!(resolve_x(sp_x, 120.0, NO_MARGIN), -10.0);
     }
 

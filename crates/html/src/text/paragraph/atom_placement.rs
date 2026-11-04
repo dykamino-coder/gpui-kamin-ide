@@ -9,7 +9,13 @@ use super::*;
 use gpui::{App, Bounds, LayoutId, Window, point, px};
 
 impl Paragraph {
-    pub(super) fn place_atoms(&mut self, root: LayoutId, window: &mut Window, cx: &mut App) {
+    pub(super) async fn place_atoms(
+        &mut self,
+        root: LayoutId,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.atoms.is_empty() || self.lines.is_empty() {
             return;
         }
@@ -95,10 +101,14 @@ impl Paragraph {
                     window.set_layout_root_origin(root, origin);
                     self.atoms[k]
                         .el
-                        .prepaint_at(point(px(0.), px(0.)), window, cx);
+                        .prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+                        .await;
                 }
                 None => {
-                    self.atoms[k].el.prepaint_at(origin, window, cx);
+                    self.atoms[k]
+                        .el
+                        .prepaint_at_async(origin, window, cx, stack)
+                        .await;
                 }
             }
         }

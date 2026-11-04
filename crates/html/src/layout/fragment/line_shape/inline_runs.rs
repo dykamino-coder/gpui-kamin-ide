@@ -120,10 +120,11 @@ mod tests {
     impl Hooks for Child {
         type Layout = ();
         type Prepaint = ();
-        fn request_layout(
+        async fn request_layout_async(
             &mut self,
             window: &mut gpui::Window,
             cx: &mut gpui::App,
+            _stack: &mut gpui::PaintStack,
         ) -> (gpui::LayoutId, ()) {
             let id = window.request_layout(
                 Style {
@@ -141,12 +142,13 @@ mod tests {
             self.geometry.set(Some(GeometryNode::capture(id, window)));
             (id, ())
         }
-        fn prepaint(
+        async fn prepaint_async(
             &mut self,
             _: gpui::Bounds<gpui::Pixels>,
             _: &mut (),
             _: &mut gpui::Window,
             _: &mut gpui::App,
+            _stack: &mut gpui::PaintStack,
         ) {
         }
         fn paint(

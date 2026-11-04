@@ -55,17 +55,23 @@ impl Hooks for Placed {
     /// всё поддерево (`force-hidden`; Blink — слой и потомки не рисуются).
     type Prepaint = bool;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         place_one(&mut self.child, &self.plans, bounds, *state, window, cx)
     }

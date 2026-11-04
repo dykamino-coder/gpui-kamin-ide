@@ -31,7 +31,9 @@ impl Element for Paragraph {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
-        self.request_layout_impl(_id, _inspector_id, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_impl(_id, _inspector_id, window, cx, stack))
+            .finish()
     }
 
     fn prepaint(
@@ -43,7 +45,35 @@ impl Element for Paragraph {
         window: &mut Window,
         _cx: &mut App,
     ) -> Option<Hitbox> {
-        self.prepaint_impl(_id, _inspector_id, bounds, state, window, _cx)
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_impl(_id, _inspector_id, bounds, state, window, _cx, stack)
+            })
+            .finish()
+    }
+
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, (LayoutId, LayoutId)> {
+        Box::pin(self.request_layout_impl(id, inspector, window, cx, stack))
+    }
+
+    fn prepaint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        state: &'a mut LayoutId,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, Option<Hitbox>> {
+        Box::pin(self.prepaint_impl(id, inspector, bounds, state, window, cx, stack))
     }
 
     fn paint(

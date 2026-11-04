@@ -7,10 +7,11 @@ use crate::util::MaybeMath;
 use crate::FlexboxItemStyle;
 
 /// KaminIDE patch: Resolve intrinsic flex-item min/max constraints.
-pub(super) fn resolve(
+pub(super) async fn resolve_async(
     tree: &mut impl LayoutFlexboxContainer,
     constants: &AlgoConstants,
     items: &mut [FlexItem],
+    stack: &mut reblessive::Stk,
 ) {
     for item in items {
         let style = tree.get_flexbox_child_style(item.node);
@@ -28,25 +29,28 @@ pub(super) fn resolve(
         // The measured axis has no known preferred size and ignores its limits.
         for (space, minimum) in [(min.width, true), (max.width, false)] {
             if let Some(space) = space {
-                let width = tree.measure_child_size(
-                    item.node,
-                    Size {
-                        width: None,
-                        height: item.size.height,
-                    },
-                    constants.node_inner_size,
-                    Size {
-                        width: space,
-                        height: constants
-                            .node_inner_size
-                            .height
-                            .map(AvailableSpace::Definite)
-                            .unwrap_or(AvailableSpace::MaxContent),
-                    },
-                    SizingMode::IntrinsicSize,
-                    AbsoluteAxis::Horizontal,
-                    Line::FALSE,
-                );
+                let width = tree
+                    .measure_child_size_async(
+                        item.node,
+                        Size {
+                            width: None,
+                            height: item.size.height,
+                        },
+                        constants.node_inner_size,
+                        Size {
+                            width: space,
+                            height: constants
+                                .node_inner_size
+                                .height
+                                .map(AvailableSpace::Definite)
+                                .unwrap_or(AvailableSpace::MaxContent),
+                        },
+                        SizingMode::IntrinsicSize,
+                        AbsoluteAxis::Horizontal,
+                        Line::FALSE,
+                        stack,
+                    )
+                    .await;
                 if minimum {
                     item.min_size.width = Some(width);
                 } else {
@@ -73,24 +77,27 @@ pub(super) fn resolve(
             if space.is_some() {
                 // In the item's block axis, both intrinsic keywords use the
                 // content height at the resolved inline size (CSS Sizing §3.2).
-                let height = tree.measure_child_size(
-                    item.node,
-                    Size {
-                        width: known_width,
-                        height: None,
-                    },
-                    constants.node_inner_size,
-                    Size {
-                        width: known_width
-                            .or(constants.node_inner_size.width)
-                            .map(AvailableSpace::Definite)
-                            .unwrap_or(AvailableSpace::MaxContent),
-                        height: AvailableSpace::MaxContent,
-                    },
-                    SizingMode::IntrinsicSize,
-                    AbsoluteAxis::Vertical,
-                    Line::FALSE,
-                );
+                let height = tree
+                    .measure_child_size_async(
+                        item.node,
+                        Size {
+                            width: known_width,
+                            height: None,
+                        },
+                        constants.node_inner_size,
+                        Size {
+                            width: known_width
+                                .or(constants.node_inner_size.width)
+                                .map(AvailableSpace::Definite)
+                                .unwrap_or(AvailableSpace::MaxContent),
+                            height: AvailableSpace::MaxContent,
+                        },
+                        SizingMode::IntrinsicSize,
+                        AbsoluteAxis::Vertical,
+                        Line::FALSE,
+                        stack,
+                    )
+                    .await;
                 if minimum {
                     item.min_size.height = Some(height);
                 } else {

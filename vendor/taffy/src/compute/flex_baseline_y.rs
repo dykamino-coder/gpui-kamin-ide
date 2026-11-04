@@ -3,12 +3,13 @@ use super::*;
 
 /// Calculate the base lines of the children.
 #[inline]
-pub(super) fn calculate_children_base_lines(
+pub(super) async fn calculate_children_base_lines_async(
     tree: &mut impl LayoutFlexboxContainer,
     node_size: Size<Option<f32>>,
     available_space: Size<AvailableSpace>,
-    flex_lines: &mut [FlexLine],
+    flex_lines: &mut [FlexLine<'_>],
     constants: &AlgoConstants,
+    stack: &mut reblessive::Stk,
 ) {
     // Only compute baselines for flex rows because we only support baseline alignment in the cross axis
     // where that axis is also the inline axis
@@ -43,46 +44,49 @@ pub(super) fn calculate_children_base_lines(
                 continue;
             }
 
-            let measured_size_and_baselines = tree.compute_child_layout(
-                child.node,
-                LayoutInput {
-                    run_mode: RunMode::PerformLayout,
-                    sizing_mode: SizingMode::ContentSize,
-                    axis: RequestedAxis::Both,
-                    known_dimensions: Size {
-                        width: if constants.is_row {
-                            child.target_size.width.into()
-                        } else {
-                            child.hypothetical_inner_size.width.into()
+            let measured_size_and_baselines = tree
+                .compute_child_layout_async(
+                    child.node,
+                    LayoutInput {
+                        run_mode: RunMode::PerformLayout,
+                        sizing_mode: SizingMode::ContentSize,
+                        axis: RequestedAxis::Both,
+                        known_dimensions: Size {
+                            width: if constants.is_row {
+                                child.target_size.width.into()
+                            } else {
+                                child.hypothetical_inner_size.width.into()
+                            },
+                            height: if constants.is_row {
+                                child.hypothetical_inner_size.height.into()
+                            } else {
+                                child.target_size.height.into()
+                            },
                         },
-                        height: if constants.is_row {
-                            child.hypothetical_inner_size.height.into()
-                        } else {
-                            child.target_size.height.into()
-                        },
+                        known_dimensions_are_definite: item_known_dimension_definiteness(
+                            constants, child,
+                        ),
+                        parent_size: constants.pct_basis(),
+                        available_space: Size {
+                            width: if constants.is_row {
+                                constants.container_size.width.into()
+                            } else {
+                                available_space.width.maybe_set(node_size.width)
+                            },
+                            height: if constants.is_row {
+                                available_space.height.maybe_set(node_size.height)
+                            } else {
+                                constants.container_size.height.into()
+                            },
+                        }
+                        // The available space passed to the child excludes the child's margins (#1234)
+                        .maybe_sub(child.margin.sum_axes())
+                        .maybe_max(Size::ZERO),
+                        vertical_margins_are_collapsible: Line::FALSE,
                     },
-                    known_dimensions_are_definite: item_known_dimension_definiteness(
-                        constants, child,
-                    ),
-                    parent_size: constants.pct_basis(),
-                    available_space: Size {
-                        width: if constants.is_row {
-                            constants.container_size.width.into()
-                        } else {
-                            available_space.width.maybe_set(node_size.width)
-                        },
-                        height: if constants.is_row {
-                            available_space.height.maybe_set(node_size.height)
-                        } else {
-                            constants.container_size.height.into()
-                        },
-                    }
-                    // The available space passed to the child excludes the child's margins (#1234)
-                    .maybe_sub(child.margin.sum_axes())
-                    .maybe_max(Size::ZERO),
-                    vertical_margins_are_collapsible: Line::FALSE,
-                },
-            );
+                    stack,
+                )
+                .await;
 
             let baseline = measured_size_and_baselines.baselines.first;
             let height = measured_size_and_baselines.size.height;

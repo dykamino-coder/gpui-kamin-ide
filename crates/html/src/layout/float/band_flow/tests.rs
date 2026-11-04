@@ -58,9 +58,15 @@ impl Wrap for Capture {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         self.bounds.set(Some(bounds));
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 }
 

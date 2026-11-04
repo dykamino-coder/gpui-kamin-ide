@@ -9,7 +9,7 @@
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
 
-pub(crate) fn measured_layout(
+pub(crate) async fn measured_layout(
     probe: &mut Paragraph,
     atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
     known: gpui::Size<Option<Pixels>>,
@@ -17,6 +17,7 @@ pub(crate) fn measured_layout(
     normal_static: &super::normal_static::NormalStatic,
     window: &mut Window,
     _cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> gpui::MeasuredContent {
     let vertical = probe.vertical;
     let vertical_inline = probe.vertical_inline.is_some();
@@ -29,7 +30,7 @@ pub(crate) fn measured_layout(
             (None, gpui::AvailableSpace::MinContent) => 0.0,
             (None, gpui::AvailableSpace::MaxContent) => f32::INFINITY,
         };
-        let fitted = atom_fit.borrow_mut().fit(avail, window, _cx);
+        let fitted = atom_fit.borrow_mut().fit(avail, window, _cx, stack).await;
         probe.atom_fit = atom_fit.clone();
         probe.apply_atom_fit(&fitted);
     }

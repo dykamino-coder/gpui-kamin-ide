@@ -65,7 +65,12 @@ impl Hooks for ClampHost {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         let (key, border_box) = (self.key, self.border_box);
         let geometry = self.geometry.clone();
         let build = self.build.clone();
@@ -110,12 +115,13 @@ impl Hooks for ClampHost {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _: Bounds<Pixels>,
         id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         let extent = window.layout_size_unrounded(*id);
         let origin = window.layout_origin_unrounded(*id);
@@ -153,8 +159,10 @@ impl Hooks for ClampHost {
         // Сборка для краски пишет строки только в свою область записей.
         let _flow = self.fragment.as_ref().map(ClampFlow::scope);
         let mut el = (self.build)(ClampInput::Apply(plan), Some(extent.width), used_box, true);
-        el.layout_as_root_at(origin, space, window, cx);
-        el.prepaint_at(point(px(0.), px(0.)), window, cx);
+        el.layout_as_root_at_async(origin, space, window, cx, stack)
+            .await;
+        el.prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+            .await;
         self.built = Some(el);
     }
 

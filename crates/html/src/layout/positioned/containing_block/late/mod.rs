@@ -19,17 +19,23 @@ impl Hooks for LatePlace {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let layout_id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout_async(window, cx, stack).await;
         (layout_id, layout_id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*layout_id),
@@ -38,7 +44,9 @@ impl Hooks for LatePlace {
         let placed = placed_bounds(bounds, self.spot.get());
         let child = &mut self.child;
         window.set_layout_placed_origin(*layout_id, placed.origin);
-        child.prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
+        child
+            .prepaint_at_async(gpui::point(px(0.0), px(0.0)), window, cx, stack)
+            .await;
     }
 
     fn paint(

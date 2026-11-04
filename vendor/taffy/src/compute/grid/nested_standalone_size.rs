@@ -8,13 +8,14 @@ use crate::util::ResolveOrZero;
 use crate::{LayoutGridContainer, SUBGRID_COLUMNS, SUBGRID_ROWS};
 
 /// KaminIDE patch: Resolve a nested grid's standalone content size.
-pub(super) fn content(
+pub(super) async fn content_async(
     tree: &mut impl LayoutGridContainer,
     item: &GridItem,
     linked: u8,
+    stack: &mut reblessive::Stk,
 ) -> Size<Option<f32>> {
     let area = item.subgrid_cross;
-    let known = item.known_dimensions(tree, area);
+    let known = item.known_dimensions_async(tree, area, stack).await;
     let padding = item
         .padding
         .resolve_or_zero(area.width, |v, b| tree.calc(v, b));

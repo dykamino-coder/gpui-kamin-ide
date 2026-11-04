@@ -101,17 +101,23 @@ impl Hooks for ColumnFlow {
     type Layout = LayoutId;
     type Prepaint = AnyElement;
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         let layout_id = self.measure_layout(window);
         (layout_id, layout_id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> AnyElement {
         let stale = self.cuts.borrow().1 != bounds.size.width;
         if stale && bounds.size.width > px(0.) {
@@ -146,16 +152,21 @@ impl Hooks for ColumnFlow {
         // spanner with fractional margins sat up to half a pixel higher than
         // the same content in normal flow (`multicol-span-all-006`).
         let origin = window.layout_origin_unrounded(*state);
-        child.layout_as_root_at(
-            origin,
-            size(
-                AvailableSpace::Definite(bounds.size.width),
-                AvailableSpace::MinContent,
-            ),
-            window,
-            cx,
-        );
-        child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+        child
+            .layout_as_root_at_async(
+                origin,
+                size(
+                    AvailableSpace::Definite(bounds.size.width),
+                    AvailableSpace::MinContent,
+                ),
+                window,
+                cx,
+                stack,
+            )
+            .await;
+        child
+            .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+            .await;
         child
     }
 

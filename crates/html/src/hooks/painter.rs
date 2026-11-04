@@ -50,17 +50,23 @@ impl<T: Painter> Hooks for PaintOnly<T> {
     type Layout = LayoutId;
     type Prepaint = T::Prepaint;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         let id = window.request_layout(self.0.style(), [], cx);
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         layout: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> T::Prepaint {
         self.0.prepaint(*layout, window, cx)
     }

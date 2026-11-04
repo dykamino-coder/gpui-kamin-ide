@@ -49,7 +49,10 @@ pub(crate) fn resolve_sizing_keyword(
             .map(|size| SizingKeywordResolution::Measure(AvailableSpace::Definite(size))),
         #[cfg(feature = "calc")]
         _ if style.is_fit_content_calc() => percent_resolution_basis.map(|basis| {
-            SizingKeywordResolution::Measure(AvailableSpace::Definite(calc_resolver(style.calc_value(), basis)))
+            SizingKeywordResolution::Measure(AvailableSpace::Definite(calc_resolver(
+                style.calc_value(),
+                basis,
+            )))
         }),
         CompactLength::STRETCH_TAG => stretch_size.map(SizingKeywordResolution::Exact),
         _ => None,
@@ -65,7 +68,7 @@ pub(crate) fn resolve_sizing_keyword(
 /// - `stretch_size` is the stretch-fit size in each axis: the inset-modified containing block
 ///   (which uses the static position when both insets are auto) minus the item's non-auto margins
 ///   <https://www.w3.org/TR/css-position-3/#abspos-auto-size>.
-pub(crate) fn resolve_absolute_sizing_keywords(
+pub(crate) async fn resolve_absolute_sizing_keywords_async(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,
     known_dimensions: &mut Size<Option<f32>>,
@@ -73,6 +76,7 @@ pub(crate) fn resolve_absolute_sizing_keywords(
     area_size: Size<f32>,
     stretch_size: Size<f32>,
     sizing_mode: SizingMode,
+    stack: &mut reblessive::Stk,
 ) {
     let keyword_width = if known_dimensions.width.is_none() {
         resolve_sizing_keyword(
@@ -101,49 +105,66 @@ pub(crate) fn resolve_absolute_sizing_keywords(
             Some(SizingKeywordResolution::Measure(available_width)),
             Some(SizingKeywordResolution::Measure(available_height)),
         ) => {
-            let measured_size = tree.measure_child_size_both(
-                node,
-                Size::NONE,
-                area_size.map(Some),
-                Size { width: available_width, height: available_height },
-                sizing_mode,
-                Line::FALSE,
-            );
+            let measured_size = tree
+                .measure_child_size_both_async(
+                    node,
+                    Size::NONE,
+                    area_size.map(Some),
+                    Size {
+                        width: available_width,
+                        height: available_height,
+                    },
+                    sizing_mode,
+                    Line::FALSE,
+                    stack,
+                )
+                .await;
             *known_dimensions = measured_size.map(Some);
         }
         (keyword_width, keyword_height) => {
             if let Some(resolution) = keyword_width {
                 known_dimensions.width = Some(match resolution {
                     SizingKeywordResolution::Exact(width) => width,
-                    SizingKeywordResolution::Measure(available_width) => tree.measure_child_size(
-                        node,
-                        *known_dimensions,
-                        area_size.map(Some),
-                        Size { width: available_width, height: AvailableSpace::Definite(stretch_size.height) },
-                        sizing_mode,
-                        AbsoluteAxis::Horizontal,
-                        Line::FALSE,
-                    ),
+                    SizingKeywordResolution::Measure(available_width) => {
+                        tree.measure_child_size_async(
+                            node,
+                            *known_dimensions,
+                            area_size.map(Some),
+                            Size {
+                                width: available_width,
+                                height: AvailableSpace::Definite(stretch_size.height),
+                            },
+                            sizing_mode,
+                            AbsoluteAxis::Horizontal,
+                            Line::FALSE,
+                            stack,
+                        )
+                        .await
+                    }
                 });
             }
             if let Some(resolution) = keyword_height {
                 known_dimensions.height = Some(match resolution {
                     SizingKeywordResolution::Exact(height) => height,
-                    SizingKeywordResolution::Measure(available_height) => tree.measure_child_size(
-                        node,
-                        *known_dimensions,
-                        area_size.map(Some),
-                        Size {
-                            width: known_dimensions
-                                .width
-                                .map(AvailableSpace::Definite)
-                                .unwrap_or(AvailableSpace::Definite(stretch_size.width)),
-                            height: available_height,
-                        },
-                        sizing_mode,
-                        AbsoluteAxis::Vertical,
-                        Line::FALSE,
-                    ),
+                    SizingKeywordResolution::Measure(available_height) => {
+                        tree.measure_child_size_async(
+                            node,
+                            *known_dimensions,
+                            area_size.map(Some),
+                            Size {
+                                width: known_dimensions
+                                    .width
+                                    .map(AvailableSpace::Definite)
+                                    .unwrap_or(AvailableSpace::Definite(stretch_size.width)),
+                                height: available_height,
+                            },
+                            sizing_mode,
+                            AbsoluteAxis::Vertical,
+                            Line::FALSE,
+                            stack,
+                        )
+                        .await
+                    }
                 });
             }
         }

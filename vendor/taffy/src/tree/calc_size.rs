@@ -7,16 +7,27 @@ use crate::{CompactLength, Dimension, RequestedAxis, SizingMode};
 
 impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
 {
     /// KaminIDE patch: Resolve calc-size expressions using intrinsic measurement when required.
     #[inline]
-    pub(super) fn resolve_calc_size(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
+    pub(super) async fn resolve_calc_size_async(
+        &mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        stack: &mut reblessive::Stk,
+    ) -> LayoutInput {
         let style = &self.taffy.nodes[node.into()].style;
-        if style.calc_size.iter().chain(&style.calc_size_max).all(Option::is_none) {
+        if style
+            .calc_size
+            .iter()
+            .chain(&style.calc_size_max)
+            .all(Option::is_none)
+        {
             return inputs;
         }
-        self.resolve_calc_size_expressions(node, inputs)
+        self.resolve_calc_size_expressions_async(node, inputs, stack)
+            .await
     }
 
     // KaminIDE patch: the resolution temporaries must not live in the native
@@ -24,7 +35,12 @@ where
     // every descendant (a 2052-level box tree on the 8 MiB stack).
     /// Resolves the calc-size expressions of a node that has at least one.
     #[inline(never)]
-    fn resolve_calc_size_expressions(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
+    async fn resolve_calc_size_expressions_async(
+        &mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        stack: &mut reblessive::Stk,
+    ) -> LayoutInput {
         let style = &self.taffy.nodes[node.into()].style;
         let [w, h, min_w, min_h] = style.calc_size;
         let [max_w, max_h] = style.calc_size_max;
@@ -54,15 +70,21 @@ where
             })
         });
         let mut resolved = inputs;
-        for (axis, physical) in [AbsoluteAxis::Horizontal, AbsoluteAxis::Vertical].into_iter().enumerate() {
+        for (axis, physical) in [AbsoluteAxis::Horizontal, AbsoluteAxis::Vertical]
+            .into_iter()
+            .enumerate()
+        {
             let known = inputs.known_dimensions.get_abs(physical);
             let preferred = match (known, expressions[axis]) {
                 (None, Some(expression)) => {
-                    let mut base = self.calc_basis(node, inputs, physical, bases[axis], false);
+                    let mut base = self
+                        .calc_basis_async(node, inputs, physical, bases[axis], false, stack)
+                        .await;
                     if bases[axis].tag() == CompactLength::AUTO_TAG {
-                        if let (Some(ratio), Some(cross)) =
-                            (ratio, inputs.known_dimensions.get_abs(physical.other_axis()))
-                        {
+                        if let (Some(ratio), Some(cross)) = (
+                            ratio,
+                            inputs.known_dimensions.get_abs(physical.other_axis()),
+                        ) {
                             base = if physical == AbsoluteAxis::Horizontal {
                                 cross * ratio
                             } else {
@@ -87,7 +109,9 @@ where
                     continue;
                 }
                 if let Some(expression) = expressions[index] {
-                    let base = self.calc_basis(node, inputs, physical, bases[index], kind == 0);
+                    let base = self
+                        .calc_basis_async(node, inputs, physical, bases[index], kind == 0, stack)
+                        .await;
                     *limit = Some(crate::style::apply_calc_size_box(
                         expression,
                         base,
@@ -101,10 +125,20 @@ where
             if expressions[axis].is_none() && limits.iter().all(Option::is_none) {
                 continue;
             }
-            let transferred = ratio.zip(inputs.known_dimensions.get_abs(physical.other_axis()))
-                .map(|(ratio, cross)| if physical == AbsoluteAxis::Horizontal { cross * ratio } else { cross / ratio });
-            let value = preferred.or(transferred)
-                .unwrap_or_else(|| self.calc_basis(node, inputs, physical, Dimension::auto(), false));
+            let transferred = ratio
+                .zip(inputs.known_dimensions.get_abs(physical.other_axis()))
+                .map(|(ratio, cross)| {
+                    if physical == AbsoluteAxis::Horizontal {
+                        cross * ratio
+                    } else {
+                        cross / ratio
+                    }
+                });
+            let value = crate::traversal::unwrap_or_else(preferred.or(transferred), async || {
+                self.calc_basis_async(node, inputs, physical, Dimension::auto(), false, stack)
+                    .await
+            })
+            .await;
             let value = value
                 .min(limits[1].unwrap_or(f32::MAX))
                 .max(limits[0].unwrap_or(0.0));
@@ -119,21 +153,24 @@ where
     }
 
     /// KaminIDE patch: Measure the intrinsic basis of a calc-size expression.
-    fn calc_basis(
+    async fn calc_basis_async(
         &mut self,
         node: NodeId,
         inputs: LayoutInput,
         axis: AbsoluteAxis,
         basis: Dimension,
         minimum: bool,
+        stack: &mut reblessive::Stk,
     ) -> f32 {
         let available = inputs.available_space.get_abs(axis);
         match basis.tag() {
             CompactLength::MIN_CONTENT_TAG => {
-                self.calc_probe(node, inputs, axis, AvailableSpace::MinContent, true)
+                self.calc_probe_async(node, inputs, axis, AvailableSpace::MinContent, true, stack)
+                    .await
             }
             CompactLength::MAX_CONTENT_TAG => {
-                self.calc_probe(node, inputs, axis, AvailableSpace::MaxContent, true)
+                self.calc_probe_async(node, inputs, axis, AvailableSpace::MaxContent, true, stack)
+                    .await
             }
             CompactLength::STRETCH_TAG | CompactLength::FIT_CONTENT_KEYWORD_TAG => {
                 match available {
@@ -144,13 +181,32 @@ where
                         if basis.tag() == CompactLength::STRETCH_TAG {
                             return available;
                         }
-                        let min =
-                            self.calc_probe(node, inputs, axis, AvailableSpace::MinContent, true);
-                        let max =
-                            self.calc_probe(node, inputs, axis, AvailableSpace::MaxContent, true);
+                        let min = self
+                            .calc_probe_async(
+                                node,
+                                inputs,
+                                axis,
+                                AvailableSpace::MinContent,
+                                true,
+                                stack,
+                            )
+                            .await;
+                        let max = self
+                            .calc_probe_async(
+                                node,
+                                inputs,
+                                axis,
+                                AvailableSpace::MaxContent,
+                                true,
+                                stack,
+                            )
+                            .await;
                         available.min(max).max(min)
                     }
-                    _ => self.calc_probe(node, inputs, axis, available, true),
+                    _ => {
+                        self.calc_probe_async(node, inputs, axis, available, true, stack)
+                            .await
+                    }
                 }
             }
             _ if minimum => {
@@ -160,32 +216,49 @@ where
                 } else {
                     style.overflow.y
                 };
-                if style.aspect_ratio.is_some() && style.size.get_abs(axis).is_auto()
-                    && !style.item_is_replaced && !overflow.is_scroll_container()
+                if style.aspect_ratio.is_some()
+                    && style.size.get_abs(axis).is_auto()
+                    && !style.item_is_replaced
+                    && !overflow.is_scroll_container()
                 {
-                    self.calc_probe(node, inputs, axis, AvailableSpace::MinContent, true)
-                } else { 0.0 }
-            },
+                    self.calc_probe_async(
+                        node,
+                        inputs,
+                        axis,
+                        AvailableSpace::MinContent,
+                        true,
+                        stack,
+                    )
+                    .await
+                } else {
+                    0.0
+                }
+            }
             // Intrinsic contributions must resolve auto separately under each
             // constraint. In particular, min-content must never reuse max-content.
-            _ => self.calc_probe(
-                node,
-                inputs,
-                axis,
-                available,
-                !matches!(available, AvailableSpace::Definite(_)),
-            ),
+            _ => {
+                self.calc_probe_async(
+                    node,
+                    inputs,
+                    axis,
+                    available,
+                    !matches!(available, AvailableSpace::Definite(_)),
+                    stack,
+                )
+                .await
+            }
         }
     }
 
     /// KaminIDE patch: Run a layout probe to resolve a calc-size basis.
-    fn calc_probe(
+    async fn calc_probe_async(
         &mut self,
         node: NodeId,
         mut inputs: LayoutInput,
         axis: AbsoluteAxis,
         available: AvailableSpace,
         intrinsic: bool,
+        stack: &mut reblessive::Stk,
     ) -> f32 {
         inputs.run_mode = RunMode::ComputeSize;
         inputs.axis = if axis == AbsoluteAxis::Horizontal {
@@ -201,12 +274,15 @@ where
         }
         inputs.known_dimensions.set_abs(axis, None);
         inputs.available_space.set_abs(axis, available);
-        let measured = self.compute_child_layout_inner(
-            node,
-            inputs,
-            #[cfg(feature = "block_layout")]
-            None,
-        );
+        let measured = self
+            .compute_child_layout_inner_async(
+                node,
+                inputs,
+                #[cfg(feature = "block_layout")]
+                None,
+                stack,
+            )
+            .await;
         measured.size.get_abs(axis)
     }
 }

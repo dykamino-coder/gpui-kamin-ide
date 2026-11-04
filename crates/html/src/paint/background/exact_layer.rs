@@ -67,17 +67,23 @@ impl Hooks for ExactLayer {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let layout_id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout_async(window, cx, stack).await;
         (layout_id, layout_id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         self.parent_edges = window.parent_box_edges(*layout_id);
         let exact = Bounds {
@@ -92,7 +98,7 @@ impl Hooks for ExactLayer {
             && near(exact.right(), bounds.right())
             && near(exact.bottom(), bounds.bottom()))
         .then_some(exact);
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 
     fn paint(

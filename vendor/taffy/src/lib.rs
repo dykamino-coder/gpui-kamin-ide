@@ -102,18 +102,19 @@ mod readme_doctest {
 
 #[cfg(feature = "flexbox")]
 #[doc(inline)]
-pub use crate::compute::compute_flexbox_layout;
+pub use crate::compute::compute_flexbox_layout_async;
 #[cfg(feature = "grid")]
 #[doc(inline)]
-pub use crate::compute::compute_grid_layout;
+pub use crate::compute::compute_grid_layout_async;
 pub use crate::compute::detailed_info::*;
 #[cfg(feature = "block_layout")]
 #[doc(inline)]
-pub use crate::compute::{compute_block_align_content_offset, compute_block_layout};
+pub use crate::compute::{compute_block_align_content_offset, compute_block_layout_async};
 #[doc(inline)]
 pub use crate::compute::{
-    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout, compute_oof_layout_for_area,
-    compute_root_layout, resolve_static_offset, round_layout, OofLayoutResult,
+    compute_cached_layout, compute_hidden_layout_async, compute_leaf_layout,
+    compute_leaf_layout_async, compute_oof_layout_async, compute_oof_layout_for_area_async,
+    compute_root_layout_async, resolve_static_offset, round_layout, OofLayoutResult,
 };
 #[doc(inline)]
 pub use crate::style::Style;
@@ -134,3 +135,6 @@ pub use crate::geometry::*;
 pub use crate::style::*;
 pub use crate::tree::*;
 pub use crate::util::*;
+
+#[doc(hidden)]
+pub mod traversal;

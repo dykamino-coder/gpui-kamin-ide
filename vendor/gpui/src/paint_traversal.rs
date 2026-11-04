@@ -18,7 +18,7 @@ pub struct ChildPaintContext<'a> {
 /// Heap-стек продолжений; один native poll не спускается на глубину дерева.
 pub type PaintStack = reblessive::Stk;
 /// Заимствованное продолжение фазы рисования.
-pub type PaintFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>;
+pub type PaintFuture<'a, T = ()> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + 'a>>;
 
 type ChildrenCallback = dyn for<'a> Fn(
     ChildPaintContext<'a>,

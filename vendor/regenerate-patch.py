@@ -35,6 +35,7 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
+        "Deep lifecycle: request, prepaint and native layout continue on the caller-owned heap work stack, including lending intrinsic callbacks and iterative measurement subtree copies; synchronous compatibility entries preserve legacy callers.",
         "Deep absolute bounds: resolve uncached ancestor geometry with an explicit cursor, preserving root/placed origins, content shifts and absolute-edge rounding without native recursion.",
         "Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.",
         "Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.",
@@ -116,6 +117,7 @@ FIXES = {
         "Tests: modal text-selection tests wait out the wall-clock modal animation as well as stepping the test clock.",
     ],
     "taffy": [
+        "Deep layout: block, flex and grid descendant queries use a shared heap work stack through borrowed leaf measurements; public synchronous entry points drive the same algorithms.",
         "Tree traversal: round final geometry with explicit child cursors, visiting in-flow then hoisted children relative to their containing block; invalidate ancestors iteratively up to the first empty cache; clear hidden owned subtrees with remaining-sibling iterators without changing the partial-tree API; scan forwarded percentage-height dependencies with explicit sibling cursors and unchanged pruning. These passes consume bounded native stack regardless of tree depth.",
         "Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.",
         "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",

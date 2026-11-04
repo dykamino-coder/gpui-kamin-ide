@@ -18,7 +18,7 @@ pub(super) enum Basis {
 
 #[allow(clippy::too_many_arguments)]
 /// KaminIDE patch: Resolve a flex main-size keyword into a basis or measurement constraint.
-pub(super) fn resolve(
+pub(super) async fn resolve_async(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,
     constants: &AlgoConstants,
@@ -28,6 +28,7 @@ pub(super) fn resolve(
     parent: Size<Option<f32>>,
     cross_space: AvailableSpace,
     box_adjustment: f32,
+    stack: &mut reblessive::Stk,
 ) -> Basis {
     if basis_style.is_content() {
         return Basis::Space(None);
@@ -71,8 +72,8 @@ pub(super) fn resolve(
     if style.tag() != CompactLength::FIT_CONTENT_KEYWORD_TAG {
         argument += box_adjustment;
     }
-    let mut probe = |main| {
-        tree.measure_child_size(
+    let mut probe = async |main| {
+        tree.measure_child_size_async(
             child.node,
             known.with_main(constants.dir, None),
             parent,
@@ -82,10 +83,12 @@ pub(super) fn resolve(
             SizingMode::ContentSize,
             constants.dir.main_axis(),
             Line::FALSE,
+            stack,
         )
+        .await
     };
-    let minimum = probe(AvailableSpace::MinContent);
-    let maximum = probe(AvailableSpace::MaxContent);
+    let minimum = probe(AvailableSpace::MinContent).await;
+    let maximum = probe(AvailableSpace::MaxContent).await;
     // A fixed argument still depends on content, so this basis is not definite.
     Basis::Size(minimum.max(argument.min(maximum)), false)
 }

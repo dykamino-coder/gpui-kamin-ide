@@ -34,12 +34,24 @@ impl Hooks for Probe {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         self.events.borrow_mut().push(("layout", self.name));
         (window.request_layout(Default::default(), [], cx), ())
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         self.events.borrow_mut().push(("prepaint", self.name));
     }
 

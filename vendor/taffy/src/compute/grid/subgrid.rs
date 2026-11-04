@@ -84,10 +84,10 @@ mod edges;
 pub(super) use edges::{linked_axes, subgrid_edges, subgrid_gaps};
 #[path = "subgrid_flatten_entry.rs"]
 mod flatten_entry;
-pub(super) use flatten_entry::flatten_subgrid_items;
+pub(super) use flatten_entry::flatten_subgrid_items_async;
 #[path = "subgrid_flatten_recursive.rs"]
 mod flatten_recursive;
-pub(super) use flatten_recursive::flatten_into;
+pub(super) use flatten_recursive::flatten_into_async;
 #[path = "subgrid_floors.rs"]
 mod floors;
 pub(super) use floors::{apply_lanes_auto_floors, apply_subgrid_floors, partition_for_axis};

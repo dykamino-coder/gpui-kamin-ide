@@ -36,9 +36,19 @@ impl Wrap for InlineStartHang {
         &mut self.child
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let child = &mut self.child;
         let shift = gpui::point(px(0.0) - bounds.size.width, px(0.0));
-        window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
+        window
+            .with_exact_element_offset_async(shift, async |window| {
+                child.prepaint_async(window, cx, stack).await
+            })
+            .await;
     }
 }

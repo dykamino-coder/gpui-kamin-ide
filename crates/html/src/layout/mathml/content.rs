@@ -31,7 +31,12 @@ impl Hooks for Content {
     type Layout = LayoutId;
     type Prepaint = gpui::Point<Pixels>;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         self.roots.clear();
         let metrics = if let Kind::Space(leaf) = self.kind {
             leaf
@@ -124,12 +129,13 @@ impl Hooks for Content {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         // Absolute unrounded origin: `layout_exact` is relative to the parent.
         let origin = window.layout_origin_unrounded(*state);
@@ -137,7 +143,11 @@ impl Hooks for Content {
         {
             window.set_layout_root_origin(*root, origin + point(px(*x), px(*y)));
             let cancel = -window.element_offset();
-            window.with_exact_element_offset(cancel, |window| child.prepaint(window, cx));
+            window
+                .with_exact_element_offset_async(cancel, async |window| {
+                    child.prepaint_async(window, cx, stack).await
+                })
+                .await;
         }
         // GPUI forbids `element_offset` during paint: keep the origin here.
         origin

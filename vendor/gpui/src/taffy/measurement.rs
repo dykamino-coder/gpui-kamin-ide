@@ -37,28 +37,48 @@ impl TaffyLayoutEngine {
     }
 }
 
-// KaminIDE patch: keep the optional stacker feature optional.
-#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
+// KaminIDE patch: postorder copying keeps document depth off the native stack.
 fn copy_subtree(
     source: &TaffyTree<NodeContext>,
     target: &mut TaffyTree<NodeContext>,
     node: NodeId,
 ) -> NodeId {
-    let children: Vec<_> = source
-        .children(node)
-        .expect(EXPECT_MESSAGE)
-        .into_iter()
-        .map(|child| copy_subtree(source, target, child))
-        .collect();
-    let copy = target
-        .new_with_children(source.shared_style(node).expect(EXPECT_MESSAGE), &children)
-        .expect(EXPECT_MESSAGE);
-    if let Some(context) = source.get_node_context(node) {
-        target
-            .set_node_context(copy, Some(context.clone()))
-            .expect(EXPECT_MESSAGE);
+    struct Frame {
+        node: NodeId,
+        children: std::vec::IntoIter<NodeId>,
+        copies: Vec<NodeId>,
     }
-    copy
+    let frame = |node| {
+        let children = source.children(node).expect(EXPECT_MESSAGE);
+        Frame {
+            node,
+            copies: Vec::with_capacity(children.len()),
+            children: children.into_iter(),
+        }
+    };
+    let mut stack = vec![frame(node)];
+    loop {
+        if let Some(child) = stack.last_mut().unwrap().children.next() {
+            stack.push(frame(child));
+            continue;
+        }
+        let finished = stack.pop().unwrap();
+        let copy = target
+            .new_with_children(
+                source.shared_style(finished.node).expect(EXPECT_MESSAGE),
+                &finished.copies,
+            )
+            .expect(EXPECT_MESSAGE);
+        if let Some(context) = source.get_node_context(finished.node) {
+            target
+                .set_node_context(copy, Some(context.clone()))
+                .expect(EXPECT_MESSAGE);
+        }
+        match stack.last_mut() {
+            Some(parent) => parent.copies.push(copy),
+            None => return copy,
+        }
+    }
 }
 
 impl LayoutMeasurement {
@@ -84,29 +104,9 @@ impl LayoutMeasurement {
         window: &mut Window,
         cx: &mut App,
     ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>) {
-        let scale = self.scale_factor;
-        let available = taffy::Size {
-            width: to_native(available.width, scale),
-            height: to_native(available.height, scale),
-        };
-        self.tree
-            .compute_layout_with_measure(self.root, available, |input, _, context, style| {
-                leaf(input, context, style, scale, window, cx)
-            })
-            .expect(EXPECT_MESSAGE);
-        let output = self
-            .tree
-            .computed_layout_output(self.root)
-            .expect(EXPECT_MESSAGE)
-            .expect("the subtree completed full layout");
-        (
-            size(
-                Pixels(output.size.width / scale),
-                Pixels(output.size.height / scale),
-            ),
-            output.baselines.first.map(|value| Pixels(value / scale)),
-            output.baselines.last.map(|value| Pixels(value / scale)),
-        )
+        reblessive::Stack::new()
+            .enter(|stack| self.measure_async(available, window, cx, stack))
+            .finish()
     }
 }
 
@@ -126,60 +126,16 @@ pub(super) fn leaf(
     window: &mut Window,
     cx: &mut App,
 ) -> LayoutOutput {
-    let performed = matches!(input.run_mode, taffy::RunMode::PerformLayout);
-    if performed {
-        if let Some(context) = context.as_deref_mut() {
-            context.static_positions.clear();
-            context.layout_lines = None;
-            context.layout_lines_x = None;
-            context.layout_lines_x_from_right = false;
-        }
-    }
-    taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
-        crate::frame_perf::LAYOUT_MEASURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let _timer = super::MeasureTimer(std::time::Instant::now());
-        let Some(context) = context else {
-            return taffy::Size::default().into();
-        };
-        let known = Size {
-            width: known.width.map(|value| Pixels(value / scale)),
-            height: known.height.map(|value| Pixels(value / scale)),
-        };
-        let from_native = |value| match value {
-            taffy::AvailableSpace::Definite(value) => {
-                AvailableSpace::Definite(Pixels(value / scale))
-            }
-            taffy::AvailableSpace::MinContent => AvailableSpace::MinContent,
-            taffy::AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-        };
-        let available = size(from_native(available.width), from_native(available.height));
-        let mut geometry = super::MeasuredBox::from_native(input.parent_size, style, scale);
-        geometry.intrinsic_axis = if input.run_mode == taffy::RunMode::ComputeSize {
-            match input.axis {
-                taffy::RequestedAxis::Horizontal => Some(crate::Axis::Horizontal),
-                taffy::RequestedAxis::Vertical => Some(crate::Axis::Vertical),
-                taffy::RequestedAxis::Both => None,
-            }
-        } else { None };
-        if performed {
-            geometry.fixed = Size {
-                width: input.known_dimensions.width.is_some(),
-                height: input.known_dimensions.height.is_some(),
-            };
-        }
-        let measured = (context.measure.borrow_mut())(known, available, geometry, window, cx);
-        let output = measured.to_native(scale);
-        // Intrinsic probes must not replace metadata belonging to a cached full layout.
-        if performed {
-            context.static_positions = measured.static_positions;
-            context.layout_lines = measured.lines_y;
-            context.layout_lines_x = measured.lines_x;
-            context.layout_lines_x_from_right = measured.x_from_right;
-        }
-        output
-    })
+    reblessive::Stack::new()
+        .enter(|stack| leaf_async(input, context, style, scale, window, cx, stack))
+        .finish()
 }
 
 #[cfg(test)]
 #[path = "measurement_tests.rs"]
 mod tests;
+
+mod leaf_async;
+pub(super) use leaf_async::leaf_async;
+
+mod continuation;

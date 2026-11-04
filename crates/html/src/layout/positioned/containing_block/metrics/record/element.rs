@@ -26,15 +26,26 @@ impl Wrap for Record {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         let node = Node::capture(id, window);
         self.node = Some(node);
         self.geometry.remember(node);
         id
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         // A settling pass keeps the instance prepaint placed: of the candidate
         // boxes `position-try` lays out, only the chosen one is prepainted.
         if let Some(node) = self.node
@@ -50,16 +61,18 @@ impl Wrap for Record {
             );
         }
         let geometry = &self.geometry;
-        crate::hooks::paint_source_node(
+        crate::hooks::paint_source_node_async(
             geometry.id,
             geometry.positioned.then_some(geometry.cb),
             bounds.origin,
             window,
             cx,
-            |window, cx| {
-                self.child.prepaint(window, cx);
+            stack,
+            async |window, cx, stack| {
+                self.child.prepaint_async(window, cx, stack).await;
             },
-        );
+        )
+        .await;
     }
 
     async fn paint_async(

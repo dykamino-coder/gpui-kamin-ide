@@ -7,68 +7,75 @@ use crate::{
 };
 
 fn wrapping(definite: bool, maximum: Option<f32>) -> (f32, f32, f32) {
-    let mut tree: TaffyTree<()> = TaffyTree::new();
-    tree.disable_rounding();
-    let first = tree
-        .new_leaf(Style {
-            size: Size::from_lengths(50.0, 50.0),
-            flex_grow: 1.0,
-            ..Style::DEFAULT
+    reblessive::Stack::new()
+        .enter(|stack| async move {
+            let mut tree: TaffyTree<()> = TaffyTree::new();
+            tree.disable_rounding();
+            let first = tree
+                .new_leaf(Style {
+                    size: Size::from_lengths(50.0, 50.0),
+                    flex_grow: 1.0,
+                    ..Style::DEFAULT
+                })
+                .unwrap();
+            let second = tree
+                .new_leaf(Style {
+                    size: Size::from_lengths(50.0, 100.0),
+                    ..Style::DEFAULT
+                })
+                .unwrap();
+            let root = tree
+                .new_with_children(
+                    Style {
+                        flex_direction: FlexDirection::Column,
+                        flex_wrap: FlexWrap::Wrap,
+                        size: Size {
+                            width: Dimension::length(100.0),
+                            height: Dimension::auto(),
+                        },
+                        max_size: Size {
+                            width: LengthPercentageAuto::auto(),
+                            height: maximum
+                                .map(LengthPercentageAuto::length)
+                                .unwrap_or(LengthPercentageAuto::auto()),
+                        },
+                        ..Style::DEFAULT
+                    },
+                    &[first, second],
+                )
+                .unwrap();
+            tree.as_layout_tree()
+                .compute_child_layout_async(
+                    root,
+                    LayoutInput {
+                        known_dimensions: Size {
+                            width: Some(100.0),
+                            height: Some(100.0),
+                        },
+                        known_dimensions_are_definite: Size {
+                            width: true,
+                            height: definite,
+                        },
+                        parent_size: Size::NONE,
+                        available_space: Size {
+                            width: AvailableSpace::Definite(100.0),
+                            height: AvailableSpace::Definite(100.0),
+                        },
+                        sizing_mode: SizingMode::InherentSize,
+                        axis: RequestedAxis::Both,
+                        run_mode: RunMode::PerformLayout,
+                        vertical_margins_are_collapsible: Line::FALSE,
+                    },
+                    stack,
+                )
+                .await;
+            (
+                tree.layout(first).unwrap().size.height,
+                tree.layout(second).unwrap().location.x,
+                tree.layout(second).unwrap().location.y,
+            )
         })
-        .unwrap();
-    let second = tree
-        .new_leaf(Style {
-            size: Size::from_lengths(50.0, 100.0),
-            ..Style::DEFAULT
-        })
-        .unwrap();
-    let root = tree
-        .new_with_children(
-            Style {
-                flex_direction: FlexDirection::Column,
-                flex_wrap: FlexWrap::Wrap,
-                size: Size {
-                    width: Dimension::length(100.0),
-                    height: Dimension::auto(),
-                },
-                max_size: Size {
-                    width: LengthPercentageAuto::auto(),
-                    height: maximum
-                        .map(LengthPercentageAuto::length)
-                        .unwrap_or(LengthPercentageAuto::auto()),
-                },
-                ..Style::DEFAULT
-            },
-            &[first, second],
-        )
-        .unwrap();
-    tree.as_layout_tree().compute_child_layout(
-        root,
-        LayoutInput {
-            known_dimensions: Size {
-                width: Some(100.0),
-                height: Some(100.0),
-            },
-            known_dimensions_are_definite: Size {
-                width: true,
-                height: definite,
-            },
-            parent_size: Size::NONE,
-            available_space: Size {
-                width: AvailableSpace::Definite(100.0),
-                height: AvailableSpace::Definite(100.0),
-            },
-            sizing_mode: SizingMode::InherentSize,
-            axis: RequestedAxis::Both,
-            run_mode: RunMode::PerformLayout,
-            vertical_margins_are_collapsible: Line::FALSE,
-        },
-    );
-    (
-        tree.layout(first).unwrap().size.height,
-        tree.layout(second).unwrap().location.x,
-        tree.layout(second).unwrap().location.y,
-    )
+        .finish()
 }
 
 #[test]

@@ -10,11 +10,12 @@ use crate::text::vertical::TurnFrame;
 use gpui::{App, Bounds, Pixels, Window, px};
 
 impl VerticalText {
-    pub(crate) fn prepaint_impl(
+    pub(crate) async fn prepaint_impl(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         // Ограничение доводится ЗДЕСЬ: на замере размеры коробки ещё
         // неизвестны, а на подготовке они уже решены раскладкой. Оси при этом
@@ -32,7 +33,9 @@ impl VerticalText {
                 gpui::AvailableSpace::Definite(along),
                 gpui::AvailableSpace::Definite(bounds.size.width),
             );
-            let sized = child.layout_as_root_unrounded(space, window, cx);
+            let sized = child
+                .layout_as_root_unrounded_async(space, window, cx, stack)
+                .await;
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
@@ -62,7 +65,7 @@ impl VerticalText {
             phase,
         }));
         let flat = gpui::point(bounds.origin.x, bounds.origin.y + phase);
-        self.child.prepaint_at(flat, window, cx);
+        self.child.prepaint_at_async(flat, window, cx, stack).await;
         self.paint_context.replace(previous);
         self.turn = Some((frame.size.width, phase));
     }

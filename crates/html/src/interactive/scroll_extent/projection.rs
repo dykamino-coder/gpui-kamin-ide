@@ -62,7 +62,13 @@ impl Wrap for Projected {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let native = self.projection.handle.offset();
         let shift = point(
             if self.projection.reverse[0] {
@@ -77,9 +83,16 @@ impl Wrap for Projected {
             },
         );
         let child = &mut self.child;
-        self.projection.link.applied(shift, || {
-            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
-        });
+        self.projection
+            .link
+            .applied_async(shift, async || {
+                window
+                    .with_exact_element_offset_async(shift, async |window| {
+                        child.prepaint_async(window, cx, stack).await
+                    })
+                    .await
+            })
+            .await;
     }
 }
 

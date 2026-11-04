@@ -55,7 +55,12 @@ impl Hooks for OofHost {
     type Layout = ();
     type Prepaint = Rc<RefCell<Vec<super::pending::Painted>>>;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         if self.containing.is_some() {
             return (window.request_layout(Default::default(), [], cx), ());
         }
@@ -70,12 +75,13 @@ impl Hooks for OofHost {
         (window.request_layout(style, [], cx), ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let bounds = self.containing.as_ref().map_or(bounds, |(cb, layout)| {
             crate::layout::positioned::anchor::containing_bounds(*cb, &layout.anchors)
@@ -100,7 +106,8 @@ impl Hooks for OofHost {
             }
             let siblings = self.queue.items.take();
             let (mut root, paint) = build_one(item, bounds, self.place, window, cx);
-            root.prepaint_at(point(px(0.), px(0.)), window, cx);
+            root.prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+                .await;
             match paint {
                 Some(paint) => paint.publish(root, window.content_mask()),
                 None => built

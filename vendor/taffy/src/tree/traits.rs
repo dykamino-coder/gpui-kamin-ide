@@ -126,7 +126,10 @@
 //! }
 //! ```
 //!
-use super::{DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode, SizingMode};
+use super::{
+    DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode,
+    SizingMode,
+};
 use crate::debug::debug_log;
 use crate::geometry::{AbsoluteAxis, Line, Size};
 use crate::style::{AvailableSpace, CoreStyle, OofItemStyle};
@@ -201,6 +204,16 @@ pub trait LayoutPartialTree: TraversePartialTree {
 
     /// Compute the specified node's size or full layout given the specified constraints
     fn compute_child_layout(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput;
+    /// KaminIDE patch: Suspend a descendant without consuming a native frame.
+    fn compute_child_layout_async<'a>(
+        &'a mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        stack: &'a mut reblessive::Stk,
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        let _ = stack;
+        async move { self.compute_child_layout(node, inputs) }
+    }
 }
 
 /// Extends [`LayoutPartialTree`] with the operations needed by the out-of-flow positioning pass
@@ -333,10 +346,14 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     }
 
     /// KaminIDE patch: border-box extent consumed in a row continuation.
-    fn flex_item_fragmentation_consumed(&self, _node_id: NodeId) -> f32 { 0.0 }
+    fn flex_item_fragmentation_consumed(&self, _node_id: NodeId) -> f32 {
+        0.0
+    }
 
     /// KaminIDE patch: consumed block space before a column item, after flex sizing.
-    fn flex_item_fragmentation_offset(&self, _node_id: NodeId) -> f32 { 0.0 }
+    fn flex_item_fragmentation_offset(&self, _node_id: NodeId) -> f32 {
+        0.0
+    }
 
     /// KaminIDE patch: space consumed by fragmentation after each row flex line.
     /// Applied after item sizing/alignment: completed items retain their used size.
@@ -344,7 +361,9 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// move towards block-start and a content-sized container shrinks, while
     /// align-content keeps the unfragmented free space.
     /// Values are physical line indices as returned by `DetailedFlexInfo`.
-    fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
+    fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 {
+        0.0
+    }
 
     /// KaminIDE patch: the item's line index fixed before fragmentation, if any.
     /// Indices are those of `DetailedFlexInfo::lines` (physical order, reversed
@@ -352,15 +371,21 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// of a wrapping container has one and they form contiguous lines from the
     /// first line in order-modified document order, lines are taken from it
     /// instead of being re-collected.
-    fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
+    fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> {
+        None
+    }
 
     /// KaminIDE patch: caller-owned atomic box classification (replaced, scroll, etc.).
-    fn fragmentation_monolithic(&self, _node_id: NodeId) -> bool { false }
+    fn fragmentation_monolithic(&self, _node_id: NodeId) -> bool {
+        false
+    }
 
     /// KaminIDE patch: the container is laid out inside a fragmentation context.
     /// Column items whose block size may not shrink then encompass their
     /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
-    fn flex_fragmentation(&self, _node_id: NodeId) -> bool { false }
+    fn flex_fragmentation(&self, _node_id: NodeId) -> bool {
+        false
+    }
 }
 
 #[cfg(feature = "grid")]
@@ -416,7 +441,12 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// unfragmented layout; following tracks move towards the axis end, spanning items grow with
     /// their area and a content-sized container grows. Ignored in a subgridded axis and by
     /// grid-lanes containers.
-    fn grid_track_fragmentation_growth(&self, _node_id: NodeId, _axis: crate::geometry::AbsoluteAxis, _track: usize) -> f32 {
+    fn grid_track_fragmentation_growth(
+        &self,
+        _node_id: NodeId,
+        _axis: crate::geometry::AbsoluteAxis,
+        _track: usize,
+    ) -> f32 {
         0.0
     }
 
@@ -424,7 +454,11 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as
     /// the computed size of each grid track and the computed placement of each grid item.
-    fn set_detailed_grid_info(&mut self, _node_id: NodeId, _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>) {
+    fn set_detailed_grid_info(
+        &mut self,
+        _node_id: NodeId,
+        _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>,
+    ) {
         debug_log!("LayoutGridContainer::set_detailed_grid_info called");
     }
 }
@@ -460,6 +494,17 @@ pub trait LayoutBlockContainer: LayoutPartialTree {
         let _ = block_ctx;
         self.compute_child_layout(node_id, inputs)
     }
+    /// KaminIDE patch: Suspend a descendant without consuming a native frame.
+    fn compute_block_child_layout_async<'a, 'ctx: 'a>(
+        &'a mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        context: Option<&'a mut BlockContext<'ctx>>,
+        stack: &'a mut reblessive::Stk,
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        let _ = context;
+        self.compute_child_layout_async(node, inputs, stack)
+    }
 }
 
 // --- PRIVATE TRAITS
@@ -470,7 +515,7 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     /// Compute the size of the node given the specified constraints
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    fn measure_child_size(
+    async fn measure_child_size_async(
         &mut self,
         node_id: NodeId,
         known_dimensions: Size<Option<f32>>,
@@ -479,12 +524,16 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
         sizing_mode: SizingMode,
         axis: AbsoluteAxis,
         vertical_margins_are_collapsible: Line<bool>,
+        stack: &mut reblessive::Stk,
     ) -> f32 {
-        self.compute_child_layout(
+        self.compute_child_layout_async(
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size { width: true, height: true },
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -492,7 +541,9 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
                 run_mode: RunMode::ComputeSize,
                 vertical_margins_are_collapsible,
             },
+            stack,
         )
+        .await
         .size
         .get_abs(axis)
     }
@@ -500,7 +551,7 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     /// Compute the size of the node given the specified constraints
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    fn measure_child_size_both(
+    async fn measure_child_size_both_async(
         &mut self,
         node_id: NodeId,
         known_dimensions: Size<Option<f32>>,
@@ -508,12 +559,16 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
         available_space: Size<AvailableSpace>,
         sizing_mode: SizingMode,
         vertical_margins_are_collapsible: Line<bool>,
+        stack: &mut reblessive::Stk,
     ) -> Size<f32> {
-        self.compute_child_layout(
+        self.compute_child_layout_async(
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size { width: true, height: true },
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -521,13 +576,15 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
                 run_mode: RunMode::ComputeSize,
                 vertical_margins_are_collapsible,
             },
+            stack,
         )
+        .await
         .size
     }
 
     /// Perform a full layout on the node given the specified constraints
     #[inline(always)]
-    fn perform_child_layout(
+    async fn perform_child_layout_async(
         &mut self,
         node_id: NodeId,
         known_dimensions: Size<Option<f32>>,
@@ -535,12 +592,16 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
         available_space: Size<AvailableSpace>,
         sizing_mode: SizingMode,
         vertical_margins_are_collapsible: Line<bool>,
+        stack: &mut reblessive::Stk,
     ) -> LayoutOutput {
-        self.compute_child_layout(
+        self.compute_child_layout_async(
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size { width: true, height: true },
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -548,7 +609,9 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
                 run_mode: RunMode::PerformLayout,
                 vertical_margins_are_collapsible,
             },
+            stack,
         )
+        .await
     }
 
     /// Alias to `resolve_calc_value` with a shorter function name

@@ -129,14 +129,15 @@ mod tests {
             &mut self.child
         }
 
-        fn prepaint(
+        async fn prepaint_async(
             &mut self,
             bounds: gpui::Bounds<gpui::Pixels>,
             window: &mut gpui::Window,
             cx: &mut gpui::App,
+            stack: &mut gpui::PaintStack,
         ) {
             self.bounds.set(Some(bounds));
-            self.child.prepaint(window, cx);
+            self.child.prepaint_async(window, cx, stack).await;
         }
     }
 

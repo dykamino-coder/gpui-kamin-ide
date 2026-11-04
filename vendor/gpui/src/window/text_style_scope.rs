@@ -98,4 +98,24 @@ impl MeasureScope {
             )
             .0
     }
+    pub(crate) async fn enter_async<R>(
+        &self,
+        window: &mut Window,
+        f: impl AsyncFnOnce(&mut Window) -> R,
+    ) -> R {
+        let text = std::mem::replace(&mut window.text_style_stack, self.text.clone());
+        let depth = window.rem_size_override_stack.len();
+        window.rem_size_override_stack.push(self.rem);
+        window
+            .with_restore_async(
+                (text, depth),
+                |window, (text, depth)| {
+                    window.text_style_stack = std::mem::take(text);
+                    window.rem_size_override_stack.truncate(*depth);
+                },
+                f,
+            )
+            .await
+            .0
+    }
 }

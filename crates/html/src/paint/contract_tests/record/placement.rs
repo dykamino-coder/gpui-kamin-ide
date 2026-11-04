@@ -18,11 +18,23 @@ impl Source {
 impl Hooks for Source {
     type Layout = ();
     type Prepaint = ();
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         self.count(0);
         (window.request_layout(Default::default(), [], cx), ())
     }
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         self.count(1);
         assert_eq!(
             window
@@ -44,11 +56,23 @@ struct Consumer(AnyElement);
 impl Hooks for Consumer {
     type Layout = ();
     type Prepaint = ();
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        (self.0.request_layout(window, cx), ())
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
+        (self.0.request_layout_async(window, cx, stack).await, ())
     }
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
-        self.0.prepaint(window, cx);
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.0.prepaint_async(window, cx, stack).await;
     }
     fn paint(
         &mut self,

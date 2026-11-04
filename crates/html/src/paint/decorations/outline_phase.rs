@@ -9,7 +9,7 @@ use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Window};
 use std::rc::Rc;
 mod traversal;
-pub(crate) use traversal::{flow_async, paint_async, scoped_async};
+pub(crate) use traversal::{flow_async, scoped_async};
 
 pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {

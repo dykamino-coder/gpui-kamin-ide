@@ -43,8 +43,13 @@ impl Hooks for Probe {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         let mut spot = self.spot.get();
         spot.normal_node = Some(crate::layout::fragment::geometry::Node::capture(id, window));
         if let Some(line) = &self.line {
@@ -61,12 +66,13 @@ impl Hooks for Probe {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _: Bounds<Pixels>,
         id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*id),
@@ -85,7 +91,7 @@ impl Hooks for Probe {
             hole
         });
         self.spot.set(now);
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 
     fn paint(

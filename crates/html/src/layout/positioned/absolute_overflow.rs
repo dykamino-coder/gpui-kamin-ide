@@ -4,6 +4,7 @@
 //! и коробка сдвигается по их объединению (`SafePlace` поверх `absolute_overflow_math`).
 
 use crate::hooks::{IntoHooked, Wrap};
+mod safe_place;
 use crate::layout::build_contracts::ChildBuild;
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::layout::positioned::containing_block::Positioning;
@@ -11,6 +12,7 @@ use crate::style::computed::{Align, BoxStyle, Display, FlexDir, Position};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 use gpui::{AnyElement, App, Bounds, Pixels, Window, point, px};
+use safe_place::SafePlace;
 use std::rc::Rc;
 
 /// Probe of a flex container's content box; it records into the build
@@ -215,32 +217,6 @@ impl Plan {
         } else {
             point(px(0.0), delta)
         }
-    }
-}
-
-struct SafePlace {
-    child: AnyElement,
-    plan: Plan,
-    /// Values of the document the plan's lengths come from.
-    values: crate::values::ValueDoc,
-    /// Layout state of the same document: containing-block registry.
-    layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
-    build: ChildBuild,
-}
-impl Wrap for SafePlace {
-    fn child(&mut self) -> &mut AnyElement {
-        &mut self.child
-    }
-
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let shift = self.plan.shift(
-            bounds,
-            window,
-            self.values.vcx(),
-            &self.layout.anchors,
-            self.build,
-        );
-        window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
     }
 }
 

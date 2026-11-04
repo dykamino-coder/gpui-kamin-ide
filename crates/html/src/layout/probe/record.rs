@@ -68,16 +68,22 @@ pub(super) fn prepaint<T: 'static>(
 impl<T: 'static> Hooks for Record<T> {
     type Layout = LayoutId;
     type Prepaint = ();
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         let id = window.request_layout(self.style.clone(), [], cx);
         (id, id)
     }
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         id: &mut LayoutId,
         window: &mut Window,
         _: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) {
         if let Some(read) = self.read.take() {
             let unrounded = Bounds {

@@ -59,7 +59,12 @@ impl Wrap for Original {
             .as_mut()
             .expect("original layout built the fragment tree")
     }
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
         let geometry = collect(&self.kids, &self.parent, self.width, &self.opts, window, cx);
         self.opts.cx.position.geometry = Some(geometry);
         let build = self
@@ -67,7 +72,7 @@ impl Wrap for Original {
             .take()
             .expect("one original geometry pass per layout element");
         self.child = Some(build(self.opts.clone()));
-        self.child().request_layout(window, cx)
+        self.child().request_layout_async(window, cx, stack).await
     }
 }
 

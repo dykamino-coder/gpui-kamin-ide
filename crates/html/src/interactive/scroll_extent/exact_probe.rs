@@ -26,18 +26,30 @@ impl ShiftLink {
             outer: outer.cloned(),
         })
     }
+    #[cfg(test)]
     /// Prepaint the subtree under `f` with this box's `shift` applied.
     pub(crate) fn applied<R>(&self, shift: gpui::Point<Pixels>, f: impl FnOnce() -> R) -> R {
-        struct Inactive<'a>(&'a ShiftLink);
-        impl Drop for Inactive<'_> {
-            fn drop(&mut self) {
-                self.0.active.set(false);
-            }
-        }
         self.shift.set(shift);
         self.active.set(true);
         let _inactive = Inactive(self);
         f()
+    }
+    /// Удерживает сдвиг до завершения дочернего prepaint и восстанавливает его при unwind.
+    pub(crate) async fn applied_async<R>(
+        &self,
+        shift: gpui::Point<Pixels>,
+        f: impl AsyncFnOnce() -> R,
+    ) -> R {
+        self.shift.set(shift);
+        self.active.set(true);
+        let _inactive = Inactive(self);
+        f().await
+    }
+}
+struct Inactive<'a>(&'a ShiftLink);
+impl Drop for Inactive<'_> {
+    fn drop(&mut self) {
+        self.0.active.set(false);
     }
 }
 /// Sum of the shifts being applied along `link`'s chain.

@@ -12,12 +12,13 @@ fn side(child: &FlexItem, constants: &AlgoConstants) -> Option<bool> {
 }
 
 /// KaminIDE patch: Measure column-flex baselines for participating items.
-pub(super) fn measure(
+pub(super) async fn measure_async(
     tree: &mut impl LayoutFlexboxContainer,
     node_size: Size<Option<f32>>,
     available: Size<AvailableSpace>,
-    lines: &mut [FlexLine],
+    lines: &mut [FlexLine<'_>],
     constants: &AlgoConstants,
+    stack: &mut reblessive::Stk,
 ) {
     for line in lines {
         let counts = [false, true].map(|end| {
@@ -33,30 +34,33 @@ pub(super) fn measure(
             if counts[usize::from(end)] < 2 {
                 continue;
             }
-            let output = tree.compute_child_layout(
-                child.node,
-                LayoutInput {
-                    run_mode: RunMode::PerformLayout,
-                    sizing_mode: SizingMode::ContentSize,
-                    axis: RequestedAxis::Both,
-                    known_dimensions: Size {
-                        width: Some(child.hypothetical_inner_size.width),
-                        height: Some(child.target_size.height),
+            let output = tree
+                .compute_child_layout_async(
+                    child.node,
+                    LayoutInput {
+                        run_mode: RunMode::PerformLayout,
+                        sizing_mode: SizingMode::ContentSize,
+                        axis: RequestedAxis::Both,
+                        known_dimensions: Size {
+                            width: Some(child.hypothetical_inner_size.width),
+                            height: Some(child.target_size.height),
+                        },
+                        known_dimensions_are_definite: item_known_dimension_definiteness(
+                            constants, child,
+                        ),
+                        parent_size: constants.pct_basis(),
+                        // The available space passed to the child excludes the child's margins (#1234)
+                        available_space: Size {
+                            width: available.width.maybe_set(node_size.width),
+                            height: constants.container_size.height.into(),
+                        }
+                        .maybe_sub(child.margin.sum_axes())
+                        .maybe_max(Size::ZERO),
+                        vertical_margins_are_collapsible: Line::FALSE,
                     },
-                    known_dimensions_are_definite: item_known_dimension_definiteness(
-                        constants, child,
-                    ),
-                    parent_size: constants.pct_basis(),
-                    // The available space passed to the child excludes the child's margins (#1234)
-                    available_space: Size {
-                        width: available.width.maybe_set(node_size.width),
-                        height: constants.container_size.height.into(),
-                    }
-                    .maybe_sub(child.margin.sum_axes())
-                    .maybe_max(Size::ZERO),
-                    vertical_margins_are_collapsible: Line::FALSE,
-                },
-            );
+                    stack,
+                )
+                .await;
             let last = child.participates_in_last_baseline_alignment(constants.dir);
             let own = if child.baseline_x_flags & 4 != 0 {
                 if last {

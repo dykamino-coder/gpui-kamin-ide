@@ -46,17 +46,23 @@ impl Hooks for RootBox {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let layout = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let layout = self.child.request_layout_async(window, cx, stack).await;
         (layout, layout)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         layout: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let exact = Bounds {
             origin: window.layout_origin_unrounded(*layout),
@@ -78,7 +84,7 @@ impl Hooks for RootBox {
         area.size.width = (area.size.width - l - r).max(px(0.0));
         area.size.height = (area.size.height - t - b).max(px(0.0));
         self.area.set(Some(area));
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 
     fn paint(

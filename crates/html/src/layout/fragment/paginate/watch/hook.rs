@@ -40,8 +40,13 @@ impl Hooks for Watch {
     type Layout = ();
     type Prepaint = Option<ContentMask<Pixels>>;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let lid = self.inner.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let lid = self.inner.request_layout_async(window, cx, stack).await;
         match self.slot {
             Slot::Box(id) => {
                 window.set_fragmentation_monolithic(lid, self.rec.monolithic(id));
@@ -76,12 +81,13 @@ impl Hooks for Watch {
         (lid, ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let id = match self.slot {
             Slot::Box(id) => Some(id),
@@ -123,9 +129,15 @@ impl Hooks for Watch {
                 })
             });
         let shift = gpui::point(gpui::px(0.0), gpui::px(item.map_or(0.0, |w| w.shift)));
-        window.with_content_mask(mask, |window| {
-            window.with_element_offset(shift, |window| self.inner.prepaint(window, cx))
-        });
+        window
+            .with_content_mask_async(mask, async |window| {
+                window
+                    .with_element_offset_async(shift, async |window| {
+                        self.inner.prepaint_async(window, cx, stack).await
+                    })
+                    .await
+            })
+            .await;
         mask
     }
 

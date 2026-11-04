@@ -89,6 +89,21 @@ impl<T: LayoutBlockContainer> LayoutPartialTree for FlowTree<'_, T> {
             .compute_child_layout(node, self.flow.input(inputs));
         self.flow.logical_output(output)
     }
+    /// KaminIDE patch: Suspend a descendant without consuming a native frame.
+    fn compute_child_layout_async<'a>(
+        &'a mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        stack: &'a mut reblessive::Stk,
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        async move {
+            let output = self
+                .tree
+                .compute_child_layout_async(node, self.flow.input(inputs), stack)
+                .await;
+            self.flow.logical_output(output)
+        }
+    }
 }
 
 impl<T: LayoutBlockContainer> LayoutBlockContainer for FlowTree<'_, T> {
@@ -125,5 +140,27 @@ impl<T: LayoutBlockContainer> LayoutBlockContainer for FlowTree<'_, T> {
             if parallel { context } else { None },
         );
         self.flow.logical_output(output)
+    }
+    /// KaminIDE patch: Suspend a descendant without consuming a native frame.
+    fn compute_block_child_layout_async<'a, 'ctx: 'a>(
+        &'a mut self,
+        node: NodeId,
+        inputs: LayoutInput,
+        context: Option<&'a mut BlockContext<'ctx>>,
+        stack: &'a mut reblessive::Stk,
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        let parallel = self.parallel(node);
+        async move {
+            let output = self
+                .tree
+                .compute_block_child_layout_async(
+                    node,
+                    self.flow.input(inputs),
+                    if parallel { context } else { None },
+                    stack,
+                )
+                .await;
+            self.flow.logical_output(output)
+        }
     }
 }

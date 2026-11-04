@@ -20,7 +20,12 @@ impl Hooks for BaselineProbe {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let id = window
             .request_measured_layout_with_baselines(gpui::Style::default(), |_, _, _, _| {
                 (size(px(0.), px(0.)), Some(px(0.)), Some(px(0.)))
@@ -29,7 +34,15 @@ impl Hooks for BaselineProbe {
         (id, ())
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {}
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
+    }
 
     fn paint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut (), _: &mut Window, _: &mut App) {}
 }
@@ -48,8 +61,13 @@ impl Wrap for LayoutTap {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.slot.set(Some(id));
         id
     }

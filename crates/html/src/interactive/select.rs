@@ -10,6 +10,9 @@
 //! ни области попадания, ни обработчиков — ровно та цена, которую свойство и
 //! обещает.
 
+#[path = "select/select_traversal.rs"]
+mod select_traversal;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, Hsla, InspectorElementId,
     IntoElement, LayoutId, Pixels, SharedString, StyledText, TextLayout, TextRun, Window,
@@ -58,21 +61,19 @@ impl Element for Selectable {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, AnyElement) {
-        let selection = match id {
-            Some(global_id) => window.with_element_state::<State, _>(global_id, |state, _| {
-                let st = state.unwrap_or_default();
-                (st.range(), st)
-            }),
-            None => ((0, 0), State::default()).0,
-        };
-        let styled = StyledText::new(self.text.clone())
-            .with_ligature_breaking(false)
-            .with_runs(self.runs_with_selection(selection.0, selection.1));
-        // Раскладка нужна на этапе отрисовки, чтобы попасть точкой в символ.
-        self.layout = Some(styled.layout().clone());
-        let mut el = styled.into_any_element();
-        let layout_id = el.request_layout(window, cx);
-        (layout_id, el)
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(id, _inspector_id, window, cx, stack))
+            .finish()
+    }
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, (LayoutId, AnyElement)> {
+        Box::pin(self.request_layout_on_stack(id, _inspector_id, window, cx, stack))
     }
 
     fn prepaint(
@@ -84,7 +85,23 @@ impl Element for Selectable {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        crate::interactive::hitbox::prepaint_hitbox(child, bounds, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(_id, _inspector_id, bounds, child, window, cx, stack)
+            })
+            .finish()
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, Hitbox> {
+        Box::pin(self.prepaint_on_stack(_id, _inspector_id, bounds, child, window, cx, stack))
     }
 
     fn paint(

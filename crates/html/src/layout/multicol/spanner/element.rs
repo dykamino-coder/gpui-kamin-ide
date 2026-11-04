@@ -55,7 +55,12 @@ impl Hooks for SpannerFlow {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         let build = self.build.clone();
         let intrinsic = self.intrinsic.clone();
         let definite_height = self.definite_height.clone();
@@ -101,12 +106,13 @@ impl Hooks for SpannerFlow {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         let origin = window.layout_origin_unrounded(*state);
         let bounds = window.layout_size_unrounded(*state);
@@ -117,8 +123,12 @@ impl Hooks for SpannerFlow {
                 .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite),
         );
         let mut child = (self.build)(available, SpannerPass::Final, window, cx);
-        child.layout_as_root_at(origin, available, window, cx);
-        child.prepaint_at(point(px(0.), px(0.)), window, cx);
+        child
+            .layout_as_root_at_async(origin, available, window, cx, stack)
+            .await;
+        child
+            .prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+            .await;
         self.child = Some(child);
     }
 

@@ -52,7 +52,13 @@ impl AtomFit {
 
     /// Atom geometry when the containing block is `avail` wide (`f32::INFINITY`
     /// for max-content, 0 for min-content).
-    pub(super) fn fit(&mut self, avail: f32, window: &mut Window, cx: &mut App) -> Fitted {
+    pub(super) async fn fit(
+        &mut self,
+        avail: f32,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Fitted {
         if let Some((_, f)) = self
             .cache
             .iter()
@@ -70,14 +76,18 @@ impl AtomFit {
                 continue;
             }
             a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
-            let (s, b, _) = a.snap.measure(
-                size(
-                    gpui::AvailableSpace::Definite(px(w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
+            let (s, b, _) = a
+                .snap
+                .measure_async(
+                    size(
+                        gpui::AvailableSpace::Definite(px(w)),
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                    stack,
+                )
+                .await;
             let h = f32::from(s.height);
             let base = match (b, a.snap_base) {
                 (Some(b), Some(b0)) => a.base + (f32::from(b) - b0),
@@ -93,7 +103,12 @@ impl AtomFit {
 impl Paragraph {
     /// Collect the atoms whose width depends on the containing block. Called
     /// at the end of `lay_atoms`, while the layout engine is free.
-    pub(super) fn prepare_atom_fit(&mut self, window: &mut Window, cx: &mut App) {
+    pub(super) async fn prepare_atom_fit(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let mut fit = AtomFit::default();
         if !self.vertical {
             for (k, slot) in self.atoms.iter().enumerate() {
@@ -109,14 +124,17 @@ impl Paragraph {
                 }
                 let max = f32::from(window.layout_exact(root).1.width);
                 let mut snap = window.snapshot_layout_measurement(root);
-                let (smin, _, _) = snap.measure(
-                    size(
-                        gpui::AvailableSpace::MinContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
+                let (smin, _, _) = snap
+                    .measure_async(
+                        size(
+                            gpui::AvailableSpace::MinContent,
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await;
                 let min = f32::from(smin.width);
                 if min >= max - COORD_EPS {
                     continue;
@@ -125,14 +143,17 @@ impl Paragraph {
                     !slot.fixed_inline,
                     "style-fixed atom width must not depend on the containing block: min {min}, max {max}"
                 );
-                let (smax, sbase, _) = snap.measure(
-                    size(
-                        gpui::AvailableSpace::MaxContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
+                let (smax, sbase, _) = snap
+                    .measure_async(
+                        size(
+                            gpui::AvailableSpace::MaxContent,
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await;
                 fit.atoms.push(FitAtom {
                     k,
                     at: b.at,
@@ -175,11 +196,21 @@ impl Paragraph {
     }
 
     /// Prepaint: lay the real atoms out at the width the measurement used.
-    pub(super) fn refit_atoms(&mut self, avail: f32, window: &mut Window, cx: &mut App) {
+    pub(super) async fn refit_atoms(
+        &mut self,
+        avail: f32,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.atom_fit.borrow().is_empty() {
             return;
         }
-        let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
+        let fitted = self
+            .atom_fit
+            .borrow_mut()
+            .fit(avail, window, cx, stack)
+            .await;
         for &(k, w, _, _) in &fitted {
             let Some(slot) = self.atoms.get_mut(k) else {
                 continue;
@@ -188,14 +219,17 @@ impl Paragraph {
                 continue;
             };
             window.cap_layout_child_outer_width(root, ATOM_CHILD, px(w));
-            slot.el.layout_as_root(
-                size(
-                    gpui::AvailableSpace::Definite(px(w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
+            slot.el
+                .layout_as_root_async(
+                    size(
+                        gpui::AvailableSpace::Definite(px(w)),
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                    stack,
+                )
+                .await;
         }
         // Real geometry wins over the copy's for placement and painting.
         let fitted: Fitted = fitted

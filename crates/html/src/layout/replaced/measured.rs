@@ -74,8 +74,13 @@ impl Hooks for MeasuredReplaced {
     type Layout = (LayoutId, LayoutId);
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let picture = self.image.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let picture = self.image.request_layout_async(window, cx, stack).await;
         let natural = self.natural;
         let ratio = self.ratio;
         let measure = self.measure.clone();
@@ -102,12 +107,13 @@ impl Hooks for MeasuredReplaced {
         (layout, (picture, layout))
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         // Reconstruct the decoration from CSS dimensions, before pixel snapping.
         // Using snapped bounds enlarges a 34px box to 34.4px at scale 1.25,
@@ -123,7 +129,9 @@ impl Hooks for MeasuredReplaced {
             cx,
         );
         window.set_layout_root_origin(state.0, origin);
-        self.image.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+        self.image
+            .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+            .await;
     }
 
     fn paint(

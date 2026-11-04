@@ -26,7 +26,8 @@ pub use layers::Positioning;
 pub(crate) use oof::OofKid;
 
 mod line_box;
-pub use line_box::{LineBoxSlot, with_line_box};
+pub use line_box::LineBoxSlot;
+pub(crate) use line_box::with_line_box_async;
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
 

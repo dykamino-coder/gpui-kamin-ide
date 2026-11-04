@@ -65,14 +65,27 @@ struct LayoutRecord<T> {
 impl<T: 'static> Hooks for LayoutRecord<T> {
     type Layout = ();
     type Prepaint = ();
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let id = window.request_layout(full_box(), [], cx);
         if let Some(value) = self.value.take() {
             self.measure.record(id, value);
         }
         (id, ())
     }
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {}
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
+    }
     fn paint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut (), _: &mut Window, _: &mut App) {}
 }
 

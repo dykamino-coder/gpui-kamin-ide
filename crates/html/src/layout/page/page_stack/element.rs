@@ -8,7 +8,12 @@ impl Hooks for PageStack {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         // Стопка занимает РОДИТЕЛЯ целиком (окно стенда): число страниц
         // становится известно только после меры детей в `prepaint`, а размер
         // листов подгоняется масштабом, не размером стопки. Измеряемая
@@ -22,12 +27,13 @@ impl Hooks for PageStack {
         (id, ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
         // п. 3: «the first page … is given the start page value of the root»):

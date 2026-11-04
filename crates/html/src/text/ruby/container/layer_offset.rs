@@ -30,13 +30,23 @@ impl Wrap for Offset {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let h = self
             .layers
             .iter()
             .map(|(layer, before)| layer.before(self.under, *before, window))
             .fold(0.0f32, f32::max);
         let shift = point(px(0.0), px(if self.under { h } else { -h }));
-        window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
+        window
+            .with_exact_element_offset_async(shift, async |window| {
+                self.child.prepaint_async(window, cx, stack).await
+            })
+            .await;
     }
 }

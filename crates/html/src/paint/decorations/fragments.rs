@@ -34,48 +34,58 @@ impl Hooks for Fragments {
     type Layout = ();
     type Prepaint = Vec<(Decoration, AnyElement)>;
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let mut style: Style = Style::default();
         style.position = gpui::Position::Absolute;
         (window.request_layout(style, [], cx), ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _: Bounds<Pixels>,
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
         let boxes = crate::paint::coordinator::segments::decorations(self.node, window);
-        boxes
-            .iter()
-            .map(|geometry| {
-                let frame = self.cx.frame();
-                let own = &self.style;
-                // Контейнер несёт border-box, поэтому абсолютные слои общего painter
-                // отсчитываются от того же padding-box, что и у обычной коробки.
-                let border = own.borders();
-                let length = |v| crate::style::values::value::px_lossy_zero(v);
-                let child = div()
-                    .relative()
-                    .w(geometry.bounds.size.width)
-                    .h(geometry.bounds.size.height)
-                    .border_t(px(length(border.top)))
-                    .border_r(px(length(border.right)))
-                    .border_b(px(length(border.bottom)))
-                    .border_l(px(length(border.left)))
-                    .children(super::decorations(own, self.empty, frame, Some(&self.cx)));
-                let mut child = gpui::IntoElement::into_any_element(child);
-                child.layout_as_root(
+        let mut fragments = Vec::with_capacity(boxes.len());
+        for geometry in boxes.iter() {
+            let frame = self.cx.frame();
+            let own = &self.style;
+            // Контейнер несёт border-box, поэтому абсолютные слои общего painter
+            // отсчитываются от того же padding-box, что и у обычной коробки.
+            let border = own.borders();
+            let length = |v| crate::style::values::value::px_lossy_zero(v);
+            let child = div()
+                .relative()
+                .w(geometry.bounds.size.width)
+                .h(geometry.bounds.size.height)
+                .border_t(px(length(border.top)))
+                .border_r(px(length(border.right)))
+                .border_b(px(length(border.bottom)))
+                .border_l(px(length(border.left)))
+                .children(super::decorations(own, self.empty, frame, Some(&self.cx)));
+            let mut child = gpui::IntoElement::into_any_element(child);
+            child
+                .layout_as_root_async(
                     geometry.bounds.size.map(gpui::AvailableSpace::Definite),
                     window,
                     cx,
-                );
-                child.prepaint_at(geometry.bounds.origin, window, cx);
-                (*geometry, child)
-            })
-            .collect()
+                    stack,
+                )
+                .await;
+            child
+                .prepaint_at_async(geometry.bounds.origin, window, cx, stack)
+                .await;
+            fragments.push((*geometry, child));
+        }
+        fragments
     }
 
     fn paint(

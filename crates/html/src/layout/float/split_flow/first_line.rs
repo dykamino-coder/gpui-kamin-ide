@@ -82,7 +82,12 @@ impl Hooks for FirstLine {
     type Layout = ();
     type Prepaint = AnyElement;
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let text = self.text.clone();
         let following = self.following.clone();
         let font = self.font.clone();
@@ -129,12 +134,13 @@ impl Hooks for FirstLine {
         (layout_id, ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> AnyElement {
         let at = if bounds.size.width != self.cut.get().width && bounds.size.width > px(0.) {
             measure_first_line(
@@ -150,15 +156,22 @@ impl Hooks for FirstLine {
             self.cut.get().at
         };
         let mut child = (self.build)(at, bounds.size.width);
-        child.layout_as_root(
-            size(
-                AvailableSpace::Definite(bounds.size.width),
-                AvailableSpace::MinContent,
-            ),
-            window,
-            cx,
-        );
-        window.with_absolute_element_offset(bounds.origin, |window| child.prepaint(window, cx));
+        child
+            .layout_as_root_async(
+                size(
+                    AvailableSpace::Definite(bounds.size.width),
+                    AvailableSpace::MinContent,
+                ),
+                window,
+                cx,
+                stack,
+            )
+            .await;
+        window
+            .with_absolute_element_offset_async(bounds.origin, async |window| {
+                child.prepaint_async(window, cx, stack).await
+            })
+            .await;
         child
     }
 

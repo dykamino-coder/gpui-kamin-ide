@@ -7,14 +7,19 @@
 
 use crate::text::paragraph::*;
 use crate::tolerance::COORD_EPS;
-use gpui::{App, Pixels, Window, px, size};
+use gpui::{App, Window, px, size};
 
 impl Paragraph {
     /// Раскладка атомов ДО замера абзаца: перенос и высота строк зависят от
     /// их размеров, а внутри замера раскладывать нельзя (движок раскладки
     /// занят). Атом меряется по содержимому — в строку допускаются только
     /// атомы, чей размер от ширины строки не зависит (решает `layout::atom`).
-    pub(crate) fn lay_atoms(&mut self, window: &mut Window, cx: &mut App) {
+    pub(crate) async fn lay_atoms(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         self.invalidate_prepared();
         if let Some(run) = self.runs.first() {
             let id = window.text_system().resolve_font(&run.font);
@@ -38,14 +43,18 @@ impl Paragraph {
         // the loop (the computation needs the whole paragraph).
         let mut overhangs: Vec<(usize, usize, usize, f32, f32, f32, RubyOverhangInfo)> = Vec::new();
         for slot in self.atoms.iter_mut() {
-            let rounded = slot.el.layout_as_root(
-                size(
-                    gpui::AvailableSpace::MaxContent,
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
+            let rounded = slot
+                .el
+                .layout_as_root_async(
+                    size(
+                        gpui::AvailableSpace::MaxContent,
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                    stack,
+                )
+                .await;
             // Размер и базовая линия — ТОЧНЫЕ, без округления к точке
             // устройства (см. `LayoutTap`); щуп стоит прямо в обёртке, и его
             // смещение от неё и есть базовая линия.
@@ -173,52 +182,6 @@ impl Paragraph {
                 self.prepared.take();
             }
         }
-        self.prepare_atom_fit(window, cx);
-    }
-}
-
-impl Paragraph {
-    /// Поставить атомы на места их строк: x — от продвижения до распорки
-    /// плюс прижим строки (тот же, что у отрисовки), y — от базовой линии
-    /// строки по `vertical-align`.
-    /// Трекинг, который добавлен ПОСЛЕДНЕМУ знаку отрезка.
-    ///
-    /// По css-text-3 §8.2 межбуквенный интервал в конце строки не действует:
-    /// он свисает за край и в ширину строки не входит. Пока входил, коробка
-    /// шириной ровно в текст рвала последнее слово (`letter-spacing-200`).
-    pub(crate) fn tail_spacing(&self, end: usize) -> Pixels {
-        if end == 0 {
-            return px(0.);
-        }
-        // Знак-распорка несёт ПОЛЕ строчной коробки, а не трекинг: вычитать
-        // его на конце строки нельзя — иначе коробка теряет своё правое поле
-        // и выходит уже на целый em (`word-space-transform-010`).
-        if self.text[..end].ends_with('\u{feff}') {
-            return px(0.);
-        }
-        // Принудительный разрыв единицей письма не является: трекинг конца
-        // строки — у последнего знака ПЕРЕД ним (css-text-3 §8.2). Пока брался
-        // трекинг самого `\n`, строка с `<span>` вокруг перевода строки
-        // теряла или сохраняла лишний зазор (`letter-spacing-end-of-line-002`).
-        let body = self.text[..end].trim_end_matches('\n');
-        if body.is_empty() {
-            return px(0.);
-        }
-        let (at, last) = body.char_indices().next_back().unwrap_or((0, ' '));
-        // Before the `\n` may sit an inline box margin spacer or an atom
-        // carrier: their "tracking" is the box advance, not letter-spacing,
-        // and must not be removed (`text-indent-intrinsic-*`,
-        // `word-space-transform-011`).
-        if body.len() < end
-            && (matches!(last, '\u{feff}' | '\u{fffc}' | '\u{200b}')
-                || self.atom_boxes.iter().any(|b| b.at == at)
-                || self.spacers.contains(&at))
-        {
-            return px(0.);
-        }
-        self.prepared()
-            .letters
-            .first(at)
-            .map_or(self.letter_spacing, |i| self.letter_spans[i].1)
+        self.prepare_atom_fit(window, cx, stack).await;
     }
 }

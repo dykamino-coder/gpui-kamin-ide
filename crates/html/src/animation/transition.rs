@@ -13,6 +13,9 @@
 //! поэтому лишней работы это не создаёт; для узлов без перехода не создаётся
 //! вообще ничего.
 
+#[path = "transition/transition_traversal.rs"]
+mod transition_traversal;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
     IntoElement, LayoutId, Pixels, Window,
@@ -69,42 +72,19 @@ impl Element for Transition {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, AnyElement) {
-        let Some(global_id) = id else {
-            // Без идентификатора памяти нет — рисуем обычный стиль.
-            let mut el = (self.build)(0.0);
-            let layout_id = el.request_layout(window, cx);
-            return (layout_id, el);
-        };
-        let seconds = self.seconds;
-        let build = self.build.clone();
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let mut st = state.unwrap_or_default();
-            let now = Instant::now();
-            let dt = st
-                .last
-                .map(|t| now.duration_since(t).as_secs_f32())
-                .unwrap_or(0.0)
-                // Потолок шага: после сворачивания окна между кадрами проходят
-                // минуты, и переход обязан доиграть, а не прыгнуть.
-                .min(0.25);
-            st.last = Some(now);
-
-            let target = if st.hovered { 1.0 } else { 0.0 };
-            let step = dt / seconds;
-            if (target - st.progress).abs() <= step {
-                st.progress = target;
-            } else {
-                st.progress += step * (target - st.progress).signum();
-            }
-            if st.progress != target {
-                self.doc.values.defer_frame();
-                window.request_animation_frame();
-            }
-
-            let mut el = build(st.progress);
-            let layout_id = el.request_layout(window, cx);
-            ((layout_id, el), st)
-        })
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(id, _inspector_id, window, cx, stack))
+            .finish()
+    }
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, (LayoutId, AnyElement)> {
+        Box::pin(self.request_layout_on_stack(id, _inspector_id, window, cx, stack))
     }
 
     fn prepaint(
@@ -116,7 +96,23 @@ impl Element for Transition {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        crate::interactive::hitbox::prepaint_hitbox(child, bounds, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(_id, _inspector_id, bounds, child, window, cx, stack)
+            })
+            .finish()
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, Hitbox> {
+        Box::pin(self.prepaint_on_stack(_id, _inspector_id, bounds, child, window, cx, stack))
     }
 
     fn paint(

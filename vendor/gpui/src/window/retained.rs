@@ -9,6 +9,7 @@
 //! window inputs (events, focus) the host cannot observe itself.
 
 use super::*;
+mod continuation;
 
 /// Prepaint output of a subtree in the frame that recorded it.
 #[derive(Clone, Default)]
@@ -57,16 +58,6 @@ impl Window {
         self.next_frame_callbacks.borrow().len()
     }
 
-    /// Run the prepaint of a subtree and return its range in this frame.
-    pub fn record_retained_prepaint<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> (R, RetainedPrepaint) {
-        let start = self.prepaint_index();
-        let result = f(self);
-        (result, RetainedPrepaint(start..self.prepaint_index()))
-    }
-
     /// Copy the prepaint output recorded in the previous frame into this one.
     /// The caller guarantees the record comes from the rendered frame.
     pub fn replay_retained_prepaint(&mut self, record: &RetainedPrepaint) -> RetainedPrepaint {
@@ -98,23 +89,16 @@ impl Window {
                 || !frame.deferred_draws[first..].iter().any(groups))
     }
 
-    /// Run the paint of a subtree and return its range in this frame.
-    pub fn record_retained_paint<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> (R, RetainedPaint) {
-        let root = self.retained_root_environment();
-        let groups = self.next_frame.scene.groups.len();
-        let start = self.paint_index();
-        let result = f(self);
-        let replayable = root && groups == self.next_frame.scene.groups.len();
-        (result, RetainedPaint { range: start..self.paint_index(), replayable })
-    }
-
     /// Copy replayable paint output recorded in the previous frame into this one.
     /// The caller guarantees the record comes from the rendered frame.
     pub fn replay_retained_paint(&mut self, record: &RetainedPaint) -> RetainedPaint {
         debug_assert!(record.replayable, "non-replayable paint record");
         let start = self.paint_index();
         self.reuse_paint(record.range.clone());
-        RetainedPaint { range: start..self.paint_index(), replayable: true }
+        RetainedPaint {
+            range: start..self.paint_index(),
+            replayable: true,
+        }
     }
 }
 
@@ -177,7 +161,8 @@ impl InkProbe {
         let start = &self.start;
         let allowed = window.next_frame.scene.ink_allowed;
         let quiet = self.clean
-            && end.mouse_listeners_index - start.mouse_listeners_index == allowed.0 - self.allowed.0
+            && end.mouse_listeners_index - start.mouse_listeners_index
+                == allowed.0 - self.allowed.0
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index
             && end.accessed_element_states_index - start.accessed_element_states_index
@@ -202,12 +187,17 @@ impl RetainedPrepaint {
     pub fn quiet(&self, window: &Window) -> Option<Option<Bounds<Pixels>>> {
         let (start, end) = (&self.0.start, &self.0.end);
         let frame = &window.next_frame;
-        let hitboxes = frame.hitboxes.get(start.hitboxes_index..end.hitboxes_index)?;
-        let plain = hitboxes.iter().zip(start.hitboxes_index..).all(|(hitbox, index)| {
-            hitbox.behavior == crate::HitboxBehavior::Normal
-                && !frame.hitbox_scopes.contains_key(&hitbox.id)
-                && !frame.hitbox_entry_scopes.contains_key(&index)
-        });
+        let hitboxes = frame
+            .hitboxes
+            .get(start.hitboxes_index..end.hitboxes_index)?;
+        let plain = hitboxes
+            .iter()
+            .zip(start.hitboxes_index..)
+            .all(|(hitbox, index)| {
+                hitbox.behavior == crate::HitboxBehavior::Normal
+                    && !frame.hitbox_scopes.contains_key(&hitbox.id)
+                    && !frame.hitbox_entry_scopes.contains_key(&index)
+            });
         let quiet = plain
             && start.tooltips_index == end.tooltips_index
             && start.deferred_draws_index == end.deferred_draws_index
@@ -281,7 +271,10 @@ impl Window {
     /// qualify. The snapshot is a few numbers (`Copy`).
     pub fn layout_snapshot(&self, id: LayoutId) -> Option<LayoutSnapshot> {
         let leaf = self.layout_engine.as_ref()?.exact_leaf(id)?;
-        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
+        Some(LayoutSnapshot {
+            leaf,
+            scale: self.scale_factor(),
+        })
     }
 
     /// Request the leaf of `snapshot` in this frame's layout. The caller

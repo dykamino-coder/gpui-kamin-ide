@@ -16,20 +16,26 @@ impl Hooks for Tap {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let id = self.inner.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
+        let id = self.inner.request_layout_async(window, cx, stack).await;
         self.id.set(Some(id));
         (id, ())
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         _bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
-        self.inner.prepaint(window, cx);
+        self.inner.prepaint_async(window, cx, stack).await;
     }
 
     fn paint(

@@ -17,11 +17,29 @@ struct Layer(Rc<RefCell<AnyElement>>);
 impl Hooks for Layer {
     type Layout = ();
     type Prepaint = ();
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        (self.0.borrow_mut().request_layout(window, cx), ())
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
+        (
+            self.0
+                .borrow_mut()
+                .request_layout_async(window, cx, stack)
+                .await,
+            (),
+        )
     }
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
-        self.0.borrow_mut().prepaint(window, cx);
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.0.borrow_mut().prepaint_async(window, cx, stack).await;
     }
     fn paint(
         &mut self,

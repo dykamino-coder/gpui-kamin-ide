@@ -176,17 +176,23 @@ struct Measured {
 impl Hooks for Measured {
     type Layout = LayoutId;
     type Prepaint = bool;
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.probe.layout.set(Some(id));
         (id, id)
     }
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        _stack: &mut gpui::PaintStack,
     ) -> bool {
         let plan = self
             .probe

@@ -50,12 +50,20 @@ impl Wrap for CombinedUpright {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
         let space = gpui::size(
             gpui::AvailableSpace::MaxContent,
             gpui::AvailableSpace::MaxContent,
         );
-        self.natural = self.child.layout_as_root(space, window, cx);
+        self.natural = self
+            .child
+            .layout_as_root_async(space, window, cx, stack)
+            .await;
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
@@ -65,9 +73,17 @@ impl Wrap for CombinedUpright {
         window.request_layout(style, [], cx)
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let child = &mut self.child;
-        child.prepaint_at(bounds.origin, window, cx);
+        child
+            .prepaint_at_async(bounds.origin, window, cx, stack)
+            .await;
     }
 
     async fn paint_async(

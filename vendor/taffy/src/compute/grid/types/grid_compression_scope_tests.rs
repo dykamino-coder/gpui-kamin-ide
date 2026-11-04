@@ -34,6 +34,8 @@ fn item(replaced: bool, compressible: bool) -> GridItem {
 
 #[test]
 fn compression_uses_css_sizing_scope_in_both_axes() {
+    reblessive::Stack::new().enter(|stack| async move {
+
     for axis in [AbstractAxis::Inline, AbstractAxis::Block] {
         // CSS Sizing 3 включает сжимаемые controls независимо от классификации replaced.
         for (label, replaced, compressible) in [
@@ -56,7 +58,7 @@ fn compression_uses_css_sizing_scope_in_both_axes() {
                     height: basis,
                 };
                 let actual =
-                    child.minimum_contribution(&mut tree.as_layout_tree(), axis, &[], area, area);
+                    child.minimum_contribution_async(&mut tree.as_layout_tree(), axis, &[], area, area, stack).await;
                 let expected = match basis {
                     None if replaced || compressible => 0.0,
                     Some(60.0) => 30.0,
@@ -69,4 +71,6 @@ fn compression_uses_css_sizing_scope_in_both_axes() {
             }
         }
     }
+
+}).finish()
 }

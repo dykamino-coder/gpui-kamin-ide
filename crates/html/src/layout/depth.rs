@@ -36,7 +36,12 @@ impl Hooks for Boundary {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         self.doc.values.traversal_limit_reached(
             TraversalKind::Layout,
             MAX_REFLOW_DEPTH,
@@ -51,7 +56,15 @@ impl Hooks for Boundary {
         (window.request_layout(style, [], cx), ())
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {}
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
+    }
 
     fn paint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut (), _: &mut Window, _: &mut App) {}
 }

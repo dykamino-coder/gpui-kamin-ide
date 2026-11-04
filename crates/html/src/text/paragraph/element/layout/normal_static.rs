@@ -12,14 +12,21 @@ pub(crate) struct NormalStatic {
 }
 
 impl NormalStatic {
-    pub(super) fn new(paragraph: &mut Paragraph, window: &mut Window, cx: &mut App) -> Self {
+    pub(super) async fn new(
+        paragraph: &mut Paragraph,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Self {
         for (_, el, how) in &mut paragraph.overlays {
             if how.normal_probe.is_some() {
-                el.layout_as_root(
+                el.layout_as_root_async(
                     size(AvailableSpace::MaxContent, AvailableSpace::MaxContent),
                     window,
                     cx,
-                );
+                    stack,
+                )
+                .await;
             }
         }
         Self {

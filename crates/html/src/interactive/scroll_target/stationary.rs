@@ -27,13 +27,23 @@ impl Wrap for Stationary {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let clip = self.clip.get().unwrap_or_else(|| window.content_mask());
-        window.with_content_mask_replaced(clip, |window| {
-            window.with_exact_element_offset(-self.handle.offset(), |window| {
-                self.child.prepaint(window, cx);
-            });
-        });
+        window
+            .with_content_mask_replaced_async(clip, async |window| {
+                window
+                    .with_exact_element_offset_async(-self.handle.offset(), async |window| {
+                        self.child.prepaint_async(window, cx, stack).await;
+                    })
+                    .await;
+            })
+            .await;
     }
     async fn paint_async(
         &mut self,

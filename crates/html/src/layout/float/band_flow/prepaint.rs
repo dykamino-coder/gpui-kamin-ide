@@ -6,12 +6,13 @@ use gpui::{
     size,
 };
 impl BandFlow {
-    pub(super) fn prepaint_plan(
+    pub(super) async fn prepaint_plan(
         &mut self,
         bounds: Bounds<Pixels>,
         state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         let _ = bounds;
         // Отдельное дерево сохраняет точное начало хоста. Коробки и текст
@@ -85,7 +86,7 @@ impl BandFlow {
                 (0.0, 0.0),
             ));
         let mut el = host.into_any_element();
-        el.layout_as_root_at(
+        el.layout_as_root_at_async(
             origin,
             size(
                 AvailableSpace::Definite(px(pw)),
@@ -93,8 +94,11 @@ impl BandFlow {
             ),
             window,
             cx,
-        );
-        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            stack,
+        )
+        .await;
+        el.prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+            .await;
         self.built.push(el);
     }
 }

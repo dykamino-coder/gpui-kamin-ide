@@ -33,9 +33,15 @@ impl Wrap for RecordRootLeft {
         &mut self.child
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let left = f32::from(bounds.origin.x) - self.offset;
         self.layout.root_left.set(Some(left));
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 }

@@ -15,6 +15,7 @@ use crate::style::AlignItemsKeyword;
 use crate::style::SUBGRID_COLUMNS;
 use crate::style::SUBGRID_ROWS;
 use crate::tree::NodeId;
+use crate::util::sys::Box;
 use crate::util::sys::Vec;
 use crate::CoreStyle;
 use crate::GridContainerStyle;
@@ -24,7 +25,7 @@ use crate::LayoutGridContainer;
 /// координатах КОРНЕВОЙ сетки — `area`, а накопленный «extra margin» самой
 /// подсетки — `ext`.
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn flatten_into<Tree: LayoutGridContainer>(
+pub(in super::super) async fn flatten_into_async<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     node: NodeId,
     linked: u8,
@@ -41,6 +42,7 @@ pub(in super::super) fn flatten_into<Tree: LayoutGridContainer>(
     out: &mut Vec<GridItem>,
     edges_out: &mut Vec<SubgridEdge>,
     depth: u8,
+    stack: &mut reblessive::Stk,
 ) {
     if depth >= MAX_DEPTH {
         return;
@@ -183,8 +185,9 @@ pub(in super::super) fn flatten_into<Tree: LayoutGridContainer>(
             extra.bottom = 0.0;
         }
         if chained != 0 {
-            let child_content = nested_standalone_size::content(tree, &child, chained);
-            flatten_into(
+            let child_content =
+                nested_standalone_size::content_async(tree, &child, chained, stack).await;
+            Box::pin(flatten_into_async(
                 tree,
                 child.node,
                 chained,
@@ -201,7 +204,9 @@ pub(in super::super) fn flatten_into<Tree: LayoutGridContainer>(
                 out,
                 edges_out,
                 depth + 1,
-            );
+                stack,
+            ))
+            .await;
         }
         let sizing = linked & !chained;
         if sizing == 0 {

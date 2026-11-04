@@ -1,5 +1,7 @@
 //! Элемент BandFlow: раскладка детей по полосам при request_layout/prepaint.
 
+mod paint;
+
 use super::flow_kid::intrinsic_sizes;
 use super::kid::Kid;
 use super::{Probe, plan};
@@ -59,7 +61,12 @@ impl Hooks for BandFlow {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, Self::Layout) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
         let intrinsic = self.intrinsic.clone();
@@ -195,14 +202,15 @@ impl Hooks for BandFlow {
         (id, id)
     }
 
-    fn prepaint(
+    async fn prepaint_async(
         &mut self,
         bounds: Bounds<Pixels>,
         state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
-        self.prepaint_plan(bounds, state, window, cx);
+        self.prepaint_plan(bounds, state, window, cx, stack).await;
     }
 
     fn paint(
@@ -225,18 +233,7 @@ impl Hooks for BandFlow {
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
-            // The host is not a stacking context (CSS 2.1 Appendix E.2): later
-            // block backgrounds of the enclosing context paint before the
-            // inline foreground of its runs. Paint groups keep their own
-            // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
-            crate::hooks::paint_reopen_async(window, async |window| {
-                for el in self.built.iter_mut() {
-                    el.paint_async(window, cx, stack).await;
-                }
-            })
-            .await;
-        })
+        Box::pin(self.paint_children(window, cx, stack))
     }
 }
 

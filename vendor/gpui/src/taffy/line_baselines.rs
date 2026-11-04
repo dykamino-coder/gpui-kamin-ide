@@ -65,6 +65,44 @@ impl TaffyLayoutEngine {
         ) -> MeasuredContent
         + 'static,
     ) -> LayoutId {
+        self.register_measured(
+            style,
+            rem_size,
+            scale_factor,
+            node_measure(Box::new(measure)),
+        )
+    }
+
+    pub fn request_measured_layout_with_line_baselines(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        mut measure: impl FnMut(
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            &mut Window,
+            &mut App,
+        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>, Vec<Pixels>)
+        + 'static,
+    ) -> LayoutId {
+        self.request_measured_layout_with_line_data(
+            style,
+            rem_size,
+            scale_factor,
+            move |known, available, window, cx| {
+                let (size, first, last, lines) = measure(known, available, window, cx);
+                (size, first, last, Some(lines))
+            },
+        )
+    }
+    fn register_measured(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: NodeMeasureFn,
+    ) -> LayoutId {
         // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
         let taffy_style = {
             let _calc = self.taffy.calc_scope();
@@ -72,7 +110,6 @@ impl TaffyLayoutEngine {
         };
         let taffy_style = self.styles.share(taffy_style);
         // KaminIDE patch: measurement also supports the ordinary native stack.
-        let measure = node_measure(Box::new(measure));
         let mut context = Some(NodeContext {
             static_positions: Vec::new(),
             measure: std::rc::Rc::new(std::cell::RefCell::new(measure)),
@@ -99,28 +136,19 @@ impl TaffyLayoutEngine {
         };
         self.created(id, key)
     }
-
-    pub fn request_measured_layout_with_line_baselines(
+    /// Register a leaf whose intrinsic measurement can suspend.
+    pub fn request_measured_layout_with_box_async(
         &mut self,
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
-        mut measure: impl FnMut(
-            Size<Option<Pixels>>,
-            Size<AvailableSpace>,
-            &mut Window,
-            &mut App,
-        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>, Vec<Pixels>)
-        + 'static,
+        measure: impl AsyncMeasureFn + 'static,
     ) -> LayoutId {
-        self.request_measured_layout_with_line_data(
+        self.register_measured(
             style,
             rem_size,
             scale_factor,
-            move |known, available, window, cx| {
-                let (size, first, last, lines) = measure(known, available, window, cx);
-                (size, first, last, Some(lines))
-            },
+            NodeMeasureFn::Async(Box::new(measure)),
         )
     }
 }

@@ -11,7 +11,7 @@
 
 [package]
 edition = "2021"
-rust-version = "1.71"
+rust-version = "1.85"
 name = "taffy"
 version = "0.14.0"
 authors = [
@@ -166,3 +166,6 @@ version = "1.0.93"
 [profile.release]
 lto = true
 panic = "abort"
+
+[dependencies.reblessive]
+version = "0.4.3"

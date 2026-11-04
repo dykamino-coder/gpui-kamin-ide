@@ -7,11 +7,11 @@ use super::*;
 /// Inverse mapping of one transformed subtree, recorded at prepaint.
 #[derive(Debug)]
 pub(crate) struct HitScope {
-    parent: Option<Rc<HitScope>>,
+    pub(super) parent: Option<Rc<HitScope>>,
     /// Parent-space logical pixels to local logical pixels; `None` is a singular matrix.
-    inverse: Option<TransformationMatrix>,
+    pub(super) inverse: Option<TransformationMatrix>,
     /// The parent's clip at scope entry, in parent space.
-    clip: Bounds<Pixels>,
+    pub(super) clip: Bounds<Pixels>,
 }
 
 impl HitScope {
@@ -52,8 +52,16 @@ impl TransformationMatrix {
             -(rotation_scale[0][0] * x + rotation_scale[0][1] * y),
             -(rotation_scale[1][0] * x + rotation_scale[1][1] * y),
         ];
-        let inverse = Self { rotation_scale, translation };
-        (rotation_scale.iter().flatten().chain(&translation).all(|v| v.is_finite())).then_some(inverse)
+        let inverse = Self {
+            rotation_scale,
+            translation,
+        };
+        (rotation_scale
+            .iter()
+            .flatten()
+            .chain(&translation)
+            .all(|v| v.is_finite()))
+        .then_some(inverse)
     }
 }
 
@@ -80,7 +88,10 @@ impl Window {
         ));
         let radius = f32::MAX / 64.0;
         self.content_mask_stack.push(ContentMask {
-            bounds: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))),
+            bounds: Bounds::new(
+                point(px(-radius), px(-radius)),
+                size(px(radius * 2.0), px(radius * 2.0)),
+            ),
         });
         self.with_restore(
             saved,
@@ -109,12 +120,19 @@ impl Window {
 
     /// `base` followed by content presented under `matrix` (logical pixels, in
     /// base space): placements replayed under a presentation are hit through it.
-    pub fn paint_hit_scope_under(&self, base: &PaintHitScope, matrix: TransformationMatrix) -> PaintHitScope {
+    pub fn paint_hit_scope_under(
+        &self,
+        base: &PaintHitScope,
+        matrix: TransformationMatrix,
+    ) -> PaintHitScope {
         let radius = f32::MAX / 64.0;
         PaintHitScope(Some(Rc::new(HitScope {
             parent: base.0.clone(),
             inverse: matrix.inverse(),
-            clip: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))),
+            clip: Bounds::new(
+                point(px(-radius), px(-radius)),
+                size(px(radius * 2.0), px(radius * 2.0)),
+            ),
         })))
     }
 
@@ -126,23 +144,37 @@ impl Window {
         scopes: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
         prepaint: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let _scopes = self.render_contexts.enter(Some(Rc::new(SegmentHitScopes(scopes))));
+        let _scopes = self
+            .render_contexts
+            .enter(Some(Rc::new(SegmentHitScopes(scopes))));
         prepaint(self)
     }
 
     /// Record the scope of the placement `route` about to be pushed.
     pub(crate) fn note_segment_hit_scope(&mut self, route: crate::PaintSegment) {
-        let Some(scopes) = self.render_contexts.get::<SegmentHitScopes>() else { return };
-        if let Some((_, _, scope)) = scopes.0.iter().find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal) {
+        let Some(scopes) = self.render_contexts.get::<SegmentHitScopes>() else {
+            return;
+        };
+        if let Some((_, _, scope)) = scopes
+            .0
+            .iter()
+            .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
+        {
             let entry = self.next_frame.hitboxes.len();
-            self.next_frame.hitbox_entry_scopes.insert(entry, scope.0.clone());
+            self.next_frame
+                .hitbox_entry_scopes
+                .insert(entry, scope.0.clone());
         }
     }
 }
 
 impl HitScope {
     /// Whether `hitbox`, inserted under `scope`, covers the window point `position`.
-    pub(crate) fn hitbox_contains(scope: Option<&Rc<HitScope>>, hitbox: &Hitbox, position: Point<Pixels>) -> bool {
+    pub(crate) fn hitbox_contains(
+        scope: Option<&Rc<HitScope>>,
+        hitbox: &Hitbox,
+        position: Point<Pixels>,
+    ) -> bool {
         let position = match scope {
             Some(scope) => match HitScope::local(scope, position) {
                 Some(local) => local,
@@ -150,6 +182,9 @@ impl HitScope {
             },
             None => position,
         };
-        hitbox.bounds.intersect(&hitbox.content_mask.bounds).contains(&position)
+        hitbox
+            .bounds
+            .intersect(&hitbox.content_mask.bounds)
+            .contains(&position)
     }
 }

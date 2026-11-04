@@ -81,3 +81,33 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
     copy.clear();
     assert!(callback.upgrade().is_none());
 }
+
+#[test]
+fn measurement_copy_handles_twenty_thousand_levels_on_a_small_stack() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            let mut source = TaffyTree::<NodeContext>::new();
+            let mut root = source.new_leaf(Style::default()).unwrap();
+            for _ in 0..20_000 {
+                root = source.new_with_children(Style::default(), &[root]).unwrap();
+            }
+            let mut target = TaffyTree::new();
+            let mut copy = copy_subtree(&source, &mut target, root);
+            let mut depth = 0;
+            loop {
+                let children = target.children(copy).unwrap();
+                if children.is_empty() {
+                    break;
+                }
+                assert_eq!(children.len(), 1);
+                copy = children[0];
+                depth += 1;
+            }
+            assert_eq!(depth, 20_000);
+            assert_eq!(source.total_node_count(), target.total_node_count());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

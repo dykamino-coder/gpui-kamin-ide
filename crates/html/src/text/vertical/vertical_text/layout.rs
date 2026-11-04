@@ -10,7 +10,12 @@ use crate::text::vertical::vertical_line_baseline;
 use gpui::{App, LayoutId, Window};
 
 impl VerticalText {
-    pub(crate) fn request_layout_impl(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
+    pub(crate) async fn request_layout_impl(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
         // Собственный корень раскладки: размер текста нужен ЗДЕСЬ, чтобы
         // отдать его родителю перевёрнутым. Атомарное поддерево строится один
         // раз и держит `LayoutId` этого движка; замер по запросу родителя
@@ -45,9 +50,13 @@ impl VerticalText {
                 self.inline_keyword,
                 window,
                 cx,
+                stack,
             )
+            .await
         } else {
-            self.child.layout_as_root_unrounded(space, window, cx)
+            self.child
+                .layout_as_root_unrounded_async(space, window, cx, stack)
+                .await
         };
         // Внутренний строчный размер повёрнутого текста — длина его самой
         // длинной строки (`natural.width` горизонтального абзаца до
@@ -91,7 +100,9 @@ impl VerticalText {
             self.first_line.as_ref(),
             window,
             cx,
-        );
+            stack,
+        )
+        .await;
         if self.inline_constraint.is_some() {
             style.size.height = self.natural.width.into();
         } else if let Some(cap) = self.claim_cap

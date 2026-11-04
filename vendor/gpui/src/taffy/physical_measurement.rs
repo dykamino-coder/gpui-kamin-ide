@@ -12,7 +12,21 @@ impl LayoutMeasurement {
         window: &mut Window,
         cx: &mut App,
     ) -> MeasuredContent {
-        let (size, first_y, last_y) = self.measure(available, window, cx);
+        crate::paint_traversal::Stack::new()
+            .enter(|stack| self.measure_physical_baselines_async(available, window, cx, stack))
+            .finish()
+    }
+}
+
+impl LayoutMeasurement {
+    pub async fn measure_physical_baselines_async(
+        &mut self,
+        available: Size<AvailableSpace>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut crate::PaintStack,
+    ) -> MeasuredContent {
+        let (size, first_y, last_y) = self.measure_async(available, window, cx, stack).await;
         let output = self
             .tree
             .computed_layout_output(self.root)

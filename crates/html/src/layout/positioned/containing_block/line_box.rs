@@ -19,19 +19,31 @@ impl std::ops::Deref for LineBox {
 }
 
 /// Expose this line while the probe prepaints, preserving any outer value.
+#[cfg(test)]
 pub fn with_line_box<R>(
     slot: &LineBoxSlot,
     line: (Pixels, Pixels, Pixels),
     f: impl FnOnce() -> R,
 ) -> R {
-    struct Restore<'a>(&'a LineBoxSlot, Option<(Pixels, Pixels, Pixels)>);
-    impl Drop for Restore<'_> {
-        fn drop(&mut self) {
-            self.0.set(self.1);
-        }
-    }
     let _scope = Restore(slot, slot.replace(Some(line)));
     f()
+}
+
+/// Удерживает line-box до завершения дочернего prepaint.
+pub(crate) async fn with_line_box_async<R>(
+    slot: &LineBoxSlot,
+    line: (Pixels, Pixels, Pixels),
+    f: impl AsyncFnOnce() -> R,
+) -> R {
+    let _scope = Restore(slot, slot.replace(Some(line)));
+    f().await
+}
+
+struct Restore<'a>(&'a LineBoxSlot, Option<(Pixels, Pixels, Pixels)>);
+impl Drop for Restore<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.1);
+    }
 }
 
 #[cfg(test)]

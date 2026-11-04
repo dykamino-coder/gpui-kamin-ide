@@ -10,6 +10,37 @@ impl<T: Hooks> Element for Hooked<T> {
         self.0.paint_metadata()
     }
 
+    fn request_layout_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, (LayoutId, T::Layout)> {
+        Box::pin(Hooks::request_layout_async(&mut self.0, window, cx, stack))
+    }
+
+    fn prepaint_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout: &'a mut T::Layout,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, T::Prepaint> {
+        Box::pin(Hooks::prepaint_async(
+            &mut self.0,
+            bounds,
+            layout,
+            window,
+            cx,
+            stack,
+        ))
+    }
+
     fn paint_async<'a>(
         &'a mut self,
         _: Option<&'a GlobalElementId>,
@@ -42,7 +73,9 @@ impl<T: Hooks> Element for Hooked<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, T::Layout) {
-        Hooks::request_layout(&mut self.0, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| Hooks::request_layout_async(&mut self.0, window, cx, stack))
+            .finish()
     }
 
     fn prepaint(
@@ -54,7 +87,9 @@ impl<T: Hooks> Element for Hooked<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> T::Prepaint {
-        Hooks::prepaint(&mut self.0, bounds, layout, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| Hooks::prepaint_async(&mut self.0, bounds, layout, window, cx, stack))
+            .finish()
     }
 
     fn paint(

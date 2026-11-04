@@ -62,33 +62,38 @@ fn fragment_box_override_matches_common_background_border_radius_and_shadow_pain
                     let mut slices = SourceSlices::default();
                     slices.nodes.insert(7, Rc::from(parts));
                     slices.boxes.insert(7, boxes.clone());
-                    let actual = consumer::record(
-                        extent,
-                        routes.clone(),
-                        slices,
-                        window,
-                        cx,
-                        |window, cx| {
-                            consumer::node(
-                                7,
-                                None,
-                                gpui::Point::default(),
+                    let actual = reblessive::Stack::new()
+                        .enter(|stack| {
+                            consumer::record_async(
+                                extent,
+                                routes.clone(),
+                                slices,
                                 window,
                                 cx,
-                                |window, cx| {
-                                    style().paint_with_box(
-                                        whole,
-                                        Some(&consumer::box_painter(7)),
+                                stack,
+                                async |window, cx, _stack| {
+                                    consumer::node(
+                                        7,
+                                        None,
+                                        gpui::Point::default(),
                                         window,
                                         cx,
-                                        |_, _| {},
+                                        |window, cx| {
+                                            style().paint_with_box(
+                                                whole,
+                                                Some(&consumer::box_painter(7)),
+                                                window,
+                                                cx,
+                                                |_, _| {},
+                                            );
+                                        },
                                     );
                                 },
-                            );
-                        },
-                    )
-                    .unwrap()
-                    .0;
+                            )
+                        })
+                        .finish()
+                        .unwrap()
+                        .0;
                     let (_, expected) = window
                         .record_paint_segments(extent, routes.clone(), cx, |window, cx| {
                             for (index, geometry) in boxes.iter().enumerate() {

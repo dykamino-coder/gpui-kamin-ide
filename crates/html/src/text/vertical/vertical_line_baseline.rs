@@ -16,7 +16,7 @@ fn project(height: Pixels, baseline: Pixels, ccw: bool, lr: bool) -> (f32, bool)
 
 // Baseline correction uses the child and both parent/child coordinate systems.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn apply(
+pub(super) async fn apply(
     style: &mut Style,
     child: &mut AnyElement,
     natural: Size<Pixels>,
@@ -25,20 +25,26 @@ pub(super) fn apply(
     first_line: Option<&(Font, Pixels, Option<Pixels>, bool)>,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let Some((font, font_size, line_height, central)) = first_line else {
         return;
     };
     if !central {
-        let mut snapshot = child.snapshot_layout_measurement(window, cx);
-        let measured = snapshot.measure_physical_baselines(
-            size(
-                AvailableSpace::Definite(natural.width),
-                AvailableSpace::MaxContent,
-            ),
-            window,
-            cx,
-        );
+        let mut snapshot = child
+            .snapshot_layout_measurement_async(window, cx, stack)
+            .await;
+        let measured = snapshot
+            .measure_physical_baselines_async(
+                size(
+                    AvailableSpace::Definite(natural.width),
+                    AvailableSpace::MaxContent,
+                ),
+                window,
+                cx,
+                stack,
+            )
+            .await;
         if let Some(baseline) = measured.first_y {
             style.baseline_x_hint = Some(project(measured.size.height, baseline, ccw, lr));
             return;

@@ -15,18 +15,19 @@ use crate::text::paragraph::*;
 use gpui::{App, GlobalElementId, InspectorElementId, LayoutId, Window};
 
 impl Paragraph {
-    pub(crate) fn request_layout_impl(
+    pub(crate) async fn request_layout_impl(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (LayoutId, LayoutId) {
         self.invalidate_prepared();
         // Атомы раскладываются ДО замера: их ширина — продвижение распорки,
         // высота растит строку (см. `lay_atoms`).
         if !self.atoms.is_empty() {
-            self.lay_atoms(window, cx);
+            self.lay_atoms(window, cx, stack).await;
         }
         // Рост строки под знак акцента меряется подъёмом и спуском его
         // прогона (`line_padding`); без замера при раскладке строка не росла
@@ -120,7 +121,7 @@ impl Paragraph {
         let measures = self.measures.clone();
         let paint_context = self.paint_context.clone();
         let inline_measure = self.inline_measure.clone();
-        let normal_static = normal_static::NormalStatic::new(self, window, cx);
+        let normal_static = normal_static::NormalStatic::new(self, window, cx, stack).await;
         let static_bind = normal_static.clone();
         let rebuild = fit.is_some() || !atom_fit.borrow().is_empty();
         let make_probe = move || {
@@ -187,9 +188,13 @@ impl Paragraph {
         } else {
             Probe::Built(make_probe())
         };
-        let id = window.request_measured_layout_with_physical_baselines(
+        let id = window.request_measured_layout_with_physical_baselines_async(
             gpui::Style::default(),
-            move |known, available, window, _cx| {
+            async move |known,
+                        available,
+                        window: &mut Window,
+                        _cx: &mut App,
+                        stack: &mut gpui::PaintStack| {
                 // Заданная ширина сильнее доступной: раскладка уже решила, в
                 // какую коробку абзац ставится, и переносы считаются по ней.
                 let mut fresh;
@@ -208,7 +213,9 @@ impl Paragraph {
                     &normal_static,
                     window,
                     _cx,
+                    stack,
                 )
+                .await
             },
         );
         static_bind.bind(crate::layout::fragment::geometry::Node::capture(id, window));

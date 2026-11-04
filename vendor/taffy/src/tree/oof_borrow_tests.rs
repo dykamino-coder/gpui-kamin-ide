@@ -3,65 +3,71 @@
 use super::taffy_tree::TaffyView;
 use crate::style_helpers::*;
 use crate::{
-    compute_oof_layout_for_area, AxisStaticEdge, AxisStaticPosition, ContainingBlockClaims,
+    compute_oof_layout_for_area_async, AxisStaticEdge, AxisStaticPosition, ContainingBlockClaims,
     Direction, OofCandidate, OofCandidates, OofPositioningArea, Point, Position, Size, Style,
     TaffyTree,
 };
 
 #[test]
 fn explicit_area_can_reuse_borrowed_candidates_without_consuming_the_wrapper() {
-    let mut tree: TaffyTree<()> = TaffyTree::new();
-    let child = tree
-        .new_leaf(Style {
-            position: Position::Absolute,
-            size: Size {
-                width: length(20.0),
-                height: length(10.0),
-            },
-            ..Style::DEFAULT
-        })
-        .unwrap();
-    let owner = tree.new_with_children(Style::DEFAULT, &[child]).unwrap();
-    let mut candidates = OofCandidates::new();
-    candidates.push(OofCandidate {
-        node: child,
-        order: 0,
-        position: Position::Absolute,
-        static_position: Point {
-            x: AxisStaticPosition::from_edge(7.0, AxisStaticEdge::Start),
-            y: AxisStaticPosition::from_edge(9.0, AxisStaticEdge::Start),
-        },
-    });
-    let original = candidates.clone();
-    for _ in 0..2 {
-        let mut view = TaffyView {
-            taffy: &mut tree,
-            measure_function: |input, _, _, style| {
-                crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
-            },
-        };
-        let output = compute_oof_layout_for_area(
-            &mut view,
-            owner,
-            candidates.as_slice(),
-            OofPositioningArea {
-                size: Size {
-                    width: 100.0,
-                    height: 80.0,
+    reblessive::Stack::new()
+        .enter(|stack| async move {
+            let mut tree: TaffyTree<()> = TaffyTree::new();
+            let child = tree
+                .new_leaf(Style {
+                    position: Position::Absolute,
+                    size: Size {
+                        width: length(20.0),
+                        height: length(10.0),
+                    },
+                    ..Style::DEFAULT
+                })
+                .unwrap();
+            let owner = tree.new_with_children(Style::DEFAULT, &[child]).unwrap();
+            let mut candidates = OofCandidates::new();
+            candidates.push(OofCandidate {
+                node: child,
+                order: 0,
+                position: Position::Absolute,
+                static_position: Point {
+                    x: AxisStaticPosition::from_edge(7.0, AxisStaticEdge::Start),
+                    y: AxisStaticPosition::from_edge(9.0, AxisStaticEdge::Start),
                 },
-                offset: Point::ZERO,
-            },
-            Direction::Ltr,
-            ContainingBlockClaims::ALL,
-        );
-        assert_eq!(output.hoisted, vec![child]);
-        assert!(output.unclaimed.is_empty());
-        assert_eq!(
-            tree.unrounded_layout(child).location,
-            Point { x: 7.0, y: 9.0 }
-        );
-        assert_eq!(candidates, original);
-    }
+            });
+            let original = candidates.clone();
+            for _ in 0..2 {
+                let mut view = TaffyView {
+                    taffy: &mut tree,
+                    measure_function: |input, _, _, style| {
+                        crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
+                    },
+                };
+                let output = compute_oof_layout_for_area_async(
+                    &mut view,
+                    owner,
+                    candidates.as_slice(),
+                    OofPositioningArea {
+                        size: Size {
+                            width: 100.0,
+                            height: 80.0,
+                        },
+                        offset: Point::ZERO,
+                    },
+                    Direction::Ltr,
+                    ContainingBlockClaims::ALL,
+                    stack,
+                )
+                .await;
+                assert_eq!(output.hoisted, vec![child]);
+                assert!(output.unclaimed.is_empty());
+                assert_eq!(
+                    tree.unrounded_layout(child).location,
+                    Point { x: 7.0, y: 9.0 }
+                );
+                assert_eq!(candidates, original);
+            }
+        })
+        .finish()
 }
 
 #[test]

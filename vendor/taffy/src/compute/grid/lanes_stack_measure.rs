@@ -44,14 +44,24 @@ pub(super) fn container_space(
 }
 
 /// KaminIDE patch: Measure the preferred stacking-axis width.
-pub(super) fn width(
+pub(super) async fn width_async(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     height: Option<f32>,
     parent: Size<Option<f32>>,
     area: f32,
+    stack: &mut reblessive::Stk,
 ) -> f32 {
-    measure(tree, node, height, parent, area, AvailableSpace::MaxContent)
+    measure_async(
+        tree,
+        node,
+        height,
+        parent,
+        area,
+        AvailableSpace::MaxContent,
+        stack,
+    )
+    .await
 }
 
 /// KaminIDE patch: min-content stacking width. Fit-content in the stacking axis is
@@ -59,24 +69,35 @@ pub(super) fn width(
 /// the item in a grid-lanes stacking track like a grid item in an auto area), so an
 /// item with rigid content wider than the container is not squeezed below it
 /// (`row-item-percentage-sizes-*`: `min-width: 100%` box kept its 30px content).
-pub(super) fn min_width(
+pub(super) async fn min_width_async(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     height: Option<f32>,
     parent: Size<Option<f32>>,
     area: f32,
+    stack: &mut reblessive::Stk,
 ) -> f32 {
-    measure(tree, node, height, parent, area, AvailableSpace::MinContent)
+    measure_async(
+        tree,
+        node,
+        height,
+        parent,
+        area,
+        AvailableSpace::MinContent,
+        stack,
+    )
+    .await
 }
 
 /// KaminIDE patch: Probe the item under the requested stacking constraint.
-fn measure(
+async fn measure_async(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     height: Option<f32>,
     parent: Size<Option<f32>>,
     area: f32,
     probe: AvailableSpace,
+    stack: &mut reblessive::Stk,
 ) -> f32 {
     // Upstream #1234: the parent passes the border-box space, so the child's own vertical
     // margins are deducted here (auto margins count as zero).
@@ -85,7 +106,7 @@ fn measure(
         .margin()
         .resolve_or_zero(parent.width, |val, basis| tree.calc(val, basis));
     let area = (area - margin.vertical_axis_sum()).max(0.0);
-    tree.measure_child_size(
+    tree.measure_child_size_async(
         node,
         Size {
             width: None,
@@ -99,7 +120,9 @@ fn measure(
         SizingMode::InherentSize,
         AbsoluteAxis::Horizontal,
         Line::FALSE,
+        stack,
     )
+    .await
 }
 
 #[cfg(test)]

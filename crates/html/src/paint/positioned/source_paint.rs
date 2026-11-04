@@ -42,28 +42,44 @@ impl Hooks for SourcePaint {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let layout = match self.placeholder.as_mut() {
-            Some(placeholder) => placeholder.request_layout(window, cx),
+            Some(placeholder) => placeholder.request_layout_async(window, cx, stack).await,
             None => {
                 let mut child = self.child.borrow_mut();
                 child.layout = Some(window.retained_layout());
-                child.element.request_layout(window, cx)
+                child.element.request_layout_async(window, cx, stack).await
             }
         };
         (layout, ())
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.placeholder.is_some() {
             let mut child = self.child.borrow_mut();
             let PlacedChild { element, layout } = &mut *child;
-            window.with_retained_layout(
-                layout.as_mut().expect("positioned child layout"),
-                |window| {
-                    element.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-                },
-            );
+            window
+                .with_retained_layout_async(
+                    layout.as_mut().expect("positioned child layout"),
+                    async |window| {
+                        element
+                            .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+                            .await;
+                    },
+                )
+                .await;
         }
     }
 

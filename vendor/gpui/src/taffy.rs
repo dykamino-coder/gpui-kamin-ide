@@ -5,13 +5,13 @@ mod grid_fragmentation;
 mod flex_layout;
 pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
 mod alignment_adapter;
-mod measurement;
 mod intrinsic;
 mod line_baselines;
+mod measurement;
 // KaminIDE patch: read the first actual content baseline from completed layout.
 mod content_line;
-mod measured_content;
 mod measured_box;
+mod measured_content;
 // KaminIDE patch: exact leaves standing in for skipped retained subtrees.
 mod exact_leaf;
 pub(crate) use exact_leaf::ExactLeaf;
@@ -19,8 +19,8 @@ mod box_edges;
 // KaminIDE patch: the frame tree survives frames (`retained`).
 mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
-mod style_share;
 mod final_geometry;
+mod style_share;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
 pub use measured_content::{MeasuredContent, MeasuredStaticPosition};
@@ -46,8 +46,7 @@ mod retained_tests;
 
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
-    Style, Window, point, size,
-    util::round_to_device_pixel,
+    Style, Window, point, size, util::round_to_device_pixel,
 };
 use collections::{FxHashMap, FxHashSet};
 use std::{fmt::Debug, ops::Range};
@@ -73,13 +72,15 @@ type MeasureFn = dyn FnMut(
     &mut Window,
     &mut App,
 ) -> MeasuredContent;
-type NodeMeasureFn = StackSafe<Box<MeasureFn>>;
-
+mod measure_callback;
+pub use measure_callback::AsyncMeasureFn;
+use measure_callback::NodeMeasureFn;
 fn node_measure(measure: Box<MeasureFn>) -> NodeMeasureFn {
     #[cfg(feature = "stacker")]
     let measure = StackSafe::new(measure);
-    measure
+    NodeMeasureFn::Sync(measure)
 }
+mod layout_async;
 
 #[derive(Clone)]
 struct NodeContext {
@@ -428,10 +429,15 @@ impl TaffyLayoutEngine {
         ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
         + 'static,
     ) -> LayoutId {
-        self.request_measured_layout_with_line_data(style, rem_size, scale_factor, move |known, available, window, cx| {
-            let (size, first, last) = measure(known, available, window, cx);
-            (size, first, last, None)
-        })
+        self.request_measured_layout_with_line_data(
+            style,
+            rem_size,
+            scale_factor,
+            move |known, available, window, cx| {
+                let (size, first, last) = measure(known, available, window, cx);
+                (size, first, last, None)
+            },
+        )
     }
 
     #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
@@ -444,65 +450,9 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Leaving this here until we have a better instrumentation approach.
-        // println!("Laying out {} children", self.count_all_children(id)?);
-        // println!("Max layout depth: {}", self.max_depth(0, id)?);
-
-        // Output the edges (branches) of the tree in Mermaid format for visualization.
-        // println!("Edges:");
-        // for (a, b) in self.get_edges(id)? {
-        //     println!("N{} --> N{}", u64::from(a), u64::from(b));
-        // }
-        //
-
-        crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if !self.computed_layouts.insert(id) {
-            let stack = &mut self.layout_bounds_scratch_space;
-            stack.push(id);
-            while let Some(id) = stack.pop() {
-                self.absolute_layout_bounds.remove(&id);
-                self.absolute_unrounded.remove(&id);
-                stack.extend(
-                    self.taffy
-                        .children(id.into())
-                        .expect(EXPECT_MESSAGE)
-                        .into_iter()
-                        .map(LayoutId::from),
-                );
-            }
-        }
-
-        let scale_factor = window.scale_factor();
-
-        let transform = |v: AvailableSpace| match v {
-            AvailableSpace::Definite(pixels) => {
-                AvailableSpace::Definite(Pixels(pixels.0 * scale_factor))
-            }
-            AvailableSpace::MinContent => AvailableSpace::MinContent,
-            AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-        };
-        self.begin_geometry(id);
-        let logical_space = available_space;
-        let available_space = size(
-            transform(available_space.width),
-            transform(available_space.height),
-        );
-
-        let _taffy_started = std::time::Instant::now();
-        self.taffy
-            .compute_layout_with_measure(
-                id.into(),
-                available_space.into(),
-                |inputs, _id, node_context, style| {
-                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
-                },
-            )
-            .expect(EXPECT_MESSAGE);
-        self.finish_geometry(id, logical_space, scale_factor);
-        crate::frame_perf::TAFFY_US.fetch_add(
-            _taffy_started.elapsed().as_micros() as u32,
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        reblessive::Stack::new()
+            .enter(|stack| self.compute_layout_async(id, available_space, window, cx, stack))
+            .finish()
     }
 
     /// KaminIDE patch: размер узла БЕЗ округления к физической точке.
@@ -560,7 +510,12 @@ impl TaffyLayoutEngine {
         width: Pixels,
         scale_factor: f32,
     ) -> bool {
-        cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
+        cap_child_outer_width(
+            &mut self.taffy,
+            parent.into(),
+            index,
+            width.0 * scale_factor,
+        )
     }
 
     /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
@@ -905,7 +860,9 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::FitContentPx(px) => {
                         taffy::MaxTrackSizingFunction::fit_content_px(f32::from(*px) * scale_factor)
                     }
-                    G::FitContentPercent(p) => taffy::MaxTrackSizingFunction::fit_content_percent(*p),
+                    G::FitContentPercent(p) => {
+                        taffy::MaxTrackSizingFunction::fit_content_percent(*p)
+                    }
                     G::MinMax(pair) => match &pair.1 {
                         G::Pixels(px) => length(f32::from(*px) * scale_factor),
                         G::FitContentPx(px) => taffy::MaxTrackSizingFunction::fit_content_px(
@@ -996,9 +953,15 @@ impl ToTaffy<taffy::style::Style> for Style {
 
         let mut out = taffy::style::Style {
             display: self.display.into(),
-            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
-                vertical, block_reverse, inline_reverse,
-            }),
+            block_flow: self
+                .block_flow
+                .map(
+                    |[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
+                        vertical,
+                        block_reverse,
+                        inline_reverse,
+                    },
+                ),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
             position: self.position.into(),
@@ -1054,9 +1017,21 @@ impl ToTaffy<taffy::style::Style> for Style {
             // KaminIDE patch: `calc-size()`; длины выражения — в точки
             // раскладки (тот же множитель, что у прочих длин `to_taffy`).
             calc_size_content_box: self.calc_size_content_box,
-            calc_size_basis: self.calc_size_basis.map(|basis| basis.map(|k| k.to_native(scale_factor)).unwrap_or_else(taffy::Dimension::auto)),
-            calc_size_max: self.calc_size_max.map(|f| f.map(|(mul, add, max, min)|
-                (mul, add * scale_factor, max * scale_factor, min * scale_factor))),
+            calc_size_basis: self.calc_size_basis.map(|basis| {
+                basis
+                    .map(|k| k.to_native(scale_factor))
+                    .unwrap_or_else(taffy::Dimension::auto)
+            }),
+            calc_size_max: self.calc_size_max.map(|f| {
+                f.map(|(mul, add, max, min)| {
+                    (
+                        mul,
+                        add * scale_factor,
+                        max * scale_factor,
+                        min * scale_factor,
+                    )
+                })
+            }),
             calc_size: self.calc_size.map(|f| {
                 f.map(|(mul, add, max, min)| {
                     (
@@ -1089,7 +1064,8 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .map(|(offset, from_right)| (offset * scale_factor, from_right)),
             baseline_x_flags: self.baseline_x_flags,
             grid_axis_reversed: Some(taffy::Size {
-                width: self.grid_axis_reversed[0], height: self.grid_axis_reversed[1],
+                width: self.grid_axis_reversed[0],
+                height: self.grid_axis_reversed[1],
             }),
             // KaminIDE patch: `margin-trim`, физические биты сторон.
             margin_trim: self.margin_trim,

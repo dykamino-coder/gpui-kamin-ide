@@ -114,19 +114,32 @@ impl Wrap for Recorder {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.pending.layout.set(Some(id));
         id
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let callbacks = window.next_frame_callback_count();
         let root = window.retained_root_environment()
             && window.element_offset() == point(px(0.0), px(0.0));
-        let (_, range) = window.record_retained_prepaint(|window| {
-            let _ = self.child.prepaint(window, cx);
-        });
+        let (_, range) = window
+            .record_retained_prepaint_async(async |window| {
+                let _ = self.child.prepaint_async(window, cx, stack).await;
+            })
+            .await;
         let hits = range
             .quiet(window)
             .filter(|_| root && callbacks == window.next_frame_callback_count());

@@ -6,7 +6,7 @@ use gpui::{
     LayoutId, Pixels, Window, point, px,
 };
 impl Paragraph {
-    pub(crate) fn prepaint_impl(
+    pub(crate) async fn prepaint_impl(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
@@ -14,6 +14,7 @@ impl Paragraph {
         state: &mut LayoutId,
         window: &mut Window,
         _cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Option<Hitbox> {
         self.invalidate_prepared();
         self.vertical_layout_origin =
@@ -64,11 +65,11 @@ impl Paragraph {
         self.apply_measured_fit();
         if !self.vertical {
             let avail = f32::from(window.layout_size_unrounded(*state).width);
-            self.refit_atoms(avail, window, _cx);
+            self.refit_atoms(avail, window, _cx, stack).await;
         }
         self.lines = self.split(Some(limit), window);
         self.publish_scroll_overflow(bounds, *state, window);
-        self.place_atoms(*state, window, _cx);
+        self.place_atoms(*state, window, _cx, stack).await;
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
@@ -120,16 +121,18 @@ impl Paragraph {
                             .h(r.size.height)
                             .child(inner)
                             .into_any_element();
-                        el.layout_as_root(
+                        el.layout_as_root_async(
                             gpui::size(
                                 gpui::AvailableSpace::Definite(r.size.width),
                                 gpui::AvailableSpace::Definite(r.size.height),
                             ),
                             window,
                             _cx,
-                        );
+                            stack,
+                        )
+                        .await;
                         let o = point(r.origin.x + px(cb.shift.0), r.origin.y + px(cb.shift.1));
-                        el.prepaint_at(o, window, _cx);
+                        el.prepaint_at_async(o, window, _cx, stack).await;
                         continue;
                     }
                 }
@@ -167,14 +170,17 @@ impl Paragraph {
                 // Ширина абсолютного элемента — «по содержимому» (CSS 2.1
                 // §10.3.7): по МИНИМАЛЬНОМУ содержимому он рвался бы по
                 // словам (`static-position/htb-*`).
-                let size = el.layout_as_root(
-                    gpui::size(
-                        gpui::AvailableSpace::MaxContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    _cx,
-                );
+                let size = el
+                    .layout_as_root_async(
+                        gpui::size(
+                            gpui::AvailableSpace::MaxContent,
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        _cx,
+                        stack,
+                    )
+                    .await;
                 // Блочная коробка при `rtl` вешается ПРАВЫМ краем на правый
                 // край содержимого (§10.3.7: `right` = статическая позиция).
                 let origin = if *next && self.wrap.rtl {
@@ -207,11 +213,16 @@ impl Paragraph {
                         None => (self.line_height, bounds.origin.x),
                     };
                     let line = (origin.y, lh, start);
-                    crate::layout::positioned::containing_block::with_line_box(slot, line, || {
-                        el.prepaint_at(origin, window, _cx);
-                    });
+                    crate::layout::positioned::containing_block::with_line_box_async(
+                        slot,
+                        line,
+                        async || {
+                            el.prepaint_at_async(origin, window, _cx, stack).await;
+                        },
+                    )
+                    .await;
                 } else {
-                    el.prepaint_at(origin, window, _cx);
+                    el.prepaint_at_async(origin, window, _cx, stack).await;
                 }
             }
             self.overlays = placed;

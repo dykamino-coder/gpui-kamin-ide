@@ -7,11 +7,12 @@ use crate::util::{MaybeResolve, ResolveOrZero};
 use crate::{CoreStyle, LayoutGridContainer, SUBGRID_ROWS};
 
 /// KaminIDE patch: Resolve the subgrid root's stacking-axis content constraint.
-pub(super) fn root_content(
+pub(super) async fn root_content_async(
     tree: &mut impl LayoutGridContainer,
     item: &GridItem,
     parent: Size<Option<f32>>,
     mask: u8,
+    stack: &mut reblessive::Stk,
 ) -> Size<Option<f32>> {
     if mask != SUBGRID_ROWS || !item.size.width.is_auto() {
         return Size::NONE;
@@ -31,11 +32,26 @@ pub(super) fn root_content(
         .size
         .height
         .maybe_resolve(parent.height, |v, b| tree.calc(v, b));
-    let max = lanes_stack_measure::width(tree, item.node, height, parent, height.unwrap_or(0.0));
+    let max = lanes_stack_measure::width_async(
+        tree,
+        item.node,
+        height,
+        parent,
+        height.unwrap_or(0.0),
+        stack,
+    )
+    .await;
     let room = (available - margins.left - margins.right).max(0.0);
     let fit = if max > room {
-        let min =
-            lanes_stack_measure::min_width(tree, item.node, height, parent, height.unwrap_or(0.0));
+        let min = lanes_stack_measure::min_width_async(
+            tree,
+            item.node,
+            height,
+            parent,
+            height.unwrap_or(0.0),
+            stack,
+        )
+        .await;
         max.min(min.max(room))
     } else {
         max

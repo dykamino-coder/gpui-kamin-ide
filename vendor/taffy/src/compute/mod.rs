@@ -46,17 +46,23 @@ pub(crate) mod flexbox;
 #[cfg(feature = "grid")]
 pub(crate) mod grid;
 
-pub use leaf::compute_leaf_layout;
-pub use oof::{compute_oof_layout, compute_oof_layout_for_area, resolve_static_offset, OofLayoutResult};
+pub use leaf::{compute_leaf_layout, compute_leaf_layout_async};
+pub use oof::{
+    compute_oof_layout_async, compute_oof_layout_for_area_async, resolve_static_offset,
+    OofLayoutResult,
+};
 
 #[cfg(feature = "block_layout")]
-pub use self::block::{compute_block_align_content_offset, compute_block_layout, BlockContext, BlockFormattingContext};
+pub use self::block::{
+    compute_block_align_content_offset, compute_block_layout_async, BlockContext,
+    BlockFormattingContext,
+};
 
 #[cfg(feature = "flexbox")]
-pub use self::flexbox::compute_flexbox_layout;
+pub use self::flexbox::compute_flexbox_layout_async;
 
 #[cfg(feature = "grid")]
-pub use self::grid::compute_grid_layout;
+pub use self::grid::compute_grid_layout_async;
 
 #[cfg(feature = "float_layout")]
 pub use self::block::FloatMark;
@@ -82,10 +88,11 @@ use crate::CacheTree;
 /// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 /// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 /// initial containing block by the final positioning pass below.
-pub fn compute_root_layout(
+pub async fn compute_root_layout_async(
     tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
     root: NodeId,
     available_space: Size<AvailableSpace>,
+    stack: &mut reblessive::Stk,
 ) {
     let direction = tree.get_core_container_style(root).direction();
     let icb_size = available_space.into_options();
@@ -96,7 +103,8 @@ pub fn compute_root_layout(
     let mut root_is_cached = false;
 
     let (layout, candidates) =
-        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
+        compute_in_flow_root_layout_async(tree, root, available_space, &mut root_is_cached, stack)
+            .await;
 
     // Final positioning pass for out-of-flow boxes with no nearer containing block: the initial
     // containing block is the containing block for `position: fixed` boxes and for
@@ -114,22 +122,37 @@ pub fn compute_root_layout(
                 top: 0.0,
                 bottom: layout.scrollbar_size.height,
             };
-        let root_padding_box_size =
-            layout.size - Size { width: area_inset.horizontal_axis_sum(), height: area_inset.vertical_axis_sum() };
+        let root_padding_box_size = layout.size
+            - Size {
+                width: area_inset.horizontal_axis_sum(),
+                height: area_inset.vertical_axis_sum(),
+            };
         let (area_width, area_x) = match icb_size.width {
-            Some(width) => ((width - layout.scrollbar_size.width).max(0.0), -layout.location.x),
+            Some(width) => (
+                (width - layout.scrollbar_size.width).max(0.0),
+                -layout.location.x,
+            ),
             None => (root_padding_box_size.width, area_inset.left),
         };
         let (area_height, area_y) = match icb_size.height {
-            Some(height) => ((height - layout.scrollbar_size.height).max(0.0), -layout.location.y),
+            Some(height) => (
+                (height - layout.scrollbar_size.height).max(0.0),
+                -layout.location.y,
+            ),
             None => (root_padding_box_size.height, area_inset.top),
         };
-        let area_size = Size { width: area_width, height: area_height };
-        let area_offset = Point { x: area_x, y: area_y };
+        let area_size = Size {
+            width: area_width,
+            height: area_height,
+        };
+        let area_offset = Point {
+            x: area_x,
+            y: area_y,
+        };
 
         let mut hoisted: Vec<NodeId> = Vec::new();
         let mut unclaimed = OofCandidates::new();
-        oof::perform_oof_layout(
+        oof::perform_oof_layout_async(
             tree,
             root,
             candidates.as_slice(),
@@ -141,8 +164,13 @@ pub fn compute_root_layout(
             overflow,
             &mut hoisted,
             &mut unclaimed,
+            stack,
+        )
+        .await;
+        debug_assert!(
+            unclaimed.is_empty(),
+            "the root positioning pass must claim all remaining candidates"
         );
-        debug_assert!(unclaimed.is_empty(), "the root positioning pass must claim all remaining candidates");
         if !root_is_cached {
             tree.add_hoisted_children(root, &hoisted);
         }
@@ -152,11 +180,12 @@ pub fn compute_root_layout(
 /// Lay out an in-flow (or `position: relative`) root node against the available space, store its layout
 /// and return it along with the out-of-flow candidates bubbled up from its subtree.
 #[inline(always)]
-fn compute_in_flow_root_layout(
+async fn compute_in_flow_root_layout_async(
     tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
     root: NodeId,
     available_space: Size<AvailableSpace>,
     root_is_cached: &mut bool,
+    stack: &mut reblessive::Stk,
 ) -> (Layout, OofCandidates) {
     #[cfg(feature = "block_layout")]
     let known_dimensions = root_block_constraints::known(tree, root, available_space);
@@ -165,7 +194,10 @@ fn compute_in_flow_root_layout(
 
     let inputs = LayoutInput {
         known_dimensions,
-        known_dimensions_are_definite: Size { width: true, height: true },
+        known_dimensions_are_definite: Size {
+            width: true,
+            height: true,
+        },
         parent_size: available_space.into_options(),
         available_space,
         sizing_mode: SizingMode::InherentSize,
@@ -176,7 +208,7 @@ fn compute_in_flow_root_layout(
     *root_is_cached = tree.cache_get(root, &inputs).is_some();
 
     // Recursively compute node layout
-    let mut output = tree.compute_child_layout(root, inputs);
+    let mut output = tree.compute_child_layout_async(root, inputs, stack).await;
     let style = tree.get_core_container_style(root);
     #[cfg(feature = "block_layout")]
     let flow = style.block_flow();
@@ -204,8 +236,16 @@ fn compute_in_flow_root_layout(
             tree.calc(val, basis)
         });
     let scrollbar_size = Size {
-        width: if style.overflow().y == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
-        height: if style.overflow().x == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
+        width: if style.overflow().y == Overflow::Scroll {
+            style.scrollbar_width()
+        } else {
+            0.0
+        },
+        height: if style.overflow().x == Overflow::Scroll {
+            style.scrollbar_width()
+        } else {
+            0.0
+        },
     };
     #[cfg(feature = "block_layout")]
     let reversed = flow.map_or(
@@ -244,7 +284,7 @@ fn compute_in_flow_root_layout(
         } else {
             0.0
         },
-        };
+    };
 
     drop(style);
 
@@ -318,7 +358,11 @@ fn store_cached_layout<Tree: CacheTree + ?Sized>(
 
 /// Creates a layout for this node and its children, recursively.
 /// Each hidden node has zero size and is placed at the origin
-pub fn compute_hidden_layout(tree: &mut (impl LayoutPartialTree + CacheTree), node: NodeId) -> LayoutOutput {
+pub async fn compute_hidden_layout_async(
+    tree: &mut (impl LayoutPartialTree + CacheTree),
+    node: NodeId,
+    stack: &mut reblessive::Stk,
+) -> LayoutOutput {
     // Clear cache and set zeroed-out layout for the node
     tree.cache_clear(node);
     tree.set_unrounded_layout(node, &Layout::with_order(0));
@@ -326,7 +370,8 @@ pub fn compute_hidden_layout(tree: &mut (impl LayoutPartialTree + CacheTree), no
     // Perform hidden layout on all children
     for index in 0..tree.child_count(node) {
         let child_id = tree.get_child_id(node, index);
-        tree.compute_child_layout(child_id, LayoutInput::HIDDEN);
+        tree.compute_child_layout_async(child_id, LayoutInput::HIDDEN, stack)
+            .await;
     }
 
     LayoutOutput::HIDDEN
@@ -336,7 +381,8 @@ pub fn compute_hidden_layout(tree: &mut (impl LayoutPartialTree + CacheTree), no
 pub mod detailed_info {
     #[cfg(feature = "grid")]
     pub use super::grid::{
-        DetailedGridInfo, DetailedGridItemsInfo, DetailedGridTracksInfo, GridLineNames, GridLineNamesIter,
+        DetailedGridInfo, DetailedGridItemsInfo, DetailedGridTracksInfo, GridLineNames,
+        GridLineNamesIter,
     };
 }
 
@@ -351,18 +397,30 @@ mod tests {
     fn hidden_layout_should_hide_recursively() {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
 
-        let style: Style = Style { display: Display::Flex, size: Size::from_lengths(50.0, 50.0), ..Default::default() };
+        let style: Style = Style {
+            display: Display::Flex,
+            size: Size::from_lengths(50.0, 50.0),
+            ..Default::default()
+        };
 
         let grandchild_00 = taffy.new_leaf(style.clone()).unwrap();
         let grandchild_01 = taffy.new_leaf(style.clone()).unwrap();
-        let child_00 = taffy.new_with_children(style.clone(), &[grandchild_00, grandchild_01]).unwrap();
+        let child_00 = taffy
+            .new_with_children(style.clone(), &[grandchild_00, grandchild_01])
+            .unwrap();
 
         let grandchild_02 = taffy.new_leaf(style.clone()).unwrap();
-        let child_01 = taffy.new_with_children(style.clone(), &[grandchild_02]).unwrap();
+        let child_01 = taffy
+            .new_with_children(style.clone(), &[grandchild_02])
+            .unwrap();
 
         let root = taffy
             .new_with_children(
-                Style { display: Display::None, size: Size::from_lengths(50.0, 50.0), ..Default::default() },
+                Style {
+                    display: Display::None,
+                    size: Size::from_lengths(50.0, 50.0),
+                    ..Default::default()
+                },
                 &[child_00, child_01],
             )
             .unwrap();
@@ -372,10 +430,22 @@ mod tests {
         // Whatever size and display-mode the nodes had previously,
         // all layouts should resolve to ZERO due to the root's DISPLAY::NONE
 
-        for node in [root, child_00, child_01, grandchild_00, grandchild_01, grandchild_02] {
+        for node in [
+            root,
+            child_00,
+            child_01,
+            grandchild_00,
+            grandchild_01,
+            grandchild_02,
+        ] {
             let layout = taffy.layout(node).unwrap();
             assert_eq!(layout.size, Size::zero());
             assert_eq!(layout.location, Point::zero());
         }
     }
 }
+
+mod sync_api;
+pub use sync_api::*;
+mod stack_cache;
+pub(crate) use stack_cache::compute_cached_layout_async;

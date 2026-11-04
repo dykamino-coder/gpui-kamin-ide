@@ -2,7 +2,7 @@
 
 use super::super::types::GridItem;
 use super::super::types::NamedLineResolver;
-use super::{flatten_into, linked_axes, SubgridEdge};
+use super::{flatten_into_async, linked_axes, SubgridEdge};
 use crate::geometry::Rect;
 use crate::geometry::Size;
 use crate::util::sys::Vec;
@@ -18,7 +18,7 @@ use crate::LayoutGridContainer;
 /// контейнер вообще связывает подсетки (у лунок — только ось решётки,
 /// css-grid-3 Overview.bs:502-519). Возвращает края всех подсеток дерева —
 /// для пола дорожек (`apply_subgrid_floors`).
-pub(in super::super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
+pub(in super::super) async fn flatten_subgrid_items_async<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     items: &mut Vec<GridItem>,
     container_gap: Size<f32>,
@@ -26,6 +26,7 @@ pub(in super::super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
     axis_mask: u8,
     resolver: Option<&NamedLineResolver<Tree::CustomIdent>>,
     root_axes: Size<bool>,
+    stack: &mut reblessive::Stk,
 ) -> Vec<SubgridEdge> {
     let own = items.len();
     let mut out: Vec<GridItem> = Vec::new();
@@ -38,8 +39,15 @@ pub(in super::super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
         item.sizing_axes &= !linked;
         let area = (item.column, item.row);
         let (first_edge, first_item) = (edges.len(), out.len());
-        let known = super::stack_constraint::root_content(tree, item, inner_node_size, axis_mask);
-        flatten_into(
+        let known = super::stack_constraint::root_content_async(
+            tree,
+            item,
+            inner_node_size,
+            axis_mask,
+            stack,
+        )
+        .await;
+        flatten_into_async(
             tree,
             item.node,
             linked,
@@ -56,7 +64,9 @@ pub(in super::super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
             &mut out,
             &mut edges,
             0,
-        );
+            stack,
+        )
+        .await;
         for edge in edges.iter_mut().skip(first_edge) {
             edge.root = item.node;
         }

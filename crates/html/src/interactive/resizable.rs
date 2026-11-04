@@ -3,6 +3,9 @@
 //! с новыми `width`/`height`. Отдельный элемент нужен потому, что память между кадрами в
 //! GPUI есть только у собственного `Element`.
 
+#[path = "resizable/resizable_traversal.rs"]
+mod resizable_traversal;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
     IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Window, px,
@@ -60,18 +63,19 @@ impl Element for Resizable {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, AnyElement) {
-        let build = self.build.clone();
-        let Some(global_id) = id else {
-            let mut el = build(None, None);
-            let layout_id = el.request_layout(window, cx);
-            return (layout_id, el);
-        };
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let st = state.unwrap_or_default();
-            let mut el = build(st.width, st.height);
-            let layout_id = el.request_layout(window, cx);
-            ((layout_id, el), st)
-        })
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(id, _inspector_id, window, cx, stack))
+            .finish()
+    }
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, (LayoutId, AnyElement)> {
+        Box::pin(self.request_layout_on_stack(id, _inspector_id, window, cx, stack))
     }
 
     fn prepaint(
@@ -83,16 +87,23 @@ impl Element for Resizable {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        // Область попадания — только уголок: остальная площадь элемента
-        // обязана оставаться кликабельной как обычно.
-        let grip = Bounds {
-            origin: gpui::point(
-                bounds.origin.x + bounds.size.width - px(GRIP),
-                bounds.origin.y + bounds.size.height - px(GRIP),
-            ),
-            size: gpui::size(px(GRIP), px(GRIP)),
-        };
-        crate::interactive::hitbox::prepaint_hitbox(child, grip, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(_id, _inspector_id, bounds, child, window, cx, stack)
+            })
+            .finish()
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, Hitbox> {
+        Box::pin(self.prepaint_on_stack(_id, _inspector_id, bounds, child, window, cx, stack))
     }
 
     fn paint(

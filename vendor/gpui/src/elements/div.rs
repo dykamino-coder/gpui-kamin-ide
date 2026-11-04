@@ -16,6 +16,10 @@
 //! constructed by combining these two systems into an all-in-one element.
 
 mod paint_async;
+mod prepaint_async;
+mod prepaint_traversal;
+mod request_async;
+mod request_layout_traversal;
 
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
@@ -2062,7 +2066,6 @@ impl Element for Div {
         }
     }
 
-    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     fn request_layout(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2070,46 +2073,22 @@ impl Element for Div {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut child_layout_ids = SmallVec::new();
-        let image_cache = self
-            .image_cache
-            .as_mut()
-            .map(|provider| provider.provide(window, cx));
-
-        let layout_id = window.with_image_cache(image_cache, |window| {
-            self.interactivity.request_layout_boxed(
-                global_id,
-                inspector_id,
-                window,
-                cx,
-                |style, window, cx| {
-                    window.with_text_style(style.text_style().cloned(), |window| {
-                        child_layout_ids = self
-                            .children
-                            .iter_mut()
-                            .map(|child| child.request_layout(window, cx))
-                            .collect::<SmallVec<_>>();
-                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
-                    })
-                },
-            )
-        });
-
-        // KaminIDE patch: capture identity in the tree receiving this node.
-        if let Some(observer) = &mut self.layout_observer {
-            observer.request_layout(layout_id, window);
-        }
-        (
-            layout_id,
-            DivFrameState {
-                child_layout_ids,
-                layout_id: Some(layout_id),
-                exact_bounds: None,
-            },
-        )
+        reblessive::Stack::new()
+            .enter(|stack| self.request_layout_async(global_id, inspector_id, window, cx, stack))
+            .finish()
     }
 
-    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+        Box::pin(self.request_layout_on_stack(id, inspector_id, window, cx, stack))
+    }
+
     fn prepaint(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2119,123 +2098,40 @@ impl Element for Div {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Hitbox> {
-        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
-        if let Some(observer) = &mut self.layout_observer
-            && !observer.prepaint(window)
-        {
-            return None;
-        }
-        let image_cache = self
-            .image_cache
-            .as_mut()
-            .map(|provider| provider.provide(window, cx));
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(
+                    global_id,
+                    inspector_id,
+                    bounds,
+                    request_layout,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish()
+    }
 
-        let has_prepaint_listener = self.prepaint_listener.is_some();
-        let mut children_bounds = Vec::with_capacity(if has_prepaint_listener {
-            request_layout.child_layout_ids.len()
-        } else {
-            0
-        });
-
-        let mut child_min = point(Pixels::MAX, Pixels::MAX);
-        let mut child_max = Point::default();
-        if let Some(handle) = self.interactivity.scroll_anchor.as_ref() {
-            *handle.last_origin.borrow_mut() = bounds.origin - window.element_offset();
-        }
-        let content_size = if request_layout.child_layout_ids.is_empty() {
-            bounds.size
-        } else if let Some(scroll_handle) = self.interactivity.tracked_scroll_handle.as_ref() {
-            let mut state = scroll_handle.0.borrow_mut();
-            state.child_bounds = Vec::with_capacity(request_layout.child_layout_ids.len());
-            for child_layout_id in &request_layout.child_layout_ids {
-                let child_bounds = window.layout_bounds(*child_layout_id);
-                child_min = child_min.min(&child_bounds.origin);
-                child_max = child_max.max(&child_bounds.bottom_right());
-                state.child_bounds.push(child_bounds);
-            }
-            (child_max - child_min).into()
-        } else {
-            for child_layout_id in &request_layout.child_layout_ids {
-                let child_bounds = window.layout_bounds(*child_layout_id);
-                child_min = child_min.min(&child_bounds.origin);
-                child_max = child_max.max(&child_bounds.bottom_right());
-
-                if has_prepaint_listener {
-                    children_bounds.push(child_bounds);
-                }
-            }
-            (child_max - child_min).into()
-        };
-
-        if let Some(scroll_handle) = self.interactivity.tracked_scroll_handle.as_ref() {
-            scroll_handle.scroll_to_active_item();
-        }
-
-        // KaminIDE patch: unrounded bounds of this node, only when they lie
-        // within half a device pixel of the snapped ones (a node moved by
-        // `prepaint_at` has no meaningful layout position).
-        request_layout.exact_bounds = request_layout.layout_id.and_then(|id| {
-            let origin = window.layout_origin_unrounded(id);
-            let size = window.layout_size_unrounded(id);
-            let exact = Bounds { origin, size };
-            let half = px(0.5 / window.scale_factor().max(0.01) + 1e-4);
-            let near = |a: Pixels, b: Pixels| (a - b).abs() <= half;
-            (near(exact.left(), bounds.left())
-                && near(exact.top(), bounds.top())
-                && near(exact.right(), bounds.right())
-                && near(exact.bottom(), bounds.bottom()))
-            .then_some(exact)
-        });
-        let outer_exact = std::mem::replace(
-            &mut window.raster_frame.exact_bounds,
-            request_layout.exact_bounds.map(|exact| (bounds, exact)),
-        );
-
-        let hitbox = self.interactivity.prepaint(
-            global_id,
+    fn prepaint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, Self::PrepaintState> {
+        Box::pin(self.prepaint_on_stack(
+            id,
             inspector_id,
             bounds,
-            content_size,
+            request_layout,
             window,
             cx,
-            |style, scroll_offset, hitbox, window, cx| {
-                // Children bring their own exact bounds.
-                window.raster_frame.exact_bounds = None;
-                // skip children
-                if style.display == Display::None {
-                    return hitbox;
-                }
-
-                window.with_image_cache(image_cache, |window| {
-                    window.with_element_offset(scroll_offset, |window| {
-                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>()
-                        {
-                            (traversal.enter_children)(window);
-                        }
-                        if let Some(order_fn) = &self.prepaint_order_fn {
-                            let order = order_fn(window, cx);
-                            for idx in order {
-                                if let Some(child) = self.children.get_mut(idx) {
-                                    child.prepaint(window, cx);
-                                }
-                            }
-                        } else {
-                            for child in &mut self.children {
-                                child.prepaint(window, cx);
-                            }
-                        }
-                    });
-
-                    if let Some(listener) = self.prepaint_listener.as_ref() {
-                        listener(children_bounds, window, cx);
-                    }
-                });
-
-                hitbox
-            },
-        );
-        window.raster_frame.exact_bounds = outer_exact;
-        hitbox
+            stack,
+        ))
     }
 
     fn paint(
@@ -2539,222 +2435,52 @@ impl Interactivity {
     fn request_layout_boxed(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
+        inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
         f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
-        #[cfg(any(feature = "inspector", debug_assertions))]
-        window.with_inspector_state(
-            _inspector_id,
-            cx,
-            |inspector_state: &mut Option<DivInspectorState>, _window| {
-                if let Some(inspector_state) = inspector_state {
-                    self.base_style = Rc::from(inspector_state.base_style.clone());
-                } else {
-                    *inspector_state = Some(DivInspectorState {
-                        base_style: Box::new((*self.base_style).clone()),
-                        bounds: Default::default(),
-                        content_size: Default::default(),
-                    })
-                }
-            },
-        );
-
-        window.with_optional_element_state::<InteractiveElementState, _>(
-            global_id,
-            |element_state, window| {
-                let mut element_state =
-                    element_state.map(|element_state| element_state.unwrap_or_default());
-
-                if let Some(element_state) = element_state.as_ref()
-                    && cx.has_active_drag()
-                {
-                    if let Some(pending_mouse_down) = element_state.pending_mouse_down.as_ref() {
-                        *pending_mouse_down.borrow_mut() = None;
-                    }
-                    if let Some(clicked_state) = element_state.clicked_state.as_ref() {
-                        *clicked_state.borrow_mut() = ElementClickedState::default();
-                    }
-                }
-
-                // Ensure we store a focus handle in our element state if we're focusable.
-                // If there's an explicit focus handle we're tracking, use that. Otherwise
-                // create a new handle and store it in the element state, which lives for as
-                // as frames contain an element with this id.
-                if self.focusable
-                    && self.tracked_focus_handle.is_none()
-                    && let Some(element_state) = element_state.as_mut()
-                {
-                    let mut handle = element_state
-                        .focus_handle
-                        .get_or_insert_with(|| cx.focus_handle())
-                        .clone()
-                        .tab_stop(self.tab_stop);
-
-                    if let Some(index) = self.tab_index {
-                        handle = handle.tab_index(index);
-                    }
-
-                    self.tracked_focus_handle = Some(handle);
-                }
-
-                if let Some(scroll_handle) = self.tracked_scroll_handle.as_ref() {
-                    let scroll_handle_state = scroll_handle.0.borrow();
-                    self.scroll_offset = Some(scroll_handle_state.offset.clone());
-                    self.ongoing_scroll = Some(scroll_handle_state.ongoing_scroll.clone());
-                } else if (self.base_style.overflow.x == Some(Overflow::Scroll)
-                    || self.base_style.overflow.y == Some(Overflow::Scroll))
-                    && let Some(element_state) = element_state.as_mut()
-                {
-                    self.scroll_offset = Some(
-                        element_state
-                            .scroll_offset
-                            .get_or_insert_with(Rc::default)
-                            .clone(),
-                    );
-                    self.ongoing_scroll = Some(
-                        element_state
-                            .ongoing_scroll
-                            .get_or_insert_with(|| Rc::new(RefCell::new(OngoingScroll::default())))
-                            .clone(),
-                    );
-                }
-
-                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-                let layout_id = f(style, window, cx);
-                (layout_id, element_state)
-            },
-        )
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.request_layout_boxed_async(
+                    global_id,
+                    inspector_id,
+                    window,
+                    cx,
+                    stack,
+                    async |style, window, cx, _stack| f(style, window, cx),
+                )
+            })
+            .finish()
     }
 
     /// Commit the bounds of this element according to this interactivity state's configured styles.
     pub fn prepaint<R>(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
+        inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         content_size: Size<Pixels>,
         window: &mut Window,
         cx: &mut App,
         f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
     ) -> R {
-        self.content_size = content_size;
-
-        #[cfg(any(feature = "inspector", debug_assertions))]
-        window.with_inspector_state(
-            _inspector_id,
-            cx,
-            |inspector_state: &mut Option<DivInspectorState>, _window| {
-                if let Some(inspector_state) = inspector_state {
-                    inspector_state.bounds = bounds;
-                    inspector_state.content_size = content_size;
-                }
-            },
-        );
-
-        if let Some(focus_handle) = self.tracked_focus_handle.as_ref() {
-            window.set_focus_handle(focus_handle, cx);
-
-            if window.a11y.is_active() {
-                if let Some(global_id) = global_id {
-                    let node_id = global_id.accesskit_node_id();
-                    window.a11y.set_focusable(node_id, focus_handle.id);
-                    if focus_handle.is_focused(window) {
-                        window.a11y.set_focus(node_id);
-                    }
-                } else if focus_handle.is_focused(window) {
-                    // Focusable, but with no element id it can't have an
-                    // accessibility node, so screen readers fall back to the
-                    // whole window.
-                    window
-                        .a11y
-                        .note_focus_without_node(focus_handle.id, "it has no element id");
-                }
-            }
-        }
-
-        if self.report_active_descendant_focus && window.a11y.is_active() {
-            if let Some(global_id) = global_id {
-                window
-                    .a11y
-                    .set_active_descendant(global_id.accesskit_node_id());
-            }
-        }
-        if let Some(global_id) = global_id {
-            self.prepaint_stateful(global_id, bounds, window, cx, f)
-        } else {
-            self.prepaint_with_state(None, bounds, window, cx, f)
-        }
-    }
-
-    // KaminIDE patch: anonymous divs must not retain the owned-state branch.
-    #[inline(never)]
-    fn prepaint_stateful<R>(
-        &mut self,
-        global_id: &GlobalElementId,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
-    ) -> R {
-        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
-            let mut state = state.unwrap_or_default();
-            let result = self.prepaint_with_state(Some(&mut state), bounds, window, cx, f);
-            (result, state)
-        })
-    }
-
-    fn prepaint_with_state<R>(
-        &mut self,
-        mut element_state: Option<&mut InteractiveElementState>,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
-    ) -> R {
-        let style = self.compute_style_boxed(None, element_state.as_deref_mut(), window, cx);
-
-        if let Some(element_state) = element_state.as_deref_mut() {
-            if let Some(clicked_state) = element_state.clicked_state.as_ref() {
-                let clicked_state = clicked_state.borrow();
-                self.active = Some(clicked_state.element);
-            }
-            if self
-                .rare()
-                .is_some_and(|rare| rare.hover_style.is_some() || rare.group_hover_style.is_some())
-            {
-                element_state
-                    .hover_state
-                    .get_or_insert_with(Default::default);
-            }
-            if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
-                if self
-                    .rare()
-                    .is_some_and(|rare| rare.tooltip_builder.is_some())
-                {
-                    self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
-                } else {
-                    // If there is no longer a tooltip builder, remove the active tooltip.
-                    if let Some(long_press_tooltip_active) =
-                        element_state.long_press_tooltip_active.as_ref()
-                    {
-                        long_press_tooltip_active.set(false);
-                    }
-                    element_state.active_tooltip.take();
-                }
-            }
-        }
-
-        window.with_child_style(&style, bounds, |window| {
-            let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
-            } else {
-                None
-            };
-            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
-            f(&style, scroll_offset, hitbox, window, cx)
-        })
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.prepaint_async(
+                    global_id,
+                    inspector_id,
+                    bounds,
+                    content_size,
+                    window,
+                    cx,
+                    stack,
+                    async |style, offset, hitbox, window, cx, _stack| {
+                        f(style, offset, hitbox, window, cx)
+                    },
+                )
+            })
+            .finish()
     }
 
     fn should_insert_hitbox(&self, style: &Style, window: &Window, cx: &App) -> bool {
@@ -4383,6 +4109,30 @@ impl<E> Element for Stateful<E>
 where
     E: Element,
 {
+    fn request_layout_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+        self.element
+            .request_layout_async(id, inspector_id, window, cx, stack)
+    }
+    fn prepaint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a, Self::PrepaintState> {
+        self.element
+            .prepaint_async(id, inspector_id, bounds, request_layout, window, cx, stack)
+    }
     fn paint_async<'a>(
         &'a mut self,
         id: Option<&'a GlobalElementId>,

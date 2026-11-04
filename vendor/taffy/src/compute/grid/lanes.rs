@@ -24,7 +24,7 @@ use super::lanes_geometry::{absolute_area, stacking_alignment_offset, track_area
 use super::subgrid;
 use super::track_sizing::{
     determine_if_item_crosses_flexible_or_intrinsic_tracks, resolve_item_track_indexes,
-    track_sizing_algorithm,
+    track_sizing_algorithm_async,
 };
 use super::types::{GridItem, GridTrack, NamedLineResolver, TrackCounts};
 use super::OriginZeroLine;
@@ -191,11 +191,12 @@ struct ItemBox {
 }
 
 /// Раскладка контейнера лунок.
-pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
+pub(super) async fn compute_grid_lanes_layout_async<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     node: NodeId,
     inputs: LayoutInput,
     lanes: GridLanes,
+    stack: &mut reblessive::Stk,
 ) -> LayoutOutput {
     let LayoutInput {
         known_dimensions,
@@ -379,7 +380,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         } else {
             auto_repeat_fit_strategy.width
         };
-        let (reps, count) = intrinsic_repetitions(
+        let (reps, count) = intrinsic_repetitions_async(
             tree,
             node,
             &template,
@@ -390,7 +391,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             inner_node_size,
             align_items,
             justify_items,
-        );
+            stack,
+        )
+        .await;
         if rows {
             row_auto_repetition_count = reps;
             grid_template_row_count = count;
@@ -607,21 +610,24 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             MaxTrackSizingFunction::auto(),
         );
         if rows {
-            let width = tree.measure_child_size(
-                child.node,
-                Size::NONE,
-                Size {
-                    width: inner_node_size.width,
-                    height: None,
-                },
-                Size {
-                    width: AvailableSpace::MaxContent,
-                    height: AvailableSpace::MaxContent,
-                },
-                SizingMode::InherentSize,
-                AbsoluteAxis::Horizontal,
-                Line::FALSE,
-            );
+            let width = tree
+                .measure_child_size_async(
+                    child.node,
+                    Size::NONE,
+                    Size {
+                        width: inner_node_size.width,
+                        height: None,
+                    },
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
+                    SizingMode::InherentSize,
+                    AbsoluteAxis::Horizontal,
+                    Line::FALSE,
+                    stack,
+                )
+                .await;
             let child_style = tree.get_grid_child_style(child.node);
             let margins = child_style.margin().map(|m| {
                 m.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
@@ -708,7 +714,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             height: 0.0,
         }
     };
-    let subgrid_edges = subgrid::flatten_subgrid_items(
+    let subgrid_edges = subgrid::flatten_subgrid_items_async(
         tree,
         &mut items,
         container_gap,
@@ -716,7 +722,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         grid_bit,
         None,
         flow,
-    );
+        stack,
+    )
+    .await;
     let auto_roots: Vec<NodeId> = children
         .iter()
         .filter(|c| c.definite.is_none())
@@ -796,7 +804,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     let inner_min_size = min_size.maybe_sub(content_box_inset.sum_axes());
     let inner_max_size = max_size.maybe_sub(content_box_inset.sum_axes());
     if rows {
-        track_sizing_algorithm(
+        track_sizing_algorithm_async(
             tree,
             AbstractAxis::Block,
             inner_min_size.get(AbstractAxis::Block),
@@ -810,9 +818,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             &mut items[..sizing_count],
             |track: &GridTrack, _, _| Some(track.base_size),
             true,
-        );
+            stack,
+        )
+        .await;
     } else {
-        track_sizing_algorithm(
+        track_sizing_algorithm_async(
             tree,
             AbstractAxis::Inline,
             inner_min_size.get(AbstractAxis::Inline),
@@ -826,7 +836,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             &mut items[..sizing_count],
             |_: &GridTrack, _, _| None,
             false,
-        );
+            stack,
+        )
+        .await;
     }
     drop(items);
 
@@ -1040,23 +1052,27 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         // (`row-auto-placed-subgrid-inherited-tracks-001`: доля высоты
         // ребёнка с `aspect-ratio` считается от дорожки 100, а не 50).
         if rows && subgrid::lanes_subgridded(tree, child.node, rows) {
-            stack_max[k] = Some(tree.measure_child_size(
-                child.node,
-                Size::NONE,
-                Size {
-                    width: inner_node_size.width,
-                    height: None,
-                },
-                Size {
-                    width: AvailableSpace::MaxContent,
-                    height: AvailableSpace::MaxContent,
-                },
-                SizingMode::InherentSize,
-                AbsoluteAxis::Horizontal,
-                Line::FALSE,
-            ));
+            stack_max[k] = Some(
+                tree.measure_child_size_async(
+                    child.node,
+                    Size::NONE,
+                    Size {
+                        width: inner_node_size.width,
+                        height: None,
+                    },
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
+                    SizingMode::InherentSize,
+                    AbsoluteAxis::Horizontal,
+                    Line::FALSE,
+                    stack,
+                )
+                .await,
+            );
         }
-        let item = layout_lanes_item(
+        let item = layout_lanes_item_async(
             tree,
             child.node,
             rows,
@@ -1066,7 +1082,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             None,
             stack_max[k],
             container_align,
-        );
+            stack,
+        )
+        .await;
         let (m_start, m_end) = if rows {
             (item.margin.left, item.margin.right)
         } else {
@@ -1400,7 +1418,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     } else {
                         placed_item.size.height
                     }) + space;
-                    let item = layout_lanes_item(
+                    let item = layout_lanes_item_async(
                         tree,
                         placed_item.node,
                         rows,
@@ -1410,7 +1428,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                         Some(grown),
                         placed_item.stack_fit,
                         container_align,
-                    );
+                        stack,
+                    )
+                    .await;
                     let p = &mut *placed_item;
                     p.size = item.size;
                     p.grid_relative = item.grid_relative;
@@ -1472,14 +1492,16 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         if child_style.box_generation_mode() == BoxGenerationMode::None {
             drop(child_style);
             tree.set_unrounded_layout(child, &Layout::with_order(order));
-            tree.perform_child_layout(
+            tree.perform_child_layout_async(
                 child,
                 Size::NONE,
                 Size::NONE,
                 Size::MAX_CONTENT,
                 SizingMode::InherentSize,
                 Line::FALSE,
-            );
+                stack,
+            )
+            .await;
             order += 1;
             continue;
         }
@@ -1535,42 +1557,45 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         // upgrade; with GPUI every node is positioned, so such candidates are always claimed
         // below this container.
         let mut bubbled = crate::tree::OofCandidates::new();
-        let (content_size_contribution, _, _, _, _, _) = super::alignment::align_and_position_item(
-            tree,
-            child,
-            order,
-            grid_area,
-            Size {
-                width: grid_area.right - grid_area.left,
-                height: grid_area.bottom - grid_area.top,
-            },
-            None,
-            InBothAbsAxis {
-                horizontal: container_align.horizontal.unwrap_or(AlignItems::NORMAL),
-                vertical: container_align.vertical.unwrap_or(AlignItems::NORMAL),
-            },
-            Rect::ZERO,
-            false,
-            0,
-            // The static position follows the grid axis' track order and the stacking axis'
-            // fill order: `fill-reverse` starts the stacking axis at its far edge (css-grid-3
-            // grid lanes; WPT `*-grid-lanes-oof-fill-reverse-*`).
-            if flow.width != (rows && lanes.fill_reverse) {
-                Direction::Rtl
-            } else {
-                Direction::Ltr
-            },
-            if flow.height != (!rows && lanes.fill_reverse) {
-                Direction::Rtl
-            } else {
-                Direction::Ltr
-            },
-            container_border_box.width,
-            border,
-            #[cfg(feature = "content_size")]
-            is_scroll_container,
-            &mut bubbled,
-        );
+        let (content_size_contribution, _, _, _, _, _) =
+            super::alignment::align_and_position_item_async(
+                tree,
+                child,
+                order,
+                grid_area,
+                Size {
+                    width: grid_area.right - grid_area.left,
+                    height: grid_area.bottom - grid_area.top,
+                },
+                None,
+                InBothAbsAxis {
+                    horizontal: container_align.horizontal.unwrap_or(AlignItems::NORMAL),
+                    vertical: container_align.vertical.unwrap_or(AlignItems::NORMAL),
+                },
+                Rect::ZERO,
+                false,
+                0,
+                // The static position follows the grid axis' track order and the stacking axis'
+                // fill order: `fill-reverse` starts the stacking axis at its far edge (css-grid-3
+                // grid lanes; WPT `*-grid-lanes-oof-fill-reverse-*`).
+                if flow.width != (rows && lanes.fill_reverse) {
+                    Direction::Rtl
+                } else {
+                    Direction::Ltr
+                },
+                if flow.height != (!rows && lanes.fill_reverse) {
+                    Direction::Rtl
+                } else {
+                    Direction::Ltr
+                },
+                container_border_box.width,
+                border,
+                #[cfg(feature = "content_size")]
+                is_scroll_container,
+                &mut bubbled,
+                stack,
+            )
+            .await;
         #[cfg(feature = "content_size")]
         {
             item_content_size_contribution =
@@ -1619,8 +1644,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         } else {
             baselines
         },
-        if contain.suppresses_baseline() { Baselines::NONE }
-        else { container_baselines::compute_x(&placed, rows, stack_start_inset) },
+        if contain.suppresses_baseline() {
+            Baselines::NONE
+        } else {
+            container_baselines::compute_x(&placed, rows, stack_start_inset)
+        },
     )
 }
 
@@ -1679,7 +1707,7 @@ fn owned_template(
 /// двух); размер записи тела — наибольший среди её копий. Возвращает число
 /// повторов и число дорожек явной сетки.
 #[allow(clippy::too_many_arguments)]
-fn intrinsic_repetitions<Tree: LayoutGridContainer>(
+async fn intrinsic_repetitions_async<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     node: NodeId,
     template: &[OwnedComponent],
@@ -1690,6 +1718,7 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
     inner_node_size: Size<Option<f32>>,
     align_items: Option<AlignItems>,
     justify_items: Option<AlignItems>,
+    stack: &mut reblessive::Stk,
 ) -> (u16, u16) {
     let mut spans: Vec<(NodeId, usize, u16)> = Vec::new();
     for (index, child) in tree.child_ids(node).enumerate() {
@@ -1769,18 +1798,21 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
             MaxTrackSizingFunction::auto(),
         );
         if rows {
-            let width = tree.measure_child_size(
-                *child,
-                Size::NONE,
-                Size {
-                    width: inner_node_size.width,
-                    height: None,
-                },
-                Size::MAX_CONTENT,
-                SizingMode::InherentSize,
-                AbsoluteAxis::Horizontal,
-                Line::FALSE,
-            );
+            let width = tree
+                .measure_child_size_async(
+                    *child,
+                    Size::NONE,
+                    Size {
+                        width: inner_node_size.width,
+                        height: None,
+                    },
+                    Size::MAX_CONTENT,
+                    SizingMode::InherentSize,
+                    AbsoluteAxis::Horizontal,
+                    Line::FALSE,
+                    stack,
+                )
+                .await;
             track.base_size = width;
         }
         stack_tracks.push(track);
@@ -1843,7 +1875,7 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
             &stack_tracks,
             &grid_tracks,
         );
-        track_sizing_algorithm(
+        track_sizing_algorithm_async(
             tree,
             AbstractAxis::Block,
             None,
@@ -1857,7 +1889,9 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
             &mut items,
             |track: &GridTrack, _, _| Some(track.base_size),
             false,
-        );
+            stack,
+        )
+        .await;
     } else {
         resolve_item_track_indexes(&mut items, grid_counts, stack_counts);
         determine_if_item_crosses_flexible_or_intrinsic_tracks(
@@ -1865,7 +1899,7 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
             &grid_tracks,
             &stack_tracks,
         );
-        track_sizing_algorithm(
+        track_sizing_algorithm_async(
             tree,
             AbstractAxis::Inline,
             None,
@@ -1879,7 +1913,9 @@ fn intrinsic_repetitions<Tree: LayoutGridContainer>(
             &mut items,
             |_: &GridTrack, _, _| None,
             false,
-        );
+            stack,
+        )
+        .await;
     }
     // Гипотетический размер — предел роста после шага §12.5 (Blink
     // :1880-1890: «we need to use the growth limit as the track size»).
@@ -1958,7 +1994,7 @@ fn dense_path(
 /// блок — область по оси решётки и область содержимого контейнера по оси
 /// укладки). `stack_known` — размер по оси укладки при растяжке.
 #[allow(clippy::too_many_arguments)]
-fn layout_lanes_item(
+async fn layout_lanes_item_async(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     rows: bool,
@@ -1968,6 +2004,7 @@ fn layout_lanes_item(
     stack_known: Option<f32>,
     stack_fit: Option<f32>,
     container_align: InBothAbsAxis<Option<AlignItems>>,
+    stack: &mut reblessive::Stk,
 ) -> ItemBox {
     let style = tree.get_grid_child_style(node);
     // Содержащий блок: по оси решётки — область, по оси укладки — область
@@ -2109,7 +2146,7 @@ fn layout_lanes_item(
                 .unwrap_or(AvailableSpace::MaxContent)
         },
     };
-    let keyword_size = super::lanes_sizing::resolve_lane_sizing_keywords(
+    let keyword_size = super::lanes_sizing::resolve_lane_sizing_keywords_async(
         tree,
         node,
         size_style,
@@ -2117,7 +2154,9 @@ fn layout_lanes_item(
         keyword_stretch_size,
         keyword_available,
         inherent_size,
-    );
+        stack,
+    )
+    .await;
     inherent_size = inherent_size.or(keyword_size);
     let inherent_grid = if rows {
         inherent_size.height
@@ -2165,27 +2204,29 @@ fn layout_lanes_item(
     } else if rows && inherent_stack.is_none() && stack_known.is_none() {
         // Early max-content width predates the resolved track height. Vertical
         // text may now wrap into more columns, which changes stacking width.
-        Some(super::lanes_stack_measure::width(
-            tree, node, grid_known, cb, area,
-        ))
+        Some(super::lanes_stack_measure::width_async(tree, node, grid_known, cb, area, stack).await)
     } else {
         stack_fit
     };
     let measured = rows && !stack_block && inherent_stack.is_none() && stack_known.is_none();
-    let fit = stack_fit.map(|w| match stack_avail {
+    let fit = crate::traversal::map(stack_fit, async |w| match stack_avail {
         Some(avail) => {
             let room = f32_max(avail - stack_margin, 0.0);
             // KaminIDE patch: fit-content keeps the min-content floor (see
             // `lanes_stack_measure::min_width`).
             if measured && w > room {
-                let min = super::lanes_stack_measure::min_width(tree, node, grid_known, cb, area);
+                let min = super::lanes_stack_measure::min_width_async(
+                    tree, node, grid_known, cb, area, stack,
+                )
+                .await;
                 w.min(f32_max(min, room))
             } else {
                 w.min(room)
             }
         }
         None => w,
-    });
+    })
+    .await;
     let stack_known_size = inherent_stack
         .or(stack_known.map(|v| f32_max(v, 0.0)))
         .or(fit);
@@ -2222,14 +2263,17 @@ fn layout_lanes_item(
             height: stack_space,
         }
     };
-    let output = tree.perform_child_layout(
-        node,
-        known,
-        cb,
-        available,
-        SizingMode::InherentSize,
-        Line::FALSE,
-    );
+    let output = tree
+        .perform_child_layout_async(
+            node,
+            known,
+            cb,
+            available,
+            SizingMode::InherentSize,
+            Line::FALSE,
+            stack,
+        )
+        .await;
     let size = known.unwrap_or(output.size).maybe_clamp(min_size, max_size);
     let grid_item_size = if rows { size.height } else { size.width };
     let grid_position_alignment = if rows {
@@ -2303,7 +2347,11 @@ fn layout_lanes_item(
         margin: resolved_margin,
         grid_offset,
         stack_relative,
-        grid_relative: relative_offset(position, if rows { inset_v } else { inset_h }, Direction::Ltr),
+        grid_relative: relative_offset(
+            position,
+            if rows { inset_v } else { inset_h },
+            Direction::Ltr,
+        ),
         padding,
         border,
         scrollbar_size,

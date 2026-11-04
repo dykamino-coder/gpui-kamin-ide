@@ -54,7 +54,12 @@ impl Hooks for Deferred {
     type Layout = ();
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         self.prepare();
         (
             self.0
@@ -62,18 +67,27 @@ impl Hooks for Deferred {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .request_layout(window, cx),
+                .request_layout_async(window, cx, stack)
+                .await,
             (),
         )
     }
 
-    fn prepaint(&mut self, _: gpui::Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: gpui::Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         self.0
             .element
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .prepaint(window, cx);
+            .prepaint_async(window, cx, stack)
+            .await;
     }
 
     fn paint(

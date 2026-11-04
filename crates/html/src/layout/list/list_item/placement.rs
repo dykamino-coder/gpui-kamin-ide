@@ -51,8 +51,13 @@ impl Wrap for Content {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.id.set(Some(id));
         id
     }
@@ -89,13 +94,24 @@ impl Wrap for Marker {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.id = Some(id);
         id
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let mut delta = point(px(0.), px(0.));
         let anchor = self.baseline(window);
         if let Some(anchor) = anchor {
@@ -114,7 +130,11 @@ impl Wrap for Marker {
             self.owns = true;
         }
         if self.owns {
-            window.with_element_offset(delta, |window| self.child.prepaint(window, cx));
+            window
+                .with_element_offset_async(delta, async |window| {
+                    self.child.prepaint_async(window, cx, stack).await
+                })
+                .await;
         }
     }
 

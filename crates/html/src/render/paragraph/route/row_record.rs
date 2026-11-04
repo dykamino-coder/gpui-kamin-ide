@@ -101,8 +101,13 @@ impl Wrap for Piece {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
         self.pieces.borrow_mut().push(id);
         id
     }
@@ -122,9 +127,14 @@ impl Wrap for Row {
         &mut self.child
     }
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
         self.record.pieces.borrow_mut().clear();
-        let id = self.child.request_layout(window, cx);
+        let id = self.child.request_layout_async(window, cx, stack).await;
         let r = &self.record;
         r.flow
             .record_row(id, &r.pieces.borrow(), r.axis, r.keep, window);

@@ -25,7 +25,10 @@ pub use layout::{
 };
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
-pub use traits::{LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
+pub use traits::{
+    LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree,
+    TraverseTree,
+};
 
 #[cfg(feature = "flexbox")]
 pub use traits::LayoutFlexboxContainer;
@@ -196,7 +199,13 @@ mod grid_flex_fraction_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_track_sum_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "flexbox",
+    feature = "block_layout"
+))]
 mod baseline_transport_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
@@ -205,16 +214,32 @@ mod grid_final_baseline_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
 mod block_baseline_relative_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "block_layout",
+    feature = "float_layout"
+))]
 mod block_float_transfer_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "block_layout",
+    feature = "float_layout"
+))]
 mod float_context_transfer_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_outer_margin_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "calc",
+    feature = "std"
+))]
 mod grid_calc_repeat_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
@@ -233,10 +258,18 @@ mod flex_fragmentation_axis_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_fragmentation_continuation_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
-mod flex_fragmentation_pin_tests;
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_fragmentation_gap_tests;
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout"
+))]
 mod flex_fragmentation_min_tests;
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_pin_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_fragmentation_growth_tests;
+
+mod layout_measurer;
+pub use layout_measurer::{AsyncMeasure, LayoutMeasurer, SyncMeasure};

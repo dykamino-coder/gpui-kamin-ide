@@ -47,7 +47,12 @@ impl Hooks for IntrinsicBox {
     type Layout = LayoutId;
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, _: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         let id = window.request_measured_layout(Default::default(), |known, available, _, _| {
             let width = known.width.unwrap_or_else(|| match available.width {
                 AvailableSpace::MinContent => px(20.),
@@ -59,7 +64,15 @@ impl Hooks for IntrinsicBox {
         (id, id)
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut LayoutId, _: &mut Window, _: &mut App) {}
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut LayoutId,
+        _: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
+    }
 
     fn paint(
         &mut self,

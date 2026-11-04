@@ -103,12 +103,24 @@ impl Wrap for Sticky {
         &mut self.child
     }
 
-    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let shift = self.shift(bounds);
         let child = &mut self.child;
-        self.link.applied(shift, || {
-            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
-        });
+        self.link
+            .applied_async(shift, async || {
+                window
+                    .with_exact_element_offset_async(shift, async |window| {
+                        child.prepaint_async(window, cx, stack).await
+                    })
+                    .await;
+            })
+            .await;
     }
 
     async fn paint_async(

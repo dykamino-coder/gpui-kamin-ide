@@ -23,9 +23,15 @@ impl Wrap for MaskKeep {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         *self.cell.borrow_mut() = Some(window.content_mask());
-        self.child.prepaint(window, cx);
+        self.child.prepaint_async(window, cx, stack).await;
     }
 }
 
@@ -39,9 +45,19 @@ impl Wrap for MaskUse {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let mask = *self.cell.borrow();
-        window.with_content_mask(mask, |window| self.child.prepaint(window, cx));
+        window
+            .with_content_mask_async(mask, async |window| {
+                self.child.prepaint_async(window, cx, stack).await
+            })
+            .await;
     }
 
     async fn paint_async(
