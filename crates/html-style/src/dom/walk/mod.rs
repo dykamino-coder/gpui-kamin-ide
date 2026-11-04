@@ -19,6 +19,7 @@ mod animation_frames;
 mod details_content;
 mod element_sharing;
 mod finish_element;
+mod inline_blocks;
 mod pseudo_styles;
 mod style_normalization;
 mod visited_match;

@@ -120,6 +120,8 @@ impl<'a> Key<'a> {
 pub(super) struct ElementSharing {
     entries: RefCell<VecDeque<Entry>>,
     next: Cell<u64>,
+    /// Разобранные блоки `style=""` для промахов.
+    pub inline: super::inline_blocks::InlineBlocks,
 }
 
 impl ElementSharing {
@@ -155,7 +157,7 @@ impl ElementSharing {
                         && matches_ignoring_pseudo(sel, me, path, sibs) == layer
                 })
         })?;
-        crate::work::add!(StyleSharingHits, 1);
+        crate::work::add!(ElementSharingHits, 1);
         Some(hit.shared.clone())
     }
 

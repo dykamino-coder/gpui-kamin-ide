@@ -14,7 +14,7 @@ use crate::dom::*;
 use crate::style::cascade::map::CascadeMap;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, LinkMatch, Rule, VarMap, parse_decls_in};
+use crate::style::css::{DeclBlock, LinkMatch, Rule, VarMap};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
@@ -24,6 +24,7 @@ use std::rc::Rc;
 pub(super) fn cascade_element(
     me: &mut Ancestor,
     attrs: &Vec<(String, String)>,
+    inline_decls: &DeclBlock,
     tag: &str,
     handle: &Handle,
     tree: &TreeIndex,
@@ -57,11 +58,6 @@ pub(super) fn cascade_element(
     }
     let rules = &scope.rules;
     let vars = inherited_vars;
-    let inline_decls: DeclBlock = attrs
-        .iter()
-        .find(|(k, _)| k == "style")
-        .map(|(_, v)| parse_decls_in(v, vcx))
-        .unwrap_or_default();
     // Ограничение `:visited`: правило, совпавшее лишь при одном состоянии
     // своей ссылки, входит в каскад копией с этим признаком.
     let link = super::visited_match::link_matches(rules, &scope.index, candidates, me, path, sibs);
@@ -115,9 +111,9 @@ pub(super) fn cascade_element(
     let custom = matched
         .iter()
         .map(|r| &r.decls)
-        .chain(std::iter::once(&inline_decls))
+        .chain(std::iter::once(inline_decls))
         .any(|block| block.iter().any(|d| d.name.starts_with("--")));
-    let pre = (custom || form).then(|| CascadeMap::collect(&matched, &inline_decls));
+    let pre = (custom || form).then(|| CascadeMap::collect(&matched, inline_decls));
     let no_custom = CascadeMap::default();
     let cascaded = crate::style::css::custom_properties::cascade_map(
         pre.as_ref().unwrap_or(&no_custom),
@@ -154,16 +150,16 @@ pub(super) fn cascade_element(
     let map = std::cell::OnceCell::new();
     if let Some(basic) = &basic {
         matched.push(basic);
-        let _ = map.set(CascadeMap::collect(&matched, &inline_decls));
+        let _ = map.set(CascadeMap::collect(&matched, inline_decls));
     } else if let Some(pre) = pre {
         let _ = map.set(pre);
     }
-    let map = || map.get_or_init(|| CascadeMap::collect(&matched, &inline_decls));
+    let map = || map.get_or_init(|| CascadeMap::collect(&matched, inline_decls));
     // Признаки схемы — функция собственного `color-scheme` и схемы родителя,
     // то есть входов ключа кэша: они пишутся до сохранения в кэш.
     let mut style =
         tree.style_sharing
-            .resolve(&matched, &inline_decls, map, vars, element, vcx, |style| {
+            .resolve(&matched, inline_decls, map, vars, element, vcx, |style| {
                 let used = used_scheme(style, vcx);
                 let value = crate::style::values::value::dark_scheme(used);
                 if style.reset_cascade.dark_color_scheme != value {
