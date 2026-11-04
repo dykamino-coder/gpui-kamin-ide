@@ -1777,6 +1777,7 @@ dependencies = [
  "gpui-pre-platform",
  "gpui-pre-windows",
  "html5ever 0.40.1",
+ "kamin-alloc",
  "kamin-html",
  "log",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3833,6 +3834,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamin-alloc"
+version = "1.0.86"
+dependencies = [
+ "mimalloc",
+]
+
+[[package]]
 name = "kamin-crash"
 version = "1.0.86"
 dependencies = [
@@ -3957,6 +3965,7 @@ dependencies = [
  "gpui-pre-platform",
  "gpui-pre-windows",
  "image",
+ "kamin-alloc",
  "kamin-crash",
  "kamin-metrics",
  "kamin-model",

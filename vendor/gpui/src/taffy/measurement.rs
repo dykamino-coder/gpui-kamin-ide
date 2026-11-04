@@ -51,7 +51,7 @@ fn copy_subtree(
         .map(|child| copy_subtree(source, target, child))
         .collect();
     let copy = target
-        .new_with_children(source.style(node).expect(EXPECT_MESSAGE).clone(), &children)
+        .new_with_children(source.shared_style(node).expect(EXPECT_MESSAGE), &children)
         .expect(EXPECT_MESSAGE);
     if let Some(context) = source.get_node_context(node) {
         target
