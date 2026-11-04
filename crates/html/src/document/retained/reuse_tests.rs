@@ -80,7 +80,8 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     // The onscreen rows below the grown one move: their on-screen replay
     // (`layout::reuse::replay`) fails the frame check once and the frame is
     // built without replays and skips; they are built from then on while the
-    // flow key stays.
+    // flow key stays. The second settled build records them for replay.
+    update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
     assert_eq!(reused(&view, cx).2, 1);
     update(&view, cx, &page("x"));

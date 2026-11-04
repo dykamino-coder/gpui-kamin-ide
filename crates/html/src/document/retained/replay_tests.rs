@@ -36,10 +36,14 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
         0,
         "the recording build replays nothing"
     );
+    // The first settled build builds every block: it records the paragraphs
+    // only for skipping, and the next build records the ones it still builds.
     update(&view, cx, &page("one"));
+    assert_eq!(replayed(&view, cx), 1, "the table was rebuilt");
+    update(&view, cx, &page("two"));
     assert_eq!(
         replayed(&view, cx),
-        2,
+        3,
         "the table and the tail were rebuilt"
     );
     // A taller paragraph moves the tail: its replay fails the frame check and
@@ -50,9 +54,11 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
 }
 
 /// While the width changes, a block that fills it (`width: auto`) gets no
-/// replay record: it could not replay at another width. The tail paragraph is
-/// recorded by the first build at the settled width and replays from the
-/// next one; the definite-width table is recorded either way.
+/// replay record: it could not replay at another width. The definite-width
+/// table is recorded either way and replays at once. The first build at the
+/// settled width builds the whole flow and records the tail paragraph only
+/// for skipping; the second records it for replay, and it replays from the
+/// third.
 #[gpui::test]
 fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     cx: &mut TestAppContext,
@@ -66,15 +72,18 @@ fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     let (view, cx) = settled(cx, &page("one"), &page("two"));
     cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = 401.));
     frame(cx);
-    let resized = replayed(&view, cx);
-    update(&view, cx, &page("one"));
-    let first = replayed(&view, cx);
-    update(&view, cx, &page("two"));
-    let settled_width = replayed(&view, cx);
+    let mut last = replayed(&view, cx);
+    let mut steps = Vec::new();
+    for text in ["one", "two", "one"] {
+        update(&view, cx, &page(text));
+        let now = replayed(&view, cx);
+        steps.push(now - last);
+        last = now;
+    }
     assert_eq!(
-        (settled_width - first) - (first - resized),
-        1,
-        "the tail must replay only after a build at the settled width"
+        steps,
+        [1, 1, 2],
+        "replays per build after the resize: the table at once, the tail from the third"
     );
 }
 
@@ -92,7 +101,9 @@ fn a_replayed_frame_paints_the_line_phase_of_a_fresh_build(cx: &mut TestAppConte
              <span style='background:red'>tail</span> <u>u</u></p></body>"
         )
     };
-    let (view, cx) = settled(cx, &page("one"), &page("two"));
+    let (view, cx) = settled(cx, &page("two"), &page("one"));
+    // The second settled build records the paragraphs for replay.
+    update(&view, cx, &page("two"));
     update(&view, cx, &page("one"));
     assert_eq!(replayed(&view, cx), 2, "head and tail were rebuilt");
     let replay = scene(cx);
