@@ -142,3 +142,29 @@ fn hover_layers_of_positional_rules_are_rechecked() {
     assert_ne!(hover(found[0]), hover(found[1]), "под чётным div — синий");
     assert_eq!(hover(found[0]), hover(found[2]));
 }
+#[test]
+fn has_in_an_ancestor_compound_is_rechecked_for_cousins() {
+    // WPT css/selectors/has-style-sharing-004.
+    let s = styles(
+        "<style>:has(> .a) .b{color:green}.b{color:purple}</style>\
+         <div><span class=b></span><span></span></div>\
+         <div><span class=b></span><span class=a></span></div>",
+        "span",
+    );
+    assert_eq!(s.len(), 4);
+    assert_ne!(s[0], s[2], "у второго div есть ребёнок .a");
+}
+
+#[test]
+fn has_marks_two_levels_up_are_rechecked() {
+    // WPT css/selectors/has-style-sharing-006.
+    let s = styles(
+        "<style>:has(> .a) .b .c{color:green}.c{color:purple}</style>\
+         <div><span class=b><span class=c></span></span><span></span></div>\
+         <div><span class=b><span class=c></span></span><span class=a></span></div>",
+        "span",
+    );
+    let c: Vec<_> = [&s[1], &s[4]].into_iter().collect();
+    assert_eq!(s.len(), 6);
+    assert_ne!(c[0], c[1], "у второго div есть ребёнок .a");
+}

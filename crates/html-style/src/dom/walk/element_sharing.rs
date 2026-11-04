@@ -5,9 +5,10 @@
 //!
 //! Равнозначность цепочки задаёт номер разделения родителя: элемент, взявший
 //! чужой стиль, получает номер владельца записи, прочие — новый. Равные номера
-//! родителей значат, что на каждом уровне вверх совпали тег, атрибуты и исход
-//! перепроверяемых правил, а значит и исход устойчивых правил
-//! (`SharingFacts`) и подсказок, читающих атрибуты предков. Входы, которые
+//! родителей значат, что на каждом уровне вверх совпали тег, атрибуты, отметки
+//! `:has()` и исход перепроверяемых правил, а значит и фильтр Блума предков,
+//! кандидаты индекса, исход устойчивых правил (`SharingFacts`) и подсказок,
+//! читающих атрибуты предков. Входы, которые
 //! цепочка не покрывает, — область правил, унаследованные переменные (одна
 //! `Rc` у разделивших родителей), схема цвета и окружение — сравниваются явно.
 
@@ -54,6 +55,10 @@ pub(super) struct Key<'a> {
     html_attrs: bool,
     tag: &'a str,
     attrs: &'a [(String, String)],
+    /// Отметки `:has()` элемента: они входят в фильтр Блума потомков, а через
+    /// него — в их кандидатов индекса; равные номера родителей должны значить
+    /// равные отметки всей цепочки.
+    marks: Vec<u64>,
 }
 
 struct Entry {
@@ -65,6 +70,7 @@ struct Entry {
     html_attrs: bool,
     tag: String,
     attrs: Vec<(String, String)>,
+    marks: Vec<u64>,
     environment: Environment,
     /// Перепроверяемые кандидаты: номер правила и исходы `matches` и
     /// `matches_ignoring_pseudo` у владельца записи.
@@ -101,7 +107,7 @@ impl<'a> Key<'a> {
             return None;
         }
         let mut h = DefaultHasher::new();
-        (parent, tag, attrs).hash(&mut h);
+        (parent, tag, attrs, &me.has_marks).hash(&mut h);
         Some(Self {
             hash: h.finish(),
             parent,
@@ -111,6 +117,7 @@ impl<'a> Key<'a> {
             html_attrs: me.html_attrs,
             tag,
             attrs,
+            marks: me.has_marks.clone(),
         })
     }
 }
@@ -153,6 +160,7 @@ impl ElementSharing {
                 && e.html_attrs == key.html_attrs
                 && e.tag == key.tag
                 && e.attrs == key.attrs
+                && e.marks == key.marks
                 && e.environment.matches(vcx)
                 && e.checks
                     .iter()
@@ -192,6 +200,7 @@ impl ElementSharing {
         let bytes = size_of::<Entry>()
             + key.tag.len()
             + checks.len() * size_of::<Check>()
+            + key.marks.len() * size_of::<u64>()
             + key
                 .attrs
                 .iter()
@@ -201,7 +210,8 @@ impl ElementSharing {
         let Ok(lease) = admission.storage(bytes) else {
             return;
         };
-        let mut entries = self.entries.borrow_mut();
+        // Запись только перемещается в очередь: стиль владельца не меняется.
+        let mut entries = self.entries.take();
         if entries.len() == CAPACITY {
             entries.pop_front();
         }
@@ -214,11 +224,13 @@ impl ElementSharing {
             html_attrs: key.html_attrs,
             tag: key.tag.to_string(),
             attrs: key.attrs.to_vec(),
+            marks: key.marks.clone(),
             environment: Environment::new(vcx),
             checks,
             shared: shared.clone(),
             _lease: lease,
         });
+        self.entries.replace(entries);
     }
 }
 
