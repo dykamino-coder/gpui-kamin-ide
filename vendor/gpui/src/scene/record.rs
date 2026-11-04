@@ -44,16 +44,14 @@ impl Scene {
         offset: Point<ScaledPixels>,
         clip: Option<Bounds<ScaledPixels>>,
     ) -> Self {
-        let mut scene = Self { in_group: self.in_group, ..Self::default() };
-        for command in &self.paint_operations {
-            let mut command = command.clone();
-            match &mut command {
-                PaintOperation::Primitive(primitive) => geometry::primitive(primitive, offset, clip),
-                PaintOperation::StartLayer(b) => *b = geometry::bounds(*b, offset),
-                _ => {},
-            }
-            scene.replay_operation(command);
-        }
+        // KaminIDE patch: the copy keeps the recorded orders and grafts the
+        // record's bounds tree moved and clipped the same way, instead of
+        // inserting every primitive into a new tree (`Scene::copy_grafted`).
+        let mut scene = self.copy_grafted(offset, clip, |command| match command {
+            PaintOperation::Primitive(primitive) => geometry::primitive(primitive, offset, clip),
+            PaintOperation::StartLayer(b, _) => *b = geometry::bounds(*b, offset),
+            _ => {},
+        });
         scene.hoisted_backdrops = self.hoisted_backdrops.iter().map(|surface| {
             let mut surface = surface.clone();
             surface.bounds = geometry::bounds(surface.bounds, offset);
