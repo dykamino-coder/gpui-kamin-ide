@@ -3,18 +3,13 @@
 use super::*;
 use crate::document::{RevisionStatus, TraversalKind};
 
-fn draw(document: &Document) {
+fn draw(document: &Document, stage: &str) {
     let mut cx = gpui::TestAppContext::single();
     let boxes = document.render(&options());
     cx.add_empty_window().draw(
         gpui::point(gpui::px(0.), gpui::px(0.)),
         gpui::size(gpui::px(100.), gpui::px(100.)),
-        |_, _| {
-            FrameProbe(
-                gpui::div().children(boxes).into_any_element(),
-                "paint".into(),
-            )
-        },
+        |_, _| FrameProbe(gpui::div().children(boxes).into_any_element(), stage.into()),
     );
 }
 
@@ -37,7 +32,7 @@ fn reflow_reports_its_limit_after_building_the_deeper_boxes() {
             .build()
             .unwrap();
         assert_eq!(document.report().status, RevisionStatus::Complete);
-        draw(&document);
+        draw(&document, "paint");
         let report = document.report();
         assert_eq!(report.status, RevisionStatus::Degraded);
         let limit = report.degradation.unwrap();
@@ -56,7 +51,7 @@ fn layout_limit_is_delivered_at_the_frame_boundary_once_per_key() {
     regression::on_eight_mib(|| {
         let document = Document::builder(&markup(1500), "").build().unwrap();
         assert!(document.take_diagnostics().is_empty());
-        draw(&document);
+        draw(&document, "paint");
         let batch = document.take_diagnostics();
         let [record] = batch.records.as_slice() else {
             panic!("{:?}", batch.records)
@@ -65,7 +60,7 @@ fn layout_limit_is_delivered_at_the_frame_boundary_once_per_key() {
             record.phase,
             crate::diagnostics::Phase::Traversal(TraversalKind::Layout)
         );
-        draw(&document);
+        draw(&document, "paint");
         assert!(document.take_diagnostics().is_empty());
         let repeated = document.diagnostics().records[0].occurrences;
         assert!(repeated > record.occurrences);
@@ -89,7 +84,7 @@ fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
             let before = document.report().degradation.unwrap();
             assert_eq!(before.traversal, TraversalKind::BoxBuild);
             assert_eq!(before.limit, 2052);
-            draw(&document);
+            draw(&document, "paint");
             assert_eq!(document.report().degradation, Some(before));
             assert_eq!(source_text(&document), "leaftail");
             let mut text = String::new();
@@ -99,9 +94,9 @@ fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
     });
 }
 
-/// Запас стека рекурсии Taffy: вложенные float до предела построения боксов
-/// укладываются в 7,5 МиБ. До выноса тяжёлых нерекурсивных частей из кадров
-/// Taffy этот сценарий занимал ~7,9 МиБ и переполнял такой поток.
+/// Запас стека рекурсии Taffy: раскладка вложенных float до предела
+/// построения боксов укладывается в 7,5 МиБ. Полный paint проверяется
+/// отдельно на стандартном стеке 8 МиБ.
 #[test]
 fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
     regression::on_stack(15 * 512 * 1024, || {
@@ -113,7 +108,7 @@ fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
         let document = Document::builder(&source, "").build().unwrap();
         let before = document.report().degradation.unwrap();
         assert_eq!(before.traversal, TraversalKind::BoxBuild);
-        draw(&document);
+        draw(&document, "layout");
         assert_eq!(document.report().degradation, Some(before));
     });
 }
