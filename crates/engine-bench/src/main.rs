@@ -48,6 +48,8 @@ static ALLOC: allocations::Counted = allocations::Counted;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    // Политика арен — как у приложения, до первой аллокации стенда.
+    kamin_alloc::configure();
     diagnostics::init();
     if let Err(error) = entry() {
         eprintln!("engine_bench: {error}");

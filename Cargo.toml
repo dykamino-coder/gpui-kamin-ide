@@ -67,6 +67,7 @@ kamin-ws = { path = "crates/ws" }
 kamin-model = { path = "crates/model" }
 kamin-sidecar = { path = "crates/sidecar" }
 kamin-crash = { path = "crates/crash" }
+kamin-alloc = { path = "crates/alloc" }
 kamin-html = { path = "crates/html" }
 
 # Perf-профиль из plan/10 (DLP-иммунитет: mimalloc в shell; размер/скорость)

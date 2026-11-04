@@ -5,6 +5,17 @@ use slotmap::SecondaryMap;
 use slotmap::SparseSecondaryMap as SecondaryMap;
 use slotmap::{DefaultKey, SlotMap};
 
+/// KaminIDE patch: a node style, shared by the nodes that have the same one.
+///
+/// A `Style` is about 1 KiB and the boxes of one frame tree mostly repeat a few styles, so a
+/// node holds a reference and the host may give equal styles one allocation (gpui
+/// `TaffyLayoutEngine::request_layout`). Layout only reads styles; `set_style` replaces it.
+#[cfg(feature = "std")]
+pub type SharedStyle = std::rc::Rc<Style>;
+/// KaminIDE patch: a node style, shared by the nodes that have the same one.
+#[cfg(not(feature = "std"))]
+pub type SharedStyle = alloc::rc::Rc<Style>;
+
 use super::kamin_calc::calc_value;
 #[path = "calc_size.rs"]
 mod calc_size;
@@ -105,7 +116,7 @@ impl Default for TaffyConfig {
 #[derive(Debug, Clone, PartialEq)]
 struct NodeData {
     /// The layout strategy used by this node
-    pub(crate) style: Style,
+    pub(crate) style: SharedStyle,
 
     /// The always unrounded results of the layout computation. We must store this separately from the rounded
     /// layout to avoid errors from rounding already-rounded values. See <https://github.com/DioxusLabs/taffy/issues/501>.
@@ -113,7 +124,10 @@ struct NodeData {
 
     /// The final results of the layout computation.
     /// These may be rounded or unrounded depending on what the `use_rounding` config setting is set to.
-    pub(crate) final_layout: Layout,
+    ///
+    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
+    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
+    pub(crate) final_layout: Option<Box<Layout>>,
 
     /// Whether the node has context data associated with it or not
     pub(crate) has_context: bool,
@@ -129,7 +143,9 @@ struct NodeData {
     pub(crate) detailed_layout_info: DetailedLayoutInfo,
     /// Tracks published by the parent subgrid layout, outside the native cache key.
     #[cfg(feature = "grid")]
-    pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
+    /// KaminIDE patch: boxed: only subgrid items carry tracks, inline they were 160 bytes of
+    /// every node.
+    pub(crate) subgrid_tracks: Option<Box<crate::style::SubgridTracks>>,
     /// Parent-height basis used by an anonymous row's percentage-height children.
     pub(crate) pct_parent_h: Option<Option<f32>>,
     /// KaminIDE patch: y offset of this node's children inside its box (see
@@ -161,15 +177,18 @@ struct NodeData {
     pub(crate) grid_track_growth: (crate::geometry::AbsoluteAxis, Vec<f32>),
 }
 
+/// KaminIDE patch: the final layout of a node that rounding has not written yet.
+static NO_FINAL_LAYOUT: Layout = Layout::new();
+
 impl NodeData {
     /// Create the data for a new node
     #[must_use]
-    pub const fn new(style: Style) -> Self {
+    pub const fn new(style: SharedStyle) -> Self {
         Self {
             style,
             cache: Cache::new(),
             unrounded_layout: Layout::new(),
-            final_layout: Layout::new(),
+            final_layout: None,
             has_context: false,
             hoisted_children: new_const_children_vec(),
             detailed_layout_info: DetailedLayoutInfo::None,
@@ -435,7 +454,7 @@ impl<NodeContext> PrintTree for TaffyTree<NodeContext> {
     #[inline(always)]
     fn get_final_layout(&self, node_id: NodeId) -> Layout {
         if self.config.use_rounding {
-            self.nodes[node_id.into()].final_layout
+            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
         } else {
             self.nodes[node_id.into()].unrounded_layout
         }
@@ -521,31 +540,58 @@ where
 
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
             let output = match (display_mode, has_children) {
-                (Display::None, _) => compute_hidden_layout(tree, node_id),
                 #[cfg(feature = "block_layout")]
                 (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx),
                 #[cfg(feature = "block_layout")]
                 (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
-                #[cfg(feature = "flexbox")]
-                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
-                #[cfg(feature = "grid")]
-                (Display::Grid, true) => compute_grid_layout(tree, node_id, inputs),
-                // An empty grid without a measurement context still has explicit
-                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
-                #[cfg(feature = "grid")]
-                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
-                    compute_grid_layout(tree, node_id, inputs)
-                }
-                (_, false) => {
-                    let node_key = node_id.into();
-                    let style = &tree.taffy.nodes[node_key].style;
-                    let has_context = tree.taffy.nodes[node_key].has_context;
-                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
-                    (tree.measure_function)(inputs, node_id, node_context, style)
-                }
+                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
             };
             tree.finish_child_layout(node_id, inputs.run_mode, output)
         })
+    }
+
+    // KaminIDE patch: this closure's frame waits for the recursive layout of
+    // every block descendant, so only the block dispatch stays inline; the
+    // inlined entries of the other algorithms must not widen it (a 2052-level
+    // box tree on the 8 MiB stack).
+    /// Lays out a node that is not a block container with children.
+    #[inline(never)]
+    fn compute_other_layout(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        display_mode: Display,
+        has_children: bool,
+    ) -> LayoutOutput {
+        match (display_mode, has_children) {
+            (Display::None, _) => compute_hidden_layout(self, node_id),
+            #[cfg(feature = "flexbox")]
+            (Display::Flex, true) => compute_flexbox_layout(self, node_id, inputs),
+            #[cfg(feature = "grid")]
+            (Display::Grid, true) => compute_grid_layout(self, node_id, inputs),
+            // An empty grid without a measurement context still has explicit
+            // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
+            #[cfg(feature = "grid")]
+            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
+                compute_grid_layout(self, node_id, inputs)
+            }
+            (_, false) => self.measure_leaf(node_id, inputs),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!("block containers with children are dispatched inline"),
+        }
+    }
+
+    // KaminIDE patch: the inlined measure function must not widen the frame of
+    // `compute_other_layout`, which waits for the recursive layout of flex and
+    // grid descendants (a 2052-level box tree on the 8 MiB stack).
+    /// Measures a leaf node with its measure function.
+    #[inline(never)]
+    fn measure_leaf(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        let node_key = node_id.into();
+        let style = &self.taffy.nodes[node_key].style;
+        let has_context = self.taffy.nodes[node_key].has_context;
+        let node_context = has_context.then(|| self.taffy.node_context_data.get_mut(node_key)).flatten();
+        (self.measure_function)(inputs, node_id, node_context, style)
     }
 
     // KaminIDE patch: output adaptation and OOF temporaries must not live
@@ -804,7 +850,7 @@ where
     }
 
     fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
-        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
+        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
     }
 
     fn set_content_shift(&mut self, node_id: NodeId, dy: f32) {
@@ -818,8 +864,8 @@ where
 
     fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {
         let node = &mut self.taffy.nodes[node_id.into()];
-        if node.subgrid_tracks != tracks {
-            node.subgrid_tracks = tracks;
+        if node.subgrid_tracks.as_deref() != tracks.as_ref() {
+            node.subgrid_tracks = tracks.map(Box::new);
             node.cache.clear();
         }
     }
@@ -842,7 +888,7 @@ where
 
     #[inline(always)]
     fn set_final_layout(&mut self, node_id: NodeId, layout: &Layout) {
-        self.taffy.nodes[node_id.into()].final_layout = *layout;
+        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
     }
 
     #[inline(always)]
@@ -939,8 +985,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
     }
 
     /// Creates and adds a new unattached leaf node to the tree, and returns the node of the new node
-    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
-        let id = self.nodes.insert(NodeData::new(layout));
+    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
+        let id = self.nodes.insert(NodeData::new(layout.into()));
         let _ = self.children.insert(new_vec_with_capacity(0));
         let _ = self.parents.insert(None);
 
@@ -950,8 +996,12 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Creates and adds a new unattached leaf node to the tree, and returns the [`NodeId`] of the new node
     ///
     /// Creates and adds a new leaf node with a supplied context
-    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
-        let mut data = NodeData::new(layout);
+    pub fn new_leaf_with_context(
+        &mut self,
+        layout: impl Into<SharedStyle>,
+        context: NodeContext,
+    ) -> TaffyResult<NodeId> {
+        let mut data = NodeData::new(layout.into());
         data.has_context = true;
 
         let id = self.nodes.insert(data);
@@ -964,8 +1014,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
     }
 
     /// Creates and adds a new node, which may have any number of `children`
-    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
-        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
+    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
+        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
 
         for child in children {
             self.parents[(*child).into()] = Some(id);
@@ -1012,10 +1062,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
     pub fn reset_node(
         &mut self,
         node: NodeId,
-        style: Style,
+        style: impl Into<SharedStyle>,
         children: &[NodeId],
         context: Option<NodeContext>,
     ) -> TaffyResult<()> {
+        let style = style.into();
         let key = node.into();
         for child in self.children[key].iter() {
             if self.parents[(*child).into()] == Some(node) {
@@ -1326,8 +1377,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
     /// Sets the [`Style`] of the provided `node`
     #[inline]
-    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
-        self.nodes[node.into()].style = style;
+    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
+        self.nodes[node.into()].style = style.into();
         self.mark_dirty(node)?;
         Ok(())
     }
@@ -1338,11 +1389,42 @@ impl<NodeContext> TaffyTree<NodeContext> {
         Ok(&self.nodes[node.into()].style)
     }
 
+    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
+    #[inline]
+    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| {
+            SharedStyle::ptr_eq(&data.style, style) || *data.style == **style
+        })
+    }
+
+    /// KaminIDE patch: give `node` the shared allocation of `style`, which must equal the
+    /// node's style. Unlike `set_style`, the node keeps its layout cache: its input is the
+    /// same value. Returns false and changes nothing when the styles differ.
+    pub fn adopt_equal_style(&mut self, node: NodeId, style: &SharedStyle) -> bool {
+        let Some(data) = self.nodes.get_mut(node.into()) else {
+            return false;
+        };
+        if SharedStyle::ptr_eq(&data.style, style) {
+            return true;
+        }
+        if *data.style != **style {
+            return false;
+        }
+        data.style = style.clone();
+        true
+    }
+
+    /// KaminIDE patch: the shared style of `node`, to give another node the same style.
+    #[inline]
+    pub fn shared_style(&self, node: NodeId) -> TaffyResult<SharedStyle> {
+        Ok(self.nodes[node.into()].style.clone())
+    }
+
     /// Return this node layout relative to its parent
     #[inline]
     pub fn layout(&self, node: NodeId) -> TaffyResult<&Layout> {
         if self.config.use_rounding {
-            Ok(&self.nodes[node.into()].final_layout)
+            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
         } else {
             Ok(&self.nodes[node.into()].unrounded_layout)
         }
@@ -2040,6 +2122,70 @@ mod tests {
             8,
             "clear() drops all nodes, so it must drop their contexts too"
         );
+    }
+
+    #[test]
+    fn final_layout_storage_is_allocated_only_by_rounding() {
+        let style = Style { size: Size::from_lengths(10.5, 10.5), ..Style::default() };
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        taffy.disable_rounding();
+        let unrounded = taffy.new_leaf(style.clone()).unwrap();
+        taffy.compute_layout(unrounded, Size::MAX_CONTENT).unwrap();
+        assert!(taffy.nodes[unrounded.into()].final_layout.is_none());
+        assert_eq!(taffy.layout(unrounded).unwrap().size.width, 10.5);
+
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let rounded = taffy.new_leaf(style).unwrap();
+        assert_eq!(taffy.layout(rounded).unwrap().size.width, 0.0);
+        taffy.compute_layout(rounded, Size::MAX_CONTENT).unwrap();
+        assert!(taffy.nodes[rounded.into()].final_layout.is_some());
+        assert_eq!(taffy.layout(rounded).unwrap().size.width, 11.0);
+    }
+
+    #[test]
+    fn nodes_share_a_style_until_one_is_replaced() {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let shared = SharedStyle::new(Style { display: Display::Grid, ..Style::default() });
+        let first = taffy.new_leaf(shared.clone()).unwrap();
+        let second = taffy.new_with_children(shared.clone(), &[first]).unwrap();
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(first).unwrap(), &shared));
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(second).unwrap(), &shared));
+
+        taffy.set_style(first, Style { display: Display::Flex, ..Style::default() }).unwrap();
+        assert_eq!(taffy.style(first).unwrap().display, Display::Flex);
+        assert_eq!(taffy.style(second).unwrap().display, Display::Grid);
+        assert_eq!(shared.display, Display::Grid);
+    }
+
+    #[test]
+    fn adopting_an_equal_style_keeps_the_cache_and_a_different_one_is_refused() {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let grid = || Style { display: Display::Grid, ..Style::default() };
+        let node = taffy.new_leaf(grid()).unwrap();
+        taffy.compute_layout(node, Size::MAX_CONTENT).unwrap();
+        assert!(!taffy.dirty(node).unwrap());
+
+        let equal = SharedStyle::new(grid());
+        assert!(taffy.style_equals(node, &equal));
+        assert!(taffy.adopt_equal_style(node, &equal));
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &equal));
+        assert!(!taffy.dirty(node).unwrap());
+
+        let flex = SharedStyle::new(Style { display: Display::Flex, ..Style::default() });
+        assert!(!taffy.style_equals(node, &flex));
+        assert!(!taffy.adopt_equal_style(node, &flex));
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &equal));
+    }
+
+    #[test]
+    fn reset_node_takes_a_shared_style_and_starts_with_an_empty_cache() {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let node = taffy.new_leaf(Style::default()).unwrap();
+        taffy.compute_layout(node, Size::MAX_CONTENT).unwrap();
+        let shared = SharedStyle::new(Style { display: Display::Grid, ..Style::default() });
+        taffy.reset_node(node, shared.clone(), &[], None).unwrap();
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &shared));
+        assert!(taffy.dirty(node).unwrap());
     }
 
     #[test]
