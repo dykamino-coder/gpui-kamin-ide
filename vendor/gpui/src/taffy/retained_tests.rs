@@ -111,3 +111,19 @@ fn a_leaf_whose_style_changed_is_not_kept() {
     assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
     let _ = a;
 }
+#[test]
+fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let _ = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let keyed = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 30.);
+    engine.clear();
+    // Two leaves become one: the plain leaf after the keyed one keeps its
+    // node although its position in the request sequence moved.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), keyed);
+    assert_eq!(leaf(&mut engine, 30.), after);
+    assert_eq!(engine.claimed_nodes(), 2);
+}

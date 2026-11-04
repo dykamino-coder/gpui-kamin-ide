@@ -17445,10 +17445,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee10c39e074
+index 0000000000000000000000000000000000000000..aa8e839cf24848b25c02265949be59d94a82b46b
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,232 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17470,6 +17470,14 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +//! - a measured leaf is any unclaimed previous leaf with the same layout key
 +//!   and style (equal keys mean interchangeable measurements).
 +//!
++//! Positions are aligned, not absolute: a claimed measured leaf moves the
++//! cursor into the previous sequence to the position after its own, so a
++//! subtree of another size before it (a block replaced by one leaf, a
++//! paragraph that gained a node) shifts only the requests up to the next
++//! keyed leaf. A position is only a guess at identity: whatever node it
++//! finds is claimed only when it is a childless plain leaf of an equal style,
++//! whose layout depends on nothing else.
++//!
 +//! Styles are compared by value (shared allocation first, `style_share`); a
 +//! claimed node takes this pass's shared allocation of its equal style.
 +//!
@@ -17489,12 +17497,16 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +    prev: Vec<NodeId>,
 +    /// Nodes in request order of this pass.
 +    seq: Vec<NodeId>,
++    /// Position in `prev` that corresponds to the next request of this pass.
++    cursor: usize,
 +    /// Nodes requested (claimed or created) in this pass.
 +    live: FxHashSet<NodeId>,
-+    /// Layout keys of the measured leaves in the tree.
-+    keys: FxHashMap<NodeId, u64>,
-+    /// Unclaimed measured leaves of the previous pass by layout key.
-+    by_key: FxHashMap<u64, Vec<NodeId>>,
++    /// Layout keys of the measured leaves in the tree, with each leaf's
++    /// position in its pass's request sequence.
++    keys: FxHashMap<NodeId, (u64, usize)>,
++    /// Unclaimed measured leaves of the previous pass by layout key, with
++    /// their positions in `prev`.
++    by_key: FxHashMap<u64, Vec<(NodeId, usize)>>,
 +    /// Layout key for the next measured leaf request.
 +    pub(super) next_key: Option<u64>,
 +    /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
@@ -17507,6 +17519,7 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +    fn note(&mut self, node: NodeId) {
 +        self.live.insert(node);
 +        self.seq.push(node);
++        self.cursor += 1;
 +    }
 +}
 +
@@ -17538,7 +17551,7 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +        if !self.frame_tree {
 +            return None;
 +        }
-+        let node = *self.retained.prev.get(self.retained.seq.len())?;
++        let node = *self.retained.prev.get(self.retained.cursor)?;
 +        let found = !self.retained.live.contains(&node)
 +            && self.taffy.style_equals(node, style)
 +            && self.taffy.children_slice(node).is_empty()
@@ -17560,15 +17573,21 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +        }
 +        let candidates = self.retained.by_key.get_mut(&key)?;
 +        let live = &self.retained.live;
-+        let at = candidates.iter().rposition(|node| {
++        let at = candidates.iter().rposition(|(node, _)| {
 +            !live.contains(node)
 +                && self.taffy.style_equals(*node, style)
 +                && self.taffy.children_slice(*node).is_empty()
 +        })?;
-+        let node = candidates.swap_remove(at);
++        let (node, position) = candidates.swap_remove(at);
 +        let fresh = context.take()?;
 +        if let Some(old) = self.taffy.get_node_context_mut(node) {
 +            old.measure = fresh.measure;
++        }
++        // The requests after this leaf follow the ones after it last pass.
++        self.retained.cursor = position;
++        let here = self.retained.seq.len();
++        if let Some(entry) = self.retained.keys.get_mut(&node) {
++            entry.1 = here;
 +        }
 +        Some(self.claim(node, style))
 +    }
@@ -17580,7 +17599,7 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +        if !self.frame_tree {
 +            return None;
 +        }
-+        let node = *self.retained.prev.get(self.retained.seq.len())?;
++        let node = *self.retained.prev.get(self.retained.cursor)?;
 +        if self.retained.live.contains(&node) {
 +            return None;
 +        }
@@ -17604,7 +17623,8 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +        if self.frame_tree {
 +            self.retained.note(node.0);
 +            if let Some(key) = key {
-+                self.retained.keys.insert(node.0, key);
++                let position = self.retained.seq.len() - 1;
++                self.retained.keys.insert(node.0, (key, position));
 +            }
 +        }
 +        node
@@ -17629,10 +17649,11 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +        }
 +        retained.keys.retain(|node, _| live.contains(node));
 +        retained.by_key.clear();
-+        for (node, key) in &retained.keys {
-+            retained.by_key.entry(*key).or_default().push(*node);
++        for (node, (key, position)) in &retained.keys {
++            retained.by_key.entry(*key).or_default().push((*node, *position));
 +        }
 +        retained.prev = std::mem::take(&mut retained.seq);
++        retained.cursor = 0;
 +        retained.next_key = None;
 +        retained.keys_enabled = false;
 +        retained.live = live;
@@ -17662,10 +17683,10 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cfce956339545783bf073dc67ff9d646d62484ab
+index 0000000000000000000000000000000000000000..a966cd79825921fa29a085268eec21e88da1b263
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,129 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -17778,6 +17799,22 @@ index 0000000000000000000000000000000000000000..cfce956339545783bf073dc67ff9d646
 +    assert_eq!(engine.claimed_nodes(), 0);
 +    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
 +    let _ = a;
++}
++#[test]
++fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let _ = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
++    let keyed = measured(&mut engine, Some(7));
++    let after = leaf(&mut engine, 30.);
++    engine.clear();
++    // Two leaves become one: the plain leaf after the keyed one keeps its
++    // node although its position in the request sequence moved.
++    engine.set_layout_keys(true);
++    let _ = leaf(&mut engine, 99.);
++    assert_eq!(measured(&mut engine, Some(7)), keyed);
++    assert_eq!(leaf(&mut engine, 30.), after);
++    assert_eq!(engine.claimed_nodes(), 2);
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs

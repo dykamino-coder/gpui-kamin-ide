@@ -19,6 +19,14 @@
 //! - a measured leaf is any unclaimed previous leaf with the same layout key
 //!   and style (equal keys mean interchangeable measurements).
 //!
+//! Positions are aligned, not absolute: a claimed measured leaf moves the
+//! cursor into the previous sequence to the position after its own, so a
+//! subtree of another size before it (a block replaced by one leaf, a
+//! paragraph that gained a node) shifts only the requests up to the next
+//! keyed leaf. A position is only a guess at identity: whatever node it
+//! finds is claimed only when it is a childless plain leaf of an equal style,
+//! whose layout depends on nothing else.
+//!
 //! Styles are compared by value (shared allocation first, `style_share`); a
 //! claimed node takes this pass's shared allocation of its equal style.
 //!
@@ -38,12 +46,16 @@ pub(super) struct Retained {
     prev: Vec<NodeId>,
     /// Nodes in request order of this pass.
     seq: Vec<NodeId>,
+    /// Position in `prev` that corresponds to the next request of this pass.
+    cursor: usize,
     /// Nodes requested (claimed or created) in this pass.
     live: FxHashSet<NodeId>,
-    /// Layout keys of the measured leaves in the tree.
-    keys: FxHashMap<NodeId, u64>,
-    /// Unclaimed measured leaves of the previous pass by layout key.
-    by_key: FxHashMap<u64, Vec<NodeId>>,
+    /// Layout keys of the measured leaves in the tree, with each leaf's
+    /// position in its pass's request sequence.
+    keys: FxHashMap<NodeId, (u64, usize)>,
+    /// Unclaimed measured leaves of the previous pass by layout key, with
+    /// their positions in `prev`.
+    by_key: FxHashMap<u64, Vec<(NodeId, usize)>>,
     /// Layout key for the next measured leaf request.
     pub(super) next_key: Option<u64>,
     /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
@@ -56,6 +68,7 @@ impl Retained {
     fn note(&mut self, node: NodeId) {
         self.live.insert(node);
         self.seq.push(node);
+        self.cursor += 1;
     }
 }
 
@@ -87,7 +100,7 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
-        let node = *self.retained.prev.get(self.retained.seq.len())?;
+        let node = *self.retained.prev.get(self.retained.cursor)?;
         let found = !self.retained.live.contains(&node)
             && self.taffy.style_equals(node, style)
             && self.taffy.children_slice(node).is_empty()
@@ -109,15 +122,21 @@ impl TaffyLayoutEngine {
         }
         let candidates = self.retained.by_key.get_mut(&key)?;
         let live = &self.retained.live;
-        let at = candidates.iter().rposition(|node| {
+        let at = candidates.iter().rposition(|(node, _)| {
             !live.contains(node)
                 && self.taffy.style_equals(*node, style)
                 && self.taffy.children_slice(*node).is_empty()
         })?;
-        let node = candidates.swap_remove(at);
+        let (node, position) = candidates.swap_remove(at);
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
+        }
+        // The requests after this leaf follow the ones after it last pass.
+        self.retained.cursor = position;
+        let here = self.retained.seq.len();
+        if let Some(entry) = self.retained.keys.get_mut(&node) {
+            entry.1 = here;
         }
         Some(self.claim(node, style))
     }
@@ -129,7 +148,7 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
-        let node = *self.retained.prev.get(self.retained.seq.len())?;
+        let node = *self.retained.prev.get(self.retained.cursor)?;
         if self.retained.live.contains(&node) {
             return None;
         }
@@ -153,7 +172,8 @@ impl TaffyLayoutEngine {
         if self.frame_tree {
             self.retained.note(node.0);
             if let Some(key) = key {
-                self.retained.keys.insert(node.0, key);
+                let position = self.retained.seq.len() - 1;
+                self.retained.keys.insert(node.0, (key, position));
             }
         }
         node
@@ -178,10 +198,11 @@ impl TaffyLayoutEngine {
         }
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
-        for (node, key) in &retained.keys {
-            retained.by_key.entry(*key).or_default().push(*node);
+        for (node, (key, position)) in &retained.keys {
+            retained.by_key.entry(*key).or_default().push((*node, *position));
         }
         retained.prev = std::mem::take(&mut retained.seq);
+        retained.cursor = 0;
         retained.next_key = None;
         retained.keys_enabled = false;
         retained.live = live;
