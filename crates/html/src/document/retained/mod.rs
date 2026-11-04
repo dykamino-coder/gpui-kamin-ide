@@ -69,6 +69,9 @@ struct Builder {
     nodes: Rc<Vec<Node>>,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
+    /// No resource changed since the previous frame: the window's frame tree
+    /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
+    layout_keys: bool,
 }
 
 impl Builder {
@@ -106,6 +109,7 @@ impl Document {
             nodes: self.nodes.clone(),
             opts: opts.clone(),
             store: self.reuse.clone(),
+            layout_keys: key.is_some() && self.state.values.resources_unchanged(),
         };
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
     }

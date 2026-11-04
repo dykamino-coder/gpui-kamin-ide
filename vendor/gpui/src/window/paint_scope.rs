@@ -109,7 +109,7 @@ impl Window {
             if std::thread::panicking() || !window.paint_pass.is_live() {
                 previous.2.restore(window);
                 window.next_frame.clear();
-                if let Some(layout) = window.layout_engine.as_mut() { layout.clear(); }
+                if let Some(layout) = window.layout_engine.as_mut() { layout.discard(); }
                 window.text_system().finish_frame();
                 window.refreshing = previous.3;
                 window.layout_retry = previous.4.0;
