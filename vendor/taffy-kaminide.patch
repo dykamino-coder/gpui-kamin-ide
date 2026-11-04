@@ -25,7 +25,7 @@
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
 diff --git a/vendor/taffy/src/compute/block.rs b/vendor/taffy/src/compute/block.rs
-index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647fbe123156
+index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3f521d011
 --- a/vendor/taffy/src/compute/block.rs
 +++ b/vendor/taffy/src/compute/block.rs
 @@ -1,0 +2,6 @@
@@ -77,34 +77,118 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 @@ -374 +412 @@
 -pub fn compute_block_layout(
 +pub(super) fn compute_block_layout_normalized(
-@@ -401 +439 @@
--    let min_size = style
-+    let min_size = content_size_limits::for_measurement(style
-@@ -405,2 +443,2 @@
--        .maybe_add(box_sizing_adjustment);
--    let max_size = style
-+        .maybe_add(box_sizing_adjustment), inputs);
-+    let max_size = content_size_limits::for_measurement(style
-@@ -410 +448 @@
--        .maybe_add(box_sizing_adjustment);
-+        .maybe_add(box_sizing_adjustment), inputs);
-@@ -471,0 +510,2 @@
+@@ -379,0 +418,47 @@
++    let entry = match block_entry(tree, node_id, inputs) {
++        Ok(entry) => entry,
++        Err(size) => return LayoutOutput::from_outer_size(size),
++    };
++    let inputs = LayoutInput { known_dimensions: entry.known_dimensions, ..inputs };
++
++    // Unwrap the block formatting context if one was passed, or else create a new one
++    debug_log!("BLOCK");
++    let mut output = match block_ctx {
++        Some(inherited_bfc) if !entry.establishes_new_bfc => compute_inner(tree, node_id, inputs, inherited_bfc),
++        _ => {
++            let mut root_bfc = BlockFormattingContext::new();
++            let mut root_ctx = root_bfc.root_block_context();
++            compute_inner(tree, node_id, inputs, &mut root_ctx)
++        }
++    };
++
++    // Layout containment suppresses the box's baseline for baseline-alignment purposes
++    if entry.suppresses_baseline {
++        output.baselines = Baselines::NONE;
 +        output.baselines_x = Baselines::NONE;
 +        output.inline_block_last_y = None;
-@@ -525 +565 @@
++    }
++
++    output
++}
++
++/// KaminIDE patch: what a block container's own style decides before its children are laid out.
++struct BlockEntry {
++    /// Known dimensions from the inputs and the container's own sizes.
++    known_dimensions: Size<Option<f32>>,
++    /// Whether the container establishes an independent block formatting context.
++    establishes_new_bfc: bool,
++    /// Whether layout containment suppresses the container's baselines.
++    suppresses_baseline: bool,
++}
++
++// KaminIDE patch: the style resolution temporaries must not live in the native
++// frame that waits for the recursive layout of the container's children (a
++// 2052-level box tree on the 8 MiB stack). `Err` is a short-circuited outer size.
++/// Resolves the entry values of a block container, or its short-circuited outer size.
++#[inline(never)]
++fn block_entry(
++    tree: &mut impl LayoutBlockContainer,
++    node_id: NodeId,
++    inputs: LayoutInput,
++) -> Result<BlockEntry, Size<f32>> {
+@@ -401 +486 @@
 -    let min_size = style
 +    let min_size = content_size_limits::for_measurement(style
-@@ -529,2 +569,2 @@
+@@ -405,2 +490,2 @@
 -        .maybe_add(box_sizing_adjustment);
 -    let max_size = style
 +        .maybe_add(box_sizing_adjustment), inputs);
 +    let max_size = content_size_limits::for_measurement(style
-@@ -534 +574 @@
+@@ -410 +495 @@
 -        .maybe_add(box_sizing_adjustment);
 +        .maybe_add(box_sizing_adjustment), inputs);
-@@ -546,0 +587 @@
+@@ -437 +522 @@
+-            return LayoutOutput::from_outer_size(Size { width, height });
++            return Err(Size { width, height });
+@@ -443 +528 @@
+-                return LayoutOutput::from_outer_size(Size { width, height: 0.0 });
++                return Err(Size { width, height: 0.0 });
+@@ -448,27 +533,5 @@
+-    // Unwrap the block formatting context if one was passed, or else create a new one
+-    debug_log!("BLOCK");
+-    let mut output = match block_ctx {
+-        Some(inherited_bfc) if !establishes_new_bfc => compute_inner(
+-            tree,
+-            node_id,
+-            LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
+-            inherited_bfc,
+-        ),
+-        _ => {
+-            let mut root_bfc = BlockFormattingContext::new();
+-            let mut root_ctx = root_bfc.root_block_context();
+-            compute_inner(
+-                tree,
+-                node_id,
+-                LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
+-                &mut root_ctx,
+-            )
+-        }
+-    };
+-
+-    // Layout containment suppresses the box's baseline for baseline-alignment purposes
+-    if contain.suppresses_baseline() {
+-        output.baselines = Baselines::NONE;
+-    }
+-
+-    output
++    Ok(BlockEntry {
++        known_dimensions: styled_based_known_dimensions,
++        establishes_new_bfc,
++        suppresses_baseline: contain.suppresses_baseline(),
++    })
+@@ -525 +588 @@
+-    let min_size = style
++    let min_size = content_size_limits::for_measurement(style
+@@ -529,2 +592,2 @@
+-        .maybe_add(box_sizing_adjustment);
+-    let max_size = style
++        .maybe_add(box_sizing_adjustment), inputs);
++    let max_size = content_size_limits::for_measurement(style
+@@ -534 +597 @@
+-        .maybe_add(box_sizing_adjustment);
++        .maybe_add(box_sizing_adjustment), inputs);
+@@ -546,0 +610 @@
 +    let ratio_preferred_size = style.aspect_ratio_preferred_size();
-@@ -548,2 +589,5 @@
+@@ -548,2 +612,5 @@
 -        width: known_dimensions.width,
 -        height: known_dimensions.height.filter(|_| inputs.known_dimensions_are_definite.height),
 +        width: known_dimensions.width.or(ratio_preferred_size.width),
@@ -112,11 +196,11 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +            .height
 +            .filter(|_| inputs.known_dimensions_are_definite.height)
 +            .or(ratio_preferred_size.height),
-@@ -560 +604,2 @@
+@@ -560 +627,2 @@
 -    let own_margins_collapse_with_children = Line {
 +    // KaminIDE patch: adjoining edges differ from actual end-margin collapse.
 +    let children_margins_adjoin_own_edges = Line {
-@@ -570,2 +615,5 @@
+@@ -570,2 +638,5 @@
 -            && border.bottom == 0.0
 -            && size.height.is_none(),
 +            && border.bottom == 0.0,
@@ -124,7 +208,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +    let own_margins_collapse_with_children = Line {
 +        start: children_margins_adjoin_own_edges.start,
 +        end: children_margins_adjoin_own_edges.end && size.height.is_none(),
-@@ -623,4 +671,8 @@
+@@ -623,4 +694,8 @@
 -    let resolved_padding =
 -        raw_padding.resolve_or_zero(Some(percentage_resolution_width), |val, basis| tree.calc(val, basis));
 -    let resolved_border =
@@ -137,7 +221,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +        .resolve_or_zero(Some(percentage_resolution_width), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -634 +686,7 @@
+@@ -634 +709,7 @@
 -        mut first_baseline,
 +        (
 +            mut first_baseline,
@@ -146,12 +230,12 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +            last_baseline_x,
 +            mut inline_block_last,
 +        ),
-@@ -647,0 +706 @@
+@@ -647,0 +729 @@
 +        children_margins_adjoin_own_edges,
-@@ -687,0 +747,2 @@
+@@ -687,0 +770,2 @@
 +        last_baseline = last_baseline.map(|baseline| baseline + group_offset);
 +        inline_block_last = inline_block_last.map(|baseline| baseline + group_offset);
-@@ -751 +812,8 @@
+@@ -751 +835,8 @@
 -        baselines: Baselines::from_first(first_baseline),
 +        baselines: Baselines {
 +            first: first_baseline,
@@ -161,20 +245,20 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +            first: first_baseline_x,
 +            last: last_baseline_x,
 +        },
-@@ -765,0 +834 @@
+@@ -765,0 +857 @@
 +        inline_block_last_y: Some(inline_block_last),
-@@ -971 +1040,2 @@
+@@ -971 +1063,2 @@
 -    item_y_margin_sum: f32,
 +    item_margin: Rect<f32>,
 +    margins_treated_as_zero: Line<bool>,
-@@ -973,0 +1044,3 @@
+@@ -973,0 +1067,3 @@
 +    // KaminIDE patch: CSS Sizing 4 stretch ignores margins adjoining the parent's edges.
 +    let margin_sum = if margins_treated_as_zero.start { 0.0 } else { item_margin.top }
 +        + if margins_treated_as_zero.end { 0.0 } else { item_margin.bottom };
-@@ -976 +1049 @@
+@@ -976 +1072 @@
 -        container_inner_height.maybe_sub(item_y_margin_sum),
 +        container_inner_height.maybe_sub(margin_sum),
-@@ -982,0 +1056,25 @@
+@@ -982,0 +1079,25 @@
 +}
 +
 +// KaminIDE patch: floats and normal blocks share relative inset resolution.
@@ -200,60 +284,60 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +        inset.left.or(inset.right.map(|x| -x))
 +    };
 +    Point { x: x.unwrap_or(0.0), y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0) }
-@@ -1002 +1100,3 @@
+@@ -1002 +1123,3 @@
 -            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
 +            .resolve_or_zero(available_space.width.into_option(), |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -1006 +1106,3 @@
+@@ -1006 +1129,3 @@
 -                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| tree.calc(val, basis)) {
 +                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| {
 +                    tree.calc(val, basis)
 +                }) {
-@@ -1040,0 +1143,6 @@
+@@ -1040,0 +1166,6 @@
 +
 +/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
 +type BlockItemLayout = (
 +    Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet,
 +    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
 +);
-@@ -1057,0 +1166 @@
+@@ -1057,0 +1189 @@
 +    children_margins_adjoin_own_edges: Line<bool>,
-@@ -1060 +1169 @@
+@@ -1060 +1192 @@
 -) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
 +) -> BlockItemLayout {
-@@ -1098,0 +1208,4 @@
+@@ -1098,0 +1231,4 @@
 +    let mut last_baseline: Option<f32> = None;
 +    let mut first_baseline_x: Option<f32> = None;
 +    let mut last_baseline_x: Option<f32> = None;
 +    let mut inline_block_last: Option<f32> = None;
-@@ -1117,3 +1230,3 @@
+@@ -1117,3 +1253,3 @@
 -            let item_margin = item
 -                .margin
 -                .map(|margin| margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)));
 +            let item_margin = item.margin.map(|margin| {
 +                margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1143 +1256,3 @@
+@@ -1143 +1279,3 @@
 -                    Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
 +                    Some(SizingKeywordResolution::Exact(width)) => {
 +                        (Some(width), AvailableSpace::Definite(width))
 +                    }
-@@ -1149 +1264,2 @@
+@@ -1149 +1287,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    Line::FALSE,
-@@ -1181,0 +1298 @@
+@@ -1181,0 +1321 @@
 +                    item.node_id.into(),
-@@ -1199,0 +1317,5 @@
+@@ -1199,0 +1340,5 @@
 +
 +                // Relative painting does not alter float exclusions (CSS 2.2 9.4.3).
 +                let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
 +                location.x += inset_offset.x;
 +                location.y += inset_offset.y;
-@@ -1212,0 +1335 @@
+@@ -1212,0 +1358 @@
 +                    relative_offset: inset_offset,
-@@ -1280,2 +1403,10 @@
+@@ -1280,2 +1426,10 @@
 -                            let slot = block_ctx.find_bfc_slot(min_y, x_margins, direction, item.clear, slot_segment);
 -                            let Some(segment_id) = slot.segment_id else { break slot };
 +                            let slot = block_ctx.find_bfc_slot(
@@ -266,7 +350,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +                            let Some(segment_id) = slot.segment_id else {
 +                                break slot;
 +                            };
-@@ -1355,3 +1486,5 @@
+@@ -1355,3 +1509,5 @@
 -                .map(|resolution| match resolution {
 -                    SizingKeywordResolution::Exact(width) => width,
 -                    SizingKeywordResolution::Measure(item_available_width) => tree.measure_child_size(
@@ -275,7 +359,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +                        // min-/max-content probes (see `keyword_width`).
 +                        keyword_width::measure(
 +                            tree,
-@@ -1359,5 +1492,3 @@
+@@ -1359,5 +1515,3 @@
 -                        Size::NONE,
 -                        parent_size,
 -                        Size { width: item_available_width, height: AvailableSpace::MaxContent },
@@ -284,14 +368,14 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +                            width_style,
 +                            resolution,
 +                            parent_size,
-@@ -1366 +1497 @@
+@@ -1366 +1520 @@
 -                    ),
 +                        )
-@@ -1372 +1503,2 @@
+@@ -1372 +1526,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    children_margins_adjoin_own_edges,
-@@ -1471,17 +1603 @@
+@@ -1471,17 +1626 @@
 -            let inset_percentage_basis =
 -                Size { width: Some(container_inner_width), height: container_percentage_resolution_height };
 -            let inset = item
@@ -310,29 +394,29 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 -                Point::ZERO
 -            };
 +            let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
-@@ -1542 +1658,5 @@
+@@ -1542 +1681,5 @@
 -                        Direction::Rtl => container_outer_width - resolved_content_box_inset.right - final_size.width,
 +                        Direction::Rtl => {
 +                            container_outer_width
 +                                - resolved_content_box_inset.right
 +                                - final_size.width
 +                        }
-@@ -1551 +1671,3 @@
+@@ -1551 +1694,3 @@
 -                        Direction::Rtl => float_avoiding_position.x + float_avoiding_width - final_size.width,
 +                        Direction::Rtl => {
 +                            float_avoiding_position.x + float_avoiding_width - final_size.width
 +                        }
-@@ -1559 +1681,3 @@
+@@ -1559 +1704,3 @@
 -                        Direction::Ltr => resolved_content_box_inset.left + inset_offset.x + resolved_margin.left,
 +                        Direction::Ltr => {
 +                            resolved_content_box_inset.left + inset_offset.x + resolved_margin.left
 +                        }
-@@ -1589 +1713,3 @@
+@@ -1589 +1736,3 @@
 -                        Direction::Ltr => float_avoiding_position.x + extra_margin_left + inset_offset.x,
 +                        Direction::Ltr => {
 +                            float_avoiding_position.x + extra_margin_left + inset_offset.x
 +                        }
-@@ -1682 +1808,33 @@
+@@ -1682 +1831,33 @@
 -                first_baseline = child_baseline.map(|baseline| location.y + baseline);
 +                first_baseline = child_baseline.map(|baseline| (location.y - inset_offset.y) + baseline);
 +            }
@@ -367,9 +451,9 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +                item.overflow.x.is_scroll_container(),
 +            )) {
 +                last_baseline_x = Some((location.x - inset_offset.x) + baseline);
-@@ -1711,0 +1870 @@
+@@ -1711,0 +1893 @@
 +                relative_offset: inset_offset,
-@@ -1805 +1964,13 @@
+@@ -1805 +1987,13 @@
 -    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
 +    (
 +        inflow_overflow_rect,
@@ -384,7 +468,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..b7b624698927cae6958c4ee50a1b647f
 +            inline_block_last,
 +        ),
 +    )
-@@ -1806,0 +1978,15 @@
+@@ -1806,0 +2001,15 @@
 +
 +
 +#[cfg(test)]
@@ -17814,10 +17898,10 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +}
 diff --git a/vendor/taffy/src/tree/calc_size.rs b/vendor/taffy/src/tree/calc_size.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..30b0174246f2f5fd9fc30c3670b3bd36367626a7
+index 0000000000000000000000000000000000000000..e2c4ab10d0af60169589bb8bb68850794702bde1
 --- /dev/null
 +++ b/vendor/taffy/src/tree/calc_size.rs
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,216 @@
 +//! Resolve calc-size calculations in the native intrinsic constraint space.
 +
 +use super::*;
@@ -17830,14 +17914,25 @@ index 0000000000000000000000000000000000000000..30b0174246f2f5fd9fc30c3670b3bd36
 +    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +{
 +    /// KaminIDE patch: Resolve calc-size expressions using intrinsic measurement when required.
++    #[inline]
 +    pub(super) fn resolve_calc_size(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
++        let style = &self.taffy.nodes[node.into()].style;
++        if style.calc_size.iter().chain(&style.calc_size_max).all(Option::is_none) {
++            return inputs;
++        }
++        self.resolve_calc_size_expressions(node, inputs)
++    }
++
++    // KaminIDE patch: the resolution temporaries must not live in the native
++    // frame of `compute_child_layout`, which waits for the recursive layout of
++    // every descendant (a 2052-level box tree on the 8 MiB stack).
++    /// Resolves the calc-size expressions of a node that has at least one.
++    #[inline(never)]
++    fn resolve_calc_size_expressions(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
 +        let style = &self.taffy.nodes[node.into()].style;
 +        let [w, h, min_w, min_h] = style.calc_size;
 +        let [max_w, max_h] = style.calc_size_max;
 +        let expressions = [w, h, min_w, min_h, max_w, max_h];
-+        if expressions.iter().all(Option::is_none) {
-+            return inputs;
-+        }
 +        let bases = style.calc_size_basis;
 +        let edges = if style.calc_size_content_box {
 +            (style
@@ -25566,7 +25661,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab1c411ef1
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..52747b9abde958f2e028220f0f2757e7015155e2
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25830,17 +25925,24 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            }
 +        }
 +
-@@ -313 +542 @@
+@@ -313,2 +542 @@
 -            let mut output = match (display_mode, has_children) {
+-                (Display::None, _) => compute_hidden_layout(tree, node_id),
 +            let output = match (display_mode, has_children) {
-@@ -322,0 +552,6 @@
-+                // An empty grid without a measurement context still has explicit
-+                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
-+                #[cfg(feature = "grid")]
-+                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
-+                    compute_grid_layout(tree, node_id, inputs)
-+                }
-@@ -331,11 +566 @@
+@@ -319,11 +547 @@
+-                #[cfg(feature = "flexbox")]
+-                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
+-                #[cfg(feature = "grid")]
+-                (Display::Grid, true) => compute_grid_layout(tree, node_id, inputs),
+-                (_, false) => {
+-                    let node_key = node_id.into();
+-                    let style = &tree.taffy.nodes[node_key].style;
+-                    let has_context = tree.taffy.nodes[node_key].has_context;
+-                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
+-                    (tree.measure_function)(inputs, node_id, node_context, style)
+-                }
++                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
+@@ -331,8 +549,28 @@
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -25849,11 +25951,55 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 -            // (which would not be rewritten if the final layout pass is a cache hit).
 -            if inputs.run_mode == RunMode::PerformLayout {
 -                compute_oof_layout(tree, node_id, &mut output);
--            }
++            tree.finish_child_layout(node_id, inputs.run_mode, output)
++        })
++    }
++
++    // KaminIDE patch: this closure's frame waits for the recursive layout of
++    // every block descendant, so only the block dispatch stays inline; the
++    // inlined entries of the other algorithms must not widen it (a 2052-level
++    // box tree on the 8 MiB stack).
++    /// Lays out a node that is not a block container with children.
++    #[inline(never)]
++    fn compute_other_layout(
++        &mut self,
++        node_id: NodeId,
++        inputs: LayoutInput,
++        display_mode: Display,
++        has_children: bool,
++    ) -> LayoutOutput {
++        match (display_mode, has_children) {
++            (Display::None, _) => compute_hidden_layout(self, node_id),
++            #[cfg(feature = "flexbox")]
++            (Display::Flex, true) => compute_flexbox_layout(self, node_id, inputs),
++            #[cfg(feature = "grid")]
++            (Display::Grid, true) => compute_grid_layout(self, node_id, inputs),
++            // An empty grid without a measurement context still has explicit
++            // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
++            #[cfg(feature = "grid")]
++            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
++                compute_grid_layout(self, node_id, inputs)
+@@ -340,3 +578,36 @@
 -
 -            output
-+            tree.finish_child_layout(node_id, inputs.run_mode, output)
-@@ -342,0 +568,19 @@
+-        })
++            (_, false) => self.measure_leaf(node_id, inputs),
++            #[allow(unreachable_patterns)]
++            _ => unreachable!("block containers with children are dispatched inline"),
++        }
++    }
++
++    // KaminIDE patch: the inlined measure function must not widen the frame of
++    // `compute_other_layout`, which waits for the recursive layout of flex and
++    // grid descendants (a 2052-level box tree on the 8 MiB stack).
++    /// Measures a leaf node with its measure function.
++    #[inline(never)]
++    fn measure_leaf(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput {
++        let node_key = node_id.into();
++        let style = &self.taffy.nodes[node_key].style;
++        let has_context = self.taffy.nodes[node_key].has_context;
++        let node_context = has_context.then(|| self.taffy.node_context_data.get_mut(node_key)).flatten();
++        (self.measure_function)(inputs, node_id, node_context, style)
 +    }
 +
 +    // KaminIDE patch: output adaptation and OOF temporaries must not live
@@ -25873,12 +26019,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +645,2 @@
+@@ -401,2 +672,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +765,34 @@
+@@ -520,0 +792,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -25913,7 +26059,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].flex_fragmentation
 +    }
-@@ -546,0 +825,21 @@
+@@ -546,0 +852,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -25935,10 +26081,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }
 +    }
 +
-@@ -565 +864 @@
+@@ -565 +891 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +886,25 @@
+@@ -586,0 +913,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -25964,7 +26110,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        })
 +    }
 +
-@@ -606 +930,18 @@
+@@ -606 +957,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -25984,12 +26130,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +961,2 @@
+@@ -620,2 +988,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +972,6 @@
+@@ -631,2 +999,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -25998,18 +26144,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +990,2 @@
+@@ -645,2 +1017,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1012,5 @@
+@@ -666,0 +1039,5 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -873,0 +1224,17 @@
+@@ -873,0 +1251,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26027,22 +26173,22 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }
 +    }
 +
-@@ -897,2 +1264,2 @@
+@@ -897,2 +1291,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1276,6 @@
+@@ -908,0 +1303,6 @@
 +    /// KaminIDE patch: the shared style of `node`, to give another node the same style.
 +    #[inline]
 +    pub fn shared_style(&self, node: NodeId) -> TaffyResult<SharedStyle> {
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1286 @@
+@@ -913 +1313 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1290,8 @@
+@@ -916,0 +1317,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26051,7 +26197,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1358,6 @@
+@@ -977 +1385,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26059,7 +26205,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1371,26 @@
+@@ -984,0 +1398,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26086,15 +26232,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1400 @@
+@@ -988 +1427 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1415,3 @@
+@@ -1003 +1442,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1444,28 @@
+@@ -1029,0 +1471,28 @@
 +    }
 +
 +    #[test]
@@ -26123,7 +26269,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..dbdbed7e43881dee169c572cfde985ab
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +1985,50 @@
+@@ -1543 +2012,50 @@
 -}
 +
 +    #[test]
