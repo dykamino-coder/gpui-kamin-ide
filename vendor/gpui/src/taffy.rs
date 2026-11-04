@@ -30,6 +30,9 @@ pub use measurement::LayoutMeasurement;
 mod root_origin_tests;
 
 #[cfg(test)]
+mod deep_bounds_tests;
+
+#[cfg(test)]
 mod native_sizing_tests;
 
 #[cfg(test)]
@@ -711,6 +714,26 @@ impl TaffyLayoutEngine {
             return layout;
         }
 
+        // KaminIDE patch: некэшированные предки вычисляются без native-рекурсии.
+        // Короткие пути остаются inline; placed-узлы сохраняют кэши предков.
+        let mut pending = smallvec::SmallVec::<[LayoutId; 8]>::new();
+        let mut current = id;
+        while let Some(parent) = self.taffy.parent(current.0) {
+            let parent = LayoutId::from(parent);
+            if self.absolute_layout_bounds.contains_key(&parent) {
+                break;
+            }
+            pending.push(current);
+            current = parent;
+        }
+        let mut bounds = self.cache_layout_bounds(current, scale_factor);
+        while let Some(node) = pending.pop() {
+            bounds = self.cache_layout_bounds(node, scale_factor);
+        }
+        bounds
+    }
+
+    fn cache_layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         let layout = *self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
 
         // KaminIDE patch: округление к целой физической точке делается на
@@ -720,7 +743,6 @@ impl TaffyLayoutEngine {
         // округлённых краёв — иначе соседние блоки расходились бы щелью.
         let (parent_x, parent_y) = match self.taffy.parent(id.0) {
             Some(parent_id) => {
-                let _ = self.layout_bounds(parent_id.into(), scale_factor);
                 let (px, py) = self
                     .absolute_unrounded
                     .get(&parent_id.into())

@@ -9,6 +9,7 @@ use gpui::{IntoElement, ParentElement};
 mod limit;
 mod regression;
 mod special;
+mod stack_probe;
 
 // Только изолированная тестовая проба; production engine не читает окружение.
 #[allow(clippy::disallowed_methods)]

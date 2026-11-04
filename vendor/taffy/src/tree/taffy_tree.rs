@@ -36,8 +36,7 @@ use crate::util::debug::{debug_log, debug_log_node};
 use crate::util::sys::{new_const_children_vec, new_vec_with_capacity, Box, ChildrenVec, Vec};
 
 use crate::compute::{
-    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout, compute_root_layout,
-    round_layout,
+    compute_cached_layout, compute_leaf_layout, compute_oof_layout, compute_root_layout, round_layout,
 };
 use crate::CacheTree;
 
@@ -516,7 +515,7 @@ where
         #[cfg(feature = "block_layout")] block_ctx: Option<&mut BlockContext<'_>>,
     ) -> LayoutOutput {
         if inputs.run_mode == RunMode::PerformHiddenLayout {
-            return compute_hidden_layout(self, node_id);
+            return self.compute_hidden_subtree(node_id);
         }
         let resolved = self.resolve_calc_size(node_id, inputs);
         self.compute_child_layout_inner(
@@ -540,7 +539,7 @@ where
         // and thus that we should lay out this node using hidden layout regardless of it's own display style.
         if inputs.run_mode == RunMode::PerformHiddenLayout {
             debug_log!("HIDDEN");
-            return compute_hidden_layout(self, node_id);
+            return self.compute_hidden_subtree(node_id);
         }
 
         #[cfg(feature = "flexbox")]
@@ -594,7 +593,7 @@ where
         has_children: bool,
     ) -> LayoutOutput {
         match (display_mode, has_children) {
-            (Display::None, _) => compute_hidden_layout(self, node_id),
+            (Display::None, _) => self.compute_hidden_subtree(node_id),
             #[cfg(feature = "flexbox")]
             (Display::Flex, true) => compute_flexbox_layout(self, node_id, inputs),
             #[cfg(feature = "grid")]
@@ -609,6 +608,33 @@ where
             #[allow(unreachable_patterns)]
             _ => unreachable!("block containers with children are dispatched inline"),
         }
+    }
+
+    /// KaminIDE patch: собственное дерево открывает всех потомков, поэтому
+    /// скрытый обход не требует рекурсивного вызова partial-tree API.
+    fn compute_hidden_subtree(&mut self, root: NodeId) -> LayoutOutput {
+        let mut pending = Vec::new();
+        let mut current = Some(root);
+        while let Some(node) = current.take() {
+            let data = &mut self.taffy.nodes[node.into()];
+            data.cache.clear();
+            data.unrounded_layout = Layout::with_order(0);
+            let mut children = self.taffy.children[node.into()].iter();
+            loop {
+                if let Some(&child) = children.next() {
+                    current = Some(child);
+                    if children.len() > 0 {
+                        pending.push(children);
+                    }
+                    break;
+                }
+                match pending.pop() {
+                    Some(siblings) => children = siblings,
+                    None => break,
+                }
+            }
+        }
+        LayoutOutput::HIDDEN
     }
 
     // KaminIDE patch: the inlined measure function must not widen the frame of
@@ -956,13 +982,27 @@ impl<NodeContext> TaffyTree<NodeContext> {
             ExpandedLengthPercentageAuto::Calc(_) => true,
             _ => false,
         };
-        self.children[node.into()].iter().any(|&child| {
-            let style = &self.nodes[child.into()].style;
-            preferred(style.size.height)
-                || limit(style.min_size.height)
-                || limit(style.max_size.height)
-                || (style.percent_basis_from_parent && self.row_uses_pct_height(child))
-        })
+        let mut pending = Vec::new();
+        let mut children = self.children[node.into()].iter();
+        loop {
+            if let Some(&child) = children.next() {
+                let style = &self.nodes[child.into()].style;
+                if preferred(style.size.height) || limit(style.min_size.height) || limit(style.max_size.height) {
+                    return true;
+                }
+                if style.percent_basis_from_parent {
+                    if children.len() > 0 {
+                        pending.push(children);
+                    }
+                    children = self.children[child.into()].iter();
+                }
+            } else {
+                match pending.pop() {
+                    Some(siblings) => children = siblings,
+                    None => return false,
+                }
+            }
+        }
     }
 
     /// Creates a new [`TaffyTree`]
@@ -1485,26 +1525,17 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
     /// Marks the layout of this node and its ancestors as outdated
     pub fn mark_dirty(&mut self, node: NodeId) -> TaffyResult<()> {
-        fn mark_dirty_recursive(
-            nodes: &mut SlotMap<DefaultKey, NodeData>,
-            parents: &SlotMap<DefaultKey, Option<NodeId>>,
-            node_key: DefaultKey,
-        ) {
-            match nodes[node_key].mark_dirty() {
-                ClearState::AlreadyEmpty => {
-                    // Node was already marked as dirty.
-                    // No need to visit ancestors
-                    // as they should be marked as dirty already.
-                }
-                ClearState::Cleared => {
-                    if let Some(Some(node)) = parents.get(node_key) {
-                        mark_dirty_recursive(nodes, parents, (*node).into());
-                    }
-                }
+        let mut node_key = node.into();
+        loop {
+            if matches!(self.nodes[node_key].mark_dirty(), ClearState::AlreadyEmpty) {
+                // Уже грязный узел ранее инвалидировал своих предков.
+                break;
+            }
+            match self.parents.get(node_key) {
+                Some(Some(parent)) => node_key = (*parent).into(),
+                _ => break,
             }
         }
-
-        mark_dirty_recursive(&mut self.nodes, &self.parents, node.into());
 
         Ok(())
     }
@@ -2064,6 +2095,178 @@ mod tests {
         assert_eq!(taffy.dirty(child0), Ok(true));
         assert_eq!(taffy.dirty(child1), Ok(false));
         assert_eq!(taffy.dirty(node), Ok(true));
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn mark_dirty_twenty_thousand_ancestors_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut tree = TaffyTree::<()>::new();
+                let leaf = tree.new_leaf(Style::default()).unwrap();
+                let mut root = leaf;
+                for _ in 0..20_000 {
+                    root = tree.new_with_children(Style::default(), &[root]).unwrap();
+                }
+                let input = LayoutInput { run_mode: RunMode::PerformLayout, ..LayoutInput::HIDDEN };
+                for node in tree.nodes.values_mut() {
+                    node.cache.store(&input, LayoutOutput::DEFAULT);
+                }
+                tree.mark_dirty(leaf).unwrap();
+                assert!(tree.nodes.values().all(|node| node.cache.is_empty()));
+                assert_eq!(tree.dirty(root), Ok(true));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "flexbox"))]
+    fn percentage_height_twenty_thousand_forwarding_levels_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut tree = TaffyTree::<()>::new();
+                let leaf = tree.new_leaf(Style::default()).unwrap();
+                let forwarding: SharedStyle = Style { percent_basis_from_parent: true, ..Style::default() }.into();
+                let mut root = leaf;
+                for _ in 0..20_000 {
+                    let sibling = tree.new_leaf(Style::default()).unwrap();
+                    root = tree.new_with_children(forwarding.clone(), &[root, sibling]).unwrap();
+                }
+                assert!(!tree.row_uses_pct_height(root));
+                tree.set_style(
+                    leaf,
+                    Style {
+                        size: Size { width: Dimension::AUTO, height: Dimension::from_percent(0.5) },
+                        ..Style::default()
+                    },
+                )
+                .unwrap();
+                assert!(tree.row_uses_pct_height(root));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "flexbox")]
+    fn percentage_height_scan_prunes_non_forwarding_children_but_checks_their_own_limits() {
+        let mut tree = TaffyTree::<()>::new();
+        let percentage = tree
+            .new_leaf(Style {
+                size: Size { width: Dimension::AUTO, height: Dimension::from_percent(0.5) },
+                ..Style::default()
+            })
+            .unwrap();
+        let boundary = tree.new_with_children(Style::default(), &[percentage]).unwrap();
+        let root = tree.new_with_children(Style::default(), &[boundary]).unwrap();
+        assert!(!tree.row_uses_pct_height(root));
+        tree.set_style(
+            boundary,
+            Style {
+                min_size: Size {
+                    width: crate::style::LengthPercentageAuto::AUTO,
+                    height: crate::style::LengthPercentageAuto::from_percent(0.25),
+                },
+                ..Style::default()
+            },
+        )
+        .unwrap();
+        assert!(tree.row_uses_pct_height(root));
+    }
+
+    fn round_tree(tree: &mut TaffyTree<()>, root: NodeId) {
+        let mut view =
+            TaffyView { taffy: tree, measure_function: |_, _, _: Option<&mut ()>, _: &Style| LayoutOutput::DEFAULT };
+        round_layout(&mut view, root);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn rounding_twenty_thousand_branched_levels_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut tree = TaffyTree::<()>::new();
+                let leaf = tree.new_leaf(Style::default()).unwrap();
+                let mut root = leaf;
+                for _ in 0..20_000 {
+                    let sibling = tree.new_leaf(Style::default()).unwrap();
+                    root = tree.new_with_children(Style::default(), &[root, sibling]).unwrap();
+                }
+                for node in tree.nodes.values_mut() {
+                    node.unrounded_layout.location = crate::geometry::Point { x: 0.25, y: -0.25 };
+                    node.unrounded_layout.size = Size { width: 40.5, height: 20.5 };
+                }
+                round_tree(&mut tree, root);
+                assert!(tree.nodes.values().all(|node| node.final_layout.is_some()));
+                assert_eq!(tree.layout(leaf).unwrap().location, crate::geometry::Point::ZERO);
+                assert_eq!(tree.layout(leaf).unwrap().size, Size { width: 41.0, height: 20.0 });
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn hidden_twenty_thousand_branched_levels_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut tree = TaffyTree::<()>::new();
+                let mut root = tree.new_leaf(Style::default()).unwrap();
+                for _ in 0..20_000 {
+                    let sibling = tree.new_leaf(Style::default()).unwrap();
+                    root = tree.new_with_children(Style::default(), &[root, sibling]).unwrap();
+                }
+                tree.set_style(root, Style { display: Display::None, ..Style::default() }).unwrap();
+                let input = LayoutInput { run_mode: RunMode::PerformLayout, ..LayoutInput::HIDDEN };
+                for node in tree.nodes.values_mut() {
+                    node.unrounded_layout.size = Size { width: 40.5, height: 20.5 };
+                    node.cache.store(&input, LayoutOutput::DEFAULT);
+                }
+                // Запускаем Display::None корня; потомки должны отбросить кэшированные результаты.
+                tree.nodes[root.into()].cache.clear();
+                tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |_, _, _, _| {
+                    panic!("a hidden descendant must not be measured")
+                })
+                .unwrap();
+                assert!(tree.nodes.values().all(|node| node.unrounded_layout.size == Size::ZERO));
+                assert!(tree.nodes.values().all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO));
+                assert!(tree.nodes.iter().all(|(key, node)| key == root.into() || node.cache.is_empty()));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn rounding_hoisted_descendants_uses_the_containing_block_origin() {
+        use crate::geometry::Point;
+        let mut tree = TaffyTree::<()>::new();
+        let leaf = tree.new_leaf(Style::default()).unwrap();
+        let absolute = tree
+            .new_with_children(Style { position: crate::style::Position::Absolute, ..Style::default() }, &[leaf])
+            .unwrap();
+        let parent = tree.new_with_children(Style::default(), &[absolute]).unwrap();
+        let sibling = tree.new_leaf(Style::default()).unwrap();
+        let root = tree.new_with_children(Style::default(), &[parent, sibling]).unwrap();
+        for (node, x) in [(root, 0.25), (parent, 10.25), (absolute, 1.25), (leaf, 0.25), (sibling, 3.25)] {
+            let layout = &mut tree.nodes[node.into()].unrounded_layout;
+            layout.location = Point { x, y: x };
+            layout.size = Size { width: 10.5, height: 10.5 };
+        }
+        tree.nodes[root.into()].hoisted_children.push(absolute);
+        round_tree(&mut tree, root);
+        assert_eq!(tree.layout(absolute).unwrap().location, Point { x: 2.0, y: 2.0 });
+        assert_eq!(tree.layout(leaf).unwrap().location, Point::ZERO);
+        assert_eq!(tree.layout(leaf).unwrap().size, Size { width: 10.0, height: 10.0 });
+        assert_eq!(tree.layout(sibling).unwrap().location, Point { x: 4.0, y: 4.0 });
     }
 
     #[test]

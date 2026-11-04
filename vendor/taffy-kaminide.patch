@@ -1,26 +1,27 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 1. Tree traversal: round final geometry with explicit child cursors, visiting in-flow then hoisted children relative to their containing block; invalidate ancestors iteratively up to the first empty cache; clear hidden owned subtrees with remaining-sibling iterators without changing the partial-tree API; scan forwarded percentage-height dependencies with explicit sibling cursors and unchanged pruning. These passes consume bounded native stack regardless of tree depth.
+# 2. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 21. Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -15052,33 +15053,39 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a382cf376db
+index 1366d8349f1668c19f04bd2d85e88422918b6604..20bb0ea73a7e4472e09f97f8764f1ba6f485193f
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
 +// KaminIDE patch: all three container algorithms use the same measurement limits.
 +#[cfg(any(feature = "block_layout", feature = "flexbox", feature = "grid"))]
 +mod content_size_limits;
-@@ -29,0 +33,4 @@
+@@ -26,0 +30,2 @@
++mod round;
++pub use round::round_layout;
+@@ -29,0 +35,4 @@
 +#[cfg(feature = "block_layout")]
 +mod block_flow;
 +#[cfg(feature = "block_layout")]
 +mod root_block_constraints;
-@@ -52,0 +60,2 @@
+@@ -52,0 +62,2 @@
 +pub use self::block::FloatMark;
 +#[cfg(feature = "float_layout")]
-@@ -56 +65 @@
+@@ -56 +67 @@
 -use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow, Position};
 +use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
-@@ -58,2 +67,2 @@
+@@ -58,2 +69,2 @@
 -    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Layout, LayoutInput, LayoutOutput, LayoutPartialTree,
 -    LayoutPartialTreeExt, NodeId, OofCandidate, OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
 +    Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
-+    OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
-@@ -64 +73 @@
++    OofCandidates, RequestedAxis, RunMode, SizingMode,
+@@ -62 +73 @@
+-use crate::util::sys::{round, Vec};
++use crate::util::sys::Vec;
+@@ -64 +75 @@
 -use crate::{CacheTree, MaybeMath, MaybeResolve};
 +use crate::CacheTree;
-@@ -68,9 +77,6 @@
+@@ -68,9 +79,6 @@
 -/// The root's containing block is the initial containing block (ICB), which has the dimensions of the
 -/// viewport (`available_space`) and is anchored at the canvas origin. The root's `position` and `inset`
 -/// styles are resolved against it:
@@ -15094,19 +15101,19 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +88 @@
+@@ -82,5 +90 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
 -    drop(style);
 -
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +89,0 @@
+@@ -88,4 +91,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +96,2 @@
+@@ -98,35 +98,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15144,10 +15151,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
-@@ -168 +133 @@
+@@ -168 +135 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -194,10 +158,0 @@
+@@ -194,10 +160,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -15158,7 +15165,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +160,3 @@
+@@ -205,50 +162,3 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -15212,10 +15219,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +    let known_dimensions = root_block_constraints::known(tree, root, available_space);
 +    #[cfg(not(feature = "block_layout"))]
 +    let known_dimensions = Size::NONE;
-@@ -260 +168 @@
+@@ -260 +170 @@
 -        available_space: root_available_space,
 +        available_space,
-@@ -271,6 +179,25 @@
+@@ -271,6 +181,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15247,7 +15254,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,7 +208,5 @@
+@@ -281,7 +210,5 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -15260,7 +15267,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +        Size {
 +            width: style.direction().is_rtl(),
 +            height: false,
-@@ -289,13 +214,20 @@
+@@ -289,13 +216,20 @@
 -        y: margin.top,
 -    };
 -
@@ -15294,7 +15301,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +                .width
 +                .into_option()
 +                .map_or(0.0, |available_width| available_width - output.size.width)
-@@ -303 +235,10 @@
+@@ -303 +237,10 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
@@ -15306,18 +15313,105 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +        } else {
 +            0.0
 +        },
-@@ -305,2 +246 @@
+@@ -305,2 +248 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 -    }
 +
-@@ -311,0 +252 @@
+@@ -311,0 +254 @@
 +        relative_offset: Point::ZERO,
-@@ -355 +296 @@
+@@ -355 +298 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +302,13 @@
-+}
-+
+@@ -363,89 +306,11 @@
+-/// Rounds the calculated layout to exact pixel values
+-///
+-/// In order to ensure that no gaps in the layout are introduced we:
+-///   - Always round based on the cumulative x/y coordinates (relative to the viewport) rather than
+-///     parent-relative coordinates
+-///   - Compute width/height by first rounding the top/bottom/left/right and then computing the difference
+-///     rather than rounding the width/height directly
+-///
+-/// See <https://github.com/facebook/yoga/commit/aa5b296ac78f7a22e1aeaf4891243c6bb76488e2> for more context
+-///
+-/// In order to prevent innacuracies caused by rounding already-rounded values, we read from `unrounded_layout`
+-/// and write to `final_layout`.
+-pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
+-    return round_layout_inner(tree, node_id, 0.0, 0.0);
+-
+-    /// Recursive function to apply rounding to all descendents
+-    fn round_layout_inner(tree: &mut impl RoundTree, node_id: NodeId, cumulative_x: f32, cumulative_y: f32) {
+-        let unrounded_layout = tree.get_unrounded_layout(node_id);
+-        let mut layout = unrounded_layout;
+-
+-        let parent_x = cumulative_x;
+-        let parent_y = cumulative_y;
+-        let cumulative_x = cumulative_x + unrounded_layout.location.x;
+-        let cumulative_y = cumulative_y + unrounded_layout.location.y;
+-
+-        layout.location.x = round(cumulative_x) - round(parent_x);
+-        layout.location.y = round(cumulative_y) - round(parent_y);
+-        layout.size.width = round(cumulative_x + unrounded_layout.size.width) - round(cumulative_x);
+-        layout.size.height = round(cumulative_y + unrounded_layout.size.height) - round(cumulative_y);
+-        layout.scrollbar_size.width = round(unrounded_layout.scrollbar_size.width);
+-        layout.scrollbar_size.height = round(unrounded_layout.scrollbar_size.height);
+-        layout.border.left = round(cumulative_x + unrounded_layout.border.left) - round(cumulative_x);
+-        layout.border.right = round(cumulative_x + unrounded_layout.size.width)
+-            - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.border.right);
+-        layout.border.top = round(cumulative_y + unrounded_layout.border.top) - round(cumulative_y);
+-        layout.border.bottom = round(cumulative_y + unrounded_layout.size.height)
+-            - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.border.bottom);
+-        layout.padding.left = round(cumulative_x + unrounded_layout.padding.left) - round(cumulative_x);
+-        layout.padding.right = round(cumulative_x + unrounded_layout.size.width)
+-            - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.padding.right);
+-        layout.padding.top = round(cumulative_y + unrounded_layout.padding.top) - round(cumulative_y);
+-        layout.padding.bottom = round(cumulative_y + unrounded_layout.size.height)
+-            - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.padding.bottom);
+-
+-        #[cfg(feature = "content_size")]
+-        round_scrollable_overflow_rect(
+-            &mut layout,
+-            unrounded_layout.scrollable_overflow_rect,
+-            cumulative_x,
+-            cumulative_y,
+-        );
+-
+-        tree.set_final_layout(node_id, &layout);
+-
+-        // Recurse into in-flow children. Out-of-flow (absolute/fixed) children are skipped here:
+-        // they are instead visited via their containing block's hoisted child list below, which
+-        // ensures each node is visited exactly once and that its cumulative offset is accumulated
+-        // relative to its containing block (which its `location` is relative to).
+-        let child_count = tree.child_count(node_id);
+-        for index in 0..child_count {
+-            let child = tree.get_child_id(node_id, index);
+-            if !tree.is_out_of_flow(child) {
+-                round_layout_inner(tree, child, cumulative_x, cumulative_y);
+-            }
+-        }
+-
+-        // Recurse into out-of-flow boxes for which this node is the containing block
+-        let hoisted_count = tree.hoisted_child_count(node_id);
+-        for index in 0..hoisted_count {
+-            let child = tree.get_hoisted_child_id(node_id, index);
+-            round_layout_inner(tree, child, cumulative_x, cumulative_y);
+-        }
+-    }
+-
+-    #[cfg(feature = "content_size")]
+-    #[inline(always)]
+-    /// Round the scrollable overflow rect.
+-    /// This is split into a separate function to make it easier to feature flag.
+-    fn round_scrollable_overflow_rect(
+-        layout: &mut Layout,
+-        unrounded_rect: crate::geometry::Rect<f32>,
+-        cumulative_x: f32,
+-        cumulative_y: f32,
+-    ) {
+-        layout.scrollable_overflow_rect.left = round(cumulative_x + unrounded_rect.left) - round(cumulative_x);
+-        layout.scrollable_overflow_rect.right = round(cumulative_x + unrounded_rect.right) - round(cumulative_x);
+-        layout.scrollable_overflow_rect.top = round(cumulative_y + unrounded_rect.top) - round(cumulative_y);
+-        layout.scrollable_overflow_rect.bottom = round(cumulative_y + unrounded_rect.bottom) - round(cumulative_y);
+-    }
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
 +// separate from the recursive cache-miss frame.
 +/// Stores a completed layout result in the node cache.
@@ -15552,6 +15646,142 @@ index 0000000000000000000000000000000000000000..a645bd748e3759c6fab15156f5395a68
 +    }
 +
 +    known_dimensions
++}
+diff --git a/vendor/taffy/src/compute/round.rs b/vendor/taffy/src/compute/round.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..38fe7ba48316c9bf0bd55f32767e6c95175ff807
+--- /dev/null
++++ b/vendor/taffy/src/compute/round.rs
+@@ -0,0 +1,130 @@
++//! Округление дерева относительно viewport с явными курсорами оставшихся детей.
++
++use crate::geometry::Point;
++#[cfg(feature = "content_size")]
++use crate::tree::Layout;
++use crate::tree::{NodeId, RoundTree};
++use crate::util::sys::{round, Vec};
++
++/// Rounds the calculated layout to exact pixel values
++///
++/// In order to ensure that no gaps in the layout are introduced we:
++///   - Always round based on the cumulative x/y coordinates (relative to the viewport) rather than
++///     parent-relative coordinates
++///   - Compute width/height by first rounding the top/bottom/left/right and then computing the difference
++///     rather than rounding the width/height directly
++///
++/// See <https://github.com/facebook/yoga/commit/aa5b296ac78f7a22e1aeaf4891243c6bb76488e2> for more context
++///
++/// In order to prevent innacuracies caused by rounding already-rounded values, we read from `unrounded_layout`
++/// and write to `final_layout`.
++pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
++    let mut pending = Vec::new();
++    let mut current = Some((node_id, Point::ZERO));
++    while let Some((node, origin)) = current.take() {
++        let origin = round_node(tree, node, origin.x, origin.y);
++        let child_count = tree.child_count(node);
++        let mut cursor =
++            Children { node, origin, next: 0, child_count, total_count: child_count + tree.hoisted_child_count(node) };
++        loop {
++            if let Some(child) = cursor.next(tree) {
++                current = Some((child, cursor.origin));
++                // Цепочка единственных детей не требует сохранения курсоров и heap-аллокаций.
++                if cursor.next < cursor.total_count {
++                    pending.push(cursor);
++                }
++                break;
++            }
++            match pending.pop() {
++                Some(parent) => cursor = parent,
++                None => break,
++            }
++        }
++    }
++}
++
++/// Курсор детей с координатами их содержащего блока.
++struct Children {
++    /// Узел, чьи дети обходятся.
++    node: NodeId,
++    /// Неокруглённое положение узла относительно viewport.
++    origin: Point<f32>,
++    /// Следующий индекс среди обычных и вынесенных детей.
++    next: usize,
++    /// Число обычных детей.
++    child_count: usize,
++    /// Суммарное число обычных и вынесенных детей.
++    total_count: usize,
++}
++
++impl Children {
++    /// Возвращает следующего ребёнка в порядке исходного рекурсивного обхода.
++    fn next(&mut self, tree: &impl RoundTree) -> Option<NodeId> {
++        while self.next < self.child_count {
++            let child = tree.get_child_id(self.node, self.next);
++            self.next += 1;
++            if !tree.is_out_of_flow(child) {
++                return Some(child);
++            }
++        }
++        if self.next < self.total_count {
++            let hoisted = self.next - self.child_count;
++            self.next += 1;
++            Some(tree.get_hoisted_child_id(self.node, hoisted))
++        } else {
++            None
++        }
++    }
++}
++
++/// Округляет один узел и возвращает исходные накопленные координаты его детей.
++fn round_node(tree: &mut impl RoundTree, node_id: NodeId, cumulative_x: f32, cumulative_y: f32) -> Point<f32> {
++    let unrounded_layout = tree.get_unrounded_layout(node_id);
++    let mut layout = unrounded_layout;
++
++    let parent_x = cumulative_x;
++    let parent_y = cumulative_y;
++    let cumulative_x = cumulative_x + unrounded_layout.location.x;
++    let cumulative_y = cumulative_y + unrounded_layout.location.y;
++
++    layout.location.x = round(cumulative_x) - round(parent_x);
++    layout.location.y = round(cumulative_y) - round(parent_y);
++    layout.size.width = round(cumulative_x + unrounded_layout.size.width) - round(cumulative_x);
++    layout.size.height = round(cumulative_y + unrounded_layout.size.height) - round(cumulative_y);
++    layout.scrollbar_size.width = round(unrounded_layout.scrollbar_size.width);
++    layout.scrollbar_size.height = round(unrounded_layout.scrollbar_size.height);
++    layout.border.left = round(cumulative_x + unrounded_layout.border.left) - round(cumulative_x);
++    layout.border.right = round(cumulative_x + unrounded_layout.size.width)
++        - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.border.right);
++    layout.border.top = round(cumulative_y + unrounded_layout.border.top) - round(cumulative_y);
++    layout.border.bottom = round(cumulative_y + unrounded_layout.size.height)
++        - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.border.bottom);
++    layout.padding.left = round(cumulative_x + unrounded_layout.padding.left) - round(cumulative_x);
++    layout.padding.right = round(cumulative_x + unrounded_layout.size.width)
++        - round(cumulative_x + unrounded_layout.size.width - unrounded_layout.padding.right);
++    layout.padding.top = round(cumulative_y + unrounded_layout.padding.top) - round(cumulative_y);
++    layout.padding.bottom = round(cumulative_y + unrounded_layout.size.height)
++        - round(cumulative_y + unrounded_layout.size.height - unrounded_layout.padding.bottom);
++
++    #[cfg(feature = "content_size")]
++    round_scrollable_overflow_rect(&mut layout, unrounded_layout.scrollable_overflow_rect, cumulative_x, cumulative_y);
++
++    tree.set_final_layout(node_id, &layout);
++    Point { x: cumulative_x, y: cumulative_y }
++}
++
++#[cfg(feature = "content_size")]
++#[inline(always)]
++/// Round the scrollable overflow rect.
++/// This is split into a separate function to make it easier to feature flag.
++fn round_scrollable_overflow_rect(
++    layout: &mut Layout,
++    unrounded_rect: crate::geometry::Rect<f32>,
++    cumulative_x: f32,
++    cumulative_y: f32,
++) {
++    layout.scrollable_overflow_rect.left = round(cumulative_x + unrounded_rect.left) - round(cumulative_x);
++    layout.scrollable_overflow_rect.right = round(cumulative_x + unrounded_rect.right) - round(cumulative_x);
++    layout.scrollable_overflow_rect.top = round(cumulative_y + unrounded_rect.top) - round(cumulative_y);
++    layout.scrollable_overflow_rect.bottom = round(cumulative_y + unrounded_rect.bottom) - round(cumulative_y);
 +}
 diff --git a/vendor/taffy/src/geometry.rs b/vendor/taffy/src/geometry.rs
 index c743dfb7400ff0c3b7adfb69d688bdc8a470dbcd..e18c94dec3813428e2005a95b9c0addc73819bec
@@ -25663,7 +25893,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf2b30307d
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..382bb2182e8cfa8e42243a132ae70bab0e399e1b
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25685,7 +25915,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +mod computed_output;
 +#[path = "node_lifetime.rs"]
 +mod node_lifetime;
-@@ -69,2 +87,6 @@
+@@ -21,2 +39 @@
+-    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout, compute_root_layout,
+-    round_layout,
++    compute_cached_layout, compute_leaf_layout, compute_oof_layout, compute_root_layout, round_layout,
+@@ -69,2 +86,6 @@
 -            TaffyError::InvalidChildNode(child) => write!(f, "Child Node {child:?} is not in the TaffyTree instance"),
 -            TaffyError::InvalidInputNode(node) => write!(f, "Supplied Node {node:?} is not in the TaffyTree instance"),
 +            TaffyError::InvalidChildNode(child) => {
@@ -25694,16 +25928,16 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            TaffyError::InvalidInputNode(node) => {
 +                write!(f, "Supplied Node {node:?} is not in the TaffyTree instance")
 +            }
-@@ -97 +119 @@
+@@ -97 +118 @@
 -    pub(crate) style: Style,
 +    pub(crate) style: SharedStyle,
-@@ -105 +127,4 @@
+@@ -105 +126,4 @@
 -    pub(crate) final_layout: Layout,
 +    ///
 +    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
 +    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
 +    pub(crate) final_layout: Option<Box<Layout>>,
-@@ -119 +144,73 @@
+@@ -119 +143,73 @@
 -}
 +    /// Tracks published by the parent subgrid layout, outside the native cache key.
 +    #[cfg(feature = "grid")]
@@ -25778,19 +26012,19 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +
 +/// KaminIDE patch: the final layout of a node that rounding has not written yet.
 +static NO_FINAL_LAYOUT: Layout = Layout::new();
-@@ -124 +221 @@
+@@ -124 +220 @@
 -    pub const fn new(style: Style) -> Self {
 +    pub const fn new(style: SharedStyle) -> Self {
-@@ -129 +226 @@
+@@ -129 +225 @@
 -            final_layout: Layout::new(),
 +            final_layout: None,
-@@ -132,0 +230,5 @@
+@@ -132,0 +229,5 @@
 +            #[cfg(feature = "grid")]
 +            subgrid_tracks: None,
 +            pct_parent_h: None,
 +            content_shift: 0.0,
 +            fragmentation: None,
-@@ -143,0 +246,10 @@
+@@ -143,0 +245,10 @@
 +
 +    /// KaminIDE patch: the fragmentation inputs, defaults when none was set.
 +    fn fragmentation(&self) -> &NodeFragmentation {
@@ -25801,13 +26035,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +    fn fragmentation_mut(&mut self) -> &mut NodeFragmentation {
 +        self.fragmentation.get_or_insert_with(|| Box::new(NodeFragmentation::NONE))
 +    }
-@@ -168,0 +281,5 @@
+@@ -168,0 +280,5 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +291,110 @@
+@@ -173,0 +290,110 @@
 +    }
 +}
 +
@@ -25918,10 +26152,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +487 @@
+@@ -260 +486 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -283,0 +511,19 @@
+@@ -283,0 +510,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -25930,7 +26164,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        #[cfg(feature = "block_layout")] block_ctx: Option<&mut BlockContext<'_>>,
 +    ) -> LayoutOutput {
 +        if inputs.run_mode == RunMode::PerformHiddenLayout {
-+            return compute_hidden_layout(self, node_id);
++            return self.compute_hidden_subtree(node_id);
 +        }
 +        let resolved = self.resolve_calc_size(node_id, inputs);
 +        self.compute_child_layout_inner(
@@ -25941,10 +26175,14 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        )
 +    }
 +
-@@ -287 +533 @@
+@@ -287 +532 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +546,13 @@
+@@ -297 +542,14 @@
+-            return compute_hidden_layout(self, node_id);
++            return self.compute_hidden_subtree(node_id);
++        }
++
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -25956,13 +26194,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +                node.cache.clear();
 +                node.pct_parent_h = Some(inputs.parent_size.height);
 +            }
-+        }
-+
-@@ -313,2 +572 @@
+@@ -313,2 +571 @@
 -            let mut output = match (display_mode, has_children) {
 -                (Display::None, _) => compute_hidden_layout(tree, node_id),
 +            let output = match (display_mode, has_children) {
-@@ -319,11 +577 @@
+@@ -319,10 +576,54 @@
 -                #[cfg(feature = "flexbox")]
 -                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
 -                #[cfg(feature = "grid")]
@@ -25973,17 +26209,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 -                    let has_context = tree.taffy.nodes[node_key].has_context;
 -                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
 -                    (tree.measure_function)(inputs, node_id, node_context, style)
--                }
 +                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-@@ -331,8 +579,28 @@
--
--            // Lay out any out-of-flow candidates for which this node is the containing block.
--            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
--            // closure so that cached outputs already contain the processed candidate list.
--            // Only full layout passes run it: measure passes must not write hoisted box layouts
--            // (which would not be rewritten if the final layout pass is a cache hit).
--            if inputs.run_mode == RunMode::PerformLayout {
--                compute_oof_layout(tree, node_id, &mut output);
++            };
 +            tree.finish_child_layout(node_id, inputs.run_mode, output)
 +        })
 +    }
@@ -26002,7 +26229,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        has_children: bool,
 +    ) -> LayoutOutput {
 +        match (display_mode, has_children) {
-+            (Display::None, _) => compute_hidden_layout(self, node_id),
++            (Display::None, _) => self.compute_hidden_subtree(node_id),
 +            #[cfg(feature = "flexbox")]
 +            (Display::Flex, true) => compute_flexbox_layout(self, node_id, inputs),
 +            #[cfg(feature = "grid")]
@@ -26012,14 +26239,50 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +608,36 @@
--
--            output
--        })
++            }
 +            (_, false) => self.measure_leaf(node_id, inputs),
 +            #[allow(unreachable_patterns)]
 +            _ => unreachable!("block containers with children are dispatched inline"),
 +        }
++    }
++
++    /// KaminIDE patch: собственное дерево открывает всех потомков, поэтому
++    /// скрытый обход не требует рекурсивного вызова partial-tree API.
++    fn compute_hidden_subtree(&mut self, root: NodeId) -> LayoutOutput {
++        let mut pending = Vec::new();
++        let mut current = Some(root);
++        while let Some(node) = current.take() {
++            let data = &mut self.taffy.nodes[node.into()];
++            data.cache.clear();
++            data.unrounded_layout = Layout::with_order(0);
++            let mut children = self.taffy.children[node.into()].iter();
++            loop {
++                if let Some(&child) = children.next() {
++                    current = Some(child);
++                    if children.len() > 0 {
++                        pending.push(children);
++                    }
++                    break;
+@@ -330,9 +631,4 @@
+-            };
+-
+-            // Lay out any out-of-flow candidates for which this node is the containing block.
+-            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
+-            // closure so that cached outputs already contain the processed candidate list.
+-            // Only full layout passes run it: measure passes must not write hoisted box layouts
+-            // (which would not be rewritten if the final layout pass is a cache hit).
+-            if inputs.run_mode == RunMode::PerformLayout {
+-                compute_oof_layout(tree, node_id, &mut output);
++                match pending.pop() {
++                    Some(siblings) => children = siblings,
++                    None => break,
++                }
+@@ -340,3 +636,34 @@
+-
+-            output
+-        })
++        }
++        LayoutOutput::HIDDEN
 +    }
 +
 +    // KaminIDE patch: the inlined measure function must not widen the frame of
@@ -26052,12 +26315,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +702,2 @@
+@@ -401,2 +728,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +822,34 @@
+@@ -520,0 +848,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -26092,7 +26355,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -546,0 +882,21 @@
+@@ -546,0 +908,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -26114,10 +26377,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        }
 +    }
 +
-@@ -565 +921 @@
+@@ -565 +947 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +943,25 @@
+@@ -586,0 +969,39 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -26134,16 +26397,30 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            ExpandedLengthPercentageAuto::Calc(_) => true,
 +            _ => false,
 +        };
-+        self.children[node.into()].iter().any(|&child| {
-+            let style = &self.nodes[child.into()].style;
-+            preferred(style.size.height)
-+                || limit(style.min_size.height)
-+                || limit(style.max_size.height)
-+                || (style.percent_basis_from_parent && self.row_uses_pct_height(child))
-+        })
++        let mut pending = Vec::new();
++        let mut children = self.children[node.into()].iter();
++        loop {
++            if let Some(&child) = children.next() {
++                let style = &self.nodes[child.into()].style;
++                if preferred(style.size.height) || limit(style.min_size.height) || limit(style.max_size.height) {
++                    return true;
++                }
++                if style.percent_basis_from_parent {
++                    if children.len() > 0 {
++                        pending.push(children);
++                    }
++                    children = self.children[child.into()].iter();
++                }
++            } else {
++                match pending.pop() {
++                    Some(siblings) => children = siblings,
++                    None => return false,
++                }
++            }
++        }
 +    }
 +
-@@ -606 +987,18 @@
+@@ -606 +1027,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -26163,12 +26440,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1018,2 @@
+@@ -620,2 +1058,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1029,6 @@
+@@ -631,2 +1069,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -26177,12 +26454,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1047,2 @@
+@@ -645,2 +1087,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1069,94 @@
+@@ -666,0 +1109,94 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -26277,7 +26554,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1370,17 @@
+@@ -873,0 +1410,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26295,12 +26572,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        }
 +    }
 +
-@@ -897,2 +1410,2 @@
+@@ -897,2 +1450,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1422,31 @@
+@@ -908,0 +1462,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -26332,10 +26609,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1457 @@
+@@ -913 +1497 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1461,8 @@
+@@ -916,0 +1501,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26344,7 +26621,38 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1529,6 @@
+@@ -936,16 +1528,5 @@
+-        fn mark_dirty_recursive(
+-            nodes: &mut SlotMap<DefaultKey, NodeData>,
+-            parents: &SlotMap<DefaultKey, Option<NodeId>>,
+-            node_key: DefaultKey,
+-        ) {
+-            match nodes[node_key].mark_dirty() {
+-                ClearState::AlreadyEmpty => {
+-                    // Node was already marked as dirty.
+-                    // No need to visit ancestors
+-                    // as they should be marked as dirty already.
+-                }
+-                ClearState::Cleared => {
+-                    if let Some(Some(node)) = parents.get(node_key) {
+-                        mark_dirty_recursive(nodes, parents, (*node).into());
+-                    }
+-                }
++        let mut node_key = node.into();
++        loop {
++            if matches!(self.nodes[node_key].mark_dirty(), ClearState::AlreadyEmpty) {
++                // Уже грязный узел ранее инвалидировал своих предков.
++                break;
+@@ -953,3 +1534,5 @@
+-        }
+-
+-        mark_dirty_recursive(&mut self.nodes, &self.parents, node.into());
++            match self.parents.get(node_key) {
++                Some(Some(parent)) => node_key = (*parent).into(),
++                _ => break,
++            }
++        }
+@@ -977 +1560,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26352,7 +26660,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1542,26 @@
+@@ -984,0 +1573,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26379,18 +26687,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1571 @@
+@@ -988 +1602 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1586,3 @@
+@@ -1003 +1617,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1615,54 @@
-+    }
-+
-+    #[test]
+@@ -1032,0 +1649,54 @@
 +    #[cfg(all(feature = "flexbox", feature = "grid"))]
 +    fn fragmentation_inputs_allocate_only_when_a_setter_changes_them() {
 +        let mut tree = TaffyTree::<()>::new();
@@ -26442,7 +26747,183 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2182,81 @@
++    }
++
++    #[test]
+@@ -1427,0 +2098,172 @@
++    }
++
++    #[test]
++    #[cfg(feature = "std")]
++    fn mark_dirty_twenty_thousand_ancestors_on_small_stack() {
++        std::thread::Builder::new()
++            .stack_size(128 * 1024)
++            .spawn(|| {
++                let mut tree = TaffyTree::<()>::new();
++                let leaf = tree.new_leaf(Style::default()).unwrap();
++                let mut root = leaf;
++                for _ in 0..20_000 {
++                    root = tree.new_with_children(Style::default(), &[root]).unwrap();
++                }
++                let input = LayoutInput { run_mode: RunMode::PerformLayout, ..LayoutInput::HIDDEN };
++                for node in tree.nodes.values_mut() {
++                    node.cache.store(&input, LayoutOutput::DEFAULT);
++                }
++                tree.mark_dirty(leaf).unwrap();
++                assert!(tree.nodes.values().all(|node| node.cache.is_empty()));
++                assert_eq!(tree.dirty(root), Ok(true));
++            })
++            .unwrap()
++            .join()
++            .unwrap();
++    }
++
++    #[test]
++    #[cfg(all(feature = "std", feature = "flexbox"))]
++    fn percentage_height_twenty_thousand_forwarding_levels_on_small_stack() {
++        std::thread::Builder::new()
++            .stack_size(128 * 1024)
++            .spawn(|| {
++                let mut tree = TaffyTree::<()>::new();
++                let leaf = tree.new_leaf(Style::default()).unwrap();
++                let forwarding: SharedStyle = Style { percent_basis_from_parent: true, ..Style::default() }.into();
++                let mut root = leaf;
++                for _ in 0..20_000 {
++                    let sibling = tree.new_leaf(Style::default()).unwrap();
++                    root = tree.new_with_children(forwarding.clone(), &[root, sibling]).unwrap();
++                }
++                assert!(!tree.row_uses_pct_height(root));
++                tree.set_style(
++                    leaf,
++                    Style {
++                        size: Size { width: Dimension::AUTO, height: Dimension::from_percent(0.5) },
++                        ..Style::default()
++                    },
++                )
++                .unwrap();
++                assert!(tree.row_uses_pct_height(root));
++            })
++            .unwrap()
++            .join()
++            .unwrap();
++    }
++
++    #[test]
++    #[cfg(feature = "flexbox")]
++    fn percentage_height_scan_prunes_non_forwarding_children_but_checks_their_own_limits() {
++        let mut tree = TaffyTree::<()>::new();
++        let percentage = tree
++            .new_leaf(Style {
++                size: Size { width: Dimension::AUTO, height: Dimension::from_percent(0.5) },
++                ..Style::default()
++            })
++            .unwrap();
++        let boundary = tree.new_with_children(Style::default(), &[percentage]).unwrap();
++        let root = tree.new_with_children(Style::default(), &[boundary]).unwrap();
++        assert!(!tree.row_uses_pct_height(root));
++        tree.set_style(
++            boundary,
++            Style {
++                min_size: Size {
++                    width: crate::style::LengthPercentageAuto::AUTO,
++                    height: crate::style::LengthPercentageAuto::from_percent(0.25),
++                },
++                ..Style::default()
++            },
++        )
++        .unwrap();
++        assert!(tree.row_uses_pct_height(root));
++    }
++
++    fn round_tree(tree: &mut TaffyTree<()>, root: NodeId) {
++        let mut view =
++            TaffyView { taffy: tree, measure_function: |_, _, _: Option<&mut ()>, _: &Style| LayoutOutput::DEFAULT };
++        round_layout(&mut view, root);
++    }
++
++    #[test]
++    #[cfg(feature = "std")]
++    fn rounding_twenty_thousand_branched_levels_on_small_stack() {
++        std::thread::Builder::new()
++            .stack_size(128 * 1024)
++            .spawn(|| {
++                let mut tree = TaffyTree::<()>::new();
++                let leaf = tree.new_leaf(Style::default()).unwrap();
++                let mut root = leaf;
++                for _ in 0..20_000 {
++                    let sibling = tree.new_leaf(Style::default()).unwrap();
++                    root = tree.new_with_children(Style::default(), &[root, sibling]).unwrap();
++                }
++                for node in tree.nodes.values_mut() {
++                    node.unrounded_layout.location = crate::geometry::Point { x: 0.25, y: -0.25 };
++                    node.unrounded_layout.size = Size { width: 40.5, height: 20.5 };
++                }
++                round_tree(&mut tree, root);
++                assert!(tree.nodes.values().all(|node| node.final_layout.is_some()));
++                assert_eq!(tree.layout(leaf).unwrap().location, crate::geometry::Point::ZERO);
++                assert_eq!(tree.layout(leaf).unwrap().size, Size { width: 41.0, height: 20.0 });
++            })
++            .unwrap()
++            .join()
++            .unwrap();
++    }
++
++    #[test]
++    #[cfg(feature = "std")]
++    fn hidden_twenty_thousand_branched_levels_on_small_stack() {
++        std::thread::Builder::new()
++            .stack_size(128 * 1024)
++            .spawn(|| {
++                let mut tree = TaffyTree::<()>::new();
++                let mut root = tree.new_leaf(Style::default()).unwrap();
++                for _ in 0..20_000 {
++                    let sibling = tree.new_leaf(Style::default()).unwrap();
++                    root = tree.new_with_children(Style::default(), &[root, sibling]).unwrap();
++                }
++                tree.set_style(root, Style { display: Display::None, ..Style::default() }).unwrap();
++                let input = LayoutInput { run_mode: RunMode::PerformLayout, ..LayoutInput::HIDDEN };
++                for node in tree.nodes.values_mut() {
++                    node.unrounded_layout.size = Size { width: 40.5, height: 20.5 };
++                    node.cache.store(&input, LayoutOutput::DEFAULT);
++                }
++                // Запускаем Display::None корня; потомки должны отбросить кэшированные результаты.
++                tree.nodes[root.into()].cache.clear();
++                tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |_, _, _, _| {
++                    panic!("a hidden descendant must not be measured")
++                })
++                .unwrap();
++                assert!(tree.nodes.values().all(|node| node.unrounded_layout.size == Size::ZERO));
++                assert!(tree.nodes.values().all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO));
++                assert!(tree.nodes.iter().all(|(key, node)| key == root.into() || node.cache.is_empty()));
++            })
++            .unwrap()
++            .join()
++            .unwrap();
++    }
++
++    #[test]
++    fn rounding_hoisted_descendants_uses_the_containing_block_origin() {
++        use crate::geometry::Point;
++        let mut tree = TaffyTree::<()>::new();
++        let leaf = tree.new_leaf(Style::default()).unwrap();
++        let absolute = tree
++            .new_with_children(Style { position: crate::style::Position::Absolute, ..Style::default() }, &[leaf])
++            .unwrap();
++        let parent = tree.new_with_children(Style::default(), &[absolute]).unwrap();
++        let sibling = tree.new_leaf(Style::default()).unwrap();
++        let root = tree.new_with_children(Style::default(), &[parent, sibling]).unwrap();
++        for (node, x) in [(root, 0.25), (parent, 10.25), (absolute, 1.25), (leaf, 0.25), (sibling, 3.25)] {
++            let layout = &mut tree.nodes[node.into()].unrounded_layout;
++            layout.location = Point { x, y: x };
++            layout.size = Size { width: 10.5, height: 10.5 };
++        }
++        tree.nodes[root.into()].hoisted_children.push(absolute);
++        round_tree(&mut tree, root);
++        assert_eq!(tree.layout(absolute).unwrap().location, Point { x: 2.0, y: 2.0 });
++        assert_eq!(tree.layout(leaf).unwrap().location, Point::ZERO);
++        assert_eq!(tree.layout(leaf).unwrap().size, Size { width: 10.0, height: 10.0 });
++        assert_eq!(tree.layout(sibling).unwrap().location, Point { x: 4.0, y: 4.0 });
+@@ -1543 +2385,81 @@
 -}
 +
 +    #[test]
