@@ -53,7 +53,7 @@ pub(super) struct Retained {
     /// Layout keys of the measured leaves in the tree.
     keys: FxHashMap<NodeId, u64>,
     /// Positions in `prev` of the previous pass's measured leaves by layout
-    /// key; a claimed one leaves its list.
+    /// key, ascending; a claimed one leaves its list.
     by_key: FxHashMap<u64, Vec<u32>>,
     /// Layout key for the next measured leaf request.
     pub(super) next_key: Option<u64>,
@@ -119,15 +119,27 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
+        let cursor = self.retained.cursor;
         let candidates = self.retained.by_key.get_mut(&key)?;
         let (prev, live) = (&self.retained.prev, &self.retained.live);
-        let at = candidates.iter().rposition(|&position| {
-            let node = prev[position as usize];
+        let fits = |position: &u32| {
+            let node = prev[*position as usize];
             !live.contains(&node)
                 && self.taffy.style_equals(node, style)
                 && self.taffy.children_slice(node).is_empty()
-        })?;
-        let position = candidates.swap_remove(at) as usize;
+        };
+        // Equal keys are interchangeable, but the one nearest the cursor keeps
+        // the requests after it aligned (equal texts repeat in a document).
+        let start = candidates.partition_point(|&position| (position as usize) < cursor);
+        let after = candidates[start..].iter().position(fits).map(|at| start + at);
+        let before = candidates[..start].iter().rposition(fits);
+        let distance = |at: usize| (candidates[at] as usize).abs_diff(cursor);
+        let at = match (before, after) {
+            (Some(b), Some(a)) if distance(b) < distance(a) => b,
+            (_, Some(a)) => a,
+            (b, None) => b?,
+        };
+        let position = candidates.remove(at) as usize;
         let node = prev[position];
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {

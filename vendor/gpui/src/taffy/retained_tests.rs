@@ -127,3 +127,20 @@ fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
     assert_eq!(leaf(&mut engine, 30.), after);
     assert_eq!(engine.claimed_nodes(), 2);
 }
+#[test]
+fn of_equal_keys_the_leaf_nearest_its_position_is_kept() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let first = measured(&mut engine, Some(7));
+    let _ = leaf(&mut engine, 10.);
+    let second = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 20.);
+    engine.clear();
+    // The first subtree became one leaf: the second keyed leaf is nearer its
+    // previous position than the first one, and the leaf after it follows.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), second);
+    assert_eq!(leaf(&mut engine, 20.), after);
+    let _ = first;
+}
