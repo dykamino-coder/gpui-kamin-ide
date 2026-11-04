@@ -20,6 +20,7 @@ kamin-html = { workspace = true, optional = true, features = ["engine-bench"] }
 gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
+kamin-alloc.workspace = true
 futures = "0.3"
 log = "0.4"
 encoding_rs = "0.8.35"

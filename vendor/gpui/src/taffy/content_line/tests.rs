@@ -44,7 +44,7 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
         )
         .unwrap();
     let text = tree
-        .new_leaf_with_context(Default::default(), context())
+        .new_leaf_with_context(taffy::Style::default(), context())
         .unwrap();
     let root = tree
         .new_with_children(
