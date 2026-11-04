@@ -10,14 +10,25 @@ where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     /// KaminIDE patch: Resolve calc-size expressions using intrinsic measurement when required.
+    #[inline]
     pub(super) fn resolve_calc_size(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
+        let style = &self.taffy.nodes[node.into()].style;
+        if style.calc_size.iter().chain(&style.calc_size_max).all(Option::is_none) {
+            return inputs;
+        }
+        self.resolve_calc_size_expressions(node, inputs)
+    }
+
+    // KaminIDE patch: the resolution temporaries must not live in the native
+    // frame of `compute_child_layout`, which waits for the recursive layout of
+    // every descendant (a 2052-level box tree on the 8 MiB stack).
+    /// Resolves the calc-size expressions of a node that has at least one.
+    #[inline(never)]
+    fn resolve_calc_size_expressions(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
         let style = &self.taffy.nodes[node.into()].style;
         let [w, h, min_w, min_h] = style.calc_size;
         let [max_w, max_h] = style.calc_size_max;
         let expressions = [w, h, min_w, min_h, max_w, max_h];
-        if expressions.iter().all(Option::is_none) {
-            return inputs;
-        }
         let bases = style.calc_size_basis;
         let edges = if style.calc_size_content_box {
             (style

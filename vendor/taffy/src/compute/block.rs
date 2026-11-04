@@ -415,6 +415,53 @@ pub(super) fn compute_block_layout_normalized(
     inputs: LayoutInput,
     block_ctx: Option<&mut BlockContext<'_>>,
 ) -> LayoutOutput {
+    let entry = match block_entry(tree, node_id, inputs) {
+        Ok(entry) => entry,
+        Err(size) => return LayoutOutput::from_outer_size(size),
+    };
+    let inputs = LayoutInput { known_dimensions: entry.known_dimensions, ..inputs };
+
+    // Unwrap the block formatting context if one was passed, or else create a new one
+    debug_log!("BLOCK");
+    let mut output = match block_ctx {
+        Some(inherited_bfc) if !entry.establishes_new_bfc => compute_inner(tree, node_id, inputs, inherited_bfc),
+        _ => {
+            let mut root_bfc = BlockFormattingContext::new();
+            let mut root_ctx = root_bfc.root_block_context();
+            compute_inner(tree, node_id, inputs, &mut root_ctx)
+        }
+    };
+
+    // Layout containment suppresses the box's baseline for baseline-alignment purposes
+    if entry.suppresses_baseline {
+        output.baselines = Baselines::NONE;
+        output.baselines_x = Baselines::NONE;
+        output.inline_block_last_y = None;
+    }
+
+    output
+}
+
+/// KaminIDE patch: what a block container's own style decides before its children are laid out.
+struct BlockEntry {
+    /// Known dimensions from the inputs and the container's own sizes.
+    known_dimensions: Size<Option<f32>>,
+    /// Whether the container establishes an independent block formatting context.
+    establishes_new_bfc: bool,
+    /// Whether layout containment suppresses the container's baselines.
+    suppresses_baseline: bool,
+}
+
+// KaminIDE patch: the style resolution temporaries must not live in the native
+// frame that waits for the recursive layout of the container's children (a
+// 2052-level box tree on the 8 MiB stack). `Err` is a short-circuited outer size.
+/// Resolves the entry values of a block container, or its short-circuited outer size.
+#[inline(never)]
+fn block_entry(
+    tree: &mut impl LayoutBlockContainer,
+    node_id: NodeId,
+    inputs: LayoutInput,
+) -> Result<BlockEntry, Size<f32>> {
     let LayoutInput { known_dimensions, parent_size, run_mode, .. } = inputs;
     let style = tree.get_block_container_style(node_id);
 
@@ -472,46 +519,22 @@ pub(super) fn compute_block_layout_normalized(
     // is ComputeSize (and thus the container's size is all that we're interested in)
     if run_mode == RunMode::ComputeSize {
         if let Size { width: Some(width), height: Some(height) } = styled_based_known_dimensions {
-            return LayoutOutput::from_outer_size(Size { width, height });
+            return Err(Size { width, height });
         }
 
         // We can also short-circuit if the width is known and only the width has been requested.
         if inputs.axis == RequestedAxis::Horizontal {
             if let Some(width) = styled_based_known_dimensions.width {
-                return LayoutOutput::from_outer_size(Size { width, height: 0.0 });
+                return Err(Size { width, height: 0.0 });
             }
         }
     }
 
-    // Unwrap the block formatting context if one was passed, or else create a new one
-    debug_log!("BLOCK");
-    let mut output = match block_ctx {
-        Some(inherited_bfc) if !establishes_new_bfc => compute_inner(
-            tree,
-            node_id,
-            LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
-            inherited_bfc,
-        ),
-        _ => {
-            let mut root_bfc = BlockFormattingContext::new();
-            let mut root_ctx = root_bfc.root_block_context();
-            compute_inner(
-                tree,
-                node_id,
-                LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
-                &mut root_ctx,
-            )
-        }
-    };
-
-    // Layout containment suppresses the box's baseline for baseline-alignment purposes
-    if contain.suppresses_baseline() {
-        output.baselines = Baselines::NONE;
-        output.baselines_x = Baselines::NONE;
-        output.inline_block_last_y = None;
-    }
-
-    output
+    Ok(BlockEntry {
+        known_dimensions: styled_based_known_dimensions,
+        establishes_new_bfc,
+        suppresses_baseline: contain.suppresses_baseline(),
+    })
 }
 
 /// Computes the layout of [`LayoutBlockContainer`] according to the block layout algorithm

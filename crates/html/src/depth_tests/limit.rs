@@ -98,3 +98,22 @@ fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
         }
     });
 }
+
+/// Запас стека рекурсии Taffy: вложенные float до предела построения боксов
+/// укладываются в 7,5 МиБ. До выноса тяжёлых нерекурсивных частей из кадров
+/// Taffy этот сценарий занимал ~7,9 МиБ и переполнял такой поток.
+#[test]
+fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
+    regression::on_stack(15 * 512 * 1024, || {
+        let source = format!(
+            "{}leaf{}<p>tail</p>",
+            "<div style='float:left'>".repeat(2053),
+            "</div>".repeat(2053)
+        );
+        let document = Document::builder(&source, "").build().unwrap();
+        let before = document.report().degradation.unwrap();
+        assert_eq!(before.traversal, TraversalKind::BoxBuild);
+        draw(&document);
+        assert_eq!(document.report().degradation, Some(before));
+    });
+}
