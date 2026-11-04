@@ -37,6 +37,10 @@ pub(super) struct Pending {
     /// Ключ потока прошлой сборки тот же: запись годна хотя бы при нём.
     /// Иначе (ширина меняется) пишется лишь запись, годная и при другой.
     settled: bool,
+    /// Корень блока — обёртка, которая ничего не рисует и держит содержимое
+    /// у начального края (	able::StartWrapper): лист снимается сквозь неё,
+    /// а ширина блока — ширина содержимого, если оно шире обёртки.
+    unpainted: bool,
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
     /// Строки абзацев блока в этом кадре.
@@ -63,6 +67,7 @@ impl Pending {
         end: Counters,
         width: Width,
         settled: bool,
+        unpainted: bool,
     ) -> Self {
         Self {
             key,
@@ -77,6 +82,7 @@ impl Pending {
             sink: Rc::default(),
             width,
             settled,
+            unpainted,
             border: Cell::new(0.0),
             lines: Rc::default(),
             output: RefCell::new(None),

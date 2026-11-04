@@ -88,24 +88,40 @@ fn a_fixed_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext
 }
 
 /// An auto-width table wider than the flow is held at its min-content width
-/// (CSS 2.1 §17.5.2.2), and its wrapper box is exactly that wide
-/// (css-tables-3): the same block at every narrower flow.
+/// (CSS 2.1 §17.5.2.2) at the start edge of its wrapper, which paints nothing:
+/// the same block at every narrower flow. Fixed margins keep it there, and so
+/// do auto margins, which are zero for a box wider than its container
+/// (§10.3.3 over-constrained; css-flexbox-1 §8.1 with negative free space).
 #[gpui::test]
 fn an_overflowing_auto_width_table_is_replayed_across_a_width_change(cx: &mut TestAppContext) {
-    let ((recorded, skipped, rebuilt), replayed) = resized(cx, &table(""));
-    assert_eq!((recorded, skipped), (3, 1), "the table was rebuilt");
-    assert_eq!((replayed, rebuilt), (1, 0));
+    for style in ["", ";margin-left:7px", ";margin:0 auto"] {
+        let ((recorded, skipped, rebuilt), replayed) = resized(cx, &table(style));
+        assert_eq!(
+            (recorded, skipped),
+            (3, 1),
+            "the table was rebuilt: {style}"
+        );
+        assert_eq!((replayed, rebuilt), (1, 0), "{style}");
+    }
 }
 
-/// A table narrower than the flow takes its max-content width; at the
-/// width of its record only.
+/// A table narrower than the flow takes its max-content width, so its place
+/// (centred) or the flow width it was laid out in is the flow's: at the width
+/// of its record only.
 #[gpui::test]
 fn an_auto_width_table_that_fits_the_flow_is_rebuilt_after_a_width_change(cx: &mut TestAppContext) {
-    let narrow = table("").replace("unbreakable", "u").replace("content", "");
-    let ((_, skipped, _), _) = resized(cx, &narrow);
-    assert_eq!(skipped, 0, "a fitting table follows the flow width");
+    let rows: String = (0..40).map(|_| "<tr><td>a</td><td>b</td></tr>").collect();
+    for style in ["", ";margin:0 auto"] {
+        let page = format!(
+            "<body style='margin:0'><h1>title</h1><table style='line-height:20px{style}'>{rows}</table></body>"
+        );
+        let ((_, skipped, _), _) = resized(cx, &page);
+        assert_eq!(
+            skipped, 0,
+            "a fitting table follows the flow width: {style}"
+        );
+    }
 }
-
 fn text_rows(style: &str) -> String {
     let rows: String = (0..600)
         .map(|i| format!("<div style='height:20px{style}'>row {i} alpha beta</div>"))

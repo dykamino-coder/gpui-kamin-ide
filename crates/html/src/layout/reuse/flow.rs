@@ -224,13 +224,18 @@ impl FlowCx {
         if !self.settled && width == super::width::Width::Dependent {
             return;
         }
-        let Some(child) = out.pop() else { return };
+        let Some(mut child) = out.pop() else { return };
+        // Обёртка таблицы у начального края: лист снимается сквозь неё.
+        let unpainted = child
+            .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
+            .is_some();
         let pending = Rc::new(Pending::new(
             self.key.clone(),
             mark.start,
             now.start,
             width,
             self.settled,
+            unpainted,
         ));
         super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
         out.push(Recorder::new(child, pending).hooked());

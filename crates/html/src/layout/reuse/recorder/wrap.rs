@@ -56,7 +56,17 @@ impl Wrap for Recorder {
                 ScaledPixels(b.size.height.as_f32() * scale),
             ),
         }));
-        let snapshot = window.layout_snapshot(id);
+        let snapshot = match self.pending.unpainted {
+            true => window.layout_snapshot_unpainted(id),
+            false => window.layout_snapshot(id),
+        };
+        if self.pending.unpainted
+            && let Some(snapshot) = &snapshot
+        {
+            // Переполненная таблица держит свою ширину полом сама: для
+            // `width::reusable_range` блок так же широк, как она.
+            self.pending.border.set(snapshot.width());
+        }
         let origin = scaled(window.layout_origin_unrounded(id), scale);
         self.pending.quiet.set(snapshot.is_some());
         self.pending.snapshot.replace(snapshot);
