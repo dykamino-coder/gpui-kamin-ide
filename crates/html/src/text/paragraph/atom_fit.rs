@@ -14,7 +14,7 @@
 use super::*;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px, size};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub(super) struct FitAtom {
@@ -25,7 +25,7 @@ pub(super) struct FitAtom {
     /// Baseline of the real max-content layout in this paragraph.
     base: f32,
     /// Measurements of the atom's subtree, shared with later frames.
-    memo: Rc<RefCell<AtomMemo>>,
+    memo: Rc<AtomMemo>,
     /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
     snap: gpui::LayoutMeasurement,
 }
@@ -39,7 +39,7 @@ pub(super) struct AtomMemo {
     /// Max-content height and baseline; `None` if min-content is max-content.
     snap: Option<(f32, Option<f32>)>,
     /// Copy measured at a width: (width, height, baseline).
-    at_width: Vec<(f32, f32, Option<f32>)>,
+    at_width: Cell<Vec<(f32, f32, Option<f32>)>>,
 }
 
 /// Resolved atom geometry for one available width: (index, width, height, baseline).
@@ -71,8 +71,7 @@ impl AtomFit {
         }
         let mut out = Vec::new();
         for a in self.atoms.iter_mut() {
-            let mut memo = a.memo.borrow_mut();
-            let memo = &mut *memo;
+            let memo = &*a.memo;
             // `avail` at max-content or wider also gives `w` there.
             let w = avail.max(memo.min);
             if w >= memo.max - COORD_EPS {
@@ -81,7 +80,8 @@ impl AtomFit {
             let Some((snap_h, snap_base)) = memo.snap else {
                 continue;
             };
-            let (h, b) = match memo.at_width.iter().find(|m| m.0 == w) {
+            let mut seen = memo.at_width.take();
+            let (h, b) = match seen.iter().find(|m| m.0 == w) {
                 Some(&(_, h, b)) => (h, b),
                 None => {
                     a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
@@ -94,10 +94,11 @@ impl AtomFit {
                         cx,
                     );
                     let (h, b) = (f32::from(s.height), b.map(f32::from));
-                    memo.at_width.push((w, h, b));
+                    seen.push((w, h, b));
                     (h, b)
                 }
             };
+            memo.at_width.set(seen);
             let base = match (b, snap_base) {
                 (Some(b), Some(b0)) => a.base + (b - b0),
                 _ => a.base + (h - snap_h),
@@ -129,7 +130,7 @@ impl AtomMemo {
             min,
             max,
             snap,
-            at_width: Vec::new(),
+            at_width: Cell::default(),
         }
     }
 }
@@ -148,18 +149,18 @@ impl Paragraph {
                 let max = f32::from(window.layout_exact(root).1.width);
                 let kept = window
                     .layout_memo(root)
-                    .and_then(|m| m.downcast::<RefCell<AtomMemo>>().ok())
-                    .filter(|m| m.borrow().max == max);
-                if kept.as_ref().is_some_and(|m| m.borrow().snap.is_none()) {
+                    .and_then(|m| m.downcast::<AtomMemo>().ok())
+                    .filter(|m| m.max == max);
+                if kept.as_ref().is_some_and(|m| m.snap.is_none()) {
                     continue;
                 }
                 let mut snap = window.snapshot_layout_measurement(root);
                 let memo = kept.unwrap_or_else(|| {
-                    let memo = Rc::new(RefCell::new(AtomMemo::measure(&mut snap, max, window, cx)));
+                    let memo = Rc::new(AtomMemo::measure(&mut snap, max, window, cx));
                     window.set_layout_memo(root, memo.clone());
                     memo
                 });
-                if memo.borrow().snap.is_none() {
+                if memo.snap.is_none() {
                     continue;
                 }
                 fit.atoms.push(FitAtom {
@@ -206,8 +207,8 @@ impl Paragraph {
             return;
         }
         let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for &(k, w, _, _) in &fitted {
-            let Some(slot) = self.atoms.get_mut(k) else {
+        for (k, slot) in self.atoms.iter_mut().enumerate() {
+            let Some(&(_, w, _, _)) = fitted.iter().find(|f| f.0 == k) else {
                 continue;
             };
             let Some(root) = slot.root.get() else {
