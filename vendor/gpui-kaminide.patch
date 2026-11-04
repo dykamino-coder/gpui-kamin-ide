@@ -9808,6 +9808,127 @@ index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff40
 +        self.config
 +    }
 +}
+diff --git a/vendor/gpui/src/key_dispatch.rs b/vendor/gpui/src/key_dispatch.rs
+index 2f755b1d3dcd1e90fa9b90ac858947c8596d2806..41323b3ac0f90cca4971d07affdfafa1ae8bc205
+--- a/vendor/gpui/src/key_dispatch.rs
++++ b/vendor/gpui/src/key_dispatch.rs
+@@ -84,4 +84,2 @@
+-    pub key_listeners: Vec<KeyListener>,
+-    pub action_listeners: Vec<DispatchActionListener>,
+-    pub modifiers_changed_listeners: Vec<ModifiersChangedListener>,
+-    pub context: Option<KeyContext>,
++    /// KaminIDE patch: listeners and key context, allocated by the first registration.
++    rare: Option<Box<DispatchNodeRare>>,
+@@ -90,0 +89,35 @@
++}
++
++/// KaminIDE patch: the listener lists and key context of a [`DispatchNode`].
++///
++/// Every element of a frame pushes a dispatch node, but almost no box of a rendered document
++/// registers a key/action/modifiers listener or a key context; inline, the three lists and the
++/// context were 96 of the 144 bytes of every node (selectors-3200: 371 228 nodes per frame).
++#[derive(Default)]
++pub(crate) struct DispatchNodeRare {
++    key_listeners: Vec<KeyListener>,
++    action_listeners: Vec<DispatchActionListener>,
++    modifiers_changed_listeners: Vec<ModifiersChangedListener>,
++    context: Option<KeyContext>,
++}
++
++impl DispatchNode {
++    pub(crate) fn key_listeners(&self) -> &[KeyListener] {
++        self.rare.as_deref().map_or(&[], |rare| &rare.key_listeners)
++    }
++
++    pub(crate) fn action_listeners(&self) -> &[DispatchActionListener] {
++        self.rare.as_deref().map_or(&[], |rare| &rare.action_listeners)
++    }
++
++    pub(crate) fn modifiers_changed_listeners(&self) -> &[ModifiersChangedListener] {
++        self.rare.as_deref().map_or(&[], |rare| &rare.modifiers_changed_listeners)
++    }
++
++    pub(crate) fn context(&self) -> Option<&KeyContext> {
++        self.rare.as_deref()?.context.as_ref()
++    }
++
++    fn rare_mut(&mut self) -> &mut DispatchNodeRare {
++        self.rare.get_or_insert_with(Default::default)
++    }
+@@ -190 +223 @@
+-            if let Some(context) = active_node.context.clone() {
++            if let Some(context) = active_node.context().cloned() {
+@@ -199 +232 @@
+-                if let Some(context) = node.context.clone() {
++                if let Some(context) = node.context().cloned() {
+@@ -216 +249 @@
+-        self.active_node().context = Some(context.clone());
++        self.active_node().rare_mut().context = Some(context.clone());
+@@ -237 +270 @@
+-        if node.context.is_some() {
++        if node.context().is_some() {
+@@ -248 +281 @@
+-        if let Some(context) = source.context.clone() {
++        if let Some(context) = source.context().cloned() {
+@@ -258,4 +291,10 @@
+-        let target = self.active_node();
+-        target.key_listeners = mem::take(&mut source.key_listeners);
+-        target.action_listeners = mem::take(&mut source.action_listeners);
+-        target.modifiers_changed_listeners = mem::take(&mut source.modifiers_changed_listeners);
++        if let Some(rare) = source.rare.as_deref_mut()
++            && (!rare.key_listeners.is_empty()
++                || !rare.action_listeners.is_empty()
++                || !rare.modifiers_changed_listeners.is_empty())
++        {
++            let target = self.active_node().rare_mut();
++            target.key_listeners = mem::take(&mut rare.key_listeners);
++            target.action_listeners = mem::take(&mut rare.action_listeners);
++            target.modifiers_changed_listeners = mem::take(&mut rare.modifiers_changed_listeners);
++        }
+@@ -324 +363 @@
+-        self.active_node().key_listeners.push(listener);
++        self.active_node().rare_mut().key_listeners.push(listener);
+@@ -328,0 +368 @@
++            .rare_mut()
+@@ -338,0 +379 @@
++            .rare_mut()
+@@ -367 +408 @@
+-            for DispatchActionListener { action_type, .. } in &node.action_listeners {
++            for DispatchActionListener { action_type, .. } in node.action_listeners() {
+@@ -386 +427 @@
+-                .action_listeners
++                .action_listeners()
+@@ -455 +496 @@
+-            .filter_map(|node_id| self.node(*node_id).context.clone())
++            .filter_map(|node_id| self.node(*node_id).context().cloned())
+@@ -651,0 +693,27 @@
++    }
++
++    // KaminIDE patch: a node without listeners or key context has no listener block, and a
++    // reused subtree keeps the listeners and context of its nodes.
++    #[test]
++    fn plain_dispatch_nodes_allocate_no_listener_block() {
++        let mut tree = test_dispatch_tree(Vec::new());
++        let plain = tree.push_node();
++        let with_listener = tree.push_node();
++        tree.on_key_event(Rc::new(|_, _, _, _| {}));
++        tree.set_key_context(KeyContext::parse("Editor").unwrap());
++        tree.pop_node();
++        tree.pop_node();
++        assert!(tree.node(plain).rare.is_none());
++        assert_eq!(tree.node(plain).key_listeners().len(), 0);
++        assert!(tree.node(plain).context().is_none());
++        assert_eq!(tree.node(with_listener).key_listeners().len(), 1);
++        assert!(tree.node(with_listener).context().is_some());
++
++        let mut next = test_dispatch_tree(Vec::new());
++        let reused = next.reuse_subtree(0..2, &mut tree, None);
++        assert_eq!(reused.new_range, 0..2);
++        let moved = super::DispatchNodeId(1);
++        assert_eq!(next.node(moved).key_listeners().len(), 1);
++        assert!(next.node(moved).context().is_some());
++        assert!(next.node(super::DispatchNodeId(0)).rare.is_none());
++        assert!(std::mem::size_of::<super::DispatchNode>() <= 64);
 diff --git a/vendor/gpui/src/paint_traversal.rs b/vendor/gpui/src/paint_traversal.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..8de4f9e23b6e68b6e014ecf80cc71d7021cec17f
@@ -18182,7 +18303,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d01e07a71a7b6cbad1935c5f494238287ed4115e
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..855ea1fbb5ae0750fdabccb4b22a8c1425fb6405
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -19939,6 +20060,27 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d01e07a71a7b6cbad1935c5f49423828
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
+@@ -6132 +7432 @@
+-            for key_listener in node.key_listeners.clone() {
++            for key_listener in node.key_listeners().to_vec() {
+@@ -6144 +7444 @@
+-            for key_listener in node.key_listeners.clone() {
++            for key_listener in node.key_listeners().to_vec() {
+@@ -6164 +7464 @@
+-            for listener in node.modifiers_changed_listeners.clone() {
++            for listener in node.modifiers_changed_listeners().to_vec() {
+@@ -6396 +7696 @@
+-            } in node.action_listeners.clone()
++            } in node.action_listeners().to_vec()
+@@ -6419 +7719 @@
+-            } in node.action_listeners.clone()
++            } in node.action_listeners().to_vec()
+@@ -6598 +7898 @@
+-            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
++            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
+@@ -6701 +8001 @@
+-            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
++            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
 @@ -7752,0 +9053,31 @@
 +
 +    #[test]
