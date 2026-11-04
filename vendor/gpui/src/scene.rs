@@ -650,11 +650,8 @@ impl Scene {
         };
         let mut raise = 0;
         let graft = graft.map(|mut graft| {
-            let above = self.tree_mut().max_meeting(graft.cover());
-            if above >= graft.min_order() {
-                raise = above + 1 - graft.min_order();
-                graft.raise(raise);
-            }
+            raise = self.tree_mut().min_raise(&graft);
+            graft.raise(raise);
             graft
         });
         let shift = raise * ORDER_STEP;

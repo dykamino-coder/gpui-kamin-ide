@@ -199,16 +199,6 @@ where
         Some(Self { tree, offset, clip, order, cover, min, max })
     }
 
-    /// Cover of the visible rectangles.
-    pub fn cover(&self) -> &Bounds<U> {
-        &self.cover
-    }
-
-    /// Lowest ordering of the grafted rectangles.
-    pub fn min_order(&self) -> u32 {
-        self.min
-    }
-
     /// Raise every grafted ordering by `by`.
     pub fn raise(&mut self, by: u32) {
         self.order += by;
@@ -371,8 +361,103 @@ where
 
     /// KaminIDE patch: the highest ordering of any rectangle meeting `query`
     /// (0 if none), without inserting anything.
+    #[cfg(test)]
     pub fn max_meeting(&mut self, query: &Bounds<U>) -> u32 {
         self.find_max_ordering(query)
+    }
+
+    /// KaminIDE patch: the least `r` such that every rectangle of `graft`,
+    /// with its ordering raised by `r`, is above every rectangle of this tree
+    /// it meets — the rule `insert` applies to each rectangle, kept for the
+    /// whole graft under one shift. The cover of the graft only bounds it: a
+    /// rectangle of this tree may meet the cover and none of the grafted
+    /// rectangles (a heading above a multi-column record), and raising the
+    /// graft above it would split the frame's batches. Subtrees are searched
+    /// while the meeting ordering of their cover could still raise `r`, so a
+    /// graft that needs no raise costs one query, as before.
+    pub fn min_raise(&mut self, graft: &Graft<U>) -> u32 {
+        let bound = |found: u32| (found + 1).saturating_sub(graft.min);
+        let found = self.find_max_ordering(&graft.cover);
+        if bound(found) == 0 {
+            return 0;
+        }
+        let mut raise = 0;
+        self.raise_under(
+            &graft.tree,
+            &graft.offset,
+            graft.clip.as_ref(),
+            graft.order,
+            graft.min,
+            &mut raise,
+        );
+        raise
+    }
+
+    /// `min_raise` within `tree` seen moved by `offset`, clipped by `clip`
+    /// and with its orderings raised by `order`; every ordering there is at
+    /// least `floor`.
+    fn raise_under(
+        &mut self,
+        tree: &BoundsTree<U>,
+        offset: &Point<U>,
+        clip: Option<&Bounds<U>>,
+        order: u32,
+        floor: u32,
+        raise: &mut u32,
+    ) {
+        let Some(root) = tree.root else {
+            return;
+        };
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            for entry in tree.nodes[node].entries() {
+                let visible = moved(&entry.bounds, Some(offset));
+                let Some(visible) = (match clip {
+                    Some(c) => meet(&visible, c),
+                    None => Some(visible),
+                }) else {
+                    continue;
+                };
+                let found = self.find_max_ordering(&visible);
+                if !tree.nodes[node].bottom {
+                    // Every ordering under the entry is at least `floor`.
+                    if (found + 1).saturating_sub(floor) > *raise {
+                        stack.push(entry.child as usize);
+                    }
+                    continue;
+                }
+                match entry.child {
+                    0 => {
+                        let need = (found + 1).saturating_sub(entry.max_order + order);
+                        *raise = cmp::max(*raise, need);
+                    }
+                    g => {
+                        if (found + 1).saturating_sub(floor) <= *raise {
+                            continue;
+                        }
+                        let inner = &tree.grafts[g as usize - 1];
+                        let inner_clip = inner.clip.as_ref().map(|c| moved(c, Some(offset)));
+                        let clip = match (inner_clip, clip) {
+                            (Some(a), Some(b)) => match meet(&a, b) {
+                                Some(c) => Some(c),
+                                None => continue,
+                            },
+                            (a, b) => a.or_else(|| b.cloned()),
+                        };
+                        let offset = add_points(&inner.offset, offset);
+                        let inner_tree = inner.tree.clone();
+                        self.raise_under(
+                            &inner_tree,
+                            &offset,
+                            clip.as_ref(),
+                            order + inner.order,
+                            floor,
+                            raise,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// KaminIDE patch: add `graft`, whose orderings the caller already chose
@@ -1093,14 +1178,68 @@ mod tests {
         let Some(mut graft) = Graft::new(source, offset, Some(clip), 0) else {
             return Vec::new();
         };
-        let above = dest.max_meeting(graft.cover());
-        let raise = if above < graft.min_order() { 0 } else { above + 1 - graft.min_order() };
+        let before = dest.clone();
+        let raise = dest.min_raise(&graft);
+        // Never above the bound of the whole cover.
+        let above = dest.max_meeting(&graft.cover);
+        assert!(raise <= (above + 1).saturating_sub(graft.min));
         graft.raise(raise);
         dest.insert_graft(graft);
-        source_model
+        let grafted: Vec<_> = source_model
             .iter()
             .filter_map(|(b, o)| meet(&moved(b, Some(&offset)), &clip).map(|b| (b, o + raise)))
-            .collect()
+            .collect();
+        // The least raise: one less would leave a grafted rectangle at or
+        // below an earlier one it meets.
+        if raise > 0 {
+            let mut before = before;
+            assert!(grafted.iter().any(|(b, o)| before.max_meeting(b) >= o - 1));
+        }
+        grafted
+    }
+
+    #[test]
+    fn graft_is_raised_only_above_rectangles_it_meets() {
+        // A heading's glyphs at ordering 2 lie inside the cover of a record
+        // of two columns but meet none of the columns' rectangles.
+        let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
+            origin: Point { x, y },
+            size: Size { width: w, height: h },
+        };
+        let mut dest = BoundsTree::<f32>::default();
+        assert_eq!(dest.insert(rect(0.0, 0.0, 400.0, 400.0)), 1);
+        assert_eq!(dest.insert(rect(180.0, 10.0, 40.0, 20.0)), 2);
+        let mut record = BoundsTree::default();
+        for i in 0..20 {
+            let y = 40.0 + i as f32 * 10.0;
+            assert_eq!(record.insert(rect(0.0, y, 150.0, 8.0)), 1);
+            assert_eq!(record.insert(rect(250.0, y, 150.0, 8.0)), 1);
+            assert_eq!(record.insert(rect(250.0, y, 100.0, 6.0)), 2);
+        }
+        let record = Rc::new(record);
+        let mut graft = Graft::new(record.clone(), Point { x: 0.0, y: -30.0 }, None, 0).unwrap();
+        assert!(graft.cover.intersects(&rect(180.0, 10.0, 40.0, 20.0)));
+        // Above the page background (1) only, as inserting each would be.
+        assert_eq!(dest.min_raise(&graft), 1);
+        graft.raise(1);
+        dest.insert_graft(graft);
+        // A copy of the copy (a tree that is one graft) gives the same raise.
+        let mut copy = BoundsTree::default();
+        copy.insert_graft(Graft::new(record, Point::default(), None, 0).unwrap());
+        let mut nested = BoundsTree::default();
+        nested.insert_graft(Graft::new(Rc::new(copy), Point::default(), None, 3).unwrap());
+        nested.insert(rect(0.0, 0.0, 1.0, 1.0));
+        let graft = Graft::new(Rc::new(nested), Point { x: 0.0, y: -30.0 }, None, 0).unwrap();
+        let mut dest2 = BoundsTree::<f32>::default();
+        dest2.insert(rect(0.0, 0.0, 400.0, 400.0));
+        dest2.insert(rect(180.0, 10.0, 40.0, 20.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        // Grafted rows start at 3 + 1 = 4 and the first row meets the strip
+        // at 5: raise 2. The heading at 2 does not count.
+        assert_eq!(dest2.min_raise(&graft), 2);
     }
 
     #[test]
@@ -1156,7 +1295,8 @@ mod tests {
         let (source, _) = filled(&mut rng, 200);
         let mut graft = Graft::new(Rc::new(source), Point { x: 0.0, y: 0.0 }, None, 0).unwrap();
         let mut dest = BoundsTree::<f32>::default();
-        assert_eq!(dest.max_meeting(graft.cover()), 0);
+        assert_eq!(dest.max_meeting(&graft.cover), 0);
+        assert_eq!(dest.min_raise(&graft), 0);
         graft.raise(0);
         let max = graft.max;
         dest.insert_graft(graft);
