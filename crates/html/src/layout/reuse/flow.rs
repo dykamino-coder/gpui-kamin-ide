@@ -235,7 +235,8 @@ impl FlowCx {
             self.settled,
             unpainted,
         ));
-        super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
+        let source = self.reuse.shells.source(e);
+        super::push(&self.reuse.pending, (pending.clone(), source));
         out.push(Recorder::new(child, pending).hooked());
     }
 }

@@ -4,8 +4,8 @@ use super::*;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 pub(crate) struct Record {
-    /// Вход сборки блока; в куче, чтобы переходить из ожидания без копии.
-    pub(super) element: Box<Element>,
+    /// What a later build of the block is compared with (`source`).
+    pub(super) source: Source,
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,

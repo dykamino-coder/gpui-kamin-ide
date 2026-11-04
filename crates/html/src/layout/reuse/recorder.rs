@@ -4,8 +4,7 @@
 
 use super::lines::LineSink;
 use super::width::{Width, reusable_range};
-use super::{Counters, FlowKey, Record, Replay, placed};
-use crate::dom::Element;
+use super::{Counters, FlowKey, Record, Replay, Source, placed};
 use crate::hooks::LineCapture;
 use gpui::{
     Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, RetainedPaint, RetainedPrepaint,
@@ -18,8 +17,8 @@ mod wrap;
 pub(super) use wrap::Recorder;
 
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`). Её
-/// держит и обёртка в дереве GPUI до следующего кадра, поэтому элемент блока
-/// лежит не здесь, а у `FlowReuse` и переходит в запись без копии.
+/// держит и обёртка в дереве GPUI до следующего кадра, поэтому вход сравнения
+/// блока лежит не здесь, а у `FlowReuse` и переходит в запись без копии.
 pub(super) struct Pending {
     key: Rc<FlowKey>,
     start: Counters,
@@ -89,12 +88,12 @@ impl Pending {
         }
     }
 
-    /// Готовая запись блока `element`, если он прошёл prepaint и краску
+    /// Готовая запись блока `source`, если он прошёл prepaint и краску
     /// инертно и либо был далеко от экрана `screen`, либо его вывод кадра
     /// `epoch` повторяем под маской корня `mask`.
     pub(super) fn finish(
         &self,
-        element: Box<Element>,
+        source: Source,
         screen: Bounds<ScaledPixels>,
         mask: Bounds<Pixels>,
         epoch: u64,
@@ -148,7 +147,7 @@ impl Pending {
         }
         let snapshot = self.snapshot.take()?;
         Some(Record {
-            element,
+            source,
             key: self.key.clone(),
             start: self.start,
             end: self.end,

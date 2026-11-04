@@ -54,7 +54,7 @@ impl FlowReuse {
                             .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
-                refused.insert(record.element.node_id);
+                refused.insert(record.source.id());
             }
         }
         let ok = refused.is_empty();
@@ -62,7 +62,7 @@ impl FlowReuse {
         ok
     }
     /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
-    /// записи отдают элемент записи и освобождаются.
+    /// записи отдают записи вход сравнения и освобождаются.
     pub(crate) fn finish(&self) {
         let (Some(screen), Some(mask)) = (self.screen.get(), self.mask.get()) else {
             return;
@@ -78,9 +78,9 @@ impl FlowReuse {
             .count() as u64;
         let mut recorded = 0;
         let epoch = self.store.epoch.get();
-        for (pending, element) in self.pending.take() {
-            if let Some(record) = pending.finish(element, screen, mask, epoch) {
-                next.insert(record.element.node_id, Rc::new(record));
+        for (pending, source) in self.pending.take() {
+            if let Some(record) = pending.finish(source, screen, mask, epoch) {
+                next.insert(record.source.id(), Rc::new(record));
                 recorded += 1;
             }
         }

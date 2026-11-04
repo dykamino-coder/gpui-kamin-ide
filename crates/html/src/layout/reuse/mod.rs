@@ -27,6 +27,7 @@ mod placeholder;
 mod plain;
 mod record;
 mod recorder;
+mod source;
 #[cfg(test)]
 mod tests;
 mod width;
@@ -37,6 +38,7 @@ use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, p
 pub(crate) use key::{Counters, FlowKey};
 pub(crate) use placeholder::Replay;
 pub(crate) use record::Record;
+use source::{Shells, Source};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -78,7 +80,7 @@ impl Store {
     /// до сборки блока, а не в конце кадра.
     pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
-        if crate::dom::same_tree(&record.element, e) {
+        if record.source.same(e) {
             return Some(record);
         }
         // Записи держат стили: карта меняется целиком, без `&mut` на них.
@@ -92,7 +94,7 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        records.values().map(|r| (*r.element).clone()).collect()
+        records.values().map(|r| r.source.element()).collect()
     }
 
     /// Ширина потока сменилась: годны только записи, чья раскладка от неё
@@ -165,8 +167,10 @@ pub(crate) struct FlowReuse {
     seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Ожидающие записи с элементами своих блоков.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Box<Element>)>>,
+    /// Pending records with the comparison inputs of their blocks.
+    pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
+    /// Shells the sources of this build share (`source`).
+    shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
@@ -215,6 +219,7 @@ impl FlowReuse {
             claimed: Cell::new(false),
             next: Default::default(),
             pending: Default::default(),
+            shells: Shells::default(),
             placeholders: Default::default(),
             screen: Cell::new(None),
             mask: Cell::new(None),
