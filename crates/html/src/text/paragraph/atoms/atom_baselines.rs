@@ -12,7 +12,7 @@ impl Paragraph {
     /// `vertical-align`. Каждый заворачивается в ряд `align-items: baseline`
     /// со щупом базовой линии (см. `BaselineProbe`): обёртка обтягивает
     /// коробку полей атома, щуп отдаёт её базовую линию.
-    pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents)>) -> Self {
+    pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents, bool)>) -> Self {
         self.invalidate_prepared();
         use gpui::{ParentElement, Styled};
         // Распорка атома — не распорка полей: из текста для переноса её не
@@ -20,7 +20,7 @@ impl Paragraph {
         super::positions::remove_atom_spacers(&mut self.spacers, atoms.iter().map(|a| a.0));
         self.atoms = atoms
             .into_iter()
-            .map(|(at, el, align, extents)| {
+            .map(|(at, el, align, extents, fixed_inline)| {
                 let probe = std::rc::Rc::new(std::cell::Cell::new(None));
                 let root = std::rc::Rc::new(std::cell::Cell::new(None));
                 let el = LayoutTap {
@@ -46,6 +46,7 @@ impl Paragraph {
                     root,
                     extents,
                     hidden: false,
+                    fixed_inline,
                 }
             })
             .collect();
