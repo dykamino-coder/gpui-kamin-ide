@@ -540,31 +540,58 @@ where
 
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
             let output = match (display_mode, has_children) {
-                (Display::None, _) => compute_hidden_layout(tree, node_id),
                 #[cfg(feature = "block_layout")]
                 (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx),
                 #[cfg(feature = "block_layout")]
                 (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
-                #[cfg(feature = "flexbox")]
-                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
-                #[cfg(feature = "grid")]
-                (Display::Grid, true) => compute_grid_layout(tree, node_id, inputs),
-                // An empty grid without a measurement context still has explicit
-                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
-                #[cfg(feature = "grid")]
-                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
-                    compute_grid_layout(tree, node_id, inputs)
-                }
-                (_, false) => {
-                    let node_key = node_id.into();
-                    let style = &tree.taffy.nodes[node_key].style;
-                    let has_context = tree.taffy.nodes[node_key].has_context;
-                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
-                    (tree.measure_function)(inputs, node_id, node_context, style)
-                }
+                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
             };
             tree.finish_child_layout(node_id, inputs.run_mode, output)
         })
+    }
+
+    // KaminIDE patch: this closure's frame waits for the recursive layout of
+    // every block descendant, so only the block dispatch stays inline; the
+    // inlined entries of the other algorithms must not widen it (a 2052-level
+    // box tree on the 8 MiB stack).
+    /// Lays out a node that is not a block container with children.
+    #[inline(never)]
+    fn compute_other_layout(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        display_mode: Display,
+        has_children: bool,
+    ) -> LayoutOutput {
+        match (display_mode, has_children) {
+            (Display::None, _) => compute_hidden_layout(self, node_id),
+            #[cfg(feature = "flexbox")]
+            (Display::Flex, true) => compute_flexbox_layout(self, node_id, inputs),
+            #[cfg(feature = "grid")]
+            (Display::Grid, true) => compute_grid_layout(self, node_id, inputs),
+            // An empty grid without a measurement context still has explicit
+            // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
+            #[cfg(feature = "grid")]
+            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
+                compute_grid_layout(self, node_id, inputs)
+            }
+            (_, false) => self.measure_leaf(node_id, inputs),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!("block containers with children are dispatched inline"),
+        }
+    }
+
+    // KaminIDE patch: the inlined measure function must not widen the frame of
+    // `compute_other_layout`, which waits for the recursive layout of flex and
+    // grid descendants (a 2052-level box tree on the 8 MiB stack).
+    /// Measures a leaf node with its measure function.
+    #[inline(never)]
+    fn measure_leaf(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        let node_key = node_id.into();
+        let style = &self.taffy.nodes[node_key].style;
+        let has_context = self.taffy.nodes[node_key].has_context;
+        let node_context = has_context.then(|| self.taffy.node_context_data.get_mut(node_key)).flatten();
+        (self.measure_function)(inputs, node_id, node_context, style)
     }
 
     // KaminIDE patch: output adaptation and OOF temporaries must not live
