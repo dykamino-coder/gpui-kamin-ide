@@ -1,4 +1,5 @@
 //! Вход в элемент: каскад и счётчики до обхода детей.
+use super::element_sharing::{ElementSharing, Key, Shared};
 use super::{
     ancestor::{element_ancestor, element_attrs},
     cascade::cascade_element,
@@ -18,6 +19,7 @@ use std::rc::Rc;
 pub(super) fn enter<'a>(
     visit: Visit<'a>,
     tree: &TreeIndex,
+    sharing: &ElementSharing,
     _counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
@@ -58,38 +60,84 @@ pub(super) fn enter<'a>(
             })
             .with_node(&me),
     );
-    let candidates = visit.scope.index.candidates(&me, path);
-    let (mut style, own_vars, scheme, shadow, important) = cascade_element(
-        &mut me,
-        &attrs,
-        &tag,
-        handle,
-        tree,
+    let excluded = tree.shadow_of(handle).is_some() || !tree.slotted_rules_of(handle).is_empty();
+    let key = Key::new(
+        visit.parent_share,
         &visit.scope,
-        &candidates,
         vars,
-        path,
-        spot,
-        sibs,
         vcx,
+        &me,
+        &tag,
+        &attrs,
+        excluded,
     );
+    let found = key
+        .as_ref()
+        .and_then(|key| sharing.lookup(key, &me, path, sibs, vcx));
+    let (shared, shadow) = match found {
+        Some(shared) => (shared, None),
+        None => {
+            let observed = vcx.doc.diagnostic_observations();
+            let candidates = Rc::new(visit.scope.index.candidates(&me, path));
+            let (mut style, own_vars, scheme, shadow, important) = cascade_element(
+                &mut me,
+                &attrs,
+                &tag,
+                handle,
+                tree,
+                &visit.scope,
+                &candidates,
+                vars,
+                path,
+                spot,
+                sibs,
+                vcx,
+            );
+            let vcx = vcx.with_scheme(scheme);
+            normalize_style(&mut style, &tag, &attrs, path, vcx);
+            // Правила с `:hover` собираются отдельным слоем: в базовый стиль
+            // им нельзя, иначе элемент выглядел бы всегда наведённым.
+            let layers = pseudo_styles(
+                &mut style,
+                &tag,
+                &visit.scope,
+                &candidates,
+                &own_vars,
+                &me,
+                path,
+                sibs,
+                vcx,
+            );
+            let shared = Shared {
+                candidates,
+                style,
+                vars: Rc::new(own_vars),
+                scheme,
+                important,
+                layers,
+                share: sharing.fresh(),
+            };
+            if let Some(key) = &key
+                && shadow.is_none()
+                && observed == vcx.doc.diagnostic_observations()
+            {
+                sharing.insert(key, &me, path, sibs, &shared, vcx);
+            }
+            (shared, shadow)
+        }
+    };
+    let Shared {
+        candidates,
+        mut style,
+        vars: own_vars,
+        scheme,
+        important,
+        layers: (hover, first_letter, first_line, marker_layer),
+        share,
+    } = shared;
     let vcx = vcx.with_scheme(scheme);
     let vars = &own_vars;
-    normalize_style(&mut style, &tag, &attrs, path, vcx);
     content::snapshot_generated(&mut me, &style, path.last());
-    // Правила с `:hover` собираются отдельным слоем: в базовый стиль
-    // им нельзя, иначе элемент выглядел бы всегда наведённым.
-    let (hover, first_letter, first_line, marker_layer) = pseudo_styles(
-        &mut style,
-        &tag,
-        &visit.scope,
-        &candidates,
-        vars,
-        &me,
-        path,
-        sibs,
-        vcx,
-    );
 
     let reversed_start = |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
         crate::style::generated::counters_scan::reversed_initial(
@@ -186,7 +234,7 @@ pub(super) fn enter<'a>(
         tag,
         attrs,
         style,
-        vars: Rc::new(own_vars),
+        vars: own_vars,
         shadow,
         important,
         hover,
@@ -197,5 +245,6 @@ pub(super) fn enter<'a>(
         style_scope,
         hidden,
         children,
+        share,
     }))
 }
