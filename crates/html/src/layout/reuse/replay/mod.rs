@@ -13,12 +13,16 @@
 //! держит дерево LayoutObject и кэш результатов, а Blink `PaintController`
 //! повторяет кэшированные подпоследовательности чистых поддеревьев.
 
+mod element;
+
+pub(super) use element::{Replay, ReplayRecorder};
+
 use super::{Counters, FlowKey};
 use crate::dom::Element;
-use crate::hooks::{Hooks, Wrap};
+use crate::paint::coordinator::{JobSlot, JobTap};
 use gpui::{
-    AnyElement, App, Bounds, ContentMask, InkSink, LayoutId, Pixels, Point, RetainedPaint,
-    RetainedPrepaint, RetainedSubtree, Size, Window, point, px,
+    Bounds, ContentMask, InkSink, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
+    RetainedSubtree, ScaledPixels, Size, Window, point, px,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -42,8 +46,13 @@ pub(crate) struct ReplayRecord {
     pub(super) key: Rc<FlowKey>,
     /// Сборка прочла ширину снаружи: запись годится только при тех же ширинах.
     pub(super) widths: bool,
+    /// Блок заполняет ширину потока (`plain::fills_width`): при другой ширине
+    /// он другого размера, и повтор не пробуется.
+    fills: bool,
     pub(super) start: Counters,
     pub(super) end: Counters,
+    /// Задания строк блока в фазе строк контекста (`paint::coordinator::tap_jobs`).
+    jobs: Rc<[Rc<JobSlot>]>,
     /// Диапазоны последнего кадра; `None` только на время их правки.
     ranges: Cell<Option<Ranges>>,
 }
@@ -60,7 +69,7 @@ impl ReplayRecord {
     /// Запись подходит потоку `key` при счётчиках `start` и поддереве `e`.
     pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
         self.key.same_outside_widths(key)
-            && (!self.widths || self.key.same_widths(key))
+            && (!(self.widths || self.fills) || self.key.same_widths(key))
             && self.start == start
             && crate::dom::same_tree(&self.element, e)
     }
@@ -78,6 +87,7 @@ pub(super) struct PendingReplay {
     paint: RefCell<Option<RetainedPaint>>,
     env: Cell<Option<(f32, u64)>>,
     mask: RefCell<Option<ContentMask<Pixels>>>,
+    jobs: RefCell<Option<Rc<JobTap>>>,
     sink: Rc<InkSink>,
 }
 
@@ -98,12 +108,19 @@ impl PendingReplay {
             paint: RefCell::new(None),
             env: Cell::new(None),
             mask: RefCell::new(None),
+            jobs: RefCell::new(None),
             sink: Rc::default(),
         }
     }
 
-    /// Готовая запись блока `element`, если его prepaint и краска переносимы.
-    pub(super) fn finish(&self, element: Box<Element>) -> Option<ReplayRecord> {
+    /// Готовая запись блока `element`, если его prepaint и краска переносимы
+    /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
+    /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
+    pub(super) fn finish(
+        &self,
+        element: Box<Element>,
+        screen: Bounds<ScaledPixels>,
+    ) -> Option<ReplayRecord> {
         if self.sink.tainted() {
             return None;
         }
@@ -111,8 +128,18 @@ impl PendingReplay {
         let (prepaint, origin, size) = self.prepaint.take()?;
         let paint = self.paint.take()?;
         let (scale, serial) = self.env.get()?;
+        let ink = self
+            .sink
+            .bounds()
+            .unwrap_or(Bounds { origin, size }.scale(scale));
+        if super::recorder::far(Some(ink), Point::default(), screen) {
+            return None;
+        }
         let mask = self.mask.take()?;
+        let jobs = self.jobs.take()?.finish()?;
         Some(ReplayRecord {
+            jobs,
+            fills: super::plain::fills_width(&element),
             element,
             key: self.key.clone(),
             widths: self.widths.get(),
@@ -135,81 +162,6 @@ impl PendingReplay {
 /// Окружение, в котором краска переносима как есть: корень окна без сдвига.
 fn plain_environment(window: &Window) -> bool {
     window.retained_root_environment() && window.element_offset() == point(px(0.0), px(0.0))
-}
-
-/// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
-/// краски этого кадра.
-pub(super) struct ReplayRecorder {
-    child: AnyElement,
-    pending: Rc<PendingReplay>,
-}
-
-impl ReplayRecorder {
-    pub(super) fn new(child: AnyElement, pending: Rc<PendingReplay>) -> Self {
-        Self { child, pending }
-    }
-}
-
-impl Wrap for ReplayRecorder {
-    fn paint_boundary(&self) -> bool {
-        false
-    }
-
-    fn child(&mut self) -> &mut AnyElement {
-        &mut self.child
-    }
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let start = window.layout_request_position();
-        let id = self.child.request_layout(window, cx);
-        let layout = window.capture_layout(start, id);
-        self.pending
-            .layout
-            .replace(layout.map(|layout| (layout, id)));
-        id
-    }
-
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let callbacks = window.next_frame_callback_count();
-        let plain = plain_environment(window);
-        let (_, range) = window.record_retained_prepaint(|window| {
-            let _ = self.child.prepaint(window, cx);
-        });
-        let quiet =
-            range.quiet(window).is_some() && callbacks == window.next_frame_callback_count();
-        let Some(id) = self.pending.layout.borrow().as_ref().map(|(_, id)| *id) else {
-            return;
-        };
-        if plain && quiet {
-            let origin = window.layout_origin_unrounded(id);
-            let size = window.layout_size_unrounded(id);
-            self.pending.prepaint.replace(Some((range, origin, size)));
-            self.pending.mask.replace(Some(window.content_mask()));
-        }
-    }
-
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let sink = self.pending.sink.clone();
-        let callbacks = window.next_frame_callback_count();
-        let (_, paint) = window.with_ink_sink(sink, |window| {
-            window.record_retained_paint(|window| self.child.paint(window, cx))
-        });
-        let prepaint = self
-            .pending
-            .prepaint
-            .borrow()
-            .as_ref()
-            .map(|(p, _, _)| p.clone());
-        let replayable = prepaint
-            .is_some_and(|prepaint| window.retained_replayable(&prepaint, &paint))
-            && callbacks == window.next_frame_callback_count();
-        if replayable {
-            self.pending.paint.replace(Some(paint));
-            self.pending
-                .env
-                .set(Some((window.scale_factor(), window.frame_serial())));
-        }
-    }
 }
 
 /// Место повтора в кадре: узел раскладки, если дерево кадра его отдало.
@@ -249,6 +201,7 @@ impl ReplaySlot {
             window.content_mask(),
         );
         fresh
+            && self.record.jobs.iter().all(|job| job.ready())
             && self
                 .record
                 .ranges(|r| {
@@ -259,57 +212,5 @@ impl ReplaySlot {
                         && r.size == size
                 })
                 .unwrap_or(false)
-    }
-}
-
-/// Заместитель блока: занятые узлы раскладки, повтор prepaint и краски.
-pub(super) struct Replay {
-    slot: Rc<ReplaySlot>,
-}
-
-impl Replay {
-    pub(super) fn new(slot: Rc<ReplaySlot>) -> Self {
-        Self { slot }
-    }
-}
-
-impl Hooks for Replay {
-    fn paint_boundary(&self) -> bool {
-        false
-    }
-
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let layout = self.slot.record.ranges(|r| r.layout.clone());
-        match layout.and_then(|layout| window.request_retained_layout(&layout)) {
-            Some(id) => {
-                self.slot.layout.set(Some(id));
-                (id, ())
-            }
-            // Узлы ушли: проверка кадра отвергнет повтор.
-            None => (window.request_layout(gpui::Style::default(), [], cx), ()),
-        }
-    }
-
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, _: &mut App) {
-        self.slot
-            .record
-            .ranges(|r| r.prepaint = window.replay_retained_prepaint(&r.prepaint));
-    }
-
-    fn paint(
-        &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut Window,
-        _: &mut App,
-    ) {
-        self.slot.record.ranges(|r| {
-            r.paint = window.replay_retained_paint(&r.paint);
-            r.serial = window.frame_serial();
-        });
     }
 }

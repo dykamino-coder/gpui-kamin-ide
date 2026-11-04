@@ -117,6 +117,22 @@ pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     true
 }
 
+/// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без
+/// `max-width`, не таблица (её авто-ширина — css-tables-3 §3.9.4). Его
+/// ширина меняется с каждой шириной потока, повтор там не встанет на место.
+pub(super) fn fills_width(e: &Element) -> bool {
+    use crate::style::computed::Display;
+    let layout = &e.style.used().reset_box_layout;
+    let table = e.tag.as_str() == "table"
+        || matches!(layout.display, Some(Display::Table | Display::InlineTable));
+    !table
+        && layout
+            .width
+            .as_ref()
+            .is_none_or(|w| matches!(w, crate::style::values::value::Len::Auto))
+        && layout.max_width.is_none()
+}
+
 /// В поддереве `e` есть флоат.
 pub(super) fn floats(e: &Element) -> bool {
     let mut pending = vec![e];

@@ -182,14 +182,16 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
             let intrinsic;
             {
                 let mut context = block_cx();
-                context.constraints.set_avail_w(crate::layout::block::available_width::inner(
-                    &style,
-                    if style.reset_flex.flex_item {
-                        None
-                    } else {
-                        Some(100.)
-                    },
-                ));
+                context
+                    .constraints
+                    .set_avail_w(crate::layout::block::available_width::inner(
+                        &style,
+                        if style.reset_flex.flex_item {
+                            None
+                        } else {
+                            Some(100.)
+                        },
+                    ));
                 let mut child = kid(Kind::Flow, Default::default(), Default::default());
                 intrinsic = child.intrinsic.clone();
                 child.build = Rc::new(|_, _, _, _, _| IntrinsicBox.hooked());

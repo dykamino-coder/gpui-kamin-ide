@@ -274,7 +274,7 @@ impl FlowReuse {
         }
         let mut replays = self.next_replays.take();
         for (pending, element) in self.pending_replays.take() {
-            if let Some(record) = pending.finish(element) {
+            if let Some(record) = pending.finish(element, screen) {
                 replays.insert(record.element.node_id, Rc::new(record));
             }
         }

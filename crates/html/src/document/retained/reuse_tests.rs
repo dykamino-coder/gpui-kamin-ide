@@ -20,17 +20,17 @@ fn rows(edit: usize, text: &str) -> String {
     format!("<body style='margin:0'>{rows}</body>")
 }
 
-fn reused(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64, u64) {
+pub(super) fn reused(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64, u64) {
     cx.update(|_, cx| view.read(cx).doc.reused_blocks())
 }
 
-fn update(view: &gpui::Entity<View>, cx: &mut VisualTestContext, html: &str) {
+pub(super) fn update(view: &gpui::Entity<View>, cx: &mut VisualTestContext, html: &str) {
     cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(html, "").unwrap()));
     frame(cx);
 }
 
 /// Open `first`, then rebuild with `second`: the second build records.
-fn settled<'a>(
+pub(super) fn settled<'a>(
     cx: &'a mut TestAppContext,
     first: &str,
     second: &str,
@@ -77,13 +77,20 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     let grown = format!("{}x", "x ".repeat(300));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
+    // The onscreen rows below the grown one move: their on-screen replay
+    // (`layout::reuse::replay`) fails the frame check once and the frame is
+    // built without replays and skips; they are built from then on while the
+    // flow key stays.
+    update(&view, cx, &page(&grown));
+    assert_eq!(reused(&view, cx).2, 1);
+    update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
     assert!(
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    assert_eq!(rebuilt, 0);
+    assert_eq!(rebuilt, 1);
 }
 
 #[gpui::test]
@@ -173,35 +180,4 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
         "right-to-left blocks were rebuilt: {skipped}"
     );
     assert_eq!(rebuilt, 0);
-}
-
-#[gpui::test]
-#[ignore = "on-screen replay is off until CSS paint jobs are captured (layout::reuse::flow)"]
-fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppContext) {
-    let page = |text: &str| {
-        format!(
-            "<body style='margin:0'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
-             <p>{text}</p><p>tail</p></body>"
-        )
-    };
-    let replayed = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
-        cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
-    };
-    let (view, cx) = settled(cx, &page("one"), &page("two"));
-    assert_eq!(
-        replayed(&view, cx),
-        0,
-        "the recording build replays nothing"
-    );
-    update(&view, cx, &page("one"));
-    assert_eq!(
-        replayed(&view, cx),
-        2,
-        "the table and the tail were rebuilt"
-    );
-    // A taller paragraph moves the tail: its replay fails the frame check and
-    // the frame is built again; the tail is then built until the key changes.
-    update(&view, cx, &page(&"word ".repeat(400)));
-    let (_, _, rebuilt) = reused(&view, cx);
-    assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
 }

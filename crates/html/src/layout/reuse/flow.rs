@@ -11,11 +11,8 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
-/// On-screen replay of root-flow blocks (`replay`) is off: a block's CSS paint
-/// jobs (Appendix E phases, `paint::coordinator`) run after its GPUI paint
-/// range, so copying the range alone drops them (p07 edit: 961 pixels). It
-/// needs per-phase job capture in the coordinator first (retelem handoff).
-const ON_SCREEN_REPLAY: bool = false;
+/// On-screen replay of root-flow blocks (`replay`).
+const ON_SCREEN_REPLAY: bool = true;
 
 /// Поток `body`, занятый повтором в этой сборке.
 pub(crate) struct FlowCx {

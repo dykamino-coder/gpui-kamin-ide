@@ -16,6 +16,8 @@
 mod element;
 mod record;
 #[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
 mod tests;
