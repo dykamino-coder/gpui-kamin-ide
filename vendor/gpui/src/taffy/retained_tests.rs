@@ -83,6 +83,36 @@ fn a_parent_with_other_children_is_not_kept() {
 }
 
 #[test]
+fn a_kept_node_takes_the_shared_style_of_its_pass() {
+    let mut engine = TaffyLayoutEngine::new();
+    // More distinct styles than sharing candidates: the first one is forgotten.
+    let first = leaf(&mut engine, 0.);
+    for width in 1..=9 {
+        leaf(&mut engine, width as f32);
+    }
+    let old = engine.taffy.shared_style(first.0).unwrap();
+    engine.clear();
+    assert_eq!(leaf(&mut engine, 0.), first);
+    let twin = leaf(&mut engine, 0.);
+    assert_ne!(twin, first);
+    let kept = engine.taffy.shared_style(first.0).unwrap();
+    assert!(taffy::SharedStyle::ptr_eq(&kept, &engine.taffy.shared_style(twin.0).unwrap()));
+    assert!(!taffy::SharedStyle::ptr_eq(&kept, &old));
+    assert_eq!(*kept, *old);
+}
+
+#[test]
+fn a_leaf_whose_style_changed_is_not_kept() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    engine.clear();
+    let a2 = leaf(&mut engine, 11.);
+    assert_eq!(engine.claimed_nodes(), 0);
+    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
+    let _ = a;
+}
+
+#[test]
 fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
     let mut engine = TaffyLayoutEngine::new();
     let a = leaf(&mut engine, 10.);
@@ -114,6 +144,7 @@ fn a_capped_child_is_restored_and_kept_by_the_next_equal_request() {
     assert_eq!(parent(&mut engine, &[a2]), p);
     assert_eq!(engine.claimed_nodes(), 2);
 }
+
 #[test]
 fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
     let mut engine = TaffyLayoutEngine::new();

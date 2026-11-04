@@ -172,8 +172,7 @@ impl TaffyLayoutEngine {
     pub fn clear(&mut self) {
         self.final_geometry = final_geometry::FinalGeometry::default();
         if self.frame_tree {
-            // The kept tree keeps its sharing candidates: an equal request of the
-            // next pass shares the kept node's style and claims it by pointer.
+            // The kept tree keeps its calc registry, so the sharing candidates stay valid.
             self.retire();
         } else {
             self.taffy.clear();
@@ -285,6 +284,7 @@ impl TaffyLayoutEngine {
         self.clear();
         self.forget();
         self.taffy.clear();
+        self.styles.clear();
     }
 
     pub fn request_measured_layout(

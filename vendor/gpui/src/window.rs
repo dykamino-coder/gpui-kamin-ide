@@ -1215,7 +1215,8 @@ impl Frame {
             }
         }
 
-        self.scene.finish();
+        // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
+        self.scene.finish_frame();
     }
 }
 

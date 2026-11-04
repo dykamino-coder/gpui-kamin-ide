@@ -19,6 +19,9 @@
 //! - a measured leaf is any unclaimed previous leaf with the same layout key
 //!   and style (equal keys mean interchangeable measurements).
 //!
+//! Styles are compared by value (shared allocation first, `style_share`); a
+//! claimed node takes this pass's shared allocation of its equal style.
+//!
 //! Nothing is ever marked dirty: a node whose inputs differ is a new node, so
 //! its ancestors are new nodes as well, and new nodes start with empty caches.
 //! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
@@ -76,7 +79,7 @@ impl TaffyLayoutEngine {
     /// claims, if any.
     pub(super) fn claim_parent(
         &mut self,
-        style: &taffy::Style,
+        style: &taffy::SharedStyle,
         children: &[LayoutId],
     ) -> Option<LayoutId> {
         if !self.frame_tree {
@@ -90,21 +93,21 @@ impl TaffyLayoutEngine {
             && children
                 .iter()
                 .all(|child| self.taffy.parent(child.0) == Some(parent))
-            && self.taffy.style(parent).is_ok_and(|old| same_style(old, style));
-        found.then(|| self.claim(parent))
+            && self.taffy.style_equals(parent, style);
+        found.then(|| self.claim(parent, style))
     }
 
     /// The previous plain leaf that a leaf request with `style` claims.
-    pub(super) fn claim_leaf(&mut self, style: &taffy::Style) -> Option<LayoutId> {
+    pub(super) fn claim_leaf(&mut self, style: &taffy::SharedStyle) -> Option<LayoutId> {
         if !self.frame_tree {
             return None;
         }
         let node = *self.retained.prev.get(self.retained.seq.len())?;
         let found = !self.retained.live.contains(&node)
-            && self.taffy.style(node).is_ok_and(|old| same_style(old, style))
+            && self.taffy.style_equals(node, style)
             && self.taffy.children_slice(node).is_empty()
             && !self.taffy.has_node_context(node);
-        found.then(|| self.claim(node))
+        found.then(|| self.claim(node, style))
     }
 
     /// The previous measured leaf that a keyed request claims. The new
@@ -113,7 +116,7 @@ impl TaffyLayoutEngine {
     pub(super) fn claim_measured(
         &mut self,
         key: u64,
-        style: &taffy::Style,
+        style: &taffy::SharedStyle,
         context: &mut Option<NodeContext>,
     ) -> Option<LayoutId> {
         if !self.frame_tree {
@@ -123,7 +126,7 @@ impl TaffyLayoutEngine {
         let taffy = &self.taffy;
         let fits = |node: &NodeId| {
             !live.contains(node)
-                && taffy.style(*node).is_ok_and(|old| same_style(old, style))
+                && taffy.style_equals(*node, style)
                 && taffy.children_slice(*node).is_empty()
         };
         // The leaf at the same request position first: leaves of one key are
@@ -150,7 +153,7 @@ impl TaffyLayoutEngine {
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
         }
-        Some(self.claim(node))
+        Some(self.claim(node, style))
     }
 
     /// An unclaimed previous node at this request's position, whose storage a
@@ -168,7 +171,12 @@ impl TaffyLayoutEngine {
         Some(node)
     }
 
-    fn claim(&mut self, node: NodeId) -> LayoutId {
+    /// Claim `node`, whose style equals `style`. The node takes the shared allocation
+    /// of this pass (`style_share`): the value is the same, so its cache stays valid,
+    /// and the allocation of the previous pass is freed with its last node.
+    fn claim(&mut self, node: NodeId, style: &taffy::SharedStyle) -> LayoutId {
+        let adopted = self.taffy.adopt_equal_style(node, style);
+        debug_assert!(adopted, "a claimed node has the requested style");
         self.retained.claimed += 1;
         self.retained.note(node);
         LayoutId(node)
@@ -286,10 +294,4 @@ fn retired_measure() -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
             crate::MeasuredContent::from((none, None, None, None))
         },
     ))))
-}
-
-/// Equal inputs: a node whose style is the shared allocation of the request
-/// (`style_share`) is equal without comparing the about 1 KiB value.
-fn same_style(old: &taffy::Style, style: &taffy::Style) -> bool {
-    std::ptr::eq(old, style) || old == style
 }
