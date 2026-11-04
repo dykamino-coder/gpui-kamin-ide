@@ -43,6 +43,9 @@ pub(super) struct AtomSlot {
     /// Атом за последней строкой (оборван `line-clamp`): не ставится и не
     /// рисуется.
     pub(crate) hidden: bool,
+    /// Ширина атома задана его стилем (`atom_inline_size_fixed`): от
+    /// доступной ширины не зависит, подбор по shrink-to-fit не нужен.
+    pub(crate) fixed_inline: bool,
 }
 
 /// Получает ли знак `c` метку акцента (css-text-decor-3 §5.3): нет у
