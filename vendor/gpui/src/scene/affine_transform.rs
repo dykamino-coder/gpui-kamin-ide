@@ -92,7 +92,7 @@ impl Scene {
                     }
                 },
                 // Layer bounds are placed like live layers under a matrix.
-                PaintOperation::StartLayer(b) => *b = placed(*b, matrix),
+                PaintOperation::StartLayer(b, _) => *b = placed(*b, matrix),
                 _ => {}
             }
             scene.replay_operation(command);

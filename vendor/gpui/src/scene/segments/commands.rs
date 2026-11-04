@@ -54,7 +54,7 @@ impl Scene {
                         first.get_or_insert(route);
                     }
                 }
-                PaintOperation::StartLayer(bounds) => {
+                PaintOperation::StartLayer(bounds, _) => {
                     let route = layer_route.or(first);
                     let delta = route.map_or(Point::default(), |route| (route.destination - route.source).scale(scale));
                     output.push_layer(record::geometry::bounds(*bounds, delta).union(&extent));
