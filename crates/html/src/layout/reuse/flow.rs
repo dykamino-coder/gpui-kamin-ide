@@ -154,6 +154,13 @@ impl FlowCx {
             return None;
         }
         let record = self.reuse.store.records.borrow().get(&e.node_id).cloned()?;
+        // The block changed (`Document::update`): its record never fits it
+        // again, yet it holds the previous subtree's nodes and styles alive
+        // through this whole build. Release them before the block is built.
+        if !crate::dom::same_tree(&record.element, e) {
+            self.reuse.store.records.borrow_mut().remove(&e.node_id);
+            return None;
+        }
         let width = || {
             self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
         };
@@ -165,10 +172,7 @@ impl FlowCx {
         // а отказ заместителя на экране собирает кадр второй раз. Растянутый
         // блок не повторяется никогда, поэтому заменяется только далёкий.
         let paintable = record.far || (!stretched && record.current(&self.reuse));
-        let fits = (same || width())
-            && paintable
-            && Counters::read(&opts.cx) == record.start
-            && crate::dom::same_tree(&record.element, e);
+        let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
         if !fits {
             return None;
         }

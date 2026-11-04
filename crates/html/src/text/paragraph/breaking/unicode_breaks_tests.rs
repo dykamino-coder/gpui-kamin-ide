@@ -106,7 +106,7 @@ fn ruby_edges_follow_uax14_between_base_and_neighbour() {
 #[test]
 fn opportunities_after_atom_carriers_follow_box_index_in_any_order() {
     let text = "x\u{feff}x\u{feff}x\u{feff}x";
-    let at = |p: &Paragraph| -> Vec<usize> { p.opportunities().iter().map(|s| s.at).collect() };
+    let at = |p: &Paragraph| -> Vec<usize> { p.opportunities().map(|s| s.at).collect() };
     let boxes = |ats: &[usize]| ats.iter().map(|&a| (a, None)).collect::<Vec<_>>();
     let all = at(&paragraph(text, &boxes(&[9, 1, 5, 5])));
     for expected in [4, 8, 12] {

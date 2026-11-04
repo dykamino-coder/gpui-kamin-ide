@@ -45,8 +45,7 @@ const TABLE: &[&str] = &[
 
 /// Каждый элемент поддерева `e` инертен (см. модуль).
 pub(super) fn plain(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
+    all_elements(e, |e| {
         let style = e.style.used();
         let tag = e.tag.as_str();
         let own = (TAGS.contains(&tag) || TABLE.contains(&tag))
@@ -65,35 +64,41 @@ pub(super) fn plain(e: &Element) -> bool {
             && style.reset_transforms.translate.is_none()
             && style.reset_effects.opacity.is_none_or(|o| o >= 1.0)
             && style.reset_effects.blend.is_none_or(|b| b == 0);
-        if !own {
-            return false;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            Node::Element(child) => Some(child),
-            Node::Text(_) => None,
-        }));
-    }
-    true
+        own
+    })
 }
 
 /// В поддереве `e` есть флоат.
 pub(super) fn floats(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if e.style
-            .used()
-            .reset_box_layout
-            .float
-            .is_some_and(|f| f != 0)
-        {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            Node::Element(child) => Some(child),
-            Node::Text(_) => None,
-        }));
+    !all_elements(e, |e| {
+        e.style.used().reset_box_layout.float.is_none_or(|f| f == 0)
+    })
+}
+
+/// Every element of the subtree of `e`, in document order, passes `f`; the
+/// walk stops at the first that does not. The stack holds one child iterator
+/// per open level, so a block of thousands of inline children costs a few
+/// words per level of depth instead of a list of every pending sibling.
+pub(super) fn all_elements(e: &Element, mut f: impl FnMut(&Element) -> bool) -> bool {
+    if !f(e) {
+        return false;
     }
-    false
+    let mut open = vec![e.children.iter()];
+    while let Some(level) = open.last_mut() {
+        match level.next() {
+            Some(Node::Element(child)) => {
+                if !f(child) {
+                    return false;
+                }
+                open.push(child.children.iter());
+            }
+            Some(_) => {}
+            None => {
+                open.pop();
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]

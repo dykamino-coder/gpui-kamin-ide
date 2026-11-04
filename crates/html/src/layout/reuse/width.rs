@@ -128,17 +128,7 @@ pub(super) fn reusable_range(
 
 /// Есть ли в поддереве длины в единицах окна или контейнера.
 fn viewport_dependent(e: &Element, vcx: ValueCx<'_>) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if e.style.used().has_viewport_lengths(vcx) {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            Node::Element(child) => Some(child),
-            Node::Text(_) => None,
-        }));
-    }
-    false
+    !super::plain::all_elements(e, |e| !e.style.used().has_viewport_lengths(vcx))
 }
 
 #[cfg(test)]

@@ -71,23 +71,25 @@ impl LineCapture {
 
 /// Записи блоков, из вывода которых уходит задание строк, принимаемое сейчас
 /// в последний кадр `pass`.
-pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Vec<Rc<LineCapture>> {
+pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Box<[Rc<LineCapture>]> {
     let target = pass.jobs.depth().saturating_sub(1);
-    let mut claims = Vec::new();
-    let mut next = window.render_context::<LineCapture>();
-    while let Some(deferred) = next {
-        if target < deferred.base {
-            if deferred.open.get() {
-                deferred.claimed.set(deferred.claimed.get() + 1);
-                deferred.pending.set(deferred.pending.get() + 1);
-                claims.push(deferred.clone());
-            } else {
-                deferred.lost.set(true);
-            }
+    let open = window.render_context::<LineCapture>();
+    let chain = || {
+        std::iter::successors(open.clone(), |deferred| deferred.parent.clone())
+            .filter(|deferred| target < deferred.base)
+    };
+    // Сколько записей заберут задание — столько места, без роста и сжатия.
+    let mut claims = Vec::with_capacity(chain().filter(|d| d.open.get()).count());
+    for deferred in chain() {
+        if deferred.open.get() {
+            deferred.claimed.set(deferred.claimed.get() + 1);
+            deferred.pending.set(deferred.pending.get() + 1);
+            claims.push(deferred);
+        } else {
+            deferred.lost.set(true);
         }
-        next = deferred.parent.clone();
     }
-    claims
+    claims.into_boxed_slice()
 }
 
 /// Краска блока `f` и её отложенная часть. Задание, ушедшее за вывод `f`

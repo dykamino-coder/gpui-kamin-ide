@@ -49,7 +49,7 @@ mod break_spaces_tests {
             Align::Left,
             wrap(),
         );
-        let stops: Vec<usize> = para.opportunities().iter().map(|s| s.at).collect();
+        let stops: Vec<usize> = para.opportunities().map(|s| s.at).collect();
         assert!(stops.contains(&2), "после первого пробела: {stops:?}");
         assert!(stops.contains(&5), "после второго пробела: {stops:?}");
     }
@@ -80,11 +80,7 @@ mod tests {
     }
 
     fn stops(text: &str, wrap: Wrap) -> Vec<usize> {
-        para(text, wrap)
-            .opportunities()
-            .iter()
-            .map(|s| s.at)
-            .collect()
+        para(text, wrap).opportunities().map(|s| s.at).collect()
     }
 
     #[test]
@@ -151,11 +147,11 @@ mod tests {
         let text = "aaa \u{feff}bbb";
         let para = para(text, Wrap::default());
         assert!(
-            !para.opportunities().iter().any(|s| s.at == 4),
+            !para.opportunities().any(|s| s.at == 4),
             "пока распорка не объявлена, разрыв по пробелу запрещён"
         );
         let para = para.spacers(vec![4]);
-        let stops: Vec<usize> = para.opportunities().iter().map(|s| s.at).collect();
+        let stops: Vec<usize> = para.opportunities().map(|s| s.at).collect();
         // Разрыв встаёт НА распорку: поле коробки уходит на новую строку
         // вместе со своим текстом.
         assert_eq!(stops, vec![4]);

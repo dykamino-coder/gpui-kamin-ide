@@ -146,10 +146,6 @@ mod tests {
         p.wrap.break_all = false;
         p.wrap.auto_phrase = true;
         assert!(stops(&p).is_empty());
-        assert!(
-            p.opportunities_with_fallback(true)
-                .iter()
-                .any(|s| s.at == 4)
-        );
+        assert!(p.opportunities_with_fallback(true).any(|s| s.at == 4));
     }
 }

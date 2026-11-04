@@ -70,7 +70,7 @@ impl Paragraph {
         } else {
             // Куски со своим `overflow-wrap: anywhere` добавляют границы
             // знаков только внутри себя.
-            let mut stops = self.opportunities();
+            let mut stops: Vec<Stop> = self.opportunities().collect();
             for (range, w) in &self.spans {
                 if !w.wrap_anywhere {
                     continue;

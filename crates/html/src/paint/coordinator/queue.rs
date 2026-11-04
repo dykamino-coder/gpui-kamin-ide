@@ -15,7 +15,9 @@ pub(super) struct Inline {
     pub paint: InlinePaint,
     pub context: RasterPaintCtx,
     /// Записи блоков, из вывода которых ушло это задание (`capture`).
-    pub captures: Vec<Rc<LineCapture>>,
+    /// Почти всегда пусто: пустой срез не выделяет памяти и на слово уже
+    /// вектора, а заданий в кадре стопки тысячи.
+    pub captures: Box<[Rc<LineCapture>]>,
 }
 
 /// Строки элемента либо их вывод прошлого кадра (повтор записи блока).
@@ -97,7 +99,7 @@ impl CssPaintPass {
                 .expect("CSS inline job stays in its live GPUI scope");
             // Задание, отдавшее свои задания, рисуется не только своим выводом.
             let own = self.jobs.admitted_below(depth + 1) == admitted;
-            for capture in captures {
+            for capture in captures.iter() {
                 capture.painted(range.clone(), own);
             }
         }
