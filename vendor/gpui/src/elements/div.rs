@@ -2031,14 +2031,20 @@ impl Element for Div {
                 inspector_id,
                 window,
                 cx,
-                |style, window, cx| {
+                |style, refinement, window, cx| {
                     window.with_text_style(style.text_style().cloned(), |window| {
                         child_layout_ids = self
                             .children
                             .iter_mut()
                             .map(|child| child.request_layout(window, cx))
                             .collect::<SmallVec<_>>();
-                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
+                        let children = child_layout_ids.iter().copied();
+                        match refinement {
+                            Some(refinement) => {
+                                window.request_layout_refined(&style, refinement, children, cx)
+                            }
+                            None => window.request_layout_ref(&style, children, cx),
+                        }
                     })
                 },
             )
@@ -2434,19 +2440,21 @@ impl Interactivity {
         cx: &mut App,
         f: impl FnOnce(Style, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
-        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
+        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, _, window, cx| {
             f(*style, window, cx)
         })
     }
 
-    // KaminIDE patch: keep the live style off every ancestor's native stack frame.
+    // KaminIDE patch: keep the live style off every ancestor's native stack frame. `f` also
+    // gets the base refinement when the style is that refinement alone (no state styles), so
+    // the layout engine can reuse its conversion (`request_layout_refined`).
     fn request_layout_boxed(
         &mut self,
         global_id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
+        f: impl FnOnce(Box<Style>, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
         #[cfg(any(feature = "inspector", debug_assertions))]
         window.with_inspector_state(
@@ -2526,7 +2534,10 @@ impl Interactivity {
                 }
 
                 let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-                let layout_id = f(style, window, cx);
+                // Every state style lives in `rare`: without it the style is the base
+                // refinement on the default style (`compute_style_internal`).
+                let refinement = self.rare.is_none().then_some(&self.base_style);
+                let layout_id = f(style, refinement, window, cx);
                 (layout_id, element_state)
             },
         )

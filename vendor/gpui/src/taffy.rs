@@ -232,12 +232,47 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
         children: &[LayoutId],
     ) -> LayoutId {
+        self.request_layout_from(style, None, rem_size, scale_factor, children)
+    }
+
+    /// KaminIDE patch: `request_layout` for a node whose `style` is `refinement` applied to the
+    /// default style alone: the taffy style converted for an earlier request with the same
+    /// refinement allocation is reused (`style_share`).
+    pub fn request_layout_refined(
+        &mut self,
+        style: &Style,
+        refinement: &std::rc::Rc<crate::StyleRefinement>,
+        rem_size: Pixels,
+        scale_factor: f32,
+        children: &[LayoutId],
+    ) -> LayoutId {
+        self.request_layout_from(style, Some(refinement), rem_size, scale_factor, children)
+    }
+
+    fn request_layout_from(
+        &mut self,
+        style: &Style,
+        refinement: Option<&std::rc::Rc<crate::StyleRefinement>>,
+        rem_size: Pixels,
+        scale_factor: f32,
+        children: &[LayoutId],
+    ) -> LayoutId {
         // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
-        let taffy_style = {
-            let _calc = self.taffy.calc_scope();
+        let convert = |taffy: &TaffyTree<NodeContext>| {
+            let _calc = taffy.calc_scope();
             style.to_taffy(rem_size, scale_factor)
         };
-        let taffy_style = self.styles.share(taffy_style);
+        let taffy_style = match refinement {
+            Some(refinement) => {
+                let taffy = &self.taffy;
+                self.styles
+                    .share_refinement(refinement, rem_size, scale_factor, || convert(taffy))
+            }
+            None => {
+                let taffy_style = convert(&self.taffy);
+                self.styles.share(taffy_style)
+            }
+        };
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // KaminIDE patch: a node with the inputs of a previous one keeps it.
