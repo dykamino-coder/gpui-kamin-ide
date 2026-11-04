@@ -30604,7 +30604,7 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +}
 diff --git a/vendor/taffy/src/tree/layout_depth_tests.rs b/vendor/taffy/src/tree/layout_depth_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..028b0461bfd912dc5e61a9abcdba3f93f272f32d
+index 0000000000000000000000000000000000000000..d3b44dfbcb7dfd74024de861e1264d5d74b3b584
 --- /dev/null
 +++ b/vendor/taffy/src/tree/layout_depth_tests.rs
 @@ -0,0 +1,174 @@
@@ -30632,7 +30632,7 @@ index 0000000000000000000000000000000000000000..028b0461bfd912dc5e61a9abcdba3f93
 +            },
 +            ..Style::default()
 +        });
-+        let leaf = tree.new_leaf(style.clone()).unwrap();
++        let leaf = tree.new_leaf_with_context(style.clone(), ()).unwrap();
 +        let mut root = leaf;
 +        for _ in 0..20_000 {
 +            root = tree.new_with_children(style.clone(), &[root]).unwrap();

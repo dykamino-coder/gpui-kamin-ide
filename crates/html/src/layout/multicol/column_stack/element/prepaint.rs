@@ -175,7 +175,7 @@ impl ColumnStack {
             };
             let segment = gpui::PaintSegmentId(f.col as u64);
             let (paint, scopes) = (&self.paint, &self.oof.slot_scopes);
-            let mut prepaint =
+            let prepaint =
                 async |window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack| {
                     prepaint_frag(
                         el,

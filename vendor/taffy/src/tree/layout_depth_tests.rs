@@ -22,7 +22,7 @@ fn nested_layout(display: Display) {
             },
             ..Style::default()
         });
-        let leaf = tree.new_leaf(style.clone()).unwrap();
+        let leaf = tree.new_leaf_with_context(style.clone(), ()).unwrap();
         let mut root = leaf;
         for _ in 0..20_000 {
             root = tree.new_with_children(style.clone(), &[root]).unwrap();
