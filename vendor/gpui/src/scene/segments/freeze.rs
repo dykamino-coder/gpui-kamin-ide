@@ -42,7 +42,7 @@ impl Scene {
         }
         let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
         scene.groups = groups;
-        scene.finish();
+        scene.finish_frozen();
         scene
     }
 }

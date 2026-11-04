@@ -1,8 +1,9 @@
-use crate::{Bounds, Half};
+use crate::{Bounds, Half, Point};
 use std::{
     cmp,
     fmt::Debug,
     ops::{Add, Sub},
+    rc::{Rc, Weak},
 };
 
 /// Maximum children per internal node (R-tree style branching factor).
@@ -33,7 +34,13 @@ const MIN_CHILDREN: usize = 4;
 /// full parent, so document-order text built chains about 20 levels deep and
 /// every insert scanned hundreds of children. Queries are exact, so the
 /// assigned orderings are the same.
-#[derive(Debug)]
+///
+/// KaminIDE patch: a bottom entry can also be a *graft*: a whole frozen tree
+/// shared by `Rc`, seen through a translation, an output clip and an ordering
+/// offset (`Graft`). A scene that copies or replays recorded primitives
+/// grafts the record's tree instead of inserting every primitive again;
+/// queries through a graft stay exact (see `Graft`).
+#[derive(Debug, Clone)]
 pub(crate) struct BoundsTree<U>
 where
     U: Clone + Debug + Default + PartialEq,
@@ -45,12 +52,19 @@ where
     /// Node levels from the root to the bottom nodes (0 when empty).
     height: usize,
     /// Bounds and ordering of the rectangle with the highest ordering (for
-    /// fast-path lookups).
+    /// fast-path lookups). KaminIDE patch: `None` in a non-empty tree when
+    /// the highest ordering belongs to a graft whose top rectangle is clipped
+    /// away; the fast path is then off until a higher ordering is inserted.
     max_leaf: Option<(Bounds<U>, u32)>,
+    /// Lowest ordering of any rectangle, grafts included.
+    min_order: Option<u32>,
+    /// Grafted trees; a bottom entry with `child == i + 1` stands for
+    /// `grafts[i]`.
+    grafts: Vec<Graft<U>>,
     /// Reusable descent path: node and the entry taken in it.
     insert_path: Vec<(usize, usize)>,
-    /// Reusable stack for search operations.
-    search_stack: Vec<usize>,
+    /// Reusable stacks for search operations, one per graft nesting level.
+    search_pool: Vec<Vec<usize>>,
     /// Reusable entries of a node being split.
     split_entries: Vec<Entry<U>>,
     /// Reusable suffix covers of a node split.
@@ -68,8 +82,214 @@ where
     bounds: Bounds<U>,
     /// The ordering of the rectangle, or the highest one under the child.
     max_order: u32,
-    /// The child node (unused in bottom nodes).
+    /// The child node; in bottom nodes 0 for a rectangle and `i + 1` for
+    /// graft `i`.
     child: u32,
+}
+
+/// KaminIDE patch: a frozen tree grafted into another one.
+///
+/// The frozen tree `tree` indexes rectangles `e` with orderings `o`. Seen
+/// through the graft they are the rectangles `(e + offset) ∩ clip` with
+/// orderings `o + order`: exactly what inserting copies of those primitives,
+/// moved by `offset` and clipped by `clip`, would index. A query `q` meets
+/// `(e + offset) ∩ clip` iff `q ∩ clip` meets `e + offset`, so a query
+/// through the graft clips itself once and walks the frozen tree unchanged.
+#[derive(Debug, Clone)]
+pub(crate) struct Graft<U>
+where
+    U: Clone + Debug + Default + PartialEq,
+{
+    tree: Rc<BoundsTree<U>>,
+    offset: Point<U>,
+    clip: Option<Bounds<U>>,
+    order: u32,
+    /// Cover of the visible rectangles, in the grafting tree's space.
+    cover: Bounds<U>,
+    min: u32,
+    max: u32,
+}
+
+fn moved<U>(bounds: &Bounds<U>, offset: Option<&Point<U>>) -> Bounds<U>
+where
+    U: Clone + Debug + Default + PartialEq + Add<U, Output = U>,
+{
+    match offset {
+        None => bounds.clone(),
+        Some(d) => Bounds {
+            origin: Point {
+                x: bounds.origin.x.clone() + d.x.clone(),
+                y: bounds.origin.y.clone() + d.y.clone(),
+            },
+            size: bounds.size.clone(),
+        },
+    }
+}
+
+fn add_points<U>(a: &Point<U>, b: &Point<U>) -> Point<U>
+where
+    U: Clone + Debug + Default + PartialEq + Add<U, Output = U>,
+{
+    Point {
+        x: a.x.clone() + b.x.clone(),
+        y: a.y.clone() + b.y.clone(),
+    }
+}
+
+/// The common part of `a` and `b` when it has an area (open-interval
+/// overlap, as in `Bounds::intersects`).
+fn meet<U>(a: &Bounds<U>, b: &Bounds<U>) -> Option<Bounds<U>>
+where
+    U: Clone + Debug + Default + PartialEq + PartialOrd + Add<U, Output = U> + Sub<Output = U>,
+{
+    let pick = |x: &U, y: &U, max: bool| {
+        if (x < y) == max { y.clone() } else { x.clone() }
+    };
+    let x0 = pick(&a.origin.x, &b.origin.x, true);
+    let y0 = pick(&a.origin.y, &b.origin.y, true);
+    let a1 = a.bottom_right();
+    let b1 = b.bottom_right();
+    let x1 = pick(&a1.x, &b1.x, false);
+    let y1 = pick(&a1.y, &b1.y, false);
+    (x0 < x1 && y0 < y1).then(|| Bounds {
+        origin: Point { x: x0.clone(), y: y0.clone() },
+        size: crate::Size { width: x1 - x0, height: y1 - y0 },
+    })
+}
+
+impl<U> Graft<U>
+where
+    U: Clone
+        + Debug
+        + PartialEq
+        + PartialOrd
+        + Add<U, Output = U>
+        + Sub<Output = U>
+        + Half
+        + Default,
+{
+    /// The graft of `tree` moved by `offset`, clipped by `clip`, orderings
+    /// raised by `order`; `None` when nothing of it is visible. A tree that
+    /// is a single graft is seen through directly (offsets add, clips meet),
+    /// so copies of copies do not deepen queries.
+    pub fn new(
+        mut tree: Rc<BoundsTree<U>>,
+        mut offset: Point<U>,
+        mut clip: Option<Bounds<U>>,
+        mut order: u32,
+    ) -> Option<Self> {
+        while let Some(inner) = tree.single_graft() {
+            let inner_clip = inner.clip.as_ref().map(|c| moved(c, Some(&offset)));
+            clip = match (inner_clip, clip) {
+                (Some(a), Some(b)) => Some(meet(&a, &b)?),
+                (a, b) => a.or(b),
+            };
+            offset = add_points(&inner.offset, &offset);
+            order += inner.order;
+            let next = inner.tree.clone();
+            tree = next;
+        }
+        let root = &tree.nodes[tree.root?];
+        let cover = moved(&root.bounds, Some(&offset));
+        let cover = match &clip {
+            Some(c) => meet(&cover, c)?,
+            None => cover,
+        };
+        let (min, max) = (tree.min_order? + order, root.max_order + order);
+        Some(Self { tree, offset, clip, order, cover, min, max })
+    }
+
+    /// Raise every grafted ordering by `by`.
+    pub fn raise(&mut self, by: u32) {
+        self.order += by;
+        self.min += by;
+        self.max += by;
+    }
+
+    /// KaminIDE patch: this graft without a share of its frozen tree, for an
+    /// index that must not keep the tree's owner (a paint record) alive.
+    pub fn downgrade(&self) -> WeakGraft<U> {
+        WeakGraft {
+            tree: Rc::downgrade(&self.tree),
+            offset: self.offset.clone(),
+            clip: self.clip.clone(),
+            order: self.order,
+            cover: self.cover.clone(),
+            min: self.min,
+            max: self.max,
+        }
+    }
+
+    /// The highest ordering above `floor` of a grafted rectangle meeting
+    /// `query`, in the space of a tree seen through `outer`; `floor` if none.
+    fn max_above(
+        &self,
+        query: &Bounds<U>,
+        outer: Option<&Point<U>>,
+        floor: u32,
+        pool: &mut Vec<Vec<usize>>,
+        depth: usize,
+    ) -> u32 {
+        let offset = match outer {
+            Some(o) => add_points(&self.offset, o),
+            None => self.offset.clone(),
+        };
+        let clipped;
+        let query = match &self.clip {
+            Some(c) => match meet(query, &moved(c, outer)) {
+                Some(q) => {
+                    clipped = q;
+                    &clipped
+                }
+                None => return floor,
+            },
+            None => query,
+        };
+        let inner_floor = floor.saturating_sub(self.order);
+        let found = self
+            .tree
+            .max_above(query, Some(&offset), inner_floor, pool, depth);
+        if found > inner_floor {
+            cmp::max(floor, found + self.order)
+        } else {
+            floor
+        }
+    }
+}
+
+/// KaminIDE patch: a `Graft` whose frozen tree is held weakly. A frozen tree
+/// is immutable while shared, so the graft's cover and orderings stay exact
+/// for as long as the tree is alive.
+#[derive(Debug, Clone)]
+pub(crate) struct WeakGraft<U>
+where
+    U: Clone + Debug + Default + PartialEq,
+{
+    tree: Weak<BoundsTree<U>>,
+    offset: Point<U>,
+    clip: Option<Bounds<U>>,
+    order: u32,
+    cover: Bounds<U>,
+    min: u32,
+    max: u32,
+}
+
+impl<U> WeakGraft<U>
+where
+    U: Clone + Debug + Default + PartialEq,
+{
+    /// The graft again, if its tree is still alive.
+    pub fn upgrade(&self) -> Option<Graft<U>> {
+        Some(Graft {
+            tree: self.tree.upgrade()?,
+            offset: self.offset.clone(),
+            clip: self.clip.clone(),
+            order: self.order,
+            cover: self.cover.clone(),
+            min: self.min,
+            max: self.max,
+        })
+    }
 }
 
 /// A node of the bounds tree.
@@ -124,10 +344,149 @@ where
         self.root = None;
         self.height = 0;
         self.max_leaf = None;
+        self.min_order = None;
+        self.grafts.clear();
         self.insert_path.clear();
-        self.search_stack.clear();
         self.split_entries.clear();
         self.split_covers.clear();
+    }
+
+    /// KaminIDE patch: the graft this tree consists of, if it holds exactly
+    /// one entry and that entry is a graft.
+    fn single_graft(&self) -> Option<&Graft<U>> {
+        let root = &self.nodes[self.root?];
+        (self.height == 1 && root.len == 1 && root.entries[0].child > 0)
+            .then(|| &self.grafts[root.entries[0].child as usize - 1])
+    }
+
+    /// KaminIDE patch: the highest ordering of any rectangle meeting `query`
+    /// (0 if none), without inserting anything.
+    #[cfg(test)]
+    pub fn max_meeting(&mut self, query: &Bounds<U>) -> u32 {
+        self.find_max_ordering(query)
+    }
+
+    /// KaminIDE patch: the least `r` such that every rectangle of `graft`,
+    /// with its ordering raised by `r`, is above every rectangle of this tree
+    /// it meets — the rule `insert` applies to each rectangle, kept for the
+    /// whole graft under one shift. The cover of the graft only bounds it: a
+    /// rectangle of this tree may meet the cover and none of the grafted
+    /// rectangles (a heading above a multi-column record), and raising the
+    /// graft above it would split the frame's batches. Subtrees are searched
+    /// while the meeting ordering of their cover could still raise `r`, so a
+    /// graft that needs no raise costs one query, as before.
+    pub fn min_raise(&mut self, graft: &Graft<U>) -> u32 {
+        let bound = |found: u32| (found + 1).saturating_sub(graft.min);
+        let found = self.find_max_ordering(&graft.cover);
+        if bound(found) == 0 {
+            return 0;
+        }
+        let mut raise = 0;
+        self.raise_under(
+            &graft.tree,
+            &graft.offset,
+            graft.clip.as_ref(),
+            graft.order,
+            graft.min,
+            &mut raise,
+        );
+        raise
+    }
+
+    /// `min_raise` within `tree` seen moved by `offset`, clipped by `clip`
+    /// and with its orderings raised by `order`; every ordering there is at
+    /// least `floor`.
+    fn raise_under(
+        &mut self,
+        tree: &BoundsTree<U>,
+        offset: &Point<U>,
+        clip: Option<&Bounds<U>>,
+        order: u32,
+        floor: u32,
+        raise: &mut u32,
+    ) {
+        let Some(root) = tree.root else {
+            return;
+        };
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            for entry in tree.nodes[node].entries() {
+                let visible = moved(&entry.bounds, Some(offset));
+                let Some(visible) = (match clip {
+                    Some(c) => meet(&visible, c),
+                    None => Some(visible),
+                }) else {
+                    continue;
+                };
+                let found = self.find_max_ordering(&visible);
+                if !tree.nodes[node].bottom {
+                    // Every ordering under the entry is at least `floor`.
+                    if (found + 1).saturating_sub(floor) > *raise {
+                        stack.push(entry.child as usize);
+                    }
+                    continue;
+                }
+                match entry.child {
+                    0 => {
+                        let need = (found + 1).saturating_sub(entry.max_order + order);
+                        *raise = cmp::max(*raise, need);
+                    }
+                    g => {
+                        if (found + 1).saturating_sub(floor) <= *raise {
+                            continue;
+                        }
+                        let inner = &tree.grafts[g as usize - 1];
+                        let inner_clip = inner.clip.as_ref().map(|c| moved(c, Some(offset)));
+                        let clip = match (inner_clip, clip) {
+                            (Some(a), Some(b)) => match meet(&a, b) {
+                                Some(c) => Some(c),
+                                None => continue,
+                            },
+                            (a, b) => a.or_else(|| b.cloned()),
+                        };
+                        let offset = add_points(&inner.offset, offset);
+                        let inner_tree = inner.tree.clone();
+                        self.raise_under(
+                            &inner_tree,
+                            &offset,
+                            clip.as_ref(),
+                            order + inner.order,
+                            floor,
+                            raise,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// KaminIDE patch: add `graft`, whose orderings the caller already chose
+    /// above everything it overlaps (`max_meeting` of its cover).
+    pub fn insert_graft(&mut self, graft: Graft<U>) {
+        let top = self.root.map_or(0, |root| self.nodes[root].max_order);
+        if graft.max > top {
+            // The frozen tree's top rectangle is the new top when visible.
+            let inner_top = graft.tree.root.map_or(0, |r| graft.tree.nodes[r].max_order);
+            self.max_leaf = graft.tree.max_leaf.as_ref().and_then(|(bounds, order)| {
+                if *order != inner_top {
+                    return None;
+                }
+                let bounds = moved(bounds, Some(&graft.offset));
+                let bounds = match &graft.clip {
+                    Some(c) => meet(&bounds, c)?,
+                    None => bounds,
+                };
+                Some((bounds, graft.max))
+            });
+        }
+        self.min_order = Some(self.min_order.map_or(graft.min, |m| m.min(graft.min)));
+        let entry = Entry {
+            bounds: graft.cover.clone(),
+            max_order: graft.max,
+            child: self.grafts.len() as u32 + 1,
+        };
+        self.grafts.push(graft);
+        self.insert_entry(entry);
     }
 
     /// Inserts bounds into the tree and returns its assigned ordering.
@@ -146,38 +505,62 @@ where
         let ordering = (max_intersecting + 1).max(min_order);
 
         // Update max_leaf tracking
-        if self
-            .max_leaf
-            .as_ref()
-            .is_none_or(|(_, order)| *order < ordering)
-        {
+        let top = self.root.map_or(0, |root| self.nodes[root].max_order);
+        if ordering > top {
             self.max_leaf = Some((new_bounds.clone(), ordering));
         }
+        self.min_order = Some(self.min_order.map_or(ordering, |m| m.min(ordering)));
 
-        self.insert_entry(new_bounds, ordering);
+        self.insert_entry(Entry {
+            bounds: new_bounds,
+            max_order: ordering,
+            child: 0,
+        });
         ordering
     }
 
     /// Finds the maximum ordering among all bounds that intersect with the query.
     fn find_max_ordering(&mut self, query: &Bounds<U>) -> u32 {
+        let mut pool = std::mem::take(&mut self.search_pool);
+        let found = self.max_above(query, None, 0, &mut pool, 0);
+        self.search_pool = pool;
+        found
+    }
+
+    /// The highest ordering above `max_found` of a rectangle meeting `query`
+    /// (`max_found` if none), with this tree's rectangles moved by `offset`.
+    /// `pool[depth]` is the search stack of this nesting level.
+    fn max_above(
+        &self,
+        query: &Bounds<U>,
+        offset: Option<&Point<U>>,
+        mut max_found: u32,
+        pool: &mut Vec<Vec<usize>>,
+        depth: usize,
+    ) -> u32 {
         let Some(root_idx) = self.root else {
-            return 0;
+            return max_found;
         };
+        if self.nodes[root_idx].max_order <= max_found {
+            return max_found;
+        }
 
         // Fast path: check if the max-ordering rectangle intersects
         if let Some((bounds, order)) = &self.max_leaf {
-            if query.intersects(bounds) {
+            if query.intersects(&moved(bounds, offset)) {
                 return *order;
             }
         }
 
         // Slow path: search the tree
-        self.search_stack.clear();
-        self.search_stack.push(root_idx);
+        if pool.len() <= depth {
+            pool.resize_with(depth + 1, Vec::new);
+        }
+        let mut stack = std::mem::take(&mut pool[depth]);
+        stack.clear();
+        stack.push(root_idx);
 
-        let mut max_found = 0u32;
-
-        while let Some(node_idx) = self.search_stack.pop() {
+        while let Some(node_idx) = stack.pop() {
             let node = &self.nodes[node_idx];
 
             // Pruning: skip if this subtree can't improve our result
@@ -187,9 +570,16 @@ where
 
             if node.bottom {
                 for entry in node.entries() {
-                    if entry.max_order > max_found && query.intersects(&entry.bounds) {
-                        max_found = entry.max_order;
+                    if entry.max_order <= max_found
+                        || !query.intersects(&moved(&entry.bounds, offset))
+                    {
+                        continue;
                     }
+                    max_found = match entry.child {
+                        0 => entry.max_order,
+                        graft => self.grafts[graft as usize - 1]
+                            .max_above(query, offset, max_found, pool, depth + 1),
+                    };
                 }
                 continue;
             }
@@ -198,36 +588,33 @@ where
             // searched first and prunes the most.
             let mut best: Option<&Entry<U>> = None;
             for entry in node.entries() {
-                if entry.max_order <= max_found || !query.intersects(&entry.bounds) {
+                if entry.max_order <= max_found
+                    || !query.intersects(&moved(&entry.bounds, offset))
+                {
                     continue;
                 }
                 match best {
-                    Some(b) if b.max_order >= entry.max_order => {
-                        self.search_stack.push(entry.child as usize)
-                    }
+                    Some(b) if b.max_order >= entry.max_order => stack.push(entry.child as usize),
                     Some(b) => {
-                        self.search_stack.push(b.child as usize);
+                        stack.push(b.child as usize);
                         best = Some(entry);
                     }
                     None => best = Some(entry),
                 }
             }
             if let Some(best) = best {
-                self.search_stack.push(best.child as usize);
+                stack.push(best.child as usize);
             }
         }
 
+        pool[depth] = stack;
         max_found
     }
 
-    /// Inserts a rectangle with the given ordering into a bottom node and
-    /// splits full nodes up to the root.
-    fn insert_entry(&mut self, bounds: Bounds<U>, order: u32) {
-        let entry = Entry {
-            bounds: bounds.clone(),
-            max_order: order,
-            child: 0,
-        };
+    /// Inserts an entry of a bottom node and splits full nodes up to the root.
+    fn insert_entry(&mut self, entry: Entry<U>) {
+        let bounds = entry.bounds.clone();
+        let order = entry.max_order;
         let Some(root) = self.root else {
             let mut node = Node::new(true);
             node.bounds = bounds;
@@ -425,10 +812,92 @@ where
             root: None,
             height: 0,
             max_leaf: None,
+            min_order: None,
+            grafts: Vec::new(),
             insert_path: Vec::new(),
-            search_stack: Vec::new(),
+            search_pool: Vec::new(),
             split_entries: Vec::new(),
             split_covers: Vec::new(),
+        }
+    }
+}
+
+impl<U> BoundsTree<U>
+where
+    U: Clone
+        + Debug
+        + PartialEq
+        + PartialOrd
+        + Add<U, Output = U>
+        + Sub<Output = U>
+        + Half
+        + Default,
+{
+    /// KaminIDE patch: a tree of `rects` with the given orderings, packed
+    /// bottom-up by Sort-Tile-Recursive (Leutenegger, Edgington, Lopez 1997):
+    /// sort by center x, cut into about sqrt(n / MAX_CHILDREN) vertical
+    /// slices, sort each slice by center y and fill nodes in that order; repeat
+    /// on the node covers. O(n log n) and fully packed nodes, against an
+    /// incremental insert that descends and splits per rectangle. `key` maps a
+    /// coordinate to a total order (NaN sorts last instead of panicking).
+    /// KaminIDE patch: drop the spare capacity of a tree that is final (a
+    /// paint record's or a copy's): such a tree is shared by the grafts of
+    /// every scene that copies it and may outlive its record, so it keeps
+    /// only its nodes and grafts, not growth room and scratch buffers.
+    pub fn freeze(&mut self) {
+        self.nodes.shrink_to_fit();
+        self.grafts.shrink_to_fit();
+        self.insert_path = Vec::new();
+        self.search_pool = Vec::new();
+        self.split_entries = Vec::new();
+        self.split_covers = Vec::new();
+    }
+
+    pub fn packed(rects: Vec<(Bounds<U>, u32)>, key: impl Fn(&U) -> f32) -> Self {
+        let mut tree = Self::default();
+        let Some(top) = rects.iter().max_by_key(|(_, order)| *order).cloned() else {
+            return tree;
+        };
+        tree.min_order = rects.iter().map(|(_, order)| *order).min();
+        tree.max_leaf = Some(top);
+        let mut level: Vec<Entry<U>> = rects
+            .into_iter()
+            .map(|(bounds, max_order)| Entry { bounds, max_order, child: 0 })
+            .collect();
+        let center = |entry: &Entry<U>, vertical: bool| {
+            let (origin, size) = if vertical {
+                (&entry.bounds.origin.y, &entry.bounds.size.height)
+            } else {
+                (&entry.bounds.origin.x, &entry.bounds.size.width)
+            };
+            key(origin) + key(size) * 0.5
+        };
+        let mut bottom = true;
+        loop {
+            let nodes = level.len().div_ceil(MAX_CHILDREN);
+            let slices = (nodes as f64).sqrt().ceil().max(1.0) as usize;
+            level.sort_by(|a, b| center(a, false).total_cmp(&center(b, false)));
+            for slice in level.chunks_mut(slices * MAX_CHILDREN) {
+                slice.sort_by(|a, b| center(a, true).total_cmp(&center(b, true)));
+            }
+            let mut next = Vec::with_capacity(nodes);
+            for group in level.chunks(MAX_CHILDREN) {
+                let mut node = Node::new(bottom);
+                Self::fill(&mut node, group.iter().cloned());
+                next.push(Entry {
+                    bounds: node.bounds.clone(),
+                    max_order: node.max_order,
+                    child: tree.nodes.len() as u32,
+                });
+                tree.nodes.push(node);
+            }
+            tree.height += 1;
+            bottom = false;
+            if next.len() == 1 {
+                tree.root = Some(next[0].child as usize);
+                return tree;
+            }
+            level = next;
         }
     }
 }
@@ -621,6 +1090,232 @@ mod tests {
         }
         assert_eq!(check_node(&tree, tree.root.unwrap()), tree.height);
         // A balanced tree with at least MIN_CHILDREN per split node.
+        let bound = (count as f64).log(MIN_CHILDREN as f64).ceil() as usize + 1;
+        assert!(tree.height <= bound, "height {} > {}", tree.height, bound);
+    }
+
+    fn random_rect(rng: &mut rand::rngs::StdRng, span: f32, size: f32) -> Bounds<f32> {
+        Bounds {
+            origin: Point {
+                x: rng.random_range(-span..span),
+                y: rng.random_range(-span..span),
+            },
+            size: Size {
+                width: rng.random_range(0.5..size),
+                height: rng.random_range(0.5..size),
+            },
+        }
+    }
+
+    fn brute_max(model: &[(Bounds<f32>, u32)], query: &Bounds<f32>) -> u32 {
+        model
+            .iter()
+            .filter_map(|(b, o)| b.intersects(query).then_some(*o))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Inserts `count` random rectangles, returning them with their orderings.
+    fn filled(rng: &mut rand::rngs::StdRng, count: usize) -> (BoundsTree<f32>, Vec<(Bounds<f32>, u32)>) {
+        let mut tree = BoundsTree::default();
+        let mut model = Vec::new();
+        for _ in 0..count {
+            let rect = random_rect(rng, 300.0, 60.0);
+            let order = tree.insert(rect);
+            model.push((rect, order));
+        }
+        (tree, model)
+    }
+
+    #[test]
+    fn frozen_tree_keeps_answers_without_spare_capacity() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let (mut tree, model) = filled(&mut rng, 37);
+        let queries: Vec<_> = (0..50).map(|_| random_rect(&mut rng, 320.0, 40.0)).collect();
+        let before: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
+        tree.freeze();
+        assert_eq!(tree.nodes.capacity(), tree.nodes.len());
+        assert_eq!(tree.insert_path.capacity(), 0);
+        assert_eq!(tree.split_entries.capacity(), 0);
+        let after: Vec<_> = queries.iter().map(|q| tree.max_meeting(q)).collect();
+        assert_eq!(before, after);
+        for (query, answer) in queries.iter().zip(&after) {
+            assert_eq!(*answer, brute_max(&model, query));
+        }
+        // A frozen tree still takes inserts exactly.
+        let extra = random_rect(&mut rng, 320.0, 40.0);
+        let order = tree.insert(extra);
+        assert_eq!(order, brute_max(&model, &extra) + 1);
+    }
+
+    #[test]
+    fn packed_tree_answers_like_the_inserted_one() {
+        for seed in 1..=10u64 {
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let (mut inserted, model) = filled(&mut rng, 700);
+            let mut packed = BoundsTree::packed(model.clone(), |x| *x);
+            assert_eq!(check_node(&packed, packed.root.unwrap()), packed.height);
+            assert_eq!(packed.min_order, inserted.min_order);
+            for _ in 0..300 {
+                let query = random_rect(&mut rng, 320.0, 40.0);
+                let expected = brute_max(&model, &query);
+                assert_eq!(packed.max_meeting(&query), expected);
+                assert_eq!(inserted.max_meeting(&query), expected);
+            }
+        }
+    }
+
+    /// Grafts `source` (with orderings `source_model`) into `dest` the way a
+    /// scene copies a record: moved, clipped and raised above what it covers.
+    /// Returns the grafted rectangles as a fresh insert would index them.
+    fn graft_into(
+        dest: &mut BoundsTree<f32>,
+        source: Rc<BoundsTree<f32>>,
+        source_model: &[(Bounds<f32>, u32)],
+        offset: Point<f32>,
+        clip: Bounds<f32>,
+    ) -> Vec<(Bounds<f32>, u32)> {
+        let Some(mut graft) = Graft::new(source, offset, Some(clip), 0) else {
+            return Vec::new();
+        };
+        let before = dest.clone();
+        let raise = dest.min_raise(&graft);
+        // Never above the bound of the whole cover.
+        let above = dest.max_meeting(&graft.cover);
+        assert!(raise <= (above + 1).saturating_sub(graft.min));
+        graft.raise(raise);
+        dest.insert_graft(graft);
+        let grafted: Vec<_> = source_model
+            .iter()
+            .filter_map(|(b, o)| meet(&moved(b, Some(&offset)), &clip).map(|b| (b, o + raise)))
+            .collect();
+        // The least raise: one less would leave a grafted rectangle at or
+        // below an earlier one it meets.
+        if raise > 0 {
+            let mut before = before;
+            assert!(grafted.iter().any(|(b, o)| before.max_meeting(b) >= o - 1));
+        }
+        grafted
+    }
+
+    #[test]
+    fn graft_is_raised_only_above_rectangles_it_meets() {
+        // A heading's glyphs at ordering 2 lie inside the cover of a record
+        // of two columns but meet none of the columns' rectangles.
+        let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
+            origin: Point { x, y },
+            size: Size { width: w, height: h },
+        };
+        let mut dest = BoundsTree::<f32>::default();
+        assert_eq!(dest.insert(rect(0.0, 0.0, 400.0, 400.0)), 1);
+        assert_eq!(dest.insert(rect(180.0, 10.0, 40.0, 20.0)), 2);
+        let mut record = BoundsTree::default();
+        for i in 0..20 {
+            let y = 40.0 + i as f32 * 10.0;
+            assert_eq!(record.insert(rect(0.0, y, 150.0, 8.0)), 1);
+            assert_eq!(record.insert(rect(250.0, y, 150.0, 8.0)), 1);
+            assert_eq!(record.insert(rect(250.0, y, 100.0, 6.0)), 2);
+        }
+        let record = Rc::new(record);
+        let mut graft = Graft::new(record.clone(), Point { x: 0.0, y: -30.0 }, None, 0).unwrap();
+        assert!(graft.cover.intersects(&rect(180.0, 10.0, 40.0, 20.0)));
+        // Above the page background (1) only, as inserting each would be.
+        assert_eq!(dest.min_raise(&graft), 1);
+        graft.raise(1);
+        dest.insert_graft(graft);
+        // A copy of the copy (a tree that is one graft) gives the same raise.
+        let mut copy = BoundsTree::default();
+        copy.insert_graft(Graft::new(record, Point::default(), None, 0).unwrap());
+        let mut nested = BoundsTree::default();
+        nested.insert_graft(Graft::new(Rc::new(copy), Point::default(), None, 3).unwrap());
+        nested.insert(rect(0.0, 0.0, 1.0, 1.0));
+        let graft = Graft::new(Rc::new(nested), Point { x: 0.0, y: -30.0 }, None, 0).unwrap();
+        let mut dest2 = BoundsTree::<f32>::default();
+        dest2.insert(rect(0.0, 0.0, 400.0, 400.0));
+        dest2.insert(rect(180.0, 10.0, 40.0, 20.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        dest2.insert(rect(0.0, 9.0, 150.0, 2.0));
+        // Grafted rows start at 3 + 1 = 4 and the first row meets the strip
+        // at 5: raise 2. The heading at 2 does not count.
+        assert_eq!(dest2.min_raise(&graft), 2);
+    }
+
+    #[test]
+    fn grafts_answer_like_reinserted_copies() {
+        for seed in 1..=12u64 {
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let (source, source_model) = filled(&mut rng, 400);
+            let source = Rc::new(source);
+            // A copy of a copy: a tree that is one graft, grafted again.
+            let first_offset = Point { x: 37.25, y: -12.5 };
+            let first_clip = random_rect(&mut rng, 100.0, 500.0);
+            let mut copy = BoundsTree::default();
+            let copy_model =
+                graft_into(&mut copy, source.clone(), &source_model, first_offset, first_clip);
+            let copy = Rc::new(copy);
+
+            let (mut dest, mut model) = filled(&mut rng, 150);
+            let before = model.clone();
+            let offset = Point { x: -20.0, y: 55.5 };
+            let clip = random_rect(&mut rng, 100.0, 500.0);
+            let grafted = if seed % 2 == 0 {
+                graft_into(&mut dest, copy.clone(), &copy_model, offset, clip)
+            } else {
+                graft_into(&mut dest, source.clone(), &source_model, offset, clip)
+            };
+            if seed % 2 == 0 && copy.root.is_some() {
+                // The copy collapsed: one level of grafts below `dest`.
+                assert!(dest.grafts.iter().all(|g| g.tree.grafts.is_empty()));
+            }
+            // Earlier overlapping rectangles stay below every grafted one.
+            for (b, o) in &grafted {
+                assert!(brute_max(&before, b) < *o);
+            }
+            model.extend(grafted);
+            for _ in 0..300 {
+                let query = random_rect(&mut rng, 320.0, 40.0);
+                assert_eq!(dest.max_meeting(&query), brute_max(&model, &query));
+            }
+            // Later inserts see the grafted rectangles exactly.
+            for _ in 0..200 {
+                let rect = random_rect(&mut rng, 320.0, 60.0);
+                let expected = brute_max(&model, &rect) + 1;
+                assert_eq!(dest.insert(rect), expected);
+                model.push((rect, expected));
+            }
+        }
+    }
+
+    #[test]
+    fn unchanged_regraft_keeps_orderings() {
+        // Nothing earlier overlaps above the graft's lowest ordering: no raise.
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let (source, _) = filled(&mut rng, 200);
+        let mut graft = Graft::new(Rc::new(source), Point { x: 0.0, y: 0.0 }, None, 0).unwrap();
+        let mut dest = BoundsTree::<f32>::default();
+        assert_eq!(dest.max_meeting(&graft.cover), 0);
+        assert_eq!(dest.min_raise(&graft), 0);
+        graft.raise(0);
+        let max = graft.max;
+        dest.insert_graft(graft);
+        assert_eq!(dest.root.map(|r| dest.nodes[r].max_order), Some(max));
+        assert!(dest.max_leaf.is_some());
+    }
+
+    #[test]
+    fn document_order_text_packs_shallow() {
+        let mut rects = Vec::new();
+        for line in 0..400 {
+            for glyph in 0..60 {
+                let origin = Point { x: glyph as f32 * 6.0, y: line as f32 * 18.0 };
+                rects.push((Bounds { origin, size: Size { width: 6.0, height: 18.0 } }, 1));
+            }
+        }
+        let count = rects.len();
+        let tree = BoundsTree::packed(rects, |x| *x);
+        assert_eq!(check_node(&tree, tree.root.unwrap()), tree.height);
         let bound = (count as f64).log(MIN_CHILDREN as f64).ceil() as usize + 1;
         assert!(tree.height <= bound, "height {} > {}", tree.height, bound);
     }
