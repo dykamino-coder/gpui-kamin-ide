@@ -156,7 +156,7 @@ pub(crate) async fn table_stack(
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &grid, &from_cols, constraints.cb_width);
+    let zero_cols = zero_width_cols(e, cols, &grid, &from_cols, constraints.cb_width());
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,
         &row_elements,

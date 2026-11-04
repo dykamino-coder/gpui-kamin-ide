@@ -125,4 +125,9 @@ impl Document {
         let stats = self.reuse.stats.get();
         (stats.recorded, stats.skipped, stats.rebuilt_frames)
     }
+
+    /// Blocks of the root flow replayed on screen without a build.
+    pub fn replayed_blocks(&self) -> u64 {
+        self.reuse.stats.get().replayed
+    }
 }

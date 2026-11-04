@@ -69,6 +69,54 @@ pub(super) fn plain(e: &Element) -> bool {
     true
 }
 
+/// Теги таблиц: их коробки строит построитель таблицы из того же поддерева.
+const TABLE_TAGS: &[&str] = &[
+    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
+];
+
+/// Поддерево `e` можно повторить на экране (`replay`): инертно как `plain`
+/// (таблицы тоже), без единиц области просмотра в стилях и без вертикального
+/// письма, гибких и сеточных коробок: их сборка читает размеры окна напрямую,
+/// а не через ограничения, чьи чтения записываются.
+pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    use crate::style::computed::Display;
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        let style = e.style.used();
+        let tag = e.tag.as_str();
+        let own = (TAGS.contains(&tag) || TABLE_TAGS.contains(&tag))
+            && e.hover.is_none()
+            && e.anim.is_none()
+            && e.first_letter.is_none()
+            && e.first_line.is_none()
+            && e.list_item.is_none()
+            && !style.wm().vertical()
+            && !style.has_viewport_lengths(vcx)
+            && !matches!(
+                style.reset_box_layout.display,
+                Some(Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid)
+            )
+            && matches!(
+                style.reset_positioned.position,
+                None | Some(Position::Static)
+            )
+            && style.reset_positioned.z_index.is_none()
+            && style.reset_box_layout.float.is_none_or(|f| f == 0)
+            && style.reset_transforms.transform.is_none()
+            && style.reset_transforms.translate.is_none()
+            && style.reset_effects.opacity.is_none_or(|o| o >= 1.0)
+            && style.reset_effects.blend.is_none_or(|b| b == 0);
+        if !own {
+            return false;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(child) => Some(child),
+            Node::Text(_) => None,
+        }));
+    }
+    true
+}
+
 /// В поддереве `e` есть флоат.
 pub(super) fn floats(e: &Element) -> bool {
     let mut pending = vec![e];

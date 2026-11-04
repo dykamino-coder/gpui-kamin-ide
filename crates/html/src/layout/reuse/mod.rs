@@ -24,6 +24,7 @@ mod key;
 mod placeholder;
 mod plain;
 mod recorder;
+mod replay;
 #[cfg(test)]
 mod tests;
 
@@ -41,11 +42,28 @@ pub(crate) struct Store {
     /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
     /// ключа их сбрасывает, а не держит устаревшие стили.
     records: RefCell<HashMap<u64, Rc<Record>>>,
+    /// Records of blocks replayed on screen (`replay`), by node id.
+    replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
+    /// Blocks whose replay failed the frame check (moved, or their layout
+    /// needed a new measurement): they are built until the flow key changes.
+    banned: RefCell<std::collections::HashSet<u64>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
     last: RefCell<Option<Rc<FlowKey>>>,
     /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
     pub(crate) stats: Cell<ReuseStats>,
+}
+
+impl Store {
+    /// Кадр документа повторён целиком: диапазоны записей повтора блоков
+    /// указывают в кадр до него и больше не годятся.
+    pub(crate) fn forget_replays(&self) {
+        self.replays.take();
+    }
+
+    fn banned(&self, node: u64) -> bool {
+        self.banned.borrow().contains(&node)
+    }
 }
 
 /// Счётчики наблюдения повтора блоков.
@@ -54,6 +72,8 @@ pub struct ReuseStats {
     pub recorded: u64,
     pub skipped: u64,
     pub rebuilt_frames: u64,
+    /// Blocks replayed on screen without a build (`replay`).
+    pub replayed: u64,
 }
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
@@ -118,6 +138,9 @@ pub(crate) struct FlowReuse {
     /// Ожидающие записи с элементами своих блоков.
     pending: RefCell<Vec<(Rc<recorder::Pending>, Box<Element>)>>,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
+    next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
+    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Box<Element>)>>,
+    replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
 }
 
@@ -155,6 +178,9 @@ impl FlowReuse {
             next: Default::default(),
             pending: Default::default(),
             placeholders: Default::default(),
+            next_replays: Default::default(),
+            pending_replays: Default::default(),
+            replay_slots: Default::default(),
             screen: Cell::new(None),
         }))
     }
@@ -189,6 +215,30 @@ impl FlowReuse {
         };
         self.screen.set(Some(screen));
         let offset = window.element_offset() == point(px(0.0), px(0.0));
+        let slots = self.replay_slots.take();
+        let failed: Vec<u64> = slots
+            .iter()
+            .filter(|slot| !slot.valid(window))
+            .map(|slot| slot.node())
+            .collect();
+        if !failed.is_empty() {
+            // A stale layout does not say which block needed a measurement.
+            let all = window.layout_stale();
+            let mut banned = self.store.banned.take();
+            banned.extend(
+                slots
+                    .iter()
+                    .map(|slot| slot.node())
+                    .filter(|n| all || failed.contains(n)),
+            );
+            self.store.banned.replace(banned);
+            return false;
+        }
+        if !slots.is_empty() {
+            let mut stats = self.store.stats.get();
+            stats.replayed += slots.len() as u64;
+            self.store.stats.set(stats);
+        }
         let placeholders = self.placeholders.borrow();
         placeholders.is_empty()
             || offset
@@ -222,6 +272,13 @@ impl FlowReuse {
         if recorded > 0 || skipped > 0 {
             self.store.records.replace(next);
         }
+        let mut replays = self.next_replays.take();
+        for (pending, element) in self.pending_replays.take() {
+            if let Some(record) = pending.finish(element) {
+                replays.insert(record.element.node_id, Rc::new(record));
+            }
+        }
+        self.store.replays.replace(replays);
         let mut stats = self.store.stats.get();
         stats.recorded += recorded;
         stats.skipped += skipped;

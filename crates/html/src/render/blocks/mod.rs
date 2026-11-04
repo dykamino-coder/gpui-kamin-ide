@@ -101,7 +101,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && (!inherited.wm().block_rl() || inherited.wm().vertical());
-    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.constraints.avail_w);
+    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.constraints.avail_w());
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -114,7 +114,7 @@ pub(crate) async fn blocks_stack_with_dimensions(
             measured_ok,
             own_context_style(inherited) || inherited.reset_flex.flex_item,
             cell_bfc,
-            opts.cx.constraints.cb_width,
+            opts.cx.constraints.cb_width(),
             opts.cx.constraints.avail_h,
             vcx,
         ),

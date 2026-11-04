@@ -133,3 +133,26 @@ fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
     }
     assert_eq!(engine.claimed_nodes(), 12);
 }
+#[test]
+fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
+    let mut engine = TaffyLayoutEngine::new();
+    let start = engine.request_position();
+    let (a, b) = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let p = parent(&mut engine, &[a, b]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    assert_eq!(&*nodes, &[a.0, b.0, p.0]);
+    let root = parent(&mut engine, &[p]);
+    engine.clear();
+    // Claimed whole: no requests for its nodes, the next pass keeps them.
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None, "claimed once per pass");
+    assert_eq!(parent(&mut engine, &[p]), root);
+    assert!(!engine.layout_stale());
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 4);
+    // A pass that renews the subtree drops the stamp: the capture is void.
+    let (a2, c) = (leaf(&mut engine, 10.), leaf(&mut engine, 30.));
+    let _ = parent(&mut engine, &[a2, c]);
+    engine.clear();
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None);
+}

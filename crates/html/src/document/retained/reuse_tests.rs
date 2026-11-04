@@ -174,3 +174,34 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
     );
     assert_eq!(rebuilt, 0);
 }
+
+#[gpui::test]
+#[ignore = "on-screen replay is off until CSS paint jobs are captured (layout::reuse::flow)"]
+fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppContext) {
+    let page = |text: &str| {
+        format!(
+            "<body style='margin:0'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
+             <p>{text}</p><p>tail</p></body>"
+        )
+    };
+    let replayed = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
+    };
+    let (view, cx) = settled(cx, &page("one"), &page("two"));
+    assert_eq!(
+        replayed(&view, cx),
+        0,
+        "the recording build replays nothing"
+    );
+    update(&view, cx, &page("one"));
+    assert_eq!(
+        replayed(&view, cx),
+        2,
+        "the table and the tail were rebuilt"
+    );
+    // A taller paragraph moves the tail: its replay fails the frame check and
+    // the frame is built again; the tail is then built until the key changes.
+    update(&view, cx, &page(&"word ".repeat(400)));
+    let (_, _, rebuilt) = reused(&view, cx);
+    assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
+}

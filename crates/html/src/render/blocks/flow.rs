@@ -155,14 +155,22 @@ pub(super) async fn blocks_flow(
                 out.push(el);
                 continue;
             }
+            if let Some(flow) = &reuse
+                && let Some(el) = flow.replay(e, opts)
+            {
+                out.push(el);
+                flow.built(n);
+                continue;
+            }
             let mark = reuse.as_ref().map(|flow| flow.mark(opts, out.len()));
+            let tracked = mark.as_ref().and_then(|mark| mark.child_opts(opts));
             paint_element(
                 stk,
                 e,
                 nodes,
                 idx,
                 inherited,
-                opts,
+                tracked.as_deref().unwrap_or(opts),
                 ordered_context,
                 under_tf,
                 &frame,

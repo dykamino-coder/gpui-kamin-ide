@@ -212,7 +212,7 @@ pub(crate) fn prepare_children(
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 ),
-                opts.cx.constraints.cb_width,
+                opts.cx.constraints.cb_width(),
                 mcx,
                 inline_preparation,
             )

@@ -17,7 +17,7 @@ fn definite_axis_query_without_a_known_width_skips_block_intrinsics(cx: &mut gpu
         |window, app| {
             for fill in [true, false] {
                 let mut context = block_cx();
-                context.constraints.avail_w = fill.then_some(100.);
+                context.constraints.set_avail_w(fill.then_some(100.));
                 let mut child = kid(Kind::Flow, Default::default(), Default::default());
                 let intrinsic = child.intrinsic.clone();
                 child.build = Rc::new(|_, _, _, _, _| IntrinsicBox.hooked());
@@ -182,14 +182,14 @@ fn auto_width_roles_keep_fit_content_until_the_owner_supplies_a_width(
             let intrinsic;
             {
                 let mut context = block_cx();
-                context.constraints.avail_w = crate::layout::block::available_width::inner(
+                context.constraints.set_avail_w(crate::layout::block::available_width::inner(
                     &style,
                     if style.reset_flex.flex_item {
                         None
                     } else {
                         Some(100.)
                     },
-                );
+                ));
                 let mut child = kid(Kind::Flow, Default::default(), Default::default());
                 intrinsic = child.intrinsic.clone();
                 child.build = Rc::new(|_, _, _, _, _| IntrinsicBox.hooked());
