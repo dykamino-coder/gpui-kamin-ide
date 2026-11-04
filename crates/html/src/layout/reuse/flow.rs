@@ -11,6 +11,9 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
+mod mark;
+use mark::{Mark, mark_of};
+
 /// Поток `body`, занятый повтором в этой сборке.
 pub(crate) struct FlowCx {
     reuse: Rc<FlowReuse>,
@@ -22,38 +25,6 @@ pub(crate) struct FlowCx {
     settled: bool,
     /// Ключ прошлой сборки тот же вне ширин: записывать детей для повтора.
     settled_outside_widths: bool,
-}
-
-/// Состояние сборки до блочного ребёнка: его сборка должна изменить только
-/// счётчики и добавить ровно один элемент.
-pub(crate) struct Mark {
-    start: Counters,
-    out: usize,
-    outlines: usize,
-    coordinates: usize,
-    late: bool,
-    /// Чтения ширин снаружи сборкой ребёнка (`BoxConstraints::track_widths`).
-    widths: Option<Rc<std::cell::Cell<bool>>>,
-}
-
-impl Mark {
-    /// Опции сборки ребёнка: с записью чтений ширин, если его записывают.
-    pub(crate) fn child_opts(&self, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
-        let sink = self.widths.clone()?;
-        Some(opts.inner(|cx| cx.constraints.track_widths(sink)))
-    }
-}
-
-fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
-    let paint = &opts.cx.deferred.paint;
-    Mark {
-        start: Counters::read(&opts.cx),
-        out,
-        outlines: paint.outlines.borrow().len(),
-        coordinates: paint.coordinates.borrow().len(),
-        late: opts.cx.position.state.late_pending(),
-        widths: None,
-    }
 }
 
 impl FlowReuse {

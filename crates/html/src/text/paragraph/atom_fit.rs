@@ -14,8 +14,11 @@
 use super::*;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px, size};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
+
+mod memo;
+use memo::AtomMemo;
 
 pub(super) struct FitAtom {
     /// Index into `atoms` / `atom_boxes`.
@@ -28,18 +31,6 @@ pub(super) struct FitAtom {
     memo: Rc<AtomMemo>,
     /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
     snap: gpui::LayoutMeasurement,
-}
-
-/// What the atom's subtree alone decides, kept on its layout root while the frame
-/// tree keeps the subtree (`gpui::Window::set_layout_memo`): it is not measured again.
-pub(super) struct AtomMemo {
-    /// Margin-box min-content and max-content widths.
-    min: f32,
-    max: f32,
-    /// Max-content height and baseline; `None` if min-content is max-content.
-    snap: Option<(f32, Option<f32>)>,
-    /// Copy measured at a width: (width, height, baseline).
-    at_width: Cell<Vec<(f32, f32, Option<f32>)>>,
 }
 
 /// Resolved atom geometry for one available width: (index, width, height, baseline).
@@ -107,31 +98,6 @@ impl AtomFit {
         }
         self.cache.push((avail, out.clone()));
         out
-    }
-}
-
-impl AtomMemo {
-    /// Measure the copy `snap` of an atom wrapper laid out at max-content.
-    fn measure(
-        snap: &mut gpui::LayoutMeasurement,
-        max: f32,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self {
-        let content = |w| size(w, gpui::AvailableSpace::MaxContent);
-        let (smin, _, _) = snap.measure(content(gpui::AvailableSpace::MinContent), window, cx);
-        let min = f32::from(smin.width);
-        let snap = (min < max - COORD_EPS).then(|| {
-            let (smax, sbase, _) =
-                snap.measure(content(gpui::AvailableSpace::MaxContent), window, cx);
-            (f32::from(smax.height), sbase.map(f32::from))
-        });
-        Self {
-            min,
-            max,
-            snap,
-            at_width: Cell::default(),
-        }
     }
 }
 
