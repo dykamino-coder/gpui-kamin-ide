@@ -36,7 +36,7 @@ impl Scene {
         for mut command in mem::take(&mut self.paint_operations) {
             match &mut command {
                 PaintOperation::Primitive(p) => primitive(p, transform, matrix),
-                PaintOperation::StartLayer(b) => *b = map_bounds(*b, matrix),
+                PaintOperation::StartLayer(b, _) => *b = map_bounds(*b, matrix),
                 _ => {},
             }
             scene.replay_operation(command);
