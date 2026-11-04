@@ -194,5 +194,35 @@ pub(crate) fn atom_line_align(
     })
 }
 
+/// Whether a line atom's used inline size is fixed by its own style, so the
+/// shrink-to-fit width (CSS 2.1 §10.3.9, `min(max(min-content, available),
+/// max-content)`) is never computed: a definite `width` is used as is,
+/// clamped by definite `min-width`/`max-width` (§10.4), none of which depend
+/// on the containing block or the content. Margins and padding of a line
+/// atom are already fixed lengths (`atom_line_align`). Blink likewise asks an
+/// atomic inline for min/max sizes only when its inline size is `auto`.
+/// Tables (the width is only a minimum, §17.5.2), replaced and ruby boxes,
+/// own vertical writing and baked animation frames keep the measured path.
+pub(crate) fn atom_inline_size_fixed(e: &Element) -> bool {
+    let st = &*e.style.used();
+    let layout = &st.reset_box_layout;
+    let definite = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
+    matches!(
+        layout.display,
+        Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
+    ) && st.reset_context.inline_display != Some(true)
+        && st.reset_text_box.ruby_role.is_none()
+        && e.anim.is_none()
+        && !st.wm().vertical()
+        && e.style.cascaded().inh.writing.writing_mode.is_none()
+        && !matches!(
+            e.tag.as_str(),
+            "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+        )
+        && definite(layout.width)
+        && (layout.min_width.is_none() || definite(layout.min_width))
+        && (layout.max_width.is_none() || definite(layout.max_width))
+}
+
 #[cfg(test)]
 mod tests;

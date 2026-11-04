@@ -146,6 +146,12 @@ impl Paragraph {
                 else {
                     continue;
                 };
+                // A width fixed by style never shrinks to fit (§10.3.9): no
+                // copy and no intrinsic measurement. Debug builds still
+                // measure to check that min-content equals max-content.
+                if slot.fixed_inline && !cfg!(debug_assertions) {
+                    continue;
+                }
                 let max = f32::from(window.layout_exact(root).1.width);
                 let kept = window
                     .layout_memo(root)
@@ -163,6 +169,11 @@ impl Paragraph {
                 if memo.snap.is_none() {
                     continue;
                 }
+                debug_assert!(
+                    !slot.fixed_inline,
+                    "style-fixed atom width must not depend on the containing block: min {}, max {max}",
+                    memo.min
+                );
                 fit.atoms.push(FitAtom {
                     k,
                     at: b.at,
