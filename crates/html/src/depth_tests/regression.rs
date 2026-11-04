@@ -3,8 +3,12 @@
 use super::*;
 
 pub(super) fn on_eight_mib(body: impl FnOnce() + Send + 'static) {
+    on_stack(8 * 1024 * 1024, body);
+}
+
+pub(super) fn on_stack(bytes: usize, body: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(bytes)
         .spawn(body)
         .unwrap()
         .join()
