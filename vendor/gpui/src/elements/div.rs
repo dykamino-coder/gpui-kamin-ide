@@ -580,7 +580,7 @@ impl Interactivity {
         &mut self,
         predicate: impl Fn(&dyn Any, &mut Window, &mut App) -> bool + 'static,
     ) {
-        self.can_drop_predicate = Some(Box::new(predicate));
+        self.rare_mut().can_drop_predicate = Some(Box::new(predicate));
     }
 
     /// Bind the given callback to click events of this element.
@@ -622,10 +622,10 @@ impl Interactivity {
         W: 'static + Render,
     {
         debug_assert!(
-            self.drag_listener.is_none(),
+            self.rare().is_none_or(|rare| rare.drag_listener.is_none()),
             "calling on_drag more than once on the same element is not supported"
         );
-        self.drag_listener = Some(DragListener {
+        self.rare_mut().drag_listener = Some(DragListener {
             value: Arc::new(value),
             render: Box::new(move |value, offset, window, cx| {
                 constructor(value.downcast_ref().unwrap(), offset, window, cx).into()
@@ -645,7 +645,7 @@ impl Interactivity {
         Self: Sized,
         T: 'static,
     {
-        let Some(drag_listener) = self.drag_listener.as_mut() else {
+        let Some(drag_listener) = self.rare.as_deref_mut().and_then(|rare| rare.drag_listener.as_mut()) else {
             debug_assert!(false, "external_drag_payload must be called after on_drag");
             return;
         };
@@ -677,10 +677,10 @@ impl Interactivity {
         Self: Sized,
     {
         debug_assert!(
-            self.hover_listener.is_none(),
+            self.rare().is_none_or(|rare| rare.hover_listener.is_none()),
             "calling on_hover more than once on the same element is not supported"
         );
-        self.hover_listener = Some(Box::new(listener));
+        self.rare_mut().hover_listener = Some(Box::new(listener));
     }
 
     /// Sets how [`Self::on_hover`] responds to key presses while the mouse is stationary.
@@ -690,7 +690,7 @@ impl Interactivity {
     where
         Self: Sized,
     {
-        self.hover_listener_mode = mode;
+        self.rare_mut().hover_listener_mode = mode;
     }
 
     /// Constructs a tooltip when the element is hovered or long-pressed.
@@ -700,10 +700,10 @@ impl Interactivity {
         Self: Sized,
     {
         debug_assert!(
-            self.tooltip_builder.is_none(),
+            self.rare().is_none_or(|rare| rare.tooltip_builder.is_none()),
             "calling tooltip more than once on the same element is not supported"
         );
-        self.tooltip_builder = Some(TooltipBuilder {
+        self.rare_mut().tooltip_builder = Some(TooltipBuilder {
             build: Rc::new(build_tooltip),
             hoverable: false,
         });
@@ -719,10 +719,10 @@ impl Interactivity {
         Self: Sized,
     {
         debug_assert!(
-            self.tooltip_builder.is_none(),
+            self.rare().is_none_or(|rare| rare.tooltip_builder.is_none()),
             "calling tooltip more than once on the same element is not supported"
         );
-        self.tooltip_builder = Some(TooltipBuilder {
+        self.rare_mut().tooltip_builder = Some(TooltipBuilder {
             build: Rc::new(build_tooltip),
             hoverable: true,
         });
@@ -733,7 +733,7 @@ impl Interactivity {
     /// Touch long presses show the tooltip immediately once the gesture is recognized.
     /// The imperative API equivalent to [`StatefulInteractiveElement::tooltip_show_delay`].
     pub fn tooltip_show_delay(&mut self, delay: Duration) {
-        self.tooltip_show_delay = Some(delay);
+        self.rare_mut().tooltip_show_delay = Some(delay);
     }
 
     /// Block the mouse from all interactions with elements behind this element's hitbox. Typically
@@ -747,7 +747,7 @@ impl Interactivity {
     /// Set the bounds of this element as a window control area for the platform window.
     /// The imperative API equivalent to [`InteractiveElement::window_control_area`]
     pub fn window_control_area(&mut self, area: WindowControlArea) {
-        self.window_control = Some(area);
+        self.rare_mut().window_control = Some(area);
     }
 
     /// Block non-scroll mouse interactions with elements behind this element's hitbox.
@@ -761,6 +761,28 @@ impl Interactivity {
     /// KaminIDE patch: the listener block, allocated on the first registration.
     pub(crate) fn listeners_mut(&mut self) -> &mut InteractivityListeners {
         self.listeners.get_or_insert_with(Default::default)
+    }
+
+    /// KaminIDE patch: the rare block, allocated by the first setter.
+    pub(crate) fn rare_mut(&mut self) -> &mut InteractivityRare {
+        self.rare.get_or_insert_with(Default::default)
+    }
+
+    /// KaminIDE patch: the rare block if any setter ran.
+    pub(crate) fn rare(&self) -> Option<&InteractivityRare> {
+        self.rare.as_deref()
+    }
+
+    /// KaminIDE patch: take the hover listener without allocating the rare block.
+    pub(crate) fn take_hover_listener(
+        &mut self,
+    ) -> Option<Box<dyn Fn(&bool, &mut Window, &mut App)>> {
+        self.rare.as_deref_mut()?.hover_listener.take()
+    }
+
+    /// KaminIDE patch: take the tooltip builder without allocating the rare block.
+    pub(crate) fn take_tooltip_builder(&mut self) -> Option<TooltipBuilder> {
+        self.rare.as_deref_mut()?.tooltip_builder.take()
     }
 
     /// KaminIDE patch: take one listener list without allocating the block.
@@ -847,10 +869,10 @@ pub trait InteractiveElement: Sized {
     /// Apply the given style to this element when the mouse hovers over it
     fn hover(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         debug_assert!(
-            self.interactivity().hover_style.is_none(),
+            self.interactivity().rare().is_none_or(|rare| rare.hover_style.is_none()),
             "hover style already set"
         );
-        self.interactivity().hover_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().hover_style = Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -860,7 +882,7 @@ pub trait InteractiveElement: Sized {
         group_name: impl Into<SharedString>,
         f: impl FnOnce(StyleRefinement) -> StyleRefinement,
     ) -> Self {
-        self.interactivity().group_hover_style = Some(GroupStyle {
+        self.interactivity().rare_mut().group_hover_style = Some(GroupStyle {
             group: group_name.into(),
             style: Box::new(f(StyleRefinement::default())),
         });
@@ -1280,7 +1302,7 @@ pub trait InteractiveElement: Sized {
     where
         Self: Sized,
     {
-        self.interactivity().focus_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().focus_style = Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -1290,7 +1312,7 @@ pub trait InteractiveElement: Sized {
     where
         Self: Sized,
     {
-        self.interactivity().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -1302,7 +1324,7 @@ pub trait InteractiveElement: Sized {
     where
         Self: Sized,
     {
-        self.interactivity().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
         self
     }
 }
@@ -1318,7 +1340,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
             role != accesskit::Role::GenericContainer,
             "GenericContainer is filtered out of the a11y tree and has no effect"
         );
-        self.interactivity().override_role = Some(role);
+        self.interactivity().rare_mut().override_role = Some(role);
         self
     }
 
@@ -1330,13 +1352,13 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// UIA `AutomationId` on Windows, `AXIdentifier` on macOS, and AT-SPI
     /// `AccessibleId` on Linux stacks whose deployed adapter exposes it.
     fn accessibility_id(mut self, id: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.author_id = Some(id.into());
+        self.interactivity().rare_mut().aria.author_id = Some(id.into());
         self
     }
 
     /// Set the accessible label for this element.
     fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.label = Some(label.into());
+        self.interactivity().rare_mut().aria.label = Some(label.into());
         self
     }
 
@@ -1345,7 +1367,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// that assistive technology announces after the name, role, and value -
     /// for example a settings subtitle or a hint.
     fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.description = Some(description.into());
+        self.interactivity().rare_mut().aria.description = Some(description.into());
         self
     }
 
@@ -1355,7 +1377,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// Note that this does not create a keymap. It simply instructs assistive
     /// technology what the keymap is.
     fn aria_keyshortcuts(mut self, keyshortcuts: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.keyshortcuts = Some(keyshortcuts.into());
+        self.interactivity().rare_mut().aria.keyshortcuts = Some(keyshortcuts.into());
         self
     }
 
@@ -1392,112 +1414,112 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         mut self,
         f: impl FnOnce(&mut crate::A11ySubtreeBuilder) + 'static,
     ) -> Self {
-        self.interactivity().a11y_synthetic_children = Some(Box::new(f));
+        self.interactivity().rare_mut().a11y_synthetic_children = Some(Box::new(f));
         self
     }
 
     /// Set the selected state for this element.
     fn aria_selected(mut self, selected: bool) -> Self {
-        self.interactivity().aria.selected = Some(selected);
+        self.interactivity().rare_mut().aria.selected = Some(selected);
         self
     }
 
     /// Set the expanded state for this element.
     fn aria_expanded(mut self, expanded: bool) -> Self {
-        self.interactivity().aria.expanded = Some(expanded);
+        self.interactivity().rare_mut().aria.expanded = Some(expanded);
         self
     }
 
     /// Set the toggled state for this element.
     fn aria_toggled(mut self, toggled: accesskit::Toggled) -> Self {
-        self.interactivity().aria.toggled = Some(toggled);
+        self.interactivity().rare_mut().aria.toggled = Some(toggled);
         self
     }
 
     /// Set the numeric value for this element.
     fn aria_numeric_value(mut self, value: f64) -> Self {
-        self.interactivity().aria.numeric_value = Some(value);
+        self.interactivity().rare_mut().aria.numeric_value = Some(value);
         self
     }
 
     /// Set the step by which assistive technology should expect the numeric
     /// value of this element to change (e.g. when incrementing a spin button).
     fn aria_numeric_value_step(mut self, step: f64) -> Self {
-        self.interactivity().aria.numeric_value_step = Some(step);
+        self.interactivity().rare_mut().aria.numeric_value_step = Some(step);
         self
     }
 
     /// Set the string value of this element, e.g. the text content of a simple
     /// text input.
     fn aria_value(mut self, value: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.value = Some(value.into());
+        self.interactivity().rare_mut().aria.value = Some(value.into());
         self
     }
 
     /// Set the placeholder text reported to assistive technology for this
     /// element, shown when a text input is empty.
     fn aria_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
-        self.interactivity().aria.placeholder = Some(placeholder.into());
+        self.interactivity().rare_mut().aria.placeholder = Some(placeholder.into());
         self
     }
 
     /// Set the minimum numeric value for this element.
     fn aria_min_numeric_value(mut self, value: f64) -> Self {
-        self.interactivity().aria.min_numeric_value = Some(value);
+        self.interactivity().rare_mut().aria.min_numeric_value = Some(value);
         self
     }
 
     /// Set the maximum numeric value for this element.
     fn aria_max_numeric_value(mut self, value: f64) -> Self {
-        self.interactivity().aria.max_numeric_value = Some(value);
+        self.interactivity().rare_mut().aria.max_numeric_value = Some(value);
         self
     }
 
     /// Set the orientation of this element.
     fn aria_orientation(mut self, orientation: accesskit::Orientation) -> Self {
-        self.interactivity().aria.orientation = Some(orientation);
+        self.interactivity().rare_mut().aria.orientation = Some(orientation);
         self
     }
 
     /// Set the heading level of this element.
     fn aria_level(mut self, level: usize) -> Self {
-        self.interactivity().aria.level = Some(level);
+        self.interactivity().rare_mut().aria.level = Some(level);
         self
     }
 
     /// Set the position in set of this element.
     fn aria_position_in_set(mut self, position: usize) -> Self {
-        self.interactivity().aria.position_in_set = Some(position);
+        self.interactivity().rare_mut().aria.position_in_set = Some(position);
         self
     }
 
     /// Set the size of set for this element.
     fn aria_size_of_set(mut self, size: usize) -> Self {
-        self.interactivity().aria.size_of_set = Some(size);
+        self.interactivity().rare_mut().aria.size_of_set = Some(size);
         self
     }
 
     /// Set the row index for this element.
     fn aria_row_index(mut self, index: usize) -> Self {
-        self.interactivity().aria.row_index = Some(index);
+        self.interactivity().rare_mut().aria.row_index = Some(index);
         self
     }
 
     /// Set the column index for this element.
     fn aria_column_index(mut self, index: usize) -> Self {
-        self.interactivity().aria.column_index = Some(index);
+        self.interactivity().rare_mut().aria.column_index = Some(index);
         self
     }
 
     /// Set the row count for this element.
     fn aria_row_count(mut self, count: usize) -> Self {
-        self.interactivity().aria.row_count = Some(count);
+        self.interactivity().rare_mut().aria.row_count = Some(count);
         self
     }
 
     /// Set the column count for this element.
     fn aria_column_count(mut self, count: usize) -> Self {
-        self.interactivity().aria.column_count = Some(count);
+        self.interactivity().rare_mut().aria.column_count = Some(count);
         self
     }
 
@@ -1569,7 +1591,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     where
         Self: Sized,
     {
-        self.interactivity().active_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().active_style = Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -1582,7 +1604,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     where
         Self: Sized,
     {
-        self.interactivity().group_active_style = Some(GroupStyle {
+        self.interactivity().rare_mut().group_active_style = Some(GroupStyle {
             group: group_name.into(),
             style: Box::new(f(StyleRefinement::default())),
         });
@@ -1960,7 +1982,8 @@ impl Element for Div {
         // Nodes with `GenericContainer` should never be reported to accesskit.
         // Equivalent to an HTML div with no role.
         self.interactivity
-            .override_role
+            .rare()
+            .and_then(|rare| rare.override_role)
             .filter(|role| *role != accesskit::Role::GenericContainer)
     }
 
@@ -1973,7 +1996,12 @@ impl Element for Div {
         _prepaint: &mut Self::PrepaintState,
         builder: &mut crate::A11ySubtreeBuilder,
     ) {
-        if let Some(f) = self.interactivity.a11y_synthetic_children.take() {
+        if let Some(f) = self
+            .interactivity
+            .rare
+            .as_deref_mut()
+            .and_then(|rare| rare.a11y_synthetic_children.take())
+        {
             f(builder);
         }
     }
@@ -2280,29 +2308,14 @@ pub struct Interactivity {
     /// The base style of the element, before any modifications are applied
     /// by focus, active, etc.
     pub base_style: Box<StyleRefinement>,
-    pub(crate) focus_style: Option<Box<StyleRefinement>>,
-    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
-    pub(crate) focus_visible_style: Option<Box<StyleRefinement>>,
-    pub(crate) hover_style: Option<Box<StyleRefinement>>,
-    pub(crate) group_hover_style: Option<GroupStyle>,
-    pub(crate) active_style: Option<Box<StyleRefinement>>,
-    pub(crate) group_active_style: Option<GroupStyle>,
-    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-    pub(crate) drag_listener: Option<DragListener>,
-    pub(crate) hover_listener: Option<Box<dyn Fn(&bool, &mut Window, &mut App)>>,
-    pub(crate) hover_listener_mode: HoverListenerMode,
-    pub(crate) tooltip_builder: Option<TooltipBuilder>,
-    pub(crate) tooltip_show_delay: Option<Duration>,
-    pub(crate) window_control: Option<WindowControlArea>,
+    /// KaminIDE patch: state styles, hover/drag/tooltip callbacks and accessibility
+    /// properties, allocated by the first setter (see [`InteractivityRare`]).
+    pub(crate) rare: Option<Box<InteractivityRare>>,
     pub(crate) hitbox_behavior: HitboxBehavior,
     pub(crate) tab_index: Option<isize>,
     pub(crate) tab_group: bool,
     pub(crate) tab_stop: bool,
-
-    pub(crate) a11y_synthetic_children: Option<Box<dyn FnOnce(&mut crate::A11ySubtreeBuilder)>>,
     pub(crate) report_active_descendant_focus: bool,
-    pub(crate) override_role: Option<accesskit::Role>,
-    pub(crate) aria: AriaProperties,
 
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
@@ -2340,6 +2353,46 @@ pub(crate) struct InteractivityListeners {
     pub(crate) aux_click_listeners: Vec<ClickListener>,
     pub(crate) a11y_action_listeners:
         Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
+}
+
+/// KaminIDE patch: the rarely set part of an [`Interactivity`].
+///
+/// State styles, hover/drag/tooltip callbacks, the window control area and the
+/// accessibility properties were about 600 bytes of every `Div` (most of it
+/// `AriaProperties`), while a rendered document sets none of them on almost every box.
+/// They live in one block allocated by the first setter; a plain box keeps a null pointer
+/// and every reader treats a missing block as all fields unset.
+#[derive(Default)]
+pub(crate) struct InteractivityRare {
+    pub(crate) focus_style: Option<Box<StyleRefinement>>,
+    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
+    pub(crate) focus_visible_style: Option<Box<StyleRefinement>>,
+    pub(crate) hover_style: Option<Box<StyleRefinement>>,
+    pub(crate) group_hover_style: Option<GroupStyle>,
+    pub(crate) active_style: Option<Box<StyleRefinement>>,
+    pub(crate) group_active_style: Option<GroupStyle>,
+    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
+    pub(crate) drag_listener: Option<DragListener>,
+    pub(crate) hover_listener: Option<Box<dyn Fn(&bool, &mut Window, &mut App)>>,
+    pub(crate) hover_listener_mode: HoverListenerMode,
+    pub(crate) tooltip_builder: Option<TooltipBuilder>,
+    pub(crate) tooltip_show_delay: Option<Duration>,
+    pub(crate) window_control: Option<WindowControlArea>,
+    pub(crate) a11y_synthetic_children: Option<Box<dyn FnOnce(&mut crate::A11ySubtreeBuilder)>>,
+    pub(crate) override_role: Option<accesskit::Role>,
+    pub(crate) aria: AriaProperties,
+}
+
+impl InteractivityRare {
+    /// Whether a rare field needs the element's hitbox.
+    fn need_hitbox(&self) -> bool {
+        self.window_control.is_some()
+            || self.hover_style.is_some()
+            || self.group_hover_style.is_some()
+            || self.hover_listener.is_some()
+            || self.drag_listener.is_some()
+            || self.tooltip_builder.is_some()
+    }
 }
 
 impl InteractivityListeners {
@@ -2560,13 +2613,16 @@ impl Interactivity {
                 let clicked_state = clicked_state.borrow();
                 self.active = Some(clicked_state.element);
             }
-            if self.hover_style.is_some() || self.group_hover_style.is_some() {
+            if self
+                .rare()
+                .is_some_and(|rare| rare.hover_style.is_some() || rare.group_hover_style.is_some())
+            {
                 element_state
                     .hover_state
                     .get_or_insert_with(Default::default);
             }
             if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
-                if self.tooltip_builder.is_some() {
+                if self.rare().is_some_and(|rare| rare.tooltip_builder.is_some()) {
                     self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
                 } else {
                     // If there is no longer a tooltip builder, remove the active tooltip.
@@ -2593,17 +2649,12 @@ impl Interactivity {
 
     fn should_insert_hitbox(&self, style: &Style, window: &Window, cx: &App) -> bool {
         self.hitbox_behavior != HitboxBehavior::Normal
-            || self.window_control.is_some()
             || style.mouse_cursor.is_some()
             || self.group.is_some()
             || self.scroll_offset.is_some()
             || self.tracked_focus_handle.is_some()
-            || self.hover_style.is_some()
-            || self.group_hover_style.is_some()
-            || self.hover_listener.is_some()
+            || self.rare().is_some_and(InteractivityRare::need_hitbox)
             || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-            || self.drag_listener.is_some()
-            || self.tooltip_builder.is_some()
             || window.is_inspector_picking(cx)
     }
 
@@ -2791,7 +2842,7 @@ impl Interactivity {
                                 GroupHitboxes::push(group, hitbox.id, cx);
                             }
 
-                            if let Some(area) = self.window_control {
+                            if let Some(area) = self.rare().and_then(|rare| rare.window_control) {
                                 window.insert_window_control_hitbox(area, hitbox.clone());
                             }
 
@@ -3040,13 +3091,14 @@ impl Interactivity {
             })
         }
 
-        if self.hover_style.is_some()
+        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
+        if has_hover_style
             || self.base_style.mouse_cursor.is_some()
             || cx.active_drag.is_some()
                 && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
         {
             let hitbox = hitbox.clone();
-            let hover_state = self.hover_style.as_ref().and_then(|_| {
+            let hover_state = has_hover_style.then_some(()).and_then(|_| {
                 element_state
                     .as_ref()
                     .and_then(|state| state.hover_state.as_ref())
@@ -3068,7 +3120,7 @@ impl Interactivity {
             });
         }
 
-        if let Some(group_hover) = self.group_hover_style.as_ref() {
+        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
             if let Some(group_hitbox_id) = GroupHitboxes::get(&group_hover.group, cx) {
                 let hover_state = element_state
                     .as_ref()
@@ -3093,11 +3145,11 @@ impl Interactivity {
 
         let drag_cursor_style = self.base_style.as_ref().mouse_cursor;
 
-        let mut drag_listener = mem::take(&mut self.drag_listener);
+        let mut drag_listener = self.rare.as_deref_mut().and_then(|rare| rare.drag_listener.take());
         let drop_listeners = self.take_listeners(|l| &mut l.drop_listeners);
         let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
         let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
-        let can_drop_predicate = mem::take(&mut self.can_drop_predicate);
+        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
 
         if !drop_listeners.is_empty() {
             let hitbox = hitbox.clone();
@@ -3329,7 +3381,7 @@ impl Interactivity {
                 });
             }
 
-            if let Some(hover_listener) = self.hover_listener.take() {
+            if let Some(hover_listener) = self.take_hover_listener() {
                 let was_hovered = element_state
                     .hover_listener_state
                     .get_or_insert_with(Default::default)
@@ -3348,7 +3400,7 @@ impl Interactivity {
                         hover_listener(&is_hovered, window, cx);
                     }
                 };
-                let hover_listener_mode = self.hover_listener_mode;
+                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
 
                 if has_mouse_down.borrow().is_none() {
                     let is_hovered =
@@ -3383,7 +3435,7 @@ impl Interactivity {
                 });
             }
 
-            if let Some(tooltip_builder) = self.tooltip_builder.take() {
+            if let Some(tooltip_builder) = self.take_tooltip_builder() {
                 let active_tooltip = element_state
                     .active_tooltip
                     .get_or_insert_with(Default::default)
@@ -3424,7 +3476,7 @@ impl Interactivity {
                     check_is_hovered,
                     check_is_hovered_during_prepaint,
                     long_press_tooltip_active,
-                    self.tooltip_show_delay,
+                    self.rare().and_then(|rare| rare.tooltip_show_delay),
                     window,
                 );
             }
@@ -3448,8 +3500,9 @@ impl Interactivity {
 
             {
                 let active_group_hitbox = self
-                    .group_active_style
-                    .as_ref()
+                    .rare
+                    .as_deref()
+                    .and_then(|rare| rare.group_active_style.as_ref())
                     .and_then(|group_active| GroupHitboxes::get(&group_active.group, cx));
                 let hitbox = hitbox.clone();
                 window.on_mouse_event(move |_: &MouseDownEvent, phase, window, _cx| {
@@ -3504,8 +3557,8 @@ impl Interactivity {
 
     fn paint_hover_group_handler(&self, window: &mut Window, cx: &mut App) {
         let group_hitbox = self
-            .group_hover_style
-            .as_ref()
+            .rare()
+            .and_then(|rare| rare.group_hover_style.as_ref())
             .and_then(|group_hover| GroupHitboxes::get(&group_hover.group, cx));
 
         if let Some(group_hitbox) = group_hitbox {
@@ -3624,21 +3677,22 @@ impl Interactivity {
     ) -> Style {
         let mut style = Style::default();
         style.refine(&self.base_style);
+        let rare = self.rare.as_deref();
 
         if let Some(focus_handle) = self.tracked_focus_handle.as_ref() {
-            if let Some(in_focus_style) = self.in_focus_style.as_ref()
+            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
                 && focus_handle.within_focused(window, cx)
             {
                 style.refine(in_focus_style);
             }
 
-            if let Some(focus_style) = self.focus_style.as_ref()
+            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
                 && focus_handle.is_focused(window)
             {
                 style.refine(focus_style);
             }
 
-            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
+            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
                 && focus_handle.is_focused(window)
                 && window.last_input_was_keyboard()
             {
@@ -3647,7 +3701,7 @@ impl Interactivity {
         }
 
         if !cx.has_active_drag() {
-            if let Some(group_hover) = self.group_hover_style.as_ref() {
+            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
                 let is_group_hovered =
                     if let Some(group_hitbox_id) = GroupHitboxes::get(&group_hover.group, cx) {
                         !window.last_input_was_touch() && group_hitbox_id.is_hovered(window)
@@ -3667,7 +3721,7 @@ impl Interactivity {
                 }
             }
 
-            if let Some(hover_style) = self.hover_style.as_ref() {
+            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
                 let is_hovered = if let Some(hitbox) = hitbox {
                     !window.last_input_was_touch() && hitbox.is_hovered(window)
                 } else if let Some(element_state) = element_state.as_ref() {
@@ -3690,7 +3744,7 @@ impl Interactivity {
         if let Some(hitbox) = hitbox {
             if let Some(drag) = cx.active_drag.take() {
                 let mut can_drop = true;
-                if let Some(can_drop_predicate) = &self.can_drop_predicate {
+                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
                     can_drop = can_drop_predicate(drag.value.as_ref(), window, cx);
                 }
 
@@ -3725,12 +3779,12 @@ impl Interactivity {
                 .get_or_insert_with(Default::default)
                 .borrow();
             if clicked_state.group
-                && let Some(group) = self.group_active_style.as_ref()
+                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
             {
                 style.refine(&group.style)
             }
 
-            if let Some(active_style) = self.active_style.as_ref()
+            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
                 && clicked_state.element
             {
                 style.refine(active_style)
@@ -3741,68 +3795,70 @@ impl Interactivity {
     }
 
     pub(crate) fn write_a11y_info(&self, node: &mut accesskit::Node) {
-        if let Some(id) = &self.aria.author_id {
-            node.set_author_id(id.to_string());
-        }
-        if let Some(label) = &self.aria.label {
-            node.set_label(label.to_string());
-        }
-        if let Some(description) = &self.aria.description {
-            node.set_description(description.to_string());
-        }
-        if let Some(keyshortcuts) = &self.aria.keyshortcuts {
-            node.set_keyboard_shortcut(keyshortcuts.to_string());
-        }
-        if let Some(selected) = self.aria.selected {
-            node.set_selected(selected);
-        }
-        if let Some(expanded) = self.aria.expanded {
-            node.set_expanded(expanded);
-        }
-        if let Some(toggled) = self.aria.toggled {
-            node.set_toggled(toggled);
-        }
-        if let Some(value) = self.aria.numeric_value {
-            node.set_numeric_value(value);
-        }
-        if let Some(value) = self.aria.min_numeric_value {
-            node.set_min_numeric_value(value);
-        }
-        if let Some(value) = self.aria.max_numeric_value {
-            node.set_max_numeric_value(value);
-        }
-        if let Some(step) = self.aria.numeric_value_step {
-            node.set_numeric_value_step(step);
-        }
-        if let Some(value) = &self.aria.value {
-            node.set_value(value.to_string());
-        }
-        if let Some(placeholder) = &self.aria.placeholder {
-            node.set_placeholder(placeholder.to_string());
-        }
-        if let Some(orientation) = self.aria.orientation {
-            node.set_orientation(orientation);
-        }
-        if let Some(level) = self.aria.level {
-            node.set_level(level);
-        }
-        if let Some(position) = self.aria.position_in_set {
-            node.set_position_in_set(position);
-        }
-        if let Some(size) = self.aria.size_of_set {
-            node.set_size_of_set(size);
-        }
-        if let Some(index) = self.aria.row_index {
-            node.set_row_index(index);
-        }
-        if let Some(index) = self.aria.column_index {
-            node.set_column_index(index);
-        }
-        if let Some(count) = self.aria.row_count {
-            node.set_row_count(count);
-        }
-        if let Some(count) = self.aria.column_count {
-            node.set_column_count(count);
+        if let Some(aria) = self.rare().map(|rare| &rare.aria) {
+            if let Some(id) = &aria.author_id {
+                node.set_author_id(id.to_string());
+            }
+            if let Some(label) = &aria.label {
+                node.set_label(label.to_string());
+            }
+            if let Some(description) = &aria.description {
+                node.set_description(description.to_string());
+            }
+            if let Some(keyshortcuts) = &aria.keyshortcuts {
+                node.set_keyboard_shortcut(keyshortcuts.to_string());
+            }
+            if let Some(selected) = aria.selected {
+                node.set_selected(selected);
+            }
+            if let Some(expanded) = aria.expanded {
+                node.set_expanded(expanded);
+            }
+            if let Some(toggled) = aria.toggled {
+                node.set_toggled(toggled);
+            }
+            if let Some(value) = aria.numeric_value {
+                node.set_numeric_value(value);
+            }
+            if let Some(value) = aria.min_numeric_value {
+                node.set_min_numeric_value(value);
+            }
+            if let Some(value) = aria.max_numeric_value {
+                node.set_max_numeric_value(value);
+            }
+            if let Some(step) = aria.numeric_value_step {
+                node.set_numeric_value_step(step);
+            }
+            if let Some(value) = &aria.value {
+                node.set_value(value.to_string());
+            }
+            if let Some(placeholder) = &aria.placeholder {
+                node.set_placeholder(placeholder.to_string());
+            }
+            if let Some(orientation) = aria.orientation {
+                node.set_orientation(orientation);
+            }
+            if let Some(level) = aria.level {
+                node.set_level(level);
+            }
+            if let Some(position) = aria.position_in_set {
+                node.set_position_in_set(position);
+            }
+            if let Some(size) = aria.size_of_set {
+                node.set_size_of_set(size);
+            }
+            if let Some(index) = aria.row_index {
+                node.set_row_index(index);
+            }
+            if let Some(index) = aria.column_index {
+                node.set_column_index(index);
+            }
+            if let Some(count) = aria.row_count {
+                node.set_row_count(count);
+            }
+            if let Some(count) = aria.column_count {
+                node.set_column_count(count);
+            }
         }
         if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
             node.add_action(accesskit::Action::Click);
@@ -5502,14 +5558,14 @@ mod tests {
     #[test]
     fn test_write_a11y_info_string_and_numeric_properties() {
         let mut interactivity = Interactivity::default();
-        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
-        interactivity.aria.label = Some("Buffer Font Size".into());
-        interactivity.aria.value = Some("15".into());
-        interactivity.aria.placeholder = Some("Search".into());
-        interactivity.aria.numeric_value = Some(15.0);
-        interactivity.aria.min_numeric_value = Some(6.0);
-        interactivity.aria.max_numeric_value = Some(72.0);
-        interactivity.aria.numeric_value_step = Some(1.0);
+        interactivity.rare_mut().aria.author_id = Some("settings.buffer-font-size".into());
+        interactivity.rare_mut().aria.label = Some("Buffer Font Size".into());
+        interactivity.rare_mut().aria.value = Some("15".into());
+        interactivity.rare_mut().aria.placeholder = Some("Search".into());
+        interactivity.rare_mut().aria.numeric_value = Some(15.0);
+        interactivity.rare_mut().aria.min_numeric_value = Some(6.0);
+        interactivity.rare_mut().aria.max_numeric_value = Some(72.0);
+        interactivity.rare_mut().aria.numeric_value_step = Some(1.0);
 
         let mut node = accesskit::Node::new(accesskit::Role::SpinButton);
         interactivity.write_a11y_info(&mut node);
