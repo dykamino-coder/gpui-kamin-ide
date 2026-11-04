@@ -45,7 +45,7 @@ where
         decorations: Vec::new(),
         interactivity: Interactivity {
             element_id: Some(id),
-            base_style: Box::new(base_style),
+            base_style: std::rc::Rc::new(base_style),
             ..Interactivity::new()
         },
         scroll_handle: None,
@@ -256,7 +256,7 @@ impl UniformListScrollHandle {
 
 impl Styled for UniformList {
     fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.interactivity.base_style
+        self.interactivity.base_style_mut()
     }
 }
 
@@ -640,10 +640,10 @@ impl UniformList {
         self.horizontal_sizing_behavior = behavior;
         match behavior {
             ListHorizontalSizingBehavior::FitList => {
-                self.interactivity.base_style.overflow.x = None;
+                self.interactivity.base_style_mut().overflow.x = None;
             }
             ListHorizontalSizingBehavior::Unconstrained => {
-                self.interactivity.base_style.overflow.x = Some(Overflow::Scroll);
+                self.interactivity.base_style_mut().overflow.x = Some(Overflow::Scroll);
             }
         }
         self

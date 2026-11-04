@@ -496,7 +496,7 @@ impl Element for Img {
 
 impl Styled for Img {
     fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.interactivity.base_style
+        self.interactivity.base_style_mut()
     }
 }
 

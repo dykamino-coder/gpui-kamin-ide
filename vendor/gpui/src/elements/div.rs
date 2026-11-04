@@ -763,6 +763,11 @@ impl Interactivity {
         self.listeners.get_or_insert_with(Default::default)
     }
 
+    /// KaminIDE patch: the base style for writing; copies it if it is shared.
+    pub fn base_style_mut(&mut self) -> &mut StyleRefinement {
+        Rc::make_mut(&mut self.base_style)
+    }
+
     /// KaminIDE patch: the rare block, allocated by the first setter.
     pub(crate) fn rare_mut(&mut self) -> &mut InteractivityRare {
         self.rare.get_or_insert_with(Default::default)
@@ -1549,20 +1554,20 @@ pub trait StatefulInteractiveElement: InteractiveElement {
 
     /// Set the overflow x and y to scroll.
     fn overflow_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
+        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
+        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
         self
     }
 
     /// Set the overflow x to scroll.
     fn overflow_x_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
+        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
         self
     }
 
     /// Set the overflow y to scroll.
     fn overflow_y_scroll(mut self) -> Self {
-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
+        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
         self
     }
 
@@ -1570,7 +1575,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     ///
     /// See [`Style::restrict_scroll_to_axis`](crate::Style::restrict_scroll_to_axis) for details.
     fn restrict_scroll_to_axis(mut self) -> Self {
-        self.interactivity().base_style.restrict_scroll_to_axis = Some(true);
+        self.interactivity().base_style_mut().restrict_scroll_to_axis = Some(true);
         self
     }
 
@@ -1944,7 +1949,7 @@ pub struct DivInspectorState {
 
 impl Styled for Div {
     fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.interactivity.base_style
+        self.interactivity.base_style_mut()
     }
 }
 
@@ -2251,7 +2256,10 @@ impl Element for Div {
 impl IntoElement for Div {
     type Element = Self;
 
-    fn into_element(self) -> Self::Element {
+    // KaminIDE patch: a finished div's base style may point at an equal earlier one
+    // (`refinement_share`); later writes copy it.
+    fn into_element(mut self) -> Self::Element {
+        super::refinement_share::share(&mut self.interactivity.base_style);
         self
     }
 }
@@ -2307,7 +2315,10 @@ pub struct Interactivity {
     pub(crate) listeners: Option<Box<InteractivityListeners>>,
     /// The base style of the element, before any modifications are applied
     /// by focus, active, etc.
-    pub base_style: Box<StyleRefinement>,
+    ///
+    /// KaminIDE patch: shared with equal base styles of the frame tree from request layout on;
+    /// writes go through [`Interactivity::base_style_mut`] (copy on write).
+    pub base_style: Rc<StyleRefinement>,
     /// KaminIDE patch: state styles, hover/drag/tooltip callbacks and accessibility
     /// properties, allocated by the first setter (see [`InteractivityRare`]).
     pub(crate) rare: Option<Box<InteractivityRare>>,
@@ -2443,10 +2454,10 @@ impl Interactivity {
             cx,
             |inspector_state: &mut Option<DivInspectorState>, _window| {
                 if let Some(inspector_state) = inspector_state {
-                    self.base_style = inspector_state.base_style.clone();
+                    self.base_style = Rc::from(inspector_state.base_style.clone());
                 } else {
                     *inspector_state = Some(DivInspectorState {
-                        base_style: self.base_style.clone(),
+                        base_style: Box::new((*self.base_style).clone()),
                         bounds: Default::default(),
                         content_size: Default::default(),
                     })

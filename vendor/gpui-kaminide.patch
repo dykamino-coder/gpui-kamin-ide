@@ -7176,7 +7176,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446af4c2f6c9
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c16503171e4d7480fb8dd902d1b3ec5145c82d65
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -7302,12 +7302,17 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 @@ -750 +750 @@
 -        self.window_control = Some(area);
 +        self.rare_mut().window_control = Some(area);
-@@ -761,2 +761,30 @@
+@@ -761,2 +761,35 @@
 -    fn has_pinch_listeners(&self) -> bool {
 -        !self.pinch_listeners.is_empty()
 +    /// KaminIDE patch: the listener block, allocated on the first registration.
 +    pub(crate) fn listeners_mut(&mut self) -> &mut InteractivityListeners {
 +        self.listeners.get_or_insert_with(Default::default)
++    }
++
++    /// KaminIDE patch: the base style for writing; copies it if it is shared.
++    pub fn base_style_mut(&mut self) -> &mut StyleRefinement {
++        Rc::make_mut(&mut self.base_style)
 +    }
 +
 +    /// KaminIDE patch: the rare block, allocated by the first setter.
@@ -7335,118 +7340,132 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +    /// KaminIDE patch: take one listener list without allocating the block.
 +    fn take_listeners<T>(&mut self, list: impl FnOnce(&mut InteractivityListeners) -> &mut Vec<T>) -> Vec<T> {
 +        self.listeners.as_deref_mut().map(|listeners| mem::take(list(listeners))).unwrap_or_default()
-@@ -844 +872 @@
+@@ -844 +877 @@
 -            self.interactivity().hover_style.is_none(),
 +            self.interactivity().rare().is_none_or(|rare| rare.hover_style.is_none()),
-@@ -847 +875 @@
+@@ -847 +880 @@
 -        self.interactivity().hover_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().hover_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -857 +885 @@
+@@ -857 +890 @@
 -        self.interactivity().group_hover_style = Some(GroupStyle {
 +        self.interactivity().rare_mut().group_hover_style = Some(GroupStyle {
-@@ -1195 +1223 @@
+@@ -1195 +1228 @@
 -        self.interactivity().drag_over_styles.push((
 +        self.interactivity().listeners_mut().drag_over_styles.push((
-@@ -1215 +1243 @@
+@@ -1215 +1248 @@
 -        self.interactivity().group_drag_over_styles.push((
 +        self.interactivity().listeners_mut().group_drag_over_styles.push((
-@@ -1277 +1305 @@
+@@ -1277 +1310 @@
 -        self.interactivity().focus_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().focus_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1287 +1315 @@
+@@ -1287 +1320 @@
 -        self.interactivity().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1299 +1327 @@
+@@ -1299 +1332 @@
 -        self.interactivity().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1315 +1343 @@
+@@ -1315 +1348 @@
 -        self.interactivity().override_role = Some(role);
 +        self.interactivity().rare_mut().override_role = Some(role);
-@@ -1327 +1355 @@
+@@ -1327 +1360 @@
 -        self.interactivity().aria.author_id = Some(id.into());
 +        self.interactivity().rare_mut().aria.author_id = Some(id.into());
-@@ -1333 +1361 @@
+@@ -1333 +1366 @@
 -        self.interactivity().aria.label = Some(label.into());
 +        self.interactivity().rare_mut().aria.label = Some(label.into());
-@@ -1342 +1370 @@
+@@ -1342 +1375 @@
 -        self.interactivity().aria.description = Some(description.into());
 +        self.interactivity().rare_mut().aria.description = Some(description.into());
-@@ -1352 +1380 @@
+@@ -1352 +1385 @@
 -        self.interactivity().aria.keyshortcuts = Some(keyshortcuts.into());
 +        self.interactivity().rare_mut().aria.keyshortcuts = Some(keyshortcuts.into());
-@@ -1389 +1417 @@
+@@ -1389 +1422 @@
 -        self.interactivity().a11y_synthetic_children = Some(Box::new(f));
 +        self.interactivity().rare_mut().a11y_synthetic_children = Some(Box::new(f));
-@@ -1395 +1423 @@
+@@ -1395 +1428 @@
 -        self.interactivity().aria.selected = Some(selected);
 +        self.interactivity().rare_mut().aria.selected = Some(selected);
-@@ -1401 +1429 @@
+@@ -1401 +1434 @@
 -        self.interactivity().aria.expanded = Some(expanded);
 +        self.interactivity().rare_mut().aria.expanded = Some(expanded);
-@@ -1407 +1435 @@
+@@ -1407 +1440 @@
 -        self.interactivity().aria.toggled = Some(toggled);
 +        self.interactivity().rare_mut().aria.toggled = Some(toggled);
-@@ -1413 +1441 @@
+@@ -1413 +1446 @@
 -        self.interactivity().aria.numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.numeric_value = Some(value);
-@@ -1420 +1448 @@
+@@ -1420 +1453 @@
 -        self.interactivity().aria.numeric_value_step = Some(step);
 +        self.interactivity().rare_mut().aria.numeric_value_step = Some(step);
-@@ -1427 +1455 @@
+@@ -1427 +1460 @@
 -        self.interactivity().aria.value = Some(value.into());
 +        self.interactivity().rare_mut().aria.value = Some(value.into());
-@@ -1434 +1462 @@
+@@ -1434 +1467 @@
 -        self.interactivity().aria.placeholder = Some(placeholder.into());
 +        self.interactivity().rare_mut().aria.placeholder = Some(placeholder.into());
-@@ -1440 +1468 @@
+@@ -1440 +1473 @@
 -        self.interactivity().aria.min_numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.min_numeric_value = Some(value);
-@@ -1446 +1474 @@
+@@ -1446 +1479 @@
 -        self.interactivity().aria.max_numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.max_numeric_value = Some(value);
-@@ -1452 +1480 @@
+@@ -1452 +1485 @@
 -        self.interactivity().aria.orientation = Some(orientation);
 +        self.interactivity().rare_mut().aria.orientation = Some(orientation);
-@@ -1458 +1486 @@
+@@ -1458 +1491 @@
 -        self.interactivity().aria.level = Some(level);
 +        self.interactivity().rare_mut().aria.level = Some(level);
-@@ -1464 +1492 @@
+@@ -1464 +1497 @@
 -        self.interactivity().aria.position_in_set = Some(position);
 +        self.interactivity().rare_mut().aria.position_in_set = Some(position);
-@@ -1470 +1498 @@
+@@ -1470 +1503 @@
 -        self.interactivity().aria.size_of_set = Some(size);
 +        self.interactivity().rare_mut().aria.size_of_set = Some(size);
-@@ -1476 +1504 @@
+@@ -1476 +1509 @@
 -        self.interactivity().aria.row_index = Some(index);
 +        self.interactivity().rare_mut().aria.row_index = Some(index);
-@@ -1482 +1510 @@
+@@ -1482 +1515 @@
 -        self.interactivity().aria.column_index = Some(index);
 +        self.interactivity().rare_mut().aria.column_index = Some(index);
-@@ -1488 +1516 @@
+@@ -1488 +1521 @@
 -        self.interactivity().aria.row_count = Some(count);
 +        self.interactivity().rare_mut().aria.row_count = Some(count);
-@@ -1494 +1522 @@
+@@ -1494 +1527 @@
 -        self.interactivity().aria.column_count = Some(count);
 +        self.interactivity().rare_mut().aria.column_count = Some(count);
-@@ -1509,0 +1538 @@
+@@ -1509,0 +1543 @@
 +            .listeners_mut()
-@@ -1565 +1594 @@
+@@ -1523,2 +1557,2 @@
+-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
+-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
++        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
++        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
+@@ -1530 +1564 @@
+-        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
++        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
+@@ -1536 +1570 @@
+-        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
++        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
+@@ -1544 +1578 @@
+-        self.interactivity().base_style.restrict_scroll_to_axis = Some(true);
++        self.interactivity().base_style_mut().restrict_scroll_to_axis = Some(true);
+@@ -1565 +1599 @@
 -        self.interactivity().active_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().active_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1578 +1607 @@
+@@ -1578 +1612 @@
 -        self.interactivity().group_active_style = Some(GroupStyle {
 +        self.interactivity().rare_mut().group_active_style = Some(GroupStyle {
-@@ -1800,0 +1830,3 @@
+@@ -1800,0 +1835,3 @@
 +        layout_observer: None,
 +        child_painter: None,
 +        paint_metadata: None,
-@@ -1805,0 +1838,2 @@
+@@ -1805,0 +1843,2 @@
 +    child_painter: Option<crate::ChildPainter>,
 +    paint_metadata: Option<std::rc::Rc<dyn std::any::Any>>,
-@@ -1810,0 +1845,2 @@
+@@ -1810,0 +1850,2 @@
 +    // KaminIDE patch: layout inputs must observe this node, not a wrapper box.
 +    layout_observer: Option<Box<dyn LayoutObserver>>,
-@@ -1812,0 +1849,10 @@
+@@ -1812,0 +1854,10 @@
 +/// KaminIDE patch: observes a box's layout lifecycle without adding a node.
 +/// The request phase records identity; prepaint sees the completed layout.
 +pub trait LayoutObserver: 'static {
@@ -7457,7 +7476,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
 +}
 +
-@@ -1813,0 +1860,24 @@
+@@ -1813,0 +1865,24 @@
 +    /// Локальная замена собственной краски; callback не наследуется потомками.
 +    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
 +        self.interactivity.box_painter = Some(painter);
@@ -7482,19 +7501,22 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        self.layout_observer = Some(Box::new(observer));
 +        self
 +    }
-@@ -1854,0 +1925,4 @@
+@@ -1854,0 +1930,4 @@
 +    /// KaminIDE patch: this node's layout id and its unrounded window
 +    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
 +    layout_id: Option<LayoutId>,
 +    exact_bounds: Option<Bounds<Pixels>>,
-@@ -1893,0 +1968,2 @@
+@@ -1873 +1952 @@
+-        &mut self.interactivity.base_style
++        self.interactivity.base_style_mut()
+@@ -1893,0 +1973,2 @@
 +    fn paint_boundary(&self) -> bool { false }
 +
-@@ -1909 +1985,2 @@
+@@ -1909 +1990,2 @@
 -            .override_role
 +            .rare()
 +            .and_then(|rare| rare.override_role)
-@@ -1922 +1999,6 @@
+@@ -1922 +2004,6 @@
 -        if let Some(f) = self.interactivity.a11y_synthetic_children.take() {
 +        if let Some(f) = self
 +            .interactivity
@@ -7502,13 +7524,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +            .as_deref_mut()
 +            .and_then(|rare| rare.a11y_synthetic_children.take())
 +        {
-@@ -1942 +2024 @@
+@@ -1942 +2029 @@
 -            self.interactivity.request_layout(
 +            self.interactivity.request_layout_boxed(
-@@ -1954 +2036 @@
+@@ -1954 +2041 @@
 -                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
 +                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
-@@ -1960 +2042,12 @@
+@@ -1960 +2047,12 @@
 -        (layout_id, DivFrameState { child_layout_ids })
 +        // KaminIDE patch: capture identity in the tree receiving this node.
 +        if let Some(observer) = &mut self.layout_observer {
@@ -7522,14 +7544,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                exact_bounds: None,
 +            },
 +        )
-@@ -1972,0 +2066,6 @@
+@@ -1972,0 +2071,6 @@
 +        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
 +        if let Some(observer) = &mut self.layout_observer
 +            && !observer.prepaint(window)
 +        {
 +            return None;
 +        }
-@@ -2019 +2118,21 @@
+@@ -2019 +2123,21 @@
 -        self.interactivity.prepaint(
 +        // KaminIDE patch: unrounded bounds of this node, only when they lie
 +        // within half a device pixel of the snapped ones (a node moved by
@@ -7552,31 +7574,31 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        );
 +
 +        let hitbox = self.interactivity.prepaint(
-@@ -2026,0 +2146,2 @@
+@@ -2026,0 +2151,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
-@@ -2033,0 +2155,3 @@
+@@ -2033,0 +2160,3 @@
 +                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
 +                            (traversal.enter_children)(window);
 +                        }
-@@ -2055 +2179,3 @@
+@@ -2055 +2184,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2190 @@
+@@ -2064 +2195 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2200,4 @@
+@@ -2073,0 +2205,4 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
-@@ -2082,0 +2213,3 @@
+@@ -2082,0 +2218,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,2 +2221,22 @@
+@@ -2088,2 +2226,22 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
 +                    let painter = self.child_painter.clone().or_else(|| {
@@ -7601,14 +7623,21 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-@@ -2093,0 +2247 @@
+@@ -2093,0 +2252 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2133,0 +2288 @@
+@@ -2100 +2259,4 @@
+-    fn into_element(self) -> Self::Element {
++    // KaminIDE patch: a finished div's base style may point at an equal earlier one
++    // (`refinement_share`); later writes copy it.
++    fn into_element(mut self) -> Self::Element {
++        super::refinement_share::share(&mut self.interactivity.base_style);
+@@ -2133,0 +2296 @@
 +    pub(crate) box_painter: Option<crate::BoxPainter>,
-@@ -2150,0 +2306,2 @@
+@@ -2150,0 +2314,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,
-@@ -2154,7 +2311,23 @@
+@@ -2153,8 +2318,27 @@
+-    pub base_style: Box<StyleRefinement>,
 -    pub(crate) focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) focus_visible_style: Option<Box<StyleRefinement>>,
@@ -7616,6 +7645,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 -    pub(crate) group_hover_style: Option<GroupStyle>,
 -    pub(crate) active_style: Option<Box<StyleRefinement>>,
 -    pub(crate) group_active_style: Option<GroupStyle>,
++    ///
++    /// KaminIDE patch: shared with equal base styles of the frame tree from request layout on;
++    /// writes go through [`Interactivity::base_style_mut`] (copy on write).
++    pub base_style: Rc<StyleRefinement>,
 +    /// KaminIDE patch: state styles, hover/drag/tooltip callbacks and accessibility
 +    /// properties, allocated by the first setter (see [`InteractivityRare`]).
 +    pub(crate) rare: Option<Box<InteractivityRare>>,
@@ -7639,9 +7672,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +/// registration; a box without listeners keeps a single null pointer.
 +#[derive(Default)]
 +pub(crate) struct InteractivityListeners {
-@@ -2179 +2351,0 @@
+@@ -2179 +2362,0 @@
 -    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2181,0 +2354,21 @@
+@@ -2181,0 +2365,21 @@
 +    pub(crate) a11y_action_listeners:
 +        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 +}
@@ -7663,7 +7696,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +    pub(crate) active_style: Option<Box<StyleRefinement>>,
 +    pub(crate) group_active_style: Option<GroupStyle>,
 +    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2188,7 +2380,0 @@
+@@ -2188,7 +2391,0 @@
 -    pub(crate) hitbox_behavior: HitboxBehavior,
 -    pub(crate) tab_index: Option<isize>,
 -    pub(crate) tab_group: bool,
@@ -7671,9 +7704,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 -
 -    pub(crate) a11y_action_listeners:
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-@@ -2196 +2381,0 @@
+@@ -2196 +2392,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2384,30 @@
+@@ -2199,6 +2395,30 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
@@ -7710,8 +7743,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +            || !self.drop_listeners.is_empty()
 +            || !self.drag_over_styles.is_empty()
 +    }
-@@ -2215,0 +2425,14 @@
-+    ) -> LayoutId {
+@@ -2216,0 +2437,14 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
 +            f(*style, window, cx)
 +        })
@@ -7725,10 +7757,17 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        window: &mut Window,
 +        cx: &mut App,
 +        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
-@@ -2294 +2517 @@
++    ) -> LayoutId {
+@@ -2223 +2457 @@
+-                    self.base_style = inspector_state.base_style.clone();
++                    self.base_style = Rc::from(inspector_state.base_style.clone());
+@@ -2226 +2460 @@
+-                        base_style: self.base_style.clone(),
++                        base_style: Box::new((*self.base_style).clone()),
+@@ -2294 +2528 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2354,11 +2577,56 @@
+@@ -2354,11 +2588,56 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -7796,7 +7835,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2634 @@
+@@ -2366,18 +2645 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -7816,7 +7855,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2636,12 @@
+@@ -2385,20 +2647,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -7849,9 +7888,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2409 +2651,0 @@
+@@ -2409 +2662,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2656,2 @@
+@@ -2414,17 +2667,2 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -7871,7 +7910,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2745,109 @@
+@@ -2518,113 +2756,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8094,7 +8133,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2855,28 @@
+@@ -2632,2 +2866,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -8125,54 +8164,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2884,2 @@
+@@ -2635,4 +2895,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3036,3 @@
+@@ -2789 +3047,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3045 @@
+@@ -2796 +3056 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3052 @@
+@@ -2803 +3063 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3059 @@
+@@ -2810 +3070 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3066 @@
+@@ -2817 +3077 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3073 @@
+@@ -2824 +3084 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3080 @@
+@@ -2831 +3091 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3087 @@
+@@ -2838 +3098 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3094,2 @@
+@@ -2845 +3105,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3097,2 @@
+@@ -2847 +3108,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3101 @@
+@@ -2850 +3112 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3123 @@
+@@ -2872 +3134 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3148,5 @@
+@@ -2897,5 +3159,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -8183,25 +8222,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3384 @@
+@@ -3133 +3395 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3403 @@
+@@ -3152 +3414 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3438 @@
+@@ -3187 +3449 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3479 @@
+@@ -3228 +3490 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3503,3 @@
+@@ -3252,2 +3514,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3527,4 @@
+@@ -3275,4 +3538,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -8210,12 +8249,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3308,2 +3560,2 @@
+@@ -3308,2 +3571,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3657,13 @@
+@@ -3404,0 +3668,13 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -8229,43 +8268,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
 +    }
 +
-@@ -3414,0 +3680 @@
+@@ -3414,0 +3691 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3683 @@
+@@ -3417 +3694 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3689 @@
+@@ -3423 +3700 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3695 @@
+@@ -3429 +3706 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3704 @@
+@@ -3438 +3715 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3724 @@
+@@ -3458 +3735 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3747 @@
+@@ -3481 +3758 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3752 @@
+@@ -3486 +3763 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3762 @@
+@@ -3496 +3773 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3765,2 @@
+@@ -3499 +3776,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3782 @@
+@@ -3515 +3793 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3787 @@
+@@ -3520 +3798 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3798,66 @@
+@@ -3531,64 +3809,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -8396,14 +8435,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +3869 @@
+@@ -3600 +3880 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4372,3 @@
+@@ -4102,0 +4383,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4448,0 +4721,21 @@
+@@ -4448,0 +4732,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -8425,7 +8464,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..6cef8612c7a55a4b9ccba962a06a446a
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5561,8 @@
+@@ -5268,8 +5572,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -8456,7 +8495,7 @@ index 84948145aa869a09032e292e6b6b0ca679b8726d..6d8fd7676ee616e450f1cf21248b2a3f
 +            None => self.0.get(),
 +        }
 diff --git a/vendor/gpui/src/elements/img.rs b/vendor/gpui/src/elements/img.rs
-index 2c77e5f32ad12a8fafb88305ba208ca74a80cdac..285f04ef57be7265ea0287f380d1e95eeb40a963
+index 2c77e5f32ad12a8fafb88305ba208ca74a80cdac..a41a3d35d7f47d904e4382bde88c1daf33e90f4f
 --- a/vendor/gpui/src/elements/img.rs
 +++ b/vendor/gpui/src/elements/img.rs
 @@ -0,0 +1,7 @@
@@ -8657,6 +8696,9 @@ index 2c77e5f32ad12a8fafb88305ba208ca74a80cdac..285f04ef57be7265ea0287f380d1e95e
 +                        &self.style,
 +                    )
 +                    .log_err();
+@@ -515 +499 @@
+-        &mut self.interactivity.base_style
++        self.interactivity.base_style_mut()
 @@ -805 +789 @@
 -    use crate::{ParentElement as _, TestAppContext, canvas, div, point, px, size};
 +    use crate::{ObjectFit, ParentElement as _, TestAppContext, canvas, div, point, px, size};
@@ -8980,14 +9022,160 @@ index 0000000000000000000000000000000000000000..cf326ec21a6f320e54ff5e2049d42ec6
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/mod.rs b/vendor/gpui/src/elements/mod.rs
-index 8a2a1b70a7bf28464547009020efa9caff8f0cff..93cf11b29755d5696e698a025854d8f1d8fcd14c
+index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b17dfd5c2f00c8512990e93e48e6ebbff2e95107
 --- a/vendor/gpui/src/elements/mod.rs
 +++ b/vendor/gpui/src/elements/mod.rs
-@@ -9,0 +10,2 @@
+@@ -9,0 +10,4 @@
++// KaminIDE patch: equal div base styles share one allocation.
++mod refinement_share;
 +// KaminIDE patch: второй проход краски детей `Div`.
 +pub(crate) mod context_scope;
-@@ -23,0 +26 @@
+@@ -23,0 +28 @@
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
+diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9e268ce06696c3ad6cfc0a5e7b67d04e0737944
+--- /dev/null
++++ b/vendor/gpui/src/elements/refinement_share.rs
+@@ -0,0 +1,131 @@
++//! KaminIDE patch: equal div base style refinements share one allocation.
++//!
++//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
++//! of a page repeat a few styles (selectors-3200: 217 604 divs). A finished div (`into_element`)
++//! keeps its refinement for reading (`compute_style` in request layout, prepaint and paint);
++//! a later write goes through `Rc::make_mut` and copies, so sharing never changes a value.
++//! As in the taffy node style share (`taffy::style_share`), the candidates are the most
++//! recently finished distinct refinements and a hit needs full equality. Sharing when a div is
++//! finished, not at layout, frees the duplicate while the next sibling is built, so its
++//! allocation reuses the freed block instead of growing the frame's working set. The
++//! candidates are per thread and bounded: at most `CANDIDATES` refinements outlive their frame.
++
++use crate::StyleRefinement;
++use std::cell::RefCell;
++use std::rc::Rc;
++
++/// Distinct recent refinements kept as sharing candidates.
++const CANDIDATES: usize = 8;
++
++thread_local! {
++    static RECENT: RefCell<RefinementShare> = RefCell::default();
++}
++
++/// Point `style` at an equal recent refinement of this thread, or make it a candidate.
++pub(crate) fn share(style: &mut Rc<StyleRefinement>) {
++    RECENT.with(|recent| recent.borrow_mut().share(style));
++}
++
++#[derive(Default)]
++struct RefinementShare {
++    recent: [Option<Rc<StyleRefinement>>; CANDIDATES],
++    /// Slot of the next new candidate; the newest candidate sits just before it.
++    next: usize,
++}
++
++impl RefinementShare {
++    /// Point `style` at an equal earlier refinement, or make it a candidate for later ones.
++    /// The value seen through `style` never changes.
++    fn share(&mut self, style: &mut Rc<StyleRefinement>) {
++        for back in 1..=CANDIDATES {
++            let slot = (self.next + CANDIDATES - back) % CANDIDATES;
++            match &self.recent[slot] {
++                Some(candidate) if Rc::ptr_eq(candidate, style) => return,
++                Some(candidate) if **candidate == **style => {
++                    *style = candidate.clone();
++                    return;
++                }
++                Some(_) => {}
++                None => break,
++            }
++        }
++        self.recent[self.next] = Some(style.clone());
++        self.next = (self.next + 1) % CANDIDATES;
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::{Display, px};
++
++    fn sized(width: f32) -> Rc<StyleRefinement> {
++        let mut style = StyleRefinement::default();
++        style.size.width = Some(px(width).into());
++        Rc::new(style)
++    }
++
++    #[test]
++    fn equal_refinements_share_one_allocation() {
++        let mut share = RefinementShare::default();
++        let mut first = sized(8.0);
++        share.share(&mut first);
++        let mut other = Rc::new(StyleRefinement {
++            display: Some(Display::Grid),
++            ..StyleRefinement::default()
++        });
++        share.share(&mut other);
++        let mut again = sized(8.0);
++        share.share(&mut again);
++        assert!(Rc::ptr_eq(&first, &again));
++        assert!(!Rc::ptr_eq(&first, &other));
++        assert_eq!(*again, *sized(8.0));
++        // Sharing the same allocation again is a no-op.
++        let before = again.clone();
++        share.share(&mut again);
++        assert!(Rc::ptr_eq(&before, &again));
++    }
++
++    #[test]
++    fn different_refinements_keep_their_values_and_writes_copy() {
++        let mut share = RefinementShare::default();
++        let mut narrow = sized(8.0);
++        share.share(&mut narrow);
++        let mut wide = sized(9.0);
++        share.share(&mut wide);
++        assert_eq!(*narrow, *sized(8.0));
++        assert_eq!(*wide, *sized(9.0));
++        let mut same = sized(8.0);
++        share.share(&mut same);
++        Rc::make_mut(&mut same).size.width = Some(px(7.0).into());
++        assert_eq!(*narrow, *sized(8.0));
++        assert_eq!(*same, *sized(7.0));
++    }
++
++    #[test]
++    fn old_candidates_are_replaced() {
++        let mut share = RefinementShare::default();
++        let mut first = sized(0.0);
++        share.share(&mut first);
++        for width in 1..=CANDIDATES {
++            share.share(&mut sized(width as f32));
++        }
++        let mut after = sized(0.0);
++        share.share(&mut after);
++        assert!(!Rc::ptr_eq(&first, &after));
++        assert_eq!(*after, *first);
++    }
++
++    #[test]
++    fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
++        use crate::{InteractiveElement, IntoElement, Styled, div};
++        let mut a = div().w(px(12.)).into_element();
++        let mut b = div().w(px(12.)).into_element();
++        let b_style = b.interactivity().base_style.clone();
++        assert!(Rc::ptr_eq(&a.interactivity().base_style, &b_style));
++        a.style().size.width = Some(px(13.).into());
++        assert!(!Rc::ptr_eq(&a.interactivity().base_style, &b_style));
++        assert_eq!(b_style.size.width, Some(px(12.).into()));
++        assert_eq!(a.interactivity().base_style.size.width, Some(px(13.).into()));
++    }
++}
+diff --git a/vendor/gpui/src/elements/svg.rs b/vendor/gpui/src/elements/svg.rs
+index 176072f1c88a5635d1b8d703ac0eab5237e43a6d..c8852dcee2fefb76a00d22d454780e1f1987407a
+--- a/vendor/gpui/src/elements/svg.rs
++++ b/vendor/gpui/src/elements/svg.rs
+@@ -202 +202 @@
+-        &mut self.interactivity.base_style
++        self.interactivity.base_style_mut()
 diff --git a/vendor/gpui/src/elements/text.rs b/vendor/gpui/src/elements/text.rs
 index d1896ad0a65cc659f39d18cd601e2f9f2342ee64..892ef2a294b196a5d6cf7ff9794458a6f3412975
 --- a/vendor/gpui/src/elements/text.rs
@@ -9179,6 +9367,22 @@ index 0000000000000000000000000000000000000000..08346850fb33a5dcb84176f662333246
 +        self
 +    }
 +}
+diff --git a/vendor/gpui/src/elements/uniform_list.rs b/vendor/gpui/src/elements/uniform_list.rs
+index 0a449a20a3cf4c0d676c6d03053baff1d8de6e8a..764376a79a3dbd6d920c0b806322a6424217d761
+--- a/vendor/gpui/src/elements/uniform_list.rs
++++ b/vendor/gpui/src/elements/uniform_list.rs
+@@ -48 +48 @@
+-            base_style: Box::new(base_style),
++            base_style: std::rc::Rc::new(base_style),
+@@ -259 +259 @@
+-        &mut self.interactivity.base_style
++        self.interactivity.base_style_mut()
+@@ -643 +643 @@
+-                self.interactivity.base_style.overflow.x = None;
++                self.interactivity.base_style_mut().overflow.x = None;
+@@ -646 +646 @@
+-                self.interactivity.base_style.overflow.x = Some(Overflow::Scroll);
++                self.interactivity.base_style_mut().overflow.x = Some(Overflow::Scroll);
 diff --git a/vendor/gpui/src/frame_capture.rs b/vendor/gpui/src/frame_capture.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..146d210a2ce65bd2de3c47a4b5f0f34d3eca1434
