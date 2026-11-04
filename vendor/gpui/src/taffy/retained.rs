@@ -26,6 +26,8 @@
 
 use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 use collections::{FxHashMap, FxHashSet};
+use std::any::Any;
+use std::rc::Rc;
 use taffy::tree::NodeId;
 
 /// Request history of the frame tree across passes.
@@ -47,6 +49,18 @@ pub(super) struct Retained {
     pub(super) keys_enabled: bool,
     /// Nodes claimed from a previous pass, for counters and tests.
     pub(super) claimed: u64,
+    /// Stamp of each node: issued when the node is created, kept while it is
+    /// claimed. A claimed parent has only claimed children, so an equal stamp
+    /// means the whole subtree has the inputs it had when it was stamped.
+    stamps: FxHashMap<NodeId, u64>,
+    last_stamp: u64,
+    /// Host values derived from a node's subtree (`Window::set_layout_memo`),
+    /// valid while the node keeps its stamp.
+    memos: FxHashMap<NodeId, Rc<dyn Any>>,
+    /// Requested styles of nodes a pass overrode in place (shrink-to-fit caps,
+    /// root stretch): restored at the end of the pass, so the next request
+    /// with the same style claims the node again.
+    overrides: FxHashMap<NodeId, taffy::Style>,
 }
 
 impl Retained {
@@ -104,14 +118,33 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
-        let candidates = self.retained.by_key.get_mut(&key)?;
         let live = &self.retained.live;
-        let at = candidates.iter().rposition(|node| {
+        let taffy = &self.taffy;
+        let fits = |node: &NodeId| {
             !live.contains(node)
-                && self.taffy.style(*node).is_ok_and(|old| old == style)
-                && self.taffy.children_slice(*node).is_empty()
-        })?;
-        let node = candidates.swap_remove(at);
+                && taffy.style(*node).is_ok_and(|old| old == style)
+                && taffy.children_slice(*node).is_empty()
+        };
+        // The leaf at the same request position first: leaves of one key are
+        // interchangeable, but keeping each at its place keeps its parent.
+        let at_position = self
+            .retained
+            .prev
+            .get(self.retained.seq.len())
+            .copied()
+            .filter(|node| self.retained.keys.get(node) == Some(&key) && fits(node));
+        let node = match at_position {
+            Some(node) => node,
+            None => {
+                let candidates = self.retained.by_key.get_mut(&key)?;
+                // Leaves claimed at their positions stay listed; drop them lazily.
+                while candidates.last().is_some_and(|node| live.contains(node)) {
+                    candidates.pop();
+                }
+                let at = candidates.iter().rposition(fits)?;
+                candidates.swap_remove(at)
+            }
+        };
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
@@ -144,6 +177,10 @@ impl TaffyLayoutEngine {
     pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
         if self.frame_tree {
             self.retained.note(node.0);
+            self.retained.last_stamp += 1;
+            let stamp = self.retained.last_stamp;
+            self.retained.stamps.insert(node.0, stamp);
+            self.retained.memos.remove(&node.0);
             if let Some(key) = key {
                 self.retained.keys.insert(node.0, key);
             }
@@ -156,7 +193,14 @@ impl TaffyLayoutEngine {
     pub(super) fn retire(&mut self) {
         let retained = &mut self.retained;
         let live = std::mem::take(&mut retained.live);
+        for (node, style) in retained.overrides.drain() {
+            if live.contains(&node) {
+                let _ = self.taffy.set_style(node, style);
+            }
+        }
         self.taffy.retain_nodes(|node| live.contains(&node));
+        retained.stamps.retain(|node, _| live.contains(node));
+        retained.memos.retain(|node, _| live.contains(node));
         // A kept leaf is measured again only by the function of the request
         // that claims it, so the old function and everything it captured (a
         // whole paragraph probe) need not outlive the frame.
@@ -183,6 +227,34 @@ impl TaffyLayoutEngine {
     /// Forget every retained node (a discarded or panicking pass).
     pub(super) fn forget(&mut self) {
         self.retained = Retained::default();
+    }
+
+    /// Remember the requested style of `node` before the pass overrides it.
+    pub(super) fn keep_requested_style(&mut self, node: NodeId) {
+        if self.frame_tree
+            && !self.retained.overrides.contains_key(&node)
+            && let Ok(style) = self.taffy.style(node)
+        {
+            self.retained.overrides.insert(node, style.clone());
+        }
+    }
+
+    /// The stamp of a node of this pass (see `Retained::stamps`).
+    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
+        self.retained.stamps.get(&id.0).copied()
+    }
+
+    /// The host memo of a node, if the node kept its stamp since it was set.
+    pub fn layout_memo(&self, id: LayoutId) -> Option<Rc<dyn Any>> {
+        self.retained.memos.get(&id.0).cloned()
+    }
+
+    /// Attach a host value derived only from the node's subtree inputs; it
+    /// lives while the node is claimed and is dropped with the node.
+    pub fn set_layout_memo(&mut self, id: LayoutId, memo: Rc<dyn Any>) {
+        if self.retained.stamps.contains_key(&id.0) {
+            self.retained.memos.insert(id.0, memo);
+        }
     }
 
     /// Nodes claimed from previous passes since the engine was created.

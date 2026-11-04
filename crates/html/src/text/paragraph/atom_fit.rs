@@ -14,25 +14,35 @@
 use super::*;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px, size};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(super) struct FitAtom {
     /// Index into `atoms` / `atom_boxes`.
     k: usize,
     /// Spacer byte of the atom (`AtomBox::at`).
     at: usize,
-    /// Margin-box min-content width.
-    min: f32,
-    /// Margin-box max-content width and baseline of the real layout.
-    max: f32,
+    /// Baseline of the real max-content layout in this paragraph.
     base: f32,
-    /// Copy of the atom wrapper tree and its max-content height/baseline.
+    /// Measurements of the atom's subtree, shared with later frames.
+    memo: Rc<RefCell<AtomMemo>>,
+    /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
     snap: gpui::LayoutMeasurement,
-    snap_h: f32,
-    snap_base: Option<f32>,
 }
 
-/// Resolved atom geometry for one available width: (index, width, height,
-/// baseline).
+/// What the atom's subtree alone decides, kept on its layout root while the frame
+/// tree keeps the subtree (`gpui::Window::set_layout_memo`): it is not measured again.
+pub(super) struct AtomMemo {
+    /// Margin-box min-content and max-content widths.
+    min: f32,
+    max: f32,
+    /// Max-content height and baseline; `None` if min-content is max-content.
+    snap: Option<(f32, Option<f32>)>,
+    /// Copy measured at a width: (width, height, baseline).
+    at_width: Vec<(f32, f32, Option<f32>)>,
+}
+
+/// Resolved atom geometry for one available width: (index, width, height, baseline).
 pub(super) type Fitted = Vec<(usize, f32, f32, f32)>;
 
 #[derive(Default)]
@@ -41,8 +51,7 @@ pub(super) struct AtomFit {
     cache: Vec<(f32, Fitted)>,
 }
 
-/// The wrapper (`Paragraph::atoms`) is a row of [probe, atom]: the atom is
-/// child 1.
+/// The wrapper (`Paragraph::atoms`) is a row of [probe, atom]: the atom is child 1.
 const ATOM_CHILD: usize = 1;
 
 impl AtomFit {
@@ -62,31 +71,66 @@ impl AtomFit {
         }
         let mut out = Vec::new();
         for a in self.atoms.iter_mut() {
-            if avail >= a.max - COORD_EPS {
+            let mut memo = a.memo.borrow_mut();
+            let memo = &mut *memo;
+            // `avail` at max-content or wider also gives `w` there.
+            let w = avail.max(memo.min);
+            if w >= memo.max - COORD_EPS {
                 continue;
             }
-            let w = avail.max(a.min);
-            if w >= a.max - COORD_EPS {
+            let Some((snap_h, snap_base)) = memo.snap else {
                 continue;
-            }
-            a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
-            let (s, b, _) = a.snap.measure(
-                size(
-                    gpui::AvailableSpace::Definite(px(w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
-            let h = f32::from(s.height);
-            let base = match (b, a.snap_base) {
-                (Some(b), Some(b0)) => a.base + (f32::from(b) - b0),
-                _ => a.base + (h - a.snap_h),
+            };
+            let (h, b) = match memo.at_width.iter().find(|m| m.0 == w) {
+                Some(&(_, h, b)) => (h, b),
+                None => {
+                    a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
+                    let (s, b, _) = a.snap.measure(
+                        size(
+                            gpui::AvailableSpace::Definite(px(w)),
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        cx,
+                    );
+                    let (h, b) = (f32::from(s.height), b.map(f32::from));
+                    memo.at_width.push((w, h, b));
+                    (h, b)
+                }
+            };
+            let base = match (b, snap_base) {
+                (Some(b), Some(b0)) => a.base + (b - b0),
+                _ => a.base + (h - snap_h),
             };
             out.push((a.k, w, h, base));
         }
         self.cache.push((avail, out.clone()));
         out
+    }
+}
+
+impl AtomMemo {
+    /// Measure the copy `snap` of an atom wrapper laid out at max-content.
+    fn measure(
+        snap: &mut gpui::LayoutMeasurement,
+        max: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        let content = |w| size(w, gpui::AvailableSpace::MaxContent);
+        let (smin, _, _) = snap.measure(content(gpui::AvailableSpace::MinContent), window, cx);
+        let min = f32::from(smin.width);
+        let snap = (min < max - COORD_EPS).then(|| {
+            let (smax, sbase, _) =
+                snap.measure(content(gpui::AvailableSpace::MaxContent), window, cx);
+            (f32::from(smax.height), sbase.map(f32::from))
+        });
+        Self {
+            min,
+            max,
+            snap,
+            at_width: Vec::new(),
+        }
     }
 }
 
@@ -102,40 +146,32 @@ impl Paragraph {
                     continue;
                 };
                 let max = f32::from(window.layout_exact(root).1.width);
-                let mut snap = window.snapshot_layout_measurement(root);
-                let (smin, _, _) = snap.measure(
-                    size(
-                        gpui::AvailableSpace::MinContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
-                let min = f32::from(smin.width);
-                if min >= max - COORD_EPS {
+                let kept = window
+                    .layout_memo(root)
+                    .and_then(|m| m.downcast::<RefCell<AtomMemo>>().ok())
+                    .filter(|m| m.borrow().max == max);
+                if kept.as_ref().is_some_and(|m| m.borrow().snap.is_none()) {
                     continue;
                 }
-                let (smax, sbase, _) = snap.measure(
-                    size(
-                        gpui::AvailableSpace::MaxContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
+                let mut snap = window.snapshot_layout_measurement(root);
+                let memo = kept.unwrap_or_else(|| {
+                    let memo = Rc::new(RefCell::new(AtomMemo::measure(&mut snap, max, window, cx)));
+                    window.set_layout_memo(root, memo.clone());
+                    memo
+                });
+                if memo.borrow().snap.is_none() {
+                    continue;
+                }
                 fit.atoms.push(FitAtom {
                     k,
                     at: b.at,
-                    min,
-                    max,
                     base: b.base,
+                    memo,
                     snap,
-                    snap_h: f32::from(smax.height),
-                    snap_base: sbase.map(f32::from),
                 });
             }
         }
-        self.atom_fit = std::rc::Rc::new(std::cell::RefCell::new(fit));
+        self.atom_fit = Rc::new(RefCell::new(fit));
     }
 
     /// Put fitted atom sizes into the spacer advances and atom boxes.

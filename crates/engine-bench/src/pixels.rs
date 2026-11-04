@@ -107,6 +107,10 @@ impl Recorder {
         })
     }
 
+    pub(super) fn first(&self) -> Option<&CapturedFrame> {
+        self.first.as_ref()
+    }
+
     pub(super) fn observe(
         &mut self,
         frame: CapturedFrame,

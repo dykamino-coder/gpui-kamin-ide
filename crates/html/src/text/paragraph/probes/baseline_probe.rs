@@ -12,6 +12,9 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px, size};
 /// базовую линию атома, и раскладка отдаёт её положением щупа. Для атома без
 /// базовой линии taffy берёт нижний край полей (`flexbox.rs`) — у замещаемого
 /// это и есть его базовая по §10.8.1.
+/// Layout key of the constant probe measure (`gpui::Window::set_next_layout_key`).
+const BASELINE_PROBE_KEY: u64 = 0x6b61_6d69_6e5f_6270;
+
 pub(crate) struct BaselineProbe {
     pub(crate) slot: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
 }
@@ -21,6 +24,9 @@ impl Hooks for BaselineProbe {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, ()) {
+        // The measure reads nothing: one key for every probe lets the frame
+        // tree keep the probe, and with it the atom wrapper and its subtree.
+        window.set_next_layout_key(BASELINE_PROBE_KEY);
         let id = window
             .request_measured_layout_with_baselines(gpui::Style::default(), |_, _, _, _| {
                 (size(px(0.), px(0.)), Some(px(0.)), Some(px(0.)))

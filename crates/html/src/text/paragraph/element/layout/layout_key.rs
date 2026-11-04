@@ -5,9 +5,9 @@
 //! the line splits of an unchanged paragraph are not measured again on a
 //! resize whose constraints reach it unchanged. The key therefore covers
 //! every input of the measure probe (`request_layout_impl`). A paragraph whose
-//! probe also reads state shared with other elements or bound later (atoms,
-//! overlays, ruby, fragments, clamps, fitting, vertical or rotated text) has
-//! no key and is measured in every frame, as before.
+//! probe also reads state shared with other elements or bound later (atoms
+//! without layout stamps, overlays, ruby, fragments, clamps, fitting,
+//! vertical or rotated text) has no key and is measured in every frame.
 
 use crate::text::paragraph::Paragraph;
 use std::hash::{Hash, Hasher};
@@ -24,13 +24,23 @@ impl std::fmt::Write for Sink<'_> {
 
 impl Paragraph {
     /// Key of everything the measure probe reads, or `None` when the probe
-    /// reads state a key cannot see. `rebuild` is a probe rebuilt per call.
-    pub(super) fn layout_key(&self, rebuild: bool) -> Option<u64> {
-        if !self.keyable(rebuild) {
+    /// reads state a key cannot see. Atoms enter by the stamps of their
+    /// layout roots: their sizes are in `atom_boxes`/`letter_spans`, and their
+    /// shrink-to-fit widths come from memos of those unchanged subtrees.
+    pub(super) fn layout_key(&self, window: &gpui::Window) -> Option<u64> {
+        if !self.keyable() {
             return None;
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.text.as_ref().hash(&mut hasher);
+        if !self.atoms.is_empty() {
+            self.atom_stamps(window)?.hash(&mut hasher);
+            std::fmt::write(
+                &mut Sink(&mut hasher),
+                format_args!("{:?}", self.atom_boxes),
+            )
+            .ok()?;
+        }
         // `Debug` of these values is exact (floats print round-trip).
         std::fmt::write(
             &mut Sink(&mut hasher),
@@ -62,12 +72,19 @@ impl Paragraph {
         Some(hasher.finish())
     }
 
-    /// Whether the probe reads only the paragraph's own values.
-    fn keyable(&self, rebuild: bool) -> bool {
-        !rebuild
-            && self.overlays.is_empty()
-            && self.atoms.is_empty()
-            && self.atom_boxes.is_empty()
+    /// Layout stamps of the atom wrappers (`gpui::Window::layout_stamp`), or
+    /// `None` if an atom has none.
+    fn atom_stamps(&self, window: &gpui::Window) -> Option<Vec<u64>> {
+        self.atoms
+            .iter()
+            .map(|slot| slot.root.get().and_then(|root| window.layout_stamp(root)))
+            .collect()
+    }
+
+    /// Whether the probe reads only the paragraph's own values and atoms.
+    fn keyable(&self) -> bool {
+        self.overlays.is_empty()
+            && self.atom_boxes.len() == self.atoms.len()
             && self.ruby_base_sink.is_none()
             && self.ruby_layers.is_none()
             && !self.ruby_unit

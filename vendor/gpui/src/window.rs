@@ -6105,6 +6105,32 @@ impl Window {
             .map_or(0, |engine| engine.claimed_nodes())
     }
 
+    /// KaminIDE patch: the stamp of a layout node of this pass. The frame tree
+    /// issues a stamp when it creates a node and keeps it while later passes
+    /// claim the node, so an equal stamp means the node's whole subtree has
+    /// the same inputs (styles, children, keyed measurements) as then.
+    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
+        self.layout_engine
+            .as_ref()
+            .and_then(|engine| engine.layout_stamp(id))
+    }
+
+    /// KaminIDE patch: a host value attached to a layout node by
+    /// `set_layout_memo`, while the node keeps its stamp.
+    pub fn layout_memo(&self, id: LayoutId) -> Option<std::rc::Rc<dyn std::any::Any>> {
+        self.layout_engine
+            .as_ref()
+            .and_then(|engine| engine.layout_memo(id))
+    }
+
+    /// KaminIDE patch: attach a value that the host derived only from the
+    /// node's subtree inputs. It is dropped when a pass does not claim the node.
+    pub fn set_layout_memo(&mut self, id: LayoutId, memo: std::rc::Rc<dyn std::any::Any>) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_layout_memo(id, memo);
+        }
+    }
+
     /// KaminIDE patch: honour layout keys (`set_next_layout_key`) inside `f`
     /// only when `enabled`: the host vouches that no input outside its keys
     /// (loaded fonts, images) changed since the previous pass.

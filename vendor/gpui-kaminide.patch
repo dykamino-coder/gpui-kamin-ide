@@ -11830,7 +11830,7 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db62cb86ba6
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..20ad74d4118c060697ea354c263726c847bdcf87
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
 @@ -0,0 +1,41 @@
@@ -12130,7 +12130,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +                (size, first, None)
 +            },
 +        )
-@@ -185,0 +404,21 @@
+@@ -127,0 +346 @@
++        self.keep_requested_style(id.0);
+@@ -185,0 +405,21 @@
 +    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
 +    /// линии содержимого (`last baseline`, css-align-3 §9.1).
 +    pub fn request_measured_layout_with_baselines(
@@ -12152,20 +12154,20 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +        })
 +    }
 +
-@@ -186,0 +426,2 @@
+@@ -186,0 +427,2 @@
 +    // KaminIDE patch: счётчики раскладки (`frame_perf`) — по ним видно, что
 +    // кадр дорог не рисованием, а числом узлов и замеров.
-@@ -204,0 +446 @@
+@@ -204,0 +447 @@
 +        crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -210 +452 @@
+@@ -210 +453 @@
 -                self.absolute_outer_origins.remove(&id);
 +                self.absolute_unrounded.remove(&id);
-@@ -229,0 +472,2 @@
+@@ -229,0 +473,2 @@
 +        self.begin_geometry(id);
 +        let logical_space = available_space;
-@@ -234,0 +479 @@
+@@ -234,0 +480 @@
 +        let _taffy_started = std::time::Instant::now();
-@@ -239,26 +484,2 @@
+@@ -239,26 +485,2 @@
 -                |known_dimensions, available_space, _id, node_context, _style| {
 -                    let Some(node_context) = node_context else {
 -                        return taffy::geometry::Size::default();
@@ -12194,7 +12196,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 -                    snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
 +                |inputs, _id, node_context, style| {
 +                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
-@@ -267,0 +489,134 @@
+@@ -267,0 +490,137 @@
 +        self.finish_geometry(id, logical_space, scale_factor);
 +        crate::frame_perf::TAFFY_US.fetch_add(
 +            _taffy_started.elapsed().as_micros() as u32,
@@ -12257,6 +12259,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +        width: Pixels,
 +        scale_factor: f32,
 +    ) -> bool {
++        if let Ok(child) = self.taffy.child_at_index(parent.into(), index) {
++            self.keep_requested_style(child);
++        }
 +        cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
 +    }
 +
@@ -12329,7 +12334,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +            .copied()
 +            .unwrap_or((0.0, 0.0));
 +        Some(((ax / scale_factor, ay / scale_factor), cols, rows))
-@@ -350,6 +705,8 @@
+@@ -350,6 +709,8 @@
 -        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
 -        let layout_location = layout.location;
 -        let layout_size = layout.size;
@@ -12344,7 +12349,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +        // ошибка не копится по глубине. Размер считается как разность
 +        // округлённых краёв — иначе соседние блоки расходились бы щелью.
 +        let (parent_x, parent_y) = match self.taffy.parent(id.0) {
-@@ -357,7 +714,9 @@
+@@ -357,7 +718,9 @@
 -                let parent_id = LayoutId::from(parent_id);
 -                self.layout_bounds(parent_id, scale_factor);
 -                let parent_origin = *self
@@ -12361,11 +12366,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +                // KaminIDE patch: content of a `vertical-align: baseline`
 +                // table cell sits lower than its box (taffy `content_shift`).
 +                (px, py + self.taffy.content_shift(parent_id))
-@@ -365 +724,2 @@
+@@ -365 +728,2 @@
 -            None => Point::from(layout_location),
 +            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
 +            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
-@@ -367,10 +727,15 @@
+@@ -367,10 +731,15 @@
 -        self.absolute_outer_origins
 -            .insert(id, absolute_outer_origin);
 -
@@ -12391,7 +12396,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +                Pixels(((ay + layout.size.height).round() - ry) / scale_factor),
 +            ),
 +        };
-@@ -412,14 +777,12 @@
+@@ -412,14 +781,12 @@
 -fn snap_measured_size_to_device_pixels(size: Size<Pixels>, scale_factor: f32) -> Size<f32> {
 -    size.map(|d| ceil_to_device_pixel(d.0.max(0.0), scale_factor))
 -}
@@ -12418,7 +12423,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
 +    let Ok(child) = tree.child_at_index(parent, index) else {
 +        return false;
-@@ -427,6 +790,21 @@
+@@ -427,6 +794,21 @@
 -    TaffyRect {
 -        top: snap(&widths.top),
 -        right: snap(&widths.right),
@@ -12446,7 +12451,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +    }
 +    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
 +    tree.set_style(child, style).is_ok()
-@@ -448,0 +827,105 @@
+@@ -448,0 +831,105 @@
 +            }
 +        }
 +
@@ -12552,19 +12557,19 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +            match to_grid_track::<String>(track, scale_factor) {
 +                taffy::GridTemplateComponent::Single(one) => vec![one],
 +                _ => Default::default(),
-@@ -483 +966 @@
+@@ -483 +970 @@
 -        taffy::style::Style {
 +        let mut out = taffy::style::Style {
-@@ -484,0 +968,3 @@
+@@ -484,0 +972,3 @@
 +            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
 +                vertical, block_reverse, inline_reverse,
 +            }),
-@@ -492,0 +979,4 @@
+@@ -492,0 +983,4 @@
 +            aspect_ratio_preferred_size: taffy::Size {
 +                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
 +                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
 +            },
-@@ -495,5 +985,22 @@
+@@ -495,5 +989,22 @@
 -            border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
 -            align_items: self.align_items.map(|x| x.into()),
 -            align_self: self.align_self.map(|x| x.into()),
@@ -12592,7 +12597,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +                self.safe_alignment.3,
 +            )
 +            .unwrap_or(taffy::JustifyContent::NORMAL),
-@@ -502 +1009,68 @@
+@@ -502 +1013,68 @@
 -            flex_wrap: self.flex_wrap.into(),
 +            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
 +            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
@@ -12662,10 +12667,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +            }),
 +            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
 +            subgrid: self.grid_subgrid,
-@@ -503,0 +1078,2 @@
+@@ -503,0 +1082,2 @@
 +            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
 +            item_is_table: self.item_is_table,
-@@ -506,2 +1082,70 @@
+@@ -506,2 +1086,70 @@
 -            grid_template_rows: to_grid_repeat(&self.grid_rows),
 -            grid_template_columns: to_grid_repeat(&self.grid_cols),
 +            // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -12738,7 +12743,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +                    .collect::<Vec<_>>()
 +                    .into()
 +            },
-@@ -519 +1163,132 @@
+@@ -519 +1167,132 @@
 -        }
 +        };
 +        if let Some(keyword) = self.sizing_keywords[0] {
@@ -12872,26 +12877,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +        && auto(&out.grid_row.end)
 +    {
 +        out.grid_row.end = placement(p);
-@@ -525 +1300,5 @@
+@@ -525 +1304,5 @@
 -        round_to_device_pixel(self.to_pixels(rem_size).0, scale_factor)
 +        // KaminIDE patch: no pre-layout snapping of authored lengths (upstream
 +        // rounds them to device pixels here). CSS layout is fractional; edges
 +        // are snapped once, on absolute coordinates, in `layout_bounds`, and
 +        // border widths by the HTML painter (`border_snap`). See decisions.md.
 +        self.to_pixels(rem_size).0 * scale_factor
-@@ -557,0 +1337,3 @@
+@@ -557,0 +1341,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -568,0 +1351,3 @@
+@@ -568,0 +1355,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -577,0 +1363,3 @@
+@@ -577,0 +1367,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -745,17 +1533,7 @@
+@@ -745,17 +1537,7 @@
 -#[cfg(test)]
 -mod tests {
 -    use super::*;
@@ -12916,7 +12921,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..d89f4c94be09e6698aba25975f0b0db6
 +        crate::frame_perf::MEASURE_US.fetch_add(
 +            self.0.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
-@@ -763,14 +1541,2 @@
+@@ -763,14 +1545,2 @@
 -        assert_eq!(
 -            taffy_border.right,
 -            taffy::style::LengthPercentage::length(1.0)
@@ -14935,10 +14940,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c173381810de223dd
+index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe343c3f989a
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,275 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -14967,6 +14972,8 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +
 +use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 +use collections::{FxHashMap, FxHashSet};
++use std::any::Any;
++use std::rc::Rc;
 +use taffy::tree::NodeId;
 +
 +/// Request history of the frame tree across passes.
@@ -14988,6 +14995,18 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +    pub(super) keys_enabled: bool,
 +    /// Nodes claimed from a previous pass, for counters and tests.
 +    pub(super) claimed: u64,
++    /// Stamp of each node: issued when the node is created, kept while it is
++    /// claimed. A claimed parent has only claimed children, so an equal stamp
++    /// means the whole subtree has the inputs it had when it was stamped.
++    stamps: FxHashMap<NodeId, u64>,
++    last_stamp: u64,
++    /// Host values derived from a node's subtree (`Window::set_layout_memo`),
++    /// valid while the node keeps its stamp.
++    memos: FxHashMap<NodeId, Rc<dyn Any>>,
++    /// Requested styles of nodes a pass overrode in place (shrink-to-fit caps,
++    /// root stretch): restored at the end of the pass, so the next request
++    /// with the same style claims the node again.
++    overrides: FxHashMap<NodeId, taffy::Style>,
 +}
 +
 +impl Retained {
@@ -15045,14 +15064,33 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +        if !self.frame_tree {
 +            return None;
 +        }
-+        let candidates = self.retained.by_key.get_mut(&key)?;
 +        let live = &self.retained.live;
-+        let at = candidates.iter().rposition(|node| {
++        let taffy = &self.taffy;
++        let fits = |node: &NodeId| {
 +            !live.contains(node)
-+                && self.taffy.style(*node).is_ok_and(|old| old == style)
-+                && self.taffy.children_slice(*node).is_empty()
-+        })?;
-+        let node = candidates.swap_remove(at);
++                && taffy.style(*node).is_ok_and(|old| old == style)
++                && taffy.children_slice(*node).is_empty()
++        };
++        // The leaf at the same request position first: leaves of one key are
++        // interchangeable, but keeping each at its place keeps its parent.
++        let at_position = self
++            .retained
++            .prev
++            .get(self.retained.seq.len())
++            .copied()
++            .filter(|node| self.retained.keys.get(node) == Some(&key) && fits(node));
++        let node = match at_position {
++            Some(node) => node,
++            None => {
++                let candidates = self.retained.by_key.get_mut(&key)?;
++                // Leaves claimed at their positions stay listed; drop them lazily.
++                while candidates.last().is_some_and(|node| live.contains(node)) {
++                    candidates.pop();
++                }
++                let at = candidates.iter().rposition(fits)?;
++                candidates.swap_remove(at)
++            }
++        };
 +        let fresh = context.take()?;
 +        if let Some(old) = self.taffy.get_node_context_mut(node) {
 +            old.measure = fresh.measure;
@@ -15085,6 +15123,10 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +    pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
 +        if self.frame_tree {
 +            self.retained.note(node.0);
++            self.retained.last_stamp += 1;
++            let stamp = self.retained.last_stamp;
++            self.retained.stamps.insert(node.0, stamp);
++            self.retained.memos.remove(&node.0);
 +            if let Some(key) = key {
 +                self.retained.keys.insert(node.0, key);
 +            }
@@ -15097,7 +15139,14 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +    pub(super) fn retire(&mut self) {
 +        let retained = &mut self.retained;
 +        let live = std::mem::take(&mut retained.live);
++        for (node, style) in retained.overrides.drain() {
++            if live.contains(&node) {
++                let _ = self.taffy.set_style(node, style);
++            }
++        }
 +        self.taffy.retain_nodes(|node| live.contains(&node));
++        retained.stamps.retain(|node, _| live.contains(node));
++        retained.memos.retain(|node, _| live.contains(node));
 +        // A kept leaf is measured again only by the function of the request
 +        // that claims it, so the old function and everything it captured (a
 +        // whole paragraph probe) need not outlive the frame.
@@ -15126,6 +15175,34 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +        self.retained = Retained::default();
 +    }
 +
++    /// Remember the requested style of `node` before the pass overrides it.
++    pub(super) fn keep_requested_style(&mut self, node: NodeId) {
++        if self.frame_tree
++            && !self.retained.overrides.contains_key(&node)
++            && let Ok(style) = self.taffy.style(node)
++        {
++            self.retained.overrides.insert(node, style.clone());
++        }
++    }
++
++    /// The stamp of a node of this pass (see `Retained::stamps`).
++    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
++        self.retained.stamps.get(&id.0).copied()
++    }
++
++    /// The host memo of a node, if the node kept its stamp since it was set.
++    pub fn layout_memo(&self, id: LayoutId) -> Option<Rc<dyn Any>> {
++        self.retained.memos.get(&id.0).cloned()
++    }
++
++    /// Attach a host value derived only from the node's subtree inputs; it
++    /// lives while the node is claimed and is dropped with the node.
++    pub fn set_layout_memo(&mut self, id: LayoutId, memo: Rc<dyn Any>) {
++        if self.retained.stamps.contains_key(&id.0) {
++            self.retained.memos.insert(id.0, memo);
++        }
++    }
++
 +    /// Nodes claimed from previous passes since the engine was created.
 +    pub fn claimed_nodes(&self) -> u64 {
 +        self.retained.claimed
@@ -15144,10 +15221,10 @@ index 0000000000000000000000000000000000000000..a6b4cc2cb0e95ec43c8cc72c17338181
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e2245ada86eb7c5484ba2e5d5093c1366e22c429
+index 0000000000000000000000000000000000000000..b1866c2633dd6afd7f5df363584cd749418299c5
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,134 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -15231,6 +15308,58 @@ index 0000000000000000000000000000000000000000..e2245ada86eb7c5484ba2e5d5093c136
 +    assert_ne!(parent(&mut engine, &[a2]), p);
 +    assert_eq!(engine.claimed_nodes(), 1);
 +}
++
++#[test]
++fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
++    let mut engine = TaffyLayoutEngine::new();
++    let a = leaf(&mut engine, 10.);
++    let p = parent(&mut engine, &[a]);
++    let stamp = engine.layout_stamp(p);
++    engine.set_layout_memo(p, std::rc::Rc::new(5u32));
++    engine.clear();
++    let a2 = leaf(&mut engine, 10.);
++    let p2 = parent(&mut engine, &[a2]);
++    assert_eq!((p2, engine.layout_stamp(p2)), (p, stamp));
++    let memo = engine.layout_memo(p2).expect("memo of a kept node");
++    assert_eq!(memo.downcast_ref::<u32>(), Some(&5));
++    engine.clear();
++    let b = leaf(&mut engine, 30.);
++    let p3 = parent(&mut engine, &[b]);
++    assert_ne!(engine.layout_stamp(p3), stamp);
++    assert!(engine.layout_memo(p3).is_none());
++}
++
++#[test]
++fn a_capped_child_is_restored_and_kept_by_the_next_equal_request() {
++    let mut engine = TaffyLayoutEngine::new();
++    let a = leaf(&mut engine, 10.);
++    let p = parent(&mut engine, &[a]);
++    assert!(engine.cap_child_outer_width(p, 0, px(4.), 1.0));
++    engine.clear();
++    let a2 = leaf(&mut engine, 10.);
++    assert_eq!(parent(&mut engine, &[a2]), p);
++    assert_eq!(engine.claimed_nodes(), 2);
++}
++#[test]
++fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let mut parents = Vec::new();
++    for width in [10., 20., 30., 40.] {
++        let probe = measured(&mut engine, Some(1));
++        let a = leaf(&mut engine, width);
++        parents.push(parent(&mut engine, &[probe, a]));
++    }
++    engine.clear();
++    engine.set_layout_keys(true);
++    for (width, old) in [10., 20., 30., 40.].into_iter().zip(parents) {
++        let probe = measured(&mut engine, Some(1));
++        let a = leaf(&mut engine, width);
++        assert_eq!(parent(&mut engine, &[probe, a]), old);
++    }
++    assert_eq!(engine.claimed_nodes(), 12);
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..fb19083af0f432d1dd961edd14fe95e5795e2640
@@ -17537,7 +17666,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f766e646d
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd93f618b0
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -18954,7 +19083,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +    ) -> LayoutId {
 @@ -5082,0 +6074 @@
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6082,39 @@
+@@ -5089,0 +6082,65 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -18981,6 +19110,32 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            .map_or(0, |engine| engine.claimed_nodes())
 +    }
 +
++    /// KaminIDE patch: the stamp of a layout node of this pass. The frame tree
++    /// issues a stamp when it creates a node and keeps it while later passes
++    /// claim the node, so an equal stamp means the node's whole subtree has
++    /// the same inputs (styles, children, keyed measurements) as then.
++    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
++        self.layout_engine
++            .as_ref()
++            .and_then(|engine| engine.layout_stamp(id))
++    }
++
++    /// KaminIDE patch: a host value attached to a layout node by
++    /// `set_layout_memo`, while the node keeps its stamp.
++    pub fn layout_memo(&self, id: LayoutId) -> Option<std::rc::Rc<dyn std::any::Any>> {
++        self.layout_engine
++            .as_ref()
++            .and_then(|engine| engine.layout_memo(id))
++    }
++
++    /// KaminIDE patch: attach a value that the host derived only from the
++    /// node's subtree inputs. It is dropped when a pass does not claim the node.
++    pub fn set_layout_memo(&mut self, id: LayoutId, memo: std::rc::Rc<dyn std::any::Any>) {
++        if let Some(engine) = self.layout_engine.as_mut() {
++            engine.set_layout_memo(id, memo);
++        }
++    }
++
 +    /// KaminIDE patch: honour layout keys (`set_next_layout_key`) inside `f`
 +    /// only when `enabled`: the host vouches that no input outside its keys
 +    /// (loaded fonts, images) changed since the previous pass.
@@ -18994,10 +19149,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6140,2 @@
+@@ -5108,0 +6166,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6145,229 @@
+@@ -5112 +6171,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -19228,7 +19383,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6394,48 @@
+@@ -5132,0 +6420,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -19277,7 +19432,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6456,6 @@
+@@ -5147,2 +6482,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -19286,7 +19441,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6482,6 @@
+@@ -5169 +6508,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -19294,7 +19449,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6530,16 @@
+@@ -5211,0 +6556,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -19311,30 +19466,30 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e4c9cce02f5c0672d40918f17efc205f
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6558 @@
+@@ -5223,0 +6584 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6560 @@
+@@ -5225,3 +6586 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6569 @@
+@@ -5235,0 +6595 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6571 @@
+@@ -5237,3 +6597 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +6791,2 @@
+@@ -5458,0 +6817,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7127,5 @@
+@@ -5792,0 +7153,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -7752,0 +9092,31 @@
+@@ -7752,0 +9118,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
