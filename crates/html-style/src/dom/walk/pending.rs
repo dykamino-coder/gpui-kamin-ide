@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 pub(super) struct Pending<'a> {
     pub visit: Visit<'a>,
-    pub candidates: crate::budget::admission::Buffer<usize>,
+    pub candidates: Rc<crate::budget::admission::Buffer<usize>>,
     pub me: Ancestor,
     pub tag: String,
     pub attrs: Vec<(String, String)>,
@@ -26,6 +26,8 @@ pub(super) struct Pending<'a> {
     pub style_scope: Option<Scope>,
     pub hidden: bool,
     pub children: Vec<Node>,
+    /// Номер разделения стиля элемента для его детей.
+    pub share: u64,
 }
 pub(super) enum Restore {
     Truncate(usize),
