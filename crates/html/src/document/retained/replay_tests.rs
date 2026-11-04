@@ -67,7 +67,7 @@ fn a_replayed_frame_paints_the_line_phase_of_a_fresh_build(cx: &mut TestAppConte
     update(&view, cx, &page("one"));
     assert_eq!(replayed(&view, cx), 2, "head and tail were rebuilt");
     let replay = scene(cx);
-    let (_, fresh) = open(&mut **cx, &page("one"));
+    let (_, fresh) = open(cx, &page("one"));
     frame(fresh);
     assert_eq!(replay, scene(fresh), "the replayed frame differs");
 }

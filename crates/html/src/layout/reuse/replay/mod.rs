@@ -77,6 +77,9 @@ impl ReplayRecord {
     }
 }
 
+/// Prepaint блока с его неокруглённым началом и размером.
+type PlacedPrepaint = (RetainedPrepaint, Point<Pixels>, Size<Pixels>);
+
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
 pub(super) struct PendingReplay {
     key: Rc<FlowKey>,
@@ -85,7 +88,7 @@ pub(super) struct PendingReplay {
     /// Чтения ширин снаружи за сборку и меры кадра записи.
     pub(super) widths: Rc<Cell<bool>>,
     layout: RefCell<Option<(RetainedSubtree, LayoutId)>>,
-    prepaint: RefCell<Option<(RetainedPrepaint, Point<Pixels>, Size<Pixels>)>>,
+    prepaint: RefCell<Option<PlacedPrepaint>>,
     paint: RefCell<Option<RetainedPaint>>,
     env: Cell<Option<(f32, u64)>>,
     mask: RefCell<Option<ContentMask<Pixels>>>,
