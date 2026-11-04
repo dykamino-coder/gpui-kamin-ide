@@ -172,11 +172,12 @@ impl TaffyLayoutEngine {
     pub fn clear(&mut self) {
         self.final_geometry = final_geometry::FinalGeometry::default();
         if self.frame_tree {
+            // The kept tree keeps its calc registry, so the sharing candidates stay valid.
             self.retire();
         } else {
             self.taffy.clear();
+            self.styles.clear();
         }
-        self.styles.clear();
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
         self.root_origins.clear();
@@ -283,6 +284,7 @@ impl TaffyLayoutEngine {
         self.clear();
         self.forget();
         self.taffy.clear();
+        self.styles.clear();
     }
 
     pub fn request_measured_layout(
