@@ -123,8 +123,6 @@ pub(super) struct ElementSharing {
     /// Исходы перепроверки текущего элемента: `lookup` начинает их заново,
     /// `insert` после промаха того же элемента читает готовые.
     memo: RefCell<Vec<Check>>,
-    /// Разобранные блоки `style=""` для промахов.
-    pub inline: super::inline_blocks::InlineBlocks,
 }
 
 impl ElementSharing {

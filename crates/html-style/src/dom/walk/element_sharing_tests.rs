@@ -124,3 +124,21 @@ fn several_entries_with_one_key_are_told_apart_by_their_outcomes() {
     assert_eq!(s[1], s[4]);
     assert_eq!(s[2], s[5]);
 }
+
+#[test]
+fn hover_layers_of_positional_rules_are_rechecked() {
+    let parsed = parse(
+        "<style>.r:hover{color:red}div:nth-child(2n) > .r:hover{color:blue}</style>\
+         <div><p class=r>a</p></div><div><p class=r>b</p></div><div><p class=r>c</p></div>",
+        "",
+    );
+    let mut found = vec![];
+    collect(&parsed.nodes, "p", &mut found);
+    let hover = |e: &Element| {
+        let layer = e.hover.as_ref().expect("слой наведения");
+        format!("{:?}", layer.cascaded().inh.ui.color)
+    };
+    assert_eq!(found.len(), 3);
+    assert_ne!(hover(found[0]), hover(found[1]), "под чётным div — синий");
+    assert_eq!(hover(found[0]), hover(found[2]));
+}

@@ -82,7 +82,6 @@ pub(super) fn enter<'a>(
             let (mut style, own_vars, scheme, shadow, important) = cascade_element(
                 &mut me,
                 &attrs,
-                &sharing.inline.block(&attrs, vcx),
                 &tag,
                 handle,
                 tree,
@@ -96,6 +95,8 @@ pub(super) fn enter<'a>(
             );
             let vcx = vcx.with_scheme(scheme);
             normalize_style(&mut style, &tag, &attrs, path, vcx);
+            // Правила с `:hover` собираются отдельным слоем: в базовый стиль
+            // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let layers = pseudo_styles(
                 &mut style,
                 &tag,

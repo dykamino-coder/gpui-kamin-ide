@@ -50,7 +50,6 @@ vocabulary!(Counter {
     SvgRasterCacheMisses => "svg_raster_cache_misses",
     StyleSharingHits => "style_sharing_hits",
     ElementSharingHits => "element_sharing_hits",
-    InlineStyleParseHits => "inline_style_parse_hits",
     MaterializedSharingHits => "materialized_sharing_hits",
     StyleGroupClones => "style_group_clones",
     StyleGroupCloneBytes => "style_group_clone_bytes",
