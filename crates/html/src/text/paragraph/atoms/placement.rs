@@ -54,7 +54,8 @@ impl Paragraph {
                 .get()
                 .map(|id| window.layout_exact(id).1)
                 .unwrap_or(rounded);
-            let (h, base, drop) = super::row_geometry::row_geometry(slot.root.get(), f32::from(s.height), window);
+            let (h, base, drop) =
+                super::row_geometry::row_geometry(slot.root.get(), f32::from(s.height), window);
             // Базовая на самом ВЕРХУ коробки — признак того, что раскладка
             // базовой линии не нашла (таблица с пустой ячейкой отдаёт ноль).
             // По CSS 2.1 §17.5.3 и §10.8.1 тогда это низ коробки: «If there is
