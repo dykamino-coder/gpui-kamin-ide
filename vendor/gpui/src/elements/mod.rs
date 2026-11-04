@@ -7,6 +7,8 @@ mod div;
 mod image_cache;
 mod img;
 mod list;
+// KaminIDE patch: equal div base styles share one allocation.
+mod refinement_share;
 // KaminIDE patch: второй проход краски детей `Div`.
 pub(crate) mod context_scope;
 mod surface;
