@@ -81,13 +81,46 @@ pub(crate) struct DispatchTree {
 
 #[derive(Default)]
 pub(crate) struct DispatchNode {
-    pub key_listeners: Vec<KeyListener>,
-    pub action_listeners: Vec<DispatchActionListener>,
-    pub modifiers_changed_listeners: Vec<ModifiersChangedListener>,
-    pub context: Option<KeyContext>,
+    /// KaminIDE patch: listeners and key context, allocated by the first registration.
+    rare: Option<Box<DispatchNodeRare>>,
     pub focus_id: Option<FocusId>,
     view_id: Option<EntityId>,
     parent: Option<DispatchNodeId>,
+}
+
+/// KaminIDE patch: the listener lists and key context of a [`DispatchNode`].
+///
+/// Every element of a frame pushes a dispatch node, but almost no box of a rendered document
+/// registers a key/action/modifiers listener or a key context; inline, the three lists and the
+/// context were 96 of the 144 bytes of every node (selectors-3200: 371 228 nodes per frame).
+#[derive(Default)]
+pub(crate) struct DispatchNodeRare {
+    key_listeners: Vec<KeyListener>,
+    action_listeners: Vec<DispatchActionListener>,
+    modifiers_changed_listeners: Vec<ModifiersChangedListener>,
+    context: Option<KeyContext>,
+}
+
+impl DispatchNode {
+    pub(crate) fn key_listeners(&self) -> &[KeyListener] {
+        self.rare.as_deref().map_or(&[], |rare| &rare.key_listeners)
+    }
+
+    pub(crate) fn action_listeners(&self) -> &[DispatchActionListener] {
+        self.rare.as_deref().map_or(&[], |rare| &rare.action_listeners)
+    }
+
+    pub(crate) fn modifiers_changed_listeners(&self) -> &[ModifiersChangedListener] {
+        self.rare.as_deref().map_or(&[], |rare| &rare.modifiers_changed_listeners)
+    }
+
+    pub(crate) fn context(&self) -> Option<&KeyContext> {
+        self.rare.as_deref()?.context.as_ref()
+    }
+
+    fn rare_mut(&mut self) -> &mut DispatchNodeRare {
+        self.rare.get_or_insert_with(Default::default)
+    }
 }
 
 pub(crate) struct ReusedSubtree {
@@ -187,7 +220,7 @@ impl DispatchTree {
             if let Some(view_id) = active_node.view_id {
                 self.view_stack.push(view_id)
             }
-            if let Some(context) = active_node.context.clone() {
+            if let Some(context) = active_node.context().cloned() {
                 self.context_stack.push(context);
             }
         } else {
@@ -196,7 +229,7 @@ impl DispatchTree {
             let mut current_node_id = Some(node_id);
             while let Some(node_id) = current_node_id {
                 let node = &self.nodes[node_id.0];
-                if let Some(context) = node.context.clone() {
+                if let Some(context) = node.context().cloned() {
                     self.context_stack.push(context);
                 }
                 if let Some(view_id) = node.view_id {
@@ -213,7 +246,7 @@ impl DispatchTree {
     }
 
     pub fn set_key_context(&mut self, context: KeyContext) {
-        self.active_node().context = Some(context.clone());
+        self.active_node().rare_mut().context = Some(context.clone());
         self.context_stack.push(context);
     }
 
@@ -234,7 +267,7 @@ impl DispatchTree {
 
     pub fn pop_node(&mut self) {
         let node = &self.nodes[self.active_node_id().unwrap().0];
-        if node.context.is_some() {
+        if node.context().is_some() {
             self.context_stack.pop();
         }
         if node.view_id.is_some() {
@@ -245,7 +278,7 @@ impl DispatchTree {
 
     fn move_node(&mut self, source: &mut DispatchNode) {
         self.push_node();
-        if let Some(context) = source.context.clone() {
+        if let Some(context) = source.context().cloned() {
             self.set_key_context(context);
         }
         if let Some(focus_id) = source.focus_id {
@@ -255,10 +288,16 @@ impl DispatchTree {
             self.set_view_id(view_id);
         }
 
-        let target = self.active_node();
-        target.key_listeners = mem::take(&mut source.key_listeners);
-        target.action_listeners = mem::take(&mut source.action_listeners);
-        target.modifiers_changed_listeners = mem::take(&mut source.modifiers_changed_listeners);
+        if let Some(rare) = source.rare.as_deref_mut()
+            && (!rare.key_listeners.is_empty()
+                || !rare.action_listeners.is_empty()
+                || !rare.modifiers_changed_listeners.is_empty())
+        {
+            let target = self.active_node().rare_mut();
+            target.key_listeners = mem::take(&mut rare.key_listeners);
+            target.action_listeners = mem::take(&mut rare.action_listeners);
+            target.modifiers_changed_listeners = mem::take(&mut rare.modifiers_changed_listeners);
+        }
     }
 
     pub fn reuse_subtree(
@@ -321,11 +360,12 @@ impl DispatchTree {
     }
 
     pub fn on_key_event(&mut self, listener: KeyListener) {
-        self.active_node().key_listeners.push(listener);
+        self.active_node().rare_mut().key_listeners.push(listener);
     }
 
     pub fn on_modifiers_changed(&mut self, listener: ModifiersChangedListener) {
         self.active_node()
+            .rare_mut()
             .modifiers_changed_listeners
             .push(listener);
     }
@@ -336,6 +376,7 @@ impl DispatchTree {
         listener: Rc<dyn Fn(&dyn Any, DispatchPhase, &mut Window, &mut App)>,
     ) {
         self.active_node()
+            .rare_mut()
             .action_listeners
             .push(DispatchActionListener {
                 action_type,
@@ -364,7 +405,7 @@ impl DispatchTree {
         let mut actions = Vec::<Box<dyn Action>>::new();
         for node_id in self.dispatch_path(target) {
             let node = &self.nodes[node_id.0];
-            for DispatchActionListener { action_type, .. } in &node.action_listeners {
+            for DispatchActionListener { action_type, .. } in node.action_listeners() {
                 if let Err(ix) = actions.binary_search_by_key(action_type, |a| a.as_any().type_id())
                 {
                     // Intentionally silence these errors without logging.
@@ -383,7 +424,7 @@ impl DispatchTree {
         for node_id in self.dispatch_path(target) {
             let node = &self.nodes[node_id.0];
             if node
-                .action_listeners
+                .action_listeners()
                 .iter()
                 .any(|listener| listener.action_type == action.as_any().type_id())
             {
@@ -452,7 +493,7 @@ impl DispatchTree {
     ) -> (SmallVec<[KeyBinding; 1]>, bool, Vec<KeyContext>) {
         let context_stack: Vec<KeyContext> = dispatch_path
             .iter()
-            .filter_map(|node_id| self.node(*node_id).context.clone())
+            .filter_map(|node_id| self.node(*node_id).context().cloned())
             .collect();
 
         let (bindings, partial) = self
@@ -649,6 +690,33 @@ mod tests {
             Rc::new(RefCell::new(Keymap::new(bindings))),
             Rc::new(registry),
         )
+    }
+
+    // KaminIDE patch: a node without listeners or key context has no listener block, and a
+    // reused subtree keeps the listeners and context of its nodes.
+    #[test]
+    fn plain_dispatch_nodes_allocate_no_listener_block() {
+        let mut tree = test_dispatch_tree(Vec::new());
+        let plain = tree.push_node();
+        let with_listener = tree.push_node();
+        tree.on_key_event(Rc::new(|_, _, _, _| {}));
+        tree.set_key_context(KeyContext::parse("Editor").unwrap());
+        tree.pop_node();
+        tree.pop_node();
+        assert!(tree.node(plain).rare.is_none());
+        assert_eq!(tree.node(plain).key_listeners().len(), 0);
+        assert!(tree.node(plain).context().is_none());
+        assert_eq!(tree.node(with_listener).key_listeners().len(), 1);
+        assert!(tree.node(with_listener).context().is_some());
+
+        let mut next = test_dispatch_tree(Vec::new());
+        let reused = next.reuse_subtree(0..2, &mut tree, None);
+        assert_eq!(reused.new_range, 0..2);
+        let moved = super::DispatchNodeId(1);
+        assert_eq!(next.node(moved).key_listeners().len(), 1);
+        assert!(next.node(moved).context().is_some());
+        assert!(next.node(super::DispatchNodeId(0)).rare.is_none());
+        assert!(std::mem::size_of::<super::DispatchNode>() <= 64);
     }
 
     struct PendingInputTestView {

@@ -17637,11 +17637,11 @@ index 0000000000000000000000000000000000000000..57982f945270c6761605269a2604a293
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/cache.rs b/vendor/taffy/src/tree/cache.rs
-index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0e863ff35
+index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..e107c34547c8ec38fd25014713d4919b7c7f3130
 --- a/vendor/taffy/src/tree/cache.rs
 +++ b/vendor/taffy/src/tree/cache.rs
 @@ -7,0 +8 @@
-+use crate::util::sys::Box;
++use crate::util::sys::Vec;
 @@ -139 +140,3 @@
 -                .zip_map(input.known_dimensions, |is_definite, kd| is_definite || kd.is_none()),
 +                .zip_map(input.known_dimensions, |is_definite, kd| {
@@ -17654,7 +17654,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +        let intrinsic_size = matches!(input.sizing_mode, SizingMode::IntrinsicSize) as u8;
 @@ -173,0 +180 @@
 +                | (intrinsic_size * Self::INTRINSIC_SIZE_BIT)
-@@ -210,0 +218,42 @@
+@@ -210,0 +218,40 @@
 +/// Size-only results retain the margin information required by their parent.
 +#[derive(Debug, Clone, PartialEq)]
 +#[cfg_attr(feature = "serde", derive(Serialize))]
@@ -17691,21 +17691,20 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +    }
 +}
 +
-+/// KaminIDE patch: the size-only measurements of one node.
-+type MeasureEntries = [Option<CacheEntry<Measurement>>; CACHE_SIZE];
++/// KaminIDE patch: the size-only measurements of one node, slot by slot. Slots past the end
++/// are empty: the storage grows one slot at a time up to `CACHE_SIZE`.
++type MeasureEntries = Vec<Option<CacheEntry<Measurement>>>;
 +
-+/// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-+const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
-+
-@@ -217,2 +266,5 @@
+@@ -217,2 +264,6 @@
 -    /// The cache entries for the node's preliminary size measurements
 -    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
 +    /// The cache entries for the node's preliminary size measurements.
 +    ///
-+    /// KaminIDE patch: allocated on the first measurement. The entries are 576 of the 648 bytes
-+    /// of a cache inline, and most nodes of a frame tree are only laid out, never measured.
-+    measure_entries: Option<Box<MeasureEntries>>,
-@@ -237,0 +290,7 @@
++    /// KaminIDE patch: allocated on the first measurement and grown by one slot per new
++    /// measurement up to `CACHE_SIZE`. Nine slots inline were 576 of the 648 bytes of a cache;
++    /// most nodes of a frame tree are never measured, and a measured node holds only its filled slots.
++    measure_entries: MeasureEntries,
+@@ -237,0 +289,7 @@
 +    /// The most recent full layout output, never an intrinsic size-only result.
 +    pub(crate) fn performed_layout_output(&self) -> Option<LayoutOutput> {
 +        self.final_layout_entry
@@ -17713,13 +17712,13 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +            .map(|entry| entry.content.clone())
 +    }
 +
-@@ -240,2 +298,0 @@
+@@ -240,2 +297,0 @@
 -        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
-@@ -244 +301 @@
+@@ -244 +300 @@
 -            measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
-+            measure_entries: None,
-@@ -260,3 +317,5 @@
++            measure_entries: Vec::new(),
+@@ -260,3 +316,5 @@
 -            RunMode::PerformLayout => {
 -                self.final_layout_entry.as_ref().filter(|entry| entry.key == key).map(|e| e.content.clone())
 -            }
@@ -17728,14 +17727,14 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +                .as_ref()
 +                .filter(|entry| entry.key == key)
 +                .map(|e| e.content.clone()),
-@@ -264 +323,2 @@
+@@ -264 +322,2 @@
 -                for (index, entry) in self.measure_entries.iter().enumerate() {
-+                let slots = self.measure_entries.as_deref().map_or(&[][..], |entries| entries.as_slice());
++                let slots = self.measure_entries.as_slice();
 +                for (index, entry) in slots.iter().enumerate() {
-@@ -272 +332 @@
+@@ -272 +331 @@
 -                        return Some(LayoutOutput::from_outer_size(entry.content));
 +                        return Some(entry.content.output());
-@@ -303,10 +362,0 @@
+@@ -303,10 +361,0 @@
 -                // Measure entries only store the size, and cache hits are reconstructed with
 -                // `LayoutOutput::from_outer_size`, which resets the margin-collapse metadata
 -                // (`top_margin`, `bottom_margin`, `margins_can_collapse_through`). Results that
@@ -17746,53 +17745,55 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 -                {
 -                    return;
 -                }
-@@ -314,4 +364,3 @@
+@@ -314,4 +363,3 @@
 -                if let Some(index) =
 -                    self.measure_entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key))
 -                {
 -                    self.measure_entries[index].as_mut().unwrap().content = layout_output.size;
-+                let entries = self.measure_entries.get_or_insert_with(|| Box::new([NONE_MEASURE_ENTRY; CACHE_SIZE]));
++                let entries = &mut self.measure_entries;
 +                if let Some(index) = entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key)) {
 +                    entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
-@@ -329 +378 @@
+@@ -329 +377,5 @@
 -                self.measure_entries[entry_index] = Some(CacheEntry { key, content: layout_output.size });
++                if entry_index >= entries.len() {
++                    entries.reserve_exact(entry_index + 1 - entries.len());
++                    entries.resize(entry_index + 1, None);
++                }
 +                entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
-@@ -347,3 +396,4 @@
+@@ -347,3 +399,2 @@
 -        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
 -        self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
 +        // KaminIDE patch: a measured node keeps its entry storage for the next measurements.
-+        if let Some(entries) = &mut self.measure_entries {
-+            **entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
-+        }
-@@ -357 +407,6 @@
++        self.measure_entries.clear();
+@@ -357 +408,6 @@
 -        self.final_layout_entry.is_none() && !self.measure_entries.iter().any(|entry| entry.is_some())
 +        self.final_layout_entry.is_none() && !self.measure_slots().iter().any(|entry| entry.is_some())
 +    }
 +
 +    /// KaminIDE patch: the measurement slots, empty before the first measurement.
 +    fn measure_slots(&self) -> &[Option<CacheEntry<Measurement>>] {
-+        self.measure_entries.as_deref().map_or(&[], |entries| entries.as_slice())
-@@ -392,0 +448,15 @@
++        self.measure_entries.as_slice()
+@@ -392,0 +449,15 @@
 +    fn measure_storage_is_allocated_by_the_first_measurement_and_kept_by_clear() {
 +        let mut cache = Cache::new();
 +        cache.store(&LayoutInput { run_mode: RunMode::PerformLayout, ..input(1.0) }, output(1.0));
-+        assert!(cache.measure_entries.is_none());
++        assert_eq!(cache.measure_entries.capacity(), 0);
 +        cache.store(&input(2.0), output(2.0));
 +        assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
 +        let _ = cache.clear();
 +        assert!(cache.is_empty());
-+        assert!(cache.measure_entries.is_some());
++        assert!(cache.measure_entries.capacity() > 0);
 +        assert_eq!(cache.get(&input(2.0)), None);
 +        cache.store(&input(3.0), output(3.0));
 +        assert_eq!(cache.get(&input(3.0)), Some(output(3.0)));
 +    }
 +
 +    #[test]
-@@ -414 +484 @@
+@@ -414 +485 @@
 -        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
 +        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -419,12 +489,15 @@
+@@ -419,12 +490,15 @@
 -    fn measurements_with_margin_collapse_metadata_are_not_cached() {
 -        let mut cache = Cache::new();
 -
@@ -17820,13 +17821,13 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..67ae84ae3091a395551458f24a3d77e0
 +        cache.store(&input(1.0), output(3.0));
 +        assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
 +        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -507 +580 @@
+@@ -507 +581 @@
 -            assert_eq!(cache.measure_entries.iter().flatten().count(), 1);
 +            assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
-@@ -524 +597 @@
+@@ -524 +598 @@
 -            assert!(cache.measure_entries.iter().all(|entry| entry.is_none()));
 +            assert!(cache.measure_slots().iter().all(|entry| entry.is_none()));
-@@ -555,0 +629,70 @@
+@@ -555,0 +630,70 @@
 +
 +#[cfg(test)]
 +mod kamin_cache_regressions {
@@ -25662,7 +25663,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a56a14b29
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf2b30307d
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25702,7 +25703,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
 +    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
 +    pub(crate) final_layout: Option<Box<Layout>>,
-@@ -119 +144,38 @@
+@@ -119 +144,73 @@
 -}
 +    /// Tracks published by the parent subgrid layout, outside the native cache key.
 +    #[cfg(feature = "grid")]
@@ -25714,68 +25715,99 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// KaminIDE patch: y offset of this node's children inside its box (see
 +    /// `LayoutGridContainer::set_content_shift`).
 +    pub(crate) content_shift: f32,
++    /// KaminIDE patch: fragmentation inputs, allocated by the first non-default setter
++    /// (see [`NodeFragmentation`]).
++    pub(crate) fragmentation: Option<Box<NodeFragmentation>>,
++}
++
++/// KaminIDE patch: the fragmentation inputs of a node (css-break-3, css-flexbox-1 §10,
++/// css-grid-2 §12). Only boxes inside a fragmentation context set them; inline they were about
++/// 90 bytes of every node of every frame tree. A node without the block reads the defaults.
++#[derive(Debug, Clone, PartialEq)]
++pub(crate) struct NodeFragmentation {
 +    /// KaminIDE patch: consumed fragmentainer space after physical row flex lines.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_line_growth: Vec<f32>,
++    flex_line_growth: Vec<f32>,
 +    /// KaminIDE patch: consumed block space before a column flex item.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_item_offset: f32,
++    flex_item_offset: f32,
 +    /// KaminIDE patch: consumed border-box cross extent in a row continuation.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_item_consumed: f32,
++    flex_item_consumed: f32,
 +    /// KaminIDE patch: flex line of this item fixed before fragmentation.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_item_line: Option<usize>,
++    flex_item_line: Option<usize>,
 +    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_fragmentation: bool,
++    flex_fragmentation: bool,
 +    /// KaminIDE patch: physical block axis and block-start direction of fragmentation.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) flex_fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
++    flex_fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
 +    /// KaminIDE patch: fragmentation cannot expand a monolithic item.
 +    #[cfg(feature = "flexbox")]
-+    pub(crate) fragmentation_monolithic: bool,
++    fragmentation_monolithic: bool,
 +    /// KaminIDE patch: block space inserted after the tracks of one physical grid axis.
 +    #[cfg(feature = "grid")]
-+    pub(crate) grid_track_growth: (crate::geometry::AbsoluteAxis, Vec<f32>),
++    grid_track_growth: (crate::geometry::AbsoluteAxis, Vec<f32>),
 +}
++
++impl NodeFragmentation {
++    /// The inputs of a node outside any fragmentation context.
++    const NONE: Self = Self {
++        #[cfg(feature = "flexbox")]
++        flex_line_growth: Vec::new(),
++        #[cfg(feature = "flexbox")]
++        flex_item_offset: 0.0,
++        #[cfg(feature = "flexbox")]
++        flex_item_consumed: 0.0,
++        #[cfg(feature = "flexbox")]
++        flex_item_line: None,
++        #[cfg(feature = "flexbox")]
++        flex_fragmentation: false,
++        #[cfg(feature = "flexbox")]
++        flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
++        #[cfg(feature = "flexbox")]
++        fragmentation_monolithic: false,
++        #[cfg(feature = "grid")]
++        grid_track_growth: (crate::geometry::AbsoluteAxis::Vertical, Vec::new()),
++    };
++}
++
++/// KaminIDE patch: the fragmentation inputs of a node that no setter has changed.
++static NO_FRAGMENTATION: NodeFragmentation = NodeFragmentation::NONE;
 +
 +/// KaminIDE patch: the final layout of a node that rounding has not written yet.
 +static NO_FINAL_LAYOUT: Layout = Layout::new();
-@@ -124 +186 @@
+@@ -124 +221 @@
 -    pub const fn new(style: Style) -> Self {
 +    pub const fn new(style: SharedStyle) -> Self {
-@@ -129 +191 @@
+@@ -129 +226 @@
 -            final_layout: Layout::new(),
 +            final_layout: None,
-@@ -132,0 +195,20 @@
+@@ -132,0 +230,5 @@
 +            #[cfg(feature = "grid")]
 +            subgrid_tracks: None,
 +            pct_parent_h: None,
 +            content_shift: 0.0,
-+            #[cfg(feature = "flexbox")]
-+            flex_line_growth: Vec::new(),
-+            #[cfg(feature = "flexbox")]
-+            flex_item_offset: 0.0,
-+            #[cfg(feature = "flexbox")]
-+            flex_item_consumed: 0.0,
-+            #[cfg(feature = "flexbox")]
-+            flex_item_line: None,
-+            #[cfg(feature = "flexbox")]
-+            flex_fragmentation: false,
-+            #[cfg(feature = "flexbox")]
-+            flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
-+            #[cfg(feature = "flexbox")]
-+            fragmentation_monolithic: false,
-+            #[cfg(feature = "grid")]
-+            grid_track_growth: (crate::geometry::AbsoluteAxis::Vertical, Vec::new()),
-@@ -168,0 +251,5 @@
++            fragmentation: None,
+@@ -143,0 +246,10 @@
++
++    /// KaminIDE patch: the fragmentation inputs, defaults when none was set.
++    fn fragmentation(&self) -> &NodeFragmentation {
++        self.fragmentation.as_deref().unwrap_or(&NO_FRAGMENTATION)
++    }
++
++    /// KaminIDE patch: the fragmentation inputs for writing; allocates them on first use.
++    fn fragmentation_mut(&mut self) -> &mut NodeFragmentation {
++        self.fragmentation.get_or_insert_with(|| Box::new(NodeFragmentation::NONE))
++    }
+@@ -168,0 +281,5 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +261,110 @@
+@@ -173,0 +291,110 @@
 +    }
 +}
 +
@@ -25785,8 +25817,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// Reversal affects consumed-space placement, never flex sizing or line membership.
 +    pub fn set_flex_fragmentation_axis(&mut self, node: NodeId, axis: crate::geometry::AbsoluteAxis, reversed: bool) -> TaffyResult<()> {
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_fragmentation_axis != (axis, reversed) {
-+            data.flex_fragmentation_axis = (axis, reversed);
++        if data.fragmentation().flex_fragmentation_axis != (axis, reversed) {
++            data.fragmentation_mut().flex_fragmentation_axis = (axis, reversed);
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25798,8 +25830,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    pub fn set_flex_item_fragmentation_consumed(&mut self, node: NodeId, consumed: f32) -> TaffyResult<()> {
 +        if !consumed.is_finite() || consumed < 0.0 { return Err(TaffyError::InvalidInputNode(node)); }
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_item_consumed != consumed {
-+            data.flex_item_consumed = consumed;
++        if data.fragmentation().flex_item_consumed != consumed {
++            data.fragmentation_mut().flex_item_consumed = consumed;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25810,8 +25842,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    pub fn set_flex_item_fragmentation_offset(&mut self, node: NodeId, offset: f32) -> TaffyResult<()> {
 +        if !offset.is_finite() { return Err(TaffyError::InvalidInputNode(node)); }
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_item_offset != offset {
-+            data.flex_item_offset = offset;
++        if data.fragmentation().flex_item_offset != offset {
++            data.fragmentation_mut().flex_item_offset = offset;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25822,8 +25854,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// by fragmentation inside an item must not move it to another line.
 +    pub fn set_flex_item_fragmentation_line(&mut self, node: NodeId, line: Option<usize>) -> TaffyResult<()> {
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_item_line != line {
-+            data.flex_item_line = line;
++        if data.fragmentation().flex_item_line != line {
++            data.fragmentation_mut().flex_item_line = line;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25832,8 +25864,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// KaminIDE patch: caller-owned monolithic classification, independent of style.
 +    pub fn set_fragmentation_monolithic(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.fragmentation_monolithic != on {
-+            data.fragmentation_monolithic = on;
++        if data.fragmentation().fragmentation_monolithic != on {
++            data.fragmentation_mut().fragmentation_monolithic = on;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25842,8 +25874,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
 +    pub fn set_flex_fragmentation(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_fragmentation != on {
-+            data.flex_fragmentation = on;
++        if data.fragmentation().flex_fragmentation != on {
++            data.fragmentation_mut().flex_fragmentation = on;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25857,8 +25889,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +            return Err(TaffyError::InvalidInputNode(node));
 +        }
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
-+        if data.flex_line_growth != growth {
-+            data.flex_line_growth = growth;
++        if data.fragmentation().flex_line_growth != growth {
++            data.fragmentation_mut().flex_line_growth = growth;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
@@ -25881,15 +25913,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        }
 +        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
 +        let growth = (axis, growth);
-+        if data.grid_track_growth != growth {
-+            data.grid_track_growth = growth;
++        if data.fragmentation().grid_track_growth != growth {
++            data.fragmentation_mut().grid_track_growth = growth;
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +457 @@
+@@ -260 +487 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -283,0 +481,19 @@
+@@ -283,0 +511,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -25909,10 +25941,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        )
 +    }
 +
-@@ -287 +503 @@
+@@ -287 +533 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +516,13 @@
+@@ -299,0 +546,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -25926,11 +25958,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +            }
 +        }
 +
-@@ -313,2 +542 @@
+@@ -313,2 +572 @@
 -            let mut output = match (display_mode, has_children) {
 -                (Display::None, _) => compute_hidden_layout(tree, node_id),
 +            let output = match (display_mode, has_children) {
-@@ -319,11 +547 @@
+@@ -319,11 +577 @@
 -                #[cfg(feature = "flexbox")]
 -                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
 -                #[cfg(feature = "grid")]
@@ -25943,7 +25975,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 -                    (tree.measure_function)(inputs, node_id, node_context, style)
 -                }
 +                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-@@ -331,8 +549,28 @@
+@@ -331,8 +579,28 @@
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -25980,7 +26012,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +578,36 @@
+@@ -340,3 +608,36 @@
 -
 -            output
 -        })
@@ -26020,12 +26052,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +672,2 @@
+@@ -401,2 +702,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +792,34 @@
+@@ -520,0 +822,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -26034,33 +26066,33 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    }
 +
 +    fn flex_fragmentation_axis(&self, node: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
-+        self.taffy.nodes[node.into()].flex_fragmentation_axis
++        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation_axis
 +    }
 +
 +    fn flex_item_fragmentation_consumed(&self, node: NodeId) -> f32 {
-+        self.taffy.nodes[node.into()].flex_item_consumed
++        self.taffy.nodes[node.into()].fragmentation().flex_item_consumed
 +    }
 +
 +    fn flex_item_fragmentation_offset(&self, node: NodeId) -> f32 {
-+        self.taffy.nodes[node.into()].flex_item_offset
++        self.taffy.nodes[node.into()].fragmentation().flex_item_offset
 +    }
 +
 +    fn flex_line_fragmentation_growth(&self, node: NodeId, line: usize) -> f32 {
-+        self.taffy.nodes[node.into()].flex_line_growth.get(line).copied().unwrap_or(0.0)
++        self.taffy.nodes[node.into()].fragmentation().flex_line_growth.get(line).copied().unwrap_or(0.0)
 +    }
 +
 +    fn flex_item_fragmentation_line(&self, node: NodeId) -> Option<usize> {
-+        self.taffy.nodes[node.into()].flex_item_line
++        self.taffy.nodes[node.into()].fragmentation().flex_item_line
 +    }
 +
 +    fn fragmentation_monolithic(&self, node: NodeId) -> bool {
-+        self.taffy.nodes[node.into()].fragmentation_monolithic
++        self.taffy.nodes[node.into()].fragmentation().fragmentation_monolithic
 +    }
 +
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
-+        self.taffy.nodes[node.into()].flex_fragmentation
++        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -546,0 +852,21 @@
+@@ -546,0 +882,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -26070,7 +26102,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    }
 +
 +    fn grid_track_fragmentation_growth(&self, node: NodeId, axis: crate::geometry::AbsoluteAxis, track: usize) -> f32 {
-+        let (growth_axis, growth) = &self.taffy.nodes[node.into()].grid_track_growth;
++        let (growth_axis, growth) = &self.taffy.nodes[node.into()].fragmentation().grid_track_growth;
 +        if *growth_axis == axis { growth.get(track).copied().unwrap_or(0.0) } else { 0.0 }
 +    }
 +
@@ -26082,10 +26114,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        }
 +    }
 +
-@@ -565 +891 @@
+@@ -565 +921 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +913,25 @@
+@@ -586,0 +943,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -26111,7 +26143,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        })
 +    }
 +
-@@ -606 +957,18 @@
+@@ -606 +987,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -26131,12 +26163,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +988,2 @@
+@@ -620,2 +1018,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +999,6 @@
+@@ -631,2 +1029,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -26145,12 +26177,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1017,2 @@
+@@ -645,2 +1047,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1039,94 @@
+@@ -666,0 +1069,94 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -26245,7 +26277,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1340,17 @@
+@@ -873,0 +1370,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26263,12 +26295,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        }
 +    }
 +
-@@ -897,2 +1380,2 @@
+@@ -897,2 +1410,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1392,31 @@
+@@ -908,0 +1422,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -26300,10 +26332,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1427 @@
+@@ -913 +1457 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1431,8 @@
+@@ -916,0 +1461,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26312,7 +26344,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1499,6 @@
+@@ -977 +1529,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26320,7 +26352,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1512,26 @@
+@@ -984,0 +1542,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26347,15 +26379,41 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1541 @@
+@@ -988 +1571 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1556,3 @@
+@@ -1003 +1586,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1585,28 @@
+@@ -1029,0 +1615,54 @@
++    }
++
++    #[test]
++    #[cfg(all(feature = "flexbox", feature = "grid"))]
++    fn fragmentation_inputs_allocate_only_when_a_setter_changes_them() {
++        let mut tree = TaffyTree::<()>::new();
++        let node = tree.new_leaf(Style::default()).unwrap();
++        let block = |tree: &TaffyTree<()>| tree.nodes[node.into()].fragmentation.is_some();
++        // Setting the defaults keeps the node without a block.
++        tree.set_flex_fragmentation(node, false).unwrap();
++        tree.set_fragmentation_monolithic(node, false).unwrap();
++        tree.set_flex_item_fragmentation_line(node, None).unwrap();
++        tree.set_flex_item_fragmentation_offset(node, 0.0).unwrap();
++        tree.set_flex_fragmentation_axis(node, crate::geometry::AbsoluteAxis::Vertical, false).unwrap();
++        assert!(!block(&tree));
++        assert_eq!(*tree.nodes[node.into()].fragmentation(), NodeFragmentation::NONE);
++        // A changed input allocates the block and reads back; the others keep their defaults.
++        tree.set_flex_item_fragmentation_consumed(node, 4.0).unwrap();
++        assert!(block(&tree));
++        let data = tree.nodes[node.into()].fragmentation();
++        assert_eq!(data.flex_item_consumed, 4.0);
++        assert_eq!(data.flex_item_line, None);
++        assert!(data.grid_track_growth.1.is_empty());
++        // Every node pays one pointer instead of the inline inputs (64-bit: 432 -> 360 bytes).
++        #[cfg(target_pointer_width = "64")]
++        assert!(core::mem::size_of::<NodeData>() <= 360);
 +    }
 +
 +    #[test]
@@ -26384,7 +26442,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..e739d912c88569009a283dfa71f35b4a
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2126,81 @@
+@@ -1543 +2182,81 @@
 -}
 +
 +    #[test]

@@ -199,7 +199,7 @@ impl IntoElement for Svg {
 
 impl Styled for Svg {
     fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.interactivity.base_style
+        self.interactivity.base_style_mut()
     }
 }
 
