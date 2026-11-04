@@ -78,7 +78,9 @@ pub(super) fn inline_slot(window: &Window, pass: &CssPaintPass) -> Option<Rc<Job
         return None;
     }
     let slot = Rc::new(JobSlot::default());
-    tap.slots.borrow_mut().push(slot.clone());
+    let mut slots = tap.slots.take();
+    slots.push(slot.clone());
+    tap.slots.replace(slots);
     Some(slot)
 }
 
