@@ -135,12 +135,13 @@ impl PageStack {
     }
 
     /// Записи главных копий — до матрицы листов, в несдвинутых координатах стопки.
-    pub(super) fn record_replays(
+    pub(super) async fn record_replays(
         &mut self,
         bounds: Bounds<Pixels>,
         plan: &[Frag],
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Played {
         let mut out = HashMap::new();
         for kid in plan.iter().filter(|f| f.copy == 0).map(|f| f.kid) {
@@ -149,7 +150,7 @@ impl PageStack {
             };
             let records = self.copy_records();
             let el = (&mut self.kids[kid].el, None, records);
-            out.insert(kid, routes.record(el, window, cx).ok());
+            out.insert(kid, routes.record_async(el, window, cx, stack).await.ok());
         }
         out
     }

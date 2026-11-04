@@ -38,9 +38,14 @@ fn explicit_area_can_reuse_borrowed_candidates_without_consuming_the_wrapper() {
             for _ in 0..2 {
                 let mut view = TaffyView {
                     taffy: &mut tree,
-                    measure_function: |input, _, _, style| {
-                        crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
-                    },
+                    measure_function: crate::tree::SyncMeasure(
+                        |input: crate::LayoutInput,
+                         _: crate::NodeId,
+                         _: Option<&mut ()>,
+                         style: &Style| {
+                            crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
+                        },
+                    ),
                 };
                 let output = compute_oof_layout_for_area_async(
                     &mut view,

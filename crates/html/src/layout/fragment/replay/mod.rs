@@ -5,18 +5,20 @@
 //! срезам (как OOF-продолжения P08). Место и срез куска даёт стопка (`PieceGeometry`):
 //! колонки многоколоночника и листы печати.
 
-use crate::layout::cx::deferred::Deferred;
-use crate::layout::fragment::effect_fragment::pieces::{self, Piece, Pieces};
+use crate::layout::fragment::effect_fragment::pieces::Piece;
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::replay_pieces::ReplayPiece;
 use crate::layout::fragment::types::Frag;
 use gpui::{
-    App, Bounds, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentRecords,
-    PaintSegmentSlice, Pixels, Point, Window, point, px, size,
+    Bounds, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, Pixels, Point,
+    Window, point, px, size,
 };
 use std::rc::Rc;
 mod admission;
+mod admitted;
+use admitted::Admission;
 mod play;
+mod record;
 mod scopes;
 mod slots;
 pub(crate) use crate::layout::fragment::replay_pieces::LATE;
@@ -168,47 +170,6 @@ impl Routes {
             frags,
             spill,
             clone_root: src.clone_root,
-        })
-    }
-
-    /// Запись краски главной копии `el` по сегментам кусков; `owner` — хозяин кусков
-    /// художников фрагмента, `records` — нативные записи стопки для слотов.
-    pub(crate) fn record(
-        &self,
-        (el, owner, records): (
-            &mut gpui::AnyElement,
-            Option<&Deferred>,
-            Option<crate::hooks::BareRecords>,
-        ),
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Result<Replayed, PaintRecordError> {
-        let fx = (self.pieces.clone()).map(|p| Rc::new(Pieces::new(p, self.watched.clone())));
-        let natives = records.as_ref().is_some_and(|r| !r.is_empty());
-        self.admit(true);
-        let recorded = match owner {
-            Some(owner) => pieces::with(owner, fx.clone(), || {
-                self.record_scopes(records, window, |w| self.paint_into(el, w, cx))
-            }),
-            None => self.record_scopes(records, window, |w| self.paint_into(el, w, cx)),
-        };
-        self.admit(false);
-        let ((painted, records), lines) = (recorded.0?, recorded.1);
-        painted?;
-        let masks = self.masks(natives, fx.iter().flat_map(|p| p.extra.take()), &lines);
-        Ok((records, masks))
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn paint_into(
-        &self,
-        el: &mut gpui::AnyElement,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Result<(Result<(), PaintRecordError>, PaintSegmentRecords), PaintRecordError> {
-        let slices = self.slices.clone();
-        window.record_paint_segments(self.extent, self.routes.clone(), cx, |window, cx| {
-            window.with_paint_segment_slices(slices, |window| el.paint(window, cx))
         })
     }
 

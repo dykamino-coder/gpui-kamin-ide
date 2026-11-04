@@ -8,20 +8,23 @@ use crate::layout::fragment::replay_pieces::ReplayPieces;
 use gpui::{Bounds, PaintSegmentId, PaintSegmentSlice, Window, point};
 use std::rc::Rc;
 
-/// Prepaint или запись главной копии с кусками `pieces`: слоты внутри видят все куски, а
-/// не сегмент одной копии предков.
-pub(crate) fn with_pieces<R>(
+pub(crate) async fn with_pieces_async<R>(
     pieces: Rc<ReplayPieces>,
     window: &mut Window,
-    f: impl FnOnce(&mut Window) -> R,
+    f: impl AsyncFnOnce(&mut Window) -> R,
 ) -> R {
-    crate::paint::coordinator::segments::outside_source(window, |window| {
-        window.with_render_context::<super::CopySegment, R>(None, |window| {
-            window.with_render_context::<super::CopyArea, R>(None, |window| {
-                window.with_render_context(Some(pieces), f)
+    crate::paint::coordinator::segments::outside_source_async(window, async |window| {
+        window
+            .with_render_context_async::<super::CopySegment, R>(None, async |window| {
+                window
+                    .with_render_context_async::<super::CopyArea, R>(None, async |window| {
+                        window.with_render_context_async(Some(pieces), f).await
+                    })
+                    .await
             })
-        })
+            .await
     })
+    .await
 }
 
 /// Фрагментаинеры кусков записи, кроме `own`, — для областей попадания слота `root`.

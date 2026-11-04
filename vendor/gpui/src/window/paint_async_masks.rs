@@ -61,6 +61,23 @@ impl Window {
         .0
     }
 
+    /// Отображает маски детей тем же подобием до завершения продолжения.
+    pub async fn with_mask_scale_async<R>(
+        &mut self,
+        origin: Point<Pixels>,
+        scale: f32,
+        f: impl AsyncFnOnce(&mut Self) -> R,
+    ) -> R {
+        let previous = self.mask_scale.replace((origin, scale));
+        self.with_restore_async(
+            previous,
+            |window, previous| window.mask_scale = *previous,
+            f,
+        )
+        .await
+        .0
+    }
+
     /// Выполняет область окна с продолжением на явном стеке обхода.
     pub async fn with_transformation_async<R>(
         &mut self,

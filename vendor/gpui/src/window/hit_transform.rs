@@ -150,6 +150,18 @@ impl Window {
         prepaint(self)
     }
 
+    /// Удерживает hit scopes размещений до завершения дочернего prepaint.
+    pub async fn with_prepaint_segment_hit_scopes_async<R>(
+        &mut self,
+        scopes: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
+        prepaint: impl AsyncFnOnce(&mut Self) -> R,
+    ) -> R {
+        let _scopes = self
+            .render_contexts
+            .enter(Some(Rc::new(SegmentHitScopes(scopes))));
+        prepaint(self).await
+    }
+
     /// Record the scope of the placement `route` about to be pushed.
     pub(crate) fn note_segment_hit_scope(&mut self, route: crate::PaintSegment) {
         let Some(scopes) = self.render_contexts.get::<SegmentHitScopes>() else {

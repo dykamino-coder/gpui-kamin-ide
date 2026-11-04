@@ -18,28 +18,24 @@ pub(crate) struct Place {
 
 pub(crate) type Places = Rc<RefCell<Vec<Place>>>;
 
+mod scoped;
+pub(crate) use scoped::with_async;
+
 pub(crate) struct Mapping {
     kid: usize,
     origin: Point<Pixels>,
     places: Places,
 }
 
+#[cfg(test)]
 pub(crate) fn with<R>(
     owner: &crate::layout::cx::deferred::Deferred,
     mapping: Option<(usize, Point<Pixels>, Places)>,
     f: impl FnOnce() -> R,
 ) -> R {
-    let Some((kid, origin, places)) = mapping else {
-        return f();
-    };
-    owner.coordinates.borrow_mut().push(Mapping {
-        kid,
-        origin,
-        places,
-    });
-    let result = f();
-    owner.coordinates.borrow_mut().pop();
-    result
+    reblessive::Stack::new()
+        .enter(async |_| with_async(owner, mapping, async || f()).await)
+        .finish()
 }
 
 pub(crate) fn map(

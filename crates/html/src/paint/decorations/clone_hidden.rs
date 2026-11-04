@@ -19,13 +19,14 @@ fn hidden(id: u64, window: &Window) -> bool {
         .is_some_and(|h| h.0.contains(&id))
 }
 
-/// Запись `record`, в которой собственная краска узлов `ids` скрыта.
-pub(crate) fn with_hidden<R>(
+pub(crate) async fn with_hidden_async<R>(
     ids: Rc<HashSet<u64>>,
     window: &mut Window,
-    record: impl FnOnce(&mut Window) -> R,
+    record: impl AsyncFnOnce(&mut Window) -> R,
 ) -> R {
-    window.with_render_context(Some(Rc::new(Hidden(ids))), record)
+    window
+        .with_render_context_async(Some(Rc::new(Hidden(ids))), record)
+        .await
 }
 
 /// Фон и рамка коробки `id`: в записи со скрытием не рисуются.

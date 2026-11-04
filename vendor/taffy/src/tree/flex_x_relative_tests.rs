@@ -48,22 +48,27 @@ fn flex_x_baselines_use_normal_flow_origin_for_both_directions_and_axes() {
                         .unwrap();
                     let mut view = TaffyView {
                         taffy: &mut tree,
-                        measure_function: |inputs, _, _, style: &Style| {
-                            let mut output = crate::compute_leaf_layout(
-                                inputs,
-                                style,
-                                |_, _| 0.0,
-                                |_, _| Size {
-                                    width: 20.0,
-                                    height: 20.0,
-                                },
-                            );
-                            output.baselines_x = Baselines {
-                                first: Some(6.0),
-                                last: Some(14.0),
-                            };
-                            output
-                        },
+                        measure_function: crate::tree::SyncMeasure(
+                            |inputs: LayoutInput,
+                             _: crate::NodeId,
+                             _: Option<&mut ()>,
+                             style: &Style| {
+                                let mut output = crate::compute_leaf_layout(
+                                    inputs,
+                                    style,
+                                    |_, _| 0.0,
+                                    |_, _| Size {
+                                        width: 20.0,
+                                        height: 20.0,
+                                    },
+                                );
+                                output.baselines_x = Baselines {
+                                    first: Some(6.0),
+                                    last: Some(14.0),
+                                };
+                                output
+                            },
+                        ),
                     };
                     let output = crate::compute_flexbox_layout_async(
                         &mut view,

@@ -1921,9 +1921,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
         TaffyView {
             taffy: self,
-            measure_function: crate::tree::SyncMeasure(|inputs, _, _, style| {
-                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-            }),
+            measure_function: crate::tree::SyncMeasure(
+                |inputs: LayoutInput, _: NodeId, _: Option<&mut NodeContext>, style: &Style| {
+                    compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
+                },
+            ),
         }
     }
 }

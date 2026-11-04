@@ -48,11 +48,6 @@ impl Frame {
 }
 
 impl CssPaintPass {
-    pub(super) fn drain(&self, depth: usize, window: &mut Window, cx: &mut App) {
-        reblessive::Stack::new()
-            .enter(|stack| self.drain_async(depth, window, cx, stack))
-            .finish();
-    }
     pub(super) async fn drain_inline_async(
         &self,
         depth: usize,

@@ -66,13 +66,12 @@ impl Lines {
     }
 }
 
-/// Запись `record` главной копии, чьи строки допускаются по кускам `lines`.
-pub(crate) fn with<R>(
+pub(crate) async fn with_async<R>(
     lines: Rc<Lines>,
     window: &mut Window,
-    record: impl FnOnce(&mut Window) -> R,
+    record: impl AsyncFnOnce(&mut Window) -> R,
 ) -> R {
-    window.with_render_context(Some(lines), record)
+    window.with_render_context_async(Some(lines), record).await
 }
 
 /// Вложенная запись (свои сегменты): строки внутри неё куски внешней записи не видят.

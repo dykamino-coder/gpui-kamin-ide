@@ -58,19 +58,35 @@ impl Hooks for PaintCollect {
     }
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
+        bounds: Bounds<Pixels>,
+        state: &mut (),
+        prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        if self.open {
-            if let Some(pass) = current(window) {
-                self.state.set(Some(pass.open(window)));
+        crate::hooks::paint_on_stack(self, bounds, state, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _: Bounds<Pixels>,
+        _: &'a mut (),
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            if self.open {
+                if let Some(pass) = current(window) {
+                    self.state.set(Some(pass.open(window)));
+                }
+            } else if let Some(guard) = self.state.take() {
+                // Отложенный ребёнок может открыть следующий collector: тот же
+                // планировщик сохраняет кадр до завершения всей его очереди.
+                guard.pass.drain_async(guard.depth, window, cx, stack).await;
             }
-        } else if let Some(guard) = self.state.take() {
-            guard.pass.drain(guard.depth, window, cx);
-        }
+        })
     }
 }
 

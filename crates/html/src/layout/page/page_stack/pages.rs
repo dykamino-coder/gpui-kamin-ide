@@ -7,7 +7,7 @@ use gpui::{App, Bounds, Pixels, Window, point, px, size};
 impl PageStack {
     #[allow(clippy::too_many_arguments)]
     // Page indices address both the plan and parallel per-page layout state.
-    pub(super) fn prepaint_pages(
+    pub(super) async fn prepaint_pages(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -19,6 +19,7 @@ impl PageStack {
         geoms: &[PageGeom],
         plan: &Vec<Frag>,
         pages: usize,
+        stack: &mut gpui::PaintStack,
     ) {
         // ICB and `fixed` layers are laid out BEFORE the kid copies prepaint:
         // an abspos split by `source_paint::split` keeps its layout half in a
@@ -32,7 +33,7 @@ impl PageStack {
             gpui::AvailableSpace::Definite(px(ah)),
         );
         for el in self.icb.iter_mut().chain(self.fixed.iter_mut()).flatten() {
-            el.layout_as_root(space, window, cx);
+            el.layout_as_root_async(space, window, cx, stack).await;
         }
         for f in plan {
             let (sx, sy) = self.sheet_origin(f.col);
@@ -84,24 +85,29 @@ impl PageStack {
             let replay = self.page_routes(f.kid, plan, bounds, window);
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
-                r.place_bands(f, |el, at| {
-                    el.layout_as_root(
+                r.place_bands_async(f, async |el, at| {
+                    el.layout_as_root_async(
                         size(
                             gpui::AvailableSpace::Definite(px(w)),
                             gpui::AvailableSpace::Definite(px(h)),
                         ),
                         window,
                         cx,
-                    );
-                    el.prepaint_at(
+                        stack,
+                    )
+                    .await;
+                    el.prepaint_at_async(
                         point(
                             bounds.origin.x + px(sx + ax),
                             bounds.origin.y + px(sy + ay + f.y + at - inner_top),
                         ),
                         window,
                         cx,
-                    );
-                });
+                        stack,
+                    )
+                    .await;
+                })
+                .await;
             }
             if replay.is_some() && f.copy != 0 {
                 continue;
@@ -111,29 +117,36 @@ impl PageStack {
             else {
                 continue;
             };
-            el.layout_as_root(
+            el.layout_as_root_async(
                 size(
                     gpui::AvailableSpace::Definite(px(w)),
                     gpui::AvailableSpace::Definite(px(h)),
                 ),
                 window,
                 cx,
-            );
-            window.with_hitbox_transform(sheet, |window| {
-                crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
-                    let at = point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y));
-                    match &replay {
-                        Some(routes) => {
-                            let _ = routes.prepaint(window, cx, |window, cx| {
-                                el.prepaint_at(at, window, cx);
-                            });
+                stack,
+            )
+            .await;
+            window
+                .with_hitbox_transform_async(sheet, async |window| {
+                    crate::hooks::with_copy_hits_async(segment, &scopes, window, async |window| {
+                        let at = point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y));
+                        match &replay {
+                            Some(routes) => {
+                                let _ = routes
+                                    .prepaint_async(window, cx, stack, async |window, cx, stack| {
+                                        el.prepaint_at_async(at, window, cx, stack).await;
+                                    })
+                                    .await;
+                            }
+                            None => {
+                                el.prepaint_at_async(at, window, cx, stack).await;
+                            }
                         }
-                        None => {
-                            el.prepaint_at(at, window, cx);
-                        }
-                    }
+                    })
+                    .await
                 })
-            });
+                .await;
         }
         // Слой ICB поднят на сумму предшествующих area: непрерывный поток
         // абсолютов разрезается страницами с их действительными размерами.
@@ -144,19 +157,29 @@ impl PageStack {
             let sheet = self.sheet_matrix(bounds, p);
             let scopes = self.oof.slot_scopes.clone();
             for el in &mut self.icb[p] {
-                window.with_hitbox_transform(sheet, |window| {
-                    let segment = gpui::PaintSegmentId(p as u64);
-                    crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
-                        el.prepaint_at(
-                            point(
-                                bounds.origin.x + px(sx + ax),
-                                bounds.origin.y + px(sy + ay - lift),
-                            ),
+                window
+                    .with_hitbox_transform_async(sheet, async |window| {
+                        let segment = gpui::PaintSegmentId(p as u64);
+                        crate::hooks::with_copy_hits_async(
+                            segment,
+                            &scopes,
                             window,
-                            cx,
+                            async |window| {
+                                el.prepaint_at_async(
+                                    point(
+                                        bounds.origin.x + px(sx + ax),
+                                        bounds.origin.y + px(sy + ay - lift),
+                                    ),
+                                    window,
+                                    cx,
+                                    stack,
+                                )
+                                .await
+                            },
                         )
+                        .await
                     })
-                });
+                    .await;
             }
             lift += self.area_logical(&geoms[p]).1;
         }
@@ -172,16 +195,29 @@ impl PageStack {
             let sheet = self.sheet_matrix(bounds, p);
             let scopes = self.oof.slot_scopes.clone();
             for el in &mut self.fixed[p] {
-                window.with_hitbox_transform(sheet, |window| {
-                    let segment = gpui::PaintSegmentId(p as u64);
-                    crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
-                        el.prepaint_at(
-                            point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
+                window
+                    .with_hitbox_transform_async(sheet, async |window| {
+                        let segment = gpui::PaintSegmentId(p as u64);
+                        crate::hooks::with_copy_hits_async(
+                            segment,
+                            &scopes,
                             window,
-                            cx,
+                            async |window| {
+                                el.prepaint_at_async(
+                                    point(
+                                        bounds.origin.x + px(sx + ax),
+                                        bounds.origin.y + px(sy + ay),
+                                    ),
+                                    window,
+                                    cx,
+                                    stack,
+                                )
+                                .await
+                            },
                         )
+                        .await
                     })
-                });
+                    .await;
             }
         }
     }

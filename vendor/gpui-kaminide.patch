@@ -18751,10 +18751,10 @@ index 0000000000000000000000000000000000000000..5bb6335d0aaa75d2f4687c702c642d1e
 +}
 diff --git a/vendor/gpui/src/taffy/intrinsic.rs b/vendor/gpui/src/taffy/intrinsic.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b057906daf86f14bd3fdb667d601d2559cc79b13
+index 0000000000000000000000000000000000000000..bec3816e9a214331b32c783c3d3f34d04a27d961
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/intrinsic.rs
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,68 @@
 +//! Size-only axis queries keep placement and its geometry untouched.
 +
 +use super::*;
@@ -18769,7 +18769,7 @@ index 0000000000000000000000000000000000000000..b057906daf86f14bd3fdb667d601d255
 +        window: &mut Window,
 +        cx: &mut App,
 +    ) -> Size<Pixels> {
-+        crate::paint_traversal::Stack::new()
++        reblessive::Stack::new()
 +            .enter(|stack| self.measure_size_async(id, available, axis, window, cx, stack))
 +            .finish()
 +    }
@@ -18804,9 +18804,16 @@ index 0000000000000000000000000000000000000000..b057906daf86f14bd3fdb667d601d255
 +                    height: convert(available.height),
 +                },
 +                axis,
-+                taffy::tree::AsyncMeasure(async |input, _, context, style, stack| {
-+                    measurement::leaf_async(input, context, style, scale, window, cx, stack).await
-+                }),
++                taffy::tree::AsyncMeasure(
++                    async |input: taffy::LayoutInput,
++                           _: taffy::NodeId,
++                           context: Option<&mut crate::taffy::NodeContext>,
++                           style: &taffy::Style,
++                           stack: &mut crate::PaintStack| {
++                        measurement::leaf_async(input, context, style, scale, window, cx, stack)
++                            .await
++                    },
++                ),
 +                stack,
 +            )
 +            .await;
@@ -18818,10 +18825,10 @@ index 0000000000000000000000000000000000000000..b057906daf86f14bd3fdb667d601d255
 +}
 diff --git a/vendor/gpui/src/taffy/layout_async.rs b/vendor/gpui/src/taffy/layout_async.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..36c91a99900f6fc5d7aa7d34daffbc82bea3cac1
+index 0000000000000000000000000000000000000000..4d5da0dec469c6cd09829e53969826d399321763
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/layout_async.rs
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,89 @@
 +//! Раскладка окна продолжает общий явный стек через измерения листьев.
 +use super::*;
 +impl TaffyLayoutEngine {
@@ -18882,18 +18889,24 @@ index 0000000000000000000000000000000000000000..36c91a99900f6fc5d7aa7d34daffbc82
 +            .compute_layout_with_measure_async(
 +                id.into(),
 +                available_space.into(),
-+                taffy::tree::AsyncMeasure(async |inputs, _id, node_context, style, stack| {
-+                    measurement::leaf_async(
-+                        inputs,
-+                        node_context,
-+                        style,
-+                        scale_factor,
-+                        window,
-+                        cx,
-+                        stack,
-+                    )
-+                    .await
-+                }),
++                taffy::tree::AsyncMeasure(
++                    async |inputs: taffy::LayoutInput,
++                           _id: taffy::NodeId,
++                           node_context: Option<&mut crate::taffy::NodeContext>,
++                           style: &taffy::Style,
++                           stack: &mut crate::PaintStack| {
++                        measurement::leaf_async(
++                            inputs,
++                            node_context,
++                            style,
++                            scale_factor,
++                            window,
++                            cx,
++                            stack,
++                        )
++                        .await
++                    },
++                ),
 +                stack,
 +            )
 +            .await
@@ -19369,10 +19382,10 @@ index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7
 +}
 diff --git a/vendor/gpui/src/taffy/measurement.rs b/vendor/gpui/src/taffy/measurement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9614dee32b7c247481094576fb0fa0335b07d194
+index 0000000000000000000000000000000000000000..49332535bedc22b3ad04c38a5beb787cc6bca616
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement.rs
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,128 @@
 +//! Measure a copied native subtree while the Window layout engine is borrowed by a parent.
 +//! Styles and cache state are independent; actual element measurement callbacks are shared.
 +
@@ -19493,19 +19506,6 @@ index 0000000000000000000000000000000000000000..9614dee32b7c247481094576fb0fa033
 +    }
 +}
 +
-+pub(super) fn leaf(
-+    input: LayoutInput,
-+    mut context: Option<&mut NodeContext>,
-+    style: &Style,
-+    scale: f32,
-+    window: &mut Window,
-+    cx: &mut App,
-+) -> LayoutOutput {
-+    reblessive::Stack::new()
-+        .enter(|stack| leaf_async(input, context, style, scale, window, cx, stack))
-+        .finish()
-+}
-+
 +#[cfg(test)]
 +#[path = "measurement_tests.rs"]
 +mod tests;
@@ -19516,13 +19516,14 @@ index 0000000000000000000000000000000000000000..9614dee32b7c247481094576fb0fa033
 +mod continuation;
 diff --git a/vendor/gpui/src/taffy/measurement/continuation.rs b/vendor/gpui/src/taffy/measurement/continuation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbd62003f4293a44d155022a2a11981daea9c1af
+index 0000000000000000000000000000000000000000..3fe2f2759c39f5809e7a50318adb0db7748b2370
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement/continuation.rs
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,48 @@
 +//! Независимый щуп продолжает общий стек вложенных измерений.
 +use super::*;
 +impl LayoutMeasurement {
++    /// Измеряет поддерево на общем стеке продолжений без роста стека потока.
 +    pub async fn measure_async(
 +        &mut self,
 +        available: Size<AvailableSpace>,
@@ -19539,9 +19540,15 @@ index 0000000000000000000000000000000000000000..cbd62003f4293a44d155022a2a11981d
 +            .compute_layout_with_measure_async(
 +                self.root,
 +                available,
-+                taffy::tree::AsyncMeasure(async |input, _, context, style, stack| {
-+                    leaf_async(input, context, style, scale, window, cx, stack).await
-+                }),
++                taffy::tree::AsyncMeasure(
++                    async |input: taffy::LayoutInput,
++                           _: taffy::NodeId,
++                           context: Option<&mut crate::taffy::NodeContext>,
++                           style: &taffy::Style,
++                           stack: &mut crate::PaintStack| {
++                        leaf_async(input, context, style, scale, window, cx, stack).await
++                    },
++                ),
 +                stack,
 +            )
 +            .await
@@ -19563,7 +19570,7 @@ index 0000000000000000000000000000000000000000..cbd62003f4293a44d155022a2a11981d
 +}
 diff --git a/vendor/gpui/src/taffy/measurement/leaf_async.rs b/vendor/gpui/src/taffy/measurement/leaf_async.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d84ee3de8e55b955baa232b4df800bce5f48561c
+index 0000000000000000000000000000000000000000..b2887800c3aa7b52608ab3867535a64845142ee4
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement/leaf_async.rs
 @@ -0,0 +1,76 @@
@@ -19593,7 +19600,7 @@ index 0000000000000000000000000000000000000000..d84ee3de8e55b955baa232b4df800bce
 +        taffy::tree::calc_value,
 +        async |known, available| {
 +            crate::frame_perf::LAYOUT_MEASURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-+            let _timer = super::MeasureTimer(std::time::Instant::now());
++            let _timer = crate::taffy::MeasureTimer(std::time::Instant::now());
 +            let Some(context) = context else {
 +                return taffy::Size::default().into();
 +            };
@@ -19609,7 +19616,7 @@ index 0000000000000000000000000000000000000000..d84ee3de8e55b955baa232b4df800bce
 +                taffy::AvailableSpace::MaxContent => AvailableSpace::MaxContent,
 +            };
 +            let available = size(from_native(available.width), from_native(available.height));
-+            let mut geometry = super::MeasuredBox::from_native(input.parent_size, style, scale);
++            let mut geometry = crate::MeasuredBox::from_native(input.parent_size, style, scale);
 +            geometry.intrinsic_axis = if input.run_mode == taffy::RunMode::ComputeSize {
 +                match input.axis {
 +                    taffy::RequestedAxis::Horizontal => Some(crate::Axis::Horizontal),
@@ -19857,10 +19864,10 @@ index 0000000000000000000000000000000000000000..6c3da420c98e3b81516a996ce5e34797
 +}
 diff --git a/vendor/gpui/src/taffy/physical_measurement.rs b/vendor/gpui/src/taffy/physical_measurement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8c8a70939e0f8e3242a2a9e49fd562fb36addfae
+index 0000000000000000000000000000000000000000..6703d4f9fd97b8e6ab8ae90920de7c2632f99c85
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/physical_measurement.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,50 @@
 +//! Read both completed physical baseline sets from independently measured subtrees.
 +
 +use super::*;
@@ -19875,13 +19882,14 @@ index 0000000000000000000000000000000000000000..8c8a70939e0f8e3242a2a9e49fd562fb
 +        window: &mut Window,
 +        cx: &mut App,
 +    ) -> MeasuredContent {
-+        crate::paint_traversal::Stack::new()
++        reblessive::Stack::new()
 +            .enter(|stack| self.measure_physical_baselines_async(available, window, cx, stack))
 +            .finish()
 +    }
 +}
 +
 +impl LayoutMeasurement {
++    /// Измеряет поддерево на общем стеке продолжений без роста стека потока.
 +    pub async fn measure_physical_baselines_async(
 +        &mut self,
 +        available: Size<AvailableSpace>,
@@ -25025,10 +25033,10 @@ index 0000000000000000000000000000000000000000..563dcbad9889673173d86f969e931cd8
 +}
 diff --git a/vendor/gpui/src/window/hit_transform.rs b/vendor/gpui/src/window/hit_transform.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..50e78489757db3cb2275a8363139a7caf266e750
+index 0000000000000000000000000000000000000000..8cb2b0945f8194cd7b269c91d5f9f9a18f34abd2
 --- /dev/null
 +++ b/vendor/gpui/src/window/hit_transform.rs
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,202 @@
 +//! KaminIDE patch: hit testing of a transformed subtree through its inverse matrix.
 +//! The host prepaints the subtree once in its untransformed (local) coordinates;
 +//! hitboxes keep the scope chain and the frame maps the pointer back before testing.
@@ -25181,6 +25189,18 @@ index 0000000000000000000000000000000000000000..50e78489757db3cb2275a8363139a7ca
 +        prepaint(self)
 +    }
 +
++    /// Удерживает hit scopes размещений до завершения дочернего prepaint.
++    pub async fn with_prepaint_segment_hit_scopes_async<R>(
++        &mut self,
++        scopes: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
++        prepaint: impl AsyncFnOnce(&mut Self) -> R,
++    ) -> R {
++        let _scopes = self
++            .render_contexts
++            .enter(Some(Rc::new(SegmentHitScopes(scopes))));
++        prepaint(self).await
++    }
++
 +    /// Record the scope of the placement `route` about to be pushed.
 +    pub(crate) fn note_segment_hit_scope(&mut self, route: crate::PaintSegment) {
 +        let Some(scopes) = self.render_contexts.get::<SegmentHitScopes>() else {
@@ -25309,12 +25329,13 @@ index 0000000000000000000000000000000000000000..466fb22a1859060d509375a341b69402
 +}
 diff --git a/vendor/gpui/src/window/layout_async.rs b/vendor/gpui/src/window/layout_async.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e018999d77208b17da653aba39dec6f35e10fdd0
+index 0000000000000000000000000000000000000000..3fa509e6def6cf3345709e684a6a3062afc94100
 --- /dev/null
 +++ b/vendor/gpui/src/window/layout_async.rs
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,129 @@
 +//! Корень и его измерения приостанавливаются на общем явном стеке.
 +use super::*;
++use crate::Axis;
 +struct LayoutEngineRestore<'a> {
 +    window: &'a mut Window,
 +    engine: Option<TaffyLayoutEngine>,
@@ -25960,10 +25981,10 @@ index 0000000000000000000000000000000000000000..cdcaeaa409be034ee42178351614e136
 +}
 diff --git a/vendor/gpui/src/window/paint_async_masks.rs b/vendor/gpui/src/window/paint_async_masks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c553d12b7f0c7726bb6c6a49f2cce82acae10bff
+index 0000000000000000000000000000000000000000..6b33f55db76e5dfb4ab6d7a2e992591cb14cd07b
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_async_masks.rs
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,231 @@
 +//! Маски и преобразования при обходе детей через явный стек продолжений.
 +
 +use super::retained::InkProbe;
@@ -26021,6 +26042,23 @@ index 0000000000000000000000000000000000000000..c553d12b7f0c7726bb6c6a49f2cce82a
 +        self.with_restore_async(
 +            depth,
 +            |window, depth| window.content_mask_stack.truncate(*depth),
++            f,
++        )
++        .await
++        .0
++    }
++
++    /// Отображает маски детей тем же подобием до завершения продолжения.
++    pub async fn with_mask_scale_async<R>(
++        &mut self,
++        origin: Point<Pixels>,
++        scale: f32,
++        f: impl AsyncFnOnce(&mut Self) -> R,
++    ) -> R {
++        let previous = self.mask_scale.replace((origin, scale));
++        self.with_restore_async(
++            previous,
++            |window, previous| window.mask_scale = *previous,
 +            f,
 +        )
 +        .await
@@ -27393,10 +27431,10 @@ index 0000000000000000000000000000000000000000..1f2a11fd85340b29c6be9c3952b6fcc6
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments/hits.rs b/vendor/gpui/src/window/paint_record/segments/hits.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4506ccf7037d56a7b3d5226ec183412f613ce9aa
+index 0000000000000000000000000000000000000000..13d8dd030bee7f8a33a8bd3cd22bbf909b0c1dee
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/segments/hits.rs
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,121 @@
 +//! Один исходный prepaint выпускает hitboxes в тех же размещениях, что и paint.
 +
 +use super::*;
@@ -27407,42 +27445,97 @@ index 0000000000000000000000000000000000000000..4506ccf7037d56a7b3d5226ec183412f
 +    /// Исходный prepaint сохраняет родные идентичности hitbox и их обработчики.
 +    /// Размещения выбираются теми же with_paint_segment_slices, что при paint.
 +    pub fn with_prepaint_segments<R>(
-+        &mut self, source_clip: Bounds<Pixels>, routes: Rc<[PaintSegment]>, cx: &mut App,
++        &mut self,
++        source_clip: Bounds<Pixels>,
++        routes: Rc<[PaintSegment]>,
++        cx: &mut App,
 +        prepaint: impl FnOnce(&mut Self, &mut App) -> R,
 +    ) -> Result<R, PaintRecordError> {
++        let _scope = self.begin_prepaint_segments(source_clip, routes)?;
++        let result = prepaint(self, cx);
++        paint_scope::Identity::capture(self).check_pass(self)?;
++        Ok(result)
++    }
++
++    /// Сохраняет маршруты hitboxes до завершения дочернего продолжения.
++    pub async fn with_prepaint_segments_async<R>(
++        &mut self,
++        source_clip: Bounds<Pixels>,
++        routes: Rc<[PaintSegment]>,
++        cx: &mut App,
++        stack: &mut crate::PaintStack,
++        prepaint: impl AsyncFnOnce(&mut Self, &mut App, &mut crate::PaintStack) -> R,
++    ) -> Result<R, PaintRecordError> {
++        let _scope = self.begin_prepaint_segments(source_clip, routes)?;
++        let result = prepaint(self, cx, stack).await;
++        paint_scope::Identity::capture(self).check_pass(self)?;
++        Ok(result)
++    }
++
++    fn begin_prepaint_segments(
++        &mut self,
++        source_clip: Bounds<Pixels>,
++        routes: Rc<[PaintSegment]>,
++    ) -> Result<[super::super::super::render_context::Scope; 6], PaintRecordError> {
 +        paint_scope::Identity::capture(self).check_pass(self)?;
 +        if self.invalidator.inner.borrow().draw_phase != DrawPhase::Prepaint {
 +            return Err(PaintRecordError::InvalidSegment);
 +        }
 +        if !valid(&routes, self.scale_factor())
 +            || !validation::scaled_bounds_valid(source_clip, self.scale_factor())
-+            || routes.iter().any(|route| !validation::scaled_bounds_valid(
-+                Bounds::new(source_clip.origin + route.destination - route.source, source_clip.size),
-+                self.scale_factor(),
-+            )) { return Err(PaintRecordError::InvalidGeometry); }
-+        let _recording = self.render_contexts.enter(Some(Rc::new(Recording)));
-+        let _hits = self.render_contexts.enter(Some(Rc::new(HitRecording)));
-+        let _segments = self.render_contexts.enter(Some(Rc::new(SegmentSet(routes.clone(), source_clip))));
-+        let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
-+        let _clips = self.render_contexts.enter::<crate::scene::segments::Clip>(None);
-+        let _slices = self.render_contexts.enter::<admission::Slices>(None);
-+        let result = prepaint(self, cx);
-+        paint_scope::Identity::capture(self).check_pass(self)?;
-+        Ok(result)
++            || routes.iter().any(|route| {
++                !validation::scaled_bounds_valid(
++                    Bounds::new(
++                        source_clip.origin + route.destination - route.source,
++                        source_clip.size,
++                    ),
++                    self.scale_factor(),
++                )
++            })
++        {
++            return Err(PaintRecordError::InvalidGeometry);
++        }
++        Ok([
++            self.render_contexts.enter(Some(Rc::new(Recording))),
++            self.render_contexts.enter(Some(Rc::new(HitRecording))),
++            self.render_contexts
++                .enter(Some(Rc::new(SegmentSet(routes.clone(), source_clip)))),
++            self.render_contexts.enter(Some(Rc::new(Selection(routes)))),
++            self.render_contexts
++                .enter::<crate::scene::segments::Clip>(None),
++            self.render_contexts.enter::<admission::Slices>(None),
++        ])
 +    }
 +
 +    pub(in crate::window) fn insert_segment_hitbox(&mut self, hitbox: &Hitbox) -> bool {
-+        if self.render_contexts.get::<HitRecording>().is_none() { return false; }
-+        let Some(segments) = self.render_contexts.get::<SegmentSet>() else { return false; };
++        if self.render_contexts.get::<HitRecording>().is_none() {
++            return false;
++        }
++        let Some(segments) = self.render_contexts.get::<SegmentSet>() else {
++            return false;
++        };
 +        let tag = crate::scene::segments::Tag {
-+            routes: self.render_contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
-+            scopes: Rc::from([]), clips: self.render_contexts.get(),
-+            slices: self.render_contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++            routes: self
++                .render_contexts
++                .get::<Selection>()
++                .map_or_else(|| Rc::from([]), |value| value.0.clone()),
++            scopes: Rc::from([]),
++            clips: self.render_contexts.get(),
++            slices: self
++                .render_contexts
++                .get::<admission::Slices>()
++                .map_or_else(|| Rc::from([]), |value| value.0.clone()),
 +        };
 +        for route in tag.routes.iter().copied() {
 +            let delta = route.destination - route.source;
 +            let extent = Bounds::new(segments.1.origin + delta, segments.1.size).scale(1.0);
-+            let clip = crate::scene::segments::Tag::clip_chain(tag.clips.as_ref(), None, route, 1.0, extent);
++            let clip = crate::scene::segments::Tag::clip_chain(
++                tag.clips.as_ref(),
++                None,
++                route,
++                1.0,
++                extent,
++            );
 +            let clip = tag.admission(route, 1.0, clip).map(|value| px(value.0));
 +            let mut placed = hitbox.clone();
 +            placed.bounds.origin += delta;
@@ -27458,7 +27551,9 @@ index 0000000000000000000000000000000000000000..4506ccf7037d56a7b3d5226ec183412f
 +    /// Фактический выбор курсора тем же hit test, который использует платформа.
 +    #[cfg(any(test, feature = "test-support"))]
 +    pub fn hit_test_cursor_style(&self) -> CursorStyle {
-+        self.rendered_frame.cursor_style(self).unwrap_or(CursorStyle::Arrow)
++        self.rendered_frame
++            .cursor_style(self)
++            .unwrap_or(CursorStyle::Arrow)
 +    }
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments/traversal.rs b/vendor/gpui/src/window/paint_record/segments/traversal.rs

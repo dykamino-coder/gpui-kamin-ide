@@ -34,71 +34,19 @@ pub(crate) use crate::layout::fragment::paint_source::{
     BareRecords, Replay, SlotScopes, SourceSlices,
 };
 
-/// Paint a sliced copy whose slots replay under its fragmentainer clip.
-pub(crate) fn with_copy_area(
-    area: gpui::ContentMask<gpui::Pixels>,
-    window: &mut Window,
-    paint: impl FnOnce(&mut Window),
-) {
-    crate::paint::continuation::with_copy_area(area, window, paint)
-}
-
-/// Prepaint or record of a split child's main copy whose slots see all its `pieces`.
-pub(crate) fn with_replay_pieces<R>(
-    pieces: std::rc::Rc<crate::layout::fragment::replay_pieces::ReplayPieces>,
-    window: &mut Window,
-    f: impl FnOnce(&mut Window) -> R,
-) -> R {
-    crate::paint::continuation::replayed::with_pieces(pieces, window, f)
-}
-
-/// Record of a split child's main copy in which the own paint of clone roots `ids` is hidden.
-pub(crate) fn with_clone_hidden<R>(
-    ids: std::rc::Rc<std::collections::HashSet<u64>>,
-    window: &mut Window,
-    record: impl FnOnce(&mut Window) -> R,
-) -> R {
-    crate::paint::decorations::clone_hidden::with_hidden(ids, window, record)
-}
-
-/// Record of a split child's main copy whose own positioned jobs paint into `late`.
-pub(crate) fn with_late_jobs<R>(
-    late: std::rc::Rc<[gpui::PaintSegmentSlice]>,
-    window: &mut Window,
-    record: impl FnOnce(&mut Window) -> R,
-) -> R {
-    crate::paint::coordinator::with_late_jobs(late, window, record)
-}
-
-/// Paint a legacy copy for `segment`: its slots replay their continuation records.
-pub(crate) fn with_copy_segment(
-    segment: gpui::PaintSegmentId,
-    records: Option<&BareRecords>,
-    window: &mut Window,
-    paint: impl FnOnce(&mut Window),
-) {
-    crate::paint::continuation::with_copy_segment(segment, records, window, paint)
-}
-
-/// Prepaint a legacy copy for `segment`: its slots report their hit scope.
-pub(crate) fn with_copy_hits<R>(
-    segment: gpui::PaintSegmentId,
-    scopes: &SlotScopes,
-    window: &mut Window,
-    prepaint: impl FnOnce(&mut Window) -> R,
-) -> R {
-    crate::paint::continuation::with_copy_hits(segment, scopes, window, prepaint)
-}
-
-pub(crate) fn prepaint_source_record(
+pub(crate) async fn prepaint_source_record_async(
     extent: gpui::Bounds<gpui::Pixels>,
     segments: std::rc::Rc<[gpui::PaintSegment]>,
     slices: SourceSlices,
     window: &mut Window,
     cx: &mut gpui::App,
-    prepaint: impl FnOnce(&mut Window, &mut gpui::App),
+    stack: &mut gpui::PaintStack,
+    prepaint: impl AsyncFnOnce(&mut Window, &mut gpui::App, &mut gpui::PaintStack),
 ) -> Result<(), gpui::PaintRecordError> {
-    crate::paint::coordinator::segments::prepaint(extent, segments, slices, window, cx, prepaint)
+    crate::paint::coordinator::segments::prepaint_async(
+        extent, segments, slices, window, cx, stack, prepaint,
+    )
+    .await
 }
 
 pub(crate) async fn paint_source_record_async(

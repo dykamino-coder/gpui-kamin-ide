@@ -35,3 +35,41 @@ pub(crate) async fn record_async(
     }
     Ok((records, source.bare.clone()))
 }
+
+/// Маршруты и CSS-контекст живут до окончания единственного исходного prepaint.
+pub(crate) async fn prepaint_async(
+    extent: Bounds<Pixels>,
+    segments: Rc<[PaintSegment]>,
+    slices: SourceSlices,
+    window: &mut Window,
+    cx: &mut App,
+    stack: &mut gpui::PaintStack,
+    prepaint: impl AsyncFnOnce(&mut Window, &mut App, &mut gpui::PaintStack),
+) -> Result<(), PaintRecordError> {
+    let source = Source::new(slices, false);
+    window
+        .with_prepaint_segments_async(extent, segments, cx, stack, async |window, cx, stack| {
+            match window.paint_segment_clips() {
+                Ok(clips) => source.remember((0, 0), clips),
+                Err(error) => source.fail(error),
+            }
+            let traversal = Rc::new(gpui::PrepaintTraversal {
+                enter_children: Rc::new(remember_clips),
+            });
+            window
+                .with_render_context_async(Some(source.clone()), async |window| {
+                    let _ = window
+                        .with_paint_segment_slices_async(Rc::from([]), async |window| {
+                            window
+                                .with_render_context_async(Some(traversal), async |window| {
+                                    prepaint(window, cx, stack).await
+                                })
+                                .await
+                        })
+                        .await;
+                })
+                .await;
+        })
+        .await?;
+    source.failure.take().map_or(Ok(()), Err)
+}

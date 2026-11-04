@@ -57,24 +57,28 @@ impl PageKid {
         }
     }
 
-    pub(super) fn paint_sections(
+    pub(super) async fn paint_sections(
         &mut self,
         f: &crate::layout::fragment::types::Frag,
         band: impl Fn(f32, f32) -> gpui::Bounds<gpui::Pixels>,
         window: &mut gpui::Window,
         cx: &mut gpui::App,
+        stack: &mut gpui::PaintStack,
     ) {
         let Some(r) = self.repeat.as_mut() else {
             return;
         };
-        r.paint_bands(f, |el, top, h| {
-            window.with_content_mask(
-                Some(gpui::ContentMask {
-                    bounds: band(top, h),
-                }),
-                |window| el.paint(window, cx),
-            );
-        });
+        r.paint_bands_async(f, async |el, top, h| {
+            window
+                .with_content_mask_async(
+                    Some(gpui::ContentMask {
+                        bounds: band(top, h),
+                    }),
+                    async |window| el.paint_async(window, cx, stack).await,
+                )
+                .await;
+        })
+        .await;
     }
 }
 

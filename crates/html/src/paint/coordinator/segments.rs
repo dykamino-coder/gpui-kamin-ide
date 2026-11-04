@@ -97,42 +97,21 @@ fn capture_key(window: &Window) -> u64 {
     window.render_context::<Capture>().map_or(0, |c| c.0)
 }
 
-/// Prepaint or record of another segment set inside a source (the recorded main copy of a split
-/// column child): its nodes and their clip chains belong to that set, not to the source.
-pub(crate) fn outside_source<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
-    window.with_render_context::<Source, R>(None, |window| {
-        window.with_render_context::<CurrentNode, R>(None, f)
-    })
-}
-
-pub(crate) fn prepaint(
-    extent: Bounds<Pixels>,
-    segments: Rc<[PaintSegment]>,
-    slices: SourceSlices,
+pub(crate) async fn outside_source_async<R>(
     window: &mut Window,
-    cx: &mut App,
-    prepaint: impl FnOnce(&mut Window, &mut App),
-) -> Result<(), PaintRecordError> {
-    let source = Source::new(slices, false);
-    window.with_prepaint_segments(extent, segments, cx, |window, cx| {
-        match window.paint_segment_clips() {
-            Ok(clips) => source.remember((0, 0), clips),
-            Err(error) => source.fail(error),
-        }
-        let traversal = Rc::new(gpui::PrepaintTraversal {
-            enter_children: Rc::new(remember_clips),
-        });
-        window.with_render_context(Some(source.clone()), |window| {
-            let _ = window.with_paint_segment_slices(Rc::from([]), |window| {
-                window.with_render_context(Some(traversal), |window| prepaint(window, cx))
-            });
-        });
-    })?;
-    source.failure.take().map_or(Ok(()), Err)
+    f: impl AsyncFnOnce(&mut Window) -> R,
+) -> R {
+    window
+        .with_render_context_async::<Source, R>(None, async |window| {
+            window
+                .with_render_context_async::<CurrentNode, R>(None, f)
+                .await
+        })
+        .await
 }
 
 mod admission;
 pub(crate) use admission::{node, node_async};
 
 mod traversal;
-pub(crate) use traversal::record_async;
+pub(crate) use traversal::{prepaint_async, record_async};

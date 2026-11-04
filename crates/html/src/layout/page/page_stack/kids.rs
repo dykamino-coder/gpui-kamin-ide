@@ -9,7 +9,7 @@ use gpui::{App, Bounds, Pixels, Window, point, px, size};
 impl PageStack {
     // Margin boxes use page geometry and the current GPUI layout states.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn prepaint_margins(
+    pub(super) async fn prepaint_margins(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -18,6 +18,7 @@ impl PageStack {
         names: Vec<String>,
         pages: usize,
         tail: String,
+        stack: &mut gpui::PaintStack,
     ) {
         if let Some(mf) = self.margin_for.clone() {
             for (p, pg) in geoms.iter().enumerate() {
@@ -30,22 +31,26 @@ impl PageStack {
                 let (sx, sy) = self.sheet_origin(p);
                 for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
                     let rect = round_rect(rect);
-                    el.layout_as_root(
+                    el.layout_as_root_async(
                         size(
                             gpui::AvailableSpace::Definite(px(rect.2.max(0.0))),
                             gpui::AvailableSpace::Definite(px(rect.3.max(0.0))),
                         ),
                         window,
                         cx,
-                    );
-                    el.prepaint_at(
+                        stack,
+                    )
+                    .await;
+                    el.prepaint_at_async(
                         point(
                             bounds.origin.x + px(sx + rect.0),
                             bounds.origin.y + px(sy + rect.1),
                         ),
                         window,
                         cx,
-                    );
+                        stack,
+                    )
+                    .await;
                     self.margin_els.push((p, el));
                 }
             }

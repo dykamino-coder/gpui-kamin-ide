@@ -71,9 +71,18 @@ impl Hooks for Placed {
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-        _stack: &mut gpui::PaintStack,
+        stack: &mut gpui::PaintStack,
     ) -> Self::Prepaint {
-        place_one(&mut self.child, &self.plans, bounds, *state, window, cx)
+        place_one(
+            &mut self.child,
+            &self.plans,
+            bounds,
+            *state,
+            window,
+            cx,
+            stack,
+        )
+        .await
     }
 
     fn paint(
@@ -106,13 +115,14 @@ impl Hooks for Placed {
 
 /// Разместить одну уже разложенную коробку; слой и строчные входы используют
 /// общую процедуру выбора варианта, публикации геометрии и видимости.
-pub(crate) fn place_one(
+pub(crate) async fn place_one(
     child: &mut AnyElement,
     plans: &PlacementPlans,
     bounds: Bounds<Pixels>,
     layout: LayoutId,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> bool {
     let own = geometry::logical_own(layout, bounds, window);
     let (k, p) = plans.choose(own, window, plans.values.vcx());
@@ -143,8 +153,73 @@ pub(crate) fn place_one(
         bounds.origin + gpui::point(px(p.dx), px(p.dy)),
         window,
     );
-    window.with_exact_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
-        child.prepaint(window, cx)
-    });
+    window
+        .with_exact_element_offset_async(gpui::point(px(p.dx), px(p.dy)), async |window| {
+            child.prepaint_async(window, cx, stack).await
+        })
+        .await;
     hidden
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::computed::{Computed, Position, ResetPositioned, StyleGroup};
+    use gpui::{IntoElement, TestAppContext, canvas, point, size};
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn nested_anchor_placements_use_a_bounded_prepaint_stack() {
+        let mut app = TestAppContext::single();
+        let mut addresses = Vec::new();
+        for depth in [16, 64, 128] {
+            let sample = Rc::new(Cell::new(0));
+            app.add_empty_window()
+                .draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+                    let sample = sample.clone();
+                    let mut child = canvas(
+                        move |_, _, _| {
+                            let anchor = 0u8;
+                            sample.set(std::hint::black_box(&anchor) as *const u8 as usize);
+                        },
+                        |_, (), _, _| {},
+                    )
+                    .into_any_element();
+                    let cx = crate::layout::cx::LayoutCx::default();
+                    let own = BoxStyle::new(Computed {
+                        reset_positioned: StyleGroup::new(ResetPositioned {
+                            position: Some(Position::Absolute),
+                            position_visibility: VIS_NO_OVERFLOW,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    });
+                    for _ in 0..depth {
+                        let plan = AnchorPlan::of(&own, &own, cx.vcx(), cx.layout()).unwrap();
+                        child = Placed {
+                            child,
+                            plans: PlacementPlans {
+                                plans: vec![plan],
+                                indices: vec![0],
+                                order: 0,
+                                key: 0,
+                                visibility: VIS_NO_OVERFLOW,
+                                values: cx.vcx().keep(),
+                                layout: cx.layout().clone(),
+                            },
+                        }
+                        .hooked();
+                    }
+                    child
+                });
+            assert_ne!(sample.get(), 0, "prepaint должен посетить лист");
+            addresses.push(sample.get());
+        }
+        let spread = addresses.iter().max().unwrap() - addresses.iter().min().unwrap();
+        assert!(
+            spread < 32 * 1024,
+            "anchor prepaint расходует стек с глубиной: {spread}"
+        );
+        app.quit();
+    }
 }

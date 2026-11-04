@@ -12,13 +12,14 @@ impl LayoutMeasurement {
         window: &mut Window,
         cx: &mut App,
     ) -> MeasuredContent {
-        crate::paint_traversal::Stack::new()
+        reblessive::Stack::new()
             .enter(|stack| self.measure_physical_baselines_async(available, window, cx, stack))
             .finish()
     }
 }
 
 impl LayoutMeasurement {
+    /// Измеряет поддерево на общем стеке продолжений без роста стека потока.
     pub async fn measure_physical_baselines_async(
         &mut self,
         available: Size<AvailableSpace>,

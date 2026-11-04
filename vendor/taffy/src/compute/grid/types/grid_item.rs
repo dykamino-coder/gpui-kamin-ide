@@ -1450,32 +1450,38 @@ mod migration_tests {
                 assert_eq!(known.width, Some(64.0));
                 // A zero cyclic min contribution returns before measuring NodeId(0).
                 assert_eq!(
-                    grid_item.minimum_contribution(
-                        &mut tree.as_layout_tree(),
-                        AbstractAxis::Inline,
-                        &fixed_tracks(80.0),
-                        Size::NONE,
-                        Size {
-                            width: Some(300.0),
-                            height: None
-                        }
-                    ),
+                    grid_item
+                        .minimum_contribution_async(
+                            &mut tree.as_layout_tree(),
+                            AbstractAxis::Inline,
+                            &fixed_tracks(80.0),
+                            Size::NONE,
+                            Size {
+                                width: Some(300.0),
+                                height: None
+                            },
+                            stack,
+                        )
+                        .await,
                     0.0
                 );
                 assert_eq!(
-                    grid_item.minimum_contribution(
-                        &mut tree.as_layout_tree(),
-                        AbstractAxis::Inline,
-                        &fixed_tracks(80.0),
-                        Size {
-                            width: Some(80.0),
-                            height: None
-                        },
-                        Size {
-                            width: Some(300.0),
-                            height: None
-                        }
-                    ),
+                    grid_item
+                        .minimum_contribution_async(
+                            &mut tree.as_layout_tree(),
+                            AbstractAxis::Inline,
+                            &fixed_tracks(80.0),
+                            Size {
+                                width: Some(80.0),
+                                height: None
+                            },
+                            Size {
+                                width: Some(300.0),
+                                height: None
+                            },
+                            stack,
+                        )
+                        .await,
                     // Upstream #1282: the definite preferred size (40) is clamped by min-width 80% = 64.
                     64.0
                 );
@@ -1485,46 +1491,54 @@ mod migration_tests {
 
     #[test]
     fn standalone_auto_cross_width_keeps_min_content_floor() {
-        let mut tree: TaffyTree = TaffyTree::new();
-        let child = tree
-            .new_leaf(Style {
-                size: Size {
-                    width: Dimension::length(100.0),
-                    height: Dimension::AUTO,
-                },
-                ..Style::default()
+        reblessive::Stack::new()
+            .enter(|stack| async move {
+                let mut tree: TaffyTree = TaffyTree::new();
+                let child = tree
+                    .new_leaf(Style {
+                        size: Size {
+                            width: Dimension::length(100.0),
+                            height: Dimension::AUTO,
+                        },
+                        ..Style::default()
+                    })
+                    .unwrap();
+                let mut grid_item = item(&Style::default(), AlignItems::STRETCH);
+                grid_item.node = child;
+                grid_item.subgrid_cross_auto.width = true;
+                for (area, expected) in [(58.0, 100.0), (120.0, 120.0)] {
+                    assert_eq!(
+                        grid_item
+                            .known_dimensions_async(
+                                &mut tree.as_layout_tree(),
+                                Size {
+                                    width: Some(area),
+                                    height: None
+                                },
+                                stack,
+                            )
+                            .await
+                            .width,
+                        Some(expected)
+                    );
+                }
+                grid_item.size.width = Dimension::length(50.0);
+                assert_eq!(
+                    grid_item
+                        .known_dimensions_async(
+                            &mut tree.as_layout_tree(),
+                            Size {
+                                width: Some(58.0),
+                                height: None
+                            },
+                            stack,
+                        )
+                        .await
+                        .width,
+                    Some(50.0)
+                );
             })
-            .unwrap();
-        let mut grid_item = item(&Style::default(), AlignItems::STRETCH);
-        grid_item.node = child;
-        grid_item.subgrid_cross_auto.width = true;
-        for (area, expected) in [(58.0, 100.0), (120.0, 120.0)] {
-            assert_eq!(
-                grid_item
-                    .known_dimensions(
-                        &mut tree.as_layout_tree(),
-                        Size {
-                            width: Some(area),
-                            height: None
-                        }
-                    )
-                    .width,
-                Some(expected)
-            );
-        }
-        grid_item.size.width = Dimension::length(50.0);
-        assert_eq!(
-            grid_item
-                .known_dimensions(
-                    &mut tree.as_layout_tree(),
-                    Size {
-                        width: Some(58.0),
-                        height: None
-                    }
-                )
-                .width,
-            Some(50.0)
-        );
+            .finish();
     }
 
     #[test]

@@ -13,11 +13,11 @@ use std::rc::Rc;
 
 impl Routes {
     /// `record` под контекстами записи; допуск строк возвращается для масок.
-    pub(super) fn record_scopes<R>(
+    pub(super) async fn record_scopes_async<R>(
         &self,
         records: Option<BareRecords>,
         window: &mut Window,
-        record: impl FnOnce(&mut Window) -> R,
+        record: impl AsyncFnOnce(&mut Window) -> R,
     ) -> (R, Rc<Lines>) {
         let slots = Rc::new(ReplayPieces {
             records,
@@ -26,14 +26,17 @@ impl Routes {
         let late = self.late_slices();
         let lines = (self.slices.iter().copied().zip(self.frags.iter().copied())).collect();
         let lines = Lines::new(lines, self.watched.clone(), self.spill);
-        let result = crate::hooks::with_replay_pieces(slots, window, |window| {
-            crate::hooks::with_late_jobs(late, window, |window| {
+        let result = crate::hooks::with_replay_pieces_async(slots, window, async |window| {
+            crate::hooks::with_late_jobs_async(late, window, async |window| {
                 let hidden: std::collections::HashSet<u64> = self.clone_root.into_iter().collect();
-                crate::hooks::with_clone_hidden(Rc::new(hidden), window, |window| {
-                    line_admission::with(lines.clone(), window, record)
+                crate::hooks::with_clone_hidden_async(Rc::new(hidden), window, async |window| {
+                    line_admission::with_async(lines.clone(), window, record).await
                 })
+                .await
             })
-        });
+            .await
+        })
+        .await;
         (result, lines)
     }
 

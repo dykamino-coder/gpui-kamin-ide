@@ -21,42 +21,41 @@ pub(crate) fn frag_copy<'a>(
 }
 
 impl Repeat {
-    /// Копии полос фрагмента `f` для раскладки: копия и её сдвиг от верха
-    /// содержимого фрагмента (`f.y`). Шапка — у продолжения (`f.copy ≥ 1`),
-    /// поднята так, что её полоса встаёт над содержимым; подвал — у
-    /// непоследнего фрагмента, на своём месте (`Repeat::foot_top`).
-    pub(crate) fn place_bands(&mut self, f: &Frag, mut place: impl FnMut(&mut AnyElement, f32)) {
+    /// Размещает полосы по очереди, сохраняя общий стек дочерних фаз.
+    pub(crate) async fn place_bands_async(
+        &mut self,
+        f: &Frag,
+        mut place: impl AsyncFnMut(&mut AnyElement, f32),
+    ) {
         if let Some((src, _)) = self.head.filter(|_| f.head > COORD_EPS && f.copy > 0)
             && let Some(el) = self.head_els.get_mut(f.copy - 1)
         {
-            place(el, -f.head - src);
+            place(el, -f.head - src).await;
         }
         if let Some(top) = self.foot_top(f)
             && let Some((src, _)) = self.foot
             && let Some(el) = self.foot_els.get_mut(f.copy)
         {
-            place(el, top - src);
+            place(el, top - src).await;
         }
     }
 
-    /// Копии полос фрагмента `f` для отрисовки: копия и видимая полоса
-    /// `(верх, высота)` от верха содержимого фрагмента — по ней режет маска.
-    pub(crate) fn paint_bands(
+    pub(crate) async fn paint_bands_async(
         &mut self,
         f: &Frag,
-        mut paint: impl FnMut(&mut AnyElement, f32, f32),
+        mut paint: impl AsyncFnMut(&mut AnyElement, f32, f32),
     ) {
         if f.head > COORD_EPS
             && f.copy > 0
             && let Some(el) = self.head_els.get_mut(f.copy - 1)
         {
-            paint(el, -f.head, f.head);
+            paint(el, -f.head, f.head).await;
         }
         if let Some(top) = self.foot_top(f)
             && let Some((_, bh)) = self.foot
             && let Some(el) = self.foot_els.get_mut(f.copy)
         {
-            paint(el, top, bh);
+            paint(el, top, bh).await;
         }
     }
 }

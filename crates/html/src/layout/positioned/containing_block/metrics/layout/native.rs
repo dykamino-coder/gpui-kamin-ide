@@ -30,6 +30,7 @@ impl Native {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn prepaint(
         &self,
         segments: Rc<[PaintSegment]>,
@@ -38,6 +39,20 @@ impl Native {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
+        reblessive::Stack::new()
+            .enter(|stack| self.prepaint_async(segments, slices, paint, window, cx, stack))
+            .finish()
+    }
+
+    pub(crate) async fn prepaint_async(
+        &self,
+        segments: Rc<[PaintSegment]>,
+        slices: SourceSlices,
+        paint: (Rc<[PaintSegment]>, SourceSlices),
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Result<(), PaintRecordError> {
         self.layout
             .read(window)
             .ok_or(PaintRecordError::InvalidGeometry)?;
@@ -45,22 +60,26 @@ impl Native {
             return Err(PaintRecordError::InvalidGeometry);
         }
         self.phase.set(1);
-        crate::hooks::prepaint_source_record(
+        crate::hooks::prepaint_source_record_async(
             self.extent,
             segments,
             slices,
             window,
             cx,
-            |window, cx| {
+            stack,
+            async |window, cx, stack| {
                 self.root
                     .borrow_mut()
-                    .prepaint_at(point(px(0.), px(0.)), window, cx);
+                    .prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+                    .await;
             },
-        )?;
+        )
+        .await?;
         self.routing.set(Some(paint));
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn record(
         &self,
         window: &mut Window,

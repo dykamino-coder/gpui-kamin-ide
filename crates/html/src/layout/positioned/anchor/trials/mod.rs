@@ -192,7 +192,7 @@ impl Hooks for Measured {
         id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
-        _stack: &mut gpui::PaintStack,
+        stack: &mut gpui::PaintStack,
     ) -> bool {
         let plan = self
             .probe
@@ -211,7 +211,7 @@ impl Hooks for Measured {
             values,
             layout,
         };
-        super::place::place_one(&mut self.child, &plans, bounds, *id, window, cx)
+        super::place::place_one(&mut self.child, &plans, bounds, *id, window, cx, stack).await
     }
     fn paint(
         &mut self,

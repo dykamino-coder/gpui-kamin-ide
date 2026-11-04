@@ -106,12 +106,13 @@ impl PageStack {
     }
 
     /// Lays out one canvas layer per painted sheet (after the page count is known).
-    pub(super) fn prepaint_canvas(
+    pub(super) async fn prepaint_canvas(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
         geoms: &[PageGeom],
+        stack: &mut gpui::PaintStack,
     ) {
         self.canvas_els.clear();
         let Some(make) = self.canvas_layer.clone() else {
@@ -128,41 +129,51 @@ impl PageStack {
             let (y, h) = (y - offset, h + offset);
             offset += g.area.1;
             let mut el = make(w, h);
-            el.layout_as_root(
+            el.layout_as_root_async(
                 size(
                     gpui::AvailableSpace::Definite(px(w)),
                     gpui::AvailableSpace::Definite(px(h)),
                 ),
                 window,
                 cx,
-            );
-            el.prepaint_at(
+                stack,
+            )
+            .await;
+            el.prepaint_at_async(
                 point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
                 window,
                 cx,
-            );
+                stack,
+            )
+            .await;
             self.canvas_els.push((p, el));
         }
     }
 
     /// Paints the canvas layer of sheet `p`, clipped to its canvas rectangle.
-    pub(super) fn paint_canvas(
+    pub(super) async fn paint_canvas(
         &mut self,
         p: usize,
         mask: Bounds<Pixels>,
-        bounds: Bounds<Pixels>,
-        s: f32,
+        (bounds, s): (Bounds<Pixels>, f32),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         for (q, el) in &mut self.canvas_els {
             if *q != p {
                 continue;
             }
             let mask = gpui::ContentMask { bounds: mask };
-            window.with_content_mask(Some(mask), |window| {
-                window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
-            });
+            window
+                .with_content_mask_async(Some(mask), async |window| {
+                    window
+                        .with_mask_scale_async(bounds.origin, s, async |window| {
+                            el.paint_async(window, cx, stack).await
+                        })
+                        .await
+                })
+                .await;
         }
     }
 }

@@ -58,12 +58,13 @@ pub(crate) fn paint_late(replayed: &HashMap<usize, Option<Option<Replayed>>>, wi
 }
 
 impl Routes {
-    /// Prepaint главной копии: её hitboxes стоят в каждом куске под его срезом.
-    pub(crate) fn prepaint(
+    /// Hitboxes главной копии проходят общий стек продолжений под маршрутами кусков.
+    pub(crate) async fn prepaint_async(
         &self,
         window: &mut Window,
         cx: &mut App,
-        prepaint: impl FnOnce(&mut Window, &mut App),
+        stack: &mut gpui::PaintStack,
+        prepaint: impl AsyncFnOnce(&mut Window, &mut App, &mut gpui::PaintStack),
     ) -> Result<(), PaintRecordError> {
         let slices = self.slices.clone();
         let slots = Rc::new(ReplayPieces {
@@ -71,12 +72,24 @@ impl Routes {
             pieces: self.slots.clone(),
         });
         self.admit(true);
-        let done = crate::hooks::with_replay_pieces(slots, window, |window| {
-            window.with_prepaint_segments(self.extent, self.routes.clone(), cx, |window, cx| {
-                window.with_paint_segment_slices(slices, |window| prepaint(window, cx))
-            })
-        });
-        self.admit(false);
-        done?
+        let _admission = super::Admission(self);
+        crate::hooks::with_replay_pieces_async(slots, window, async |window| {
+            window
+                .with_prepaint_segments_async(
+                    self.extent,
+                    self.routes.clone(),
+                    cx,
+                    stack,
+                    async |window, cx, stack| {
+                        window
+                            .with_paint_segment_slices_async(slices, async |window| {
+                                prepaint(window, cx, stack).await
+                            })
+                            .await
+                    },
+                )
+                .await
+        })
+        .await?
     }
 }

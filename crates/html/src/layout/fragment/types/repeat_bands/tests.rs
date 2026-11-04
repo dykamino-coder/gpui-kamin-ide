@@ -40,13 +40,30 @@ fn head_band_only_on_continuations_and_foot_band_below_content() {
         foot_els: vec![el(), el(), el()],
     };
     let mut placed = Vec::new();
-    r.place_bands(&frag(0, 20.0, 15.0), |_, at| placed.push(at));
+    reblessive::Stack::new()
+        .enter(async |_| {
+            r.place_bands_async(&frag(0, 20.0, 15.0), async |_, at| placed.push(at))
+                .await;
+        })
+        .finish();
     // First fragment: no repeated head, foot copy lifted onto `h + foot − bh`.
     assert_eq!(placed, vec![100.0 + 15.0 - 15.0 - 200.0]);
     placed.clear();
-    r.place_bands(&frag(1, 20.0, 0.0), |_, at| placed.push(at));
+    reblessive::Stack::new()
+        .enter(async |_| {
+            r.place_bands_async(&frag(1, 20.0, 0.0), async |_, at| placed.push(at))
+                .await;
+        })
+        .finish();
     assert_eq!(placed, vec![-20.0 - 5.0]);
     let mut painted = Vec::new();
-    r.paint_bands(&frag(1, 20.0, 15.0), |_, top, h| painted.push((top, h)));
+    reblessive::Stack::new()
+        .enter(async |_| {
+            r.paint_bands_async(&frag(1, 20.0, 15.0), async |_, top, h| {
+                painted.push((top, h))
+            })
+            .await;
+        })
+        .finish();
     assert_eq!(painted, vec![(-20.0, 20.0), (100.0, 15.0)]);
 }

@@ -19,17 +19,18 @@ struct RecordFrame {
     late: Option<Rc<[PaintSegmentSlice]>>,
 }
 
-/// Запись `record`, чьи позиционированные задания собственного кадра рисуются в `slices`.
-pub(crate) fn with_late_jobs<R>(
+pub(crate) async fn with_late_jobs_async<R>(
     slices: Rc<[PaintSegmentSlice]>,
     window: &mut Window,
-    record: impl FnOnce(&mut Window) -> R,
+    record: impl AsyncFnOnce(&mut Window) -> R,
 ) -> R {
     let late = LateJobs {
         slices,
         claimed: Cell::new(false),
     };
-    window.with_render_context(Some(Rc::new(late)), record)
+    window
+        .with_render_context_async(Some(Rc::new(late)), record)
+        .await
 }
 
 pub(super) fn recording() -> PaintRecording {

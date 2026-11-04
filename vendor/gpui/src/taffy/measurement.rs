@@ -118,19 +118,6 @@ fn to_native(value: AvailableSpace, scale: f32) -> taffy::AvailableSpace {
     }
 }
 
-pub(super) fn leaf(
-    input: LayoutInput,
-    mut context: Option<&mut NodeContext>,
-    style: &Style,
-    scale: f32,
-    window: &mut Window,
-    cx: &mut App,
-) -> LayoutOutput {
-    reblessive::Stack::new()
-        .enter(|stack| leaf_async(input, context, style, scale, window, cx, stack))
-        .finish()
-}
-
 #[cfg(test)]
 #[path = "measurement_tests.rs"]
 mod tests;

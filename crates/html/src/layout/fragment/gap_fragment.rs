@@ -19,9 +19,11 @@ pub(crate) fn current(owner: &Deferred) -> Option<Scope> {
     owner.gap.borrow().clone()
 }
 
-pub(crate) fn with<R>(owner: &Deferred, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
-    let previous = owner.gap.replace(scope);
-    let result = f();
-    owner.gap.replace(previous);
-    result
+pub(crate) async fn with_async<R>(
+    owner: &Deferred,
+    value: Option<Scope>,
+    f: impl AsyncFnOnce() -> R,
+) -> R {
+    let _scope = crate::layout::cx::deferred::scoped::Scope::enter(&owner.gap, value);
+    f().await
 }

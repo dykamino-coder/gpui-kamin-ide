@@ -24,7 +24,7 @@ pub(in crate::taffy) async fn leaf_async(
         taffy::tree::calc_value,
         async |known, available| {
             crate::frame_perf::LAYOUT_MEASURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let _timer = super::MeasureTimer(std::time::Instant::now());
+            let _timer = crate::taffy::MeasureTimer(std::time::Instant::now());
             let Some(context) = context else {
                 return taffy::Size::default().into();
             };
@@ -40,7 +40,7 @@ pub(in crate::taffy) async fn leaf_async(
                 taffy::AvailableSpace::MaxContent => AvailableSpace::MaxContent,
             };
             let available = size(from_native(available.width), from_native(available.height));
-            let mut geometry = super::MeasuredBox::from_native(input.parent_size, style, scale);
+            let mut geometry = crate::MeasuredBox::from_native(input.parent_size, style, scale);
             geometry.intrinsic_axis = if input.run_mode == taffy::RunMode::ComputeSize {
                 match input.axis {
                     taffy::RequestedAxis::Horizontal => Some(crate::Axis::Horizontal),

@@ -1,5 +1,6 @@
 //! Корень и его измерения приостанавливаются на общем явном стеке.
 use super::*;
+use crate::Axis;
 struct LayoutEngineRestore<'a> {
     window: &'a mut Window,
     engine: Option<TaffyLayoutEngine>,

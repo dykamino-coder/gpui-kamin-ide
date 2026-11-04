@@ -6,10 +6,12 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
+mod slice;
+
 impl ColumnStack {
     // Fragment painting shares the column geometry and the active GPUI context.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn paint_frags(
+    pub(super) async fn paint_frags(
         &mut self,
         window: &mut Window,
         cx: &mut App,
@@ -19,6 +21,7 @@ impl ColumnStack {
         parts: Vec<usize>,
         plan_all: Vec<Frag>,
         plan: Vec<Frag>,
+        stack: &mut gpui::PaintStack,
     ) {
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
         let records = self.copy_records();
@@ -84,10 +87,14 @@ impl ColumnStack {
                         mask_scale,
                     )
                 };
-                r.paint_bands(&f, |el, top, h| {
+                r.paint_bands_async(&f, async |el, top, h| {
                     window
-                        .with_content_mask(Some(band_mask(top, h)), |window| el.paint(window, cx));
-                });
+                        .with_content_mask_async(Some(band_mask(top, h)), async |window| {
+                            el.paint_async(window, cx, stack).await
+                        })
+                        .await;
+                })
+                .await;
             }
             // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
             if let Some(bg) = kid.slack
@@ -137,7 +144,16 @@ impl ColumnStack {
             }
             let geometry = (bounds, col_w, step);
             if self.replays(f.kid, &plan_all)
-                && self.paint_piece_replayed(&f, &plan_all, geometry, &mut replayed, window, cx)
+                && self
+                    .paint_piece_replayed(
+                        (&f, &plan_all),
+                        geometry,
+                        &mut replayed,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await
             {
                 continue;
             }
@@ -162,55 +178,27 @@ impl ColumnStack {
                     window.with_content_mask(Some(area), |window| window.content_mask())
                 });
                 let mask = fragment_mask::snap(clip, window.scale_factor());
-                window.with_content_mask(Some(mask), |window| {
-                    let cut = f32::from(y) + f.h;
-                    let end = if continued && f.foot <= COORD_EPS {
-                        cut.max(f32::from(y) + line_h - f.y)
-                    } else {
-                        cut
-                    };
-                    let scope = Some(gap_fragment::Scope {
-                        parent,
-                        mask: window.content_mask(),
-                        start: f32::from(y),
-                        cut,
-                        end,
-                    });
-                    crate::layout::fragment::effect_fragment::with(
-                        &self.paint,
-                        Some(crate::layout::fragment::effect_fragment::Scope {
-                            parent,
-                            fragment: Bounds {
-                                origin: point(x, y),
-                                size: size(px(col_w), px(f.h)),
-                            },
-                            clip,
-                        }),
-                        || {
-                            gap_fragment::with(&self.paint, scope, || {
-                                let mut paint = |window: &mut Window| {
-                                    crate::hooks::with_copy_segment(
-                                        gpui::PaintSegmentId(f.col as u64),
-                                        records.as_ref(),
-                                        window,
-                                        |window| el.paint(window, cx),
-                                    )
-                                };
-                                match area {
-                                    Some(area) => crate::hooks::with_copy_area(area, window, paint),
-                                    None => paint(window),
-                                }
-                            })
-                        },
-                    );
-                });
+                slice::Slice {
+                    fragment: f,
+                    at: point(x, y),
+                    width: col_w,
+                    line_h,
+                    continued,
+                    parent,
+                    area,
+                    mask,
+                    clip,
+                }
+                .paint(el, &self.paint, records.as_ref(), window, cx, stack)
+                .await;
             } else {
-                crate::hooks::with_copy_segment(
+                crate::hooks::with_copy_segment_async(
                     gpui::PaintSegmentId(f.col as u64),
                     records.as_ref(),
                     window,
-                    |window| el.paint(window, cx),
-                );
+                    async |window| el.paint_async(window, cx, stack).await,
+                )
+                .await;
             }
         }
         crate::layout::fragment::replay::paint_late(&replayed, window);

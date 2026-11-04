@@ -1,6 +1,7 @@
 //! Независимый щуп продолжает общий стек вложенных измерений.
 use super::*;
 impl LayoutMeasurement {
+    /// Измеряет поддерево на общем стеке продолжений без роста стека потока.
     pub async fn measure_async(
         &mut self,
         available: Size<AvailableSpace>,
@@ -17,9 +18,15 @@ impl LayoutMeasurement {
             .compute_layout_with_measure_async(
                 self.root,
                 available,
-                taffy::tree::AsyncMeasure(async |input, _, context, style, stack| {
-                    leaf_async(input, context, style, scale, window, cx, stack).await
-                }),
+                taffy::tree::AsyncMeasure(
+                    async |input: taffy::LayoutInput,
+                           _: taffy::NodeId,
+                           context: Option<&mut crate::taffy::NodeContext>,
+                           style: &taffy::Style,
+                           stack: &mut crate::PaintStack| {
+                        leaf_async(input, context, style, scale, window, cx, stack).await
+                    },
+                ),
                 stack,
             )
             .await

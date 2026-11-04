@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+pub(crate) mod scoped;
 
 #[derive(Clone, Default)]
 pub struct DeferredPaintContext {

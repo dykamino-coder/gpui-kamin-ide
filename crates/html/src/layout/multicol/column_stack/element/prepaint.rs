@@ -86,28 +86,33 @@ impl ColumnStack {
     /// Спаннеры во всю ширину коробки, первой копией (запасных у них нет:
     /// между колонками они не режутся), и границы линеек промежутков.
     #[inline(never)]
-    pub(super) fn prepaint_spanners(
+    pub(super) async fn prepaint_spanners(
         &mut self,
         bounds: Bounds<Pixels>,
         col_w: f32,
-        plan: crate::layout::fragment::plan::Plan,
-        spans: Vec<(usize, f32)>,
+        (plan, spans): (crate::layout::fragment::plan::Plan, Vec<(usize, f32)>),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         for &(kid, sy) in &spans {
             let kid = &mut self.children[kid];
             let h = kid.h;
-            kid.el.layout_as_root_at(
-                point(bounds.origin.x, bounds.origin.y + px(sy)),
-                size(
-                    gpui::AvailableSpace::Definite(bounds.size.width),
-                    gpui::AvailableSpace::Definite(px(h)),
-                ),
-                window,
-                cx,
-            );
-            kid.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            kid.el
+                .layout_as_root_at_async(
+                    point(bounds.origin.x, bounds.origin.y + px(sy)),
+                    size(
+                        gpui::AvailableSpace::Definite(bounds.size.width),
+                        gpui::AvailableSpace::Definite(px(h)),
+                    ),
+                    window,
+                    cx,
+                    stack,
+                )
+                .await;
+            kid.el
+                .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
+                .await;
         }
         // Границы для линеек промежутков (css-gaps-1 §gap-multicol): коробки
         // ЗАНЯТЫХ колонок каждой линии (как Blink `AddCrossGap` на колонку
@@ -145,19 +150,20 @@ impl ColumnStack {
     /// месте. Копия может нести вложенный многоколоночник, и его prepaint идёт
     /// внутри этого кадра — он держится малым.
     #[inline(never)]
-    pub(super) fn prepaint_frags(
+    pub(super) async fn prepaint_frags(
         &mut self,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
         bounds: Bounds<Pixels>,
-        col_w: f32,
+        (col_w, step): (f32, f32),
         plan: &[Frag],
-        step: f32,
     ) {
         self.record_places(bounds, plan, step);
         for f in plan {
-            let Some(prepared) =
-                self.prepare_prepaint_frag(f, plan, (bounds, col_w, step), window, cx)
+            let Some(prepared) = self
+                .prepare_prepaint_frag(f, plan, (bounds, col_w, step), window, cx, stack)
+                .await
             else {
                 continue;
             };
@@ -169,14 +175,24 @@ impl ColumnStack {
             };
             let segment = gpui::PaintSegmentId(f.col as u64);
             let (paint, scopes) = (&self.paint, &self.oof.slot_scopes);
-            let prepaint = |window: &mut Window, cx: &mut App| {
-                prepaint_frag(el, paint, scopes, prepared.mapping, segment, window, cx)
-            };
+            let mut prepaint =
+                async |window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack| {
+                    prepaint_frag(
+                        el,
+                        paint,
+                        (scopes, segment),
+                        prepared.mapping,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await
+                };
             match prepared.replay.as_ref() {
                 Some(routes) => {
-                    let _ = routes.prepaint(window, cx, prepaint);
+                    let _ = routes.prepaint_async(window, cx, stack, prepaint).await;
                 }
-                None => prepaint(window, cx),
+                None => prepaint(window, cx, stack).await,
             }
             // Сохраняем реальную ширину корня для украшений фрагмента.
             kid.laid_w.set(kid.laid_w.get().max(prepared.width));

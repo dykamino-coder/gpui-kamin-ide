@@ -67,11 +67,13 @@ impl Pieces {
     }
 }
 
-pub(crate) fn with<R>(owner: &Deferred, pieces: Option<Rc<Pieces>>, f: impl FnOnce() -> R) -> R {
-    let previous = owner.pieces.replace(pieces);
-    let result = f();
-    owner.pieces.replace(previous);
-    result
+pub(crate) async fn with_async<R>(
+    owner: &Deferred,
+    value: Option<Rc<Pieces>>,
+    f: impl AsyncFnOnce() -> R,
+) -> R {
+    let _scope = crate::layout::cx::deferred::scoped::Scope::enter(&owner.pieces, value);
+    f().await
 }
 
 pub(crate) fn active(owner: Option<&Deferred>) -> Option<Rc<Pieces>> {

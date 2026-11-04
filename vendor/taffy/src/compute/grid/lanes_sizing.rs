@@ -101,18 +101,24 @@ mod tests {
     ) -> Size<Option<f32>> {
         let mut tree: TaffyTree = TaffyTree::new();
         // An unexpected probe would fail because NodeId(0) does not exist.
-        let result = resolve_lane_sizing_keywords(
-            &mut tree.as_layout_tree(),
-            NodeId::new(0),
-            styles,
-            parent,
-            stretch,
-            Size {
-                width: AvailableSpace::MaxContent,
-                height: AvailableSpace::MaxContent,
-            },
-            known,
-        );
+        let result = reblessive::Stack::new()
+            .enter(|stack| async {
+                resolve_lane_sizing_keywords_async(
+                    &mut tree.as_layout_tree(),
+                    NodeId::new(0),
+                    styles,
+                    parent,
+                    stretch,
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
+                    known,
+                    stack,
+                )
+                .await
+            })
+            .finish();
         result
     }
     #[test]
@@ -201,21 +207,27 @@ mod tests {
                 ..Style::default()
             })
             .unwrap();
-        let resolved = resolve_lane_sizing_keywords(
-            &mut tree.as_layout_tree(),
-            node,
-            Size {
-                width: Dimension::min_content(),
-                height: Dimension::max_content(),
-            },
-            Size::NONE,
-            Size::NONE,
-            Size {
-                width: AvailableSpace::MaxContent,
-                height: AvailableSpace::MaxContent,
-            },
-            Size::NONE,
-        );
+        let resolved = reblessive::Stack::new()
+            .enter(|stack| async {
+                resolve_lane_sizing_keywords_async(
+                    &mut tree.as_layout_tree(),
+                    node,
+                    Size {
+                        width: Dimension::min_content(),
+                        height: Dimension::max_content(),
+                    },
+                    Size::NONE,
+                    Size::NONE,
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
+                    Size::NONE,
+                    stack,
+                )
+                .await
+            })
+            .finish();
         assert_eq!(
             resolved,
             Size {

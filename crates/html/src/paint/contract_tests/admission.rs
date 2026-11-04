@@ -68,3 +68,41 @@ fn sibling_roots_share_collector_through_document_scopes() {
     });
     assert_phases(&events, &["positioned", "flow"], &["flow", "positioned"]);
 }
+
+#[test]
+fn nested_collectors_drain_on_a_bounded_native_stack() {
+    use std::cell::Cell;
+
+    let mut addresses = Vec::new();
+    for depth in [16, 64, 128] {
+        let sample = Rc::new(Cell::new(0));
+        let visits = Rc::new(Cell::new(0));
+        draw(|| {
+            let sample = sample.clone();
+            let visits = visits.clone();
+            let mut child = gpui::canvas(
+                |_, _, _| (),
+                move |_, (), _, _| {
+                    let anchor = 0u8;
+                    sample.set(std::hint::black_box(&anchor) as *const u8 as usize);
+                    visits.set(visits.get() + 1);
+                },
+            )
+            .into_any_element();
+            // Каждый deferred job открывает свой collector и закрывает его
+            // лишь после paint ребёнка: глубина сливов равна глубине дерева.
+            for _ in 0..depth {
+                child = collect(vec![positioned(child, 0)]).into_any_element();
+            }
+            collect(roots(vec![child]))
+        });
+        assert_eq!(visits.get(), 1, "краска листа должна выполняться один раз");
+        assert_ne!(sample.get(), 0);
+        addresses.push(sample.get());
+    }
+    let spread = addresses.iter().max().unwrap() - addresses.iter().min().unwrap();
+    assert!(
+        spread < 32 * 1024,
+        "collector расходует стек с глубиной: {spread}"
+    );
+}

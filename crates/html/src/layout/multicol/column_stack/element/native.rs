@@ -18,12 +18,13 @@ impl ColumnStack {
             .map(|_| self.oof.records.borrow().1.clone())
     }
 
-    pub(crate) fn prepaint_native(
+    pub(crate) async fn prepaint_native(
         &mut self,
         bounds: Bounds<Pixels>,
         plan: &[Frag],
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Result<(), PaintRecordError> {
         let Some(native) = self
             .oof
@@ -137,9 +138,20 @@ impl ColumnStack {
             window,
         );
         self.oof.slot_scopes.clear();
-        window.with_prepaint_segment_hit_scopes(scopes, |window| {
-            native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
-        })
+        window
+            .with_prepaint_segment_hit_scopes_async(scopes, async |window| {
+                native
+                    .prepaint_async(
+                        routing.hits.0,
+                        routing.hits.1,
+                        routing.paint,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await
+            })
+            .await
     }
 
     /// Fragmentainer `col` with the copies' ink spill sideways and above:
@@ -166,16 +178,16 @@ impl ColumnStack {
             .is_some_and(|kid| plan.iter().any(|f| f.kid == kid && f.col == col))
     }
 
-    /// Paint the source once; its own records wait for the column copies.
-    pub(crate) fn record_native(
+    pub(crate) async fn record_native_async(
         &self,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Result<(), PaintRecordError> {
         let Some(native) = self.oof.geometry.native_along(self.axis.is_vertical()) else {
             return Ok(());
         };
-        let (records, bare) = native.record(window, cx)?;
+        let (records, bare) = native.record_async(window, cx, stack).await?;
         let bare = bare.with_natives(self.oof.slot_scopes.natives());
         *self.oof.records.borrow_mut() = (records.into_records(), bare);
         Ok(())

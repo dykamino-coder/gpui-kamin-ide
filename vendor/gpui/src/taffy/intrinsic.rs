@@ -12,7 +12,7 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) -> Size<Pixels> {
-        crate::paint_traversal::Stack::new()
+        reblessive::Stack::new()
             .enter(|stack| self.measure_size_async(id, available, axis, window, cx, stack))
             .finish()
     }
@@ -47,9 +47,16 @@ impl TaffyLayoutEngine {
                     height: convert(available.height),
                 },
                 axis,
-                taffy::tree::AsyncMeasure(async |input, _, context, style, stack| {
-                    measurement::leaf_async(input, context, style, scale, window, cx, stack).await
-                }),
+                taffy::tree::AsyncMeasure(
+                    async |input: taffy::LayoutInput,
+                           _: taffy::NodeId,
+                           context: Option<&mut crate::taffy::NodeContext>,
+                           style: &taffy::Style,
+                           stack: &mut crate::PaintStack| {
+                        measurement::leaf_async(input, context, style, scale, window, cx, stack)
+                            .await
+                    },
+                ),
                 stack,
             )
             .await;

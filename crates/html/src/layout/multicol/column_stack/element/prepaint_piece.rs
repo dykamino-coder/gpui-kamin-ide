@@ -15,13 +15,14 @@ pub(super) struct Prepared {
 
 impl ColumnStack {
     #[inline(never)]
-    pub(super) fn prepare_prepaint_frag(
+    pub(super) async fn prepare_prepaint_frag(
         &mut self,
         f: &Frag,
         plan: &[Frag],
         (bounds, col_w, step): (Bounds<Pixels>, f32, f32),
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Option<Prepared> {
         let spill = Self::spill(bounds, window);
         // Ребёнок, чьи куски рисует запись главной копии, раскладывает только её.
@@ -57,14 +58,14 @@ impl ColumnStack {
         // Копия та же полная таблица, поднятая так, что её полоса
         // совпадает с местом во фрагменте; видимой полосу делает маска.
         if let Some(r) = kid.repeat.as_mut() {
-            prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx);
+            prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx, stack).await;
         }
         let decos = kid.clone_deco.as_mut().map(|d| &mut d.decos[..]);
         let deco = decos.and_then(|d| d.iter_mut().nth(f.copy));
         if let Some(deco) = deco.filter(|_| replay.is_some()) {
             let rtl = kid.par.rtl_root_in_ltr;
-            layout_frag(deco, point(x, y), (col_w, f.h), rtl, window, cx);
-            deco.prepaint(window, cx);
+            layout_frag(deco, point(x, y), (col_w, f.h), rtl, window, cx, stack).await;
+            deco.prepaint_async(window, cx, stack).await;
         }
         if replay.is_some() && f.copy != 0 {
             return None;
@@ -74,7 +75,16 @@ impl ColumnStack {
         // часть делает маска в отрисовке. Иначе половина коробки просто
         // сжалась бы, а не продолжилась в следующей колонке.
         let at = point(x, if clone { y } else { y - px(f.from) });
-        let laid = layout_frag(el, at, (col_w, full_h), kid.par.rtl_root_in_ltr, window, cx);
+        let laid = layout_frag(
+            el,
+            at,
+            (col_w, full_h),
+            kid.par.rtl_root_in_ltr,
+            window,
+            cx,
+            stack,
+        )
+        .await;
         let mapping = self
             .static_places
             .as_ref()

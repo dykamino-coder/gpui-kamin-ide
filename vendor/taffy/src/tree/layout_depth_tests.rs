@@ -1,5 +1,6 @@
 //! Полная раскладка и вложенные callbacks не расходуют стек по глубине.
 use super::*;
+use crate::Dimension;
 
 fn small_stack(run: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
@@ -27,10 +28,17 @@ fn nested_layout(display: Display) {
             root = tree.new_with_children(style.clone(), &[root]).unwrap();
         }
         let mut measures = 0;
-        tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |input, _, _, style| {
-            measures += 1;
-            compute_leaf_layout(input, style, calc_value, |_, _| Size::ZERO)
-        })
+        tree.compute_layout_with_measure(
+            root,
+            Size {
+                width: AvailableSpace::MaxContent,
+                height: AvailableSpace::MaxContent,
+            },
+            |input, _, _, style| {
+                measures += 1;
+                compute_leaf_layout(input, style, calc_value, |_, _| Size::ZERO)
+            },
+        )
         .unwrap();
         assert!(measures > 0);
         assert_eq!(
@@ -49,10 +57,17 @@ fn nested_layout(display: Display) {
         );
         assert!(tree.nodes.values().all(|n| !n.cache.is_empty()));
         let first_measures = measures;
-        tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |input, _, _, style| {
-            measures += 1;
-            compute_leaf_layout(input, style, calc_value, |_, _| Size::ZERO)
-        })
+        tree.compute_layout_with_measure(
+            root,
+            Size {
+                width: AvailableSpace::MaxContent,
+                height: AvailableSpace::MaxContent,
+            },
+            |input, _, _, style| {
+                measures += 1;
+                compute_leaf_layout(input, style, calc_value, |_, _| Size::ZERO)
+            },
+        )
         .unwrap();
         assert_eq!(
             measures, first_measures,
@@ -98,7 +113,10 @@ impl crate::tree::LayoutMeasurer<()> for NestedMeasure<'_> {
                     .run(|stack| {
                         tree.compute_layout_with_measure_async(
                             *root,
-                            Size::MAX_CONTENT,
+                            Size {
+                                width: AvailableSpace::MaxContent,
+                                height: AvailableSpace::MaxContent,
+                            },
                             NestedMeasure {
                                 descendants,
                                 calls: self.calls,
@@ -131,7 +149,10 @@ fn lending_measurements_share_the_stack_at_twenty_thousand_levels() {
             .enter(|stack| {
                 tree.compute_layout_with_measure_async(
                     *root,
-                    Size::MAX_CONTENT,
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
                     NestedMeasure {
                         descendants,
                         calls: &mut calls,

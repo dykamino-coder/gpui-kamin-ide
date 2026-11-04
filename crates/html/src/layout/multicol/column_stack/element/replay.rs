@@ -110,14 +110,14 @@ impl ColumnStack {
     /// Кусок `f` ребёнка, рисуемого записью главной копии: запись — при первом его
     /// куске, затем каждый кусок воспроизводит свой сегмент под своей маской. Ложь —
     /// размещений нет, кусок рисует своя копия (тот же выбор, что в prepaint).
-    pub(super) fn paint_piece_replayed(
+    pub(super) async fn paint_piece_replayed(
         &mut self,
-        f: &Frag,
-        plan_all: &[Frag],
+        (f, plan_all): (&Frag, &[Frag]),
         (bounds, col_w, step): (Bounds<Pixels>, f32, f32),
         replayed: &mut std::collections::HashMap<usize, Option<Option<Replayed>>>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> bool {
         let spill = Self::spill(bounds, window);
         let scale = window.scale_factor();
@@ -125,7 +125,10 @@ impl ColumnStack {
             let routes = self.replay_routes(f.kid, plan_all, bounds, (col_w, step, spill), scale);
             let records = self.copy_records();
             let el = (&mut self.children[f.kid].el, Some(&*self.paint), records);
-            slot.insert(routes.map(|r| r.record(el, window, cx).ok()));
+            slot.insert(match routes {
+                Some(r) => Some(r.record_async(el, window, cx, stack).await.ok()),
+                None => None,
+            });
         }
         // Без размещений ребёнок рисуется копиями; неудавшаяся запись — ничем.
         let (records, masks) = match replayed.get(&f.kid) {
@@ -146,7 +149,7 @@ impl ColumnStack {
         // Фрагмент clone самодостаточен: украшения — копией без содержимого, маски нет.
         let decos = self.children[f.kid].clone_deco.as_mut();
         if let Some(deco) = decos.and_then(|d| d.decos.iter_mut().nth(f.copy)) {
-            deco.paint(window, cx);
+            deco.paint_async(window, cx, stack).await;
             mask = parent;
         }
         window.with_content_mask(Some(mask), |window| {

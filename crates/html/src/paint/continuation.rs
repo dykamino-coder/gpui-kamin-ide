@@ -9,24 +9,12 @@ use gpui::{
 };
 use std::rc::Rc;
 pub(crate) mod replayed;
+mod traversal;
+pub(crate) use traversal::{with_copy_area_async, with_copy_hits_async, with_copy_segment_async};
 
 struct CopyHits {
     segment: PaintSegmentId,
     scopes: SlotScopes,
-}
-
-/// Prepaint a legacy copy for `segment`: its slots report their hit scope.
-pub(crate) fn with_copy_hits<R>(
-    segment: PaintSegmentId,
-    scopes: &SlotScopes,
-    window: &mut Window,
-    prepaint: impl FnOnce(&mut Window) -> R,
-) -> R {
-    let context = CopyHits {
-        segment,
-        scopes: scopes.clone(),
-    };
-    window.with_render_context(Some(Rc::new(context)), prepaint)
 }
 
 /// The segment painted by the legacy copy being painted and its own records.
@@ -35,40 +23,10 @@ pub(crate) struct CopySegment {
     pub(crate) records: BareRecords,
 }
 
-/// Paint a legacy copy for `segment`; deferred positioned paint keeps this
-/// context in its paint snapshot.
-pub(crate) fn with_copy_segment(
-    segment: PaintSegmentId,
-    records: Option<&BareRecords>,
-    window: &mut Window,
-    paint: impl FnOnce(&mut Window),
-) {
-    match records {
-        Some(records) => window.with_render_context(
-            Some(Rc::new(CopySegment {
-                segment,
-                records: records.clone(),
-            })),
-            paint,
-        ),
-        None => paint(window),
-    }
-}
-
 /// The clip of a fragmentainer whose copy is cut to its own slice: a continued
 /// root replayed in that copy is cut by its fragmentainer, not by the slice
 /// of the box that holds it (a table fragment ends above its repeated footer).
 struct CopyArea(gpui::ContentMask<Pixels>);
-
-/// Paint a sliced copy whose slots replay under `area` (window coordinates,
-/// as `Window::content_mask` reports them).
-pub(crate) fn with_copy_area(
-    area: gpui::ContentMask<Pixels>,
-    window: &mut Window,
-    paint: impl FnOnce(&mut Window),
-) {
-    window.with_render_context(Some(Rc::new(CopyArea(area))), paint)
-}
 
 pub(crate) fn slot(id: Option<u64>, child: AnyElement) -> AnyElement {
     match id {

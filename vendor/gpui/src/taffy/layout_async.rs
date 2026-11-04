@@ -58,18 +58,24 @@ impl TaffyLayoutEngine {
             .compute_layout_with_measure_async(
                 id.into(),
                 available_space.into(),
-                taffy::tree::AsyncMeasure(async |inputs, _id, node_context, style, stack| {
-                    measurement::leaf_async(
-                        inputs,
-                        node_context,
-                        style,
-                        scale_factor,
-                        window,
-                        cx,
-                        stack,
-                    )
-                    .await
-                }),
+                taffy::tree::AsyncMeasure(
+                    async |inputs: taffy::LayoutInput,
+                           _id: taffy::NodeId,
+                           node_context: Option<&mut crate::taffy::NodeContext>,
+                           style: &taffy::Style,
+                           stack: &mut crate::PaintStack| {
+                        measurement::leaf_async(
+                            inputs,
+                            node_context,
+                            style,
+                            scale_factor,
+                            window,
+                            cx,
+                            stack,
+                        )
+                        .await
+                    },
+                ),
                 stack,
             )
             .await

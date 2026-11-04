@@ -16,11 +16,20 @@ pub(crate) struct Scope {
     pub clip: Bounds<Pixels>,
 }
 
+pub(crate) async fn with_async<R>(
+    owner: &Deferred,
+    value: Option<Scope>,
+    f: impl AsyncFnOnce() -> R,
+) -> R {
+    let _scope = crate::layout::cx::deferred::scoped::Scope::enter(&owner.effect, value);
+    f().await
+}
+
+#[cfg(test)]
 pub(crate) fn with<R>(owner: &Deferred, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
-    let previous = owner.effect.replace(scope);
-    let result = f();
-    owner.effect.replace(previous);
-    result
+    reblessive::Stack::new()
+        .enter(async |_| with_async(owner, scope, async || f()).await)
+        .finish()
 }
 
 /// Краска идёт внутри фрагмента внешней фрагментации.

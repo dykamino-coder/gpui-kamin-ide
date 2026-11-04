@@ -102,7 +102,9 @@ impl Hooks for Watch {
                 slices,
                 window,
                 cx,
-            );
+                stack,
+            )
+            .await;
             return None;
         }
         let consumed = id.and_then(|id| self.rec.flex_consumed.borrow().get(&id).copied());
@@ -166,20 +168,30 @@ impl Hooks for Watch {
 }
 
 /// Prepaint узла со своим допуском в записи главной копии (`Watched::admitted`):
-/// отдельный кадр, вне пути каждого наблюдаемого узла.
-#[inline(never)]
-fn admitted_prepaint(
+/// продолжение сохраняет допуск до завершения обхода ребёнка.
+async fn admitted_prepaint(
     inner: &mut AnyElement,
     (mask, shift): (Option<ContentMask<Pixels>>, gpui::Point<Pixels>),
     slices: Rc<[gpui::PaintSegmentSlice]>,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
-    window.with_content_mask(mask, |window| {
-        window.with_element_offset(shift, |window| {
-            let _ = window.with_paint_segment_slices(slices, |window| inner.prepaint(window, cx));
+    window
+        .with_content_mask_async(mask, async |window| {
+            window
+                .with_element_offset_async(shift, async |window| {
+                    let _ = window
+                        .with_paint_segment_slices_async(slices, async |window| {
+                            inner.prepaint_async(window, cx, stack).await;
+                        })
+                        .await;
+                })
+                .await;
         })
-    });
+        .await;
 }
 
 mod paint;
+#[cfg(test)]
+mod tests;
