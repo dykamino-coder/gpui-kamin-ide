@@ -314,7 +314,9 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     // своя раскладка поверх тех же дорожек (`lanes.rs`).
     if let Some(lanes) = style.grid_lanes() {
         drop(style);
-        return lanes::compute_grid_lanes_layout_async(tree, node, inputs, lanes, stack).await;
+        return stack
+            .run(|stack| lanes::compute_grid_lanes_layout_async(tree, node, inputs, lanes, stack))
+            .await;
     }
 
     let constants = compute_container_constants(tree, &style, inputs);
@@ -643,30 +645,33 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
 
     // Run track sizing algorithm for Inline axis
-    track_sizing_algorithm_async(
-        tree,
-        AbstractAxis::Inline,
-        inner_min_size.get(AbstractAxis::Inline),
-        inner_max_size.get(AbstractAxis::Inline),
-        justify_content,
-        align_content,
-        available_grid_space,
-        inner_node_size,
-        &mut columns,
-        &mut rows,
-        &mut items[..inline_count],
-        |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
-            track
-                .max_track_sizing_function
-                .definite_value(parent_size, |val, basis| tree.calc(val, basis))
-        },
-        // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
-        // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
-        // только группы по оси x (`resolve_item_baselines_x`).
-        has_justify_baseline_item,
-        stack,
-    )
-    .await;
+    stack
+        .run(|stack| {
+            track_sizing_algorithm_async(
+                tree,
+                AbstractAxis::Inline,
+                inner_min_size.get(AbstractAxis::Inline),
+                inner_max_size.get(AbstractAxis::Inline),
+                justify_content,
+                align_content,
+                available_grid_space,
+                inner_node_size,
+                &mut columns,
+                &mut rows,
+                &mut items[..inline_count],
+                |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
+                    track
+                        .max_track_sizing_function
+                        .definite_value(parent_size, |val, basis| tree.calc(val, basis))
+                },
+                // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
+                // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
+                // только группы по оси x (`resolve_item_baselines_x`).
+                has_justify_baseline_item,
+                stack,
+            )
+        })
+        .await;
     let initial_column_sum = track_sum::base_size_sum(&columns);
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
 
@@ -704,23 +709,26 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     // Run track sizing algorithm for Block axis
     // KaminIDE patch: row baselines are resolved in the row pass, once the column widths are known
     // (see `track_sizing::resolve_item_baselines`).
-    track_sizing_algorithm_async(
-        tree,
-        AbstractAxis::Block,
-        inner_min_size.get(AbstractAxis::Block),
-        inner_max_size.get(AbstractAxis::Block),
-        align_content,
-        justify_content,
-        available_grid_space,
-        inner_node_size,
-        &mut rows,
-        &mut columns,
-        &mut items[..block_count],
-        |track: &GridTrack, _, _| Some(track.base_size),
-        has_baseline_aligned_item,
-        stack,
-    )
-    .await;
+    stack
+        .run(|stack| {
+            track_sizing_algorithm_async(
+                tree,
+                AbstractAxis::Block,
+                inner_min_size.get(AbstractAxis::Block),
+                inner_max_size.get(AbstractAxis::Block),
+                align_content,
+                justify_content,
+                available_grid_space,
+                inner_node_size,
+                &mut rows,
+                &mut columns,
+                &mut items[..block_count],
+                |track: &GridTrack, _, _| Some(track.base_size),
+                has_baseline_aligned_item,
+                stack,
+            )
+        })
+        .await;
     let initial_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
 
     debug_log!("initial_column_sum", dbg:initial_column_sum);
@@ -880,23 +888,26 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
         let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
         // Re-run track sizing algorithm for Inline axis
         // KaminIDE patch: x-baseline shims are not re-resolved on the re-run.
-        track_sizing_algorithm_async(
-            tree,
-            AbstractAxis::Inline,
-            inner_min_size.get(AbstractAxis::Inline),
-            inner_max_size.get(AbstractAxis::Inline),
-            justify_content,
-            align_content,
-            available_grid_space,
-            inner_node_size,
-            &mut columns,
-            &mut rows,
-            &mut items[..inline_count],
-            |track: &GridTrack, _, _| Some(track.base_size),
-            false,
-            stack,
-        )
-        .await;
+        stack
+            .run(|stack| {
+                track_sizing_algorithm_async(
+                    tree,
+                    AbstractAxis::Inline,
+                    inner_min_size.get(AbstractAxis::Inline),
+                    inner_max_size.get(AbstractAxis::Inline),
+                    justify_content,
+                    align_content,
+                    available_grid_space,
+                    inner_node_size,
+                    &mut columns,
+                    &mut rows,
+                    &mut items[..inline_count],
+                    |track: &GridTrack, _, _| Some(track.base_size),
+                    false,
+                    stack,
+                )
+            })
+            .await;
 
         if has_subgrids {
             subgrid::publish_subgrid_tracks(
@@ -961,23 +972,26 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     if rerun_row_sizing {
         let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
         // Re-run track sizing algorithm for Block axis
-        track_sizing_algorithm_async(
-            tree,
-            AbstractAxis::Block,
-            inner_min_size.get(AbstractAxis::Block),
-            inner_max_size.get(AbstractAxis::Block),
-            align_content,
-            justify_content,
-            available_grid_space,
-            inner_node_size,
-            &mut rows,
-            &mut columns,
-            &mut items[..block_count],
-            |track: &GridTrack, _, _| Some(track.base_size),
-            has_baseline_aligned_item,
-            stack,
-        )
-        .await;
+        stack
+            .run(|stack| {
+                track_sizing_algorithm_async(
+                    tree,
+                    AbstractAxis::Block,
+                    inner_min_size.get(AbstractAxis::Block),
+                    inner_max_size.get(AbstractAxis::Block),
+                    align_content,
+                    justify_content,
+                    available_grid_space,
+                    inner_node_size,
+                    &mut rows,
+                    &mut columns,
+                    &mut items[..block_count],
+                    |track: &GridTrack, _, _| Some(track.base_size),
+                    has_baseline_aligned_item,
+                    stack,
+                )
+            })
+            .await;
     }
 
     if (intrinsic_column_contribution_changed && !has_percentage_column)
@@ -1152,48 +1166,51 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
         let item_alignment_styles = container_alignment_styles;
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
         let (overflow_contribution, y_position, height, first_baseline, last_baseline, x_lines) =
-            align_and_position_item_async(
-                tree,
-                item.node,
-                index as u32,
-                grid_area,
-                Size {
-                    width: grid_area.right - grid_area.left,
-                    height: grid_area.bottom - grid_area.top,
-                },
-                table_collapse.as_ref().map(|(horizontal, _)| {
-                    if *horizontal {
-                        AbstractAxis::Inline
-                    } else {
-                        AbstractAxis::Block
-                    }
-                }),
-                item_alignment_styles,
-                Rect {
-                    // KaminIDE patch: a baseline table cell is placed as
-                    // `stretch` (its box fills the row); the shim moves its
-                    // content instead (CSS 2.1 §17.5.3).
-                    top: if item.table_cell_baseline {
-                        0.0
-                    } else {
-                        item.baseline_shim
-                    },
-                    bottom: item.baseline_shim_end,
-                    left: item.baseline_shim_x,
-                    right: item.baseline_shim_x_end,
-                },
-                item.baseline_x_flags & 1 != 0,
-                item.margin_trim,
-                direction,
-                Direction::Ltr,
-                container_border_box.width,
-                border,
-                #[cfg(feature = "content_size")]
-                is_scroll_container,
-                &mut item.oof_candidates,
-                stack,
-            )
-            .await;
+            stack
+                .run(|stack| {
+                    align_and_position_item_async(
+                        tree,
+                        item.node,
+                        index as u32,
+                        grid_area,
+                        Size {
+                            width: grid_area.right - grid_area.left,
+                            height: grid_area.bottom - grid_area.top,
+                        },
+                        table_collapse.as_ref().map(|(horizontal, _)| {
+                            if *horizontal {
+                                AbstractAxis::Inline
+                            } else {
+                                AbstractAxis::Block
+                            }
+                        }),
+                        item_alignment_styles,
+                        Rect {
+                            // KaminIDE patch: a baseline table cell is placed as
+                            // `stretch` (its box fills the row); the shim moves its
+                            // content instead (CSS 2.1 §17.5.3).
+                            top: if item.table_cell_baseline {
+                                0.0
+                            } else {
+                                item.baseline_shim
+                            },
+                            bottom: item.baseline_shim_end,
+                            left: item.baseline_shim_x,
+                            right: item.baseline_shim_x_end,
+                        },
+                        item.baseline_x_flags & 1 != 0,
+                        item.margin_trim,
+                        direction,
+                        Direction::Ltr,
+                        container_border_box.width,
+                        border,
+                        #[cfg(feature = "content_size")]
+                        is_scroll_container,
+                        &mut item.oof_candidates,
+                        stack,
+                    )
+                })
+                .await;
         item.y_position = y_position;
         if x_lines.start.is_some() || x_lines.end.is_some() {
             baseline_x_items.push((item.source_order, x_lines));

@@ -502,29 +502,32 @@ pub async fn compute_flexbox_layout_async(
         && known_dimensions.width.is_none()
     {
         if let Some(width) = styled_based_known_dimensions.width {
-            let min_content = compute_preliminary_async(
-                tree,
-                node,
-                LayoutInput {
-                    known_dimensions: Size::NONE,
-                    known_dimensions_are_definite: Size {
-                        width: true,
-                        height: true,
-                    },
-                    sizing_mode: SizingMode::ContentSize,
-                    run_mode: RunMode::ComputeSize,
-                    axis: RequestedAxis::Horizontal,
-                    available_space: Size {
-                        width: AvailableSpace::MinContent,
-                        height: inputs.available_space.height,
-                    },
-                    ..inputs
-                },
-                stack,
-            )
-            .await
-            .size
-            .width;
+            let min_content = stack
+                .run(|stack| {
+                    compute_preliminary_async(
+                        tree,
+                        node,
+                        LayoutInput {
+                            known_dimensions: Size::NONE,
+                            known_dimensions_are_definite: Size {
+                                width: true,
+                                height: true,
+                            },
+                            sizing_mode: SizingMode::ContentSize,
+                            run_mode: RunMode::ComputeSize,
+                            axis: RequestedAxis::Horizontal,
+                            available_space: Size {
+                                width: AvailableSpace::MinContent,
+                                height: inputs.available_space.height,
+                            },
+                            ..inputs
+                        },
+                        stack,
+                    )
+                })
+                .await
+                .size
+                .width;
             if min_content > width {
                 styled_based_known_dimensions.width = Some(min_content);
             }
@@ -564,45 +567,51 @@ pub async fn compute_flexbox_layout_async(
             let width_was_known = styled_based_known_dimensions.width.is_some();
             let width =
                 crate::traversal::unwrap_or_else(styled_based_known_dimensions.width, async || {
-                    compute_preliminary_async(
-                        tree,
-                        node,
-                        LayoutInput {
-                            known_dimensions: styled_based_known_dimensions,
-                            known_dimensions_are_definite,
-                            run_mode: RunMode::ComputeSize,
-                            ..inputs
-                        },
-                        stack,
-                    )
-                    .await
-                    .size
-                    .width
+                    stack
+                        .run(|stack| {
+                            compute_preliminary_async(
+                                tree,
+                                node,
+                                LayoutInput {
+                                    known_dimensions: styled_based_known_dimensions,
+                                    known_dimensions_are_definite,
+                                    run_mode: RunMode::ComputeSize,
+                                    ..inputs
+                                },
+                                stack,
+                            )
+                        })
+                        .await
+                        .size
+                        .width
                 })
                 .await;
             let mut height = width / ratio;
             let mut ratio_is_definite = width_was_known && known_dimensions_are_definite.width;
             if !scroll {
-                let content = compute_preliminary_async(
-                    tree,
-                    node,
-                    LayoutInput {
-                        known_dimensions: Size {
-                            width: Some(width),
-                            height: None,
-                        },
-                        known_dimensions_are_definite: Size {
-                            width: ratio_is_definite,
-                            height: false,
-                        },
-                        run_mode: RunMode::ComputeSize,
-                        ..inputs
-                    },
-                    stack,
-                )
-                .await
-                .size
-                .height;
+                let content = stack
+                    .run(|stack| {
+                        compute_preliminary_async(
+                            tree,
+                            node,
+                            LayoutInput {
+                                known_dimensions: Size {
+                                    width: Some(width),
+                                    height: None,
+                                },
+                                known_dimensions_are_definite: Size {
+                                    width: ratio_is_definite,
+                                    height: false,
+                                },
+                                run_mode: RunMode::ComputeSize,
+                                ..inputs
+                            },
+                            stack,
+                        )
+                    })
+                    .await
+                    .size
+                    .height;
                 if content > height {
                     ratio_is_definite = false;
                 }
@@ -621,17 +630,20 @@ pub async fn compute_flexbox_layout_async(
         }
     }
 
-    let mut output = compute_preliminary_async(
-        tree,
-        node,
-        LayoutInput {
-            known_dimensions: styled_based_known_dimensions,
-            known_dimensions_are_definite,
-            ..inputs
-        },
-        stack,
-    )
-    .await;
+    let mut output = stack
+        .run(|stack| {
+            compute_preliminary_async(
+                tree,
+                node,
+                LayoutInput {
+                    known_dimensions: styled_based_known_dimensions,
+                    known_dimensions_are_definite,
+                    ..inputs
+                },
+                stack,
+            )
+        })
+        .await;
 
     containment::suppress_baselines(&mut output, contain);
 
@@ -715,7 +727,9 @@ async fn compute_preliminary_async(
         }
     }
 
-    intrinsic_limits::resolve_async(tree, &constants, &mut flex_items, stack).await;
+    stack
+        .run(|stack| intrinsic_limits::resolve_async(tree, &constants, &mut flex_items, stack))
+        .await;
 
     // 9.2. Line Length Determination
 
@@ -725,7 +739,17 @@ async fn compute_preliminary_async(
 
     // 3. Determine the flex base size and hypothetical main size of each item.
     debug_log!("determine_flex_base_size");
-    determine_flex_base_size_async(tree, &constants, available_space, &mut flex_items, stack).await;
+    stack
+        .run(|stack| {
+            determine_flex_base_size_async(
+                tree,
+                &constants,
+                available_space,
+                &mut flex_items,
+                stack,
+            )
+        })
+        .await;
     // KaminIDE patch: in a fragmentation context a column item that may not
     // shrink encompasses its intrinsic block size (Blink
     // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
@@ -793,14 +817,17 @@ async fn compute_preliminary_async(
             .set_main(constants.dir, outer_main_size);
     } else {
         // Sets constants.container_size and constants.outer_container_size
-        determine_container_main_size_async(
-            tree,
-            available_space,
-            &mut flex_lines,
-            &mut constants,
-            stack,
-        )
-        .await;
+        stack
+            .run(|stack| {
+                determine_container_main_size_async(
+                    tree,
+                    available_space,
+                    &mut flex_lines,
+                    &mut constants,
+                    stack,
+                )
+            })
+            .await;
         constants.node_inner_size.set_main(
             constants.dir,
             Some(constants.inner_container_size.main(constants.dir)),
@@ -860,22 +887,34 @@ async fn compute_preliminary_async(
     // 7. Determine the hypothetical cross size of each item.
     debug_log!("determine_hypothetical_cross_size");
     for line in &mut flex_lines {
-        determine_hypothetical_cross_size_async(tree, line, &constants, available_space, stack)
+        stack
+            .run(|stack| {
+                determine_hypothetical_cross_size_async(
+                    tree,
+                    line,
+                    &constants,
+                    available_space,
+                    stack,
+                )
+            })
             .await;
     }
 
     // Calculate child baselines. This function is internally smart and only computes child baselines
     // if they are necessary.
     debug_log!("calculate_children_base_lines");
-    calculate_children_base_lines_async(
-        tree,
-        known_dimensions,
-        available_space,
-        &mut flex_lines,
-        &constants,
-        stack,
-    )
-    .await;
+    stack
+        .run(|stack| {
+            calculate_children_base_lines_async(
+                tree,
+                known_dimensions,
+                available_space,
+                &mut flex_lines,
+                &constants,
+                stack,
+            )
+        })
+        .await;
 
     // 8. Calculate the cross size of each flex line.
     debug_log!("calculate_cross_size");
@@ -954,8 +993,9 @@ async fn compute_preliminary_async(
 
     // Do a final layout pass and gather the resulting layouts
     debug_log!("final_layout_pass");
-    let (inflow_overflow_rect, flex_info) =
-        final_layout_pass_async(tree, &mut flex_lines, &constants, stack).await;
+    let (inflow_overflow_rect, flex_info) = stack
+        .run(|stack| final_layout_pass_async(tree, &mut flex_lines, &constants, stack))
+        .await;
     tree.set_detailed_flex_info(node, flex_info);
 
     // Collect out-of-flow candidates in document order (direct out-of-flow children interleaved

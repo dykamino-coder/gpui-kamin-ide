@@ -142,15 +142,19 @@ impl Hooks for PageStack {
         plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
         // Pieces replayed from a main copy place it through the final sheet geometry.
         *self.geoms.borrow_mut() = geoms.clone();
-        self.prepaint_pages(
-            bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages, stack,
-        )
-        .await;
-        self.prepaint_canvas(bounds, window, cx, &geoms, stack)
+        stack
+            .run(|stack| {
+                self.prepaint_pages(
+                    bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages, stack,
+                )
+            })
+            .await;
+        stack
+            .run(|stack| self.prepaint_canvas(bounds, window, cx, &geoms, stack))
             .await;
         *self.geoms.borrow_mut() = geoms.clone();
-        if self
-            .prepaint_native(bounds, &plan, window, cx, stack)
+        if stack
+            .run(|stack| self.prepaint_native(bounds, &plan, window, cx, stack))
             .await
             .is_err()
         {
@@ -160,7 +164,10 @@ impl Hooks for PageStack {
         }
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
         self.margin_els.clear();
-        self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail, stack)
+        stack
+            .run(|stack| {
+                self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail, stack)
+            })
             .await;
         *self.plan.borrow_mut() = plan;
         *self.geoms.borrow_mut() = geoms;

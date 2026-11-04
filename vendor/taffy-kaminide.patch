@@ -3483,7 +3483,7 @@ index 0000000000000000000000000000000000000000..10cd33065c3bc3675dce85fec79030bf
 +#[path = "../tree/flex_main_fit_tests.rs"]
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flexbox.rs b/vendor/taffy/src/compute/flexbox.rs
-index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61ed2160351
+index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..6dcebfd9304cbc254a7a293702f6fa21c038d4c1
 --- a/vendor/taffy/src/compute/flexbox.rs
 +++ b/vendor/taffy/src/compute/flexbox.rs
 @@ -1,0 +2,5 @@
@@ -3757,7 +3757,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            height: Some(height),
 +        } = styled_based_known_dimensions
 +        {
-@@ -296,0 +488,46 @@
+@@ -296,0 +488,49 @@
 +    debug_log!("FLEX:", dbg:style.flex_direction());
 +    let height_is_auto = style.size().height.is_auto();
 +    let scroll =
@@ -3775,53 +3775,65 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        && known_dimensions.width.is_none()
 +    {
 +        if let Some(width) = styled_based_known_dimensions.width {
-+            let min_content = compute_preliminary_async(
-+                tree,
-+                node,
-+                LayoutInput {
-+                    known_dimensions: Size::NONE,
-+                    known_dimensions_are_definite: Size {
-+                        width: true,
-+                        height: true,
-+                    },
-+                    sizing_mode: SizingMode::ContentSize,
-+                    run_mode: RunMode::ComputeSize,
-+                    axis: RequestedAxis::Horizontal,
-+                    available_space: Size {
-+                        width: AvailableSpace::MinContent,
-+                        height: inputs.available_space.height,
-+                    },
-+                    ..inputs
-+                },
-+                stack,
-+            )
-+            .await
-+            .size
-+            .width;
++            let min_content = stack
++                .run(|stack| {
++                    compute_preliminary_async(
++                        tree,
++                        node,
++                        LayoutInput {
++                            known_dimensions: Size::NONE,
++                            known_dimensions_are_definite: Size {
++                                width: true,
++                                height: true,
++                            },
++                            sizing_mode: SizingMode::ContentSize,
++                            run_mode: RunMode::ComputeSize,
++                            axis: RequestedAxis::Horizontal,
++                            available_space: Size {
++                                width: AvailableSpace::MinContent,
++                                height: inputs.available_space.height,
++                            },
++                            ..inputs
++                        },
++                        stack,
++                    )
++                })
++                .await
++                .size
++                .width;
 +            if min_content > width {
 +                styled_based_known_dimensions.width = Some(min_content);
 +            }
 +        }
 +    }
 +
-@@ -300 +537,5 @@
+@@ -300 +540,5 @@
 -        if let Size { width: Some(width), height: Some(height) } = styled_based_known_dimensions {
 +        if let Size {
 +            width: Some(width),
 +            height: Some(height),
 +        } = styled_based_known_dimensions
 +        {
-@@ -304,3 +544,0 @@
+@@ -304,3 +547,0 @@
 -
 -    debug_log!("FLEX:", dbg:style.flex_direction());
 -    drop(style);
-@@ -310 +548 @@
+@@ -310 +551 @@
 -    let known_dimensions_are_definite = inputs
 +    let mut known_dimensions_are_definite = inputs
-@@ -312,3 +550,75 @@
+@@ -312,12 +553,96 @@
 -        .zip_map(known_dimensions, |is_definite, known_dimension| is_definite || known_dimension.is_none());
 -
 -    let mut output = compute_preliminary(
+-        tree,
+-        node,
+-        LayoutInput { known_dimensions: styled_based_known_dimensions, known_dimensions_are_definite, ..inputs },
+-    );
+-
+-    // Layout containment suppresses the box's baseline for baseline-alignment purposes
+-    if contain.suppresses_baseline() {
+-        output.baselines = Baselines::NONE;
+-    }
 +        .zip_map(known_dimensions, |is_definite, known_dimension| {
 +            is_definite || known_dimension.is_none()
 +        });
@@ -3839,45 +3851,51 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            let width_was_known = styled_based_known_dimensions.width.is_some();
 +            let width =
 +                crate::traversal::unwrap_or_else(styled_based_known_dimensions.width, async || {
-+                    compute_preliminary_async(
-+                        tree,
-+                        node,
-+                        LayoutInput {
-+                            known_dimensions: styled_based_known_dimensions,
-+                            known_dimensions_are_definite,
-+                            run_mode: RunMode::ComputeSize,
-+                            ..inputs
-+                        },
-+                        stack,
-+                    )
-+                    .await
-+                    .size
-+                    .width
++                    stack
++                        .run(|stack| {
++                            compute_preliminary_async(
++                                tree,
++                                node,
++                                LayoutInput {
++                                    known_dimensions: styled_based_known_dimensions,
++                                    known_dimensions_are_definite,
++                                    run_mode: RunMode::ComputeSize,
++                                    ..inputs
++                                },
++                                stack,
++                            )
++                        })
++                        .await
++                        .size
++                        .width
 +                })
 +                .await;
 +            let mut height = width / ratio;
 +            let mut ratio_is_definite = width_was_known && known_dimensions_are_definite.width;
 +            if !scroll {
-+                let content = compute_preliminary_async(
-+                    tree,
-+                    node,
-+                    LayoutInput {
-+                        known_dimensions: Size {
-+                            width: Some(width),
-+                            height: None,
-+                        },
-+                        known_dimensions_are_definite: Size {
-+                            width: ratio_is_definite,
-+                            height: false,
-+                        },
-+                        run_mode: RunMode::ComputeSize,
-+                        ..inputs
-+                    },
-+                    stack,
-+                )
-+                .await
-+                .size
-+                .height;
++                let content = stack
++                    .run(|stack| {
++                        compute_preliminary_async(
++                            tree,
++                            node,
++                            LayoutInput {
++                                known_dimensions: Size {
++                                    width: Some(width),
++                                    height: None,
++                                },
++                                known_dimensions_are_definite: Size {
++                                    width: ratio_is_definite,
++                                    height: false,
++                                },
++                                run_mode: RunMode::ComputeSize,
++                                ..inputs
++                            },
++                            stack,
++                        )
++                    })
++                    .await
++                    .size
++                    .height;
 +                if content > height {
 +                    ratio_is_definite = false;
 +                }
@@ -3896,26 +3914,23 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        }
 +    }
 +
-+    let mut output = compute_preliminary_async(
-@@ -317,7 +627,10 @@
--        LayoutInput { known_dimensions: styled_based_known_dimensions, known_dimensions_are_definite, ..inputs },
--    );
--
--    // Layout containment suppresses the box's baseline for baseline-alignment purposes
--    if contain.suppresses_baseline() {
--        output.baselines = Baselines::NONE;
--    }
-+        LayoutInput {
-+            known_dimensions: styled_based_known_dimensions,
-+            known_dimensions_are_definite,
-+            ..inputs
-+        },
-+        stack,
-+    )
-+    .await;
++    let mut output = stack
++        .run(|stack| {
++            compute_preliminary_async(
++                tree,
++                node,
++                LayoutInput {
++                    known_dimensions: styled_based_known_dimensions,
++                    known_dimensions_are_definite,
++                    ..inputs
++                },
++                stack,
++            )
++        })
++        .await;
 +
 +    containment::suppress_baselines(&mut output, contain);
-@@ -329,2 +642,13 @@
+@@ -329,2 +654,13 @@
 -fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
 -    let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 +async fn compute_preliminary_async(
@@ -3931,7 +3946,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        run_mode,
 +        ..
 +    } = inputs;
-@@ -340,0 +665,9 @@
+@@ -340,0 +677,9 @@
 +    constants.fragmentation_axis = tree.flex_fragmentation_axis(node);
 +    constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
 +    constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
@@ -3941,7 +3956,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    if constants.pct_height_from_parent.is_some() && !row_children_use_pct_height(tree, node) {
 +        constants.pct_height_from_parent = None;
 +    }
-@@ -349,0 +683,37 @@
+@@ -349,0 +695,39 @@
 +    // KaminIDE patch: a table item of a COLUMN container takes its width on the
 +    // cross axis, and that width is floored by the table's min-content width
 +    // (CSS 2.1 §17.5.2.2: "the used width is the greater of W and MIN";
@@ -3977,11 +3992,23 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        }
 +    }
 +
-+    intrinsic_limits::resolve_async(tree, &constants, &mut flex_items, stack).await;
++    stack
++        .run(|stack| intrinsic_limits::resolve_async(tree, &constants, &mut flex_items, stack))
++        .await;
 +
-@@ -358 +728,14 @@
+@@ -358 +742,24 @@
 -    determine_flex_base_size(tree, &constants, available_space, &mut flex_items);
-+    determine_flex_base_size_async(tree, &constants, available_space, &mut flex_items, stack).await;
++    stack
++        .run(|stack| {
++            determine_flex_base_size_async(
++                tree,
++                &constants,
++                available_space,
++                &mut flex_items,
++                stack,
++            )
++        })
++        .await;
 +    // KaminIDE patch: in a fragmentation context a column item that may not
 +    // shrink encompasses its intrinsic block size (Blink
 +    // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
@@ -3995,16 +4022,16 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        )
 +        .await;
 +    }
-@@ -375,0 +759,3 @@
+@@ -375,0 +783,3 @@
 +    // KaminIDE patch: line breaking precedes fragmentation (css-flexbox-1 §10).
 +    // Lines fixed by the fragmenter are kept while fragmentation grows items.
 +    let pinned = fragmentation::pinned_lines(tree, &flex_items, &constants);
-@@ -377 +763,3 @@
+@@ -377 +787,3 @@
 -    let mut flex_lines = if constants.is_balance {
 +    let mut flex_lines = if let Some(lines) = pinned {
 +        pinned_flex_lines(&lines, &mut flex_items)
 +    } else if constants.is_balance {
-@@ -383 +771,10 @@
+@@ -383 +795,10 @@
 -    let mut flex_lines = collect_flex_lines(&constants, available_space, &mut flex_items);
 +    let mut flex_lines = if let Some(lines) = pinned {
 +        pinned_flex_lines(&lines, &mut flex_items)
@@ -4016,7 +4043,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    // sizing and flex length resolution. Line collection itself still needs
 +    // the trim-aware wrapping port in the residual map.
 +    trim_flex_margins(&mut flex_lines, &constants);
-@@ -389,3 +786,8 @@
+@@ -389,3 +810,8 @@
 -        let outer_main_size = inner_main_size + constants.content_box_inset.main_axis_sum(constants.dir);
 -        constants.inner_container_size.set_main(constants.dir, inner_main_size);
 -        constants.container_size.set_main(constants.dir, outer_main_size);
@@ -4028,18 +4055,21 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        constants
 +            .container_size
 +            .set_main(constants.dir, outer_main_size);
-@@ -394,3 +796,16 @@
+@@ -394,3 +820,19 @@
 -        determine_container_main_size(tree, available_space, &mut flex_lines, &mut constants);
 -        constants.node_inner_size.set_main(constants.dir, Some(constants.inner_container_size.main(constants.dir)));
 -        constants.node_outer_size.set_main(constants.dir, Some(constants.container_size.main(constants.dir)));
-+        determine_container_main_size_async(
-+            tree,
-+            available_space,
-+            &mut flex_lines,
-+            &mut constants,
-+            stack,
-+        )
-+        .await;
++        stack
++            .run(|stack| {
++                determine_container_main_size_async(
++                    tree,
++                    available_space,
++                    &mut flex_lines,
++                    &mut constants,
++                    stack,
++                )
++            })
++            .await;
 +        constants.node_inner_size.set_main(
 +            constants.dir,
 +            Some(constants.inner_container_size.main(constants.dir)),
@@ -4048,7 +4078,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            constants.dir,
 +            Some(constants.container_size.main(constants.dir)),
 +        );
-@@ -421 +836,12 @@
+@@ -421 +863,12 @@
 -            let size = Size::ZERO.with_main(constants.dir, constants.container_size.main(constants.dir));
 +            // KaminIDE patch: a main-only probe still includes consumed block space.
 +            let growth = if constants.fragmentation_axis.0 == constants.dir.main_axis()
@@ -4062,22 +4092,34 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                constants.dir,
 +                constants.container_size.main(constants.dir) + growth,
 +            );
-@@ -437 +863,2 @@
+@@ -437 +890,11 @@
 -        determine_hypothetical_cross_size(tree, line, &constants, available_space);
-+        determine_hypothetical_cross_size_async(tree, line, &constants, available_space, stack)
++        stack
++            .run(|stack| {
++                determine_hypothetical_cross_size_async(
++                    tree,
++                    line,
++                    &constants,
++                    available_space,
++                    stack,
++                )
++            })
 +            .await;
-@@ -443 +870,9 @@
+@@ -443 +906,12 @@
 -    calculate_children_base_lines(tree, known_dimensions, available_space, &mut flex_lines, &constants);
-+    calculate_children_base_lines_async(
-+        tree,
-+        known_dimensions,
-+        available_space,
-+        &mut flex_lines,
-+        &constants,
-+        stack,
-+    )
-+    .await;
-@@ -483,0 +919,9 @@
++    stack
++        .run(|stack| {
++            calculate_children_base_lines_async(
++                tree,
++                known_dimensions,
++                available_space,
++                &mut flex_lines,
++                &constants,
++                stack,
++            )
++        })
++        .await;
+@@ -483,0 +958,9 @@
 +    // KaminIDE patch: CSS Flexbox 1 §10 consumes fragmentainer space after sizing.
 +    fragmentation::apply(
 +        tree,
@@ -4087,12 +4129,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        &mut constants,
 +    );
 +
-@@ -486 +930,3 @@
+@@ -486 +969,3 @@
 -    let total_line_cross_size = determine_container_cross_size(&flex_lines, known_dimensions, &mut constants);
 +    let total_line_cross_size =
 +        determine_container_cross_size(&flex_lines, known_dimensions, &mut constants);
 +    fragmentation::settle_suppression(&mut flex_lines, known_dimensions, &mut constants);
-@@ -497,0 +944,11 @@
+@@ -497,0 +983,11 @@
 +    // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
 +    // block axis after line alignment; completed lines and the container keep
 +    // their used sizes (the item's own overflow is a parallel flow).
@@ -4104,12 +4146,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        }
 +    }
 +
-@@ -500 +957,3 @@
+@@ -500 +996,4 @@
 -    let inflow_overflow_rect = final_layout_pass(tree, &mut flex_lines, &constants);
-+    let (inflow_overflow_rect, flex_info) =
-+        final_layout_pass_async(tree, &mut flex_lines, &constants, stack).await;
++    let (inflow_overflow_rect, flex_info) = stack
++        .run(|stack| final_layout_pass_async(tree, &mut flex_lines, &constants, stack))
++        .await;
 +    tree.set_detailed_flex_info(node, flex_info);
-@@ -510,2 +969,10 @@
+@@ -510,2 +1009,10 @@
 -            left: if constants.layout_direction.is_rtl() { constants.scrollbar_gutter.x } else { 0.0 },
 -            right: if constants.layout_direction.is_rtl() { 0.0 } else { constants.scrollbar_gutter.x },
 +            left: if constants.layout_direction.is_rtl() {
@@ -4122,28 +4165,28 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            } else {
 +                constants.scrollbar_gutter.x
 +            },
-@@ -516 +983,4 @@
+@@ -516 +1023,4 @@
 -    let absolute_position_offset = Point { x: absolute_position_inset.left, y: absolute_position_inset.top };
 +    let absolute_position_offset = Point {
 +        x: absolute_position_inset.left,
 +        y: absolute_position_inset.top,
 +    };
-@@ -524 +994 @@
+@@ -524 +1034 @@
 -            tree.perform_child_layout(
 +            tree.perform_child_layout_async(
-@@ -531 +1001,3 @@
+@@ -531 +1041,3 @@
 -            );
 +                stack,
 +            )
 +            .await;
-@@ -540 +1012,5 @@
+@@ -540 +1052,5 @@
 -    let first_line = if constants.is_wrap_reverse { flex_lines.last() } else { flex_lines.first() };
 +    let first_line = if constants.is_wrap_reverse {
 +        flex_lines.last()
 +    } else {
 +        flex_lines.first()
 +    };
-@@ -541,0 +1018,9 @@
+@@ -541,0 +1058,9 @@
 +        if constants.block_baselines {
 +            // CSS 2.1 10.8.1 / css-align-3 9.1: a block container's first baseline is that
 +            // of its first in-flow child that has one; children without one are skipped.
@@ -4153,14 +4196,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                .find(|child| child.has_first_baseline)
 +                .map(|child| child.baseline);
 +        }
-@@ -545 +1030,5 @@
+@@ -545 +1070,5 @@
 -            let item = if constants.dir.is_reverse() { line.items.last() } else { line.items.first() };
 +            let item = if constants.dir.is_reverse() {
 +                line.items.last()
 +            } else {
 +                line.items.first()
 +            };
-@@ -556 +1045,50 @@
+@@ -556 +1085,50 @@
 -    let mut output = LayoutOutput::from_sizes_and_baselines(
 +    // Last y baseline uses the endmost visual line and its separate last
 +    // baseline group. First-group fallback is already in container coordinates
@@ -4212,7 +4255,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        .rev()
 +        .find_map(|child| child.last_baseline_x_pos.or(child.baseline_x_pos));
 +    let mut output = LayoutOutput::from_sizes_and_all_baselines(
-@@ -559 +1097,8 @@
+@@ -559 +1137,8 @@
 -        Baselines::from_first(first_vertical_baseline),
 +        Baselines {
 +            first: first_vertical_baseline,
@@ -4222,7 +4265,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            first: first_x,
 +            last: last_x,
 +        },
-@@ -560,0 +1106,20 @@
+@@ -560,0 +1146,20 @@
 +    // An anonymous flex wrapper whose every item is a table (wrapper) box hides
 +    // the table baseline from an enclosing inline-block as the table itself does.
 +    // Likewise a float (CSS 2.1 §10.8.1: only in-flow line boxes give an
@@ -4243,32 +4286,32 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            flex_lines.iter().rev().find_map(shown)
 +        });
 +    }
-@@ -562,2 +1127,4 @@
+@@ -562,2 +1167,4 @@
 -    output.oof_positioning_area =
 -        Some(OofPositioningArea { size: absolute_position_area, offset: absolute_position_offset });
 +    output.oof_positioning_area = Some(OofPositioningArea {
 +        size: absolute_position_area,
 +        offset: absolute_position_offset,
 +    });
-@@ -578 +1145,3 @@
+@@ -578 +1185,3 @@
 -#[inline]
 +// KaminIDE patch: временные значения построения должны исчезнуть до обхода детей.
 +// Возвращаем уже выделенный Box, чтобы кадр рекурсии не хранил AlgoConstants.
 +#[inline(never)]
-@@ -586 +1155 @@
+@@ -586 +1195 @@
 -) -> AlgoConstants {
 +) -> crate::util::sys::Box<AlgoConstants> {
-@@ -592 +1161 @@
+@@ -592 +1201 @@
 -    let is_wrap_reverse = flex_wrap.is_reverse();
 +    let authored_wrap_reverse = flex_wrap.is_reverse();
-@@ -596 +1165,5 @@
+@@ -596 +1205,5 @@
 -    let line_count = if is_wrap { Some(style.flex_line_count().max(1)) } else { None };
 +    let line_count = if is_wrap {
 +        Some(style.flex_line_count().max(1))
 +    } else {
 +        None
 +    };
-@@ -599,2 +1172,6 @@
+@@ -599,2 +1212,6 @@
 -    let padding = style.padding().resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
 -    let border = style.border().resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
 +    let padding = style
@@ -4277,7 +4320,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    let border = style
 +        .border()
 +        .resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
-@@ -602,2 +1179,5 @@
+@@ -602,2 +1219,5 @@
 -    let box_sizing_adjustment =
 -        if style.box_sizing() == BoxSizing::ContentBox { padding_border_sum } else { Size::ZERO };
 +    let box_sizing_adjustment = if style.box_sizing() == BoxSizing::ContentBox {
@@ -4285,33 +4328,33 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    } else {
 +        Size::ZERO
 +    };
-@@ -612 +1192,4 @@
+@@ -612 +1232,4 @@
 -        AlignContent { keyword: AlignContentKeyword::Normal, .. } => AlignContent::STRETCH,
 +        AlignContent {
 +            keyword: AlignContentKeyword::Normal,
 +            ..
 +        } => AlignContent::STRETCH,
-@@ -616 +1199,4 @@
+@@ -616 +1239,4 @@
 -        JustifyContent { keyword: AlignContentKeyword::Normal, .. } => JustifyContent::FLEX_START,
 +        JustifyContent {
 +            keyword: AlignContentKeyword::Normal,
 +            ..
 +        } => JustifyContent::FLEX_START,
-@@ -619,0 +1206,6 @@
+@@ -619,0 +1246,6 @@
 +    // The current HTML adapter projects RTL into physical flex-direction and
 +    // keeps Direction::Ltr. Its no-wrap column cross reversal is still needed.
 +    // Native RTL callers already project that cross axis and must not flip twice.
 +    let cross_reverse_only =
 +        !is_wrap && style.flex_cross_reverse() && layout_direction == Direction::Ltr;
 +    let is_wrap_reverse = authored_wrap_reverse || cross_reverse_only;
-@@ -640,0 +1233,3 @@
+@@ -640,0 +1273,3 @@
 +    let ratio_preferred_inner_size = style
 +        .aspect_ratio_preferred_size()
 +        .maybe_sub(content_box_inset.sum_axes());
-@@ -642,0 +1238,2 @@
+@@ -642,0 +1278,2 @@
 +    let pct_height_from_parent =
 +        (is_row && style.percent_basis_from_parent()).then_some(parent_size.height);
-@@ -644,5 +1241,11 @@
+@@ -644,5 +1281,11 @@
 -    let has_definite_main_size = known_main_size_is_definite && known_dimensions.main(dir).is_some();
 -    let has_definite_cross_size = known_dimensions_are_definite.cross(dir) && known_dimensions.cross(dir).is_some();
 -    let cross_axis_available_space_is_definite =
@@ -4328,19 +4371,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        .resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -653 +1256 @@
+@@ -653 +1296 @@
 -    AlgoConstants {
 +    crate::util::sys::Box::new(AlgoConstants {
-@@ -655,0 +1259,4 @@
+@@ -655,0 +1299,4 @@
 +        fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
 +        fragmentation_main_growth: 0.0,
 +        fragmentation_cross_alignment: 0.0,
 +        fragmentation_suppression: 0.0,
-@@ -658,0 +1266 @@
+@@ -658,0 +1306 @@
 +        block_baselines: is_column && style.block_baselines(),
-@@ -659,0 +1268 @@
+@@ -659,0 +1308 @@
 +        margin_trim: style.margin_trim(),
-@@ -669,5 +1278,26 @@
+@@ -669,5 +1318,26 @@
 -        max_size: style
 -            .max_size()
 -            .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
@@ -4372,39 +4415,39 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                max_size
 +            }
 +        },
-@@ -684,0 +1315,3 @@
+@@ -684,0 +1355,3 @@
 +        initial_inner_width: node_inner_size.width,
 +        ratio_preferred_inner_size,
 +        pct_height_from_parent,
-@@ -691 +1324 @@
+@@ -691 +1364 @@
 -    }
 +    })
-@@ -701 +1334,4 @@
+@@ -701 +1374,4 @@
 -        inset.main_end(direction).or(inset.main_start(direction).map(|pos| -pos)).unwrap_or(0.0)
 +        inset
 +            .main_end(direction)
 +            .or(inset.main_start(direction).map(|pos| -pos))
 +            .unwrap_or(0.0)
-@@ -703 +1339,4 @@
+@@ -703 +1379,4 @@
 -        inset.main_start(direction).or(inset.main_end(direction).map(|pos| -pos)).unwrap_or(0.0)
 +        inset
 +            .main_start(direction)
 +            .or(inset.main_end(direction).map(|pos| -pos))
 +            .unwrap_or(0.0)
-@@ -706 +1345,5 @@
+@@ -706 +1385,5 @@
 -        inset.cross_end(direction).map(|pos| -pos).or(inset.cross_start(direction)).unwrap_or(0.0)
 +        inset
 +            .cross_end(direction)
 +            .map(|pos| -pos)
 +            .or(inset.cross_start(direction))
 +            .unwrap_or(0.0)
-@@ -708 +1351,4 @@
+@@ -708 +1391,4 @@
 -        inset.cross_start(direction).or(inset.cross_end(direction).map(|pos| -pos)).unwrap_or(0.0)
 +        inset
 +            .cross_start(direction)
 +            .or(inset.cross_end(direction).map(|pos| -pos))
 +            .unwrap_or(0.0)
-@@ -730,6 +1376,5 @@
+@@ -730,6 +1416,5 @@
 -    let percent_resolution_size = if constants.known_main_size_is_definite {
 -        constants.node_inner_size
 -    } else {
@@ -4416,17 +4459,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    // KaminIDE patch: выделяем буфер один раз при первом поточном элементе.
 +    let child_count = tree.child_count(node);
 +    let mut flex_items = Vec::new();
-@@ -745 +1390,3 @@
+@@ -745 +1430,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -748 +1395,3 @@
+@@ -748 +1435,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -750,2 +1399,21 @@
+@@ -750,2 +1439,21 @@
 -            let box_sizing_adjustment =
 -                if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 +            let box_sizing_adjustment = if child_style.box_sizing() == BoxSizing::ContentBox {
@@ -4450,7 +4493,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis)),
 +                aspect_ratio,
 +            );
-@@ -755,5 +1423,14 @@
+@@ -755,5 +1463,14 @@
 -                size: child_style
 -                    .size()
 -                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
@@ -4470,7 +4513,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        Size::ZERO
 +                    },
 +                ),
-@@ -761,8 +1438,2 @@
+@@ -761,8 +1478,2 @@
 -                min_size: child_style
 -                    .min_size()
 -                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
@@ -4481,7 +4524,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                    .maybe_add(box_sizing_adjustment),
 +                min_size: min_transferred.maybe_add(box_sizing_adjustment),
 +                max_size: max_transferred.maybe_add(box_sizing_adjustment),
-@@ -772,3 +1443,5 @@
+@@ -772,3 +1483,5 @@
 -                    let inset = child_style.inset().zip_size(constants.node_inner_size, |p, s| {
 -                        p.maybe_resolve(s, |val, basis| tree.calc(val, basis))
 -                    });
@@ -4490,12 +4533,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        .zip_size(constants.node_inner_size, |p, s| {
 +                            p.maybe_resolve(s, |val, basis| tree.calc(val, basis))
 +                        });
-@@ -781 +1454,3 @@
+@@ -781 +1494,3 @@
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
 +                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                        tree.calc(val, basis)
 +                    }),
-@@ -783,8 +1458,10 @@
+@@ -783,8 +1498,10 @@
 -                padding: child_style
 -                    .padding()
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
@@ -4514,7 +4557,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    constants.layout_direction,
 +                    constants.is_column,
 +                ),
-@@ -809,0 +1487,11 @@
+@@ -809,0 +1527,11 @@
 +                last_baseline_from_end: 0.0,
 +                last_baseline_pos: 0.0,
 +                has_first_baseline: false,
@@ -4526,7 +4569,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                baseline_x_flags: child_style.baseline_x_flags(),
 +                column_baseline: None,
 +                last_baseline_x_pos: None,
-@@ -817 +1505,7 @@
+@@ -817 +1545,7 @@
 -        .collect()
 +        .for_each(|item| {
 +            if flex_items.capacity() == 0 {
@@ -4535,7 +4578,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            flex_items.push(item);
 +        });
 +    flex_items
-@@ -841,4 +1535,7 @@
+@@ -841,4 +1575,7 @@
 -        Some(node_width) => {
 -            AvailableSpace::Definite((node_width - constants.content_box_inset.horizontal_axis_sum()).max(0.0))
 -        }
@@ -4547,7 +4590,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            .width
 +            .maybe_sub(constants.content_box_inset.horizontal_axis_sum())
 +            .maybe_max(0.0),
-@@ -848,4 +1545,7 @@
+@@ -848,4 +1585,7 @@
 -        Some(node_height) => {
 -            AvailableSpace::Definite((node_height - constants.content_box_inset.vertical_axis_sum()).max(0.0))
 -        }
@@ -4559,7 +4602,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            .height
 +            .maybe_sub(constants.content_box_inset.vertical_axis_sum())
 +            .maybe_max(0.0),
-@@ -854,0 +1555,116 @@
+@@ -854,0 +1595,116 @@
 +}
 +
 +/// KaminIDE patch: перенос min/max через соотношение сторон (css-sizing-4
@@ -4676,15 +4719,15 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            child.hypothetical_outer_size.set_main(dir, outer);
 +        }
 +    }
-@@ -885 +1701 @@
+@@ -885 +1741 @@
 -fn determine_flex_base_size(
 +async fn determine_flex_base_size_async(
-@@ -889,0 +1706 @@
+@@ -889,0 +1746 @@
 +    stack: &mut reblessive::Stk,
-@@ -894,2 +1710,0 @@
+@@ -894,2 +1750,0 @@
 -        let child_style = tree.get_flexbox_child_style(child.node);
 -
-@@ -898 +1713,11 @@
+@@ -898 +1753,11 @@
 -        let child_parent_size = Size::from_cross(dir, cross_axis_parent_size);
 +        // Anonymous row children in a column need the real containing-block
 +        // height even during main-basis measurement; other children remain
@@ -4697,12 +4740,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        } else {
 +            Size::from_cross(dir, constants.pct_basis().cross(dir))
 +        };
-@@ -903,2 +1728,2 @@
+@@ -903,2 +1768,2 @@
 -        let transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 -        let transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 +        let transferred_min_size = child.min_size;
 +        let transferred_max_size = child.max_size;
-@@ -925,0 +1751,11 @@
+@@ -925,0 +1791,11 @@
 +        let cross_axis_available_space = cross_keyword::available_async(
 +            tree,
 +            child,
@@ -4714,30 +4757,30 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        .await;
 +        let child_style = tree.get_flexbox_child_style(child.node);
 +
-@@ -929,0 +1766,6 @@
+@@ -929,0 +1806,6 @@
 +            if ckd.cross(dir).is_none() {
 +                ckd.set_cross(
 +                    dir,
 +                    cross_keyword::fit_content_size(child, constants, cross_axis_available_space),
 +                );
 +            }
-@@ -935 +1777,4 @@
+@@ -935 +1817,4 @@
 -                ckd.cross(dir).maybe_clamp(transferred_min_size.cross(dir), transferred_max_size.cross(dir)),
 +                ckd.cross(dir).maybe_clamp(
 +                    transferred_min_size.cross(dir),
 +                    transferred_max_size.cross(dir),
 +                ),
-@@ -937 +1782,2 @@
+@@ -937 +1822,2 @@
 -            if child.align_self == AlignSelf::STRETCH
 +            if child.align_self.keyword == AlignItemsKeyword::Stretch
 +                && cross_keyword::allows_alignment_stretch(child, constants)
-@@ -945,2 +1791,3 @@
+@@ -945,2 +1831,3 @@
 -                child_cross_size_is_definite =
 -                    !constants.is_wrap && constants.has_definite_cross_size && cross_axis_parent_size.is_some();
 +                child_cross_size_is_definite = !constants.is_wrap
 +                    && constants.has_definite_cross_size
 +                    && cross_axis_parent_size.is_some();
-@@ -951,11 +1798 @@
+@@ -951,11 +1838 @@
 -        // Percentage padding and border resolve against the container's inline size (its width),
 -        // whichever axis is the main axis
 -        let container_width = constants.node_inner_size.width;
@@ -4750,11 +4793,11 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -        }
 -        .main(dir);
 +        let box_sizing_adjustment = child.box_sizing_adjustment(&child_style).main(dir);
-@@ -965,2 +1802 @@
+@@ -965,2 +1842 @@
 -        let percent_resolution_main_size =
 -            if constants.known_main_size_is_definite { constants.node_inner_size.main(dir) } else { None };
 +        let percent_resolution_main_size = constants.pct_basis().main(dir);
-@@ -969 +1805,11 @@
+@@ -969 +1845,11 @@
 -            .maybe_resolve(percent_resolution_main_size, |val, basis| tree.calc(val, basis))
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
@@ -4767,7 +4810,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -982,27 +1828,19 @@
+@@ -982,27 +1868,19 @@
 -            let main_size = child.size.main(dir);
 -            let main_stretch_size =
 -                percent_resolution_main_size.maybe_sub(child.margin.main_axis_sum(dir)).maybe_max(0.0);
@@ -4814,7 +4857,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                main_keyword::Basis::Size(size, definite) => {
 +                    child.flex_basis_is_definite = definite;
 +                    break 'flex_basis size;
-@@ -1010,25 +1848 @@
+@@ -1010,25 +1888 @@
 -            } else {
 -                if let Some(flex_basis) = flex_basis.or(main_size.filter(|_| flex_basis_style.is_auto())) {
 -                    child.flex_basis_is_definite = true;
@@ -4841,19 +4884,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                    None
 -                }
 +                main_keyword::Basis::Space(space) => space,
-@@ -1058 +1872,3 @@
+@@ -1058 +1912,3 @@
 -                if let (Some(ratio), Some(cross)) = (child.aspect_ratio, child_known_dimensions.cross(dir)) {
 +                if let (Some(ratio), Some(cross)) =
 +                    (child.aspect_ratio, child_known_dimensions.cross(dir))
 +                {
-@@ -1060 +1876,5 @@
+@@ -1060 +1916,5 @@
 -                    break 'flex_basis if dir.is_row() { cross * ratio } else { cross / ratio };
 +                    break 'flex_basis if dir.is_row() {
 +                        cross * ratio
 +                    } else {
 +                        cross / ratio
 +                    };
-@@ -1069,0 +1890,53 @@
+@@ -1069,0 +1930,53 @@
 +
 +            // A stretched cross suggestion still supplies the ratio-derived
 +            // basis when its input is indefinite, but must NOT mark that basis
@@ -4907,7 +4950,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    }
 +                }
 +            }
-@@ -1086,9 +1959,23 @@
+@@ -1086,9 +1999,23 @@
 -            break 'flex_basis tree.measure_child_size(
 -                child.node,
 -                child_known_dimensions,
@@ -4940,15 +4983,15 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    stack,
 +                )
 +                .await;
-@@ -1104 +1991,2 @@
+@@ -1104 +2031,2 @@
 -        let padding_border_sum = child.padding.main_axis_sum(constants.dir) + child.border.main_axis_sum(constants.dir);
 +        let padding_border_sum =
 +            child.padding.main_axis_sum(constants.dir) + child.border.main_axis_sum(constants.dir);
-@@ -1110,2 +1998 @@
+@@ -1110,2 +2038 @@
 -        child.inner_flex_basis =
 -            child.flex_basis - child.padding.main_axis_sum(constants.dir) - child.border.main_axis_sum(constants.dir);
 +        child.inner_flex_basis = child.flex_basis - padding_border_sum;
-@@ -1121,25 +2008,135 @@
+@@ -1121,25 +2048,135 @@
 -        let style_min_main_size =
 -            child.min_size.or(child.overflow.map(Overflow::maybe_into_automatic_min_size).into()).main(dir);
 -
@@ -5109,7 +5152,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            let table_floor = content_floor + padding_border_axes_sums.main(dir).unwrap_or(0.0);
 +            child.resolved_minimum_main_size = child.resolved_minimum_main_size.max(table_floor);
 +        }
-@@ -1154,7 +2151,39 @@
+@@ -1154,7 +2191,39 @@
 -        let hypothetical_inner_size =
 -            child.flex_basis.maybe_clamp(Some(hypothetical_inner_min_main), transferred_max_size.main(constants.dir));
 -        let hypothetical_outer_size = hypothetical_inner_size + child.margin.main_axis_sum(constants.dir);
@@ -5156,7 +5199,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        start += count;
 +    }
 +    out
-@@ -1186,4 +2215,10 @@
+@@ -1186,4 +2255,10 @@
 -    // Wrapping into multiple lines requires a definite main size. If the container's known main size
 -    // is derived from its own content (and is thus indefinite) then all items are collected into a
 -    // single flex line, matching how the container was sized under a min/max-content constraint.
@@ -5171,7 +5214,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                .main(constants.dir)
 +                .is_none())
 +    {
-@@ -1191 +2226,8 @@
+@@ -1191 +2266,8 @@
 -        lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
 +        lines.push(FlexLine {
 +            items: flex_items.as_mut_slice(),
@@ -5181,35 +5224,35 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            fragmentation_item_shift: 0.0,
 +            fragmented: false,
 +        });
-@@ -1193,0 +2236,6 @@
+@@ -1193,0 +2276,6 @@
 +        let available_space =
 +            if let Some(preferred) = constants.ratio_preferred_inner_size.main(constants.dir) {
 +                available_space.with_main(constants.dir, AvailableSpace::Definite(preferred))
 +            } else {
 +                available_space
 +            };
-@@ -1196 +2244,4 @@
+@@ -1196 +2284,4 @@
 -                let available = available_space.main(constants.dir).into_option().unwrap_or(max_size);
 +                let available = available_space
 +                    .main(constants.dir)
 +                    .into_option()
 +                    .unwrap_or(max_size);
-@@ -1199 +2250,5 @@
+@@ -1199 +2290,5 @@
 -                let available = if constants.has_definite_main_size { available } else { available.min(max_size) };
 +                let available = if constants.has_definite_main_size {
 +                    available
 +                } else {
 +                    available.min(max_size)
 +                };
-@@ -1204,0 +2260,2 @@
+@@ -1204,0 +2300,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1206,0 +2264,4 @@
+@@ -1206,0 +2304,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1219 +2280,8 @@
+@@ -1219 +2320,8 @@
 -                lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
 +                lines.push(FlexLine {
 +                    items: flex_items.as_mut_slice(),
@@ -5219,7 +5262,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    fragmentation_item_shift: 0.0,
 +                    fragmented: false,
 +                });
-@@ -1229 +2297,8 @@
+@@ -1229 +2337,8 @@
 -                    lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
 +                    lines.push(FlexLine {
 +                        items: line_items,
@@ -5229,7 +5272,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        fragmentation_item_shift: 0.0,
 +                        fragmented: false,
 +                    });
-@@ -1250,2 +2325,8 @@
+@@ -1250,2 +2365,8 @@
 -                            line_length += child.hypothetical_outer_size.main(constants.dir) + gap_contribution;
 -                            line_length > main_axis_available_space && idx != 0
 +                            line_length += child.hypothetical_outer_size.main(constants.dir)
@@ -5240,7 +5283,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                            line_length - trimmed_main(child, constants, false)
 +                                > main_axis_available_space
 +                                && idx != 0
-@@ -1257 +2338,8 @@
+@@ -1257 +2378,8 @@
 -                    lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0 });
 +                    lines.push(FlexLine {
 +                        items,
@@ -5250,7 +5293,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        fragmentation_item_shift: 0.0,
 +                        fragmented: false,
 +                    });
-@@ -1266,4 +2354,121 @@
+@@ -1266,4 +2394,121 @@
 -/// Collect flex items into balanced flex lines (`flex-wrap: balance`), such that the largest
 -/// line is as small as possible.
 -///
@@ -5376,7 +5419,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +}
 +
 +/// Native balanced line collection; local DP is superseded.
-@@ -1283 +2488,7 @@
+@@ -1283 +2528,7 @@
 -    let main_axis_available_space = if constants.known_main_size_is_definite {
 +    let preferred = constants.ratio_preferred_inner_size.main(constants.dir);
 +    let available_space = match preferred {
@@ -5385,28 +5428,28 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    };
 +    let main_axis_available_space = if constants.known_main_size_is_definite || preferred.is_some()
 +    {
-@@ -1286 +2497,4 @@
+@@ -1286 +2537,4 @@
 -                let available = available_space.main(constants.dir).into_option().unwrap_or(max_size);
 +                let available = available_space
 +                    .main(constants.dir)
 +                    .into_option()
 +                    .unwrap_or(max_size);
-@@ -1289 +2503,5 @@
+@@ -1289 +2543,5 @@
 -                let available = if constants.has_definite_main_size { available } else { available.min(max_size) };
 +                let available = if constants.has_definite_main_size {
 +                    available
 +                } else {
 +                    available.min(max_size)
 +                };
-@@ -1294,0 +2513,2 @@
+@@ -1294,0 +2553,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1296,0 +2517,4 @@
+@@ -1296,0 +2557,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1315 +2539,8 @@
+@@ -1315 +2579,8 @@
 -            lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
 +            lines.push(FlexLine {
 +                items: line_items,
@@ -5416,17 +5459,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                fragmentation_item_shift: 0.0,
 +                fragmented: false,
 +            });
-@@ -1321 +2552,3 @@
+@@ -1321 +2592,3 @@
 -    let line_break_size = main_axis_available_space.into_option().unwrap_or(f32::INFINITY);
 +    let line_break_size = main_axis_available_space
 +        .into_option()
 +        .unwrap_or(f32::INFINITY);
-@@ -1324 +2557,3 @@
+@@ -1324 +2597,3 @@
 -        flex_items.iter().map(|item| item.hypothetical_outer_size.main(constants.dir)),
 +        flex_items
 +            .iter()
 +            .map(|item| item.hypothetical_outer_size.main(constants.dir)),
-@@ -1334 +2569,8 @@
+@@ -1334 +2609,8 @@
 -        lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
 +        lines.push(FlexLine {
 +            items: line_items,
@@ -5436,15 +5479,15 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            fragmentation_item_shift: 0.0,
 +            fragmented: false,
 +        });
-@@ -1357 +2599,2 @@
+@@ -1357 +2639,2 @@
 -    let has_cross_auto_margins = item.margin_is_auto.cross_start(dir) || item.margin_is_auto.cross_end(dir);
 +    let has_cross_auto_margins =
 +        item.margin_is_auto.cross_start(dir) || item.margin_is_auto.cross_end(dir);
-@@ -1360 +2603,2 @@
+@@ -1360 +2643,2 @@
 -        && (cross_size.is_stretch() || (item.align_self == AlignSelf::STRETCH && cross_size.is_auto()));
 +        && (cross_size.is_stretch()
 +            || (item.align_self.keyword == AlignItemsKeyword::Stretch && cross_size.is_auto()));
-@@ -1365 +2609,6 @@
+@@ -1365 +2649,6 @@
 -    Size { width: true, height: true }.with_main(dir, main_is_definite).with_cross(dir, cross_is_definite)
 +    Size {
 +        width: true,
@@ -5452,12 +5495,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    }
 +    .with_main(dir, main_is_definite)
 +    .with_cross(dir, cross_is_definite)
-@@ -1369 +2618 @@
+@@ -1369 +2658 @@
 -fn determine_container_main_size(
 +async fn determine_container_main_size_async(
-@@ -1373,0 +2623 @@
+@@ -1373,0 +2663 @@
 +    stack: &mut reblessive::Stk,
-@@ -1378,31 +2628,64 @@
+@@ -1378,31 +2668,64 @@
 -    let outer_main_size: f32 = constants.node_outer_size.main(constants.dir).unwrap_or_else(|| {
 -        match available_space.main(dir) {
 -            AvailableSpace::Definite(main_axis_available_space) => {
@@ -5553,7 +5596,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        }
 +                        let max_content_size = widest_line_length + main_content_box_inset;
 +                        return f32_max(size, f32_min(max_content_size, main_axis_available_space));
-@@ -1410,4 +2693,203 @@
+@@ -1410,4 +2733,203 @@
 -                    let mut item_lengths: Vec<f32> = new_vec_with_capacity(item_count);
 -                    for line in lines.iter() {
 -                        for child in line.items.iter() {
@@ -5761,7 +5804,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                                    0.0
 +                                }
 +                            };
-@@ -1415,31 +2897,21 @@
+@@ -1415,31 +2937,21 @@
 -                    }
 -                    let item_counts = balance::balanced_line_item_counts(
 -                        item_lengths.iter().copied(),
@@ -5814,7 +5857,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        let floor_by_largest_item = constants.is_wrap && constants.is_row;
 +                        let mut largest_item_size = 0.0_f32;
 +                        let item_main_size_sum = line
-@@ -1447,6 +2919,26 @@
+@@ -1447,6 +2959,26 @@
 -                            .iter()
 -                            .map(|child| {
 -                                let padding_border_sum = (child.padding + child.border).main_axis_sum(constants.dir);
@@ -5847,7 +5890,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                                    largest_item_size = f32_max(largest_item_size, size);
 +                                }
 +                                size
-@@ -1455,171 +2947,7 @@
+@@ -1455,171 +2987,7 @@
 -                        total_target_size + line_main_axis_gap
 -                    })
 -                    .max_by(|a, b| a.total_cmp(b))
@@ -6026,7 +6069,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                            main_size,
 +                            f32_max(largest_item_size, item_main_size_sum + gap_sum),
 +                        )
-@@ -1628,45 +2956,6 @@
+@@ -1628,45 +2996,6 @@
 -                    // TODO Spec says to scale everything by the line's max flex fraction. But neither Chrome nor firefox implement this
 -                    // so we don't either. But if we did want to, we'd need this computation here (and to use it below):
 -                    //
@@ -6078,7 +6121,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        0.0
 +                    };
 +                    main_size.max(minimum) + main_content_box_inset
-@@ -1674,5 +2963,4 @@
+@@ -1674,5 +3003,4 @@
 -
 -                main_size + main_content_box_inset
 -            }
@@ -6088,13 +6131,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        },
 +    )
 +    .await;
-@@ -1681 +2969,4 @@
+@@ -1681 +3009,4 @@
 -        .maybe_clamp(constants.min_size.main(constants.dir), constants.max_size.main(constants.dir))
 +        .maybe_clamp(
 +            constants.min_size.main(constants.dir),
 +            constants.max_size.main(constants.dir),
 +        )
-@@ -1686,3 +2977,9 @@
+@@ -1686,3 +3017,9 @@
 -    constants.container_size.set_main(constants.dir, outer_main_size);
 -    constants.inner_container_size.set_main(constants.dir, inner_main_size);
 -    constants.node_inner_size.set_main(constants.dir, Some(inner_main_size));
@@ -6107,10 +6150,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    constants
 +        .node_inner_size
 +        .set_main(constants.dir, Some(inner_main_size));
-@@ -1696 +2993 @@
+@@ -1696 +3033 @@
 -fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
 +fn resolve_flexible_lengths(line: &mut FlexLine<'_>, constants: &AlgoConstants) {
-@@ -1704,2 +3001,5 @@
+@@ -1704,2 +3041,5 @@
 -    let total_hypothetical_outer_main_size =
 -        line.items.iter().map(|child| child.hypothetical_outer_size.main(constants.dir)).sum::<f32>();
 +    let total_hypothetical_outer_main_size = line
@@ -6118,19 +6161,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        .iter()
 +        .map(|child| child.hypothetical_outer_size.main(constants.dir))
 +        .sum::<f32>();
-@@ -1729 +3029,3 @@
+@@ -1729 +3069,3 @@
 -            child.outer_target_size.set_main(constants.dir, outer_target_size);
 +            child
 +                .outer_target_size
 +                .set_main(constants.dir, outer_target_size);
-@@ -1754 +3056,5 @@
+@@ -1754 +3096,5 @@
 -    let initial_free_space = constants.node_inner_size.main(constants.dir).maybe_sub(used_space).unwrap_or(0.0);
 +    let initial_free_space = constants
 +        .node_inner_size
 +        .main(constants.dir)
 +        .maybe_sub(used_space)
 +        .unwrap_or(0.0);
-@@ -1761,2 +3067,18 @@
+@@ -1761,2 +3107,18 @@
 -
 -        if line.items.iter().all(|child| child.frozen) {
 +        //    The space used by the items and the sums of the unfrozen items' flex factors
@@ -6151,7 +6194,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            }
 +        }
 +        if all_frozen {
-@@ -1772,19 +3094 @@
+@@ -1772,19 +3134 @@
 -        let used_space: f32 = total_main_axis_gap
 -            + line
 -                .items
@@ -6172,7 +6215,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                (flex_grow + item.flex_grow, flex_shrink + item.flex_shrink)
 -            });
 +        let used_space: f32 = total_main_axis_gap + items_space;
-@@ -1793,2 +3097,6 @@
+@@ -1793,2 +3137,6 @@
 -            (initial_free_space * sum_flex_grow - total_main_axis_gap)
 -                .maybe_min(constants.node_inner_size.main(constants.dir).maybe_sub(used_space))
 +            (initial_free_space * sum_flex_grow - total_main_axis_gap).maybe_min(
@@ -6181,7 +6224,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    .main(constants.dir)
 +                    .maybe_sub(used_space),
 +            )
-@@ -1796,2 +3104,6 @@
+@@ -1796,2 +3144,6 @@
 -            (initial_free_space * sum_flex_shrink - total_main_axis_gap)
 -                .maybe_max(constants.node_inner_size.main(constants.dir).maybe_sub(used_space))
 +            (initial_free_space * sum_flex_shrink - total_main_axis_gap).maybe_max(
@@ -6190,7 +6233,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    .main(constants.dir)
 +                    .maybe_sub(used_space),
 +            )
-@@ -1799,2 +3111,5 @@
+@@ -1799,2 +3151,5 @@
 -            (constants.node_inner_size.main(constants.dir).maybe_sub(used_space))
 -                .unwrap_or(used_flex_factor - used_space)
 +            (constants
@@ -6198,7 +6241,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                .main(constants.dir)
 +                .maybe_sub(used_space))
 +            .unwrap_or(used_flex_factor - used_space)
-@@ -1824,4 +3139,5 @@
+@@ -1824,4 +3179,5 @@
 -                for child in &mut unfrozen {
 -                    child
 -                        .target_size
@@ -6208,7 +6251,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        constants.dir,
 +                        child.flex_basis + free_space * (child.flex_grow / sum_flex_grow),
 +                    );
-@@ -1830,2 +3146,6 @@
+@@ -1830,2 +3186,6 @@
 -                let sum_scaled_shrink_factor: f32 =
 -                    unfrozen.iter().map(|child| child.inner_flex_basis * child.flex_shrink).sum();
 +                let sum_scaled_shrink_factor: f32 = line
@@ -6217,14 +6260,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    .filter(|child| !child.frozen)
 +                    .map(|child| child.inner_flex_basis * child.flex_shrink)
 +                    .sum();
-@@ -1834 +3154 @@
+@@ -1834 +3194 @@
 -                    for child in &mut unfrozen {
 +                    for child in line.items.iter_mut().filter(|child| !child.frozen) {
-@@ -1838 +3158,2 @@
+@@ -1838 +3198,2 @@
 -                            child.flex_basis + free_space * (scaled_shrink_factor / sum_scaled_shrink_factor),
 +                            child.flex_basis
 +                                + free_space * (scaled_shrink_factor / sum_scaled_shrink_factor),
-@@ -1850,13 +3171,22 @@
+@@ -1850,13 +3211,22 @@
 -        let total_violation = unfrozen.iter_mut().fold(0.0, |acc, child| -> f32 {
 -            let resolved_min_main: Option<f32> = child.resolved_minimum_main_size.into();
 -            let max_main = child.max_size.main(constants.dir);
@@ -6260,20 +6303,20 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +
 +                    acc + child.violation
 +                });
-@@ -1873 +3203 @@
+@@ -1873 +3243 @@
 -        for child in &mut unfrozen {
 +        for child in line.items.iter_mut().filter(|child| !child.frozen) {
-@@ -1892 +3222 @@
+@@ -1892 +3262 @@
 -fn determine_hypothetical_cross_size(
 +async fn determine_hypothetical_cross_size_async(
-@@ -1894 +3224 @@
+@@ -1894 +3264 @@
 -    line: &mut FlexLine,
 +    line: &mut FlexLine<'_>,
-@@ -1896,0 +3227 @@
+@@ -1896,0 +3267 @@
 +    stack: &mut reblessive::Stk,
-@@ -1897,0 +3229 @@
+@@ -1897,0 +3269 @@
 +    let line_cross_size_is_known = !constants.is_wrap && constants.has_definite_cross_size;
-@@ -1898,0 +3231,8 @@
+@@ -1898,0 +3271,8 @@
 +        // Финальная раскладка измеряет метрики; пропускается лишь неиспользуемая cross-проба.
 +        if line_cross_size_is_known
 +            && child.is_stretched(constants.dir)
@@ -6282,14 +6325,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        {
 +            continue;
 +        }
-@@ -1902,2 +3242,4 @@
+@@ -1902,2 +3282,4 @@
 -        let child_available_main =
 -            (constants.container_size.main(constants.dir) - child.margin.main_axis_sum(constants.dir)).max(0.0).into();
 +        let child_available_main = (constants.container_size.main(constants.dir)
 +            - child.margin.main_axis_sum(constants.dir))
 +        .max(0.0)
 +        .into();
-@@ -1907,8 +3249,27 @@
+@@ -1907,8 +3289,27 @@
 -        let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -        let transferred_max_cross = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -
@@ -6325,11 +6368,11 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        } else {
 +            child.size.cross(constants.dir)
 +        });
-@@ -1919 +3280,2 @@
+@@ -1919 +3320,2 @@
 -                (constants.divided_cross_space(val) - child.margin.cross_axis_sum(constants.dir)).max(0.0)
 +                (constants.divided_cross_space(val) - child.margin.cross_axis_sum(constants.dir))
 +                    .max(0.0)
-@@ -1924,24 +3286,67 @@
+@@ -1924,24 +3326,67 @@
 -        // A cross size that is a sizing keyword (min-content, max-content, fit-content,
 -        // fit-content(...)) determines the available space constraint the item is measured under.
 -        // The `stretch` keyword is not resolved here: it stretches to the flex line, which is
@@ -6421,24 +6464,24 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                && !child.size_style.cross(constants.dir).is_sizing_keyword()
 +            {
 +                let probe = LayoutInput {
-@@ -1952,2 +3357,2 @@
+@@ -1952,2 +3397,2 @@
 -                        width: if constants.is_row { child.target_size.width.into() } else { child_cross },
 -                        height: if constants.is_row { child_cross } else { child.target_size.height.into() },
 +                        width: child_cross,
 +                        height: Some(child.target_size.height),
-@@ -1955,2 +3360,4 @@
+@@ -1955,2 +3400,4 @@
 -                    known_dimensions_are_definite: item_known_dimension_definiteness(constants, child),
 -                    parent_size: constants.node_inner_size,
 +                    known_dimensions_are_definite: item_known_dimension_definiteness(
 +                        constants, child,
 +                    ),
 +                    parent_size: constants.pct_basis(),
-@@ -1958,2 +3365,2 @@
+@@ -1958,2 +3405,2 @@
 -                        width: if constants.is_row { child_available_main } else { child_available_cross },
 -                        height: if constants.is_row { child_available_cross } else { child_available_main },
 +                        width: AvailableSpace::MinContent,
 +                        height: child_available_main,
-@@ -1962,7 +3369,31 @@
+@@ -1962,7 +3409,31 @@
 -                },
 -            )
 -            .size
@@ -6477,7 +6520,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                .max(padding_border_sum)
 +        })
 +        .await;
-@@ -1971,2 +3402,6 @@
+@@ -1971,2 +3442,6 @@
 -        child.hypothetical_inner_size.set_cross(constants.dir, child_inner_cross);
 -        child.hypothetical_outer_size.set_cross(constants.dir, child_outer_cross);
 +        child
@@ -6486,20 +6529,20 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        child
 +            .hypothetical_outer_size
 +            .set_cross(constants.dir, child_outer_cross);
-@@ -1976,3 +3411,2 @@
+@@ -1976,3 +3451,2 @@
 -/// Calculate the base lines of the children.
 -#[inline]
 -fn calculate_children_base_lines(
 +/// KaminIDE patch: Measure and collect the flex children's alignment baselines.
 +async fn calculate_children_base_lines_async(
-@@ -1981,2 +3415,2 @@
+@@ -1981,2 +3455,2 @@
 -    available_space: Size<AvailableSpace>,
 -    flex_lines: &mut [FlexLine],
 +    available: Size<AvailableSpace>,
 +    lines: &mut [FlexLine<'_>],
-@@ -1983,0 +3418 @@
+@@ -1983,0 +3458 @@
 +    stack: &mut reblessive::Stk,
-@@ -1985,74 +3420,7 @@
+@@ -1985,74 +3460,7 @@
 -    // Only compute baselines for flex rows because we only support baseline alignment in the cross axis
 -    // where that axis is also the inline axis
 -    // TODO: this may need revisiting if/when we support vertical writing modes
@@ -6581,14 +6624,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        .await;
 +    } else {
 +        column_baselines::measure_async(tree, node_size, available, lines, constants, stack).await;
-@@ -2068 +3436,5 @@
+@@ -2068 +3476,5 @@
 -fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
 +fn calculate_cross_size(
 +    flex_lines: &mut [FlexLine<'_>],
 +    node_size: Size<Option<f32>>,
 +    constants: &AlgoConstants,
 +) {
-@@ -2096 +3468,15 @@
+@@ -2096 +3508,15 @@
 -            let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +            if constants.is_column {
 +                line.cross_size = column_baselines::cross_size(line.items, constants);
@@ -6605,7 +6648,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                .filter(|child| child.participates_in_last_baseline_alignment(constants.dir))
 +                .map(|child| child.last_baseline_from_end)
 +                .fold(0.0, f32::max);
-@@ -2102 +3488,8 @@
+@@ -2102 +3528,8 @@
 -                        max_baseline - child.baseline + child.hypothetical_outer_size.cross(constants.dir)
 +                        max_baseline - child.baseline
 +                            + child.hypothetical_outer_size.cross(constants.dir)
@@ -6615,11 +6658,11 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        child.hypothetical_outer_size.cross(constants.dir)
 +                            - child.last_baseline_from_end
 +                            + max_last_from_end
-@@ -2113 +3506,2 @@
+@@ -2113 +3546,2 @@
 -            let cross_axis_padding_border = constants.content_box_inset.cross_axis_sum(constants.dir);
 +            let cross_axis_padding_border =
 +                constants.content_box_inset.cross_axis_sum(constants.dir);
-@@ -2132,2 +3526,6 @@
+@@ -2132,2 +3566,6 @@
 -fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
 -    if constants.align_content == AlignContent::STRETCH {
 +fn handle_align_content_stretch(
@@ -6628,24 +6671,24 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    constants: &AlgoConstants,
 +) {
 +    if constants.align_content.keyword() == AlignContentKeyword::Stretch {
-@@ -2145,2 +3543,4 @@
+@@ -2145,2 +3583,4 @@
 -        let total_cross_axis_gap = sum_axis_gaps(constants.gap.cross(constants.dir), flex_lines.len());
 -        let lines_total_cross: f32 = flex_lines.iter().map(|line| line.cross_size).sum::<f32>() + total_cross_axis_gap;
 +        let total_cross_axis_gap =
 +            sum_axis_gaps(constants.gap.cross(constants.dir), flex_lines.len());
 +        let lines_total_cross: f32 =
 +            flex_lines.iter().map(|line| line.cross_size).sum::<f32>() + total_cross_axis_gap;
-@@ -2151 +3551,3 @@
+@@ -2151 +3591,3 @@
 -            flex_lines.iter_mut().for_each(|line| line.cross_size += addition);
 +            flex_lines
 +                .iter_mut()
 +                .for_each(|line| line.cross_size += addition);
-@@ -2170 +3572 @@
+@@ -2170 +3612 @@
 -    flex_lines: &mut [FlexLine],
 +    flex_lines: &mut [FlexLine<'_>],
-@@ -2180 +3581,0 @@
+@@ -2180 +3621,0 @@
 -            let cross_is_stretch = child.size_style.cross(constants.dir).is_stretch();
-@@ -2183,6 +3584 @@
+@@ -2183,6 +3624 @@
 -                if !child.margin_is_auto.cross_start(constants.dir)
 -                    && !child.margin_is_auto.cross_end(constants.dir)
 -                    && (cross_is_stretch
@@ -6653,7 +6696,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                            && child_style.size().cross(constants.dir).is_auto()))
 -                {
 +                if child.is_stretched(constants.dir) {
-@@ -2194,7 +3589,0 @@
+@@ -2194,7 +3629,0 @@
 -                    let padding = child_style
 -                        .padding()
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
@@ -6661,7 +6704,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                        .border()
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 -                    let pb_sum = (padding + border).sum_axes();
-@@ -2202 +3591,18 @@
+@@ -2202 +3631,18 @@
 -                        if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 +                        if constants.node_inner_size.width == constants.initial_inner_width {
 +                            child.box_sizing_adjustment(&child_style)
@@ -6681,12 +6724,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        } else {
 +                            Size::ZERO
 +                        };
-@@ -2206 +3612,3 @@
+@@ -2206 +3652,3 @@
 -                        .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
 +                        .maybe_resolve(constants.node_inner_size, |val, basis| {
 +                            tree.calc(val, basis)
 +                        })
-@@ -2209,4 +3617,6 @@
+@@ -2209,4 +3657,6 @@
 -                    (line_cross_size - child.margin.cross_axis_sum(constants.dir)).max(0.0).maybe_clamp(
 -                        child.min_size.cross(constants.dir),
 -                        max_size_ignoring_aspect_ratio.cross(constants.dir),
@@ -6697,25 +6740,25 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                            child.min_size.cross(constants.dir),
 +                            max_size_ignoring_aspect_ratio.cross(constants.dir),
 +                        )
-@@ -2237 +3647 @@
+@@ -2237 +3687 @@
 -fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
 +fn distribute_remaining_free_space(flex_lines: &mut [FlexLine<'_>], constants: &AlgoConstants) {
-@@ -2239 +3649,2 @@
+@@ -2239 +3689,2 @@
 -        let total_main_axis_gap = sum_axis_gaps(constants.gap.main(constants.dir), line.items.len());
 +        let total_main_axis_gap =
 +            sum_axis_gaps(constants.gap.main(constants.dir), line.items.len());
-@@ -2241 +3652,5 @@
+@@ -2241 +3692,5 @@
 -            + line.items.iter().map(|child| child.outer_target_size.main(constants.dir)).sum::<f32>();
 +            + line
 +                .items
 +                .iter()
 +                .map(|child| child.outer_target_size.main(constants.dir))
 +                .sum::<f32>();
-@@ -2281 +3696,2 @@
+@@ -2281 +3736,2 @@
 -        let justify_content_mode = apply_alignment_fallback(free_space, num_items, constants.justify_content);
 +        let justify_content_mode =
 +            apply_alignment_fallback(free_space, num_items, constants.justify_content);
-@@ -2284,2 +3700,8 @@
+@@ -2284,2 +3740,8 @@
 -            child.offset_main =
 -                compute_alignment_offset(free_space, num_items, gap, justify_content_mode, layout_reverse, i == 0);
 +            child.offset_main = compute_alignment_offset(
@@ -6726,17 +6769,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                layout_reverse,
 +                i == 0,
 +            );
-@@ -2289 +3711,5 @@
+@@ -2289 +3751,5 @@
 -            line.items.iter_mut().rev().enumerate().for_each(justify_item);
 +            line.items
 +                .iter_mut()
 +                .rev()
 +                .enumerate()
 +                .for_each(justify_item);
-@@ -2309 +3735 @@
+@@ -2309 +3775 @@
 -fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
 +fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine<'_>], constants: &AlgoConstants) {
-@@ -2312 +3738,6 @@
+@@ -2312 +3778,6 @@
 -        let max_baseline: f32 = line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +        let column_groups = column_baselines::maxima(line.items);
 +        let max_baseline: f32 = line
@@ -6744,7 +6787,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            .iter_mut()
 +            .map(|child| child.baseline)
 +            .fold(0.0, |acc, x| acc.max(x));
-@@ -2319,0 +3751,14 @@
+@@ -2319,0 +3791,14 @@
 +        let max_last_from_end: f32 = line
 +            .items
 +            .iter()
@@ -6759,7 +6802,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end
 +            })
 +            .fold(0.0, f32::max);
-@@ -2323 +3768,24 @@
+@@ -2323 +3808,24 @@
 -            if child.margin_is_auto.cross_start(constants.dir) && child.margin_is_auto.cross_end(constants.dir) {
 +            // Auto margins absorb positive space. During overflow the logical
 +            // start margin becomes zero and the logical end receives the deficit.
@@ -6785,17 +6828,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        if reverse { fill } else { free_space },
 +                    )
 +                };
-@@ -2325,2 +3793,2 @@
+@@ -2325,2 +3833,2 @@
 -                    child.margin.top = free_space / 2.0;
 -                    child.margin.bottom = free_space / 2.0;
 +                    child.margin.top = physical_start;
 +                    child.margin.bottom = physical_end;
-@@ -2328,2 +3796,2 @@
+@@ -2328,2 +3836,2 @@
 -                    child.margin.left = free_space / 2.0;
 -                    child.margin.right = free_space / 2.0;
 +                    child.margin.left = physical_start;
 +                    child.margin.right = physical_end;
-@@ -2331,3 +3799,11 @@
+@@ -2331,3 +3839,11 @@
 -            } else if child.margin_is_auto.cross_start(constants.dir) {
 -                if constants.is_row {
 -                    child.margin.top = free_space;
@@ -6810,7 +6853,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    let from_start =
 +                        child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end;
 +                    max_last_from_start - from_start
-@@ -2335,8 +3811,2 @@
+@@ -2335,8 +3851,2 @@
 -                    child.margin.left = free_space;
 -                }
 -            } else if child.margin_is_auto.cross_end(constants.dir) {
@@ -6821,21 +6864,21 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 -                }
 +                    free_space - (max_last_from_end - child.last_baseline_from_end)
 +                };
-@@ -2371 +3841,2 @@
+@@ -2371 +3881,2 @@
 -    let cross_axis_should_reverse = constants.is_column && matches!(constants.layout_direction, Direction::Rtl);
 +    let cross_axis_should_reverse =
 +        constants.is_column && matches!(constants.layout_direction, Direction::Rtl);
-@@ -2377,0 +3849,5 @@
+@@ -2377,0 +3889,5 @@
 +        // HTML projects a no-wrap column's logical cross start through this
 +        // legacy reversal. Authored wrap-reverse does not reverse logical start.
 +        if !constants.is_wrap && constants.is_wrap_reverse {
 +            return free_space;
 +        }
-@@ -2426 +3902,2 @@
+@@ -2426 +3942,2 @@
 -                let baseline_column_should_reverse = cross_axis_should_reverse && !constants.is_wrap;
 +                let baseline_column_should_reverse =
 +                    cross_axis_should_reverse && !constants.is_wrap;
-@@ -2433,0 +3911,20 @@
+@@ -2433,0 +3951,20 @@
 +        AlignItemsKeyword::LastBaseline => {
 +            if constants.is_row {
 +                // Group alignment is handled before this fallback. A lone
@@ -6856,12 +6899,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                }
 +            }
 +        }
-@@ -2443 +3940,3 @@
+@@ -2443 +3980,3 @@
 -        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
 +        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => {
 +            unreachable!()
 +        }
-@@ -2477,2 +3976,6 @@
+@@ -2477,2 +4016,6 @@
 -    constants.container_size.set_cross(constants.dir, outer_container_size);
 -    constants.inner_container_size.set_cross(constants.dir, inner_container_size);
 +    constants
@@ -6870,14 +6913,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    constants
 +        .inner_container_size
 +        .set_cross(constants.dir, inner_container_size);
-@@ -2489 +3992,5 @@
+@@ -2489 +4032,5 @@
 -fn align_flex_lines_per_align_content(flex_lines: &mut [FlexLine], constants: &AlgoConstants, total_cross_size: f32) {
 +fn align_flex_lines_per_align_content(
 +    flex_lines: &mut [FlexLine<'_>],
 +    constants: &AlgoConstants,
 +    total_cross_size: f32,
 +) {
-@@ -2493,7 +4000,18 @@
+@@ -2493,7 +4040,18 @@
 -    let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap;
 -
 -    let align_content_mode = apply_alignment_fallback(free_space, num_lines, constants.align_content);
@@ -6903,21 +6946,21 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            constants.is_wrap_reverse,
 +            i == 0,
 +        );
-@@ -2511 +4029 @@
+@@ -2511 +4069 @@
 -fn calculate_flex_item(
 +async fn calculate_flex_item_async(
-@@ -2516,0 +4035,3 @@
+@@ -2516,0 +4075,3 @@
 +    fragmentation_main_shift: f32,
 +    line_cross_size: f32,
 +    line_fragmented: bool,
-@@ -2520 +4041,2 @@
+@@ -2520 +4081,2 @@
 -) {
 +    stack: &mut reblessive::Stk,
 +) -> DetailedFlexItem {
-@@ -2522 +4044 @@
+@@ -2522 +4084 @@
 -    let node_inner_size = constants.node_inner_size;
 +    let node_inner_size = constants.pct_basis();
-@@ -2526,14 +4048,18 @@
+@@ -2526,14 +4088,18 @@
 -    let mut layout_output = tree.compute_child_layout(
 -        item.node,
 -        LayoutInput {
@@ -6950,17 +6993,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            stack,
 +        )
 +        .await;
-@@ -2551,4 +4077,2 @@
+@@ -2551,4 +4117,2 @@
 -    let effective_line_offset_cross = if is_rtl_column { 0.0 } else { line_offset_cross };
 -
 -    let offset_main = if is_rtl_row {
 -        *total_offset_main - item.offset_main - item.margin.main_end(direction) - main_relative_inset - size.width
 +    let effective_line_offset_cross = if is_rtl_column {
 +        0.0
-@@ -2556 +4080 @@
+@@ -2556 +4120 @@
 -        *total_offset_main + item.offset_main + item.margin.main_start(direction) + main_relative_inset
 +        line_offset_cross
-@@ -2559,5 +4083,41 @@
+@@ -2559,5 +4123,41 @@
 -    let offset_cross = total_offset_cross
 -        + item.offset_cross
 -        + effective_line_offset_cross
@@ -7007,14 +7050,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                0.0
 +            }
 +    };
-@@ -2566,2 +4126,4 @@
+@@ -2566,2 +4166,4 @@
 -        let baseline_offset_cross =
 -            total_offset_cross + item.offset_cross + effective_line_offset_cross + item.margin.cross_start(direction);
 +        let baseline_offset_cross = total_offset_cross
 +            + item.offset_cross
 +            + effective_line_offset_cross
 +            + item.margin.cross_start(direction);
-@@ -2581,2 +4143,9 @@
+@@ -2581,2 +4183,9 @@
 -        let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
 -        let inner_baseline = layout_output.baselines.first.unwrap_or(size.height);
 +        let baseline_offset_main = *total_offset_main
@@ -7026,19 +7069,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            size.height,
 +            item.overflow.y.is_scroll_container(),
 +        );
-@@ -2587 +4156,4 @@
+@@ -2587 +4196,4 @@
 -        Point { x: offset_main, y: offset_cross }
 +        Point {
 +            x: offset_main,
 +            y: offset_cross,
 +        }
-@@ -2589 +4161,4 @@
+@@ -2589 +4201,4 @@
 -        Point { x: offset_cross, y: offset_main }
 +        Point {
 +            x: offset_cross,
 +            y: offset_main,
 +        }
-@@ -2590,0 +4166,57 @@
+@@ -2590,0 +4206,57 @@
 +    // Keep first/last y in the same normal-flow coordinate system as native
 +    // first baselines (relative-position insets do not move the baseline set).
 +    let baseline_origin_y = if direction.is_row() {
@@ -7096,7 +7139,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    };
 +    item.baseline_x_pos = layout_output.baselines_x.first.map(baseline_x);
 +    item.last_baseline_x_pos = layout_output.last_or_first_x().map(baseline_x);
-@@ -2592,2 +4224,10 @@
+@@ -2592,2 +4264,10 @@
 -        width: if item.overflow.y == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
 -        height: if item.overflow.x == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
 +        width: if item.overflow.y == Overflow::Scroll {
@@ -7109,7 +7152,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        } else {
 +            0.0
 +        },
-@@ -2604,0 +4245,15 @@
+@@ -2604,0 +4285,15 @@
 +            relative_offset: if direction.is_row() {
 +                Point {
 +                    x: if is_rtl_row {
@@ -7125,27 +7168,27 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    y: main_relative_inset,
 +                }
 +            },
-@@ -2619 +4274,2 @@
+@@ -2619 +4314,2 @@
 -        *total_offset_main -= item.offset_main + item.margin.main_axis_sum(direction) + size.main(direction);
 +        *total_offset_main -=
 +            item.offset_main + item.margin.main_axis_sum(direction) + size.main(direction);
-@@ -2621 +4277,2 @@
+@@ -2621 +4317,2 @@
 -        *total_offset_main += item.offset_main + item.margin.main_axis_sum(direction) + size.main(direction);
 +        *total_offset_main +=
 +            item.offset_main + item.margin.main_axis_sum(direction) + size.main(direction);
-@@ -2627 +4284,4 @@
+@@ -2627 +4324,4 @@
 -            Point { x: container_size.width - (location.x + size.width) - border.right, y: location.y - border.top }
 +            Point {
 +                x: container_size.width - (location.x + size.width) - border.right,
 +                y: location.y - border.top,
 +            }
-@@ -2629 +4289,4 @@
+@@ -2629 +4329,4 @@
 -            Point { x: location.x - border.left, y: location.y - border.top }
 +            Point {
 +                x: location.x - border.left,
 +                y: location.y - border.top,
 +            }
-@@ -2639,0 +4303,15 @@
+@@ -2639,0 +4343,15 @@
 +
 +    // KaminIDE patch: fragmentation uses normal-flow positions (css-break-3 §5.5).
 +    DetailedFlexItem {
@@ -7161,17 +7204,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +        main_size: size.main(direction),
 +        cross_size: size.cross(direction),
 +    }
-@@ -2644 +4322 @@
+@@ -2644 +4362 @@
 -fn calculate_layout_line(
 +async fn calculate_layout_line_async(
-@@ -2646 +4324 @@
+@@ -2646 +4364 @@
 -    line: &mut FlexLine,
 +    line: &mut FlexLine<'_>,
-@@ -2651 +4329,2 @@
+@@ -2651 +4369,2 @@
 -) {
 +    stack: &mut reblessive::Stk,
 +) -> DetailedFlexLine {
-@@ -2667,0 +4347,13 @@
+@@ -2667,0 +4387,13 @@
 +    // KaminIDE patch: capture the aligned line before advancing the placement cursor.
 +    let cross_offset = *total_offset_cross
 +        + if is_rtl_column {
@@ -7185,7 +7228,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +    let fragment_size = line.cross_size;
 +    let fragmented = line.fragmented;
 +
-@@ -2670,11 +4362,19 @@
+@@ -2670,11 +4402,19 @@
 -            calculate_flex_item(
 -                tree,
 -                item,
@@ -7216,7 +7259,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    stack,
 +                )
 +                .await,
-@@ -2685,11 +4385,19 @@
+@@ -2685,11 +4425,19 @@
 -            calculate_flex_item(
 -                tree,
 -                item,
@@ -7247,26 +7290,26 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    stack,
 +                )
 +                .await,
-@@ -2702,0 +4411,5 @@
+@@ -2702,0 +4451,5 @@
 +    DetailedFlexLine {
 +        cross_offset: cross_offset + line.fragmentation_shift,
 +        cross_size: line.cross_size,
 +        items,
 +    }
-@@ -2707 +4420 @@
+@@ -2707 +4460 @@
 -fn final_layout_pass(
 +async fn final_layout_pass_async(
-@@ -2709 +4422 @@
+@@ -2709 +4462 @@
 -    flex_lines: &mut [FlexLine],
 +    flex_lines: &mut [FlexLine<'_>],
-@@ -2711 +4424,2 @@
+@@ -2711 +4464,2 @@
 -) -> Rect<f32> {
 +    stack: &mut reblessive::Stk,
 +) -> (Rect<f32>, DetailedFlexInfo) {
-@@ -2719,0 +4434,2 @@
+@@ -2719,0 +4474,2 @@
 +    // KaminIDE patch: these are the solver's actual lines, not grouped child rectangles.
 +    let mut lines = new_vec_with_capacity(flex_lines.len());
-@@ -2723,9 +4439,13 @@
+@@ -2723,9 +4479,13 @@
 -            calculate_layout_line(
 -                tree,
 -                line,
@@ -7289,7 +7332,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    stack,
 +                )
 +                .await,
-@@ -2736,9 +4456,13 @@
+@@ -2736,9 +4496,13 @@
 -            calculate_layout_line(
 -                tree,
 -                line,
@@ -7312,12 +7355,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    stack,
 +                )
 +                .await,
-@@ -2757 +4481,3 @@
+@@ -2757 +4521,3 @@
 -            constants.content_box_inset.right - constants.border.right - constants.scrollbar_gutter.x
 +            constants.content_box_inset.right
 +                - constants.border.right
 +                - constants.scrollbar_gutter.x
-@@ -2759,5 +4485,12 @@
+@@ -2759,5 +4525,12 @@
 -        overflow_rect.bottom +=
 -            constants.content_box_inset.bottom - constants.border.bottom - constants.scrollbar_gutter.y;
 -    }
@@ -7335,10 +7378,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            lines,
 +        },
 +    )
-@@ -2775 +4508 @@
+@@ -2775 +4548 @@
 -    flex_lines: &mut [FlexLine],
 +    flex_lines: &mut [FlexLine<'_>],
-@@ -2824,2 +4557,8 @@
+@@ -2824,2 +4597,8 @@
 -        let align_self = resolve_normal_alignment(child_style.align_self().unwrap_or(constants.align_items))
 -            .resolve_self_relative(child_style.direction(), constants.layout_direction, constants.is_column);
 +        // KaminIDE patch: `baseline`/`last baseline` fall back to safe self-start/self-end
@@ -7349,13 +7392,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            constants.layout_direction,
 +            constants.is_column,
 +        );
-@@ -2885 +4624,4 @@
+@@ -2885 +4664,4 @@
 -                (AlignItemsKeyword::Start | AlignItemsKeyword::End | AlignItemsKeyword::Baseline, _) => {
 +                (
 +                    AlignItemsKeyword::Start | AlignItemsKeyword::End | AlignItemsKeyword::Baseline,
 +                    _,
 +                ) => {
-@@ -2899 +4641,8 @@
+@@ -2899 +4681,8 @@
 -                (AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd, _) => {
 +                // `last baseline` is mapped to safe self-end by `absolute_cross_alignment`.
 +                (
@@ -7365,7 +7408,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    | AlignItemsKeyword::LastBaseline,
 +                    _,
 +                ) => {
-@@ -2913,4 +4662,16 @@
+@@ -2913,4 +4702,16 @@
 -        let main = AxisStaticPosition { area: main_area, align: AxisStaticAlign::from_keyword(main_edge) };
 -
 -        let static_position = if constants.is_row { Point { x: main, y: cross } } else { Point { x: cross, y: main } };
@@ -7386,25 +7429,25 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            position,
 +            static_position,
 +        });
-@@ -3009 +4770,5 @@
+@@ -3009 +4810,5 @@
 -            let start_sum = if start == 0 { 0.0 } else { self.sums[start - 1].0 };
 +            let start_sum = if start == 0 {
 +                0.0
 +            } else {
 +                self.sums[start - 1].0
 +            };
-@@ -3129 +4894,2 @@
+@@ -3129 +4934,2 @@
 -        let first_col = col_lo + row.nonzero_ends[col_lo..col_hi].partition_point(|&end| (end as usize) < start);
 +        let first_col = col_lo
 +            + row.nonzero_ends[col_lo..col_hi].partition_point(|&end| (end as usize) < start);
-@@ -3204 +4970,5 @@
+@@ -3204 +5010,5 @@
 -        let sizes = LineSizes { sums, gap_between_items, limit };
 +        let sizes = LineSizes {
 +            sums,
 +            gap_between_items,
 +            limit,
 +        };
-@@ -3253 +5023,7 @@
+@@ -3253 +5063,7 @@
 -            let row = Row { sizes: &sizes, fit_ends: &fit_ends, prev: &prev, nonzero_ends: &nonzero_ends, max_end };
 +            let row = Row {
 +                sizes: &sizes,
@@ -7413,7 +7456,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                nonzero_ends: &nonzero_ends,
 +                max_end,
 +            };
-@@ -3303 +5079,7 @@
+@@ -3303 +5119,7 @@
 -        fn zero_boundary_valid(sizes: &LineSizes, min_errors: &[f64], lines: usize, start: usize, end: usize) -> bool {
 +        fn zero_boundary_valid(
 +            sizes: &LineSizes,
@@ -7422,14 +7465,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +            start: usize,
 +            end: usize,
 +        ) -> bool {
-@@ -3338 +5120,5 @@
+@@ -3338 +5160,5 @@
 -            let sizes = LineSizes { sums, gap_between_items, limit };
 +            let sizes = LineSizes {
 +                sums,
 +                gap_between_items,
 +                limit,
 +            };
-@@ -3380 +5166,8 @@
+@@ -3380 +5206,8 @@
 -                        && (lines_after == 0 || zero_boundary_valid(&sizes, &min_errors, lines_after + 1, start, end))
 +                        && (lines_after == 0
 +                            || zero_boundary_valid(
@@ -7439,7 +7482,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                                start,
 +                                end,
 +                            ))
-@@ -3382,2 +5175,5 @@
+@@ -3382,2 +5215,5 @@
 -                        let remaining_error =
 -                            if lines_after == 0 { 0.0 } else { min_errors[(lines_after - 1) * item_count + end + 1] };
 +                        let remaining_error = if lines_after == 0 {
@@ -7447,22 +7490,22 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                        } else {
 +                            min_errors[(lines_after - 1) * item_count + end + 1]
 +                        };
-@@ -3403 +5199,2 @@
+@@ -3403 +5239,2 @@
 -            let counts = balanced_line_item_counts([70.0, 0.0, 20.0].iter().copied(), 100.0, 10.0, 1);
 +            let counts =
 +                balanced_line_item_counts([70.0, 0.0, 20.0].iter().copied(), 100.0, 10.0, 1);
-@@ -3406 +5203,2 @@
+@@ -3406 +5243,2 @@
 -            let counts = balanced_line_item_counts([150.0, 0.0, 30.0].iter().copied(), 100.0, 0.0, 1);
 +            let counts =
 +                balanced_line_item_counts([150.0, 0.0, 30.0].iter().copied(), 100.0, 0.0, 1);
-@@ -3427 +5225,5 @@
+@@ -3427 +5265,5 @@
 -                let item_count = if case % 20 == 0 { (rand(60) + 1) as usize } else { (rand(15) + 1) as usize };
 +                let item_count = if case % 20 == 0 {
 +                    (rand(60) + 1) as usize
 +                } else {
 +                    (rand(15) + 1) as usize
 +                };
-@@ -3445 +5247,6 @@
+@@ -3445 +5287,6 @@
 -                let expected = naive_line_item_counts(&item_sizes, line_limit, gap_between_items, min_line_count);
 +                let expected = naive_line_item_counts(
 +                    &item_sizes,
@@ -7470,7 +7513,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..441fbc42341a4bbbf31e30078092c61e
 +                    gap_between_items,
 +                    min_line_count,
 +                );
-@@ -3460,0 +5268,171 @@
+@@ -3460,0 +5308,171 @@
 +
 +#[cfg(test)]
 +#[path = "../tree/ratio_intrinsic_min_tests.rs"]
@@ -13418,7 +13461,7 @@ index 0000000000000000000000000000000000000000..ed0a46e37f350534ce3f23e91ac13176
 +#[path = "block_intrinsic_keyword_tests.rs"]
 +mod block_intrinsic_keyword_tests;
 diff --git a/vendor/taffy/src/compute/grid/mod.rs b/vendor/taffy/src/compute/grid/mod.rs
-index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f075621815b564a90
+index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9aa5368182
 --- a/vendor/taffy/src/compute/grid/mod.rs
 +++ b/vendor/taffy/src/compute/grid/mod.rs
 @@ -2,0 +3,3 @@
@@ -13611,18 +13654,20 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        run_mode,
 +        ..
 +    } = inputs;
-@@ -226,0 +312,8 @@
+@@ -226,0 +312,10 @@
 +
 +    // KaminIDE patch: контейнер ЛУНОК (css-grid-3 `display: grid-lanes`) —
 +    // своя раскладка поверх тех же дорожек (`lanes.rs`).
 +    if let Some(lanes) = style.grid_lanes() {
 +        drop(style);
-+        return lanes::compute_grid_lanes_layout_async(tree, node, inputs, lanes, stack).await;
++        return stack
++            .run(|stack| lanes::compute_grid_lanes_layout_async(tree, node, inputs, lanes, stack))
++            .await;
 +    }
 +
-@@ -228,0 +322 @@
+@@ -228,0 +324 @@
 +        flow,
-@@ -252,0 +347,18 @@
+@@ -252,0 +349,18 @@
 +    let margin_trim = style.margin_trim();
 +    let own_subgrid = subgrid::own_subgrid_tracks(tree, node, style.subgrid());
 +    let sub_cols = own_subgrid
@@ -13641,14 +13686,14 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        justify_content
 +    };
 +
-@@ -267 +379,5 @@
+@@ -267 +381,5 @@
 -        if let Size { width: Some(width), height: Some(height) } = outer_node_size {
 +        if let Size {
 +            width: Some(width),
 +            height: Some(height),
 +        } = outer_node_size
 +        {
-@@ -301,3 +417,15 @@
+@@ -301,3 +419,15 @@
 -    // Compute the number of rows and columns in the explicit grid *template*
 -    // (explicit tracks from grid_areas are computed separately below)
 -    let (col_auto_repetition_count, grid_template_col_count) = compute_explicit_grid_size_in_axis(
@@ -13667,7 +13712,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +    } = subgrid::place_items(
 +        tree,
 +        node,
-@@ -305,4 +433,5 @@
+@@ -305,4 +435,5 @@
 -        auto_fit_container_size.width,
 -        auto_repeat_fit_strategy.width,
 -        |val, basis| tree.calc(val, basis),
@@ -13677,7 +13722,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        own_subgrid.as_ref(),
 +        align_items,
 +        justify_items,
-@@ -310,19 +438,0 @@
+@@ -310,19 +440,0 @@
 -    let (row_auto_repetition_count, grid_template_row_count) = compute_explicit_grid_size_in_axis(
 -        &style,
 -        auto_fit_container_size.height,
@@ -13697,11 +13742,11 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 -    name_resolver.set_explicit_column_count(explicit_col_count);
 -    name_resolver.set_explicit_row_count(explicit_row_count);
 -
-@@ -330 +440,2 @@
+@@ -330 +442,2 @@
 -    let mut detailed_column_line_names = name_resolver.detailed_line_names(AbsoluteAxis::Horizontal);
 +    let mut detailed_column_line_names =
 +        name_resolver.detailed_line_names(AbsoluteAxis::Horizontal);
-@@ -333,43 +444,16 @@
+@@ -333,43 +446,16 @@
 -    // 3. Create the grid items (in document order) and resolve the named lines in their `grid-row`/`grid-column` styles
 -    // Absolutely positioned children do not take part in grid placement and do not create implicit tracks,
 -    // so they are excluded here. Each child's style is read and its named lines resolved exactly once; the
@@ -13761,7 +13806,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                .resolve_or_zero(inner_node_size.height, |val, basis| tree.calc(val, basis))
 +        }),
 +    };
-@@ -382,17 +466,26 @@
+@@ -382,17 +468,26 @@
 -    initialize_grid_tracks(
 -        &mut columns,
 -        final_col_counts,
@@ -13805,7 +13850,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +    let table_collapse = style
 +        .table_collapsed_tracks()
 +        .map(|(axis, rows)| (axis, rows.to_vec()));
-@@ -404,0 +498,40 @@
+@@ -404,0 +500,40 @@
 +    // KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12) is not
 +    // part of the unfragmented track sizing; a size a parent measured with it excludes it.
 +    let growth = fragmentation_growth::Growth::read(
@@ -13846,7 +13891,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        subgrid::apply_subgrid_floors(&mut rows, &subgrid_edges, false, final_row_counts);
 +    }
 +
-@@ -410,0 +544,57 @@
+@@ -410,0 +546,57 @@
 +    // KaminIDE patch: `margin-trim` сетки (css-box-4 §margin-trim, «Grid
 +    // Containers»): обнуляются поля элементов у краёв контейнера — в первой
 +    // и последней ЖИВОЙ дорожке каждой оси; схлопнутые (`auto-fit` без
@@ -13904,7 +13949,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        }
 +    }
 +
-@@ -414,0 +605,15 @@
+@@ -414,0 +607,15 @@
 +    // Native cyclic-size and auto-margin guards apply to both baseline groups.
 +    // Preserve distinct fallback edges when removing an item from a group.
 +    for item in &mut items {
@@ -13920,7 +13965,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            };
 +        }
 +    }
-@@ -416 +621,23 @@
+@@ -416 +623,23 @@
 -    let has_baseline_aligned_item = items.iter().any(|item| item.participates_in_baseline_alignment());
 +    let has_baseline_aligned_item = items
 +        .iter()
@@ -13945,30 +13990,54 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        );
 +    }
 +    let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
-@@ -419 +646 @@
+@@ -419,18 +648,28 @@
 -    track_sizing_algorithm(
-+    track_sizing_algorithm_async(
-@@ -430 +657 @@
+-        tree,
+-        AbstractAxis::Inline,
+-        inner_min_size.get(AbstractAxis::Inline),
+-        inner_max_size.get(AbstractAxis::Inline),
+-        justify_content,
+-        align_content,
+-        available_grid_space,
+-        inner_node_size,
+-        &mut columns,
+-        &mut rows,
 -        &mut items,
-+        &mut items[..inline_count],
-@@ -432 +659,3 @@
+-        |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
 -            track.max_track_sizing_function.definite_value(parent_size, |val, basis| tree.calc(val, basis))
-+            track
-+                .max_track_sizing_function
-+                .definite_value(parent_size, |val, basis| tree.calc(val, basis))
-@@ -434,3 +663,8 @@
+-        },
 -        has_baseline_aligned_item,
 -    );
 -    let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
-+        // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
-+        // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
-+        // только группы по оси x (`resolve_item_baselines_x`).
-+        has_justify_baseline_item,
-+        stack,
-+    )
-+    .await;
++    stack
++        .run(|stack| {
++            track_sizing_algorithm_async(
++                tree,
++                AbstractAxis::Inline,
++                inner_min_size.get(AbstractAxis::Inline),
++                inner_max_size.get(AbstractAxis::Inline),
++                justify_content,
++                align_content,
++                available_grid_space,
++                inner_node_size,
++                &mut columns,
++                &mut rows,
++                &mut items[..inline_count],
++                |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
++                    track
++                        .max_track_sizing_function
++                        .definite_value(parent_size, |val, basis| tree.calc(val, basis))
++                },
++                // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
++                // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
++                // только группы по оси x (`resolve_item_baselines_x`).
++                has_justify_baseline_item,
++                stack,
++            )
++        })
++        .await;
 +    let initial_column_sum = track_sum::base_size_sum(&columns);
-@@ -449 +683,20 @@
+@@ -449 +688,20 @@
 -    items.iter_mut().for_each(|item| item.grid_area_size_cache = None);
 +    items
 +        .iter_mut()
@@ -13990,29 +14059,52 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        );
 +    }
 +    let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
-@@ -452 +705,3 @@
+@@ -452,16 +710,23 @@
 -    track_sizing_algorithm(
-+    // KaminIDE patch: row baselines are resolved in the row pass, once the column widths are known
-+    // (see `track_sizing::resolve_item_baselines`).
-+    track_sizing_algorithm_async(
-@@ -463 +718 @@
+-        tree,
+-        AbstractAxis::Block,
+-        inner_min_size.get(AbstractAxis::Block),
+-        inner_max_size.get(AbstractAxis::Block),
+-        align_content,
+-        justify_content,
+-        available_grid_space,
+-        inner_node_size,
+-        &mut rows,
+-        &mut columns,
 -        &mut items,
-+        &mut items[..block_count],
-@@ -465,3 +720,5 @@
+-        |track: &GridTrack, _, _| Some(track.base_size),
 -        false, // TODO: Support baseline alignment in the vertical axis
 -    );
 -    let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
-+        has_baseline_aligned_item,
-+        stack,
-+    )
-+    .await;
++    // KaminIDE patch: row baselines are resolved in the row pass, once the column widths are known
++    // (see `track_sizing::resolve_item_baselines`).
++    stack
++        .run(|stack| {
++            track_sizing_algorithm_async(
++                tree,
++                AbstractAxis::Block,
++                inner_min_size.get(AbstractAxis::Block),
++                inner_max_size.get(AbstractAxis::Block),
++                align_content,
++                justify_content,
++                available_grid_space,
++                inner_node_size,
++                &mut rows,
++                &mut columns,
++                &mut items[..block_count],
++                |track: &GridTrack, _, _| Some(track.base_size),
++                has_baseline_aligned_item,
++                stack,
++            )
++        })
++        .await;
 +    let initial_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
-@@ -473,0 +731 @@
+@@ -473,0 +739 @@
 +    let visible_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
-@@ -479 +737 @@
+@@ -479 +745 @@
 -            .unwrap_or_else(|| initial_column_sum + content_box_inset.horizontal_axis_sum())
 +            .unwrap_or_else(|| visible_column_sum + content_box_inset.horizontal_axis_sum())
-@@ -489,2 +747,18 @@
+@@ -489,2 +755,18 @@
 -        width: f32_max(0.0, container_border_box.width - content_box_inset.horizontal_axis_sum()),
 -        height: f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum()),
 +        width: f32_max(
@@ -14033,7 +14125,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        min: min_size,
 +        max: max_size,
 +        padding_border: padding_border_size,
-@@ -495 +769,8 @@
+@@ -495 +777,8 @@
 -        return LayoutOutput::from_outer_size(container_border_box);
 +        return LayoutOutput::from_outer_size(growth.container(
 +            container_border_box,
@@ -14043,10 +14135,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            },
 +            &growth_limits,
 +        ));
-@@ -500 +781 @@
+@@ -500 +789 @@
 -    inner_node_size = container_content_box.map(Some);
 +    inner_node_size = growth.unfragmented_size(container_content_box.map(Some), given_size);
-@@ -513,0 +795,16 @@
+@@ -513,0 +803,16 @@
 +    // KaminIDE patch: ряды размерены — подсеткам обе оси (их вклад в колонки
 +    // при повторном проходе меряется уже по своим рядам).
 +    if has_subgrids {
@@ -14063,7 +14155,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            flow,
 +        );
 +    }
-@@ -516,2 +813,6 @@
+@@ -516,2 +821,6 @@
 -        intrinsic_column_contribution_changed =
 -            items.iter_mut().filter(|item| item.crosses_intrinsic_column).fold(false, |any_changed, item| {
 +        intrinsic_column_contribution_changed = crate::traversal::fold(
@@ -14072,7 +14164,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            }),
 +            false,
 +            async |any_changed, item| {
-@@ -527,4 +828,12 @@
+@@ -527,4 +836,12 @@
 -                let new_min_content_contribution =
 -                    item.min_content_contribution(AbstractAxis::Inline, tree, grid_area_size, available_space);
 -
@@ -14089,27 +14181,50 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +
 +                let has_changed =
 +                    Some(new_min_content_contribution) != item.min_content_contribution_cache.width;
-@@ -538 +847,3 @@
+@@ -538 +855,3 @@
 -            });
 +            },
 +        )
 +        .await;
-@@ -568,0 +880 @@
+@@ -568,0 +888 @@
 +        let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
-@@ -570 +882,2 @@
+@@ -570,15 +890,36 @@
 -        track_sizing_algorithm(
-+        // KaminIDE patch: x-baseline shims are not re-resolved on the re-run.
-+        track_sizing_algorithm_async(
-@@ -581 +894 @@
+-            tree,
+-            AbstractAxis::Inline,
+-            inner_min_size.get(AbstractAxis::Inline),
+-            inner_max_size.get(AbstractAxis::Inline),
+-            justify_content,
+-            align_content,
+-            available_grid_space,
+-            inner_node_size,
+-            &mut columns,
+-            &mut rows,
 -            &mut items,
-+            &mut items[..inline_count],
-@@ -583,2 +896,19 @@
+-            |track: &GridTrack, _, _| Some(track.base_size),
 -            has_baseline_aligned_item,
 -        );
-+            false,
-+            stack,
-+        )
-+        .await;
++        // KaminIDE patch: x-baseline shims are not re-resolved on the re-run.
++        stack
++            .run(|stack| {
++                track_sizing_algorithm_async(
++                    tree,
++                    AbstractAxis::Inline,
++                    inner_min_size.get(AbstractAxis::Inline),
++                    inner_max_size.get(AbstractAxis::Inline),
++                    justify_content,
++                    align_content,
++                    available_grid_space,
++                    inner_node_size,
++                    &mut columns,
++                    &mut rows,
++                    &mut items[..inline_count],
++                    |track: &GridTrack, _, _| Some(track.base_size),
++                    false,
++                    stack,
++                )
++            })
++            .await;
 +
 +        if has_subgrids {
 +            subgrid::publish_subgrid_tracks(
@@ -14125,7 +14240,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                flow,
 +            );
 +        }
-@@ -590,2 +920,6 @@
+@@ -590,2 +931,6 @@
 -            intrinsic_row_contribution_changed =
 -                items.iter_mut().filter(|item| item.crosses_intrinsic_row).fold(false, |any_changed, item| {
 +            intrinsic_row_contribution_changed = crate::traversal::fold(
@@ -14134,7 +14249,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                }),
 +                false,
 +                async |any_changed, item| {
-@@ -601,4 +935,12 @@
+@@ -601,4 +946,12 @@
 -                    let new_min_content_contribution =
 -                        item.min_content_contribution(AbstractAxis::Block, tree, grid_area_size, available_space);
 -
@@ -14151,39 +14266,62 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +
 +                    let has_changed = Some(new_min_content_contribution)
 +                        != item.min_content_contribution_cache.height;
-@@ -612 +954,3 @@
+@@ -612 +965,3 @@
 -                });
 +                },
 +            )
 +            .await;
-@@ -617,0 +962 @@
+@@ -617,0 +973 @@
 +        let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
-@@ -619 +964 @@
+@@ -619,15 +975,20 @@
 -        track_sizing_algorithm(
-+        track_sizing_algorithm_async(
-@@ -630 +975 @@
+-            tree,
+-            AbstractAxis::Block,
+-            inner_min_size.get(AbstractAxis::Block),
+-            inner_max_size.get(AbstractAxis::Block),
+-            align_content,
+-            justify_content,
+-            available_grid_space,
+-            inner_node_size,
+-            &mut rows,
+-            &mut columns,
 -            &mut items,
-+            &mut items[..block_count],
-@@ -632,2 +977,4 @@
+-            |track: &GridTrack, _, _| Some(track.base_size),
 -            false, // TODO: Support baseline alignment in the vertical axis
 -        );
-+            has_baseline_aligned_item,
-+            stack,
-+        )
-+        .await;
-@@ -639,2 +986,2 @@
++        stack
++            .run(|stack| {
++                track_sizing_algorithm_async(
++                    tree,
++                    AbstractAxis::Block,
++                    inner_min_size.get(AbstractAxis::Block),
++                    inner_max_size.get(AbstractAxis::Block),
++                    align_content,
++                    justify_content,
++                    available_grid_space,
++                    inner_node_size,
++                    &mut rows,
++                    &mut columns,
++                    &mut items[..block_count],
++                    |track: &GridTrack, _, _| Some(track.base_size),
++                    has_baseline_aligned_item,
++                    stack,
++                )
++            })
++            .await;
+@@ -639,2 +1000,2 @@
 -        let final_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
 -        let final_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
 +        let final_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
 +        let final_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
-@@ -648,2 +995,4 @@
+@@ -648,2 +1009,4 @@
 -            container_content_box.width =
 -                f32_max(0.0, container_border_box.width - content_box_inset.horizontal_axis_sum());
 +            container_content_box.width = f32_max(
 +                0.0,
 +                container_border_box.width - content_box_inset.horizontal_axis_sum(),
 +            );
-@@ -658,5 +1007,15 @@
+@@ -658,5 +1021,15 @@
 -            container_content_box.height =
 -                f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum());
 -        }
@@ -14204,7 +14342,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            height: table_collapse::visible_sum(&rows, table_collapse.as_ref(), false),
 +        }
 +    };
-@@ -665,3 +1024,26 @@
+@@ -665,3 +1038,26 @@
 -        return LayoutOutput::from_outer_size(container_border_box);
 -    }
 -
@@ -14234,17 +14372,17 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +    // CSS Tables 3: collapse only after the full logical grid has been sized.
 +    table_collapse::apply(&mut columns, table_collapse.as_ref(), true);
 +    table_collapse::apply(&mut rows, table_collapse.as_ref(), false);
-@@ -671,2 +1053,4 @@
+@@ -671,2 +1067,4 @@
 -    let inline_size_without_scrollbar = f32_max(container_border_box.width - padding_border_size.width, 0.0);
 -    let inline_scrollbar_gutter_for_alignment = f32_min(scrollbar_gutter.x, inline_size_without_scrollbar);
 +    let inline_size_without_scrollbar =
 +        f32_max(container_border_box.width - padding_border_size.width, 0.0);
 +    let inline_scrollbar_gutter_for_alignment =
 +        f32_min(scrollbar_gutter.x, inline_size_without_scrollbar);
-@@ -674 +1058 @@
+@@ -674 +1072 @@
 -        container_content_box.get(AbstractAxis::Inline),
 +        alignment_basis.get(AbstractAxis::Inline),
-@@ -676,2 +1060,12 @@
+@@ -676,2 +1074,12 @@
 -            start: padding.left + if direction.is_rtl() { inline_scrollbar_gutter_for_alignment } else { 0.0 },
 -            end: padding.right + if direction.is_rtl() { 0.0 } else { inline_scrollbar_gutter_for_alignment },
 +            start: padding.left
@@ -14259,13 +14397,13 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                } else {
 +                    inline_scrollbar_gutter_for_alignment
 +                },
-@@ -679 +1073,4 @@
+@@ -679 +1087,4 @@
 -        Line { start: border.left, end: border.right },
 +        Line {
 +            start: border.left,
 +            end: border.right,
 +        },
-@@ -686,3 +1083,9 @@
+@@ -686,3 +1097,9 @@
 -        container_content_box.get(AbstractAxis::Block),
 -        Line { start: padding.top, end: padding.bottom },
 -        Line { start: border.top, end: border.bottom },
@@ -14278,10 +14416,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            start: border.top,
 +            end: border.bottom,
 +        },
-@@ -691 +1094 @@
+@@ -691 +1108 @@
 -        false,
 +        flow.height,
-@@ -692,0 +1096,33 @@
+@@ -692,0 +1110,33 @@
 +
 +    // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры
 +    // по смещениям (доля распределения содержимого входит в зазоры).
@@ -14315,15 +14453,15 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +    // KaminIDE patch: `subgrid::partition_for_axis` permutes the items, so restore document order
 +    // (upstream #1200 otherwise keeps it; the out-of-flow merge below relies on it).
 +    items.sort_by_key(|item| item.source_order);
-@@ -704 +1140,4 @@
+@@ -704 +1154,4 @@
 -    let container_alignment_styles = InBothAbsAxis { horizontal: justify_items, vertical: align_items };
 +    let container_alignment_styles = InBothAbsAxis {
 +        horizontal: justify_items,
 +        vertical: align_items,
 +    };
-@@ -706,0 +1146 @@
+@@ -706,0 +1160 @@
 +    let mut baseline_x_items: Vec<(u16, Line<Option<f32>>)> = Vec::new();
-@@ -708,8 +1148,59 @@
+@@ -708,8 +1162,62 @@
 -        // Tracks are stored in logical order. In RTL the physical offsets are assigned
 -        // right-to-left, so an item's physical left edge is derived from its logical end
 -        // line and its physical right edge from its logical start line.
@@ -14339,48 +14477,51 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        let item_alignment_styles = container_alignment_styles;
 +        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
 +        let (overflow_contribution, y_position, height, first_baseline, last_baseline, x_lines) =
-+            align_and_position_item_async(
-+                tree,
-+                item.node,
-+                index as u32,
-+                grid_area,
-+                Size {
-+                    width: grid_area.right - grid_area.left,
-+                    height: grid_area.bottom - grid_area.top,
-+                },
-+                table_collapse.as_ref().map(|(horizontal, _)| {
-+                    if *horizontal {
-+                        AbstractAxis::Inline
-+                    } else {
-+                        AbstractAxis::Block
-+                    }
-+                }),
-+                item_alignment_styles,
-+                Rect {
-+                    // KaminIDE patch: a baseline table cell is placed as
-+                    // `stretch` (its box fills the row); the shim moves its
-+                    // content instead (CSS 2.1 §17.5.3).
-+                    top: if item.table_cell_baseline {
-+                        0.0
-+                    } else {
-+                        item.baseline_shim
-+                    },
-+                    bottom: item.baseline_shim_end,
-+                    left: item.baseline_shim_x,
-+                    right: item.baseline_shim_x_end,
-+                },
-+                item.baseline_x_flags & 1 != 0,
-+                item.margin_trim,
-+                direction,
-+                Direction::Ltr,
-+                container_border_box.width,
-+                border,
-+                #[cfg(feature = "content_size")]
-+                is_scroll_container,
-+                &mut item.oof_candidates,
-+                stack,
-+            )
-+            .await;
++            stack
++                .run(|stack| {
++                    align_and_position_item_async(
++                        tree,
++                        item.node,
++                        index as u32,
++                        grid_area,
++                        Size {
++                            width: grid_area.right - grid_area.left,
++                            height: grid_area.bottom - grid_area.top,
++                        },
++                        table_collapse.as_ref().map(|(horizontal, _)| {
++                            if *horizontal {
++                                AbstractAxis::Inline
++                            } else {
++                                AbstractAxis::Block
++                            }
++                        }),
++                        item_alignment_styles,
++                        Rect {
++                            // KaminIDE patch: a baseline table cell is placed as
++                            // `stretch` (its box fills the row); the shim moves its
++                            // content instead (CSS 2.1 §17.5.3).
++                            top: if item.table_cell_baseline {
++                                0.0
++                            } else {
++                                item.baseline_shim
++                            },
++                            bottom: item.baseline_shim_end,
++                            left: item.baseline_shim_x,
++                            right: item.baseline_shim_x_end,
++                        },
++                        item.baseline_x_flags & 1 != 0,
++                        item.margin_trim,
++                        direction,
++                        Direction::Ltr,
++                        container_border_box.width,
++                        border,
++                        #[cfg(feature = "content_size")]
++                        is_scroll_container,
++                        &mut item.oof_candidates,
++                        stack,
++                    )
++                })
++                .await;
 +        item.y_position = y_position;
 +        if x_lines.start.is_some() || x_lines.end.is_some() {
 +            baseline_x_items.push((item.source_order, x_lines));
@@ -14391,7 +14532,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +        if item.table_cell_baseline {
 +            let shim = if item.participates_in_baseline_alignment() {
 +                item.baseline_shim
-@@ -717,26 +1208,9 @@
+@@ -717,26 +1225,9 @@
 -                columns[item.column_indexes.start as usize + 1].offset
 -            },
 -            right: if direction.is_rtl() {
@@ -14427,18 +14568,18 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            item.first_baseline = item.first_baseline.map(|b| b + shim);
 +            item.last_baseline = item.last_baseline.map(|b| b + shim);
 +        }
-@@ -754 +1228 @@
+@@ -754 +1245 @@
 -    (0..tree.child_count(node)).for_each(|index| {
 +    crate::traversal::for_each(0..tree.child_count(node), async |index| {
-@@ -767 +1241 @@
+@@ -767 +1258 @@
 -            tree.perform_child_layout(
 +            tree.perform_child_layout_async(
-@@ -774 +1248,3 @@
+@@ -774 +1265,3 @@
 -            );
 +                stack,
 +            )
 +            .await;
-@@ -786,7 +1262,8 @@
+@@ -786,7 +1279,8 @@
 -            let justify_self = child_style.justify_self().unwrap_or(justify_items).resolve_self_relative(
 -                item_direction,
 -                direction,
@@ -14454,9 +14595,9 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                .align_self()
 +                .unwrap_or(align_items)
 +                .resolve_self_relative(item_direction, direction, false);
-@@ -808,0 +1286 @@
+@@ -808,0 +1303 @@
 +                    flow.height,
-@@ -815 +1293,7 @@
+@@ -815 +1310,7 @@
 -                    left: border.left + padding.left + if direction.is_rtl() { scrollbar_gutter.x } else { 0.0 },
 +                    left: border.left
 +                        + padding.left
@@ -14465,28 +14606,28 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                        } else {
 +                            0.0
 +                        },
-@@ -819 +1303,5 @@
+@@ -819 +1320,5 @@
 -                        - if direction.is_rtl() { 0.0 } else { scrollbar_gutter.x },
 +                        - if direction.is_rtl() {
 +                            0.0
 +                        } else {
 +                            scrollbar_gutter.x
 +                        },
-@@ -821 +1309,4 @@
+@@ -821 +1326,4 @@
 -                    bottom: container_border_box.height - border.bottom - padding.bottom - scrollbar_gutter.y,
 +                    bottom: container_border_box.height
 +                        - border.bottom
 +                        - padding.bottom
 +                        - scrollbar_gutter.y,
-@@ -833 +1324,4 @@
+@@ -833 +1341,4 @@
 -                        Line { start: area.left, end: area.right },
 +                        Line {
 +                            start: area.left,
 +                            end: area.right,
 +                        },
-@@ -835,0 +1330 @@
+@@ -835,0 +1347 @@
 +                    // KaminIDE patch: writing modes may reverse the physical row axis too.
-@@ -838,2 +1333,5 @@
+@@ -838,2 +1350,5 @@
 -                        Line { start: area.top, end: area.bottom },
 -                        false,
 +                        Line {
@@ -14494,11 +14635,11 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                            end: area.bottom,
 +                        },
 +                        flow.height,
-@@ -846 +1344,2 @@
+@@ -846 +1361,2 @@
 -    });
 +    })
 +    .await;
-@@ -850,2 +1349,10 @@
+@@ -850,2 +1366,10 @@
 -            left: if direction.is_rtl() { scrollbar_gutter.x } else { 0.0 },
 -            right: if direction.is_rtl() { 0.0 } else { scrollbar_gutter.x },
 +            left: if direction.is_rtl() {
@@ -14511,50 +14652,50 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            } else {
 +                scrollbar_gutter.x
 +            },
-@@ -856 +1363,4 @@
+@@ -856 +1380,4 @@
 -    let absolute_position_offset = Point { x: absolute_position_inset.left, y: absolute_position_inset.top };
 +    let absolute_position_offset = Point {
 +        x: absolute_position_inset.left,
 +        y: absolute_position_inset.top,
 +    };
-@@ -859,2 +1369,4 @@
+@@ -859,2 +1386,4 @@
 -    let areas =
 -        name_resolver.populate_detailed_line_resolvers(&mut detailed_row_line_names, &mut detailed_column_line_names);
 +    let areas = name_resolver.populate_detailed_line_resolvers(
 +        &mut detailed_row_line_names,
 +        &mut detailed_column_line_names,
 +    );
-@@ -863,0 +1376 @@
+@@ -863,0 +1393 @@
 +            axis_reversed: flow,
-@@ -874 +1387,4 @@
+@@ -874 +1404,4 @@
 -            items: items.iter().map(DetailedGridItemsInfo::from_grid_item).collect(),
 +            items: items
 +                .iter()
 +                .map(DetailedGridItemsInfo::from_grid_item)
 +                .collect(),
-@@ -879,2 +1395,4 @@
+@@ -879,2 +1412,4 @@
 -    let oof_positioning_area =
 -        Some(OofPositioningArea { size: absolute_position_area, offset: absolute_position_offset });
 +    let oof_positioning_area = Some(OofPositioningArea {
 +        size: absolute_position_area,
 +        offset: absolute_position_offset,
 +    });
-@@ -888 +1406,5 @@
+@@ -888 +1423,5 @@
 -                overflow_rect.right += if direction.is_rtl() { padding.left } else { padding.right };
 +                overflow_rect.right += if direction.is_rtl() {
 +                    padding.left
 +                } else {
 +                    padding.right
 +                };
-@@ -900 +1422 @@
+@@ -900 +1439 @@
 -    // Determine the grid container baseline(s) (currently we only compute the first baseline)
 +    // KaminIDE patch: first and last container baselines (css-grid-2 §10.8, `container_baselines.rs`).
-@@ -902,2 +1424,2 @@
+@@ -902,2 +1441,2 @@
 -    let grid_container_baseline: Option<f32> = if contain.suppresses_baseline() {
 -        None
 +    let container_baselines = if contain.suppresses_baseline() {
 +        Baselines::NONE
-@@ -905,14 +1427 @@
+@@ -905,14 +1444 @@
 -        // Get the row index of the first row containing items
 -        let first_row = items.iter().map(|item| item.row_indexes.start).min().unwrap();
 -
@@ -14570,17 +14711,17 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 -
 -        Some(item.y_position + item.baseline.unwrap_or(item.height))
 +        container_baselines::compute(&items)
-@@ -928 +1437,5 @@
+@@ -928 +1454,5 @@
 -            overflow_rect.right += if direction.is_rtl() { padding.left } else { padding.right };
 +            overflow_rect.right += if direction.is_rtl() {
 +                padding.left
 +            } else {
 +                padding.right
 +            };
-@@ -936 +1449 @@
+@@ -936 +1466 @@
 -    let mut output = LayoutOutput::from_sizes_and_baselines(
 +    let mut output = LayoutOutput::from_sizes_and_all_baselines(
-@@ -939 +1452,19 @@
+@@ -939 +1469,19 @@
 -        Baselines::from_first(grid_container_baseline),
 +        container_baselines,
 +        // KaminIDE patch: vertical content exports physical-x baselines (a vertical table's first
@@ -14601,26 +14742,26 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                    .and_then(|(_, l)| l.end),
 +            }
 +        },
-@@ -962,0 +1494 @@
+@@ -962,0 +1511 @@
 +    rows_reversed: bool,
-@@ -974 +1506,2 @@
+@@ -974 +1523,2 @@
 -            maybe_grid_line.and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_col_counts))
 +            maybe_grid_line
 +                .and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_col_counts))
-@@ -983 +1516,2 @@
+@@ -983 +1533,2 @@
 -            maybe_grid_line.and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_row_counts))
 +            maybe_grid_line
 +                .and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_row_counts))
-@@ -1041 +1575,4 @@
+@@ -1041 +1592,4 @@
 -            maybe_col_indexes.start.map(|index| line_as_start_edge(columns, index)).unwrap_or(border.left),
 +            maybe_col_indexes
 +                .start
 +                .map(|index| line_as_start_edge(columns, index))
 +                .unwrap_or(border.left),
-@@ -1048,0 +1586,2 @@
+@@ -1048,0 +1603,2 @@
 +    // KaminIDE patch: rows are physically reversed (bottom-to-top) by a writing mode; their offsets are
 +    // then assigned like RTL columns.
-@@ -1050,5 +1589,14 @@
+@@ -1050,5 +1606,14 @@
 -        top: maybe_row_indexes.start.map(|index| line_as_start_edge(rows, index)).unwrap_or(border.top),
 -        bottom: maybe_row_indexes
 -            .end
@@ -14640,13 +14781,13 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            maybe_row_indexes.end.map(|i| line_as_end_edge(rows, i))
 +        }
 +        .unwrap_or(container_border_box.height - border.bottom - scrollbar_gutter.y),
-@@ -1062,0 +1611,2 @@
+@@ -1062,0 +1628,2 @@
 +    /// KaminIDE patch: physical ordering of rows and columns after writing-mode conversion.
 +    pub axis_reversed: Size<bool>,
-@@ -1070 +1620 @@
+@@ -1070 +1637 @@
 -    areas: GridAreasMap<S>,
 +    pub(crate) areas: GridAreasMap<S>,
-@@ -1102 +1652,6 @@
+@@ -1102 +1669,6 @@
 -            .map(|line| line.and_then(|line| line.try_into_track_vec_index(track_counts).map(|index| index / 2)));
 +            .map(|line| {
 +                line.and_then(|line| {
@@ -14654,21 +14795,21 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                        .map(|index| index / 2)
 +                })
 +            });
-@@ -1108 +1663,5 @@
+@@ -1108 +1680,5 @@
 -                    .or_else(|| self.positions.last().map(|track| if is_reversed { track.start } else { track.end }))
 +                    .or_else(|| {
 +                        self.positions
 +                            .last()
 +                            .map(|track| if is_reversed { track.start } else { track.end })
 +                    })
-@@ -1111 +1670,5 @@
+@@ -1111 +1687,5 @@
 -            .unwrap_or(if is_reversed { padding_end } else { padding_start });
 +            .unwrap_or(if is_reversed {
 +                padding_end
 +            } else {
 +                padding_start
 +            });
-@@ -1118 +1681,9 @@
+@@ -1118 +1698,9 @@
 -                    .or_else(|| self.positions.first().map(|track| if is_reversed { track.end } else { track.start }))
 +                    .or_else(|| {
 +                        self.positions.first().map(|track| {
@@ -14679,26 +14820,26 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +                            }
 +                        })
 +                    })
-@@ -1121 +1692,5 @@
+@@ -1121 +1709,5 @@
 -            .unwrap_or(if is_reversed { padding_start } else { padding_end });
 +            .unwrap_or(if is_reversed {
 +                padding_start
 +            } else {
 +                padding_end
 +            });
-@@ -1126 +1701,4 @@
+@@ -1126 +1718,4 @@
 -            Line { start: f32_min(start_position, end_position), end: start_position }
 +            Line {
 +                start: f32_min(start_position, end_position),
 +                end: start_position,
 +            }
-@@ -1128 +1706,4 @@
+@@ -1128 +1723,4 @@
 -            Line { start: start_position, end: f32_max(start_position, end_position) }
 +            Line {
 +                start: start_position,
 +                end: f32_max(start_position, end_position),
 +            }
-@@ -1134,2 +1715,7 @@
+@@ -1134,2 +1732,7 @@
 -        let range_index = self.collapsed_tracks.partition_point(|range| range.end <= index);
 -        let range = self.collapsed_tracks.get(range_index).filter(|range| range.contains(&index));
 +        let range_index = self
@@ -14708,28 +14849,28 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 +            .collapsed_tracks
 +            .get(range_index)
 +            .filter(|range| range.contains(&index));
-@@ -1138 +1724,5 @@
+@@ -1138 +1741,5 @@
 -                let adjacent = if is_start { Some(range.end) } else { range.start.checked_sub(1) };
 +                let adjacent = if is_start {
 +                    Some(range.end)
 +                } else {
 +                    range.start.checked_sub(1)
 +                };
-@@ -1157 +1747,5 @@
+@@ -1157 +1764,5 @@
 -    pub fn write_grid_template_rows(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_grid_template_rows(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1165 +1759,5 @@
+@@ -1165 +1776,5 @@
 -    pub fn write_grid_template_columns(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_grid_template_columns(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1182,47 +1780,2 @@
+@@ -1182,47 +1797,2 @@
 -
 -    /// Resolve the physical grid area for an absolutely positioned box from its grid placement.
 -    /// The padding box and returned area use coordinates relative to the grid container's border box.
@@ -14779,56 +14920,56 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..c93f78514a8b17a610a8a44f07562181
 -    }
 +    // KaminIDE patch: `resolve_absolute_grid_area` and `item_grid_area` live in `grid_info_geometry.rs`
 +    // (both support physically reversed axes).
-@@ -1266 +1819,3 @@
+@@ -1266 +1836,3 @@
 -    fn positions_from_grid_track_layout(grid_tracks: &[GridTrack]) -> (Vec<Line<f32>>, Vec<Range<usize>>) {
 +    fn positions_from_grid_track_layout(
 +        grid_tracks: &[GridTrack],
 +    ) -> (Vec<Line<f32>>, Vec<Range<usize>>) {
-@@ -1269 +1824,4 @@
+@@ -1269 +1841,4 @@
 -        for track in grid_tracks.iter().filter(|track| track.kind == GridTrackKind::Track) {
 +        for track in grid_tracks
 +            .iter()
 +            .filter(|track| track.kind == GridTrackKind::Track)
 +        {
-@@ -1277 +1835,4 @@
+@@ -1277 +1852,4 @@
 -            positions.push(Line { start: track.offset, end: track.offset + track.base_size });
 +            positions.push(Line {
 +                start: track.offset,
 +                end: track.offset + track.base_size,
 +            });
-@@ -1288 +1849,2 @@
+@@ -1288 +1866,2 @@
 -        let (positions, collapsed_tracks) = DetailedGridTracksInfo::<S>::positions_from_grid_track_layout(&grid_tracks);
 +        let (positions, collapsed_tracks) =
 +            DetailedGridTracksInfo::<S>::positions_from_grid_track_layout(&grid_tracks);
-@@ -1291 +1853,5 @@
+@@ -1291 +1870,5 @@
 -        let empty_axis_line = if positions.is_empty() { grid_tracks.first().map(|track| track.offset) } else { None };
 +        let empty_axis_line = if positions.is_empty() {
 +            grid_tracks.first().map(|track| track.offset)
 +        } else {
 +            None
 +        };
-@@ -1322 +1888,2 @@
+@@ -1322 +1905,2 @@
 -        let trailing_empty = total_line_count.saturating_sub(leading_empty + self.line_names.line_count());
 +        let trailing_empty =
 +            total_line_count.saturating_sub(leading_empty + self.line_names.line_count());
-@@ -1330 +1897,5 @@
+@@ -1330 +1914,5 @@
 -    pub fn write_track_list(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_track_list(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1332 +1903,4 @@
+@@ -1332 +1920,4 @@
 -        fn write_line_names<S: CheapCloneStr>(out: &mut impl core::fmt::Write, names: &[S]) -> core::fmt::Result {
 +        fn write_line_names<S: CheapCloneStr>(
 +            out: &mut impl core::fmt::Write,
 +            names: &[S],
 +        ) -> core::fmt::Result {
-@@ -1377 +1951,2 @@
+@@ -1377 +1968,2 @@
 -        self.write_track_list(&mut out, zoom).expect("writing to a String cannot fail");
 +        self.write_track_list(&mut out, zoom)
 +            .expect("writing to a String cannot fail");
-@@ -1416,0 +1992,2 @@
+@@ -1416,0 +2009,2 @@
 +
 +mod baseline_orientation;
 diff --git a/vendor/taffy/src/compute/grid/nested_standalone_size.rs b/vendor/taffy/src/compute/grid/nested_standalone_size.rs
