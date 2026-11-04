@@ -199,10 +199,24 @@ impl TaffyLayoutEngine {
         zero && child_layout.size.height > 0.0 && self.own_margins(child, top)
     }
 
-    /// Add an exact leaf made by `exact_leaf` to this frame's tree.
+    /// Add an exact leaf made by `exact_leaf` to this frame's tree. It is a
+    /// plain leaf of the frame tree (`retained`): a leaf of an equal style at
+    /// the same request position keeps its node and cache.
     pub(crate) fn request_exact_leaf(&mut self, leaf: &ExactLeaf) -> LayoutId {
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let style = self.styles.share(leaf.style());
-        self.taffy.new_leaf(style).expect(super::EXPECT_MESSAGE).into()
+        if let Some(id) = self.claim_leaf(&style) {
+            return id;
+        }
+        let id = match self.recycle() {
+            Some(node) => {
+                self.taffy
+                    .reset_node(node, style, &[], None)
+                    .expect(super::EXPECT_MESSAGE);
+                LayoutId(node)
+            }
+            None => self.taffy.new_leaf(style).expect(super::EXPECT_MESSAGE).into(),
+        };
+        self.created(id, None)
     }
 }

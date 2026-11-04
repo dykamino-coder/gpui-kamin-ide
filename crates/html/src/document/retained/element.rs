@@ -135,7 +135,10 @@ impl Element for Retained {
     ) -> (LayoutId, ()) {
         let before = window.next_frame_callback_count();
         let id = match self.tree.as_mut() {
-            Some(tree) => tree.request_layout(window, cx),
+            Some(tree) => {
+                let keys = self.builder.layout_keys;
+                window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
+            }
             None => window.request_layout(self.viewport_style(), None, cx),
         };
         self.scheduled += window.next_frame_callback_count().saturating_sub(before);

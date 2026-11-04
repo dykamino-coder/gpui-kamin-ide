@@ -5,7 +5,7 @@
 use super::Paragraph;
 use gpui::{Font, Pixels, Window};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct Strut {
     font: Font,
     size: Pixels,

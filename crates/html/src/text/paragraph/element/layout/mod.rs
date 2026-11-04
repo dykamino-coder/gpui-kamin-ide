@@ -6,6 +6,7 @@
 //! другое число строк, чем отрисовка.
 
 mod clamp;
+mod layout_key;
 mod measured_layout;
 mod normal_static;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
@@ -180,6 +181,9 @@ impl Paragraph {
         };
         // Узел раскладки держит замер до конца кадра: готовый щуп и поля для
         // его пересборки не хранятся вместе, место берёт только один из них.
+        if let Some(key) = self.layout_key(rebuild) {
+            window.set_next_layout_key(key);
+        }
         let mut source = if rebuild {
             Probe::Rebuild(make_probe)
         } else {

@@ -16,6 +16,8 @@ mod measured_box;
 mod exact_leaf;
 pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
+// KaminIDE patch: the frame tree survives frames (`retained`).
+mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
 mod final_geometry;
@@ -38,6 +40,9 @@ mod node_reserve_tests;
 
 #[cfg(test)]
 mod exact_leaf_tests;
+
+#[cfg(test)]
+mod retained_tests;
 
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
@@ -103,6 +108,8 @@ pub struct TaffyLayoutEngine {
     /// KaminIDE patch: the window's frame tree, sized by the frame's elements;
     /// independent subtrees hold only their own nodes.
     frame_tree: bool,
+    /// KaminIDE patch: request history that lets the frame tree survive frames.
+    retained: retained::Retained,
     /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
     styles: style_share::StyleShare,
 }
@@ -144,6 +151,7 @@ impl TaffyLayoutEngine {
             computed_layouts: FxHashSet::default(),
             layout_bounds_scratch_space: Vec::new(),
             frame_tree: false,
+            retained: retained::Retained::default(),
             styles: Default::default(),
         }
     }
@@ -166,8 +174,13 @@ impl TaffyLayoutEngine {
 
     pub fn clear(&mut self) {
         self.final_geometry = final_geometry::FinalGeometry::default();
-        self.taffy.clear();
-        self.styles.clear();
+        if self.frame_tree {
+            // The kept tree keeps its calc registry, so the sharing candidates stay valid.
+            self.retire();
+        } else {
+            self.taffy.clear();
+            self.styles.clear();
+        }
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
         self.root_origins.clear();
@@ -227,7 +240,21 @@ impl TaffyLayoutEngine {
         let taffy_style = self.styles.share(taffy_style);
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        if children.is_empty() {
+        // KaminIDE patch: a node with the inputs of a previous one keeps it.
+        let claimed = if children.is_empty() {
+            self.claim_leaf(&taffy_style)
+        } else {
+            self.claim_parent(&taffy_style, children)
+        };
+        if let Some(id) = claimed {
+            return id;
+        }
+        let id = if let Some(node) = self.recycle() {
+            self.taffy
+                .reset_node(node, taffy_style, LayoutId::to_taffy_slice(children), None)
+                .expect(EXPECT_MESSAGE);
+            LayoutId(node)
+        } else if children.is_empty() {
             self.taffy
                 .new_leaf(taffy_style)
                 .expect(EXPECT_MESSAGE)
@@ -238,7 +265,29 @@ impl TaffyLayoutEngine {
                 .new_with_children(taffy_style, LayoutId::to_taffy_slice(children))
                 .expect(EXPECT_MESSAGE)
                 .into()
+        };
+        self.created(id, None)
+    }
+
+    /// KaminIDE patch: the layout key of the next measured leaf request: it
+    /// must cover everything the leaf's measure function reads (`retained`).
+    pub fn set_next_layout_key(&mut self, key: u64) {
+        if self.retained.keys_enabled {
+            self.retained.next_key = Some(key);
         }
+    }
+
+    /// KaminIDE patch: whether layout keys are honoured; returns the previous value.
+    pub fn set_layout_keys(&mut self, enabled: bool) -> bool {
+        std::mem::replace(&mut self.retained.keys_enabled, enabled && self.frame_tree)
+    }
+
+    /// KaminIDE patch: drop the tree and its history (a discarded pass).
+    pub fn discard(&mut self) {
+        self.clear();
+        self.forget();
+        self.taffy.clear();
+        self.styles.clear();
     }
 
     pub fn request_measured_layout(
