@@ -189,12 +189,28 @@ impl FlowCx {
         }
     }
 
-    pub(crate) fn mark(&self, opts: &RenderOpts, out: usize) -> Mark {
+    /// Состояние до сборки ребёнка `e`; с записью чтений ширин, если его
+    /// запись повтора может пригодиться (`replay_worth_recording`).
+    pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if self.settled_outside_widths && !self.floats.get() {
+        if self.replay_worth_recording(e) {
             mark.widths = Some(Rc::default());
         }
         mark
+    }
+
+    /// Запись повтора ребёнка `e` может подойти следующей сборке. Она годится
+    /// только потоку того же ключа вне ширин, а блок, заполняющий ширину
+    /// (`plain::fills_width`), — ещё и тех же ширин. Пока ширины меняются от
+    /// сборки к сборке (ключ не устоялся), такая запись не встанет ни в один
+    /// кадр, а стоила бы обёртки, копии элемента, снятия раскладки, prepaint,
+    /// краски и заданий строк на каждый блок потока; поэтому её пишет первая
+    /// сборка с прежними ширинами. Так Blink `ShouldCreateSubsequence`
+    /// кэширует подпоследовательность только там, где повтор вероятен.
+    fn replay_worth_recording(&self, e: &Element) -> bool {
+        self.settled_outside_widths
+            && !self.floats.get()
+            && (self.settled || !super::plain::fills_width(e))
     }
 
     /// Обернуть только что собранный элемент ребёнка `e` записью, если его
@@ -218,13 +234,18 @@ impl FlowCx {
         if !single {
             return;
         }
+        // One copy of the block's element serves both records: a block ends
+        // up near the screen (replay) or far from it (skip), and the copy is
+        // all either keeps of the build input.
+        let copy = std::cell::OnceCell::new();
+        let element = || copy.get_or_init(|| Rc::new(e.clone())).clone();
         if self.settled
             && !edge
             && super::plain::plain(e)
             && let Some(child) = out.pop()
         {
             let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
-            super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
+            super::push(&self.reuse.pending, (pending.clone(), element()));
             out.push(Recorder::new(child, pending).hooked());
         }
         if let Some(widths) = mark.widths
@@ -238,10 +259,7 @@ impl FlowCx {
                 now.start,
                 widths,
             ));
-            super::push(
-                &self.reuse.pending_replays,
-                (pending.clone(), Box::new(e.clone())),
-            );
+            super::push(&self.reuse.pending_replays, (pending.clone(), element()));
             out.push(ReplayRecorder::new(child, pending).hooked());
         }
     }

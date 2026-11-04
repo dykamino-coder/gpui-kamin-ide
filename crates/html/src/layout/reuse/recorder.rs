@@ -48,7 +48,7 @@ impl Pending {
     /// инертно и был далеко от экрана `screen`.
     pub(super) fn finish(
         &self,
-        element: Box<Element>,
+        element: Rc<Element>,
         screen: Bounds<ScaledPixels>,
     ) -> Option<Record> {
         if !self.quiet.get() || !self.painted.get() || self.sink.tainted() {

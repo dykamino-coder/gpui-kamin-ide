@@ -162,7 +162,7 @@ pub(super) async fn blocks_flow(
                 flow.built(n);
                 continue;
             }
-            let mark = reuse.as_ref().map(|flow| flow.mark(opts, out.len()));
+            let mark = reuse.as_ref().map(|flow| flow.mark(e, opts, out.len()));
             let tracked = mark.as_ref().and_then(|mark| mark.child_opts(opts));
             paint_element(
                 stk,

@@ -81,8 +81,8 @@ pub struct ReuseStats {
 /// Пишется только для блока, бывшего далеко от экрана (`recorder::far`):
 /// запись ближнего блока не подошла бы ни одному кадру.
 pub(crate) struct Record {
-    /// Вход сборки блока; в куче, чтобы переходить из ожидания без копии.
-    element: Box<Element>,
+    /// Вход сборки блока; одна копия на блок, общая с записью повтора.
+    element: Rc<Element>,
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
@@ -109,10 +109,10 @@ pub(crate) struct FlowReuse {
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
     /// Ожидающие записи с элементами своих блоков.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Box<Element>)>>,
+    pending: RefCell<Vec<(Rc<recorder::Pending>, Rc<Element>)>>,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
-    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Box<Element>)>>,
+    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Rc<Element>)>>,
     replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
 }

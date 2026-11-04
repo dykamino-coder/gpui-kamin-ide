@@ -44,7 +44,7 @@ pub(super) struct Ranges {
 
 /// Запись повтора: вход сборки блока и диапазоны его последнего кадра.
 pub(crate) struct ReplayRecord {
-    pub(super) element: Box<Element>,
+    pub(super) element: Rc<Element>,
     pub(super) key: Rc<FlowKey>,
     /// Сборка прочла ширину снаружи: запись годится только при тех же ширинах.
     pub(super) widths: bool,
@@ -123,7 +123,7 @@ impl PendingReplay {
     /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
     pub(super) fn finish(
         &self,
-        element: Box<Element>,
+        element: Rc<Element>,
         screen: Bounds<ScaledPixels>,
     ) -> Option<ReplayRecord> {
         if self.sink.tainted() {

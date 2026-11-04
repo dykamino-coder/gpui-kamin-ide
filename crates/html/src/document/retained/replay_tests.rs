@@ -49,6 +49,35 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
     assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
 }
 
+/// While the width changes, a block that fills it (`width: auto`) gets no
+/// replay record: it could not replay at another width. The tail paragraph is
+/// recorded by the first build at the settled width and replays from the
+/// next one; the definite-width table is recorded either way.
+#[gpui::test]
+fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
+    cx: &mut TestAppContext,
+) {
+    let page = |text: &str| {
+        format!(
+            "<body style='margin:0'><table style='width:300px'><tr><td>a</td></tr></table>\
+             <p>{text}</p><p>tail</p></body>"
+        )
+    };
+    let (view, cx) = settled(cx, &page("one"), &page("two"));
+    cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = 401.));
+    frame(cx);
+    let resized = replayed(&view, cx);
+    update(&view, cx, &page("one"));
+    let first = replayed(&view, cx);
+    update(&view, cx, &page("two"));
+    let settled_width = replayed(&view, cx);
+    assert_eq!(
+        (settled_width - first) - (first - resized),
+        1,
+        "the tail must replay only after a build at the settled width"
+    );
+}
+
 /// Line content (CSS 2.1 Appendix E step 7) of a block paints when its
 /// stacking context drains, after the backgrounds of later blocks: a replay
 /// puts it back into the same place of that phase.
