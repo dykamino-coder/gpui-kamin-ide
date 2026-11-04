@@ -81,7 +81,10 @@ impl Store {
         if crate::dom::same_tree(&record.element, e) {
             return Some(record);
         }
-        self.records.borrow_mut().remove(&e.node_id);
+        // Записи держат стили: карта меняется целиком, без `&mut` на них.
+        let mut records = self.records.take();
+        records.remove(&e.node_id);
+        self.records.replace(records);
         None
     }
 

@@ -89,7 +89,7 @@ mod tests {
     }
 
     fn stops(p: &Paragraph) -> Vec<usize> {
-        p.opportunities().into_iter().map(|s| s.at).collect()
+        p.opportunities().map(|s| s.at).collect()
     }
 
     #[test]
