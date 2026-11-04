@@ -220,4 +220,23 @@ mod tests {
         assert_eq!(at(&all, false), uncached(&all, false));
         assert_ne!(at(&all, false), at(&p, false));
     }
+
+    #[test]
+    fn a_part_takes_the_kept_opportunities_inside_it() {
+        let p = paragraph("aa bb\ncc dd ee", Wrap::default());
+        let all: Vec<(usize, bool)> = at(&p, false);
+        for part in [0..14, 0..3, 3..9, 4..12, 9..9, 13..14] {
+            let expected: Vec<_> = all
+                .iter()
+                .copied()
+                .filter(|&(s, _)| s > part.start && s <= part.end)
+                .collect();
+            let got: Vec<_> = p
+                .opportunities_in(&part)
+                .iter()
+                .map(|s| (s.at, s.mandatory))
+                .collect();
+            assert_eq!(got, expected, "{part:?}");
+        }
+    }
 }

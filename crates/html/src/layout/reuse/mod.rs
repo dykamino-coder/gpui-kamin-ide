@@ -72,6 +72,26 @@ impl Store {
             .set(self.epoch.get() + if continued { 1 } else { 2 });
     }
 
+    /// Запись блока `e`, если его поддерево то же, что при записи. Запись
+    /// изменённого блока (`Document::update`) не подойдёт ему никогда, а держит
+    /// прежнее поддерево (узлы, стили) всю сборку нового: она удаляется сразу,
+    /// до сборки блока, а не в конце кадра.
+    pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
+        let record = self.records.borrow().get(&e.node_id).cloned()?;
+        if crate::dom::same_tree(&record.element, e) {
+            return Some(record);
+        }
+        self.records.borrow_mut().remove(&e.node_id);
+        None
+    }
+
+    /// Build inputs of the kept records, for tests.
+    #[cfg(test)]
+    pub(crate) fn recorded(&self) -> Vec<Element> {
+        let records = self.records.borrow();
+        records.values().map(|r| (*r.element).clone()).collect()
+    }
+
     /// Ширина потока сменилась: годны только записи, чья раскладка от неё
     /// не зависит.
     fn keep_width_independent(&self, key: &FlowKey) {
