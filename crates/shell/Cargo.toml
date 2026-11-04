@@ -28,6 +28,7 @@ gpui-platform.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 mimalloc.workspace = true
+kamin-alloc.workspace = true
 smol = "2"
 kamin-model.workspace = true
 kamin-sidecar.workspace = true

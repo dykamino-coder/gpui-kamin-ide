@@ -1,0 +1,13 @@
+[package]
+name = "kamin-alloc"
+version.workspace = true
+edition.workspace = true
+
+# Политика арен mimalloc, общая для бинарей с `#[global_allocator] MiMalloc`:
+# приложение (`kaminide-gpui` и его дети CEF) и стенд движка `engine_bench`.
+
+[dependencies]
+mimalloc.workspace = true
+
+[lints]
+workspace = true
