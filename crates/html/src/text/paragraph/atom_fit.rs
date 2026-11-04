@@ -25,6 +25,7 @@ pub(super) struct FitAtom {
     /// Margin-box max-content width and baseline of the real layout.
     max: f32,
     base: f32,
+    drop: f32,
     /// Copy of the atom wrapper tree and its max-content height/baseline.
     snap: gpui::LayoutMeasurement,
     snap_h: f32,
@@ -32,8 +33,8 @@ pub(super) struct FitAtom {
 }
 
 /// Resolved atom geometry for one available width: (index, width, height,
-/// baseline).
-pub(super) type Fitted = Vec<(usize, f32, f32, f32)>;
+/// baseline, downward shift in the wrapper row — AtomBox::drop).
+pub(super) type Fitted = Vec<(usize, f32, f32, f32, f32)>;
 
 #[derive(Default)]
 pub(super) struct AtomFit {
@@ -83,7 +84,7 @@ impl AtomFit {
                 (Some(b), Some(b0)) => a.base + (f32::from(b) - b0),
                 _ => a.base + (h - a.snap_h),
             };
-            out.push((a.k, w, h, base));
+            out.push((a.k, w, h, base, a.drop));
         }
         self.cache.push((avail, out.clone()));
         out
@@ -139,6 +140,7 @@ impl Paragraph {
                     min,
                     max,
                     base: b.base,
+                    drop: b.drop,
                     snap,
                     snap_h: f32::from(smax.height),
                     snap_base: sbase.map(f32::from),
@@ -155,13 +157,14 @@ impl Paragraph {
             let fit = self.atom_fit.borrow();
             fit.atoms.iter().map(|a| (a.k, a.at)).collect()
         };
-        for &(k, w, h, base) in fitted {
+        for &(k, w, h, base, drop) in fitted {
             let Some(&(_, at)) = ats.iter().find(|(i, _)| *i == k) else {
                 continue;
             };
             if let Some(b) = self.atom_boxes.get_mut(k) {
                 b.h = h;
                 b.base = base;
+                b.drop = drop;
             }
             let len = self.text[at..].chars().next().map_or(0, char::len_utf8);
             if let Some(span) = self
@@ -180,7 +183,7 @@ impl Paragraph {
             return;
         }
         let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for &(k, w, _, _) in &fitted {
+        for &(k, w, _, _, _) in &fitted {
             let Some(slot) = self.atoms.get_mut(k) else {
                 continue;
             };
@@ -198,32 +201,25 @@ impl Paragraph {
             );
         }
         // Real geometry wins over the copy's for placement and painting.
-        let mut drops = Vec::with_capacity(fitted.len());
         let fitted: Fitted = fitted
             .iter()
-            .map(|&(k, w, h, base)| {
+            .map(|&(k, w, h, base, drop)| {
                 let root = self.atoms[k].root.get();
                 let (real_h, real_base, drop) = match root {
                     Some(id) => {
                         let row_h = f32::from(window.layout_exact(id).1.height);
                         atoms::row_geometry::row_geometry(Some(id), row_h, window)
                     }
-                    None => (h, base, 0.0),
+                    None => (h, base, drop),
                 };
                 let real_base = if real_base <= 0.0 && real_h > 0.0 {
                     real_h
                 } else {
                     real_base
                 };
-                drops.push((k, drop));
-                (k, w, real_h, real_base)
+                (k, w, real_h, real_base, drop)
             })
             .collect();
         self.apply_atom_fit(&fitted);
-        for (k, drop) in drops {
-            if let Some(b) = self.atom_boxes.get_mut(k) {
-                b.drop = drop;
-            }
-        }
     }
 }
