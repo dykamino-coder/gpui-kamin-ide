@@ -70,6 +70,7 @@ impl TaffyLayoutEngine {
             let _calc = self.taffy.calc_scope();
             style.to_taffy(rem_size, scale_factor)
         };
+        let taffy_style = self.styles.share(taffy_style);
         // KaminIDE patch: measurement also supports the ordinary native stack.
         let measure = node_measure(Box::new(measure));
         let mut context = Some(NodeContext {

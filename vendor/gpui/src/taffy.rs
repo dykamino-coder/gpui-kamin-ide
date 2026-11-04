@@ -18,6 +18,8 @@ pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
 // KaminIDE patch: the frame tree survives frames (`retained`).
 mod retained;
+// KaminIDE patch: equal node styles of a tree share one allocation.
+mod style_share;
 mod final_geometry;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
@@ -105,6 +107,8 @@ pub struct TaffyLayoutEngine {
     frame_tree: bool,
     /// KaminIDE patch: request history that lets the frame tree survive frames.
     retained: retained::Retained,
+    /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
+    styles: style_share::StyleShare,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
@@ -145,6 +149,7 @@ impl TaffyLayoutEngine {
             layout_bounds_scratch_space: Vec::new(),
             frame_tree: false,
             retained: retained::Retained::default(),
+            styles: Default::default(),
         }
     }
 
@@ -167,9 +172,12 @@ impl TaffyLayoutEngine {
     pub fn clear(&mut self) {
         self.final_geometry = final_geometry::FinalGeometry::default();
         if self.frame_tree {
+            // The kept tree keeps its sharing candidates: an equal request of the
+            // next pass shares the kept node's style and claims it by pointer.
             self.retire();
         } else {
             self.taffy.clear();
+            self.styles.clear();
         }
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
@@ -227,6 +235,7 @@ impl TaffyLayoutEngine {
             let _calc = self.taffy.calc_scope();
             style.to_taffy(rem_size, scale_factor)
         };
+        let taffy_style = self.styles.share(taffy_style);
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // KaminIDE patch: a node with the inputs of a previous one keeps it.

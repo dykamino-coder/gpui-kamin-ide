@@ -61,7 +61,7 @@ pub(super) struct Retained {
     /// Requested styles of nodes a pass overrode in place (shrink-to-fit caps,
     /// root stretch): restored at the end of the pass, so the next request
     /// with the same style claims the node again.
-    overrides: FxHashMap<NodeId, taffy::Style>,
+    overrides: FxHashMap<NodeId, taffy::SharedStyle>,
 }
 
 impl Retained {
@@ -90,7 +90,7 @@ impl TaffyLayoutEngine {
             && children
                 .iter()
                 .all(|child| self.taffy.parent(child.0) == Some(parent))
-            && self.taffy.style(parent).is_ok_and(|old| old == style);
+            && self.taffy.style(parent).is_ok_and(|old| same_style(old, style));
         found.then(|| self.claim(parent))
     }
 
@@ -101,7 +101,7 @@ impl TaffyLayoutEngine {
         }
         let node = *self.retained.prev.get(self.retained.seq.len())?;
         let found = !self.retained.live.contains(&node)
-            && self.taffy.style(node).is_ok_and(|old| old == style)
+            && self.taffy.style(node).is_ok_and(|old| same_style(old, style))
             && self.taffy.children_slice(node).is_empty()
             && !self.taffy.has_node_context(node);
         found.then(|| self.claim(node))
@@ -123,7 +123,7 @@ impl TaffyLayoutEngine {
         let taffy = &self.taffy;
         let fits = |node: &NodeId| {
             !live.contains(node)
-                && taffy.style(*node).is_ok_and(|old| old == style)
+                && taffy.style(*node).is_ok_and(|old| same_style(old, style))
                 && taffy.children_slice(*node).is_empty()
         };
         // The leaf at the same request position first: leaves of one key are
@@ -235,9 +235,9 @@ impl TaffyLayoutEngine {
     pub(super) fn keep_requested_style(&mut self, node: NodeId) {
         if self.frame_tree
             && !self.retained.overrides.contains_key(&node)
-            && let Ok(style) = self.taffy.style(node)
+            && let Ok(style) = self.taffy.shared_style(node)
         {
-            self.retained.overrides.insert(node, style.clone());
+            self.retained.overrides.insert(node, style);
         }
     }
 
@@ -286,4 +286,10 @@ fn retired_measure() -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
             crate::MeasuredContent::from((none, None, None, None))
         },
     ))))
+}
+
+/// Equal inputs: a node whose style is the shared allocation of the request
+/// (`style_share`) is equal without comparing the about 1 KiB value.
+fn same_style(old: &taffy::Style, style: &taffy::Style) -> bool {
+    std::ptr::eq(old, style) || old == style
 }

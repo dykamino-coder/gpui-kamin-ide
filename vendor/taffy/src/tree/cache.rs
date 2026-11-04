@@ -5,6 +5,7 @@
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
 use crate::tree::{CollapsibleMarginSet, LayoutInput, LayoutOutput, RunMode, SizingMode};
+use crate::util::sys::Box;
 use crate::RequestedAxis;
 
 /// The number of cache entries for each node in the tree
@@ -250,14 +251,23 @@ impl Measurement {
     }
 }
 
+/// KaminIDE patch: the size-only measurements of one node.
+type MeasureEntries = [Option<CacheEntry<Measurement>>; CACHE_SIZE];
+
+/// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
+const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
+
 /// A cache for caching the results of a sizing a Grid Item or Flexbox Item
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
-    /// The cache entries for the node's preliminary size measurements
-    measure_entries: [Option<CacheEntry<Measurement>>; CACHE_SIZE],
+    /// The cache entries for the node's preliminary size measurements.
+    ///
+    /// KaminIDE patch: allocated on the first measurement. The entries are 576 of the 648 bytes
+    /// of a cache inline, and most nodes of a frame tree are only laid out, never measured.
+    measure_entries: Option<Box<MeasureEntries>>,
     /// Tracks which measure entries have been used since the eviction cursor last passed them
     recently_used_entries: u16,
     /// The next measure entry to consider replacing
@@ -286,11 +296,9 @@ impl Cache {
 
     /// Create a new empty cache
     pub const fn new() -> Self {
-        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
         Self {
             final_layout_entry: None,
-            measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
+            measure_entries: None,
             recently_used_entries: 0,
             next_measure_entry: 0,
             is_empty: true,
@@ -312,7 +320,8 @@ impl Cache {
                 .filter(|entry| entry.key == key)
                 .map(|e| e.content.clone()),
             RunMode::ComputeSize => {
-                for (index, entry) in self.measure_entries.iter().enumerate() {
+                let slots = self.measure_entries.as_deref().map_or(&[][..], |entries| entries.as_slice());
+                for (index, entry) in slots.iter().enumerate() {
                     let Some(entry) = entry else { continue };
                     if entry.key.kd_available_space == key.kd_available_space
                         && entry.key.known_dimensions_are_definite == key.known_dimensions_are_definite
@@ -352,10 +361,9 @@ impl Cache {
             }
             RunMode::ComputeSize => {
                 self.is_empty = false;
-                if let Some(index) =
-                    self.measure_entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key))
-                {
-                    self.measure_entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
+                let entries = self.measure_entries.get_or_insert_with(|| Box::new([NONE_MEASURE_ENTRY; CACHE_SIZE]));
+                if let Some(index) = entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key)) {
+                    entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
                     self.recently_used_entries |= 1 << index;
                     return;
                 }
@@ -367,7 +375,7 @@ impl Cache {
                     }
                 }
                 let entry_index = self.next_measure_entry as usize;
-                self.measure_entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
+                entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
                 self.recently_used_entries |= 1 << entry_index;
                 self.next_measure_entry += 1;
                 if self.next_measure_entry == CACHE_SIZE as u8 {
@@ -385,9 +393,10 @@ impl Cache {
         }
         self.is_empty = true;
         self.final_layout_entry = None;
-        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
-        self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
+        // KaminIDE patch: a measured node keeps its entry storage for the next measurements.
+        if let Some(entries) = &mut self.measure_entries {
+            **entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
+        }
         self.recently_used_entries = 0;
         self.next_measure_entry = 0;
         ClearState::Cleared
@@ -395,7 +404,12 @@ impl Cache {
 
     /// Returns true if all cache entries are None, else false
     pub fn is_empty(&self) -> bool {
-        self.final_layout_entry.is_none() && !self.measure_entries.iter().any(|entry| entry.is_some())
+        self.final_layout_entry.is_none() && !self.measure_slots().iter().any(|entry| entry.is_some())
+    }
+
+    /// KaminIDE patch: the measurement slots, empty before the first measurement.
+    fn measure_slots(&self) -> &[Option<CacheEntry<Measurement>>] {
+        self.measure_entries.as_deref().map_or(&[], |entries| entries.as_slice())
     }
 }
 
@@ -431,6 +445,21 @@ mod tests {
     }
 
     #[test]
+    fn measure_storage_is_allocated_by_the_first_measurement_and_kept_by_clear() {
+        let mut cache = Cache::new();
+        cache.store(&LayoutInput { run_mode: RunMode::PerformLayout, ..input(1.0) }, output(1.0));
+        assert!(cache.measure_entries.is_none());
+        cache.store(&input(2.0), output(2.0));
+        assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
+        let _ = cache.clear();
+        assert!(cache.is_empty());
+        assert!(cache.measure_entries.is_some());
+        assert_eq!(cache.get(&input(2.0)), None);
+        cache.store(&input(3.0), output(3.0));
+        assert_eq!(cache.get(&input(3.0)), Some(output(3.0)));
+    }
+
+    #[test]
     fn recently_used_measure_entries_get_a_second_chance() {
         let mut cache = Cache::new();
         for width in 0..CACHE_SIZE {
@@ -452,7 +481,7 @@ mod tests {
         cache.store(&input(2.0), output(2.0));
         cache.store(&input(1.0), output(3.0));
 
-        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
+        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
         assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
     }
 
@@ -471,7 +500,7 @@ mod tests {
         assert_eq!(cache.get(&input(2.0)), Some(carried));
         cache.store(&input(1.0), output(3.0));
         assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
-        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
+        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
     }
 
     #[test]
@@ -548,7 +577,7 @@ mod tests {
             cache.store(&other, output(3.0));
             assert_eq!(cache.get(&other), Some(output(3.0)));
             assert!(cache.final_layout_entry.is_none());
-            assert_eq!(cache.measure_entries.iter().flatten().count(), 1);
+            assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
 
             // The old entries are gone, even for inputs that have the mode that the cache had before
             cache.store(&input(4.0), output(4.0));
@@ -565,7 +594,7 @@ mod tests {
 
             cache.store(&other, output(3.0));
             assert_eq!(cache.get(&other), Some(output(3.0)));
-            assert!(cache.measure_entries.iter().all(|entry| entry.is_none()));
+            assert!(cache.measure_slots().iter().all(|entry| entry.is_none()));
             assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), None);
         }
     }
