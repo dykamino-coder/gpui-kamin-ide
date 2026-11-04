@@ -25,19 +25,22 @@ fn statistics(mut values: Vec<f64>) -> Value {
         "max_ms": values[n - 1], "count": n })
 }
 
-pub(super) fn mode(samples: &[Sample]) -> Value {
+pub(super) fn mode(samples: Vec<Value>) -> Value {
     let summary: BTreeMap<_, _> = samples
         .first()
+        .and_then(Value::as_object)
         .into_iter()
         .flat_map(|s| s.keys())
         .map(|key| {
             (
-                *key,
-                statistics(samples.iter().filter_map(|s| s[key]).collect()),
+                key,
+                statistics(samples.iter().filter_map(|s| s[key].as_f64()).collect()),
             )
         })
         .collect();
-    json!({"summary": summary, "samples_ms": samples})
+    let mut out = json!({"summary": summary});
+    out["samples_ms"] = Value::Array(samples);
+    out
 }
 
 pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json::Error> {
@@ -101,7 +104,7 @@ mod tests {
 
     #[test]
     fn skipped_scope_is_null_rather_than_a_zero_measurement() {
-        let report = mode(&[Sample::from([("parse", None), ("paint", Some(0.5))])]);
+        let report = mode(vec![json!({"parse": null, "paint": 0.5})]);
         assert!(report["summary"]["parse"].is_null());
         assert!(report["samples_ms"][0]["parse"].is_null());
     }

@@ -4,14 +4,15 @@
 
 use super::{
     args::Args,
-    pixels, report, resources,
+    history::History,
+    pixels, resources,
     run::{Step, sample},
     view::View,
 };
 use gpui::{AsyncApp, WindowHandle};
 use kamin_html::host::capture::CaptureSession;
 use kamin_html::metrics::FontContext;
-use serde_json::{Value, json};
+use serde_json::json;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -22,17 +23,16 @@ pub(super) async fn run(
     args: &Args,
     capture: &CaptureSession,
     luid: (i32, u32),
-) -> Result<Value> {
+) -> Result<History> {
     let base = resources::read(&args.path)?;
     let edited = args.edit.markup(&base)?;
     // Вариант 0 — вход, 1 — правка; первый замер идёт после холодного кадра входа.
     let variants = [base.as_str(), edited.as_str()];
-    let mut samples = Vec::with_capacity(args.runs);
-    let mut diagnostics = Vec::with_capacity(args.runs);
+    let mut history = History::new()?;
     let mut last = [None, None];
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, _) = sample(
+        let (measured, frame, (work, resources)) = sample(
             cx,
             window,
             fonts,
@@ -42,8 +42,7 @@ pub(super) async fn run(
             luid,
         )
         .await?;
-        samples.push(measured.phases);
-        diagnostics.push(measured.diagnostics);
+        history.push(measured, work, resources)?;
         last[variant] = Some(frame.pixels);
     }
     let mut checks = Vec::new();
@@ -96,10 +95,9 @@ pub(super) async fn run(
         }
         checks.push(check);
     }
-    let mut mode = report::mode(&samples);
-    mode["diagnostic_scopes"] = report::mode(&diagnostics);
+    let mode = history.metadata();
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
-    Ok(mode)
+    Ok(history)
 }

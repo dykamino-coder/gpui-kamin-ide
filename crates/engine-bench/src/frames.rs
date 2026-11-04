@@ -2,6 +2,7 @@
 
 use super::{
     args::{Args, Mode},
+    journal::Journal,
     pixels::Recorder,
     view::View,
 };
@@ -37,7 +38,7 @@ pub(super) struct Frames {
     base: (u32, u32),
     relayout: bool,
     before: (u64, u64),
-    samples: Vec<Value>,
+    samples: Journal,
 }
 
 impl Frames {
@@ -56,7 +57,7 @@ impl Frames {
             base: args.viewport,
             relayout,
             before: (0, 0),
-            samples: Vec::new(),
+            samples: Journal::new()?,
         })
     }
 
@@ -86,6 +87,16 @@ impl Frames {
     ) -> Result<()> {
         let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
         let counts = delta(if mode == "cold" { (0, 0) } else { self.before }, after)?;
+        self.record(frame, mode, index, counts)
+    }
+
+    pub(super) fn record(
+        &mut self,
+        frame: Frame,
+        mode: &str,
+        index: usize,
+        counts: (u64, u64),
+    ) -> Result<()> {
         if self.relayout && counts != (1, 0) {
             return Err(format!(
                 "relayout requires one document build and no replay; received {counts:?}"
@@ -93,26 +104,37 @@ impl Frames {
             .into());
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
-        self.samples.push(json!({"mode": mode, "sample_index": index,
-            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1}));
+        self.samples.push(&json!({"mode": mode, "sample_index": index,
+            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1}))?;
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 
-    pub(super) fn report(&self) -> Value {
+    pub(super) fn release_baselines(&mut self) {
+        for pixels in &mut self.pixels {
+            pixels.release_baseline();
+        }
+    }
+
+    pub(super) fn changed(&self) -> bool {
+        self.pixels.iter().any(Recorder::changed)
+    }
+
+    pub(super) fn report(&mut self) -> Result<Value> {
         let mut out = if self.relayout {
-            let sequences: Vec<_> = self.pixels.iter().enumerate().map(|(group, pixels)| {
-                json!({"css_viewport": viewport(self.base, group == 1), "rgb": pixels.report()})
-            }).collect();
-            json!({"frame_pixels_changed": sequences.iter().any(|s| s["rgb"]["frame_pixels_changed"] == true),
+            let mut sequences = Vec::new();
+            for (group, pixels) in self.pixels.iter_mut().enumerate() {
+                sequences.push(json!({"css_viewport": viewport(self.base, group == 1), "rgb": pixels.report()?}));
+            }
+            json!({"frame_pixels_changed": self.changed(),
                 "frame_pixel_sequences": sequences,
                 "relayout_trigger": "alternating RenderOpts CSS viewport on the same Document; fixed capture surface",
                 "relayout_viewport_sequence": [viewport(self.base, true), self.base]})
         } else {
-            self.pixels[0].report()
+            self.pixels[0].report()?
         };
-        out["document_frame_samples"] = json!(self.samples);
+        out["document_frame_samples"] = Value::Array(self.samples.read()?);
         out["warm_scope"] = json!("unchanged document: may replay without element build/layout");
-        out
+        Ok(out)
     }
 }
 

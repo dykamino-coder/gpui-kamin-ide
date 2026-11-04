@@ -22,12 +22,13 @@ gpui-platform.workspace = true
 mimalloc.workspace = true
 kamin-alloc.workspace = true
 futures = "0.3"
+async-io = "2.6"
 log = "0.4"
 encoding_rs = "0.8.35"
 html5ever = { path = "../../vendor/html5ever" }
 markup5ever_rcdom = { path = "../../vendor/markup5ever_rcdom" }
 url = "2"
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 png = "0.18.1"
 
 [target.'cfg(windows)'.dependencies]

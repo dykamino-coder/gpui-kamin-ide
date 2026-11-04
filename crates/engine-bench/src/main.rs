@@ -20,7 +20,11 @@ mod frames;
 #[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
+mod history;
+#[cfg(windows)]
 mod host;
+#[cfg(windows)]
+mod journal;
 #[cfg(windows)]
 mod memory;
 #[cfg(windows)]

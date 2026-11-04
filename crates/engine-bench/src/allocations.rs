@@ -18,12 +18,16 @@ mod counted {
     static PEAK: AtomicU64 = AtomicU64::new(0);
 
     fn allocated(bytes: usize) {
+        #[cfg(test)]
+        super::test_live::note(bytes as i64);
         CALLS.fetch_add(1, Relaxed);
         BYTES.fetch_add(bytes as u64, Relaxed);
         let live = LIVE.fetch_add(bytes as u64, Relaxed) + bytes as u64;
         PEAK.fetch_max(live, Relaxed);
     }
     fn freed(bytes: usize) {
+        #[cfg(test)]
+        super::test_live::note(-(bytes as i64));
         FREED.fetch_add(bytes as u64, Relaxed);
         LIVE.fetch_sub(bytes as u64, Relaxed);
     }
@@ -161,5 +165,29 @@ mod timing_tests {
         assert!(super::Snapshot::read().json().is_null());
         #[cfg(feature = "work-counters")]
         assert!(super::svg_observer().is_none());
+    }
+}
+
+#[cfg(all(test, feature = "allocation-audit"))]
+pub(super) mod test_live {
+    use std::cell::Cell;
+    thread_local! { static LIVE: Cell<i64> = const { Cell::new(0) }; }
+    pub(super) fn note(bytes: i64) {
+        let _ = LIVE.try_with(|live| live.set(live.get() + bytes));
+    }
+    pub(crate) fn read() -> i64 {
+        LIVE.with(Cell::get)
+    }
+}
+
+#[cfg(all(test, feature = "allocation-audit"))]
+mod retained_heap_tests {
+    #[test]
+    fn thread_live_counter_observes_allocation_and_release() {
+        let before = super::test_live::read();
+        let buffer = std::hint::black_box(vec![0u8; 16_384]);
+        assert!(super::test_live::read() >= before + 16_384);
+        drop(buffer);
+        assert_eq!(super::test_live::read(), before);
     }
 }
