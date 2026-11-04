@@ -1073,6 +1073,95 @@ impl<NodeContext> TaffyTree<NodeContext> {
             .clear();
     }
 
+    /// KaminIDE patch: the children of `parent`, without allocating.
+    pub fn children_slice(&self, parent: NodeId) -> &[NodeId] {
+        self.children.get(parent.into()).map_or(&[], |children| children.as_slice())
+    }
+
+    /// KaminIDE patch: whether `node` carries a context (a measured leaf).
+    pub fn has_node_context(&self, node: NodeId) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| data.has_context)
+    }
+
+    /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
+    /// `context`, reusing its storage. The node leaves its previous parent
+    /// (it becomes a root, the parent's list is left as is), its previous
+    /// children that still point at it become roots, and its cache is empty.
+    /// Like `new_with_children`, the new children are adopted without editing
+    /// their previous parents' lists.
+    pub fn reset_node(
+        &mut self,
+        node: NodeId,
+        style: impl Into<SharedStyle>,
+        children: &[NodeId],
+        context: Option<NodeContext>,
+    ) -> TaffyResult<()> {
+        let style = style.into();
+        let key = node.into();
+        for child in self.children[key].iter() {
+            if self.parents[(*child).into()] == Some(node) {
+                self.parents[(*child).into()] = None;
+            }
+        }
+        self.parents[key] = None;
+        let data = &mut self.nodes[key];
+        *data = NodeData::new(style);
+        data.has_context = context.is_some();
+        match context {
+            Some(context) => {
+                self.node_context_data.insert(key, context);
+            }
+            None => {
+                self.node_context_data.remove(key);
+            }
+        }
+        for child in children {
+            self.parents[(*child).into()] = Some(node);
+        }
+        let list = &mut self.children[key];
+        list.clear();
+        list.extend_from_slice(children);
+        Ok(())
+    }
+
+    /// KaminIDE patch: drop every node for which `keep` is false, in one pass.
+    ///
+    /// Kept nodes keep their style, children, context and layout cache. A kept
+    /// node whose parent is dropped becomes a root; a kept node that loses a
+    /// child is marked dirty. Unlike `remove`, a dropped node never unlinks a
+    /// child that another node has adopted since (`new_with_children` moves a
+    /// child without editing its previous parent's list). The calc registry is
+    /// kept: its pairs are interned by value, so handles stay valid for the
+    /// kept styles.
+    pub fn retain_nodes(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
+        let dropped: Vec<DefaultKey> =
+            self.nodes.keys().filter(|key| !keep(NodeId::from(*key))).collect();
+        if dropped.is_empty() {
+            return;
+        }
+        for key in &dropped {
+            let _ = self.children.remove(*key);
+            let _ = self.parents.remove(*key);
+            let _ = self.nodes.remove(*key);
+            let _ = self.node_context_data.remove(*key);
+        }
+        let mut orphaned = Vec::new();
+        for (key, parent) in self.parents.iter_mut() {
+            if parent.is_some_and(|p| !self.nodes.contains_key(p.into())) {
+                *parent = None;
+            }
+            let children = &mut self.children[key];
+            let before = children.len();
+            children.retain(|child| self.nodes.contains_key((*child).into()));
+            if children.len() != before {
+                orphaned.push(NodeId::from(key));
+            }
+        }
+        for node in orphaned {
+            let _ = self.mark_dirty(node);
+        }
+    }
+
     /// Remove a specific node from the tree and drop it
     ///
     /// Returns the id of the node removed.
@@ -1328,6 +1417,31 @@ impl<NodeContext> TaffyTree<NodeContext> {
     #[inline]
     pub fn style(&self, node: NodeId) -> TaffyResult<&Style> {
         Ok(&self.nodes[node.into()].style)
+    }
+
+    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
+    #[inline]
+    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| {
+            SharedStyle::ptr_eq(&data.style, style) || *data.style == **style
+        })
+    }
+
+    /// KaminIDE patch: give `node` the shared allocation of `style`, which must equal the
+    /// node's style. Unlike `set_style`, the node keeps its layout cache: its input is the
+    /// same value. Returns false and changes nothing when the styles differ.
+    pub fn adopt_equal_style(&mut self, node: NodeId, style: &SharedStyle) -> bool {
+        let Some(data) = self.nodes.get_mut(node.into()) else {
+            return false;
+        };
+        if SharedStyle::ptr_eq(&data.style, style) {
+            return true;
+        }
+        if *data.style != **style {
+            return false;
+        }
+        data.style = style.clone();
+        true
     }
 
     /// KaminIDE patch: the shared style of `node`, to give another node the same style.
@@ -2097,6 +2211,37 @@ mod tests {
         assert_eq!(taffy.style(first).unwrap().display, Display::Flex);
         assert_eq!(taffy.style(second).unwrap().display, Display::Grid);
         assert_eq!(shared.display, Display::Grid);
+    }
+
+    #[test]
+    fn adopting_an_equal_style_keeps_the_cache_and_a_different_one_is_refused() {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let grid = || Style { display: Display::Grid, ..Style::default() };
+        let node = taffy.new_leaf(grid()).unwrap();
+        taffy.compute_layout(node, Size::MAX_CONTENT).unwrap();
+        assert!(!taffy.dirty(node).unwrap());
+
+        let equal = SharedStyle::new(grid());
+        assert!(taffy.style_equals(node, &equal));
+        assert!(taffy.adopt_equal_style(node, &equal));
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &equal));
+        assert!(!taffy.dirty(node).unwrap());
+
+        let flex = SharedStyle::new(Style { display: Display::Flex, ..Style::default() });
+        assert!(!taffy.style_equals(node, &flex));
+        assert!(!taffy.adopt_equal_style(node, &flex));
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &equal));
+    }
+
+    #[test]
+    fn reset_node_takes_a_shared_style_and_starts_with_an_empty_cache() {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let node = taffy.new_leaf(Style::default()).unwrap();
+        taffy.compute_layout(node, Size::MAX_CONTENT).unwrap();
+        let shared = SharedStyle::new(Style { display: Display::Grid, ..Style::default() });
+        taffy.reset_node(node, shared.clone(), &[], None).unwrap();
+        assert!(SharedStyle::ptr_eq(&taffy.shared_style(node).unwrap(), &shared));
+        assert!(taffy.dirty(node).unwrap());
     }
 
     #[test]

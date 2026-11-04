@@ -73,19 +73,31 @@ impl TaffyLayoutEngine {
         let taffy_style = self.styles.share(taffy_style);
         // KaminIDE patch: measurement also supports the ordinary native stack.
         let measure = node_measure(Box::new(measure));
-        self.taffy
-            .new_leaf_with_context(
-                taffy_style,
-                NodeContext {
-                    static_positions: Vec::new(),
-                    measure: std::rc::Rc::new(std::cell::RefCell::new(measure)),
-                    layout_lines: None,
-                    layout_lines_x: None,
-                    layout_lines_x_from_right: false,
-                },
-            )
-            .expect(EXPECT_MESSAGE)
-            .into()
+        let mut context = Some(NodeContext {
+            static_positions: Vec::new(),
+            measure: std::rc::Rc::new(std::cell::RefCell::new(measure)),
+            layout_lines: None,
+            layout_lines_x: None,
+            layout_lines_x_from_right: false,
+        });
+        // KaminIDE patch: a keyed leaf keeps a previous leaf of the same key.
+        let key = self.retained.next_key.take();
+        if let Some(id) = key.and_then(|key| self.claim_measured(key, &taffy_style, &mut context)) {
+            return id;
+        }
+        let context = context.expect("measured leaf context");
+        let id = if let Some(node) = self.recycle() {
+            self.taffy
+                .reset_node(node, taffy_style, &[], Some(context))
+                .expect(EXPECT_MESSAGE);
+            LayoutId(node)
+        } else {
+            self.taffy
+                .new_leaf_with_context(taffy_style, context)
+                .expect(EXPECT_MESSAGE)
+                .into()
+        };
+        self.created(id, key)
     }
 
     pub fn request_measured_layout_with_line_baselines(
