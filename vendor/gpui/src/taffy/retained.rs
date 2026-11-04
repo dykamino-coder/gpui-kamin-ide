@@ -49,9 +49,10 @@ pub(super) struct Retained {
     pub(super) keys_enabled: bool,
     /// Nodes claimed from a previous pass, for counters and tests.
     pub(super) claimed: u64,
-    /// Stamp of each node: issued when the node is created, kept while it is
-    /// claimed. A claimed parent has only claimed children, so an equal stamp
-    /// means the whole subtree has the inputs it had when it was stamped.
+    /// Stamps of the nodes the host asked about: issued at the first request
+    /// after the node was created, kept while passes claim it. A claimed parent
+    /// has only claimed children, so an equal stamp means the whole subtree has
+    /// the inputs it had when it was stamped. Only asked nodes have an entry.
     stamps: FxHashMap<NodeId, u64>,
     last_stamp: u64,
     /// Host values derived from a node's subtree (`Window::set_layout_memo`),
@@ -177,10 +178,11 @@ impl TaffyLayoutEngine {
     pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
         if self.frame_tree {
             self.retained.note(node.0);
-            self.retained.last_stamp += 1;
-            let stamp = self.retained.last_stamp;
-            self.retained.stamps.insert(node.0, stamp);
-            self.retained.memos.remove(&node.0);
+            // A recycled node starts a new subtree: its stamp and memo go.
+            if !self.retained.stamps.is_empty() {
+                self.retained.stamps.remove(&node.0);
+                self.retained.memos.remove(&node.0);
+            }
             if let Some(key) = key {
                 self.retained.keys.insert(node.0, key);
             }
@@ -240,8 +242,20 @@ impl TaffyLayoutEngine {
     }
 
     /// The stamp of a node of this pass (see `Retained::stamps`).
-    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
-        self.retained.stamps.get(&id.0).copied()
+    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
+        let retained = &mut self.retained;
+        if !self.frame_tree {
+            return None;
+        }
+        if let Some(&stamp) = retained.stamps.get(&id.0) {
+            return Some(stamp);
+        }
+        if !retained.live.contains(&id.0) {
+            return None;
+        }
+        retained.last_stamp += 1;
+        retained.stamps.insert(id.0, retained.last_stamp);
+        Some(retained.last_stamp)
     }
 
     /// The host memo of a node, if the node kept its stamp since it was set.
@@ -252,7 +266,7 @@ impl TaffyLayoutEngine {
     /// Attach a host value derived only from the node's subtree inputs; it
     /// lives while the node is claimed and is dropped with the node.
     pub fn set_layout_memo(&mut self, id: LayoutId, memo: Rc<dyn Any>) {
-        if self.retained.stamps.contains_key(&id.0) {
+        if self.layout_stamp(id).is_some() {
             self.retained.memos.insert(id.0, memo);
         }
     }

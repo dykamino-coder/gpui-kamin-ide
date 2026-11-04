@@ -14940,10 +14940,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe343c3f989a
+index 0000000000000000000000000000000000000000..afed8ab1ea7ed415cf19c88d16fecc26ad1252e5
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,275 @@
+@@ -0,0 +1,289 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -14995,9 +14995,10 @@ index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe34
 +    pub(super) keys_enabled: bool,
 +    /// Nodes claimed from a previous pass, for counters and tests.
 +    pub(super) claimed: u64,
-+    /// Stamp of each node: issued when the node is created, kept while it is
-+    /// claimed. A claimed parent has only claimed children, so an equal stamp
-+    /// means the whole subtree has the inputs it had when it was stamped.
++    /// Stamps of the nodes the host asked about: issued at the first request
++    /// after the node was created, kept while passes claim it. A claimed parent
++    /// has only claimed children, so an equal stamp means the whole subtree has
++    /// the inputs it had when it was stamped. Only asked nodes have an entry.
 +    stamps: FxHashMap<NodeId, u64>,
 +    last_stamp: u64,
 +    /// Host values derived from a node's subtree (`Window::set_layout_memo`),
@@ -15123,10 +15124,11 @@ index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe34
 +    pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
 +        if self.frame_tree {
 +            self.retained.note(node.0);
-+            self.retained.last_stamp += 1;
-+            let stamp = self.retained.last_stamp;
-+            self.retained.stamps.insert(node.0, stamp);
-+            self.retained.memos.remove(&node.0);
++            // A recycled node starts a new subtree: its stamp and memo go.
++            if !self.retained.stamps.is_empty() {
++                self.retained.stamps.remove(&node.0);
++                self.retained.memos.remove(&node.0);
++            }
 +            if let Some(key) = key {
 +                self.retained.keys.insert(node.0, key);
 +            }
@@ -15186,8 +15188,20 @@ index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe34
 +    }
 +
 +    /// The stamp of a node of this pass (see `Retained::stamps`).
-+    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
-+        self.retained.stamps.get(&id.0).copied()
++    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
++        let retained = &mut self.retained;
++        if !self.frame_tree {
++            return None;
++        }
++        if let Some(&stamp) = retained.stamps.get(&id.0) {
++            return Some(stamp);
++        }
++        if !retained.live.contains(&id.0) {
++            return None;
++        }
++        retained.last_stamp += 1;
++        retained.stamps.insert(id.0, retained.last_stamp);
++        Some(retained.last_stamp)
 +    }
 +
 +    /// The host memo of a node, if the node kept its stamp since it was set.
@@ -15198,7 +15212,7 @@ index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe34
 +    /// Attach a host value derived only from the node's subtree inputs; it
 +    /// lives while the node is claimed and is dropped with the node.
 +    pub fn set_layout_memo(&mut self, id: LayoutId, memo: Rc<dyn Any>) {
-+        if self.retained.stamps.contains_key(&id.0) {
++        if self.layout_stamp(id).is_some() {
 +            self.retained.memos.insert(id.0, memo);
 +        }
 +    }
@@ -15221,10 +15235,10 @@ index 0000000000000000000000000000000000000000..4fcb2b687e1214f09617b511f55bbe34
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1866c2633dd6afd7f5df363584cd749418299c5
+index 0000000000000000000000000000000000000000..a7ea2e75a1efd393deb22b603a0641c1c293c3df
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,135 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -15315,6 +15329,7 @@ index 0000000000000000000000000000000000000000..b1866c2633dd6afd7f5df363584cd749
 +    let a = leaf(&mut engine, 10.);
 +    let p = parent(&mut engine, &[a]);
 +    let stamp = engine.layout_stamp(p);
++    assert!(stamp.is_some());
 +    engine.set_layout_memo(p, std::rc::Rc::new(5u32));
 +    engine.clear();
 +    let a2 = leaf(&mut engine, 10.);
@@ -17666,7 +17681,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd93f618b0
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..0c6b3838e0b102cfcfb717915a456c2f45972f4a
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -19083,7 +19098,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +    ) -> LayoutId {
 @@ -5082,0 +6074 @@
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6082,65 @@
+@@ -5089,0 +6082,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -19111,12 +19126,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +    }
 +
 +    /// KaminIDE patch: the stamp of a layout node of this pass. The frame tree
-+    /// issues a stamp when it creates a node and keeps it while later passes
-+    /// claim the node, so an equal stamp means the node's whole subtree has
-+    /// the same inputs (styles, children, keyed measurements) as then.
-+    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
++    /// issues a stamp at the first request after it creates a node and keeps
++    /// it while later passes claim the node, so an equal stamp means the
++    /// node's whole subtree has the same inputs (styles, children, keyed
++    /// measurements) as then.
++    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
 +        self.layout_engine
-+            .as_ref()
++            .as_mut()
 +            .and_then(|engine| engine.layout_stamp(id))
 +    }
 +
@@ -19149,10 +19165,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6166,2 @@
+@@ -5108,0 +6167,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6171,229 @@
+@@ -5112 +6172,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -19383,7 +19399,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6420,48 @@
+@@ -5132,0 +6421,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -19432,7 +19448,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6482,6 @@
+@@ -5147,2 +6483,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -19441,7 +19457,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6508,6 @@
+@@ -5169 +6509,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -19449,7 +19465,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6556,16 @@
+@@ -5211,0 +6557,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -19466,30 +19482,30 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..08a47b0cee74f8006a4f4028531b06dd
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6584 @@
+@@ -5223,0 +6585 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6586 @@
+@@ -5225,3 +6587 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6595 @@
+@@ -5235,0 +6596 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6597 @@
+@@ -5237,3 +6598 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +6817,2 @@
+@@ -5458,0 +6818,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7153,5 @@
+@@ -5792,0 +7154,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -7752,0 +9118,31 @@
+@@ -7752,0 +9119,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {

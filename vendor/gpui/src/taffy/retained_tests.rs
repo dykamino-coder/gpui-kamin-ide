@@ -88,6 +88,7 @@ fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
     let a = leaf(&mut engine, 10.);
     let p = parent(&mut engine, &[a]);
     let stamp = engine.layout_stamp(p);
+    assert!(stamp.is_some());
     engine.set_layout_memo(p, std::rc::Rc::new(5u32));
     engine.clear();
     let a2 = leaf(&mut engine, 10.);

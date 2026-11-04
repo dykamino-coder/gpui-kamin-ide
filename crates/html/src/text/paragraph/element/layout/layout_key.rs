@@ -27,7 +27,7 @@ impl Paragraph {
     /// reads state a key cannot see. Atoms enter by the stamps of their
     /// layout roots: their sizes are in `atom_boxes`/`letter_spans`, and their
     /// shrink-to-fit widths come from memos of those unchanged subtrees.
-    pub(super) fn layout_key(&self, window: &gpui::Window) -> Option<u64> {
+    pub(super) fn layout_key(&self, window: &mut gpui::Window) -> Option<u64> {
         if !self.keyable() {
             return None;
         }
@@ -74,7 +74,7 @@ impl Paragraph {
 
     /// Layout stamps of the atom wrappers (`gpui::Window::layout_stamp`), or
     /// `None` if an atom has none.
-    fn atom_stamps(&self, window: &gpui::Window) -> Option<Vec<u64>> {
+    fn atom_stamps(&self, window: &mut gpui::Window) -> Option<Vec<u64>> {
         self.atoms
             .iter()
             .map(|slot| slot.root.get().and_then(|root| window.layout_stamp(root)))

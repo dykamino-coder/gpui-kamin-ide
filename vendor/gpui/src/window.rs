@@ -6106,12 +6106,13 @@ impl Window {
     }
 
     /// KaminIDE patch: the stamp of a layout node of this pass. The frame tree
-    /// issues a stamp when it creates a node and keeps it while later passes
-    /// claim the node, so an equal stamp means the node's whole subtree has
-    /// the same inputs (styles, children, keyed measurements) as then.
-    pub fn layout_stamp(&self, id: LayoutId) -> Option<u64> {
+    /// issues a stamp at the first request after it creates a node and keeps
+    /// it while later passes claim the node, so an equal stamp means the
+    /// node's whole subtree has the same inputs (styles, children, keyed
+    /// measurements) as then.
+    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
         self.layout_engine
-            .as_ref()
+            .as_mut()
             .and_then(|engine| engine.layout_stamp(id))
     }
 
