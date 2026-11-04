@@ -6,7 +6,7 @@ use gpui::{App, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
 // Coordinate indices address corresponding entries in the projection matrices.
-pub(crate) fn paint_3d(
+pub(crate) async fn paint_3d(
     group: &mut Transformed,
     scale_factor: f32,
     rw: f32,
@@ -18,6 +18,7 @@ pub(crate) fn paint_3d(
     oy: f32,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let paint = group.paint.clone();
     use crate::style::computed::{Transform, det4, mul4};
@@ -139,20 +140,24 @@ pub(crate) fn paint_3d(
         let x0 = f32::from(raw_origin.x) * sf;
         let y0 = f32::from(raw_origin.y) * sf;
         let spec = plane_spec::plane_spec(&full, flat, outer, (x0, y0, x0 + w * sf, y0 + h * sf));
-        let body = |window: &mut Window| {
-            window.paint_plane(spec, |window| {
-                crate::paint::decorations::outline_phase::scoped(
-                    paint.as_ref(),
-                    window,
-                    cx,
-                    |window, cx| child.paint(window, cx),
-                )
-            })
+        let body = async |window: &mut Window| {
+            window
+                .paint_plane_async(spec, async |window| {
+                    crate::paint::decorations::outline_phase::scoped_async(
+                        paint.as_ref(),
+                        window,
+                        cx,
+                        stack,
+                        async |window, cx, stack| child.paint_async(window, cx, stack).await,
+                    )
+                    .await
+                })
+                .await
         };
         if root_3d {
-            window.paint_plane_context(body);
+            window.paint_plane_context_async(body).await;
         } else {
-            body(window);
+            body(window).await;
         }
         return;
     }
@@ -161,12 +166,16 @@ pub(crate) fn paint_3d(
     };
     // Маски детей едут за сплющенной матрицей (как на плоском пути,
     // `Window::with_transformation_masked`).
-    window.with_transformation_masked(flat, |window| {
-        crate::paint::decorations::outline_phase::scoped(
-            paint.as_ref(),
-            window,
-            cx,
-            |window, cx| child.paint(window, cx),
-        )
-    });
+    window
+        .with_transformation_masked_async(flat, async |window| {
+            crate::paint::decorations::outline_phase::scoped_async(
+                paint.as_ref(),
+                window,
+                cx,
+                stack,
+                async |window, cx, stack| child.paint_async(window, cx, stack).await,
+            )
+            .await
+        })
+        .await;
 }

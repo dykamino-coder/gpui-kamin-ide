@@ -15,6 +15,8 @@
 //! and Tailwind-like styling that you can use to build your own custom elements. Div is
 //! constructed by combining these two systems into an all-in-one element.
 
+mod paint_async;
+
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
     Display, Element, ElementId, Entity, EntityId, ExternalDragPayload, ExternalDragPayloadSource,
@@ -128,15 +130,16 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_down_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_down_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == button
                     && hitbox.is_hovered(window)
                 {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse down event for any button, during the capture phase.
@@ -147,12 +150,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_down_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_down_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse down event for any button, during the bubble phase.
@@ -163,12 +167,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_down_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_down_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse pressure event, during the bubble phase
@@ -179,12 +184,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_pressure_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_pressure_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse pressure event, during the capture phase
@@ -195,12 +201,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MousePressureEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_pressure_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_pressure_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse up event for the given button, during the bubble phase.
@@ -212,15 +219,16 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_up_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_up_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == button
                     && hitbox.is_hovered(window)
                 {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse up event for any button, during the capture phase.
@@ -231,12 +239,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_up_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_up_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse up event for any button, during the bubble phase.
@@ -247,12 +256,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_up_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_up_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse down event, on any button, during the capture phase,
@@ -264,15 +274,16 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_down_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_down_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && !window.has_active_prompt()
                     && !hitbox.contains(&window.mouse_position())
                 {
                     (listener)(event, window, cx)
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse up event, for the given button, during the capture phase,
@@ -285,15 +296,16 @@ impl Interactivity {
         button: MouseButton,
         listener: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_up_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_up_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && event.button == button
                     && !hitbox.is_hovered(window)
                 {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse move event, during the bubble phase.
@@ -304,12 +316,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_move_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_move_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse exit event, during the bubble phase.
@@ -320,12 +333,13 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&MouseExitEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().mouse_exit_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_exit_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to [`FileDropEvent::Exited`] when a platform file drag
@@ -339,15 +353,16 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&FileDropEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().file_drop_exit_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().file_drop_exit_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && matches!(event, FileDropEvent::Exited)
                     && hitbox.id.is_hovered_ignoring_last_input(window)
                 {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to the mouse drag event of the given type. Note that this
@@ -363,8 +378,8 @@ impl Interactivity {
     ) where
         T: 'static,
     {
-        self.listeners_mut().mouse_move_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().mouse_move_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Capture
                     && let Some(drag) = &cx.active_drag
                     && drag.value.as_ref().type_id() == TypeId::of::<T>()
@@ -380,7 +395,8 @@ impl Interactivity {
                         cx,
                     );
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to scroll wheel events during the bubble phase.
@@ -391,24 +407,26 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().scroll_wheel_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().scroll_wheel_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to pinch gesture events during the bubble phase.
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_pinch(&mut self, listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static) {
-        self.listeners_mut().pinch_listeners
-            .push(Box::new(move |event, phase, hitbox, window, cx| {
+        self.listeners_mut().pinch_listeners.push(Box::new(
+            move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to pinch gesture events during the capture phase.
@@ -418,14 +436,15 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().pinch_listeners
-            .push(Box::new(move |event, phase, _hitbox, window, cx| {
+        self.listeners_mut().pinch_listeners.push(Box::new(
+            move |event, phase, _hitbox, window, cx| {
                 if phase == DispatchPhase::Capture {
                     (listener)(event, window, cx);
                 } else {
                     cx.propagate();
                 }
-            }));
+            },
+        ));
     }
 
     /// Bind the given callback to an action dispatch during the capture phase.
@@ -497,7 +516,8 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().key_down_listeners
+        self.listeners_mut()
+            .key_down_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Bubble {
                     (listener)(event, window, cx)
@@ -513,7 +533,8 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().key_down_listeners
+        self.listeners_mut()
+            .key_down_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Capture {
                     listener(event, window, cx)
@@ -526,7 +547,8 @@ impl Interactivity {
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_key_up(&mut self, listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static) {
-        self.listeners_mut().key_up_listeners
+        self.listeners_mut()
+            .key_up_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Bubble {
                     listener(event, window, cx)
@@ -542,7 +564,8 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&KeyUpEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().key_up_listeners
+        self.listeners_mut()
+            .key_up_listeners
             .push(Box::new(move |event, phase, window, cx| {
                 if phase == DispatchPhase::Capture {
                     listener(event, window, cx)
@@ -558,7 +581,9 @@ impl Interactivity {
         &mut self,
         listener: impl Fn(&ModifiersChangedEvent, &mut Window, &mut App) + 'static,
     ) {
-        self.listeners_mut().modifiers_changed_listeners.push(Box::new(listener));
+        self.listeners_mut()
+            .modifiers_changed_listeners
+            .push(Box::new(listener));
     }
 
     /// Bind the given callback to drop events of the given type, whether or not the drag started on this element.
@@ -603,7 +628,9 @@ impl Interactivity {
     where
         Self: Sized,
     {
-        self.listeners_mut().aux_click_listeners.push(Rc::new(listener));
+        self.listeners_mut()
+            .aux_click_listeners
+            .push(Rc::new(listener));
     }
 
     /// On drag initiation, this callback will be used to create a new view to render the dragged value for a
@@ -645,7 +672,11 @@ impl Interactivity {
         Self: Sized,
         T: 'static,
     {
-        let Some(drag_listener) = self.rare.as_deref_mut().and_then(|rare| rare.drag_listener.as_mut()) else {
+        let Some(drag_listener) = self
+            .rare
+            .as_deref_mut()
+            .and_then(|rare| rare.drag_listener.as_mut())
+        else {
             debug_assert!(false, "external_drag_payload must be called after on_drag");
             return;
         };
@@ -700,7 +731,8 @@ impl Interactivity {
         Self: Sized,
     {
         debug_assert!(
-            self.rare().is_none_or(|rare| rare.tooltip_builder.is_none()),
+            self.rare()
+                .is_none_or(|rare| rare.tooltip_builder.is_none()),
             "calling tooltip more than once on the same element is not supported"
         );
         self.rare_mut().tooltip_builder = Some(TooltipBuilder {
@@ -719,7 +751,8 @@ impl Interactivity {
         Self: Sized,
     {
         debug_assert!(
-            self.rare().is_none_or(|rare| rare.tooltip_builder.is_none()),
+            self.rare()
+                .is_none_or(|rare| rare.tooltip_builder.is_none()),
             "calling tooltip more than once on the same element is not supported"
         );
         self.rare_mut().tooltip_builder = Some(TooltipBuilder {
@@ -791,8 +824,14 @@ impl Interactivity {
     }
 
     /// KaminIDE patch: take one listener list without allocating the block.
-    fn take_listeners<T>(&mut self, list: impl FnOnce(&mut InteractivityListeners) -> &mut Vec<T>) -> Vec<T> {
-        self.listeners.as_deref_mut().map(|listeners| mem::take(list(listeners))).unwrap_or_default()
+    fn take_listeners<T>(
+        &mut self,
+        list: impl FnOnce(&mut InteractivityListeners) -> &mut Vec<T>,
+    ) -> Vec<T> {
+        self.listeners
+            .as_deref_mut()
+            .map(|listeners| mem::take(list(listeners)))
+            .unwrap_or_default()
     }
 }
 
@@ -874,7 +913,9 @@ pub trait InteractiveElement: Sized {
     /// Apply the given style to this element when the mouse hovers over it
     fn hover(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         debug_assert!(
-            self.interactivity().rare().is_none_or(|rare| rare.hover_style.is_none()),
+            self.interactivity()
+                .rare()
+                .is_none_or(|rare| rare.hover_style.is_none()),
             "hover style already set"
         );
         self.interactivity().rare_mut().hover_style = Some(Box::new(f(StyleRefinement::default())));
@@ -1245,13 +1286,16 @@ pub trait InteractiveElement: Sized {
         group_name: impl Into<SharedString>,
         f: impl FnOnce(StyleRefinement) -> StyleRefinement,
     ) -> Self {
-        self.interactivity().listeners_mut().group_drag_over_styles.push((
-            TypeId::of::<S>(),
-            GroupStyle {
-                group: group_name.into(),
-                style: Box::new(f(StyleRefinement::default())),
-            },
-        ));
+        self.interactivity()
+            .listeners_mut()
+            .group_drag_over_styles
+            .push((
+                TypeId::of::<S>(),
+                GroupStyle {
+                    group: group_name.into(),
+                    style: Box::new(f(StyleRefinement::default())),
+                },
+            ));
         self
     }
 
@@ -1317,7 +1361,8 @@ pub trait InteractiveElement: Sized {
     where
         Self: Sized,
     {
-        self.interactivity().rare_mut().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().in_focus_style =
+            Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -1329,7 +1374,8 @@ pub trait InteractiveElement: Sized {
     where
         Self: Sized,
     {
-        self.interactivity().rare_mut().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().focus_visible_style =
+            Some(Box::new(f(StyleRefinement::default())));
         self
     }
 }
@@ -1575,7 +1621,9 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     ///
     /// See [`Style::restrict_scroll_to_axis`](crate::Style::restrict_scroll_to_axis) for details.
     fn restrict_scroll_to_axis(mut self) -> Self {
-        self.interactivity().base_style_mut().restrict_scroll_to_axis = Some(true);
+        self.interactivity()
+            .base_style_mut()
+            .restrict_scroll_to_axis = Some(true);
         self
     }
 
@@ -1596,7 +1644,8 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     where
         Self: Sized,
     {
-        self.interactivity().rare_mut().active_style = Some(Box::new(f(StyleRefinement::default())));
+        self.interactivity().rare_mut().active_style =
+            Some(Box::new(f(StyleRefinement::default())));
         self
     }
 
@@ -1970,7 +2019,9 @@ impl ParentElement for Div {
 }
 
 impl Element for Div {
-    fn paint_boundary(&self) -> bool { false }
+    fn paint_boundary(&self) -> bool {
+        false
+    }
 
     type RequestLayoutState = DivFrameState;
     type PrepaintState = Option<Hitbox>;
@@ -2157,7 +2208,8 @@ impl Element for Div {
 
                 window.with_image_cache(image_cache, |window| {
                     window.with_element_offset(scroll_offset, |window| {
-                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
+                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>()
+                        {
                             (traversal.enter_children)(window);
                         }
                         if let Some(order_fn) = &self.prepaint_order_fn {
@@ -2186,7 +2238,6 @@ impl Element for Div {
         hitbox
     }
 
-    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     fn paint(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2197,59 +2248,104 @@ impl Element for Div {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let image_cache = self
-            .image_cache
-            .as_mut()
-            .map(|provider| provider.provide(window, cx));
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    global_id,
+                    inspector_id,
+                    bounds,
+                    request_layout,
+                    hitbox,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
 
-        let outer_exact = std::mem::replace(
-            &mut window.raster_frame.exact_bounds,
-            request_layout.exact_bounds.map(|exact| (bounds, exact)),
-        );
-        window.with_image_cache(image_cache, |window| {
-            self.interactivity.paint(
-                global_id,
-                inspector_id,
-                bounds,
-                hitbox.as_ref(),
-                window,
-                cx,
-                |style, window, cx| {
-                    let exact_bounds = window.raster_frame.exact_bounds;
-                    // Own borders are painted; children bring their own bounds.
-                    window.raster_frame.exact_bounds = None;
-                    // skip children
-                    if style.display == Display::None {
-                        return;
-                    }
+    fn paint_async<'a>(
+        &'a mut self,
+        global_id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        hitbox: &'a mut Option<Hitbox>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            let image_cache = self
+                .image_cache
+                .as_mut()
+                .map(|provider| provider.provide(window, cx));
 
-                    let painter = self.child_painter.clone().or_else(|| {
-                        window.render_context::<crate::PaintTraversal>()
-                            .map(|traversal| traversal.children.clone())
-                    });
-                    let mut children = self.children.iter_mut().map(|child| {
-                        #[cfg(feature = "stacker")] { &mut **child }
-                        #[cfg(not(feature = "stacker"))] { child }
-                    });
-                    if let Some(painter) = painter {
-                        (painter.0)(
-                            &crate::ChildPaintContext {
-                                style,
-                                bounds,
-                                exact_bounds,
-                                metadata: self.paint_metadata.as_deref(),
-                            },
-                            &mut children,
+            let outer_exact = std::mem::replace(
+                &mut window.raster_frame.exact_bounds,
+                request_layout.exact_bounds.map(|exact| (bounds, exact)),
+            );
+            window
+                .with_image_cache_async(image_cache, async |window| {
+                    self.interactivity
+                        .paint_async(
+                            global_id,
+                            inspector_id,
+                            bounds,
+                            hitbox.as_ref(),
                             window,
                             cx,
-                        );
-                    } else {
-                        for child in children { child.paint(window, cx); }
-                    }
-                },
-            )
-        });
-        window.raster_frame.exact_bounds = outer_exact;
+                            stack,
+                            async |style, window, cx, stack| {
+                                let exact_bounds = window.raster_frame.exact_bounds;
+                                // Own borders are painted; children bring their own bounds.
+                                window.raster_frame.exact_bounds = None;
+                                // skip children
+                                if style.display == Display::None {
+                                    return;
+                                }
+
+                                let painter = self.child_painter.clone().or_else(|| {
+                                    window
+                                        .render_context::<crate::PaintTraversal>()
+                                        .map(|traversal| traversal.children.clone())
+                                });
+                                let mut children = self.children.iter_mut().map(|child| {
+                                    #[cfg(feature = "stacker")]
+                                    {
+                                        &mut **child
+                                    }
+                                    #[cfg(not(feature = "stacker"))]
+                                    {
+                                        child
+                                    }
+                                });
+                                if let Some(painter) = painter {
+                                    (painter.0)(
+                                        crate::ChildPaintContext {
+                                            style,
+                                            bounds,
+                                            exact_bounds,
+                                            metadata: self.paint_metadata.as_deref(),
+                                        },
+                                        &mut children,
+                                        window,
+                                        cx,
+                                        stack,
+                                    )
+                                    .await;
+                                } else {
+                                    for child in children {
+                                        child.paint_async(window, cx, stack).await;
+                                    }
+                                }
+                            },
+                        )
+                        .await
+                })
+                .await;
+            window.raster_frame.exact_bounds = outer_exact;
+        })
     }
 }
 
@@ -2633,7 +2729,10 @@ impl Interactivity {
                     .get_or_insert_with(Default::default);
             }
             if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
-                if self.rare().is_some_and(|rare| rare.tooltip_builder.is_some()) {
+                if self
+                    .rare()
+                    .is_some_and(|rare| rare.tooltip_builder.is_some())
+                {
                     self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
                 } else {
                     // If there is no longer a tooltip builder, remove the active tooltip.
@@ -2665,7 +2764,10 @@ impl Interactivity {
             || self.scroll_offset.is_some()
             || self.tracked_focus_handle.is_some()
             || self.rare().is_some_and(InteractivityRare::need_hitbox)
-            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
+            || self
+                .listeners
+                .as_deref()
+                .is_some_and(InteractivityListeners::need_hitbox)
             || window.is_inspector_picking(cx)
     }
 
@@ -2745,26 +2847,6 @@ impl Interactivity {
     pub fn paint(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        hitbox: Option<&Hitbox>,
-        window: &mut Window,
-        cx: &mut App,
-        f: impl FnOnce(&Style, &mut Window, &mut App),
-    ) {
-        self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
-        if let Some(global_id) = global_id {
-            self.paint_stateful(global_id, _inspector_id, bounds, hitbox, window, cx, f);
-        } else {
-            self.paint_with_state(None, None, _inspector_id, bounds, hitbox, window, cx, f);
-        }
-    }
-
-    // Keep owned state out of anonymous divs' recursive paint frames.
-    #[inline(never)]
-    fn paint_stateful(
-        &mut self,
-        global_id: &GlobalElementId,
         inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         hitbox: Option<&Hitbox>,
@@ -2772,128 +2854,20 @@ impl Interactivity {
         cx: &mut App,
         f: impl FnOnce(&Style, &mut Window, &mut App),
     ) {
-        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
-            let mut state = state.unwrap_or_default();
-            self.paint_with_state(
-                Some(&mut state),
-                Some(global_id),
-                inspector_id,
-                bounds,
-                hitbox,
-                window,
-                cx,
-                f,
-            );
-            ((), state)
-        });
-    }
-
-    fn paint_with_state(
-        &mut self,
-        mut element_state: Option<&mut InteractiveElementState>,
-        global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        hitbox: Option<&Hitbox>,
-        window: &mut Window,
-        cx: &mut App,
-        f: impl FnOnce(&Style, &mut Window, &mut App),
-    ) {
-        let style = self.compute_style_boxed(hitbox, element_state.as_deref_mut(), window, cx);
-
-        #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
-        if let Some(debug_selector) = &self.debug_selector {
-            window
-                .next_frame
-                .record_debug_bounds(debug_selector.clone(), bounds);
-        }
-
-        self.paint_hover_group_handler(window, cx);
-
-        if style.visibility == Visibility::Hidden {
-            return;
-        }
-
-        let mut tab_group = None;
-        if self.tab_group {
-            tab_group = self.tab_index;
-        }
-
-        window.with_element_opacity(style.opacity, |window| {
-            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
-            style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
-                window.with_child_style(&style, bounds, |window| {
-                    window.with_tab_group(tab_group, |window| {
-                        // Register the container's own focus handle *inside* its
-                        // tab group, so that focusing the container and then
-                        // calling `focus_next` descends into this group's first
-                        // item. Inserting it before `with_tab_group` would give the
-                        // container a shallower tab path than its children; with
-                        // sibling groups every container would then sort ahead of
-                        // every item, and `focus_next` from a container would jump
-                        // to the first item in the whole window instead of its own.
-                        if let Some(focus_handle) = &self.tracked_focus_handle {
-                            window.next_frame.tab_stops.insert(focus_handle);
-                        }
-                        if let Some(hitbox) = hitbox {
-                            #[cfg(debug_assertions)]
-                            self.paint_debug_info(global_id, hitbox, &style, window, cx);
-
-                            if let Some(drag) = cx.active_drag.as_ref() {
-                                if let Some(mouse_cursor) = drag.cursor_style {
-                                    window.set_window_cursor_style(mouse_cursor);
-                                }
-                            } else {
-                                if let Some(mouse_cursor) = style.mouse_cursor {
-                                    window.set_cursor_style(mouse_cursor, hitbox);
-                                }
-                            }
-
-                            if let Some(group) = self.group.clone() {
-                                GroupHitboxes::push(group, hitbox.id, cx);
-                            }
-
-                            if let Some(area) = self.rare().and_then(|rare| rare.window_control) {
-                                window.insert_window_control_hitbox(area, hitbox.clone());
-                            }
-
-                            self.paint_mouse_listeners(
-                                hitbox,
-                                element_state.as_deref_mut(),
-                                window,
-                                cx,
-                            );
-                            self.paint_scroll_listener(hitbox, &style, window, cx);
-                        }
-
-                        self.paint_keyboard_listeners(window, cx);
-
-                        if window.a11y.is_active() {
-                            if let Some(global_id) = global_id {
-                                let a11y_action_listeners = self.take_listeners(|l| &mut l.a11y_action_listeners);
-                                if !a11y_action_listeners.is_empty() {
-                                    let node_id = global_id.accesskit_node_id();
-                                    for (action, listener) in a11y_action_listeners {
-                                        window.on_a11y_action(node_id, action, listener);
-                                    }
-                                }
-                            }
-                        }
-
-                        f(&style, window, cx);
-
-                        if let Some(_hitbox) = hitbox {
-                            #[cfg(any(feature = "inspector", debug_assertions))]
-                            window.insert_inspector_hitbox(_hitbox.id, _inspector_id, cx);
-
-                            if let Some(group) = self.group.as_ref() {
-                                GroupHitboxes::pop(group, cx);
-                            }
-                        }
-                    })
-                });
-            });
-        });
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    global_id,
+                    inspector_id,
+                    bounds,
+                    hitbox,
+                    window,
+                    cx,
+                    stack,
+                    async |style, window, cx, _stack| f(style, window, cx),
+                )
+            })
+            .finish();
     }
 
     #[cfg(debug_assertions)]
@@ -3102,11 +3076,17 @@ impl Interactivity {
             })
         }
 
-        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
+        let has_hover_style = self
+            .rare
+            .as_deref()
+            .is_some_and(|rare| rare.hover_style.is_some());
         if has_hover_style
             || self.base_style.mouse_cursor.is_some()
             || cx.active_drag.is_some()
-                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
+                && self
+                    .listeners
+                    .as_ref()
+                    .is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
         {
             let hitbox = hitbox.clone();
             let hover_state = has_hover_style.then_some(()).and_then(|_| {
@@ -3131,7 +3111,11 @@ impl Interactivity {
             });
         }
 
-        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
+        if let Some(group_hover) = self
+            .rare
+            .as_deref()
+            .and_then(|rare| rare.group_hover_style.as_ref())
+        {
             if let Some(group_hitbox_id) = GroupHitboxes::get(&group_hover.group, cx) {
                 let hover_state = element_state
                     .as_ref()
@@ -3156,11 +3140,17 @@ impl Interactivity {
 
         let drag_cursor_style = self.base_style.as_ref().mouse_cursor;
 
-        let mut drag_listener = self.rare.as_deref_mut().and_then(|rare| rare.drag_listener.take());
+        let mut drag_listener = self
+            .rare
+            .as_deref_mut()
+            .and_then(|rare| rare.drag_listener.take());
         let drop_listeners = self.take_listeners(|l| &mut l.drop_listeners);
         let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
         let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
-        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
+        let can_drop_predicate = self
+            .rare
+            .as_deref_mut()
+            .and_then(|rare| rare.can_drop_predicate.take());
 
         if !drop_listeners.is_empty() {
             let hitbox = hitbox.clone();
@@ -3411,7 +3401,10 @@ impl Interactivity {
                         hover_listener(&is_hovered, window, cx);
                     }
                 };
-                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
+                let hover_listener_mode = self
+                    .rare()
+                    .map(|rare| rare.hover_listener_mode)
+                    .unwrap_or_default();
 
                 if has_mouse_down.borrow().is_none() {
                     let is_hovered =
@@ -3537,7 +3530,8 @@ impl Interactivity {
     fn paint_keyboard_listeners(&mut self, window: &mut Window, _cx: &mut App) {
         let key_down_listeners = self.take_listeners(|l| &mut l.key_down_listeners);
         let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
-        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
+        let modifiers_changed_listeners =
+            self.take_listeners(|l| &mut l.modifiers_changed_listeners);
         let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
         if let Some(context) = self.key_context.clone() {
             window.set_key_context(context);
@@ -3703,7 +3697,8 @@ impl Interactivity {
                 style.refine(focus_style);
             }
 
-            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
+            if let Some(focus_visible_style) =
+                rare.and_then(|rare| rare.focus_visible_style.as_ref())
                 && focus_handle.is_focused(window)
                 && window.last_input_was_keyboard()
             {
@@ -3755,12 +3750,18 @@ impl Interactivity {
         if let Some(hitbox) = hitbox {
             if let Some(drag) = cx.active_drag.take() {
                 let mut can_drop = true;
-                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
+                if let Some(can_drop_predicate) =
+                    rare.and_then(|rare| rare.can_drop_predicate.as_ref())
+                {
                     can_drop = can_drop_predicate(drag.value.as_ref(), window, cx);
                 }
 
                 if can_drop {
-                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
+                    for (state_type, group_drag_style) in self
+                        .listeners
+                        .iter()
+                        .flat_map(|l| &l.group_drag_over_styles)
+                    {
                         if let Some(group_hitbox_id) =
                             GroupHitboxes::get(&group_drag_style.group, cx)
                             && *state_type == drag.value.as_ref().type_id()
@@ -3770,11 +3771,12 @@ impl Interactivity {
                         }
                     }
 
-                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
+                    for (state_type, build_drag_over_style) in
+                        self.listeners.iter().flat_map(|l| &l.drag_over_styles)
+                    {
                         if *state_type == drag.value.as_ref().type_id() && hitbox.is_hovered(window)
                         {
-                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
-                            );
+                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
                         }
                     }
                 }
@@ -3871,7 +3873,11 @@ impl Interactivity {
                 node.set_column_count(count);
             }
         }
-        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
+        if self
+            .listeners
+            .as_ref()
+            .is_some_and(|l| !l.click_listeners.is_empty())
+        {
             node.add_action(accesskit::Action::Click);
         }
         if self.tracked_focus_handle.is_some() || self.focusable {
@@ -4377,11 +4383,38 @@ impl<E> Element for Stateful<E>
 where
     E: Element,
 {
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        prepaint: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        self.element.paint_async(
+            id,
+            inspector_id,
+            bounds,
+            request_layout,
+            prepaint,
+            window,
+            cx,
+            stack,
+        )
+    }
+
     type RequestLayoutState = E::RequestLayoutState;
     type PrepaintState = E::PrepaintState;
 
-    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
-    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
+    fn paint_boundary(&self) -> bool {
+        self.element.paint_boundary()
+    }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        self.element.paint_metadata()
+    }
 
     fn id(&self) -> Option<ElementId> {
         self.element.id()
@@ -4734,20 +4767,31 @@ mod tests {
     fn listener_lists_are_allocated_by_the_first_registration() {
         let mut interactivity = Interactivity::new();
         assert!(interactivity.listeners.is_none());
-        assert!(interactivity.take_listeners(|l| &mut l.click_listeners).is_empty());
-        assert!(interactivity.listeners.is_none(), "taking an empty list must not allocate");
+        assert!(
+            interactivity
+                .take_listeners(|l| &mut l.click_listeners)
+                .is_empty()
+        );
+        assert!(
+            interactivity.listeners.is_none(),
+            "taking an empty list must not allocate"
+        );
 
         interactivity.on_click(|_, _, _| {});
         let listeners = interactivity.listeners.as_deref().expect("registered");
         assert_eq!(listeners.click_listeners.len(), 1);
         assert!(listeners.need_hitbox());
-        assert_eq!(interactivity.take_listeners(|l| &mut l.click_listeners).len(), 1);
+        assert_eq!(
+            interactivity
+                .take_listeners(|l| &mut l.click_listeners)
+                .len(),
+            1
+        );
         assert!(!interactivity.listeners.as_deref().unwrap().need_hitbox());
 
         // The block replaces twenty inline lists with one pointer.
         assert!(
-            std::mem::size_of::<InteractivityListeners>()
-                >= 18 * std::mem::size_of::<Vec<()>>()
+            std::mem::size_of::<InteractivityListeners>() >= 18 * std::mem::size_of::<Vec<()>>()
         );
     }
 

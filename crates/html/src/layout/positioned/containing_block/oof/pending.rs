@@ -39,9 +39,18 @@ pub(in crate::layout::positioned::containing_block) struct Pending(Rc<RefCell<Wo
 
 pub(super) struct Painted(pub(super) AnyElement, pub(super) ContentMask<Pixels>);
 impl Painted {
-    pub(super) fn paint(&mut self, window: &mut Window, cx: &mut App) {
+    pub(super) async fn paint_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         // Колонка может задать свою маску только на paint (css-break-3 §5.4).
-        window.with_content_mask(Some(self.1), |window| self.0.paint(window, cx));
+        window
+            .with_content_mask_async(Some(self.1), async |window| {
+                self.0.paint_async(window, cx, stack).await
+            })
+            .await;
     }
 }
 

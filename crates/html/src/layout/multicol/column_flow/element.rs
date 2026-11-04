@@ -167,6 +167,20 @@ impl Hooks for ColumnFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
+        crate::hooks::paint_on_stack(self, _bounds, _state, child, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        child: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.paint_async(window, cx, stack).await;
+        })
     }
 }

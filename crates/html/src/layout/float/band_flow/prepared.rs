@@ -120,9 +120,29 @@ impl Hooks for Child {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_retained_layout(&mut self.engine, |window| {
-            window.with_element_id_context(&self.identity, |window| self.element.paint(window, cx))
-        });
+        crate::hooks::paint_on_stack(self, _bounds, _id, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _id: &'a mut LayoutId,
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            window
+                .with_retained_layout_async(&mut self.engine, async |window| {
+                    window
+                        .with_element_id_context_async(&self.identity, async |window| {
+                            self.element.paint_async(window, cx, stack).await
+                        })
+                        .await
+                })
+                .await;
+        })
     }
 }
 

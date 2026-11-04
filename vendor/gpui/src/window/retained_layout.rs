@@ -1,6 +1,8 @@
 //! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 
 use super::{TaffyLayoutEngine, Window};
+use crate::ElementId;
+use smallvec::SmallVec;
 use std::{cell::RefCell, rc::Rc};
 
 /// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
@@ -26,7 +28,9 @@ pub struct RetainedLayout(Rc<RefCell<Option<TaffyLayoutEngine>>>);
 
 impl Default for RetainedLayout {
     fn default() -> Self {
-        Self(Rc::new(RefCell::new(Some(TaffyLayoutEngine::new_for_subtree()))))
+        Self(Rc::new(RefCell::new(Some(
+            TaffyLayoutEngine::new_for_subtree(),
+        ))))
     }
 }
 
@@ -62,9 +66,9 @@ impl Window {
         context: &ElementLayoutContext,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        context
-            .scope
-            .enter(self, |window| window.with_element_id_context(&context.identity, f))
+        context.scope.enter(self, |window| {
+            window.with_element_id_context(&context.identity, f)
+        })
     }
 
     /// Входит в цепочку подготовленного поддерева без повтора paint-состояния.
@@ -73,13 +77,23 @@ impl Window {
         context: &ElementIdContext,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.element_id_stack, context.0.iter().cloned().collect());
+        let outer = self.replace_element_id_context(context);
         self.with_restore(
             outer,
             |window, outer| std::mem::swap(&mut window.element_id_stack, outer),
             f,
         )
         .0
+    }
+
+    pub(super) fn replace_element_id_context(
+        &mut self,
+        context: &ElementIdContext,
+    ) -> SmallVec<[ElementId; 32]> {
+        std::mem::replace(
+            &mut self.element_id_stack,
+            context.0.iter().cloned().collect(),
+        )
     }
 
     /// Query a registered subtree's intrinsic axis without replacing its final layout.
@@ -112,24 +126,28 @@ impl Window {
         retained: &mut RetainedLayout,
         f: impl FnOnce(&mut Window) -> R,
     ) -> R {
+        let outer = self.activate_retained_layout(retained);
+        self.with_restore(outer, Self::restore_retained_layout, f).0
+    }
+
+    pub(super) fn activate_retained_layout(
+        &mut self,
+        retained: &RetainedLayout,
+    ) -> Option<RetainedLayout> {
         if Rc::ptr_eq(&retained.0, &self.layout_owner.0) {
-            return f(self);
-        }
-        struct Restore<'a> {
-            window: &'a mut Window,
-            outer: RetainedLayout,
-        }
-        impl Drop for Restore<'_> {
-            fn drop(&mut self) {
-                *self.window.layout_owner.0.borrow_mut() = self.window.layout_engine.take();
-                self.window.layout_engine = self.outer.0.borrow_mut().take();
-                self.window.layout_owner = self.outer.clone();
-            }
+            return None;
         }
         let outer = std::mem::replace(&mut self.layout_owner, retained.clone());
         *outer.0.borrow_mut() = self.layout_engine.take();
         self.layout_engine = retained.0.borrow_mut().take();
-        let restore = Restore { window: self, outer };
-        f(restore.window)
+        Some(outer)
+    }
+
+    pub(super) fn restore_retained_layout(&mut self, outer: &mut Option<RetainedLayout>) {
+        if let Some(outer) = outer {
+            *self.layout_owner.0.borrow_mut() = self.layout_engine.take();
+            self.layout_engine = outer.0.borrow_mut().take();
+            self.layout_owner = outer.clone();
+        }
     }
 }

@@ -15,7 +15,7 @@ use crate::layout::fragment::decoration::Decoration;
 use crate::layout::fragment::paint_source::{BareRecords, Nested, SourceSlices};
 mod boxes;
 mod capture;
-pub(crate) use boxes::{box_painter, decoration, decorations};
+pub(crate) use boxes::{box_painter, decoration_async, decorations};
 mod shift;
 use capture::own_capture;
 pub(super) use capture::remember_clips;
@@ -105,37 +105,6 @@ pub(crate) fn outside_source<R>(window: &mut Window, f: impl FnOnce(&mut Window)
     })
 }
 
-pub(crate) fn record(
-    extent: Bounds<Pixels>,
-    segments: Rc<[PaintSegment]>,
-    slices: SourceSlices,
-    window: &mut Window,
-    cx: &mut App,
-    paint: impl FnOnce(&mut Window, &mut App),
-) -> Result<(PaintSegmentRecords, BareRecords), PaintRecordError> {
-    let source = Source::new(slices, true);
-    let (_, records) = window.record_paint_segments(extent, segments, cx, |window, cx| {
-        match window.paint_segment_clips() {
-            Ok(clips) => source.remember((0, 0), clips),
-            Err(error) => source.fail(error),
-        }
-        // Only admitted nodes reach a segment: a box the source lays out in a
-        // layer of its own (a fixed box whose block is the viewport) is not one.
-        let unadmitted = window.with_paint_segment_slices(Rc::from([]), |window| {
-            window.with_render_context(Some(source.clone()), |window| {
-                crate::layout::fragment::line_admission::outside(window, |w| paint(w, cx))
-            })
-        });
-        if let Err(error) = unadmitted {
-            source.fail(error);
-        }
-    })?;
-    if let Some(error) = source.failure.take() {
-        return Err(error);
-    }
-    Ok((records, source.bare.clone()))
-}
-
 pub(crate) fn prepaint(
     extent: Bounds<Pixels>,
     segments: Rc<[PaintSegment]>,
@@ -162,89 +131,8 @@ pub(crate) fn prepaint(
     source.failure.take().map_or(Ok(()), Err)
 }
 
-pub(crate) fn node(
-    id: u64,
-    cb: Option<u64>,
-    placed: gpui::Point<Pixels>,
-    window: &mut Window,
-    cx: &mut App,
-    paint: impl FnOnce(&mut Window, &mut App),
-) {
-    let Some(source) = window.render_context::<Source>() else {
-        paint(window, cx);
-        return;
-    };
-    // Its own instance outside the source paints it (`SourceSlices::elsewhere`).
-    if source.slices.elsewhere.contains(&id) {
-        return;
-    }
-    // A continued root placed elsewhere than its admission's layout (a late
-    // static position) carries its family's admission along.
-    match source
-        .slices
-        .origins
-        .get(&id)
-        .map(|origin| placed - *origin)
-    {
-        Some(by) if by != gpui::Point::default() => window
-            .with_render_context(Some(Rc::new(shift::Shift(by))), |window| {
-                admitted(source, id, cb, window, cx, paint)
-            }),
-        _ => admitted(source, id, cb, window, cx, paint),
-    }
-}
+mod admission;
+pub(crate) use admission::{node, node_async};
 
-fn admitted(
-    source: Rc<Source>,
-    id: u64,
-    cb: Option<u64>,
-    window: &mut Window,
-    cx: &mut App,
-    paint: impl FnOnce(&mut Window, &mut App),
-) {
-    let key = capture_key(window);
-    let by = shift::current(window);
-    if source.painting
-        && key == 0
-        && let Some(nested) = source.slices.nested.get(&id).cloned()
-    {
-        let nested = shift::nested(nested, by);
-        own_capture(&source, id, cb, nested, key, window, cx, paint);
-        return;
-    }
-    let slices = match source.own(id, key) {
-        // A capture's own admission was shifted with its root already.
-        Some(slices) => slices,
-        None if key != 0 => Rc::from([]),
-        None => shift::slices(
-            source
-                .slices
-                .nodes
-                .get(&id)
-                .cloned()
-                .unwrap_or_else(|| Rc::from([])),
-            by,
-        ),
-    };
-    let paint = |window: &mut Window| {
-        window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| paint(window, cx));
-    };
-    let clips = cb.map(|cb| source.cb_clips(key, cb));
-    let result = window.with_paint_segment_slices(slices, |window| match clips {
-        Some(Some(clips)) => window.with_paint_segment_clips(&clips, paint),
-        // Inside an own capture the CB may lie outside: its clip belongs to
-        // the enclosing record or the legacy copy that replays this one.
-        Some(None) if key != 0 => {
-            paint(window);
-            Ok(())
-        }
-        Some(None) => Err(PaintRecordError::InvalidGeometry),
-        None => {
-            paint(window);
-            Ok(())
-        }
-    });
-    if let Err(error) = result.and_then(|result| result) {
-        source.fail(error);
-    }
-}
+mod traversal;
+pub(crate) use traversal::record_async;

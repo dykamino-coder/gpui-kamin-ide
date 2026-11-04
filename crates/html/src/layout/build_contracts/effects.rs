@@ -80,8 +80,36 @@ impl<'a> Effect<'a> {
     }
 }
 
-pub(crate) type PaintBody<'a> = &'a mut dyn FnMut(&mut Window, &mut App);
-type OutlineFlow = fn(&Rc<Deferred>, &mut Window, &mut App, PaintBody<'_>);
+pub(crate) trait PaintBody {
+    fn paint<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a>;
+}
+
+impl<F> PaintBody for F
+where
+    F: AsyncFnMut(&mut Window, &mut App, &mut gpui::PaintStack),
+{
+    fn paint<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(self(window, cx, stack))
+    }
+}
+
+type OutlineFlow = for<'a> fn(
+    &'a Rc<Deferred>,
+    &'a mut Window,
+    &'a mut App,
+    &'a mut gpui::PaintStack,
+    &'a mut dyn PaintBody,
+) -> gpui::PaintFuture<'a>;
 
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, FrameCx<'_>) -> AnyElement;
@@ -111,14 +139,15 @@ impl EffectBuild {
         }
     }
 
-    pub(super) fn outline_flow(
+    pub(super) async fn outline_flow(
         &self,
         owner: &Rc<Deferred>,
         window: &mut Window,
         cx: &mut App,
-        body: PaintBody<'_>,
+        stack: &mut gpui::PaintStack,
+        body: &mut dyn PaintBody,
     ) {
-        (self.outline_flow)(owner, window, cx, body)
+        (self.outline_flow)(owner, window, cx, stack, body).await;
     }
 
     pub(super) fn effect(&self, child: AnyElement, effect: Effect<'_>) -> AnyElement {

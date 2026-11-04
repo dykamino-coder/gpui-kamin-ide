@@ -77,22 +77,36 @@ macro_rules! deferred {
             }
             fn paint(
                 &mut self,
-                _: Bounds<Pixels>,
-                _: &mut (),
-                _: &mut (),
+                bounds: Bounds<Pixels>,
+                state: &mut (),
+                prepaint: &mut (),
                 window: &mut Window,
                 cx: &mut App,
             ) {
-                if let Some(pass) = current(window).filter(|pass| pass.is_open(window)) {
-                    if let Some(child) = self.child.take() {
-                        ($enqueue)(self, child, &pass, window);
+                crate::hooks::paint_on_stack(self, bounds, state, prepaint, window, cx);
+            }
+
+            fn paint_async<'a>(
+                &'a mut self,
+                _bounds: Bounds<Pixels>,
+                _state: &'a mut (),
+                _prepaint: &'a mut (),
+                window: &'a mut Window,
+                cx: &'a mut App,
+                stack: &'a mut gpui::PaintStack,
+            ) -> gpui::PaintFuture<'a> {
+                Box::pin(async move {
+                    if let Some(pass) = current(window).filter(|pass| pass.is_open(window)) {
+                        if let Some(child) = self.child.take() {
+                            ($enqueue)(self, child, &pass, window);
+                        }
+                    } else if let Some(child) = self.child.take() {
+                        if let Some(mut child) = ($behind)(self, child, window) {
+                            child.paint_async(window, cx, stack).await;
+                            self.child = Some(child);
+                        }
                     }
-                } else if let Some(child) = self.child.take() {
-                    if let Some(mut child) = ($behind)(self, child, window) {
-                        child.paint(window, cx);
-                        self.child = Some(child);
-                    }
-                }
+                })
             }
         }
         impl IntoElement for $ty {

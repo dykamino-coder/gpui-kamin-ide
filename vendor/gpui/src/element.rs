@@ -35,8 +35,8 @@
 use crate::InspectorElementPath;
 use crate::{
     A11ySubtreeBuilder, App, ArenaBox, AvailableSpace, Bounds, Context, DispatchNodeId, ElementId,
-    FocusHandle, InspectorElementId, LayoutId, Pixels, Point, Size, Style, Window,
-    util::FluentBuilder, window::with_element_arena,
+    FocusHandle, InspectorElementId, LayoutId, PaintFuture, PaintStack, Pixels, Point, Size, Style,
+    Window, util::FluentBuilder, window::with_element_arena,
 };
 use derive_more::{Deref, DerefMut};
 use std::{
@@ -61,10 +61,14 @@ pub trait Element: 'static + IntoElement {
 
     /// KaminIDE patch: whether host traversal must treat this element as an opaque paint scope.
     /// Transparent adapters must preserve their child's paint environment.
-    fn paint_boundary(&self) -> bool { true }
+    fn paint_boundary(&self) -> bool {
+        true
+    }
 
     /// Host-owned metadata. GPUI only forwards it through transparent holders.
-    fn paint_metadata(&self) -> Option<&dyn Any> { None }
+    fn paint_metadata(&self) -> Option<&dyn Any> {
+        None
+    }
 
     /// If this element has a unique identifier, return it here. This is used to track elements across frames, and
     /// will cause a GlobalElementId to be passed to the request_layout, prepaint, and paint methods.
@@ -111,6 +115,31 @@ pub trait Element: 'static + IntoElement {
         window: &mut Window,
         cx: &mut App,
     );
+
+    /// Продолжение paint: потомки планируются через явный стек, без native recursion.
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        request_layout: &'a mut Self::RequestLayoutState,
+        prepaint: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        _stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a> {
+        Box::pin(async move {
+            self.paint(
+                id,
+                inspector_id,
+                bounds,
+                request_layout,
+                prepaint,
+                window,
+                cx,
+            );
+        })
+    }
 
     /// Returns the accessible role for this element, if any.
     /// Elements that return `None` are not included in the accessibility tree.
@@ -253,7 +282,12 @@ trait ElementObject {
 
     fn prepaint(&mut self, window: &mut Window, cx: &mut App);
 
-    fn paint(&mut self, window: &mut Window, cx: &mut App);
+    fn paint_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a>;
 
     fn root_layout_id(&self) -> Option<LayoutId>;
 
@@ -443,7 +477,10 @@ impl<E: Element> Drawable<E> {
 
     pub(crate) fn prepaint(&mut self, window: &mut Window, cx: &mut App) {
         // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
-        let _prof = cx.instrumentation().prepaint.enter(std::any::type_name::<E>());
+        let _prof = cx
+            .instrumentation()
+            .prepaint
+            .enter(std::any::type_name::<E>());
         match &mut self.phase {
             ElementDrawPhase::RequestLayout {
                 layout_id,
@@ -532,10 +569,22 @@ impl<E: Element> Drawable<E> {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn paint(
         &mut self,
         window: &mut Window,
         cx: &mut App,
+    ) -> (E::RequestLayoutState, E::PrepaintState) {
+        reblessive::Stack::new()
+            .enter(|stack| self.paint_async(window, cx, stack))
+            .finish()
+    }
+
+    async fn paint_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut PaintStack,
     ) -> (E::RequestLayoutState, E::PrepaintState) {
         match &mut self.phase {
             ElementDrawPhase::Prepaint {
@@ -550,15 +599,18 @@ impl<E: Element> Drawable<E> {
                 Self::push_element_id(&self.element, global_id.as_ref(), window);
 
                 window.next_frame.dispatch_tree.set_active_node(*node_id);
-                self.element.paint(
-                    global_id.as_ref(),
-                    inspector_id.as_ref(),
-                    *bounds,
-                    request_layout,
-                    prepaint,
-                    window,
-                    cx,
-                );
+                self.element
+                    .paint_async(
+                        global_id.as_ref(),
+                        inspector_id.as_ref(),
+                        *bounds,
+                        request_layout,
+                        prepaint,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await;
 
                 if global_id.is_some() {
                     window.element_id_stack.pop();
@@ -649,8 +701,12 @@ where
         }
     }
 
-    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
-    fn paint_metadata(&self) -> Option<&dyn Any> { self.element.paint_metadata() }
+    fn paint_boundary(&self) -> bool {
+        self.element.paint_boundary()
+    }
+    fn paint_metadata(&self) -> Option<&dyn Any> {
+        self.element.paint_metadata()
+    }
 
     fn inner_element(&mut self) -> &mut dyn Any {
         &mut self.element
@@ -667,8 +723,15 @@ where
     }
 
     #[inline]
-    fn paint(&mut self, window: &mut Window, cx: &mut App) {
-        Drawable::paint(self, window, cx);
+    fn paint_async<'a>(
+        &'a mut self,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a> {
+        Box::pin(async move {
+            Drawable::paint_async(self, window, cx, stack).await;
+        })
     }
 
     #[inline]
@@ -687,7 +750,9 @@ pub struct AnyElement(ArenaBox<dyn ElementObject>);
 
 impl AnyElement {
     /// Host metadata forwarded by the erased element.
-    pub fn paint_metadata(&self) -> Option<&dyn Any> { self.0.paint_metadata() }
+    pub fn paint_metadata(&self) -> Option<&dyn Any> {
+        self.0.paint_metadata()
+    }
 
     pub(crate) fn new<E>(element: E) -> Self
     where
@@ -726,11 +791,24 @@ impl AnyElement {
 
     /// Paints the element stored in this `AnyElement`.
     pub fn paint(&mut self, window: &mut Window, cx: &mut App) {
-        let traversal = window.render_context::<crate::PaintTraversal>();
-        let _boundary = if self.0.paint_boundary() {
-            traversal.map(|traversal| (traversal.enter_boundary)(window))
-        } else { None };
-        self.0.paint(window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| self.paint_async(window, cx, stack))
+            .finish();
+    }
+
+    /// Планирует ребёнка на heap-стеке; scopes родителя живут до завершения ребёнка.
+    pub async fn paint_async(&mut self, window: &mut Window, cx: &mut App, stack: &mut PaintStack) {
+        stack
+            .run(|stack| async move {
+                let traversal = window.render_context::<crate::PaintTraversal>();
+                let _boundary = if self.0.paint_boundary() {
+                    traversal.map(|traversal| (traversal.enter_boundary)(window))
+                } else {
+                    None
+                };
+                self.0.paint_async(window, cx, stack).await;
+            })
+            .await;
     }
 
     /// Performs layout for this element within the given available space and returns its size.
@@ -772,8 +850,26 @@ impl Element for AnyElement {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
-    fn paint_boundary(&self) -> bool { false }
-    fn paint_metadata(&self) -> Option<&dyn Any> { self.0.paint_metadata() }
+    fn paint_async<'a>(
+        &'a mut self,
+        _: Option<&'a GlobalElementId>,
+        _: Option<&'a InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &'a mut (),
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut PaintStack,
+    ) -> PaintFuture<'a> {
+        Box::pin(AnyElement::paint_async(self, window, cx, stack))
+    }
+
+    fn paint_boundary(&self) -> bool {
+        false
+    }
+    fn paint_metadata(&self) -> Option<&dyn Any> {
+        self.0.paint_metadata()
+    }
 
     fn id(&self) -> Option<ElementId> {
         None

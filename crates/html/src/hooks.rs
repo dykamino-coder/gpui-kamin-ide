@@ -11,16 +11,17 @@
 
 mod paint;
 #[cfg(test)]
-pub(crate) use paint::{paint_collect, paint_inline};
+pub(crate) use paint::{paint_collect, paint_inline, paint_reopen};
 mod painter;
 pub(crate) use paint::BareRecords;
 pub(crate) use paint::{
     Replay, SlotScopes, presented_hit_scopes, with_copy_area, with_copy_hits, with_copy_segment,
 };
 pub(crate) use paint::{
-    SourceSlices, paint_source_node, paint_source_record, prepaint_source_record,
+    SourceSlices, paint_source_node, paint_source_node_async, paint_source_record_async,
+    prepaint_source_record,
 };
-pub(crate) use paint::{paint_atomic, paint_last, paint_reopen, paint_root};
+pub(crate) use paint::{paint_atomic, paint_last, paint_reopen_async, paint_root};
 pub(crate) use paint::{with_clone_hidden, with_late_jobs, with_replay_pieces};
 pub(crate) use painter::{PaintOnly, Painter};
 
@@ -61,6 +62,33 @@ pub(crate) trait Hooks: 'static {
         window: &mut Window,
         cx: &mut App,
     );
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        layout: &'a mut Self::Layout,
+        prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        _stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.paint(bounds, layout, prepaint, window, cx);
+        })
+    }
+}
+
+/// Синхронная точка входа для реализации Hooks с продолжением paint.
+pub(crate) fn paint_on_stack<T: Hooks>(
+    element: &mut T,
+    bounds: Bounds<Pixels>,
+    layout: &mut T::Layout,
+    prepaint: &mut T::Prepaint,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    reblessive::Stack::new()
+        .enter(|stack| element.paint_async(bounds, layout, prepaint, window, cx, stack))
+        .finish();
 }
 
 /// A wrapper around exactly one child: every phase forwards to the child unless overridden.
@@ -82,8 +110,14 @@ pub(crate) trait Wrap: 'static {
         self.child().prepaint(window, cx);
     }
 
-    fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        self.child().paint(window, cx);
+    async fn paint_async(
+        &mut self,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.child().paint_async(window, cx, stack).await;
     }
 }
 
@@ -93,6 +127,18 @@ impl<T: Wrap> Hooks for T {
     }
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
         Wrap::paint_metadata(self)
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        _: &'a mut (),
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(Wrap::paint_async(self, bounds, window, cx, stack))
     }
 
     type Layout = ();
@@ -114,7 +160,9 @@ impl<T: Wrap> Hooks for T {
         window: &mut Window,
         cx: &mut App,
     ) {
-        Wrap::paint(self, bounds, window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| Wrap::paint_async(self, bounds, window, cx, stack))
+            .finish();
     }
 }
 
@@ -144,60 +192,7 @@ impl<T: Hooks> IntoElement for Hooked<T> {
     }
 }
 
-impl<T: Hooks> Element for Hooked<T> {
-    fn paint_boundary(&self) -> bool {
-        self.0.paint_boundary()
-    }
-    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
-        self.0.paint_metadata()
-    }
-
-    type RequestLayoutState = T::Layout;
-    type PrepaintState = T::Prepaint;
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, T::Layout) {
-        Hooks::request_layout(&mut self.0, window, cx)
-    }
-
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        layout: &mut T::Layout,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> T::Prepaint {
-        Hooks::prepaint(&mut self.0, bounds, layout, window, cx)
-    }
-
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        layout: &mut T::Layout,
-        prepaint: &mut T::Prepaint,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        Hooks::paint(&mut self.0, bounds, layout, prepaint, window, cx);
-    }
-}
+mod element;
 
 /// Identity hooks for native elements whose frame state is keyed by `self.id`.
 macro_rules! keyed_element_identity {

@@ -7,7 +7,7 @@ use gpui::{App, Bounds, Corners, Pixels, Point, RenderImage, Window, px};
 use std::sync::Arc;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn paint(
+pub(super) async fn paint(
     group: &mut Grouped,
     border_box: Bounds<Pixels>,
     cx: &mut App,
@@ -17,59 +17,79 @@ pub(super) fn paint(
     mask: Option<(Arc<RenderImage>, Bounds<Pixels>, u32)>,
     mask_clip: Option<[f32; 4]>,
     window: &mut Window,
+    stack: &mut gpui::PaintStack,
 ) {
     let (blur, opacity, blend) = (group.blur, group.opacity, group.blend);
     if group.corner_clip.is_some() {
-        window.paint_group(
-            area,
-            corners,
-            blur,
-            opacity,
-            blend,
-            &[],
-            None,
-            mask_clip,
-            |window| {
-                if let Some(clip) = group.corner_clip.as_mut() {
-                    clip.decoration.paint(window, cx);
-                }
-                window.paint_group(
-                    area,
-                    Corners::default(),
-                    0.0,
-                    1.0,
-                    0,
-                    polygon,
-                    mask,
-                    None,
-                    |w| {
-                        child(group, border_box, w, cx);
-                    },
-                );
-            },
-        );
+        window
+            .paint_group_async(
+                area,
+                corners,
+                blur,
+                opacity,
+                blend,
+                &[],
+                None,
+                mask_clip,
+                async |window| {
+                    if let Some(clip) = group.corner_clip.as_mut() {
+                        clip.decoration.paint_async(window, cx, stack).await;
+                    }
+                    window
+                        .paint_group_async(
+                            area,
+                            Corners::default(),
+                            0.0,
+                            1.0,
+                            0,
+                            polygon,
+                            mask,
+                            None,
+                            async |w| {
+                                child(group, border_box, w, cx, stack).await;
+                            },
+                        )
+                        .await;
+                },
+            )
+            .await;
     } else {
-        window.paint_group(
-            area,
-            corners,
-            blur,
-            opacity,
-            blend,
-            polygon,
-            mask,
-            mask_clip,
-            |w| {
-                child(group, border_box, w, cx);
-            },
-        );
+        window
+            .paint_group_async(
+                area,
+                corners,
+                blur,
+                opacity,
+                blend,
+                polygon,
+                mask,
+                mask_clip,
+                async |w| {
+                    child(group, border_box, w, cx, stack).await;
+                },
+            )
+            .await;
     }
 }
 
-fn child(group: &mut Grouped, border_box: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+async fn child(
+    group: &mut Grouped,
+    border_box: Bounds<Pixels>,
+    window: &mut Window,
+    cx: &mut App,
+    stack: &mut gpui::PaintStack,
+) {
     let paint = group.paint.clone();
-    crate::paint::decorations::outline_phase::scoped(paint.as_ref(), window, cx, |window, cx| {
-        group.child.paint(window, cx);
-    });
+    crate::paint::decorations::outline_phase::scoped_async(
+        paint.as_ref(),
+        window,
+        cx,
+        stack,
+        async |window, cx, stack| {
+            group.child.paint_async(window, cx, stack).await;
+        },
+    )
+    .await;
     if let Some((spec, colour, [t, r, b, l])) = &group.ring_over {
         let content = Bounds {
             origin: gpui::point(border_box.origin.x + px(*l), border_box.origin.y + px(*t)),

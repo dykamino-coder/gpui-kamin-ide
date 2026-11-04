@@ -28,6 +28,19 @@ pub(crate) trait Painter: 'static {
         _cx: &mut App,
     ) {
     }
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        layout: &'a mut LayoutId,
+        prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        _stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.paint(bounds, layout, prepaint, window, cx);
+        })
+    }
 }
 
 /// Адаптер paint-only слоя: один layout-id, без детей и состояния самого GPUI.
@@ -60,6 +73,18 @@ impl<T: Painter> Hooks for PaintOnly<T> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.0.paint(bounds, layout, prepaint, window, cx);
+        super::paint_on_stack(self, bounds, layout, prepaint, window, cx);
+    }
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        layout: &'a mut LayoutId,
+        prepaint: &'a mut T::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        self.0
+            .paint_async(bounds, layout, prepaint, window, cx, stack)
     }
 }

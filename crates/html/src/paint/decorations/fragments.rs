@@ -80,25 +80,40 @@ impl Hooks for Fragments {
 
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
+        bounds: Bounds<Pixels>,
+        layout: &mut (),
         fragments: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Prepaint laid out every placement; this record admits only its own
-        // (a box painted outside its root's capture has none).
-        let admitted = crate::paint::coordinator::segments::decorations(self.node, window);
-        for (geometry, child) in fragments {
-            let own = admitted.iter().any(|g| {
-                g.slice.placement.id == geometry.slice.placement.id
-                    && g.slice.placement.ordinal == geometry.slice.placement.ordinal
-            });
-            if own {
-                crate::paint::coordinator::segments::decoration(*geometry, window, |window| {
-                    child.paint(window, cx)
+        crate::hooks::paint_on_stack(self, bounds, layout, fragments, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _: Bounds<Pixels>,
+        _: &'a mut (),
+        fragments: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            let admitted = crate::paint::coordinator::segments::decorations(self.node, window);
+            for (geometry, child) in fragments {
+                let own = admitted.iter().any(|g| {
+                    g.slice.placement.id == geometry.slice.placement.id
+                        && g.slice.placement.ordinal == geometry.slice.placement.ordinal
                 });
+                if own {
+                    crate::paint::coordinator::segments::decoration_async(
+                        *geometry,
+                        window,
+                        async |window| child.paint_async(window, cx, stack).await,
+                    )
+                    .await;
+                }
             }
-        }
+        })
     }
 }

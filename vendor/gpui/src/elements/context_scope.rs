@@ -35,8 +35,12 @@ impl ContextScope {
 }
 
 impl Element for ContextScope {
-    fn paint_boundary(&self) -> bool { false }
-    fn paint_metadata(&self) -> Option<&dyn Any> { self.child.paint_metadata() }
+    fn paint_boundary(&self) -> bool {
+        false
+    }
+    fn paint_metadata(&self) -> Option<&dyn Any> {
+        self.child.paint_metadata()
+    }
 
     type RequestLayoutState = ();
     type PrepaintState = ();
@@ -83,8 +87,37 @@ impl Element for ContextScope {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let _scope = (self.enter)(ScopePhase::Paint);
-        self.child.paint(window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    _id,
+                    _inspector_id,
+                    _bounds,
+                    _state,
+                    _prepaint,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut (),
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            let _scope = (self.enter)(ScopePhase::Paint);
+            self.child.paint_async(window, cx, stack).await;
+        })
     }
 }
 

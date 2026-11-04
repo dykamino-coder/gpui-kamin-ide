@@ -35,8 +35,18 @@ impl Wrap for Stationary {
             });
         });
     }
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let clip = self.clip.get().unwrap_or_else(|| window.content_mask());
-        window.with_content_mask_replaced(clip, |window| self.child.paint(window, cx));
+        window
+            .with_content_mask_replaced_async(clip, async |window| {
+                self.child.paint_async(window, cx, stack).await
+            })
+            .await;
     }
 }

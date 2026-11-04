@@ -89,8 +89,25 @@ impl Hooks for RootBox {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Measuring the root box does not create a stacking context (CSS2
-        // Appendix E.2). Keep its inline foreground in the enclosing phases.
-        crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
+        crate::hooks::paint_on_stack(self, _bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            // Measuring the root box does not create a stacking context (CSS2
+            // Appendix E.2). Keep its inline foreground in the enclosing phases.
+            crate::hooks::paint_reopen_async(window, async |window| {
+                self.child.paint_async(window, cx, stack).await
+            })
+            .await;
+        })
     }
 }

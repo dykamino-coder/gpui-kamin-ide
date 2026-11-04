@@ -69,21 +69,40 @@ impl Hooks for SourcePaint {
 
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
+        bounds: Bounds<Pixels>,
+        layout: &mut (),
+        prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        if self.placeholder.is_some() {
-            let mut child = self.child.borrow_mut();
-            let PlacedChild { element, layout } = &mut *child;
-            window.with_retained_layout(
-                layout.as_mut().expect("positioned child layout"),
-                |window| {
-                    crate::hooks::paint_reopen(window, |window| element.paint(window, cx));
-                },
-            );
-        }
+        crate::hooks::paint_on_stack(self, bounds, layout, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _layout: &'a mut (),
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            if self.placeholder.is_some() {
+                let mut child = self.child.borrow_mut();
+                let PlacedChild { element, layout } = &mut *child;
+                window
+                    .with_retained_layout_async(
+                        layout.as_mut().expect("positioned child layout"),
+                        async |window| {
+                            crate::hooks::paint_reopen_async(window, async |window| {
+                                element.paint_async(window, cx, stack).await;
+                            })
+                            .await;
+                        },
+                    )
+                    .await;
+            }
+        })
     }
 }

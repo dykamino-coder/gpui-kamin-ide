@@ -213,15 +213,30 @@ impl Hooks for BandFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // The host is not a stacking context (CSS 2.1 Appendix E.2): later
-        // block backgrounds of the enclosing context paint before the
-        // inline foreground of its runs. Paint groups keep their own
-        // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
-        crate::hooks::paint_reopen(window, |window| {
-            for el in self.built.iter_mut() {
-                el.paint(window, cx);
-            }
-        });
+        crate::hooks::paint_on_stack(self, _bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            // The host is not a stacking context (CSS 2.1 Appendix E.2): later
+            // block backgrounds of the enclosing context paint before the
+            // inline foreground of its runs. Paint groups keep their own
+            // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
+            crate::hooks::paint_reopen_async(window, async |window| {
+                for el in self.built.iter_mut() {
+                    el.paint_async(window, cx, stack).await;
+                }
+            })
+            .await;
+        })
     }
 }
 

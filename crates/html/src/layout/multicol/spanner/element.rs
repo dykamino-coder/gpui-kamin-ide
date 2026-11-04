@@ -130,9 +130,23 @@ impl Hooks for SpannerFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(child) = &mut self.child {
-            child.paint(window, cx);
-        }
+        crate::hooks::paint_on_stack(self, _bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut LayoutId,
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            if let Some(child) = &mut self.child {
+                child.paint_async(window, cx, stack).await;
+            }
+        })
     }
 }
 

@@ -8,65 +8,8 @@ use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Window};
 use std::rc::Rc;
-
-/// Each float and stacking context owns its outlines (Servo paint_traversal).
-pub(crate) fn paint(
-    owner: Option<&Rc<Deferred>>,
-    window: &mut Window,
-    cx: &mut App,
-    f: impl FnOnce(&mut Window, &mut App),
-) {
-    let Some(owner) = owner else {
-        return f(window, cx);
-    };
-    owner.outlines.borrow_mut().push(Some(Vec::new()));
-    f(window, cx);
-    flush(owner, window, cx);
-}
-
-// Вектор и iterator отложенной фазы нужны только после обхода потомков.
-// Отдельный кадр не удерживает их на каждом уровне вложенных float.
-#[inline(never)]
-fn flush(owner: &Rc<Deferred>, window: &mut Window, cx: &mut App) {
-    let outlines = owner
-        .outlines
-        .borrow_mut()
-        .pop()
-        .flatten()
-        .unwrap_or_default();
-    for (mut outline, clip) in outlines {
-        window.with_content_mask_replaced(clip, |window| outline.paint(window, cx));
-    }
-}
-
-/// A formatting context does not itself establish a stacking context. Reuse
-/// the enclosing phase so nested flow outlines also follow outer floats.
-pub(crate) fn flow(
-    owner: Option<&Rc<Deferred>>,
-    window: &mut Window,
-    cx: &mut App,
-    f: impl FnOnce(&mut Window, &mut App),
-) {
-    if owner.is_some_and(|owner| matches!(owner.outlines.borrow().last(), Some(Some(_)))) {
-        f(window, cx);
-    } else {
-        paint(owner, window, cx, f);
-    }
-}
-
-/// Isolate outlines inside an effect only when an outer flow is collecting.
-pub(crate) fn scoped(
-    owner: Option<&Rc<Deferred>>,
-    window: &mut Window,
-    cx: &mut App,
-    f: impl FnOnce(&mut Window, &mut App),
-) {
-    if owner.is_none_or(|owner| owner.outlines.borrow().is_empty()) {
-        f(window, cx);
-    } else {
-        paint(owner, window, cx, f);
-    }
-}
+mod traversal;
+pub(crate) use traversal::{flow_async, paint_async, scoped_async};
 
 pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
@@ -77,7 +20,7 @@ pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyEle
     .hooked()
 }
 
-/// The phase of a formatting context around `child` (see [`flow`]).
+/// The phase of a formatting context around `child` (see [`flow_async`]).
 pub(crate) fn flow_phase(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
@@ -135,7 +78,12 @@ impl Phase {
     // Замена элемента относится только к отложенному outline; её временные
     // значения не должны увеличивать рекурсивные кадры Flow и Scope.
     #[inline(never)]
-    fn paint_outline(&mut self, window: &mut Window, cx: &mut App) {
+    async fn paint_outline(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let deferred =
             self.owner
                 .as_ref()
@@ -149,7 +97,7 @@ impl Phase {
                     _ => false,
                 });
         if !deferred {
-            self.child.paint(window, cx);
+            self.child.paint_async(window, cx, stack).await;
         }
     }
 }
@@ -159,26 +107,47 @@ impl Wrap for Phase {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         match self.mode {
-            Mode::Outline => self.paint_outline(window, cx),
+            Mode::Outline => self.paint_outline(window, cx, stack).await,
             // Outline isolation is not a paint-order boundary: the scoped
             // float's own atomic paint keeps its inline content and passes
             // positioned descendants to the enclosing stacking context
             // (CSS 2.1 Appendix E.2 step 5).
-            Mode::Scope => crate::hooks::paint_reopen(window, |window| {
-                scoped(self.owner.as_ref(), window, cx, |window, cx| {
-                    self.child.paint(window, cx)
+            Mode::Scope => {
+                crate::hooks::paint_reopen_async(window, async |window| {
+                    scoped_async(
+                        self.owner.as_ref(),
+                        window,
+                        cx,
+                        stack,
+                        async |window, cx, stack| self.child.paint_async(window, cx, stack).await,
+                    )
+                    .await
                 })
-            }),
-            Mode::Flow => flow(self.owner.as_ref(), window, cx, |window, cx| {
-                self.child.paint(window, cx)
-            }),
+                .await
+            }
+            Mode::Flow => {
+                flow_async(
+                    self.owner.as_ref(),
+                    window,
+                    cx,
+                    stack,
+                    async |window, cx, stack| self.child.paint_async(window, cx, stack).await,
+                )
+                .await
+            }
             Mode::InBand => {
                 if let Some(owner) = &self.owner {
                     owner.outlines.borrow_mut().push(None);
                 }
-                self.child.paint(window, cx);
+                self.child.paint_async(window, cx, stack).await;
                 if let Some(owner) = &self.owner {
                     owner.outlines.borrow_mut().pop();
                 }

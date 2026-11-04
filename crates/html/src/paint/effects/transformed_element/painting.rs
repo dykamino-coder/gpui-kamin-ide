@@ -11,24 +11,27 @@ use crate::paint::effects::transformed_element::Transformed;
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn paint_body(
+pub(super) async fn paint_body(
     group: &mut Transformed,
     bounds: Bounds<Pixels>,
     layout_id: &mut LayoutId,
     _prepaint: &mut (),
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let paint = group.paint.clone();
     if group.placed {
-        crate::paint::decorations::outline_phase::scoped(
+        crate::paint::decorations::outline_phase::scoped_async(
             paint.as_ref(),
             window,
             cx,
-            |window, cx| {
-                group.child.paint(window, cx);
+            stack,
+            async |window, cx, stack| {
+                group.child.paint_async(window, cx, stack).await;
             },
-        );
+        )
+        .await;
         return;
     }
     let scale_factor = window.scale_factor();
@@ -131,7 +134,9 @@ pub(super) fn paint_body(
                 (scale_factor, unit),
                 window,
                 cx,
-            );
+                stack,
+            )
+            .await;
         }
         let child = &mut group.child;
         crate::layout::fragment::effect_fragment::paint(
@@ -140,28 +145,37 @@ pub(super) fn paint_body(
             fill_matrix.unwrap_or(matrix),
             group.fragment_clip_ancestor,
             window,
-            |window| {
+            async |window| {
                 if let Some(exact) = fill_matrix {
                     let mut frame = window.raster_frame().clone();
                     frame.fill_transform = Some((window.current_transformation(), exact));
-                    window.with_raster_frame(frame, |window| {
-                        crate::paint::decorations::outline_phase::scoped(
-                            paint.as_ref(),
-                            window,
-                            cx,
-                            |window, cx| child.paint(window, cx),
-                        )
-                    });
+                    window
+                        .with_raster_frame_async(frame, async |window| {
+                            crate::paint::decorations::outline_phase::scoped_async(
+                                paint.as_ref(),
+                                window,
+                                cx,
+                                stack,
+                                async |window, cx, stack| {
+                                    child.paint_async(window, cx, stack).await
+                                },
+                            )
+                            .await
+                        })
+                        .await;
                 } else {
-                    crate::paint::decorations::outline_phase::scoped(
+                    crate::paint::decorations::outline_phase::scoped_async(
                         paint.as_ref(),
                         window,
                         cx,
-                        |window, cx| child.paint(window, cx),
-                    );
+                        stack,
+                        async |window, cx, stack| child.paint_async(window, cx, stack).await,
+                    )
+                    .await;
                 }
             },
-        );
+        )
+        .await;
         return;
     }
     // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
@@ -177,5 +191,7 @@ pub(super) fn paint_body(
         oy,
         window,
         cx,
-    );
+        stack,
+    )
+    .await;
 }

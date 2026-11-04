@@ -108,8 +108,18 @@ impl Wrap for PhysicalAtomic {
         self.paint_context.replace(previous);
     }
 
-    fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        window.with_transformation_masked(self.inverse_text, |window| self.child.paint(window, cx));
+    async fn paint_async(
+        &mut self,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        window
+            .with_transformation_masked_async(self.inverse_text, async |window| {
+                self.child.paint_async(window, cx, stack).await
+            })
+            .await;
     }
 }
 

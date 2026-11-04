@@ -116,6 +116,19 @@ impl Hooks for Transformed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        paint_body(self, bounds, layout_id, _prepaint, window, cx)
+        crate::hooks::paint_on_stack(self, bounds, layout_id, _prepaint, window, cx);
+    }
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        layout_id: &'a mut Self::Layout,
+        prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(paint_body(
+            self, bounds, layout_id, prepaint, window, cx, stack,
+        ))
     }
 }

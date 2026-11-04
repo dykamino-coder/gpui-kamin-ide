@@ -160,19 +160,41 @@ impl Hooks for ClampHost {
 
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut LayoutId,
-        _: &mut (),
+        bounds: Bounds<Pixels>,
+        layout: &mut LayoutId,
+        prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.children
-            .outline_flow(&self.paint, window, cx, &mut |window, cx| {
-                crate::hooks::paint_reopen(window, |window| {
-                    if let Some(el) = &mut self.built {
-                        el.paint(window, cx);
-                    }
-                });
-            });
+        crate::hooks::paint_on_stack(self, bounds, layout, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _: Bounds<Pixels>,
+        _: &'a mut LayoutId,
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.children
+                .outline_flow(
+                    &self.paint,
+                    window,
+                    cx,
+                    stack,
+                    &mut async |window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack| {
+                        crate::hooks::paint_reopen_async(window, async |window| {
+                            if let Some(el) = &mut self.built {
+                                el.paint_async(window, cx, stack).await;
+                            }
+                        })
+                        .await;
+                    },
+                )
+                .await;
+        })
     }
 }

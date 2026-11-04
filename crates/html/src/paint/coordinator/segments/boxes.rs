@@ -23,6 +23,21 @@ pub(crate) fn decoration(
     }
 }
 
+pub(crate) async fn decoration_async(
+    geometry: Decoration,
+    window: &mut Window,
+    paint: impl AsyncFnOnce(&mut Window),
+) {
+    let result = window
+        .with_paint_segment_slices_async(Rc::from([geometry.slice]), paint)
+        .await;
+    if let Err(error) = result
+        && let Some(source) = window.render_context::<Source>()
+    {
+        source.fail(error);
+    }
+}
+
 pub(crate) fn box_painter(id: u64) -> gpui::BoxPainter {
     gpui::BoxPainter(Rc::new(move |style, _, window, cx| {
         paint_box(id, style, window, cx)

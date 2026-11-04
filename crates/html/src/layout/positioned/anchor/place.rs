@@ -78,9 +78,23 @@ impl Hooks for Placed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if !*hidden {
-            self.child.paint(window, cx);
-        }
+        crate::hooks::paint_on_stack(self, _bounds, _request, hidden, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _request: &'a mut Self::Layout,
+        hidden: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            if !*hidden {
+                self.child.paint_async(window, cx, stack).await;
+            }
+        })
     }
 }
 

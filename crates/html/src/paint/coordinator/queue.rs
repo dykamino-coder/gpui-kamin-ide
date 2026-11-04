@@ -48,7 +48,18 @@ impl Frame {
 }
 
 impl CssPaintPass {
-    pub(super) fn drain_inline(&self, depth: usize, window: &mut Window, cx: &mut App) {
+    pub(super) fn drain(&self, depth: usize, window: &mut Window, cx: &mut App) {
+        reblessive::Stack::new()
+            .enter(|stack| self.drain_async(depth, window, cx, stack))
+            .finish();
+    }
+    pub(super) async fn drain_inline_async(
+        &self,
+        depth: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         loop {
             let next = self.jobs.pop_inline(depth);
             let Some(Inline {
@@ -62,14 +73,23 @@ impl CssPaintPass {
             // от текущего места flush, как и в исходном CSS consumer.
             context.set_fill_transform(window.raster_frame().fill_transform);
             window
-                .with_raster_paint_ctx(context, |window| child.paint(window, cx))
+                .with_raster_paint_ctx_async(context, async |window| {
+                    child.paint_async(window, cx, stack).await
+                })
+                .await
                 .expect("CSS inline job stays in its live GPUI scope");
         }
     }
 
-    pub(super) fn drain(&self, depth: usize, window: &mut Window, cx: &mut App) {
+    pub(super) async fn drain_async(
+        &self,
+        depth: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         loop {
-            self.drain_inline(depth, window, cx);
+            self.drain_inline_async(depth, window, cx, stack).await;
             let next = self.jobs.pop_min(depth);
             let Some(Positioned {
                 mut child, context, ..
@@ -78,22 +98,26 @@ impl CssPaintPass {
                 break;
             };
             window
-                .with_paint_ctx(context, |window| child.paint(window, cx))
+                .with_paint_ctx_async(context, async |window| {
+                    child.paint_async(window, cx, stack).await
+                })
+                .await
                 .expect("CSS positioned job stays in its live GPUI scope");
         }
     }
 
     /// Слив кадра записи `depth`, чьи позиционированные задания рисуются в сегментах
     /// `late` (`recording::with_late_jobs`); задание, чьи сегменты другие, — на своём месте.
-    pub(super) fn drain_late(
+    pub(super) async fn drain_late_async(
         &self,
         depth: usize,
         late: &Rc<[gpui::PaintSegmentSlice]>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         loop {
-            self.drain_inline(depth, window, cx);
+            self.drain_inline_async(depth, window, cx, stack).await;
             let next = self.jobs.pop_min(depth);
             let Some(Positioned {
                 mut child, context, ..
@@ -102,20 +126,29 @@ impl CssPaintPass {
                 break;
             };
             window
-                .with_paint_ctx(context, |window| {
-                    let moved =
-                        window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
+                .with_paint_ctx_async(context, async |window| {
+                    let moved = window
+                        .with_paint_segment_slices_async(late.clone(), async |w| {
+                            child.paint_async(w, cx, stack).await
+                        })
+                        .await;
                     if moved.is_err() {
-                        child.paint(window, cx);
+                        child.paint_async(window, cx, stack).await;
                     }
                 })
+                .await
                 .expect("CSS positioned job stays in its live GPUI scope");
         }
     }
 
-    pub(super) fn finish_atomic(&self, depth: usize, window: &mut Window, cx: &mut App) {
-        self.drain_inline(depth, window, cx);
-        // Atomic открывается только внутри живого внешнего collector.
+    pub(super) async fn finish_atomic_async(
+        &self,
+        depth: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.drain_inline_async(depth, window, cx, stack).await;
         self.jobs.export_atomic(depth);
     }
 }

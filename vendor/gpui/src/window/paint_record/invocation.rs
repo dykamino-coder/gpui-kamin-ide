@@ -1,6 +1,7 @@
 //! Запись один раз и атомарный вызов плана в свежей композиционной области.
 
 use super::*;
+mod traversal;
 
 impl Window {
     /// Consume source paint once, replacing the ambient fragment clip explicitly.
@@ -11,9 +12,13 @@ impl Window {
         cx: &mut App,
         paint: impl FnOnce(&mut Self, &mut App) -> R,
     ) -> Result<(R, PaintRecord), PaintRecordError> {
-        let _recording = self.render_contexts.enter::<segments::Recording>(None);
-        let (result, scene, identity, scale) = self.capture_paint_commands(source_clip, cx, paint)?;
-        Ok((result, PaintRecord(Rc::new(Recorded { identity, scale, clip: source_clip, scene }))))
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.record_paint_async(source_clip, cx, stack, async |window, cx, _| {
+                    paint(window, cx)
+                })
+            })
+            .finish()
     }
 
     pub(super) fn capture_paint_commands<R>(
@@ -22,29 +27,13 @@ impl Window {
         cx: &mut App,
         paint: impl FnOnce(&mut Self, &mut App) -> R,
     ) -> Result<(R, Scene, paint_scope::Identity, f32), PaintRecordError> {
-        let identity = paint_scope::Identity::capture(self);
-        identity.check_pass(self)?;
-        if !validation::scaled_bounds_valid(source_clip, self.scale_factor()) || !self.scale_factor().is_finite()
-            || self.scale_factor() <= 0.0 {
-            return Err(PaintRecordError::InvalidGeometry);
-        }
-        if self.invalidator.inner.borrow().draw_phase != DrawPhase::Paint {
-            return Err(PaintRecordError::NotPainting);
-        }
-        let scale = self.scale_factor();
-        let (result, mut scene) = self.record_scene(source_clip, false, |window| {
-            let recording = window.render_context::<crate::PaintTraversal>()
-                .and_then(|traversal| traversal.recording.clone());
-            let mut guard = recording.as_ref().map(|recording| (recording.begin)(window));
-            let result = paint(window, cx);
-            if let (Some(recording), Some(guard)) = (recording, guard.as_mut()) {
-                (recording.finish)(guard.as_mut(), window, cx);
-            }
-            result
-        });
-        identity.check_pass(self)?;
-        scene.finish_frozen();
-        Ok((result, scene, identity, scale))
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.capture_paint_commands_async(source_clip, cx, stack, async |window, cx, _| {
+                    paint(window, cx)
+                })
+            })
+            .finish()
     }
 
     /// Invoke immutable commands under new scopes, without any element callback.
@@ -64,12 +53,21 @@ impl Window {
         let scaled = delta.scale(self.scale_factor());
         if !validation::point_valid(placement.source)
             || !validation::point_valid(placement.destination)
-            || !validation::point_valid(delta) || !validation::scaled_bounds_valid(placement.clip, self.scale_factor())
-            || !validation::scaled_bounds_valid(Bounds::new(extent.origin + delta, extent.size), self.scale_factor())
-            || !scaled.x.0.is_finite() || !scaled.y.0.is_finite() {
+            || !validation::point_valid(delta)
+            || !validation::scaled_bounds_valid(placement.clip, self.scale_factor())
+            || !validation::scaled_bounds_valid(
+                Bounds::new(extent.origin + delta, extent.size),
+                self.scale_factor(),
+            )
+            || !scaled.x.0.is_finite()
+            || !scaled.y.0.is_finite()
+        {
             return Err(PaintRecordError::InvalidGeometry);
         }
-        let clip = placement.clip.intersect(&self.content_mask().bounds).scale(self.scale_factor());
+        let clip = placement
+            .clip
+            .intersect(&self.content_mask().bounds)
+            .scale(self.scale_factor());
         let (invocation, scene) = {
             // Неизменяемый план — один лист сегментного обхода;
             // его собственные эффекты разрешены до привязки к сегментам.
@@ -82,7 +80,11 @@ impl Window {
         };
         // No destination writes occur until the complete invocation has succeeded.
         paint_scope::Identity::capture(self).check_pass(self)?;
-        if !self.next_frame.scene.replay_placed(&scene, scaled, Some(clip)) {
+        if !self
+            .next_frame
+            .scene
+            .replay_placed(&scene, scaled, Some(clip))
+        {
             let scene = scene.copy_record(scaled, Some(clip));
             let scene = self.adopt_scene(scene);
             self.next_frame.scene.replay_record(&scene);
@@ -96,23 +98,10 @@ impl Window {
         explicit_coordinates: bool,
         paint: impl FnOnce(&mut Self) -> R,
     ) -> (R, Scene) {
-        let state = Box::new(self.snapshot_paint_state());
-        let contexts = self.render_contexts.snapshot();
-        let _contexts = self.render_contexts.enter_snapshot(contexts);
-        let planes = mem::take(&mut self.plane_contexts);
-        self.with_restore((state, planes), |window, state| {
-            state.0.restore(window);
-            mem::swap(&mut window.plane_contexts, &mut state.1);
-        }, |window| {
-            // Source/destination clips are already in explicit window coordinates.
-            window.content_mask_stack = vec![ContentMask { bounds: clip }];
-            if explicit_coordinates {
-                window.transformation_stack.clear();
-                window.mask_map = None;
-                window.mask_scale = None;
-                window.element_opacity = 1.0;
-            }
-            window.with_isolated_scene(paint)
-        }).0
+        reblessive::Stack::new()
+            .enter(|_| {
+                self.record_scene_async(clip, explicit_coordinates, async |window| paint(window))
+            })
+            .finish()
     }
 }

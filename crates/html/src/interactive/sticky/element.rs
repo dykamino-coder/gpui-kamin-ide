@@ -111,16 +111,26 @@ impl Wrap for Sticky {
         });
     }
 
-    fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         // Отложенный проход рисует вне обрезки ленты — возвращаем её сами,
         // иначе прилипший элемент вылезал бы за края прокручиваемой области.
         let child = &mut self.child;
         match self.frame.get().viewport {
-            Some(view) => window
-                .with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
-                    child.paint(window, cx)
-                }),
-            None => child.paint(window, cx),
+            Some(view) => {
+                window
+                    .with_content_mask_async(
+                        Some(gpui::ContentMask { bounds: view }),
+                        async |window| child.paint_async(window, cx, stack).await,
+                    )
+                    .await
+            }
+            None => child.paint_async(window, cx, stack).await,
         }
     }
 }

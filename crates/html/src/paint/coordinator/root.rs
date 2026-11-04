@@ -45,12 +45,18 @@ impl Wrap for Root {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let outer = current(window);
         let pass = self.owner.select(window.paint_pass_id(), outer.as_ref());
         let _abort = Abort(pass.clone());
         if outer.is_some_and(|outer| Rc::ptr_eq(&outer, &pass)) {
-            self.child.paint(window, cx);
+            self.child.paint_async(window, cx, stack).await;
             return;
         }
         let context = Rc::new(Current(Rc::downgrade(&pass)));
@@ -60,8 +66,14 @@ impl Wrap for Root {
             fill_bounds: Rc::new(crate::paint::raster::fill_bounds),
             recording: Some(super::recording()),
         });
-        window.with_render_context(Some(context), |window| {
-            window.with_render_context(Some(traversal), |window| self.child.paint(window, cx));
-        });
+        window
+            .with_render_context_async(Some(context), async |window| {
+                window
+                    .with_render_context_async(Some(traversal), async |window| {
+                        self.child.paint_async(window, cx, stack).await
+                    })
+                    .await;
+            })
+            .await;
     }
 }

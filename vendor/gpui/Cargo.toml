@@ -708,3 +708,7 @@ priority = -1
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
+
+# KaminIDE patch: явный heap-стек продолжений, уже используемый HTML.
+[dependencies.reblessive]
+version = "0.4.3"

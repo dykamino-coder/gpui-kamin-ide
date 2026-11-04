@@ -376,11 +376,40 @@ impl<E: IntoElement + 'static> Element for SpringAnimationElement<E> {
         _inspector_id: Option<&InspectorElementId>,
         _bounds: crate::Bounds<crate::Pixels>,
         element: &mut Self::RequestLayoutState,
-        _: &mut Self::PrepaintState,
+        _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        element.paint(window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    _id,
+                    _inspector_id,
+                    _bounds,
+                    element,
+                    _prepaint,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: crate::Bounds<crate::Pixels>,
+        element: &'a mut Self::RequestLayoutState,
+        _prepaint: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            element.paint_async(window, cx, stack).await;
+        })
     }
 }
 
@@ -501,11 +530,40 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
         _inspector_id: Option<&InspectorElementId>,
         _bounds: crate::Bounds<crate::Pixels>,
         element: &mut Self::RequestLayoutState,
-        _: &mut Self::PrepaintState,
+        _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        element.paint(window, cx);
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    _id,
+                    _inspector_id,
+                    _bounds,
+                    element,
+                    _prepaint,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: crate::Bounds<crate::Pixels>,
+        element: &'a mut Self::RequestLayoutState,
+        _prepaint: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            element.paint_async(window, cx, stack).await;
+        })
     }
 }
 

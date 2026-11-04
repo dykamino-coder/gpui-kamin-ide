@@ -9,20 +9,21 @@ use crate::{
     AsyncWindowContext, AtlasTile, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow,
     Capslock, Context, Corners, CursorHideMode, CursorStyle, Decorations, DevicePixels,
     DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
-    EntityId, EventEmitter, ExternalTexture, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-    Hsla, InputHandler, InputPreference, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent,
-    Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent,
-    MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
-    RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
-    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextInputConfiguration,
-    TextInputStateChange, TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState,
-    TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
-    WindowBounds, WindowControls, WindowDecorations, WindowOptions, WindowParams, WindowTextSystem,
-    WindowVisibility, point, prelude::*, px, rems, size, transparent_black,
+    EntityId, EventEmitter, ExternalTexture, FileDropEvent, FontId, Global, GlobalElementId,
+    GlyphId, GpuSpecs, Hsla, InputHandler, InputPreference, IsZero, KeyBinding, KeyContext,
+    KeyDownEvent, KeyEvent, Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers,
+    ModifiersChangedEvent, MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent,
+    Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler,
+    PlatformWindow, Point, PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render,
+    RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow,
+    SharedString, Size, StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription,
+    SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
+    TextInputConfiguration, TextInputStateChange, TextRenderingMode, TextStyle,
+    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
+    WindowOptions, WindowParams, WindowTextSystem, WindowVisibility, point, prelude::*, px, rems,
+    size, transparent_black,
 };
 
 use crate::gestures::{GestureTuning, RecognizedTouchGesture, TouchGestureRecognizer};
@@ -64,22 +65,25 @@ use std::{
 use uuid::Uuid;
 
 pub(crate) mod a11y;
-mod prompts;
+mod absolute_transformation;
+mod frame_capture;
 mod image_sampling;
 mod natural_image;
-mod absolute_transformation;
-pub(crate) mod vector_transform;
-mod scene_capture;
-mod frame_capture;
-mod paint_scope;
 mod paint_record;
+mod paint_scope;
+mod prompts;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
+mod scene_capture;
+pub(crate) mod vector_transform;
 pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
-pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
-    PaintScopeDescriptor, PaintGroupDescriptor};
+pub use paint_record::{
+    PaintGroupDescriptor, PaintPlacement, PaintPlan, PaintRecord, PaintRecordError,
+    PaintScopeDescriptor, PaintSegment, PaintSegmentClips, PaintSegmentId, PaintSegmentRecords,
+    PaintSegmentSlice,
+};
 mod paint_snapshot;
 mod text_style_scope;
 pub use text_style_scope::TextStyleScope;
@@ -88,19 +92,24 @@ mod scoped;
 pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
 pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
 pub use raster_frame::RasterFrame;
+mod box_edges;
 mod line_baselines;
-mod text_rendering;
 mod plane3d;
 mod render_context;
-mod box_edges;
+mod text_rendering;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
 mod retained_layout;
-pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
-use layout_inputs::PrepaintRoots;
-pub use layout_inputs::LayoutInputId;
-pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
+pub use layout_inputs::LayoutInputId;
+use layout_inputs::PrepaintRoots;
+pub use plane3d::PlaneSpec;
+pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
+
+mod element_state_scope;
+mod paint_async;
+mod paint_async_masks;
+mod paint_groups;
 
 pub use a11y::A11ySubtreeBuilder;
 
@@ -1624,7 +1633,6 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 }
 
 impl Window {
-
     pub(crate) fn new(
         handle: AnyWindowHandle,
         options: WindowOptions,
@@ -2329,7 +2337,6 @@ impl ContentMask<Pixels> {
 }
 
 impl Window {
-
     fn mark_view_dirty(&mut self, view_id: EntityId) {
         // Mark ancestor views as dirty. If already in the `dirty_views` set, then all its ancestors
         // should already be dirty.
@@ -3297,7 +3304,12 @@ impl Window {
     ) -> R {
         let depth = self.element_id_stack.len();
         self.element_id_stack.push(element_id.into());
-        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.element_id_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     /// Executes the provided function with the specified rem size.
@@ -3315,7 +3327,12 @@ impl Window {
         if let Some(rem_size) = rem_size {
             let depth = self.rem_size_override_stack.len();
             self.rem_size_override_stack.push(rem_size.into());
-            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
+            self.with_restore(
+                depth,
+                |window, depth| window.rem_size_override_stack.truncate(*depth),
+                f,
+            )
+            .0
         } else {
             f(self)
         }
@@ -4026,7 +4043,9 @@ impl Window {
 
             for deferred_draw_ix in traversal_order {
                 let _render_scope = self.render_contexts.enter_snapshot(
-                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
+                    self.next_frame.deferred_draws[deferred_draw_ix]
+                        .render_contexts
+                        .clone(),
                 );
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
@@ -4047,7 +4066,8 @@ impl Window {
                 let prepaint_start = self.prepaint_index();
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
-                        .layout_owner.clone();
+                        .layout_owner
+                        .clone();
                     self.with_retained_layout(&mut layout_owner, |window| {
                         window.with_rendered_view(current_view, |window| {
                             window.with_rem_size(Some(rem_size), |window| {
@@ -4085,7 +4105,8 @@ impl Window {
         let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
         for deferred_draw_ix in traversal_order {
             let mut deferred_draw = &mut deferred_draws[deferred_draw_ix];
-            let _render_scope = self.render_contexts
+            let _render_scope = self
+                .render_contexts
                 .enter_snapshot(deferred_draw.render_contexts.clone());
             self.element_id_stack
                 .clone_from(&deferred_draw.element_id_stack);
@@ -4134,16 +4155,22 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
-        for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
+        for hitbox in
+            &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
+        {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
-                self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
+                self.next_frame
+                    .hitbox_scopes
+                    .insert(hitbox.id, scope.clone());
             }
         }
         let shift = self.next_frame.hitboxes.len();
         for index in range.start.hitboxes_index..range.end.hitboxes_index {
             if let Some(scope) = self.rendered_frame.hitbox_entry_scopes.get(&index) {
                 let entry = shift + index - range.start.hitboxes_index;
-                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
+                self.next_frame
+                    .hitbox_entry_scopes
+                    .insert(entry, scope.clone());
             }
         }
         self.next_frame.hitboxes.extend(
@@ -4288,7 +4315,12 @@ impl Window {
         if let Some(style) = style {
             let inner = self.text_style_stack.push(style);
             let outer = std::mem::replace(&mut self.text_style_stack, inner);
-            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
+            self.with_restore(
+                outer,
+                |window, outer| window.text_style_stack = std::mem::take(outer),
+                f,
+            )
+            .0
         } else {
             f(self)
         }
@@ -4307,10 +4339,15 @@ impl Window {
             self.push_text_style_ref(text);
         }
         let _clip_scope = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
-        self.with_restore(depth, |window, depth| {
-            window.text_style_stack = std::mem::take(&mut depth.0);
-            window.content_mask_stack.truncate(depth.1);
-        }, f).0
+        self.with_restore(
+            depth,
+            |window, depth| {
+                window.text_style_stack = std::mem::take(&mut depth.0);
+                window.content_mask_stack.truncate(depth.1);
+            },
+            f,
+        )
+        .0
     }
 
     #[inline(never)]
@@ -4364,12 +4401,20 @@ impl Window {
         self.invalidator.debug_assert_paint_or_prepaint();
         let depth = self.content_mask_stack.len();
         let _clip_scope = self.push_content_mask(mask);
-        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.content_mask_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     // Prepare mask temporaries before entering the recursive child traversal.
     #[inline(never)]
-    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
+    fn push_content_mask(
+        &mut self,
+        mask: Option<ContentMask<Pixels>>,
+    ) -> Option<render_context::Scope> {
         if let Some(mask) = mask {
             // KaminIDE patch: под `with_transformation_masked` маска ребёнка
             // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -4381,7 +4426,8 @@ impl Window {
                 None => self.scaled_mask(mask),
             };
             let scope = self.segment_clip_scope(mask, false);
-            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
+            self.content_mask_stack
+                .push(mask.intersect(&self.content_mask()));
             scope
         } else {
             None
@@ -4403,7 +4449,12 @@ impl Window {
         let _clip_scope = self.segment_clip_scope(mask, true);
         let depth = self.content_mask_stack.len();
         self.content_mask_stack.push(mask);
-        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.content_mask_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     /// KaminIDE patch: восстановить маску, прочитанную `content_mask` (уже в
@@ -4419,7 +4470,12 @@ impl Window {
         let _clip_scope = self.segment_clip_scope(mask, true);
         let depth = self.content_mask_stack.len();
         self.content_mask_stack.push(mask);
-        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.content_mask_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     /// KaminIDE patch: перевести маску ребёнка в итоговые координаты окна,
@@ -4463,11 +4519,16 @@ impl Window {
             (b.origin.x.0, b.origin.y.0),
             (b.origin.x.0 + b.size.width.0, b.origin.y.0),
             (b.origin.x.0, b.origin.y.0 + b.size.height.0),
-            (b.origin.x.0 + b.size.width.0, b.origin.y.0 + b.size.height.0),
+            (
+                b.origin.x.0 + b.size.width.0,
+                b.origin.y.0 + b.size.height.0,
+            ),
         ] {
             let (x, y) = (x * s, y * s);
-            let tx = (m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y) / s;
-            let ty = (m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y) / s;
+            let tx =
+                (m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y) / s;
+            let ty =
+                (m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y) / s;
             x0 = x0.min(tx);
             y0 = y0.min(ty);
             x1 = x1.max(tx);
@@ -4476,7 +4537,10 @@ impl Window {
         ContentMask {
             bounds: Bounds {
                 origin: Point::new(Pixels(x0), Pixels(y0)),
-                size: Size { width: Pixels(x1 - x0), height: Pixels(y1 - y0) },
+                size: Size {
+                    width: Pixels(x1 - x0),
+                    height: Pixels(y1 - y0),
+                },
             },
         }
     }
@@ -4486,7 +4550,11 @@ impl Window {
     /// обратно через масштаб окна. Матрица сохраняет оси (иначе `mask_map`
     /// не ставится), поэтому образ двух противоположных углов — снова
     /// противоположные углы прямоугольника.
-    fn mapped_mask(&self, mask: ContentMask<Pixels>, m: &TransformationMatrix) -> ContentMask<Pixels> {
+    fn mapped_mask(
+        &self,
+        mask: ContentMask<Pixels>,
+        m: &TransformationMatrix,
+    ) -> ContentMask<Pixels> {
         let s = self.scale_factor();
         let b = mask.bounds;
         let at = |x: f32, y: f32| {
@@ -4497,7 +4565,10 @@ impl Window {
             )
         };
         let (x0, y0) = at(b.origin.x.0, b.origin.y.0);
-        let (x1, y1) = at(b.origin.x.0 + b.size.width.0, b.origin.y.0 + b.size.height.0);
+        let (x1, y1) = at(
+            b.origin.x.0 + b.size.width.0,
+            b.origin.y.0 + b.size.height.0,
+        );
         ContentMask {
             bounds: Bounds {
                 origin: Point::new(Pixels(x0.min(x1)), Pixels(y0.min(y1))),
@@ -4519,7 +4590,8 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let prev = self.mask_scale.replace((origin, scale));
-        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
+        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f)
+            .0
     }
 
     /// Updates the global element offset relative to the current offset. This is used to implement
@@ -4554,8 +4626,12 @@ impl Window {
         let depth = self.exact_element_offset_depth;
         self.exact_element_offset_depth += 1;
         let abs_offset = self.element_offset() + offset;
-        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
-            |window| window.with_absolute_element_offset(abs_offset, f)).0
+        self.with_restore(
+            depth,
+            |window, depth| window.exact_element_offset_depth = *depth,
+            |window| window.with_absolute_element_offset(abs_offset, f),
+        )
+        .0
     }
 
     /// Updates the global element offset based on the given offset. This is used to implement
@@ -4569,9 +4645,15 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let depth = self.element_offset_stack.len();
         self.element_offset_stack.push(offset);
-        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.element_offset_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
+    #[cfg(test)]
     pub(crate) fn with_element_opacity<R>(
         &mut self,
         opacity: Option<f32>,
@@ -4585,7 +4667,12 @@ impl Window {
 
         let previous_opacity = self.element_opacity;
         self.element_opacity = previous_opacity * opacity;
-        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
+        self.with_restore(
+            previous_opacity,
+            |window, previous| window.element_opacity = *previous,
+            f,
+        )
+        .0
     }
 
     /// Perform prepaint on child elements in a "retryable" manner, so that any side effects
@@ -4599,7 +4686,9 @@ impl Window {
         let result = f(self);
         if result.is_err() {
             self.next_frame.hitboxes.truncate(index.hitboxes_index);
-            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
+            self.next_frame
+                .hitbox_entry_scopes
+                .retain(|entry, _| *entry < index.hitboxes_index);
             self.next_frame
                 .tooltip_requests
                 .truncate(index.tooltips_index);
@@ -4736,7 +4825,9 @@ impl Window {
     /// Obtain the current content mask. This method should only be called during element drawing.
     pub fn content_mask(&self) -> ContentMask<Pixels> {
         self.invalidator.debug_assert_paint_or_prepaint();
-        if let Some(mask) = self.segment_capture_mask() { return mask; }
+        if let Some(mask) = self.segment_capture_mask() {
+            return mask;
+        }
         self.content_mask_stack
             .last()
             .cloned()
@@ -4757,7 +4848,12 @@ impl Window {
     ) -> R {
         let depth = self.element_id_stack.len();
         self.element_id_stack.push(element_id.into());
-        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.element_id_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     /// Use a piece of state that exists as long this element is being rendered in consecutive frames.
@@ -4812,65 +4908,10 @@ impl Window {
     where
         S: 'static,
     {
-        self.invalidator.debug_assert_paint_or_prepaint();
-
-        let (key, state) = self.take_element_state(global_id, TypeId::of::<S>());
-
-        if let Some(any) = state {
-            let ElementStateBox {
-                inner,
-                #[cfg(debug_assertions)]
-                type_name,
-            } = any;
-            // Using the extra inner option to avoid needing to reallocate a new box.
-            let mut state_box = inner
-                .downcast::<Option<S>>()
-                .map_err(|_| {
-                    #[cfg(debug_assertions)]
-                    {
-                        anyhow::anyhow!(
-                            "invalid element state type for id, requested {:?}, actual: {:?}",
-                            std::any::type_name::<S>(),
-                            type_name
-                        )
-                    }
-
-                    #[cfg(not(debug_assertions))]
-                    {
-                        anyhow::anyhow!(
-                            "invalid element state type for id, requested {:?}",
-                            std::any::type_name::<S>(),
-                        )
-                    }
-                })
-                .unwrap();
-
-            let state = state_box.take().expect(
-                "reentrant call to with_element_state for the same state type and element id",
-            );
-            let (result, state) = f(Some(state), self);
-            state_box.replace(state);
-            self.insert_element_state(
-                key,
-                ElementStateBox {
-                    inner: state_box,
-                    #[cfg(debug_assertions)]
-                    type_name,
-                },
-            );
-            result
-        } else {
-            let (result, state) = f(None, self);
-            self.insert_element_state(
-                key,
-                ElementStateBox {
-                    inner: Box::new(Some(state)),
-                    #[cfg(debug_assertions)]
-                    type_name: std::any::type_name::<S>(),
-                },
-            );
-            result
-        }
+        let (state, slot) = self.take_typed_element_state::<S>(global_id);
+        let (result, state) = f(state, self);
+        slot.restore(state, self);
+        result
     }
 
     /// A variant of `with_element_state` that allows the element's id to be optional. This is a convenience
@@ -4959,56 +5000,17 @@ impl Window {
     ///
     /// This method should only be called as part of the paint phase of element drawing.
     pub fn paint_layer<R>(&mut self, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self) -> R) -> R {
-        self.invalidator.debug_assert_paint();
-
-        let content_mask = self.content_mask();
-        let clipped_bounds = bounds.intersect(&content_mask.bounds);
-        if !clipped_bounds.is_empty() {
-            // KaminIDE patch: порядок слоя считается по МЕСТУ НА ЭКРАНЕ.
-            // Внутри повёрнутого текста границы слоя до-трансформные — дерево
-            // границ видело его в чужой клетке, и фон соседа получал порядок
-            // ПОВЕРХ глифов (table-cell-align-005).
-            // KaminIDE patch: exact layer bounds, not upstream's floor/ceil
-            // cover: a layer grown to the next device pixel intersects the
-            // neighbour run's glyphs and is ordered above them (a run's
-            // background then covered the previous glyph's AA column,
-            // `inline-formatting-context-002`).
-            let mut scaled = clipped_bounds.scale(self.scale_factor());
-            let m = self.current_transformation();
-            if m != TransformationMatrix::unit() {
-                let b = scaled;
-                let corners = [
-                    (b.origin.x.0, b.origin.y.0),
-                    (b.origin.x.0 + b.size.width.0, b.origin.y.0),
-                    (b.origin.x.0, b.origin.y.0 + b.size.height.0),
-                    (
-                        b.origin.x.0 + b.size.width.0,
-                        b.origin.y.0 + b.size.height.0,
-                    ),
-                ];
-                let (mut x0, mut y0, mut x1, mut y1) =
-                    (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-                for (x, y) in corners {
-                    let tx =
-                        m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
-                    let ty =
-                        m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
-                    x0 = x0.min(tx);
-                    y0 = y0.min(ty);
-                    x1 = x1.max(tx);
-                    y1 = y1.max(ty);
+        let pushed = self.push_paint_layer(bounds);
+        self.with_restore(
+            pushed,
+            |window, pushed| {
+                if *pushed {
+                    window.next_frame.scene.pop_layer();
                 }
-                scaled = Bounds {
-                    origin: point(ScaledPixels(x0), ScaledPixels(y0)),
-                    size: size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
-                };
-            }
-            self.next_frame.scene.push_layer(scaled);
-        }
-
-        self.with_restore(!clipped_bounds.is_empty(), |window, pushed| {
-            if *pushed { window.next_frame.scene.pop_layer(); }
-        }, f).0
+            },
+            f,
+        )
+        .0
     }
 
     /// KaminIDE patch: нарисовать поддерево ПОД всем остальным кадром.
@@ -5021,7 +5023,8 @@ impl Window {
     pub fn paint_bottom_layer<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
         self.next_frame.scene.push_bottom_layer();
-        self.with_restore((), |window, _| window.next_frame.scene.pop_layer(), f).0
+        self.with_restore((), |window, _| window.next_frame.scene.pop_layer(), f)
+            .0
     }
 
     /// KaminIDE patch: объёмный контекст (`transform-style: preserve-3d`).
@@ -5037,10 +5040,12 @@ impl Window {
         // from replaying an outer host job into a different composition scope,
         // which painted a hoisted abspos of a `preserve-3d` box after the
         // sorted planes (`3d-rendering-context-and-abspos`).
-        self.with_restore((), |window, _| window.next_frame.scene.pop_depth_context(),
-            |window| window.with_paint_scope(|window| {
-                f(window)
-            })).0
+        self.with_restore(
+            (),
+            |window, _| window.next_frame.scene.pop_depth_context(),
+            |window| window.with_paint_scope(|window| f(window)),
+        )
+        .0
     }
 
     /// KaminIDE patch: плоскость объёмного контекста на глубине `z` (точки
@@ -5050,11 +5055,22 @@ impl Window {
     pub fn paint_depth_plane<R>(&mut self, z: f32, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
         let pushed = self.next_frame.scene.push_depth_plane(z);
-        self.with_restore(pushed, |window, pushed| {
-            if *pushed { window.next_frame.scene.pop_depth_plane(); }
-        }, |window| {
-            if pushed { window.with_paint_scope(f) } else { f(window) }
-        }).0
+        self.with_restore(
+            pushed,
+            |window, pushed| {
+                if *pushed {
+                    window.next_frame.scene.pop_depth_plane();
+                }
+            },
+            |window| {
+                if pushed {
+                    window.with_paint_scope(f)
+                } else {
+                    f(window)
+                }
+            },
+        )
+        .0
     }
 
     /// Paint the drop (non-inset) shadows from `shadows` into the scene at the current
@@ -5386,7 +5402,8 @@ impl Window {
                 },
             )
         };
-        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
+        let subpixel_rendering =
+            self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
         let dilation = self.text_system().glyph_dilation_for_color(color);
         let params = RenderGlyphParams {
             font_id,
@@ -5812,10 +5829,7 @@ impl Window {
     /// current transformation is applied to their device bounds here, the
     /// way quads apply it in the vertex shader (Filter Effects 2
     /// §backdrop-filter: the filtered region is the transformed border box).
-    fn backdrop_device_bounds(
-        &self,
-        bounds: Bounds<ScaledPixels>,
-    ) -> Bounds<ScaledPixels> {
+    fn backdrop_device_bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         let m = self.current_transformation();
         let [[a, b], [c, d]] = m.rotation_scale;
         if m == TransformationMatrix::unit() || b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
@@ -5832,7 +5846,6 @@ impl Window {
             ),
         }
     }
-
 
     /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
@@ -5927,66 +5940,21 @@ impl Window {
         mask_clip: Option<[f32; 4]>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        use crate::{PaintGroup, PaintSurface};
-
-        self.invalidator.debug_assert_paint();
-
-        let scale_factor = self.scale_factor();
-        let scaled = bounds.scale(scale_factor);
-        let content_mask = self.content_mask().scale(scale_factor);
-
-        let (result, mut inner) = self.with_isolated_scene(f);
-        inner.finish();
-        // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
-        // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
-        let hoisted = inner.take_backdrops();
-        // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
-        // их номера были местными, поэтому сдвигаются на длину списка.
-        let mut nested = std::mem::take(&mut inner.groups);
-        let base = self.next_frame.scene.groups.len() as u32;
-        if !nested.is_empty() {
-            inner.shift_group_ids(base);
-            for group in &mut nested {
-                group.scene.shift_group_ids(base);
-            }
-            self.next_frame.scene.groups.append(&mut nested);
-        }
-        let index = self.next_frame.scene.groups.len() as u32;
-        let (mask, mask_bounds, mask_once) = match mask {
-            Some((img, b, once)) => (Some(img), b.scale(scale_factor), once),
-            None => (None, Bounds::default(), 0),
-        };
-        self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
-            bounds: scaled,
-            blur_radius: blur_radius * scale_factor,
-            blend,
-            polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
-            polygon_inverse: false,
-            mask,
-            mask_bounds,
-            mask_once,
-            mask_clip,
-            projection: None,
-            fragments: Vec::new(),
-        });
-        // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
-        // копирует кадр, уже нарисованный под элементом, а буфер группы
-        // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
-        self.next_frame.scene.adopt_backdrops(hoisted);
-        let unbounded = self.content_mask_stack.len() == 1;
-        self.next_frame.scene.insert_group_surface(PaintSurface {
-            order: 0,
-            bounds: scaled,
-            content_mask,
-            corner_radii: corner_radii.scale(scale_factor),
-            blur_radius: 0.0,
-            group: index + 1,
-            opacity,
-            color_matrix: None,
-            fragment: 0,
-        }, unbounded);
-        result
+        reblessive::Stack::new()
+            .enter(|_| {
+                self.paint_group_async(
+                    bounds,
+                    corner_radii,
+                    blur_radius,
+                    opacity,
+                    blend,
+                    polygon,
+                    mask,
+                    mask_clip,
+                    async |window| f(window),
+                )
+            })
+            .finish()
     }
 
     /// This method should only be called as part of the paint phase of element drawing.
@@ -6143,9 +6111,14 @@ impl Window {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
-                scope.enter(window, |window| measure(known, available, window, cx))
-            })
+            .request_measured_layout(
+                style,
+                rem_size,
+                scale_factor,
+                move |known, available, window, cx| {
+                    scope.enter(window, |window| measure(known, available, window, cx))
+                },
+            )
     }
 
     /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
@@ -6177,9 +6150,14 @@ impl Window {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout_with_baseline(style, rem_size, scale_factor, move |known, available, window, cx| {
-                scope.enter(window, |window| measure(known, available, window, cx))
-            })
+            .request_measured_layout_with_baseline(
+                style,
+                rem_size,
+                scale_factor,
+                move |known, available, window, cx| {
+                    scope.enter(window, |window| measure(known, available, window, cx))
+                },
+            )
     }
 
     /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
@@ -6208,9 +6186,14 @@ impl Window {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .request_measured_layout_with_baselines(style, rem_size, scale_factor, move |known, available, window, cx| {
-                scope.enter(window, |window| measure(known, available, window, cx))
-            })
+            .request_measured_layout_with_baselines(
+                style,
+                rem_size,
+                scale_factor,
+                move |known, available, window, cx| {
+                    scope.enter(window, |window| measure(known, available, window, cx))
+                },
+            )
     }
 
     /// KaminIDE patch: размер узла без округления к физической точке (см.
@@ -6259,28 +6242,56 @@ impl Window {
 
     /// KaminIDE patch: registration identity survives neither a frame clear nor a nested engine.
     pub fn layout_tree_id(&self) -> crate::LayoutTreeId {
-        self.layout_engine.as_ref().expect("layout engine during registration").layout_tree_id()
+        self.layout_engine
+            .as_ref()
+            .expect("layout engine during registration")
+            .layout_tree_id()
     }
 
     /// KaminIDE patch: final normal geometry excludes element/paint/transform offsets.
-    pub fn final_layout(&self, id: LayoutId, tree: crate::LayoutTreeId) -> Option<crate::FinalLayout> {
-        self.layout_engine.as_ref()?.final_layout(id, tree, self.scale_factor())
+    pub fn final_layout(
+        &self,
+        id: LayoutId,
+        tree: crate::LayoutTreeId,
+    ) -> Option<crate::FinalLayout> {
+        self.layout_engine
+            .as_ref()?
+            .final_layout(id, tree, self.scale_factor())
     }
 
     /// KaminIDE patch: static-position geometry from the matching performed measurement.
-    pub fn final_static_position(&self, id: LayoutId, tree: crate::LayoutTreeId, key: usize) -> Option<crate::MeasuredStaticPosition> {
-        self.layout_engine.as_ref()?.final_static_position(id, tree, key, self.scale_factor())
+    pub fn final_static_position(
+        &self,
+        id: LayoutId,
+        tree: crate::LayoutTreeId,
+        key: usize,
+    ) -> Option<crate::MeasuredStaticPosition> {
+        self.layout_engine
+            .as_ref()?
+            .final_static_position(id, tree, key, self.scale_factor())
     }
 
     /// KaminIDE patch: completed flex-line geometry, before visual translation.
-    pub fn final_flex_line(&self, id: LayoutId, tree: crate::LayoutTreeId) -> Option<Bounds<Pixels>> {
-        self.layout_engine.as_ref()?.final_flex_line(id, tree, self.scale_factor())
+    pub fn final_flex_line(
+        &self,
+        id: LayoutId,
+        tree: crate::LayoutTreeId,
+    ) -> Option<Bounds<Pixels>> {
+        self.layout_engine
+            .as_ref()?
+            .final_flex_line(id, tree, self.scale_factor())
     }
 
     /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
-    pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
+    pub fn parent_flex_layout(
+        &mut self,
+        child: LayoutId,
+    ) -> Option<(Point<Pixels>, crate::FlexLayout)> {
         let scale = self.scale_factor();
-        let (origin, layout) = self.layout_engine.as_mut()?.parent_flex_layout(child, scale)?;
+        let (origin, layout) = self
+            .layout_engine
+            .as_mut()?
+            .parent_flex_layout(child, scale)?;
         Some((origin + self.element_offset(), layout))
     }
 
@@ -6337,7 +6348,12 @@ impl Window {
     }
 
     /// KaminIDE patch: пространство, вставленное фрагментацией после дорожек сетки по оси `axis`.
-    pub fn set_grid_fragmentation_growth(&mut self, id: LayoutId, axis: crate::Axis, growth: &[f32]) {
+    pub fn set_grid_fragmentation_growth(
+        &mut self,
+        id: LayoutId,
+        axis: crate::Axis,
+        growth: &[f32],
+    ) {
         let scale = self.scale_factor();
         if let Some(engine) = self.layout_engine.as_mut() {
             engine.set_grid_fragmentation_growth(id, axis, growth, scale);
@@ -6357,7 +6373,11 @@ impl Window {
             .layout_engine
             .as_mut()?
             .parent_grid_tracks(child, scale_factor)?;
-        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
+        Some((
+            point(Pixels(x), Pixels(y)) + self.element_offset(),
+            cols,
+            rows,
+        ))
     }
 
     /// KaminIDE patch: готовые дорожки самой сетки без поиска её ребёнка.
@@ -6371,7 +6391,11 @@ impl Window {
             .layout_engine
             .as_mut()?
             .grid_tracks(grid, scale_factor)?;
-        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
+        Some((
+            point(Pixels(x), Pixels(y)) + self.element_offset(),
+            cols,
+            rows,
+        ))
     }
 
     /// Compute the layout for the given id within the given available space.
@@ -6424,10 +6448,12 @@ impl Window {
         width: Pixels,
     ) -> bool {
         let scale_factor = self.scale_factor();
-        self.layout_engine
-            .as_mut()
-            .unwrap()
-            .cap_child_outer_width(parent, index, width, scale_factor)
+        self.layout_engine.as_mut().unwrap().cap_child_outer_width(
+            parent,
+            index,
+            width,
+            scale_factor,
+        )
     }
 
     /// KaminIDE patch: смещение узла от родителя и его размер без округления
@@ -6558,7 +6584,12 @@ impl Window {
     ) -> R {
         let depth = self.rendered_entity_stack.len();
         self.rendered_entity_stack.push(id);
-        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
+        self.with_restore(
+            depth,
+            |window, depth| window.rendered_entity_stack.truncate(*depth),
+            f,
+        )
+        .0
     }
 
     /// Executes the provided function with the specified image cache.
@@ -6569,7 +6600,12 @@ impl Window {
         if let Some(image_cache) = image_cache {
             let depth = self.image_cache_stack.len();
             self.image_cache_stack.push(image_cache);
-            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
+            self.with_restore(
+                depth,
+                |window, depth| window.image_cache_stack.truncate(*depth),
+                f,
+            )
+            .0
         } else {
             f(self)
         }
@@ -9108,12 +9144,18 @@ mod tests {
             with_element_arena(|arena| arena.alloc(|| Value(dropped.clone())))
         });
         assert!(dropped.get());
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = &*escaped;
-        })).is_err());
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            with_temporary_element_arena(|| panic!("trial unwinds"));
-        })).is_err());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = &*escaped;
+            }))
+            .is_err()
+        );
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                with_temporary_element_arena(|| panic!("trial unwinds"));
+            }))
+            .is_err()
+        );
         assert_eq!(*parent, 7);
         let next = with_element_arena(|arena| arena.alloc(|| 11u64));
         assert_eq!(*next, 11);

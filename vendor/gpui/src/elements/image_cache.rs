@@ -151,11 +151,42 @@ impl Element for ImageCacheElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let image_cache = self.image_cache_provider.provide(window, cx);
-        window.with_image_cache(Some(image_cache), |window| {
-            for child in &mut self.children {
-                child.paint(window, cx);
-            }
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    _id,
+                    _inspector_id,
+                    _bounds,
+                    _request_layout,
+                    _prepaint,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &'a mut Self::RequestLayoutState,
+        _prepaint: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut crate::PaintStack,
+    ) -> crate::PaintFuture<'a> {
+        Box::pin(async move {
+            let image_cache = self.image_cache_provider.provide(window, cx);
+            window
+                .with_image_cache_async(Some(image_cache), async |window| {
+                    for child in &mut self.children {
+                        child.paint_async(window, cx, stack).await;
+                    }
+                })
+                .await
         })
     }
 }

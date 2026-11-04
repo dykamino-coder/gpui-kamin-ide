@@ -147,24 +147,56 @@ impl Element for ScrollArea {
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.2.set_decoration_clip(window.content_mask());
-        // CSS2 Appendix E.2: scrolling does not establish a stacking context.
-        // Preserve its block-background / inline-foreground phases through
-        // this native adapter (Blink box_fragment_painter.cc:877-959).
-        crate::hooks::paint_reopen(window, |window| child.0.paint(window, cx));
-        let alpha = child
-            .4
-            .paint(self.freeze_scrollbars, &paint_bounds.1, &child.1, window);
-        crate::interactive::scrollbars::paint(
-            &self.style,
-            &child.1,
-            child.2.bars(),
-            child.2.range(),
-            child.2.insets(),
-            paint_bounds.0,
-            alpha,
-            window,
-        );
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(
+                    _id,
+                    _inspector_id,
+                    _bounds,
+                    child,
+                    paint_bounds,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        child: &'a mut Self::RequestLayoutState,
+        paint_bounds: &'a mut Self::PrepaintState,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.2.set_decoration_clip(window.content_mask());
+            // CSS2 Appendix E.2: scrolling does not establish a stacking context.
+            // Preserve its block-background / inline-foreground phases through
+            // this native adapter (Blink box_fragment_painter.cc:877-959).
+            crate::hooks::paint_reopen_async(window, async |window| {
+                child.0.paint_async(window, cx, stack).await;
+            })
+            .await;
+            let alpha = child
+                .4
+                .paint(self.freeze_scrollbars, &paint_bounds.1, &child.1, window);
+            crate::interactive::scrollbars::paint(
+                &self.style,
+                &child.1,
+                child.2.bars(),
+                child.2.range(),
+                child.2.insets(),
+                paint_bounds.0,
+                alpha,
+                window,
+            );
+        })
     }
 }
 

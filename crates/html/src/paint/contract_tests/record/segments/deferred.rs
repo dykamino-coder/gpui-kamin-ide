@@ -11,7 +11,13 @@ impl Wrap for Selected {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.0
     }
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         window.with_content_mask(
             Some(gpui::ContentMask {
                 bounds: rect(0., 0., 40., 90.),
@@ -32,9 +38,15 @@ impl Wrap for Ink {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.0
     }
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         quad(window, rect(4., 5., 12., 13.));
-        self.0.paint(window, cx);
+        self.0.paint_async(window, cx, stack).await;
     }
 }
 
@@ -46,7 +58,13 @@ impl Wrap for Capture {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         let (_, records) = window
             .record_paint_segments(
                 rect(0., 0., 90., 90.),

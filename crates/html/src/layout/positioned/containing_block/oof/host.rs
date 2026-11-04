@@ -120,16 +120,31 @@ impl Hooks for OofHost {
 
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
+        _bounds: Bounds<Pixels>,
+        _layout: &mut (),
         built: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        crate::hooks::paint_reopen(window, |window| {
-            for child in built.borrow_mut().iter_mut() {
-                child.paint(window, cx);
-            }
-        });
+        crate::hooks::paint_on_stack(self, _bounds, _layout, built, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _layout: &'a mut (),
+        built: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            crate::hooks::paint_reopen_async(window, async |window| {
+                for child in built.borrow_mut().iter_mut() {
+                    child.paint_async(window, cx, stack).await;
+                }
+            })
+            .await;
+        })
     }
 }

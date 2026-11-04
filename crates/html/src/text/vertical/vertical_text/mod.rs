@@ -76,7 +76,13 @@ impl Wrap for VerticalText {
         self.prepaint_impl(bounds, window, cx)
     }
 
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        self.paint_impl(bounds, window, cx)
+    async fn paint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.paint_impl(bounds, window, cx, stack).await
     }
 }

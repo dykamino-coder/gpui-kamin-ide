@@ -19,14 +19,17 @@ impl ChildBuild {
     }
 
     /// Рисует formatting context в текущем сборщике outline либо открывает собственную фазу.
-    pub(crate) fn outline_flow(
+    pub(crate) async fn outline_flow(
         &self,
         owner: &std::rc::Rc<crate::layout::cx::deferred::Deferred>,
         window: &mut gpui::Window,
         cx: &mut gpui::App,
-        body: super::effects::PaintBody<'_>,
+        stack: &mut gpui::PaintStack,
+        body: &mut dyn super::effects::PaintBody,
     ) {
-        self.effects.outline_flow(owner, window, cx, body)
+        self.effects
+            .outline_flow(owner, window, cx, stack, body)
+            .await;
     }
 
     /// Содержимое встроенного SVG, включая HTML foreign objects.

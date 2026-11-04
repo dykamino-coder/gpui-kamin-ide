@@ -2666,6 +2666,7 @@ dependencies = [
  "proptest",
  "rand 0.9.5",
  "raw-window-handle",
+ "reblessive",
  "regex",
  "resvg 0.48.1",
  "schemars",

@@ -105,64 +105,84 @@ impl Element for Resizable {
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
-        let Some(global_id) = id else { return };
-        let axis = self.axis;
-        let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(id, _inspector_id, bounds, child, grip, window, cx, stack)
+            })
+            .finish();
+    }
 
-        // Курсор над уголком показывает, что его можно тянуть.
-        if grip.is_hovered(window) {
-            window.set_cursor_style(
-                match axis {
-                    ResizeAxis::Horizontal => gpui::CursorStyle::ResizeLeftRight,
-                    ResizeAxis::Vertical => gpui::CursorStyle::ResizeUpDown,
-                    ResizeAxis::Both => gpui::CursorStyle::ResizeUpLeftDownRight,
-                },
-                grip,
-            );
-        }
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        grip: &'a mut Hitbox,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.paint_async(window, cx, stack).await;
+            let Some(global_id) = id else { return };
+            let axis = self.axis;
+            let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
 
-        let hovered = grip.is_hovered(window);
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let st = std::rc::Rc::new(std::cell::Cell::new(state.unwrap_or_default()));
+            // Курсор над уголком показывает, что его можно тянуть.
+            if grip.is_hovered(window) {
+                window.set_cursor_style(
+                    match axis {
+                        ResizeAxis::Horizontal => gpui::CursorStyle::ResizeLeftRight,
+                        ResizeAxis::Vertical => gpui::CursorStyle::ResizeUpDown,
+                        ResizeAxis::Both => gpui::CursorStyle::ResizeUpLeftDownRight,
+                    },
+                    grip,
+                );
+            }
 
-            let down = st.clone();
-            window.on_mouse_event(move |e: &MouseDownEvent, phase, _window, _cx| {
-                if !phase.bubble() || e.button != MouseButton::Left || !hovered {
-                    return;
-                }
-                let mut s = down.get();
-                s.dragging = true;
-                s.from = (s.width.unwrap_or(size.0), s.height.unwrap_or(size.1));
-                s.at = (f32::from(e.position.x), f32::from(e.position.y));
-                down.set(s);
+            let hovered = grip.is_hovered(window);
+            window.with_element_state::<State, _>(global_id, |state, window| {
+                let st = std::rc::Rc::new(std::cell::Cell::new(state.unwrap_or_default()));
+
+                let down = st.clone();
+                window.on_mouse_event(move |e: &MouseDownEvent, phase, _window, _cx| {
+                    if !phase.bubble() || e.button != MouseButton::Left || !hovered {
+                        return;
+                    }
+                    let mut s = down.get();
+                    s.dragging = true;
+                    s.from = (s.width.unwrap_or(size.0), s.height.unwrap_or(size.1));
+                    s.at = (f32::from(e.position.x), f32::from(e.position.y));
+                    down.set(s);
+                });
+
+                let mv = st.clone();
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    let mut s = mv.get();
+                    if !s.dragging {
+                        return;
+                    }
+                    let dx = f32::from(e.position.x) - s.at.0;
+                    let dy = f32::from(e.position.y) - s.at.1;
+                    if matches!(axis, ResizeAxis::Both | ResizeAxis::Horizontal) {
+                        s.width = Some((s.from.0 + dx).max(GRIP));
+                    }
+                    if matches!(axis, ResizeAxis::Both | ResizeAxis::Vertical) {
+                        s.height = Some((s.from.1 + dy).max(GRIP));
+                    }
+                    mv.set(s);
+                    window.refresh();
+                });
+
+                super::drag::release_on_mouse_up(st.clone(), |s| &mut s.dragging, window);
+
+                ((), st.get())
             });
-
-            let mv = st.clone();
-            window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = mv.get();
-                if !s.dragging {
-                    return;
-                }
-                let dx = f32::from(e.position.x) - s.at.0;
-                let dy = f32::from(e.position.y) - s.at.1;
-                if matches!(axis, ResizeAxis::Both | ResizeAxis::Horizontal) {
-                    s.width = Some((s.from.0 + dx).max(GRIP));
-                }
-                if matches!(axis, ResizeAxis::Both | ResizeAxis::Vertical) {
-                    s.height = Some((s.from.1 + dy).max(GRIP));
-                }
-                mv.set(s);
-                window.refresh();
-            });
-
-            super::drag::release_on_mouse_up(st.clone(), |s| &mut s.dragging, window);
-
-            ((), st.get())
-        });
+        })
     }
 }
 

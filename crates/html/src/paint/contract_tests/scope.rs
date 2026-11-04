@@ -2,12 +2,9 @@
 
 use super::{Events, assert_phases, collect, draw, probe};
 use crate::hooks::{IntoHooked, Wrap};
+use futures::FutureExt;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Window, canvas, point, px};
-use std::{
-    cell::Cell,
-    panic::{AssertUnwindSafe, catch_unwind},
-    rc::Rc,
-};
+use std::{cell::Cell, panic::AssertUnwindSafe, rc::Rc};
 
 struct Host {
     child: AnyElement,
@@ -19,13 +16,24 @@ impl Wrap for Host {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        window.with_render_context(Some(self.value.clone()), |window| {
-            let previous = window.replace_glyph_offset(point(px(0.25), px(0.75)));
-            // Явный прозрачный адаптер существующего consumer, без собственной группы.
-            crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
-            window.replace_glyph_offset(previous);
-        });
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        window
+            .with_render_context_async(Some(self.value.clone()), async |window| {
+                let previous = window.replace_glyph_offset(point(px(0.25), px(0.75)));
+                // Явный прозрачный адаптер существующего consumer, без собственной группы.
+                crate::hooks::paint_reopen_async(window, async |window| {
+                    self.child.paint_async(window, cx, stack).await
+                })
+                .await;
+                window.replace_glyph_offset(previous);
+            })
+            .await;
         self.value.set(2);
     }
 }
@@ -86,12 +94,23 @@ impl Wrap for Payload {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let payload = Rc::new(());
         *self.abandoned.borrow_mut() = Rc::downgrade(&payload);
-        window.with_render_context(Some(payload), |window| {
-            crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
-        });
+        window
+            .with_render_context_async(Some(payload), async |window| {
+                crate::hooks::paint_reopen_async(window, async |window| {
+                    self.child.paint_async(window, cx, stack).await
+                })
+                .await;
+            })
+            .await;
     }
 }
 
@@ -105,8 +124,19 @@ impl Wrap for Abort {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        assert!(catch_unwind(AssertUnwindSafe(|| self.child.paint(window, cx))).is_err());
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        assert!(
+            AssertUnwindSafe(self.child.paint_async(window, cx, stack))
+                .catch_unwind()
+                .await
+                .is_err()
+        );
         assert!(
             self.abandoned.borrow().upgrade().is_none(),
             "queued payload drops during unwind"

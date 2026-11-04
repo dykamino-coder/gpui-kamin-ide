@@ -97,27 +97,47 @@ impl Element for Selectable {
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
-        let Some(global_id) = id else { return };
-        let Some(layout) = self.layout.clone() else {
-            return;
-        };
-        // Над текстом курсор — как в браузере, каретка.
-        if hitbox.is_hovered(window) {
-            window.set_cursor_style(gpui::CursorStyle::IBeam, hitbox);
-        }
-        let inside = hitbox.is_hovered(window);
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(id, _inspector_id, _bounds, child, hitbox, window, cx, stack)
+            })
+            .finish();
+    }
 
-        track_selection(
-            global_id,
-            inside,
-            move |p| {
-                Some(match layout.index_for_position(p) {
-                    Ok(i) | Err(i) => i,
-                })
-            },
-            window,
-        );
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        hitbox: &'a mut Hitbox,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.paint_async(window, cx, stack).await;
+            let Some(global_id) = id else { return };
+            let Some(layout) = self.layout.clone() else {
+                return;
+            };
+            // Над текстом курсор — как в браузере, каретка.
+            if hitbox.is_hovered(window) {
+                window.set_cursor_style(gpui::CursorStyle::IBeam, hitbox);
+            }
+            let inside = hitbox.is_hovered(window);
+
+            track_selection(
+                global_id,
+                inside,
+                move |p| {
+                    Some(match layout.index_for_position(p) {
+                        Ok(i) | Err(i) => i,
+                    })
+                },
+                window,
+            );
+        })
     }
 }
 

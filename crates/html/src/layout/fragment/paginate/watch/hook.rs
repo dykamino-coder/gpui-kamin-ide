@@ -131,35 +131,25 @@ impl Hooks for Watch {
 
     fn paint(
         &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
+        bounds: Bounds<Pixels>,
+        state: &mut Self::Layout,
         prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        let access = match self.slot {
-            Slot::Box(id) => self.rec.access(id, window.content_mask()),
-            Slot::Table(..) => super::owner::Access::Normal,
-        };
-        if let Slot::Box(id) = self.slot
-            && let Some(slices) = self.rec.admitted(id)
-        {
-            let inner = &mut self.inner;
-            self.rec.with_admitted(slices.clone(), || {
-                admitted_paint(inner, *prepaint, slices, window, cx)
-            });
-            return;
-        }
-        match access {
-            super::owner::Access::Hidden => {}
-            super::owner::Access::Escape(mask) => window
-                .with_content_mask_replaced(mask, |window| {
-                    window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
-                }),
-            super::owner::Access::Normal => {
-                window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
-            }
-        }
+        crate::hooks::paint_on_stack(self, bounds, state, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _: Bounds<Pixels>,
+        _: &'a mut Self::Layout,
+        prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(self.paint_children(prepaint, window, cx, stack))
     }
 }
 
@@ -180,16 +170,4 @@ fn admitted_prepaint(
     });
 }
 
-/// Краска узла со своим допуском в записи главной копии.
-#[inline(never)]
-fn admitted_paint(
-    inner: &mut AnyElement,
-    mask: Option<ContentMask<Pixels>>,
-    slices: Rc<[gpui::PaintSegmentSlice]>,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let _ = window.with_paint_segment_slices(slices, |window| {
-        window.with_content_mask(mask, |window| inner.paint(window, cx))
-    });
-}
+mod paint;

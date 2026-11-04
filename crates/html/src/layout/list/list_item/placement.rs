@@ -118,9 +118,15 @@ impl Wrap for Marker {
         }
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.owns {
-            self.child.paint(window, cx);
+            self.child.paint_async(window, cx, stack).await;
         }
     }
 }

@@ -96,13 +96,13 @@ pub(crate) fn paint_shadow(
     )
 }
 
-pub(crate) fn paint<R>(
+pub(crate) async fn paint<R>(
     owner: Option<&Deferred>,
     matrix: TransformationMatrix,
     clip_matrix: TransformationMatrix,
     clip_ancestor: bool,
     window: &mut Window,
-    f: impl FnOnce(&mut Window) -> R,
+    f: impl AsyncFnOnce(&mut Window) -> R,
 ) -> R {
     let scope = owner.and_then(|owner| *owner.effect.borrow());
     let [[a, b], [c, d]] = matrix.rotation_scale;
@@ -127,9 +127,12 @@ pub(crate) fn paint<R>(
             .intersect(&scope.parent.bounds),
         };
         window
-            .with_content_mask_replaced(mask, |window| window.with_transformation_masked(matrix, f))
+            .with_content_mask_replaced_async(mask, async |window| {
+                window.with_transformation_masked_async(matrix, f).await
+            })
+            .await
     } else {
-        window.with_transformation_masked(matrix, f)
+        window.with_transformation_masked_async(matrix, f).await
     }
 }
 

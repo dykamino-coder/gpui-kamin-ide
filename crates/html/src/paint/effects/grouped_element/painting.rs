@@ -14,13 +14,14 @@ use crate::paint::effects::{polygon_clip, rectangular_clip};
 use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn paint_body(
+pub(super) async fn paint_body(
     group: &mut Grouped,
     bounds: Bounds<Pixels>,
     _state: &mut LayoutId,
     _prepaint: &mut (Bounds<Pixels>, Bounds<Pixels>),
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let values = group.values.clone();
     let vcx = values.vcx();
@@ -166,7 +167,9 @@ pub(super) fn paint_body(
         mask,
         mask_clip,
         window,
-    );
+        stack,
+    )
+    .await;
     // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
     // композита, в тот же контекст.
     if let Some(fills) = group.over_fills.as_ref() {

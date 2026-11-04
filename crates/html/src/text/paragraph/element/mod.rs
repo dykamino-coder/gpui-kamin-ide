@@ -56,7 +56,24 @@ impl Element for Paragraph {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.paint_impl(id, _inspector_id, bounds, _state, hitbox, window, cx)
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_impl(id, _inspector_id, bounds, _state, hitbox, window, cx, stack)
+            })
+            .finish();
+    }
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        inspector: Option<&'a InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        state: &'a mut LayoutId,
+        hitbox: &'a mut Option<Hitbox>,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(self.paint_impl(id, inspector, bounds, state, hitbox, window, cx, stack))
     }
 }
 

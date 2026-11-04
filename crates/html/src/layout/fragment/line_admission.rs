@@ -100,3 +100,27 @@ pub(crate) fn paint<R>(
         Err(_) => (paint.take().expect("unpainted line"))(window),
     }
 }
+
+/// Допуск строки сохраняется до завершения потомка на явном стеке.
+pub(crate) async fn paint_async<R>(
+    window: &mut Window,
+    (top, bottom): (Pixels, Pixels),
+    paint: impl AsyncFnOnce(&mut Window) -> R,
+) -> R {
+    let slice = window
+        .render_context::<Lines>()
+        .and_then(|lines| lines.admit(f32::from(top), f32::from(bottom)));
+    let Some(slice) = slice else {
+        return paint(window).await;
+    };
+    let mut paint = Some(paint);
+    match window
+        .with_paint_segment_slices_async(Rc::from([slice]), async |w| {
+            (paint.take().expect("line"))(w).await
+        })
+        .await
+    {
+        Ok(result) => result,
+        Err(_) => (paint.take().expect("unpainted line"))(window).await,
+    }
+}

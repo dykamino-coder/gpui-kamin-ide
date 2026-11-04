@@ -26,7 +26,17 @@ impl Wrap for Underlay {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        window.paint_bottom_layer(|window| self.child.paint(window, cx));
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        window
+            .paint_bottom_layer_async(async |window| {
+                self.child.paint_async(window, cx, stack).await
+            })
+            .await;
     }
 }

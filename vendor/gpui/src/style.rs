@@ -12,10 +12,8 @@ use crate::{
     AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
     CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
     FontFallbacks, FontFeatures, FontStyle, FontWeight, GridAutoFlow, GridLocation, GridTrack,
-    Hsla, Length,
-    Pixels, Point,
-    PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
-    point, px, quad, rems, size,
+    Hsla, Length, Pixels, Point, PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled,
+    TextRun, Window, black, phi, point, px, quad, rems, size,
 };
 use collections::HashSet;
 use refineable::Refineable;
@@ -896,14 +894,14 @@ impl Style {
         window: &Window,
     ) -> Option<ContentMask<Pixels>> {
         let exact = window
-            .raster_frame.exact_bounds
+            .raster_frame
+            .exact_bounds
             .filter(|(snapped, _)| *snapped == bounds)
             .map(|(_, exact)| exact);
         let exact = match exact {
             Some(exact)
                 if self.snap_to_device_pixels
-                    && window.current_transformation()
-                        == crate::TransformationMatrix::unit() =>
+                    && window.current_transformation() == crate::TransformationMatrix::unit() =>
             {
                 exact
             }
@@ -976,6 +974,20 @@ impl Style {
         }
     }
 
+    pub(crate) async fn paint_after_box_async(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        continuation: impl AsyncFnOnce(&mut Window, &mut App),
+    ) {
+        continuation(window, cx).await;
+
+        #[cfg(debug_assertions)]
+        if self.debug_below {
+            cx.remove_global::<DebugBelow>();
+        }
+    }
+
     /// Собственная краска общего painter по явному border-box, без обхода детей.
     // Finish shadows, background and border temporaries before painting children.
     #[inline(never)]
@@ -1022,7 +1034,8 @@ impl Style {
             };
             border_color.a = 0.;
             window.paint_quad(quad(
-                window.render_context::<crate::PaintTraversal>()
+                window
+                    .render_context::<crate::PaintTraversal>()
                     .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
                 corner_radii,
                 background_color.unwrap_or_default(),

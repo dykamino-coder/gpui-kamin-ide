@@ -7,14 +7,13 @@ mod flat;
 
 use crate::text::paragraph::*;
 use gpui::{
-    App, Bounds, Element, GlobalElementId, Hitbox, InspectorElementId, LayoutId, Pixels, Window,
-    size,
+    App, Bounds, GlobalElementId, Hitbox, InspectorElementId, LayoutId, Pixels, Window, size,
 };
 
 impl Paragraph {
     // Keep the extracted GPUI Element paint signature intact.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn paint_impl(
+    pub(crate) async fn paint_impl(
         &mut self,
         id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
@@ -23,6 +22,7 @@ impl Paragraph {
         hitbox: &mut Option<Hitbox>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         // Поворачивается текст внутри уже рассчитанной по физическим осям коробки.
         if self.vertical {
@@ -43,15 +43,17 @@ impl Paragraph {
             let selection = inner
                 .selection_vertical
                 .replace((bounds, inner.vertical_ccw));
-            window.with_transformation(matrix, |window| {
-                inner.paint(id, _inspector_id, flat, _state, hitbox, window, cx);
-            });
+            window
+                .with_transformation_async(matrix, async |window| {
+                    inner.paint_flat(id, flat, hitbox, window, cx, stack).await;
+                })
+                .await;
             inner.selection_vertical = selection;
             inner.vertical = true;
             inner.invalidate_prepared();
             *self = inner;
             return;
         }
-        self.paint_flat(id, bounds, hitbox, window, cx);
+        self.paint_flat(id, bounds, hitbox, window, cx, stack).await;
     }
 }

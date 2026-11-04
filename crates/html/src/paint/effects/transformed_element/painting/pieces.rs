@@ -8,13 +8,14 @@ use gpui::{App, Bounds, Pixels, Point, Size, TransformationMatrix, Window};
 
 type Geometry = (Bounds<Pixels>, Point<Pixels>, Point<Pixels>);
 
-pub(super) fn pieces(
+pub(super) async fn pieces(
     group: &mut Transformed,
     all: &Pieces,
     (geometry, exact, matrix): (Geometry, Size<Pixels>, TransformationMatrix),
     snap: (f32, bool),
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let raw_origin = geometry.1;
     let own = Bounds {
@@ -39,13 +40,17 @@ pub(super) fn pieces(
         (&list, &matrices),
         clip_before,
         (window, cx),
-        |window, cx| {
-            crate::paint::decorations::outline_phase::scoped(
+        stack,
+        async |window, cx, stack| {
+            crate::paint::decorations::outline_phase::scoped_async(
                 paint.as_ref(),
                 window,
                 cx,
-                |window, cx| child.paint(window, cx),
+                stack,
+                async |window, cx, stack| child.paint_async(window, cx, stack).await,
             )
+            .await
         },
-    );
+    )
+    .await;
 }

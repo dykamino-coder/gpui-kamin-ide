@@ -129,21 +129,41 @@ impl Element for Transition {
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
-        let hovered = hitbox.is_hovered(window);
-        let Some(global_id) = id else { return };
-        // Наведение известно только после расстановки областей попадания,
-        // поэтому цель перехода записывается здесь, а двигается на следующем
-        // кадре — ровно как в браузере, где переход начинается с события.
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let mut st = state.unwrap_or_default();
-            if st.hovered != hovered {
-                self.doc.values.defer_frame();
-                st.hovered = hovered;
-                window.request_animation_frame();
-            }
-            ((), st)
-        });
+        reblessive::Stack::new()
+            .enter(|stack| {
+                self.paint_async(id, _inspector_id, _bounds, child, hitbox, window, cx, stack)
+            })
+            .finish();
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        id: Option<&'a GlobalElementId>,
+        _inspector_id: Option<&'a InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        child: &'a mut AnyElement,
+        hitbox: &'a mut Hitbox,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.paint_async(window, cx, stack).await;
+            let hovered = hitbox.is_hovered(window);
+            let Some(global_id) = id else { return };
+            // Наведение известно только после расстановки областей попадания,
+            // поэтому цель перехода записывается здесь, а двигается на следующем
+            // кадре — ровно как в браузере, где переход начинается с события.
+            window.with_element_state::<State, _>(global_id, |state, window| {
+                let mut st = state.unwrap_or_default();
+                if st.hovered != hovered {
+                    self.doc.values.defer_frame();
+                    st.hovered = hovered;
+                    window.request_animation_frame();
+                }
+                ((), st)
+            });
+        })
     }
 }
 

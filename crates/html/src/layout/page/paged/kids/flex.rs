@@ -25,13 +25,27 @@ impl Hooks for Layer {
     }
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
+        _bounds: Bounds<Pixels>,
+        _layout: &mut (),
+        _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.0.borrow_mut().paint(window, cx);
+        crate::hooks::paint_on_stack(self, _bounds, _layout, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _layout: &'a mut (),
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.0.borrow_mut().paint_async(window, cx, stack).await;
+        })
     }
 }
 

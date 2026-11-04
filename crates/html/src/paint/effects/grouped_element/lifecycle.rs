@@ -52,6 +52,20 @@ impl Hooks for Grouped {
         window: &mut Window,
         cx: &mut App,
     ) {
-        paint_body(self, bounds, _state, _prepaint, window, cx)
+        crate::hooks::paint_on_stack(self, bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(paint_body(
+            self, bounds, _state, _prepaint, window, cx, stack,
+        ))
     }
 }

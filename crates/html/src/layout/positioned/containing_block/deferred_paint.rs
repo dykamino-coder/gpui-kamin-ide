@@ -14,9 +14,12 @@ impl DeferredPaint {
     }
 
     /// Доступ к текущему элементу с удержанием заимствования общего слота.
-    pub(crate) fn with_child(&self, paint: impl FnOnce(&mut AnyElement, ContentMask<Pixels>)) {
+    pub(crate) async fn with_child(
+        &self,
+        paint: impl AsyncFnOnce(&mut AnyElement, ContentMask<Pixels>),
+    ) {
         if let Some((child, mask)) = self.0.borrow_mut().as_mut() {
-            paint(child, *mask);
+            paint(child, *mask).await;
         }
     }
 }

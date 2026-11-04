@@ -54,6 +54,35 @@ fn native_stack_bytes_per_div_level() {
     }
 }
 
+// Проверяет именно paint: остальные фазы пока используют обычный тестовый стек.
+#[test]
+fn div_paint_native_stack_does_not_grow_with_depth() {
+    let mut cx = gpui::TestAppContext::single();
+    for block in [false, true] {
+        let mut addresses = Vec::new();
+        for depth in [16, 128, 512] {
+            let samples = Rc::new(Samples::default());
+            let mut child = Leaf(samples.clone()).into_any_element();
+            for _ in 0..depth {
+                let div = gpui::div().child(child);
+                child = if block { div.block() } else { div }.into_any_element();
+            }
+            cx.add_empty_window().draw(
+                gpui::point(gpui::px(0.), gpui::px(0.)),
+                gpui::size(gpui::px(100.), gpui::px(100.)),
+                |_, _| FrameProbe(child, "paint".into()),
+            );
+            assert_ne!(samples.paint.get(), 0, "paint должен посетить лист");
+            addresses.push(samples.paint.get());
+        }
+        let spread = addresses.iter().max().unwrap() - addresses.iter().min().unwrap();
+        assert!(
+            spread < 32 * 1024,
+            "paint расходует стек с глубиной: {spread} байт"
+        );
+    }
+}
+
 struct Leaf(Rc<Samples>);
 
 impl IntoElement for Leaf {

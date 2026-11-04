@@ -3,6 +3,7 @@
 use super::*;
 mod admission;
 mod hits;
+mod traversal;
 pub use admission::{PaintSegmentClips, PaintSegmentSlice};
 
 /// Идентичность сегмента фрагментации, назначенная хозяином записи.
@@ -28,11 +29,16 @@ pub struct PaintSegmentRecords(Vec<(PaintSegmentId, PaintRecord)>);
 impl PaintSegmentRecords {
     /// Чтение сегмента без потребления его повторно используемых команд.
     pub fn get(&self, id: PaintSegmentId) -> Option<&PaintRecord> {
-        self.0.iter().find(|(key, _)| *key == id).map(|(_, record)| record)
+        self.0
+            .iter()
+            .find(|(key, _)| *key == id)
+            .map(|(_, record)| record)
     }
 
     /// Упорядоченный набор сегментов, включая пустые записи пустых сегментов.
-    pub fn into_records(self) -> Vec<(PaintSegmentId, PaintRecord)> { self.0 }
+    pub fn into_records(self) -> Vec<(PaintSegmentId, PaintRecord)> {
+        self.0
+    }
 }
 
 pub(super) struct Recording;
@@ -42,7 +48,9 @@ struct SegmentSet(Rc<[PaintSegment]>, Bounds<Pixels>);
 
 fn valid(routes: &[PaintSegment], scale: f32) -> bool {
     routes.iter().enumerate().all(|(index, route)| {
-        !routes[..index].iter().any(|other| other.id == route.id && other.ordinal == route.ordinal)
+        !routes[..index]
+            .iter()
+            .any(|other| other.id == route.id && other.ordinal == route.ordinal)
             && validation::point_valid(route.source)
             && validation::point_valid(route.destination)
             && validation::point_valid(route.destination - route.source)
@@ -53,14 +61,22 @@ fn valid(routes: &[PaintSegment], scale: f32) -> bool {
 fn scopes(roots: &[PaintSegment], selected: Option<&Selection>) -> Rc<[PaintSegment]> {
     let mut result = Vec::new();
     for (index, root) in roots.iter().enumerate() {
-        if roots[..index].iter().any(|prior| prior.id == root.id) { continue; }
-        let chosen: Vec<_> = selected.into_iter().flat_map(|value| value.0.iter())
-            .filter(|route| route.id == root.id).copied().collect();
+        if roots[..index].iter().any(|prior| prior.id == root.id) {
+            continue;
+        }
+        let chosen: Vec<_> = selected
+            .into_iter()
+            .flat_map(|value| value.0.iter())
+            .filter(|route| route.id == root.id)
+            .copied()
+            .collect();
         if chosen.is_empty() {
             // Предок без собственного допуска охватывает все размещения
             // потомков одним scope; ordinal повторяет только явный выбор.
             result.push(*root);
-        } else { result.extend(chosen); }
+        } else {
+            result.extend(chosen);
+        }
     }
     result.into()
 }
@@ -74,17 +90,29 @@ impl Window {
         routes: Rc<[PaintSegment]>,
         paint: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintRecordError> {
-        if !valid(&routes, self.scale_factor()) { return Err(PaintRecordError::InvalidGeometry); }
+        if !valid(&routes, self.scale_factor()) {
+            return Err(PaintRecordError::InvalidGeometry);
+        }
         let Some(segments) = self.render_contexts.get::<SegmentSet>() else {
             return Err(PaintRecordError::InvalidSegment);
         };
-        if routes.iter().any(|route| !segments.0.iter().any(|segment| segment.id == route.id)) {
+        if routes
+            .iter()
+            .any(|route| !segments.0.iter().any(|segment| segment.id == route.id))
+        {
             return Err(PaintRecordError::InvalidSegment);
         }
-        if routes.iter().any(|route| !validation::scaled_bounds_valid(
-            Bounds::new(segments.1.origin + route.destination - route.source, segments.1.size),
-            self.scale_factor(),
-        )) { return Err(PaintRecordError::InvalidGeometry); }
+        if routes.iter().any(|route| {
+            !validation::scaled_bounds_valid(
+                Bounds::new(
+                    segments.1.origin + route.destination - route.source,
+                    segments.1.size,
+                ),
+                self.scale_factor(),
+            )
+        }) {
+            return Err(PaintRecordError::InvalidGeometry);
+        }
         let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
         let _slices = self.render_contexts.enter::<admission::Slices>(None);
         Ok(paint(self))
@@ -100,43 +128,68 @@ impl Window {
         cx: &mut App,
         paint: impl FnOnce(&mut Self, &mut App) -> R,
     ) -> Result<(R, PaintSegmentRecords), PaintRecordError> {
-        if !valid(&routes, self.scale_factor()) { return Err(PaintRecordError::InvalidGeometry); }
+        if !valid(&routes, self.scale_factor()) {
+            return Err(PaintRecordError::InvalidGeometry);
+        }
         if !validation::scaled_bounds_valid(source_clip, self.scale_factor())
-            || routes.iter().any(|route| !validation::scaled_bounds_valid(
-                Bounds::new(source_clip.origin + route.destination - route.source, source_clip.size),
-                self.scale_factor(),
-            )) {
+            || routes.iter().any(|route| {
+                !validation::scaled_bounds_valid(
+                    Bounds::new(
+                        source_clip.origin + route.destination - route.source,
+                        source_clip.size,
+                    ),
+                    self.scale_factor(),
+                )
+            })
+        {
             return Err(PaintRecordError::InvalidGeometry);
         }
         let segments = routes.clone();
-        let _segments = self.render_contexts.enter(Some(Rc::new(SegmentSet(routes.clone(), source_clip))));
+        let _segments = self
+            .render_contexts
+            .enter(Some(Rc::new(SegmentSet(routes.clone(), source_clip))));
         let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
         let contexts = self.render_contexts.clone();
         let scope_segments = segments.clone();
         let read = Rc::new(move || crate::scene::segments::Tag {
-            routes: contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
+            routes: contexts
+                .get::<Selection>()
+                .map_or_else(|| Rc::from([]), |value| value.0.clone()),
             scopes: scopes(&scope_segments, contexts.get::<Selection>().as_deref()),
             clips: contexts.get::<crate::scene::segments::Clip>(),
-            slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
+            slices: contexts
+                .get::<admission::Slices>()
+                .map_or_else(|| Rc::from([]), |value| value.0.clone()),
         });
-        let (result, draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
-            let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
-            let _clips = window.render_contexts.enter::<crate::scene::segments::Clip>(None);
-            let _slices = window.render_contexts.enter::<admission::Slices>(None);
-            window.next_frame.scene.begin_segments(read);
-            paint(window, cx)
-        })?;
+        let (result, draft, identity, scale) =
+            self.capture_paint_commands(source_clip, cx, |window, cx| {
+                let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
+                let _clips = window
+                    .render_contexts
+                    .enter::<crate::scene::segments::Clip>(None);
+                let _slices = window.render_contexts.enter::<admission::Slices>(None);
+                window.next_frame.scene.begin_segments(read);
+                paint(window, cx)
+            })?;
         let mut records = Vec::with_capacity(segments.len());
         for (index, segment) in segments.iter().enumerate() {
-            if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
+            if segments[..index].iter().any(|prior| prior.id == segment.id) {
+                continue;
+            }
             let scene = draft.freeze_segment(segment.id, scale, source_clip);
             let clip = draft.segment_clip(segment.id, source_clip);
             if !validation::scaled_bounds_valid(clip, scale) {
                 return Err(PaintRecordError::InvalidGeometry);
             }
-            records.push((segment.id, PaintRecord(Rc::new(Recorded {
-                identity: identity.clone(), scale, clip, scene,
-            }))));
+            records.push((
+                segment.id,
+                PaintRecord(Rc::new(Recorded {
+                    identity: identity.clone(),
+                    scale,
+                    clip,
+                    scene,
+                })),
+            ));
         }
         Ok((result, PaintSegmentRecords(records)))
     }
@@ -148,19 +201,36 @@ impl Window {
         // До размещения нельзя отбрасывать исходные команды по clip предка.
         // Заморозка применяет конечные границы и эффекты каждого сегмента.
         let radius = f32::MAX / 64.0 / self.scale_factor().max(1.0);
-        Some(ContentMask { bounds: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))) })
+        Some(ContentMask {
+            bounds: Bounds::new(
+                point(px(-radius), px(-radius)),
+                size(px(radius * 2.0), px(radius * 2.0)),
+            ),
+        })
     }
 
-    pub(in crate::window) fn segment_clip_scope(&self, mask: ContentMask<Pixels>, replace: bool) -> Option<render_context::Scope> {
+    pub(in crate::window) fn segment_clip_scope(
+        &self,
+        mask: ContentMask<Pixels>,
+        replace: bool,
+    ) -> Option<render_context::Scope> {
         self.render_contexts.get::<Recording>()?;
         let segments = self.render_contexts.get::<SegmentSet>()?;
         let selected = self.render_contexts.get::<Selection>()?;
         // Scope присутствует во всех сегментах: собственный допуск предка
         // может быть пустым, когда независимый потомок всё ещё рисуется.
         let routes = scopes(&segments.0, Some(&selected));
-        Some(self.render_contexts.enter(Some(Rc::new(crate::scene::segments::Clip {
-            bounds: mask.bounds, routes,
-            parent: if replace { None } else { self.render_contexts.get() },
-        }))))
+        Some(
+            self.render_contexts
+                .enter(Some(Rc::new(crate::scene::segments::Clip {
+                    bounds: mask.bounds,
+                    routes,
+                    parent: if replace {
+                        None
+                    } else {
+                        self.render_contexts.get()
+                    },
+                }))),
+        )
     }
 }

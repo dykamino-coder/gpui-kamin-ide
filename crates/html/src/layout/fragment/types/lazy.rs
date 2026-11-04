@@ -78,18 +78,33 @@ impl Hooks for Deferred {
 
     fn paint(
         &mut self,
-        _: gpui::Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
+        bounds: gpui::Bounds<Pixels>,
+        layout: &mut (),
+        prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.0
-            .element
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .paint(window, cx);
+        crate::hooks::paint_on_stack(self, bounds, layout, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: gpui::Bounds<Pixels>,
+        _layout: &'a mut (),
+        _prepaint: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.0
+                .element
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .paint_async(window, cx, stack)
+                .await;
+        })
     }
 }
 

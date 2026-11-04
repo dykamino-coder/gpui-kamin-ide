@@ -62,16 +62,24 @@ impl Wrap for Record {
         );
     }
 
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let geometry = &self.geometry;
-        crate::hooks::paint_source_node(
+        crate::hooks::paint_source_node_async(
             geometry.id,
             geometry.positioned.then_some(geometry.cb),
             bounds.origin,
             window,
             cx,
-            |window, cx| self.child.paint(window, cx),
-        );
+            stack,
+            async |window, cx, stack| self.child.paint_async(window, cx, stack).await,
+        )
+        .await;
     }
 }
 

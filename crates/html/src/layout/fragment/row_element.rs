@@ -135,8 +135,22 @@ impl Hooks for FlowRow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        for c in self.children.iter_mut() {
-            c.el.paint(window, cx);
-        }
+        crate::hooks::paint_on_stack(self, _bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            for c in self.children.iter_mut() {
+                c.el.paint_async(window, cx, stack).await;
+            }
+        })
     }
 }

@@ -112,6 +112,7 @@ fn boundary(window: &mut Window) -> Box<dyn std::any::Any> {
 }
 
 /// Явный адаптер восстанавливает collector через непрозрачного GPUI consumer.
+#[cfg(test)]
 pub(crate) fn reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
     let guard = current(window).map(|pass| {
         let (previous, saved) = pass.jobs.reopen();
@@ -122,6 +123,23 @@ pub(crate) fn reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -
         }
     });
     let result = f(window);
+    drop(guard);
+    result
+}
+
+pub(crate) async fn reopen_async<R>(
+    window: &mut Window,
+    f: impl AsyncFnOnce(&mut Window) -> R,
+) -> R {
+    let guard = current(window).map(|pass| {
+        let (previous, saved) = pass.jobs.reopen();
+        Boundary {
+            pass,
+            previous,
+            saved,
+        }
+    });
+    let result = f(window).await;
     drop(guard);
     result
 }

@@ -66,6 +66,17 @@ impl Native {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(PaintSegmentRecords, BareRecords), PaintRecordError> {
+        reblessive::Stack::new()
+            .enter(|stack| self.record_async(window, cx, stack))
+            .finish()
+    }
+
+    pub(crate) async fn record_async(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Result<(PaintSegmentRecords, BareRecords), PaintRecordError> {
         self.layout
             .read(window)
             .ok_or(PaintRecordError::InvalidGeometry)?;
@@ -80,9 +91,18 @@ impl Native {
         let extent = slices
             .placed
             .map_or(self.extent, |placed| self.extent.union(&placed));
-        crate::hooks::paint_source_record(extent, segments, slices, window, cx, |window, cx| {
-            self.root.borrow_mut().paint(window, cx);
-        })
+        crate::hooks::paint_source_record_async(
+            extent,
+            segments,
+            slices,
+            window,
+            cx,
+            stack,
+            async |window, cx, stack| {
+                self.root.borrow_mut().paint_async(window, cx, stack).await;
+            },
+        )
+        .await
     }
 }
 

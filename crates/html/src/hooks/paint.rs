@@ -18,8 +18,16 @@ pub(crate) fn paint_atomic(div: Div) -> Div {
     crate::paint::coordinator::atomic(div)
 }
 
+#[cfg(test)]
 pub(crate) fn paint_reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
     crate::paint::coordinator::reopen(window, f)
+}
+
+pub(crate) async fn paint_reopen_async<R>(
+    window: &mut Window,
+    f: impl AsyncFnOnce(&mut Window) -> R,
+) -> R {
+    crate::paint::coordinator::reopen_async(window, f).await
 }
 
 pub(crate) use crate::layout::fragment::paint_source::{
@@ -93,15 +101,19 @@ pub(crate) fn prepaint_source_record(
     crate::paint::coordinator::segments::prepaint(extent, segments, slices, window, cx, prepaint)
 }
 
-pub(crate) fn paint_source_record(
+pub(crate) async fn paint_source_record_async(
     extent: gpui::Bounds<gpui::Pixels>,
     segments: std::rc::Rc<[gpui::PaintSegment]>,
     slices: SourceSlices,
     window: &mut Window,
     cx: &mut gpui::App,
-    paint: impl FnOnce(&mut Window, &mut gpui::App),
+    stack: &mut gpui::PaintStack,
+    paint: impl AsyncFnOnce(&mut Window, &mut gpui::App, &mut gpui::PaintStack),
 ) -> Result<(gpui::PaintSegmentRecords, BareRecords), gpui::PaintRecordError> {
-    crate::paint::coordinator::segments::record(extent, segments, slices, window, cx, paint)
+    crate::paint::coordinator::segments::record_async(
+        extent, segments, slices, window, cx, stack, paint,
+    )
+    .await
 }
 
 pub(crate) fn paint_source_node(
@@ -113,6 +125,18 @@ pub(crate) fn paint_source_node(
     paint: impl FnOnce(&mut Window, &mut gpui::App),
 ) {
     crate::paint::coordinator::segments::node(id, cb, placed, window, cx, paint);
+}
+
+pub(crate) async fn paint_source_node_async(
+    id: u64,
+    cb: Option<u64>,
+    placed: gpui::Point<gpui::Pixels>,
+    window: &mut Window,
+    cx: &mut gpui::App,
+    stack: &mut gpui::PaintStack,
+    paint: impl AsyncFnOnce(&mut Window, &mut gpui::App, &mut gpui::PaintStack),
+) {
+    crate::paint::coordinator::segments::node_async(id, cb, placed, window, cx, stack, paint).await;
 }
 
 #[cfg(test)]

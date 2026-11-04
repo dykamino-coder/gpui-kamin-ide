@@ -122,11 +122,17 @@ impl Wrap for Slot {
         window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let copy = window.render_context::<CopySegment>();
         let Some(copy) = copy.filter(|copy| copy.records.natives().contains(self.id)) else {
             if !replayed::paint(self.id, window) {
-                self.child.paint(window, cx);
+                self.child.paint_async(window, cx, stack).await;
             }
             return;
         };

@@ -1,6 +1,7 @@
 //! Снимок окружения и единый проверяемый replay с восстановлением через guard.
 
 use super::*;
+mod traversal;
 
 /// General element environment; raster placement is inherited from the caller.
 #[doc = include_str!("paint_contract.md")]
@@ -42,7 +43,10 @@ pub struct RasterPaintCtx {
 
 impl RasterPaintCtx {
     /// Select fill placement independently of the retained glyph placement.
-    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
+    pub fn set_fill_transform(
+        &mut self,
+        transform: Option<(TransformationMatrix, TransformationMatrix)>,
+    ) {
         self.raster.fill_transform = transform;
     }
 }
@@ -52,7 +56,10 @@ impl PaintState {
         self.base.swap(window);
         mem::swap(&mut self.raster, &mut window.raster_frame);
         mem::swap(&mut window.scale_factor, &mut self.scale_factor);
-        mem::swap(&mut window.rem_size_override_stack, &mut self.rem_size_overrides);
+        mem::swap(
+            &mut window.rem_size_override_stack,
+            &mut self.rem_size_overrides,
+        );
     }
 }
 
@@ -60,10 +67,22 @@ impl PaintCtx {
     fn swap(&mut self, window: &mut Window) {
         mem::swap(&mut window.element_id_stack, &mut self.element_id_stack);
         mem::swap(&mut window.text_style_stack, &mut self.text_style_stack);
-        mem::swap(&mut window.rendered_entity_stack, &mut self.rendered_entity_stack);
-        mem::swap(&mut window.element_offset_stack, &mut self.element_offset_stack);
-        mem::swap(&mut window.exact_element_offset_depth, &mut self.exact_element_offset_depth);
-        mem::swap(&mut window.transformation_stack, &mut self.transformation_stack);
+        mem::swap(
+            &mut window.rendered_entity_stack,
+            &mut self.rendered_entity_stack,
+        );
+        mem::swap(
+            &mut window.element_offset_stack,
+            &mut self.element_offset_stack,
+        );
+        mem::swap(
+            &mut window.exact_element_offset_depth,
+            &mut self.exact_element_offset_depth,
+        );
+        mem::swap(
+            &mut window.transformation_stack,
+            &mut self.transformation_stack,
+        );
         mem::swap(&mut window.mask_scale, &mut self.mask_scale);
         mem::swap(&mut window.mask_map, &mut self.mask_map);
         mem::swap(&mut window.element_opacity, &mut self.element_opacity);
@@ -129,7 +148,10 @@ impl Window {
 
     /// Capture environment and raster placement without a scale override.
     pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-        RasterPaintCtx { base: self.paint_ctx(), raster: self.raster_frame().clone() }
+        RasterPaintCtx {
+            base: self.paint_ctx(),
+            raster: self.raster_frame().clone(),
+        }
     }
 
     /// Replay captured raster placement in the original live scope.
@@ -146,23 +168,8 @@ impl Window {
         state: PaintState,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
-        state.base.identity.check(self)?;
-        let mut layout_owner = state.base.layout_owner.clone();
-        // Keep retained vectors outside recursive paint frames.
-        let mut state = Box::new(state);
-        let _contexts = self.render_contexts.enter_snapshot(mem::take(&mut state.base.render_contexts));
-        state.restore(self);
-        // KaminIDE patch: effects of deferred paint taint the sinks it feeds.
-        let f = |window: &mut Self| {
-            let probe = super::retained::InkProbe::open(window);
-            let result = f(window);
-            if let Some(probe) = probe {
-                probe.close(window);
-            }
-            result
-        };
-        Ok(self.with_retained_layout(&mut layout_owner, |window| {
-            window.with_restore(state, |window, state| state.restore(window), f).0
-        }))
+        reblessive::Stack::new()
+            .enter(|_| self.replay_paint_async(state, async |window| f(window)))
+            .finish()
     }
 }

@@ -2,6 +2,8 @@
 //! голые сегменты для legacy-копий, остальные — обратно в запись источника.
 
 use super::*;
+mod traversal;
+pub(super) use traversal::own_capture_async;
 
 /// Paint a continued root once into its own capture, without its ancestors'
 /// effects; re-admit placements that no legacy copy replays.

@@ -150,7 +150,13 @@ impl Wrap for Group {
         &mut self.child
     }
 
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         self.events.borrow_mut().push(("paint", "group-enter"));
         window.paint_group(
             bounds,

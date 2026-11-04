@@ -20,19 +20,29 @@ impl Painter for DeferredSource {
         }
     }
 
-    fn paint(
-        &mut self,
+    fn paint_async<'a>(
+        &'a mut self,
         _: Bounds<Pixels>,
-        _: &mut LayoutId,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.0.with_child(|child, mask| {
-            // Исходная маска дополняет clip фрагмента, установленный paint.
-            window.with_content_mask(Some(mask), |window| {
-                crate::hooks::paint_reopen(window, |window| child.paint(window, cx));
-            });
-        });
+        _: &'a mut LayoutId,
+        _: &'a mut (),
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.0
+                .with_child(async |child, mask| {
+                    // Исходная маска дополняет clip фрагмента, установленный paint.
+                    window
+                        .with_content_mask_async(Some(mask), async |window| {
+                            crate::hooks::paint_reopen_async(window, async |window| {
+                                child.paint_async(window, cx, stack).await;
+                            })
+                            .await;
+                        })
+                        .await;
+                })
+                .await;
+        })
     }
 }

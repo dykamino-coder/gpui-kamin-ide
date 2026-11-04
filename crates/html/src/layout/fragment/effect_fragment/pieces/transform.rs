@@ -14,12 +14,13 @@ use std::rc::Rc;
 /// опорной коробки своего фрагмента (`matrices` — по кускам, в точках устройства, в
 /// координатах источника; `list` — `Pieces::current`). Как у копии: при осевой матрице
 /// без обрезки предка срез куска стоит до преобразования, иначе — после него, маской куска.
-pub(crate) fn paint_transformed(
+pub(crate) async fn paint_transformed(
     pieces: &Pieces,
     (list, matrices): (&[Piece], &[TransformationMatrix]),
     clip_before: bool,
     (window, cx): (&mut Window, &mut App),
-    paint: impl FnOnce(&mut Window, &mut App),
+    stack: &mut gpui::PaintStack,
+    paint: impl AsyncFnOnce(&mut Window, &mut App, &mut gpui::PaintStack),
 ) {
     let scale = window.scale_factor();
     // Одна запись на сегмент: второе размещение того же сегмента повторило бы его.
@@ -46,15 +47,32 @@ pub(crate) fn paint_transformed(
             source_clip: p.clip,
         })
         .collect();
-    let recorded = crate::layout::fragment::line_admission::outside(window, |window| {
-        window.record_paint_segments(extent, routes, cx, |window, cx| {
-            if clip_before {
-                let _ = window.with_paint_segment_slices(before, |window| paint(window, cx));
-            } else {
-                paint(window, cx);
-            }
-        })
-    });
+    let recorded = window
+        .with_render_context_async::<crate::layout::fragment::line_admission::Lines, _>(
+            None,
+            async |window| {
+                window
+                    .record_paint_segments_async(
+                        extent,
+                        routes,
+                        cx,
+                        stack,
+                        async |window, cx, stack| {
+                            if clip_before {
+                                let _ = window
+                                    .with_paint_segment_slices_async(before, async |window| {
+                                        paint(window, cx, stack).await
+                                    })
+                                    .await;
+                            } else {
+                                paint(window, cx, stack).await;
+                            }
+                        },
+                    )
+                    .await
+            },
+        )
+        .await;
     let Ok((_, records)) = recorded else { return };
     for (p, device) in &list {
         let Some(record) = records.get(p.placement.id) else {

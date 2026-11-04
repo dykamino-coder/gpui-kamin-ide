@@ -70,7 +70,13 @@ impl Wrap for CombinedUpright {
         child.prepaint_at(bounds.origin, window, cx);
     }
 
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let matrix = combined_geometry::transform(
             bounds,
             self.natural,
@@ -80,6 +86,10 @@ impl Wrap for CombinedUpright {
         );
         let matrix = combined_geometry::in_local_space(matrix, window.current_transformation());
         let child = &mut self.child;
-        window.with_transformation(matrix, |window| child.paint(window, cx));
+        window
+            .with_transformation_async(matrix, async |window| {
+                child.paint_async(window, cx, stack).await
+            })
+            .await;
     }
 }

@@ -27,9 +27,9 @@ impl Watched {
     }
 
     /// Краска допущенного узла: его срезы действуют для потомков до возврата.
-    pub(super) fn with_admitted<R>(&self, slices: Slices, f: impl FnOnce() -> R) -> R {
+    pub(super) async fn with_admitted<R>(&self, slices: Slices, f: impl AsyncFnOnce() -> R) -> R {
         let previous = self.admission.current.replace(Some(slices));
-        let result = f();
+        let result = f().await;
         self.admission.current.set(previous);
         result
     }

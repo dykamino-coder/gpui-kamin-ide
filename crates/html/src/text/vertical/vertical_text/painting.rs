@@ -7,7 +7,13 @@ use super::VerticalText;
 use gpui::{App, Bounds, Pixels, Window};
 
 impl VerticalText {
-    pub(crate) fn paint_impl(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    pub(crate) async fn paint_impl(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         // Статическую позицию абсолюта в ВЕРТИКАЛЬНОЙ строке здесь не чинить
         // ни отображением дырки через поворот, ни возвратом письма абсолюту:
         // щуп пишет дырку в ДО-поворотных координатах (матрица ниже
@@ -59,8 +65,14 @@ impl VerticalText {
         // ДО-трансформные — лежат вне своей коробки, перекрытие с фоном не
         // видно, и градиент соседа красился ПОВЕРХ глифа
         // (table-cell-align-005: с третьей ячейки текст пропадал под фоном).
-        window.paint_layer(bounds, |window| {
-            window.with_transformation(matrix, |window| child.paint(window, cx));
-        });
+        window
+            .paint_layer_async(bounds, async |window| {
+                window
+                    .with_transformation_async(matrix, async |window| {
+                        child.paint_async(window, cx, stack).await
+                    })
+                    .await;
+            })
+            .await;
     }
 }

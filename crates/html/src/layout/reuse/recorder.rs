@@ -148,9 +148,19 @@ impl Wrap for Recorder {
         self.pending.origin.set(Some(origin));
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let sink = self.pending.sink.clone();
-        window.with_ink_sink(sink, |window| self.child.paint(window, cx));
+        window
+            .with_ink_sink_async(sink, async |window| {
+                self.child.paint_async(window, cx, stack).await
+            })
+            .await;
         self.pending.painted.set(true);
     }
 }

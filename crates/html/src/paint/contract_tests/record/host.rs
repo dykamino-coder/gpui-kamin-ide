@@ -16,7 +16,13 @@ impl Wrap for Capture {
         &mut self.child
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         let extent = rect(0., 0., 90., 90.);
         let (_, record) = window
             .record_paint(extent, cx, |window, cx| {

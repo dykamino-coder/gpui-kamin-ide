@@ -46,13 +46,20 @@ pub(super) fn recording() -> PaintRecording {
             }
             None => Box::new(()),
         }),
-        finish: Rc::new(|guard, window, cx| {
-            if let Some(RecordFrame { frame, late }) = guard.downcast_mut::<RecordFrame>() {
-                match late {
-                    Some(late) => frame.pass.drain_late(frame.depth, late, window, cx),
-                    None => frame.pass.drain(frame.depth, window, cx),
+        finish: Rc::new(|guard, window, cx, stack| {
+            Box::pin(async move {
+                if let Some(RecordFrame { frame, late }) = guard.downcast_mut::<RecordFrame>() {
+                    match late {
+                        Some(late) => {
+                            frame
+                                .pass
+                                .drain_late_async(frame.depth, late, window, cx, stack)
+                                .await
+                        }
+                        None => frame.pass.drain_async(frame.depth, window, cx, stack).await,
+                    }
                 }
-            }
+            })
         }),
     }
 }

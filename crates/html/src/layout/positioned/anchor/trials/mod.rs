@@ -209,14 +209,28 @@ impl Hooks for Measured {
     }
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut LayoutId,
+        _bounds: Bounds<Pixels>,
+        _layout: &mut LayoutId,
         hidden: &mut bool,
         window: &mut Window,
         cx: &mut App,
     ) {
-        if !*hidden {
-            self.child.paint(window, cx);
-        }
+        crate::hooks::paint_on_stack(self, _bounds, _layout, hidden, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _layout: &'a mut LayoutId,
+        hidden: &'a mut bool,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            if !*hidden {
+                self.child.paint_async(window, cx, stack).await;
+            }
+        })
     }
 }

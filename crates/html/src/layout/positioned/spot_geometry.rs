@@ -90,12 +90,26 @@ impl Hooks for Probe {
 
     fn paint(
         &mut self,
-        _: Bounds<Pixels>,
-        _: &mut Self::Layout,
-        _: &mut Self::Prepaint,
+        bounds: Bounds<Pixels>,
+        state: &mut Self::Layout,
+        prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.paint(window, cx);
+        crate::hooks::paint_on_stack(self, bounds, state, prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            self.child.paint_async(window, cx, stack).await;
+        })
     }
 }

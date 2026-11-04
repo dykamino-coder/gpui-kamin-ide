@@ -151,22 +151,36 @@ impl Hooks for Content {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let origin = *origin;
-        if let Some((x, y, w, h)) = self.rule {
-            window.paint_quad(gpui::fill(
-                Bounds::new(origin + point(px(x), px(y)), size(px(w), px(h))),
-                self.color,
-            ));
-        }
-        if let Some(glyph) = &self.glyph {
-            glyph.paint(
-                origin + point(px(self.glyph_offset.0), px(self.glyph_offset.1)),
-                self.color,
-                window,
-            );
-        }
-        for child in &mut self.children {
-            child.paint(window, cx);
-        }
+        crate::hooks::paint_on_stack(self, _bounds, _state, origin, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        origin: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            let origin = *origin;
+            if let Some((x, y, w, h)) = self.rule {
+                window.paint_quad(gpui::fill(
+                    Bounds::new(origin + point(px(x), px(y)), size(px(w), px(h))),
+                    self.color,
+                ));
+            }
+            if let Some(glyph) = &self.glyph {
+                glyph.paint(
+                    origin + point(px(self.glyph_offset.0), px(self.glyph_offset.1)),
+                    self.color,
+                    window,
+                );
+            }
+            for child in &mut self.children {
+                child.paint_async(window, cx, stack).await;
+            }
+        })
     }
 }

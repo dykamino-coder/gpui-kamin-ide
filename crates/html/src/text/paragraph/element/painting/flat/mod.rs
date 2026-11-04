@@ -13,13 +13,14 @@ use crate::text::paragraph::*;
 use gpui::{App, Bounds, GlobalElementId, Hitbox, Pixels, Window, point, px, size};
 
 impl Paragraph {
-    pub(crate) fn paint_flat(
+    pub(crate) async fn paint_flat(
         &mut self,
         id: Option<&GlobalElementId>,
         bounds: Bounds<Pixels>,
         hitbox: &mut Option<Hitbox>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         let outer_nudge = window.replace_glyph_offset(self.glyph_nudge);
         let bounds = Bounds {
@@ -219,13 +220,18 @@ impl Paragraph {
             let at = self.atom_boxes.get(k).map(|b| b.at);
             let row = at.and_then(|at| self.lines.iter().position(|l| at < l.range.end));
             match row.and_then(|row| bands.get(row)) {
-                Some(&band) => line_admission::paint(window, band, |w| slot.el.paint(w, cx)),
-                None => slot.el.paint(window, cx),
+                Some(&band) => {
+                    line_admission::paint_async(window, band, async |w| {
+                        slot.el.paint_async(w, cx, stack).await;
+                    })
+                    .await
+                }
+                None => slot.el.paint_async(window, cx, stack).await,
             }
         }
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
-                el.paint(window, cx);
+                el.paint_async(window, cx, stack).await;
             }
         }
         if let (Some(global), Some(hitbox)) = (id, hitbox.clone()) {

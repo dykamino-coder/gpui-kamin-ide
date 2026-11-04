@@ -15,16 +15,27 @@ pub struct ChildPaintContext<'a> {
     pub metadata: Option<&'a dyn Any>,
 }
 
-type ChildrenCallback = dyn Fn(
-    &ChildPaintContext<'_>,
-    &mut dyn Iterator<Item = &mut AnyElement>,
-    &mut Window,
-    &mut App,
-);
+/// Heap-стек продолжений; один native poll не спускается на глубину дерева.
+pub type PaintStack = reblessive::Stk;
+/// Заимствованное продолжение фазы рисования.
+pub type PaintFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>;
+
+type ChildrenCallback = dyn for<'a> Fn(
+    ChildPaintContext<'a>,
+    &'a mut dyn Iterator<Item = &'a mut AnyElement>,
+    &'a mut Window,
+    &'a mut App,
+    &'a mut PaintStack,
+) -> PaintFuture<'a>;
 type BoundaryCallback = dyn Fn(&mut Window) -> Box<dyn Any>;
 type FillBoundsCallback = dyn Fn(&Style, Bounds<Pixels>, &Window) -> Bounds<Pixels>;
 
-type FinishRecording = dyn Fn(&mut dyn Any, &mut Window, &mut App);
+type FinishRecording = dyn for<'a> Fn(
+    &'a mut dyn Any,
+    &'a mut Window,
+    &'a mut App,
+    &'a mut PaintStack,
+) -> PaintFuture<'a>;
 
 /// Host-owned work that must finish inside a source command recording scope.
 /// GPUI only pairs entry, completion and guard destruction; it owns no queue.

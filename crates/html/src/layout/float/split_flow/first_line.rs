@@ -165,11 +165,25 @@ impl Hooks for FirstLine {
     fn paint(
         &mut self,
         _bounds: Bounds<Pixels>,
-        _: &mut (),
+        layout: &mut (),
         child: &mut AnyElement,
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
+        crate::hooks::paint_on_stack(self, _bounds, layout, child, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _layout: &'a mut (),
+        child: &'a mut AnyElement,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move {
+            child.paint_async(window, cx, stack).await;
+        })
     }
 }

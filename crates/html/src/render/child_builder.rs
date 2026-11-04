@@ -51,7 +51,15 @@ impl Default for ChildBuild {
                 effects,
                 crate::paint::effects::grouped::paint_group,
                 crate::paint::effects::mask::collect_mask_defs,
-                |owner, window, cx, body| outline_phase::flow(Some(owner), window, cx, body),
+                |owner, window, cx, stack, body| {
+                    Box::pin(outline_phase::flow_async(
+                        Some(owner),
+                        window,
+                        cx,
+                        stack,
+                        async |window, cx, stack| body.paint(window, cx, stack).await,
+                    ))
+                },
             ),
             layer,
         )
