@@ -25,7 +25,16 @@ fn publish(urls: HashSet<String>, vcx: ValueCx<'_>) {
 }
 
 fn collect(nodes: &[Node], urls: &mut HashSet<String>) {
-    for node in nodes {
+    // Keep only pending siblings: a single-child chain needs no heap frames.
+    let mut pending = Vec::new();
+    let mut remaining = nodes;
+    loop {
+        let Some((node, siblings)) = remaining.split_first() else {
+            let Some(siblings) = pending.pop() else { break };
+            remaining = siblings;
+            continue;
+        };
+        remaining = siblings;
         crate::work::add!(TreeNodesVisited, 1);
         let Node::Element(e) = node else { continue };
         style(e.style.cascaded(), urls);
@@ -46,9 +55,17 @@ fn collect(nodes: &[Node], urls: &mut HashSet<String>) {
                 style(c, urls);
             }
         }
-        collect(&e.children, urls);
+        if !e.children.is_empty() {
+            if !remaining.is_empty() {
+                pending.push(remaining);
+            }
+            remaining = &e.children;
+        }
     }
 }
+
+#[cfg(test)]
+mod depth_tests;
 
 fn style(c: &Computed, urls: &mut HashSet<String>) {
     if let Some(Some(image)) = &c.inh.table_list.list_style_image {
