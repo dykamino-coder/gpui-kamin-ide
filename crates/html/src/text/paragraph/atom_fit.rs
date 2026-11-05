@@ -85,7 +85,7 @@ impl AtomFit {
                         cx,
                     );
                     let (h, b) = (f32::from(s.height), b.map(f32::from));
-                    seen.push((w, h, b));
+                    AtomMemo::remember(&mut seen, (w, h, b));
                     (h, b)
                 }
             };
