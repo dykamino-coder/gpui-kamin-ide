@@ -45,7 +45,7 @@ impl RefinementShare {
             let slot = (self.next + CANDIDATES - back) % CANDIDATES;
             match &self.recent[slot] {
                 Some(candidate) if Rc::ptr_eq(candidate, style) => return,
-                Some(candidate) if **candidate == **style => {
+                Some(candidate) if likely_equal(candidate, style) && **candidate == **style => {
                     *style = candidate.clone();
                     return;
                 }
@@ -56,6 +56,22 @@ impl RefinementShare {
         self.recent[self.next] = Some(style.clone());
         self.next = (self.next + 1) % CANDIDATES;
     }
+}
+
+/// Fields that most often tell two box styles apart, compared before the whole refinement:
+/// with 32 candidates most comparisons are misses, and the derived equality walks every equal
+/// leading field (display, overflow, insets, sizing keywords, ...) first. The grid placement
+/// comes first: it is the only difference between the cells of a table (table-360: 6 000
+/// distinct refinements per frame, all equal up to `grid_location`). Only a shortcut for
+/// unequal values: a hit is still decided by full equality.
+fn likely_equal(a: &StyleRefinement, b: &StyleRefinement) -> bool {
+    a.grid_location == b.grid_location
+        && a.background == b.background
+        && a.border_color == b.border_color
+        && a.size == b.size
+        && a.padding == b.padding
+        && a.border_widths == b.border_widths
+        && a.margin == b.margin
 }
 
 thread_local! {
@@ -156,6 +172,31 @@ mod tests {
         share.share(&mut after);
         assert!(!Rc::ptr_eq(&first, &after));
         assert_eq!(*after, *first);
+    }
+
+    #[test]
+    fn the_shortcut_never_rejects_equal_refinements() {
+        let a = sized(8.0);
+        assert!(likely_equal(&a, &sized(8.0)));
+        assert!(!likely_equal(&a, &sized(9.0)));
+        // Cells that differ only in grid placement stay distinct.
+        let mut share = RefinementShare::default();
+        let cell = |row: i16| {
+            let mut style = StyleRefinement::default();
+            style.grid_location = Some(crate::GridLocation {
+                row: crate::GridPlacement::Line(row)..crate::GridPlacement::Auto,
+                ..Default::default()
+            });
+            Rc::new(style)
+        };
+        let mut first = cell(1);
+        share.share(&mut first);
+        let mut second = cell(2);
+        share.share(&mut second);
+        assert!(!Rc::ptr_eq(&first, &second));
+        let mut again = cell(1);
+        share.share(&mut again);
+        assert!(Rc::ptr_eq(&first, &again));
     }
 
     #[test]

@@ -19,16 +19,21 @@ use crate::{Pixels, StyleRefinement};
 use std::rc::Rc;
 use taffy::{SharedStyle, Style};
 
-/// Distinct recent styles kept as sharing candidates; as many as the refinement candidates
-/// (`refinement_share`), so a converted refinement stays until its refinement is replaced.
-pub(super) const CANDIDATES: usize = 32;
+/// Distinct recent styles kept as sharing candidates. A miss compares the 1 KiB style with
+/// every candidate, so this ring stays short: equal styles mostly arrive through the
+/// conversion share below, which compares pointers only.
+pub(super) const CANDIDATES: usize = 8;
+
+/// Converted refinements kept, as many as the refinement candidates (`refinement_share`), so
+/// a converted refinement stays until its refinement is replaced. A lookup compares pointers.
+const CONVERTED: usize = 32;
 
 #[derive(Default)]
 pub(super) struct StyleShare {
     recent: [Option<SharedStyle>; CANDIDATES],
     /// Slot of the next new candidate; the newest candidate sits just before it.
     next: usize,
-    converted: [Option<Converted>; CANDIDATES],
+    converted: [Option<Converted>; CONVERTED],
     /// Slot of the next converted refinement.
     next_converted: usize,
 }
@@ -85,7 +90,7 @@ impl StyleShare {
             scale_factor,
             style: style.clone(),
         });
-        self.next_converted = (self.next_converted + 1) % CANDIDATES;
+        self.next_converted = (self.next_converted + 1) % CONVERTED;
         style
     }
 
