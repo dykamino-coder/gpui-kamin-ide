@@ -8,6 +8,13 @@ impl Window {
         self.layout_engine.as_ref()?.first_content_baseline(layout, axis, self.scale_factor())
     }
 
+    /// KaminIDE patch: the single in-flow item of a laid-out baseline row and the baseline the
+    /// row aligns it by, read from the item's stored layout output (no probe sibling, no extra
+    /// layout pass). `None` when the row has no in-flow item.
+    pub fn row_item_baseline(&self, row: LayoutId) -> Option<crate::RowItemBaseline> {
+        self.layout_engine.as_ref()?.row_item_baseline(row, self.scale_factor())
+    }
+
     /// Measure content with the actual containing block and native resolved padding/border.
     /// The callback returns content size; native layout adds the supplied edges exactly once.
     pub fn request_measured_layout_with_box(
