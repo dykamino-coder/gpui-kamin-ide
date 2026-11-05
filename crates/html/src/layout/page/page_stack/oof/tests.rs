@@ -69,14 +69,21 @@ fn actual_page_cb_repeats_fixed_through_the_last_absolute_fragment(cx: &mut gpui
         };
         let nodes = vec![Node::Element(host)];
         let root = opts.root_style();
-        let source: PageSource = Rc::new(move |area, window, app| {
-            crate::layout::positioned::containing_block::metrics::layout::collect_paged(
-                &nodes, &root, (area, &gpui::div), &opts, window, app,
-            )
+        let source: PageSource = Rc::new(move |area, window, app, stack| {
+            let nodes = nodes.clone();
+            let root = root.clone();
+            let opts = opts.clone();
+            Box::pin(async move {
+            crate::layout::positioned::containing_block::metrics::layout::collect_paged_async(
+                &nodes, &root, (area, &gpui::div), &opts, window, app, stack,
+            ).await
+            })
         });
         let stack = PageStack::new(vec![kid(source)], Rc::new(|i, _| geom(i)), Vec::new(), Vec::new(), None);
         let normal = Plan { fragments: vec![Frag { kid: 0, copy: 0, col: 0, y: 0., from: 0., h: 20., head: 0., foot: 0. }], ..Default::default() };
-        stack.plan_oof(Normal { plan: &normal, geoms: &[geom(0)], names: &[String::new()], count: 1 }, window, app);
+        reblessive::Stack::new().enter(|traversal| async {
+            stack.plan_oof_async(Normal { plan: &normal, geoms: &[geom(0)], names: &[String::new()], count: 1 }, window, app, traversal).await;
+        }).finish();
         let plan = stack.oof.plan.borrow();
         assert_eq!(plan.failure, None);
         assert_eq!(plan.completion, Completion::Complete);

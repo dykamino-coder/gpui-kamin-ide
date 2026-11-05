@@ -20,17 +20,17 @@ impl Context {
         }
     }
 
-    pub(super) fn enter<R>(
+    pub(super) async fn enter_async<R>(
         &self,
         window: &mut Window,
-        f: impl FnOnce(&mut Window) -> R,
+        f: impl AsyncFnOnce(&mut Window) -> R,
     ) -> Result<R, gpui::PaintError> {
         // The original host's id/text/render scopes must accompany geometry:
         // the completed element is painted back under that host's ancestors.
-        let run = || window.with_paint_ctx(self.paint.clone(), f);
+        let run = async || window.with_paint_ctx_async(self.paint.clone(), f).await;
         match &self.anchors {
-            Some(anchors) => anchors.enter(run),
-            None => run(),
+            Some(anchors) => anchors.enter_async(run).await,
+            None => run().await,
         }
     }
 }

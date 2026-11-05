@@ -4,7 +4,7 @@ use super::spanner_edge;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 mod parts;
-pub(super) use parts::spanner_parts;
+pub(super) use parts::spanner_parts_async;
 
 /// Виден ли фрагмент предка: непустое содержимое или кромка коробки на
 /// своей стороне разреза. Пустой фрагмент с кромкой обязателен —

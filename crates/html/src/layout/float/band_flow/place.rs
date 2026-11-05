@@ -1,7 +1,9 @@
 //! Расстановка детей потока по полосам занятости: обход последовательности (place_seq).
 
 use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Probe, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe};
+use super::{
+    COORD_EPS, Plan, Probe, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe,
+};
 use crate::layout::float::bands::FloatBands;
 use std::ops::ControlFlow;
 
@@ -10,7 +12,7 @@ use std::ops::ControlFlow;
 /// потока. Полосы — общие на весь контекст (Servo `SequentialLayoutState`,
 /// `flow/float.rs:963`), стенки содержащего блока ставит вызывающий.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn place_seq(
+pub(super) async fn place_seq(
     kids: &[Kid],
     x0: f32,
     x1: f32,
@@ -23,10 +25,13 @@ pub(super) fn place_seq(
     // блока.
     root: (f32, f32),
     bands: &mut FloatBands,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
 ) -> (Vec<Slot>, f32) {
     let cbw = (x1 - x0).max(0.0);
-    let mut slots = vec![Slot::default(); kids.len()];
+    let mut slots = std::iter::repeat_with(Slot::default)
+        .take(kids.len())
+        .collect::<Vec<_>>();
     // Потолок потока: низ предыдущего куска плюс его нижнее поле (правило 5
     // §9.5.1 для кусков: окно ищется не выше).
     let mut y = y0;
@@ -42,8 +47,9 @@ pub(super) fn place_seq(
             } => {
                 place_float(
                     x0, x1, bands, p, cbw, &mut slots, y, k, kid, mt, mr, mb, ml, side, clear,
-                    shrink, letter,
-                );
+                    shrink, letter, stack,
+                )
+                .await;
             }
             Kind::Strut(h) => {
                 y += h;
@@ -51,7 +57,11 @@ pub(super) fn place_seq(
             Kind::Piece { table, rtl } => {
                 // Пол ширины таблицы: каркас пробы жмёт её до окна, а
                 // переполнение содержимым ширины коробки не растит.
-                let floor = if table { intrinsic(kid, p).0 } else { 0.0 };
+                let floor = if table {
+                    intrinsic(kid, p, stack).await.0
+                } else {
+                    0.0
+                };
                 // Окно `[l, r)` → (левый край коробки, доступная ширина) по
                 // Blink `block_layout_algorithm.cc:2136-2178`: окно, не
                 // суженное флоатами, урезается полями; суженное — нет, поля
@@ -73,11 +83,14 @@ pub(super) fn place_seq(
                 // (`:2209`: блочный размер фрагмента не больше возможности);
                 // ниже по высоте окно у́же — проба в нём ещё раз (Servo
                 // `try_to_expand_for_auto_block_size`, `flow/float.rs:260`).
-                let try_at = |top: f32, p: &mut Probe| -> Option<(f32, f32, f32, f32)> {
+                let try_at = async |top: f32,
+                                    p: &mut Probe<'_>,
+                                    stack: &mut gpui::PaintStack|
+                       -> Option<(f32, f32, f32, f32)> {
                     let (l, r) = bands.available(top, 0.0);
                     let edge = piece::Edges::new(l, r, root, (x0, x1), (ml, mr));
                     let avail = edge.available();
-                    let (bw, bh) = probe(kid, cbw, avail, None, p);
+                    let (bw, bh) = probe(kid, cbw, avail, None, p, stack).await;
                     let fit_width = bw.max(floor);
                     let x = edge.origin(fit_width, rtl);
                     let (l2, r2) = bands.available(top, bh);
@@ -86,7 +99,7 @@ pub(super) fn place_seq(
                     }
                     let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
                     let avail2 = edge2.available();
-                    let (bw2, bh2) = probe(kid, cbw, avail2, None, p);
+                    let (bw2, bh2) = probe(kid, cbw, avail2, None, p, stack).await;
                     let fit_width2 = bw2.max(floor);
                     let x2 = edge2.origin(fit_width2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
@@ -107,7 +120,7 @@ pub(super) fn place_seq(
                 // «will need to separate its margin from the float, so that it
                 // doesn't affect the float»). Влезает — поле действует как есть.
                 let adjoining = adjoining0 && (y - y0).abs() < COORD_EPS && mt > 0.0;
-                let mt_eff = if adjoining && try_at(y, p).is_none() {
+                let mt_eff = if adjoining && try_at(y, p, stack).await.is_none() {
                     0.0
                 } else {
                     mt
@@ -120,7 +133,7 @@ pub(super) fn place_seq(
                 // `space_utils.cc:22-30`).
                 let mut top = bands.clearance(kid.clear, y + mt_eff);
                 let (x, t, avail, bw, bh) = loop {
-                    if let Some((x, avail, bw, bh)) = try_at(top, p) {
+                    if let Some((x, avail, bw, bh)) = try_at(top, p, stack).await {
                         break (x, top, avail, bw, bh);
                     }
                     match bands.next_edge(top) {
@@ -128,7 +141,7 @@ pub(super) fn place_seq(
                         // Ниже всех флоатов — на всю ширину.
                         None => {
                             let avail = (cbw - ml - mr).max(0.0);
-                            let (bw, bh) = probe(kid, cbw, avail, None, p);
+                            let (bw, bh) = probe(kid, cbw, avail, None, p, stack).await;
                             break (x0 + ml, top, avail, bw, bh);
                         }
                     }
@@ -149,18 +162,44 @@ pub(super) fn place_seq(
             Kind::Flow => {
                 place_flow(
                     x0, x1, y0, adjoining0, bands, p, cbw, &mut slots, &mut y, k, kid, mt, mr, mb,
-                    ml,
-                );
+                    ml, stack,
+                )
+                .await;
             }
             Kind::Nest => {
                 if let ControlFlow::Break(_) = place_nest(
                     x0, x1, y0, adjoining0, root, bands, p, cbw, &mut slots, &mut y, k, kid, mt,
-                    mr, mb, ml,
-                ) {
+                    mr, mb, ml, stack,
+                )
+                .await
+                {
                     continue;
                 }
             }
         }
     }
     (slots, y)
+}
+
+/// План раскладки при ширине контекста `cb`: позиции всех детей и высота.
+pub(super) async fn plan(
+    kids: &[Kid],
+    cb: f32,
+    contain_floats: bool,
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
+) -> Plan {
+    crate::work::add!(FloatPlans, 1);
+    let mut bands = FloatBands::new(cb);
+    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, p, stack).await;
+    Plan {
+        width: cb,
+        // §§10.6.3, 10.6.7: only a formatting-context root contains floats.
+        height: if contain_floats {
+            bands.bottom(None).max(y)
+        } else {
+            y
+        },
+        slots,
+    }
 }

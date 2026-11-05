@@ -4,10 +4,10 @@ use crate::layout::fragment::token;
 use crate::layout::fragment::types::Kid;
 mod result;
 pub(crate) use result::{Completion, Plan};
+mod open;
 mod piece;
 mod pieces;
-use piece::fill_pieces;
-mod open;
+mod ready;
 use open::open_kid;
 mod cuts;
 pub(crate) mod oof;
@@ -112,7 +112,9 @@ pub(crate) fn skip_float(
 }
 
 mod measured;
-pub(crate) use measured::{MeasureRequest, Measurement, fill_measured, fill_resumed};
+#[cfg(test)]
+pub(crate) use measured::fill_resumed;
+pub(crate) use measured::{MeasureRequest, Measurement, fill_measured, fill_resumed_async};
 pub(super) type Remeasure<'a> = dyn FnMut(MeasureRequest) -> Option<(Kid, f32)> + 'a;
 pub(super) type ResumeMeasure<'a> = dyn FnMut(MeasureRequest) -> Measurement + 'a;
 

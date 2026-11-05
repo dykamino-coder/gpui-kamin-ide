@@ -44,7 +44,13 @@ struct Context<'a> {
 }
 
 impl PageStack {
-    pub(super) fn plan_oof(&self, normal: Normal<'_>, window: &mut Window, cx: &mut App) {
+    pub(super) async fn plan_oof_async(
+        &self,
+        normal: Normal<'_>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let mut plan = Plan::default();
         self.oof.fixed.borrow_mut().clear();
         self.oof.sources.borrow_mut().clear();
@@ -65,7 +71,10 @@ impl PageStack {
                 principal: self.principal,
             },
         };
-        if let Err(error) = self.resume_oof(&context, window, cx, &mut plan) {
+        if let Err(error) = self
+            .resume_oof_async(&context, window, cx, &mut plan, stack)
+            .await
+        {
             plan.failure = Some(error);
             plan.incomplete();
         }
@@ -85,18 +94,22 @@ impl PageStack {
         self.oof.slot_scopes.natives().set(roots);
     }
 
-    fn resume_oof(
+    async fn resume_oof_async(
         &self,
         context: &Context<'_>,
         window: &mut Window,
         cx: &mut App,
         result: &mut Plan,
+        stack: &mut gpui::PaintStack,
     ) -> Result<(), Error> {
-        let (sources, inputs) = self.oof_inputs(context.normal, &context.pages, window, cx)?;
+        let (sources, inputs) = self
+            .oof_inputs_async(context.normal, &context.pages, window, cx, stack)
+            .await?;
         let mut streams = Streams::new(inputs)?;
         let mut index = 0;
         while index < context.count || streams.needs_space() {
-            self.refresh_fixed(&sources, context, index, &mut streams, window, cx)?;
+            self.refresh_fixed_async(&sources, context, index, &mut streams, window, cx, stack)
+                .await?;
             let batch = streams.resume(
                 index,
                 context.pages.at(index),

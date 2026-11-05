@@ -7,7 +7,7 @@ use crate::layout::fragment::push::Regrow;
 use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::{Kid, StackChild};
 use crate::layout::multicol::column_stack::balance::search::{
-    Trial, ceil_unit, min_shortage, search,
+    Trial, ceil_unit, min_shortage, search_async,
 };
 use gpui::{App, Window};
 use std::collections::HashSet;
@@ -68,7 +68,12 @@ impl Snapshot {
 }
 
 impl ColumnStack {
-    pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
+    pub(crate) async fn regrow_children_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         crate::work::time!(_balance, MulticolBalanceNs);
         self.reserve_row_copies();
         if !self.children.iter().any(|c| c.regrow.is_some()) {
@@ -78,7 +83,7 @@ impl ColumnStack {
         // поиском (`balance_discard`), как ряды: общая высота одной линии сюда не
         // подходит.
         if self.fixed_height.is_some() || self.rows.is_some_and(|r| !r.cap) || self.discard {
-            self.balance_failure = self.settle(window, cx).err();
+            self.balance_failure = self.settle_async(window, cx, stack).await.err();
             return;
         }
         let kids = self.kid_geoms();
@@ -123,71 +128,99 @@ impl ColumnStack {
                 .max(start)
         });
         let forced = Self::forced_breaks(&kids).saturating_add(1);
-        if self.numeric_balance(start, ceiling, cap.is_some(), window, cx) {
+        if self
+            .numeric_balance_async(start, ceiling, cap.is_some(), window, cx, stack)
+            .await
+        {
             return;
         }
         crate::work::add!(MulticolNumericRejected, 1);
         let source: Vec<_> = self.children.iter().map(Snapshot::take).collect();
-        let chosen = search(start, ceiling, cap.is_some(), |height| {
-            gpui::with_temporary_element_arena(|| {
-                window.with_nested_layout(|window| {
-                    self.forced_h = Some(height);
-                    self.restore_trial(&source, window, cx);
-                    let settled = self.settle(window, cx);
-                    let kids = self.kid_geoms();
-                    let (cols, shortage, plan) =
-                        Self::fill_avoiding(&kids, &|_| height, self.column_space(usize::MAX));
-                    let avoid = (forced < self.count)
-                        .then(|| Self::first_avoid_violation(&kids, &plan))
-                        .flatten()
-                        .and_then(|bad| Self::avoid_shortage(&kids, &plan, bad, height));
-                    let oof = self.oof_balance_trial(&plan, height, self.count.max(forced));
-                    let settled = settled.and(oof.as_ref().map(|_| ()).map_err(|e| *e));
-                    Trial {
-                        fits: oof.as_ref().is_ok_and(|r| r.0)
-                            && settled.is_ok()
-                            && avoid.is_none()
-                            && plan.completion == plan::Completion::Complete
-                            && cols <= self.count.max(forced),
-                        shortage: min_shortage([avoid, oof.ok().and_then(|r| r.1), Some(shortage)]),
-                        value: settled,
-                    }
-                })
+        let chosen = search_async(start, ceiling, cap.is_some(), async |height| {
+            gpui::with_temporary_element_arena_async(async || {
+                window
+                    .with_retained_layout_async(
+                        &mut gpui::RetainedLayout::default(),
+                        async |window| {
+                            self.forced_h = Some(height);
+                            self.restore_trial_async(&source, window, cx, stack).await;
+                            let settled = self.settle_async(window, cx, stack).await;
+                            let kids = self.kid_geoms();
+                            let (cols, shortage, plan) = Self::fill_avoiding(
+                                &kids,
+                                &|_| height,
+                                self.column_space(usize::MAX),
+                            );
+                            let avoid = (forced < self.count)
+                                .then(|| Self::first_avoid_violation(&kids, &plan))
+                                .flatten()
+                                .and_then(|bad| Self::avoid_shortage(&kids, &plan, bad, height));
+                            let oof = self.oof_balance_trial(&plan, height, self.count.max(forced));
+                            let settled = settled.and(oof.as_ref().map(|_| ()).map_err(|e| *e));
+                            Trial {
+                                fits: oof.as_ref().is_ok_and(|r| r.0)
+                                    && settled.is_ok()
+                                    && avoid.is_none()
+                                    && plan.completion == plan::Completion::Complete
+                                    && cols <= self.count.max(forced),
+                                shortage: min_shortage([
+                                    avoid,
+                                    oof.ok().and_then(|r| r.1),
+                                    Some(shortage),
+                                ]),
+                                value: settled,
+                            }
+                        },
+                    )
+                    .await
             })
-        });
+            .await
+        })
+        .await;
         match chosen {
             Ok((height, Ok(()))) => {
                 self.forced_h = Some(height);
                 // Пробы хранят только числовой результат. Выбранный проход
                 // материализуется в arena кадра один раз из исходного снимка.
-                self.restore_trial(&source, window, cx);
-                self.balance_failure = self.settle(window, cx).err();
+                self.restore_trial_async(&source, window, cx, stack).await;
+                self.balance_failure = self.settle_async(window, cx, stack).await.err();
                 self.reserve_row_copies();
             }
             Ok((_, Err(error))) | Err(error) => {
                 self.forced_h = previous_height;
-                self.restore_trial(&source, window, cx);
+                self.restore_trial_async(&source, window, cx, stack).await;
                 self.balance_failure = Some(error);
             }
         }
     }
 
-    fn restore_trial(&mut self, source: &[Option<Snapshot>], window: &mut Window, cx: &mut App) {
+    async fn restore_trial_async(
+        &mut self,
+        source: &[Option<Snapshot>],
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         for (index, snapshot) in source.iter().enumerate() {
             if let Some(snapshot) = snapshot {
                 snapshot.restore(&mut self.children[index]);
-                self.lay_out_main(index, window, cx);
+                self.lay_out_main_async(index, window, cx, stack).await;
             }
         }
     }
 
     /// Фиксированная высота, конечные исходные адреса и конечные f32 координаты.
     /// Повтор числового состояния — ошибка прогресса, а не принятие последней пробы.
-    fn settle(&mut self, window: &mut Window, cx: &mut App) -> Result<(), Error> {
+    async fn settle_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Result<(), Error> {
         let mut seen = HashSet::new();
         loop {
             let state = super::progress::state(self)?;
-            if !self.grow_once(window, cx) {
+            if !self.grow_once_async(window, cx, stack).await {
                 return Ok(());
             }
             if !seen.insert(state) {
@@ -200,23 +233,14 @@ impl ColumnStack {
 #[cfg(test)]
 mod tests;
 
-/// Восстановить числовой вход, сохранив элементы и рекордеры.
-pub(super) fn restore_geometry(child: &mut StackChild, k: &Kid) {
-    child.h = k.h;
-    child.over = k.over;
-    child.mt = k.mt;
-    child.mb = k.mb;
-    child.monolith = k.monolith;
-    child.cuts = k.cuts.clone();
-    child.forced = k.forced.clone();
-    child.solid = k.solid.clone();
-    child.avoid = k.avoid.clone();
-    child.keep = k.keep.clone();
-    child.line_keep = k.line_keep.clone();
-    child.table_rows = k.table_rows.clone();
-    child.force_before = k.force_before;
-    child.force_after = k.force_after;
-    child.avoid_before = k.avoid_before;
-    child.avoid_after = k.avoid_after;
-    child.par = k.par;
+mod geometry;
+pub(super) use geometry::restore_geometry;
+
+#[cfg(test)]
+impl ColumnStack {
+    pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
+        reblessive::Stack::new()
+            .enter(|stack| self.regrow_children_async(window, cx, stack))
+            .finish()
+    }
 }

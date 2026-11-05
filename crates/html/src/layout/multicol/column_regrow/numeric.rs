@@ -17,13 +17,14 @@ struct Input {
 
 impl ColumnStack {
     /// Неподдерживаемая зависимость отвергает всю числовую транзакцию.
-    pub(super) fn numeric_balance(
+    pub(super) async fn numeric_balance_async(
         &mut self,
         start: f32,
         ceiling: f32,
         capped: bool,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> bool {
         let mut input: Vec<_> = self
             .children
@@ -95,7 +96,7 @@ impl ColumnStack {
                 .is_some_and(|m| m.commit(&self.children[index]))
             {
                 copies::rebuild(&mut self.children[index]);
-                self.lay_out_main(index, window, cx);
+                self.lay_out_main_async(index, window, cx, stack).await;
             }
         }
         self.reserve_row_copies();
@@ -155,3 +156,19 @@ impl ColumnStack {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+impl ColumnStack {
+    pub(super) fn numeric_balance(
+        &mut self,
+        start: f32,
+        ceiling: f32,
+        capped: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> bool {
+        reblessive::Stack::new()
+            .enter(|stack| self.numeric_balance_async(start, ceiling, capped, window, cx, stack))
+            .finish()
+    }
+}

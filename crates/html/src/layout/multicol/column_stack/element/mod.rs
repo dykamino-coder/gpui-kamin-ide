@@ -30,7 +30,7 @@ impl ColumnStack {
     ) {
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        self.measure_columns(col_w, window, cx);
+        self.measure_columns_async(col_w, window, cx, stack).await;
         let planned = self.plan_columns(bounds, col_w);
         let step = col_w + self.gap;
         self.prepaint_frags(window, cx, stack, bounds, (col_w, step), &planned.0)
@@ -41,11 +41,17 @@ impl ColumnStack {
 
     /// Меры детей по реальной ширине колонки (отложенная стопка и точки разрыва).
     #[inline(never)]
-    fn measure_columns(&mut self, col_w: f32, window: &mut Window, cx: &mut App) {
+    async fn measure_columns_async(
+        &mut self,
+        col_w: f32,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if let Some(recipe) = self.deferred.clone() {
-            recipe.prepare(self, col_w, window, cx);
+            recipe.prepare_async(self, col_w, window, cx, stack).await;
         }
-        self.column_breaks(col_w, window, cx);
+        self.column_breaks_async(col_w, window, cx, stack).await;
     }
 
     /// Native OOF, спаннеры и линейки — после prepaint копий.
@@ -81,9 +87,9 @@ impl Hooks for ColumnStack {
         &mut self,
         window: &mut Window,
         cx: &mut App,
-        _stack: &mut gpui::PaintStack,
+        stack: &mut gpui::PaintStack,
     ) -> (LayoutId, Self::Layout) {
-        self.request_column_layout(window, cx)
+        self.request_column_layout_async(window, cx, stack).await
     }
 
     async fn prepaint_async(

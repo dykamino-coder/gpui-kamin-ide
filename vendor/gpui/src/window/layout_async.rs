@@ -127,3 +127,34 @@ impl Window {
             .await
     }
 }
+
+impl Window {
+    /// Register horizontal baseline measurement on the caller's traversal stack.
+    pub fn request_measured_layout_with_baselines_async<F>(
+        &mut self,
+        style: Style,
+        mut measure: F,
+    ) -> LayoutId
+    where
+        F: for<'a> AsyncFnMut(
+                Size<Option<Pixels>>,
+                Size<AvailableSpace>,
+                &'a mut Window,
+                &'a mut App,
+                &'a mut crate::PaintStack,
+            ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
+            + 'static,
+    {
+        self.request_measured_layout_with_physical_baselines_async(
+            style,
+            async move |known,
+                        available,
+                        window: &mut Window,
+                        cx: &mut App,
+                        stack: &mut crate::PaintStack| {
+                let (size, first, last) = measure(known, available, window, cx, stack).await;
+                crate::MeasuredContent::from((size, first, last, None))
+            },
+        )
+    }
+}

@@ -41,6 +41,21 @@ impl RetainedLayout {
 }
 
 impl Window {
+    /// Удерживает входы отложенного измерения до завершения потомков.
+    pub async fn with_element_layout_context_async<R>(
+        &mut self,
+        context: &ElementLayoutContext,
+        f: impl AsyncFnOnce(&mut Window) -> R,
+    ) -> R {
+        context
+            .scope
+            .enter_async(self, async |window| {
+                window
+                    .with_element_id_context_async(&context.identity, f)
+                    .await
+            })
+            .await
+    }
     /// Retain the arena owning the current traversal's layout IDs.
     /// Deferred prepaint and paint must reactivate it before using those IDs.
     pub fn retained_layout(&self) -> RetainedLayout {
@@ -117,6 +132,14 @@ impl Window {
     /// Use `with_retained_layout` when the element must survive until paint.
     pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
         self.with_retained_layout(&mut RetainedLayout::default(), f)
+    }
+
+    /// Независимое измерение сохраняет временную арену через приостановки.
+    pub async fn with_nested_layout_async<R>(
+        &mut self,
+        f: impl AsyncFnOnce(&mut Window) -> R,
+    ) -> R {
+        self.with_retained_layout_async(&mut RetainedLayout::default(), f).await
     }
 
     /// Activate a prepared subtree, restoring both engines even on unwind.

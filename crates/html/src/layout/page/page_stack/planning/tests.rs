@@ -1,5 +1,5 @@
 //! Согласование длинной цепочки forced breaks в независимом потоке flex.
-use super::settle;
+use super::settlement::settle;
 use crate::layout::fragment::flow::blocks::{
     BlockBox, BlockKid, FlexBox, FlexFrame, FlexLine, Laid, Pushed, STRUT_ID,
 };

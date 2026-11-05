@@ -35,7 +35,7 @@ impl Hooks for Content {
         &mut self,
         window: &mut Window,
         cx: &mut App,
-        _stack: &mut gpui::PaintStack,
+        stack: &mut gpui::PaintStack,
     ) -> (LayoutId, Self::Layout) {
         self.roots.clear();
         let metrics = if let Kind::Space(leaf) = self.kind {
@@ -43,7 +43,7 @@ impl Hooks for Content {
         } else {
             let mut children = Vec::with_capacity(self.children.len());
             for child in &mut self.children {
-                let (root, metrics) = super::stretch::measure(child, window, cx);
+                let (root, metrics) = super::stretch::measure(child, window, cx, stack).await;
                 children.push(metrics);
                 self.roots.push(root);
             }
@@ -55,7 +55,9 @@ impl Hooks for Content {
                 &mut self.roots,
                 window,
                 cx,
-            );
+                stack,
+            )
+            .await;
             let margins = (self.margins.len() == children.len()).then_some(&self.margins);
             for (m, [t, r, b, l]) in children.iter_mut().zip(margins.into_iter().flatten()) {
                 m.width += l + r;

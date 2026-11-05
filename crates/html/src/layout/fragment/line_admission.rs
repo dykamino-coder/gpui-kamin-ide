@@ -75,6 +75,7 @@ pub(crate) async fn with_async<R>(
 }
 
 /// Вложенная запись (свои сегменты): строки внутри неё куски внешней записи не видят.
+#[cfg(test)]
 pub(crate) fn outside<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
     window.with_render_context::<Lines, R>(None, f)
 }

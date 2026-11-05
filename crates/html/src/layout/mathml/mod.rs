@@ -113,7 +113,7 @@ async fn build_stack(
                 continue;
             }
             let core = operators::core(child, &style, opts);
-            let child_opts = opts.inner(|cx| cx.contracts.reflow_depth += 1);
+            let child_opts = opts;
             factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
                 let child = child.clone();
                 let style = style.clone();
@@ -171,12 +171,11 @@ async fn build_stack(
         outer.style().flex_direction = Some(gpui::FlexDirection::Row);
         outer.style().justify_content = Some(gpui::JustifyContent::Center);
     }
-    Some(crate::layout::depth::wrap(
+    Some(
         outer
             .child(crate::hooks::IntoHooked::into_hooked(content))
             .into_any_element(),
-        opts,
-    ))
+    )
 }
 
 /// Core §3.1.2: child margins enlarge its box metrics and shift its border box.

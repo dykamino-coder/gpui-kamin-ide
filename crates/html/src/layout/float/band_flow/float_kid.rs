@@ -7,11 +7,11 @@ use crate::layout::float::bands::FloatBands;
 use std::ops::ControlFlow;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn place_float(
+pub(super) async fn place_float(
     x0: f32,
     x1: f32,
     bands: &mut FloatBands,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
     cbw: f32,
     slots: &mut [Slot],
     y: f32,
@@ -25,6 +25,7 @@ pub(super) fn place_float(
     clear: Option<i8>,
     shrink: bool,
     letter: bool,
+    stack: &mut gpui::PaintStack,
 ) {
     let mut avail = (cbw - ml - mr).max(0.0);
     // §10.3.5: shrink-to-fit = `min(max(min-content, доступно),
@@ -35,7 +36,7 @@ pub(super) fn place_float(
     // is 0-width, so the float is min-content sized»). Пол — ширина
     // каркаса не уже min-content.
     if shrink {
-        let (mn, mx) = intrinsic(kid, p);
+        let (mn, mx) = intrinsic(kid, p, stack).await;
         let own_layout = matches!(
             kid.kind,
             Kind::Float {
@@ -57,7 +58,7 @@ pub(super) fn place_float(
             avail.max(mn)
         };
     }
-    let (bw, bh) = probe(kid, cbw, avail, None, p);
+    let (bw, bh) = probe(kid, cbw, avail, None, p, stack).await;
     let geometry = p.last_geometry.clone();
     let prepared = p.last_prepared.clone();
     let clamp = p.last_clamp.clone();
@@ -72,23 +73,28 @@ pub(super) fn place_float(
     let mut ceil = y + kid.margin_offset;
     // Высота набранного — с вырезами уже поставленных флоатов:
     // строки рядом с ними у́же и их больше.
-    let height_of = |b: &Build, bands: &mut FloatBands, p: &mut Probe| {
+    let height_of = async |b: &Build,
+                           bands: &mut FloatBands,
+                           p: &mut Probe<'_>,
+                           stack: &mut gpui::PaintStack| {
         let walls = bands.set_walls(x0, x1);
         let shapes = bands.shapes(y);
         bands.set_walls(walls.0, walls.1);
-        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), None, p).1
+        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), None, p, stack)
+            .await
+            .1
     };
     // Строка флоата начинается под набранным до последнего
     // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и
     // флоат на второй строке рядом с первым флоатом).
     if let Some(base) = kid.lead_base.as_ref() {
-        ceil = y + height_of(base, bands, p);
+        ceil = y + height_of(base, bands, p, stack).await;
     }
     if let Some(lead) = kid.lead.as_ref() {
-        let lw = intrinsic_of(lead, p).1;
+        let lw = intrinsic_of(lead, p, stack).await.1;
         let (l, r) = bands.available(ceil, 0.0);
         if lw > COORD_EPS && lw + ml + bw + mr > r - l + COORD_EPS {
-            ceil += height_of(lead, bands, p);
+            ceil += height_of(lead, bands, p, stack).await;
         }
     }
     // Разрыв сдвигает float отдельно от предшествующих строк обычного потока
@@ -136,14 +142,14 @@ pub(super) fn place_float(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn place_nest(
+pub(super) async fn place_nest(
     x0: f32,
     x1: f32,
     y0: f32,
     adjoining0: bool,
     root: (f32, f32),
     bands: &mut FloatBands,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
     cbw: f32,
     slots: &mut [Slot],
     y: &mut f32,
@@ -153,6 +159,7 @@ pub(super) fn place_nest(
     mr: f32,
     mb: f32,
     ml: f32,
+    stack: &mut gpui::PaintStack,
 ) -> ControlFlow<()> {
     let Some(nest) = kid.nest.as_ref() else {
         return ControlFlow::Break(());
@@ -179,11 +186,16 @@ pub(super) fn place_nest(
     let walls = bands.set_walls(ix0, ix1);
     let inner_top = top + it;
     let adjoining = adjoining0 && (*y - y0).abs() < COORD_EPS && it == 0.0;
-    let (kids_slots, inner_end) =
-        place_seq(&nest.kids, ix0, ix1, inner_top, adjoining, root, bands, p);
+    let (kids_slots, inner_end) = stack
+        .run(|stack| {
+            place_seq(
+                &nest.kids, ix0, ix1, inner_top, adjoining, root, bands, p, stack,
+            )
+        })
+        .await;
     bands.set_walls(walls.0, walls.1);
     let h = nest.height.unwrap_or((inner_end - inner_top).max(0.0));
-    let (clamp, prepared) = super::clamp::nest(kid, cbw, (bx1 - bx0).max(0.0), h, p);
+    let (clamp, prepared) = super::clamp::nest(kid, cbw, (bx1 - bx0).max(0.0), h, p, stack).await;
     slots[k] = Slot {
         prepared,
         clamp,
@@ -192,7 +204,7 @@ pub(super) fn place_nest(
         avail: (bx1 - bx0).max(0.0),
         i: (ix1 - ix0 + il + ir).max(0.0),
         h: Some(h),
-        kids: kids_slots,
+        kids: kids_slots.into(),
         b: it + h + ib,
         ..Slot::default()
     };

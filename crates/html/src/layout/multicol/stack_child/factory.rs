@@ -164,14 +164,23 @@ mod tests {
             size(px(120.), px(80.)),
             |window, cx| {
                 // Проба предшествует выбранной копии и не должна публиковать OOF.
-                handles[0].measurement(window, cx).measure(
-                    size(
-                        gpui::AvailableSpace::Definite(px(50.)),
-                        gpui::AvailableSpace::Definite(px(20.)),
-                    ),
-                    window,
-                    cx,
-                );
+                reblessive::Stack::new()
+                    .enter(|stack| async {
+                        handles[0]
+                            .measurement_async(window, cx, stack)
+                            .await
+                            .measure_async(
+                                size(
+                                    gpui::AvailableSpace::Definite(px(50.)),
+                                    gpui::AvailableSpace::Definite(px(20.)),
+                                ),
+                                window,
+                                cx,
+                                stack,
+                            )
+                            .await;
+                    })
+                    .finish();
                 let mut root = gpui::div()
                     .w(px(120.))
                     .h(px(80.))

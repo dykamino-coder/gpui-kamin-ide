@@ -3,9 +3,8 @@ pub(super) use super::piece::LoopStep;
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
 use crate::layout::fragment::plan::{Plan, skip_float};
 use crate::layout::fragment::types::{Frag, Kid};
-
 #[allow(clippy::too_many_arguments)]
-pub(super) fn fill_pieces_inner(
+pub(super) async fn fill_pieces_inner_async(
     target_at: &dyn Fn(usize) -> f32,
     inline_at: &dyn Fn(usize) -> Option<f32>,
     limit: usize,
@@ -24,7 +23,7 @@ pub(super) fn fill_pieces_inner(
     mut copy: usize,
     flow: f32,
     rg: crate::layout::fragment::types::RepeatGeom,
-    remeasure: &mut super::ResumeMeasure<'_>,
+    remeasure: &mut impl AsyncFnMut(super::MeasureRequest) -> super::Measurement,
     tokens: &mut super::cuts::InlineTokens,
     single: bool,
 ) -> Result<super::piece::Cursor, crate::layout::fragment::token::Error> {
@@ -45,7 +44,8 @@ pub(super) fn fill_pieces_inner(
             from,
             block_size: target_at(*col),
             page: None,
-        });
+        })
+        .await;
         if let Some((next, offset)) = measurement.copy {
             measured = Some(next);
             from = offset;
@@ -248,3 +248,5 @@ pub(super) fn fill_pieces_inner(
         complete: out.completion == super::Completion::Complete,
     })
 }
+mod synchronous;
+pub(super) use synchronous::fill_pieces_inner;

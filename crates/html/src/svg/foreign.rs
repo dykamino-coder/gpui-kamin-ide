@@ -2,17 +2,27 @@
 //! покраски SVG. Каждый `foreignObject` раскладывается и снимается в PNG отдельным слоем, слой
 //! подставляется в дерево как `<image>`, и весь рисунок растрируется как обычный `<svg>`;
 //! единственный вклад с `mix-blend-mode` смешивается с подложкой хоста.
+mod fingerprint;
 mod geometry;
+mod host;
 mod layer;
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(super) fn contains(e: &Element) -> bool {
-    e.tag.eq_ignore_ascii_case("foreignObject")
-        || e.children
-            .iter()
-            .any(|node| matches!(node, Node::Element(child) if contains(child)))
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if e.tag.eq_ignore_ascii_case("foreignObject") {
+            return true;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(e) => Some(e),
+            _ => None,
+        }));
+    }
+    false
 }
 
 pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
@@ -31,53 +41,13 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let blend = geometry::sole_blend(e);
     let element = wrapper
         .child(
-            gpui::canvas(
-                move |_, window, cx| {
-                    let mut tree = tree;
-                    let zoom = tree.style.used().inh.font.zoom_eff.unwrap_or(1.0);
-                    let viewport = crate::dom::resource_facts::view_box_ratio(&tree)
-                        .unwrap_or((w / zoom, h / zoom));
-                    let scale = (w / viewport.0).max(h / viewport.1);
-                    let mut layers = Vec::new();
-                    layer::prepare(
-                        &mut tree,
-                        &opts.root_style(),
-                        &opts,
-                        viewport,
-                        scale,
-                        window,
-                        cx,
-                        &mut layers,
-                    );
-                    (tree, layers)
-                },
-                move |mut bounds, (mut tree, layers), window, cx| {
-                    let vcx = values.vcx();
-                    for mut layer in layers {
-                        let uri = match layer.cached.take() {
-                            Some(uri) => Some(uri),
-                            None => window
-                                .paint_scene_to_png(layer.size, layer.density, |window| {
-                                    if let Some(element) = &mut layer.element {
-                                        element.paint(window, cx);
-                                    }
-                                })
-                                .ok()
-                                .map(|png| layer::cache(layer.key, &png, vcx)),
-                        };
-                        if let Some(uri) = uri {
-                            layer::set_image(&mut tree, layer.node_id, uri);
-                        }
-                    }
-                    let markup = super::serialize::serialize_sized(&tree, w, h, 0.0, 0.0, vcx);
-                    if let Some(image) = super::raster::rasterize(&markup, w, h, vcx) {
-                        bounds.size = gpui::size(px(w), px(h));
-                        super::device_image::paint(window, bounds, image);
-                    }
-                },
-            )
-            .absolute()
-            .size_full(),
+            host::Foreign {
+                tree: Some(tree),
+                opts,
+                values,
+                size: (w, h),
+            }
+            .hooked(),
         )
         .into_any_element();
     let style = crate::style::computed::Computed {

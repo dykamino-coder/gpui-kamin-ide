@@ -1,6 +1,7 @@
 //! Isolated transparent scene capture for embedded document content.
 use super::*;
 use image::ImageEncoder as _;
+mod traversal;
 
 impl Window {
     /// Lay out embedded content at its capture density without changing display state.
@@ -26,7 +27,7 @@ impl Window {
     ) -> anyhow::Result<Vec<u8>> {
         self.invalidator.debug_assert_paint();
         let sf = self.scale_factor() * density.max(1.0);
-        let (_, mut scene) = self.with_isolated_scene(|window| {
+        let (_, scene) = self.with_isolated_scene(|window| {
             let previous = (
                 mem::replace(&mut window.scale_factor, sf),
                 window.mask_scale.take(),
@@ -45,6 +46,10 @@ impl Window {
                 });
             });
         });
+        self.scene_png(scene, size, sf)
+    }
+
+    fn scene_png(&mut self, mut scene: Scene, size: Size<Pixels>, sf: f32) -> anyhow::Result<Vec<u8>> {
         normalize_solid_quads(&mut scene);
         scene.finish();
         let size = crate::size(
@@ -75,6 +80,8 @@ impl Window {
 // Bake uniform scale into solid geometry so the quad shader's antialiasing
 // stays in capture pixels, regardless of whether scale came from HTML or SVG.
 fn normalize_solid_quads(scene: &mut Scene) {
+    let mut pending = vec![scene];
+    while let Some(scene) = pending.pop() {
     for quad in &mut scene.quads {
         let [[s, b], [c, d]] = quad.transformation.rotation_scale;
         if s <= 0.0
@@ -96,7 +103,6 @@ fn normalize_solid_quads(scene: &mut Scene) {
         quad.border_widths = quad.border_widths.map(|v| *v * s);
         quad.transformation = TransformationMatrix::unit();
     }
-    for group in &mut scene.groups {
-        normalize_solid_quads(&mut group.scene);
+    pending.extend(scene.groups.iter_mut().map(|group| &mut group.scene));
     }
 }

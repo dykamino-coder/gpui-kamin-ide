@@ -19,16 +19,19 @@ impl Recipe {
 
     // Сборка детей — свой кадр: раскладка их копий в `prepare` вложена глубже.
     #[inline(never)]
-    pub(super) fn recorded_children(
+    pub(super) async fn recorded_children_async(
         &self,
         width: f32,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (Vec<StackChild>, std::rc::Rc<Snapshot>) {
         let vertical = self.axis.is_vertical();
         let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
         let host = self.resolved_host(width);
-        let opts = self.geometry_options(&host, width, window, cx);
+        let opts = self
+            .geometry_options_async(&host, width, window, cx, stack)
+            .await;
         let geometry = opts.cx.position.geometry.clone().unwrap_or_default();
         // Тот же dispatch по каждому ребёнку, что у стопки известной ширины.
         let plan = crate::layout::multicol::measure::plan_at(
@@ -79,5 +82,19 @@ impl Recipe {
             children,
         );
         (children, geometry)
+    }
+}
+
+#[cfg(test)]
+impl Recipe {
+    pub(super) fn recorded_children(
+        &self,
+        width: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (Vec<StackChild>, std::rc::Rc<Snapshot>) {
+        reblessive::Stack::new()
+            .enter(|stack| self.recorded_children_async(width, window, cx, stack))
+            .finish()
     }
 }

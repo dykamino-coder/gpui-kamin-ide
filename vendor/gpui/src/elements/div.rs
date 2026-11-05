@@ -1437,7 +1437,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     }
 
     /// Report this element as the focused node in the accessibility tree,
-    /// overriding the element that holds real keyboard focus — but only while
+    /// overriding the element that holds real keyboard focus вЂ” but only while
     /// one of its ancestors actually holds focus.
     ///
     /// This implements the `aria-activedescendant` pattern for composite
@@ -1449,15 +1449,15 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// produces an accessibility node. Unlike the web's container-side
     /// `aria-activedescendant`, this is set on the descendant; GPUI honors it
     /// only when a focused ancestor is present in the tree, so it is safe to
-    /// set unconditionally on the selected child — if the container isn't
+    /// set unconditionally on the selected child вЂ” if the container isn't
     /// focused, the claim is ignored.
     fn aria_active_descendant(mut self) -> Self {
         self.interactivity().report_active_descendant_focus = true;
         self
     }
 
-    /// Contribute synthetic accessibility nodes — nodes that don't correspond
-    /// to any element — as children of this element's a11y node. For example,
+    /// Contribute synthetic accessibility nodes вЂ” nodes that don't correspond
+    /// to any element вЂ” as children of this element's a11y node. For example,
     /// text runs describing an editor's text content.
     ///
     /// The closure is called after this element is prepainted, and only if it
@@ -1915,13 +1915,13 @@ pub trait LayoutObserver: 'static {
 }
 
 impl Div {
-    /// Локальная замена собственной краски; callback не наследуется потомками.
+    /// Р›РѕРєР°Р»СЊРЅР°СЏ Р·Р°РјРµРЅР° СЃРѕР±СЃС‚РІРµРЅРЅРѕР№ РєСЂР°СЃРєРё; callback РЅРµ РЅР°СЃР»РµРґСѓРµС‚СЃСЏ РїРѕС‚РѕРјРєР°РјРё.
     pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
         self.interactivity.box_painter = Some(painter);
         self
     }
 
-    /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
+    /// РџСЂРёРєСЂРµРїР»РµРЅРёРµ РЅРµРїСЂРѕР·СЂР°С‡РЅС‹С… paint-РјРµС‚Р°РґР°РЅРЅС‹С… Р±РµР· РёР·РјРµРЅРµРЅРёСЏ РґРµСЂРµРІР° layout.
     pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
         self.paint_metadata = Some(std::rc::Rc::new(metadata));
         self
@@ -2622,7 +2622,7 @@ impl Interactivity {
                     window,
                     cx,
                     stack,
-                    async |style, refinement, window, cx, _stack| f(style, refinement, window, cx),
+                    async |style, window, cx, _stack| f(style, window, cx),
                 )
             })
             .finish();

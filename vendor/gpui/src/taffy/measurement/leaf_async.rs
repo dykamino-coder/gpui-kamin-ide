@@ -56,9 +56,8 @@ pub(in crate::taffy) async fn leaf_async(
                     height: input.known_dimensions.height.is_some(),
                 };
             }
-            let measured = context
-                .measure
-                .borrow_mut()
+            let mut callback = super::super::measure_callback::MeasureGuard::take(&context.measure);
+            let measured = callback
                 .measure(known, available, geometry, window, cx, stack)
                 .await;
             let output = measured.to_native(scale);

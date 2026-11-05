@@ -1,20 +1,19 @@
 //! Пробы размеров детей полос: высота при ширине, внутренние ширины (min/max-content).
 
 use super::kid::{Kid, Kind};
-use super::tap::Tap;
 use super::{Build, Probe, Shapes, frame};
-use crate::hooks::IntoHooked;
 use gpui::{AvailableSpace, LayoutId, Window, px, size};
 use std::cell::Cell;
 use std::rc::Rc;
 
 /// Пробная раскладка ребёнка при доступной ширине `avail`: размер border-box.
-pub(super) fn probe(
+pub(super) async fn probe(
     kid: &Kid,
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
 ) -> (f32, f32) {
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let Some(watched) = &kid.watched {
@@ -32,7 +31,9 @@ pub(super) fn probe(
         shapes,
         kid.watched.as_deref(),
         p,
-    );
+        stack,
+    )
+    .await;
     if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
         fragment.probes = old;
     }
@@ -40,32 +41,39 @@ pub(super) fn probe(
 }
 
 /// `probe` для любого построителя: каркас по виду `kind`.
-pub(super) fn probe_of(
+pub(super) async fn probe_of(
     kind: Kind,
     build: &Build,
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
 ) -> (f32, f32) {
     // Готовое дерево плана живёт до paint; только числовая проба может
     // освобождать свои элементы сразу после измерения.
     if p.engine.is_some() {
-        probe_layout(kind, build, cb, avail, shapes, watched, p)
+        probe_layout(kind, build, cb, avail, shapes, watched, p, stack).await
     } else {
-        p.temporary_layout(|p| probe_layout(kind, build, cb, avail, shapes, watched, p))
+        p.temporary_layout(stack, async |p, stack| {
+            stack
+                .run(|stack| probe_layout(kind, build, cb, avail, shapes, watched, p, stack))
+                .await
+        })
+        .await
     }
 }
 
-fn probe_layout(
+async fn probe_layout(
     kind: Kind,
     build: &Build,
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
 ) -> (f32, f32) {
     crate::work::add!(BandProbeCalls, 1);
     let positioning = p.positioning.clone();
@@ -89,7 +97,9 @@ fn probe_layout(
     crate::work::add!(FloatChildLayouts, 1);
     let root_size = {
         crate::work::time!(_layout, BandProbeLayoutNs);
-        el.layout_as_root_unrounded(space, p.window, p.cx)
+        stack
+            .run(|stack| el.layout_as_root_unrounded_async(space, p.window, p.cx, stack))
+            .await
     };
     // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
     let (w, h) = unrounded(&tap, p.window);
@@ -136,80 +146,4 @@ pub(super) fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -
         }
         None => (0.0, 0.0),
     }
-}
-
-/// Внутренние ширины ребёнка (min-content, max-content) border-box.
-pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
-    if let Some(size) = kid.intrinsic.get() {
-        return size;
-    }
-    let old = p.fragment.as_ref().map(|f| f.probes.clone());
-    if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
-        flow.rewind();
-        fragment.probes = flow.clone();
-    }
-    let size = intrinsic_of(&kid.build, p);
-    kid.intrinsic.set(Some(size));
-    if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
-        fragment.probes = old;
-    }
-    size
-}
-
-/// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
-pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
-    p.temporary_layout(|p| intrinsic_layout(build, p))
-}
-
-fn intrinsic_layout(build: &Build, p: &mut Probe) -> (f32, f32) {
-    crate::work::add!(BandIntrinsicCalls, 1);
-    let positioning = p.positioning.clone();
-    let _positioning = positioning.as_ref().map(|p| p.isolate());
-    let _clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
-    let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
-    let tap = Rc::new(Cell::new(None));
-    let measure = p.vert.then(crate::text::vertical::InlineMeasure::default);
-    crate::work::add!(FloatChildBuilds, 1);
-    let inner = {
-        crate::work::time!(_build, BandIntrinsicBuildNs);
-        build(0.0, 0.0, None, None, measure.clone())
-    };
-    let mut el = Tap { inner, id: tap }.hooked();
-    let root = el.request_layout(p.window, p.cx);
-    let vert = p.vert;
-    let w = |a: AvailableSpace, p: &mut Probe| {
-        crate::work::add!(FloatIntrinsicQueries, 1);
-        crate::work::time!(_layout, BandIntrinsicLayoutNs);
-        if vert {
-            // Повёрнутый текст свою длину высотой не заявляет (растягивается
-            // окном) — берём её у самого текста через сборщик
-            // intrinsic measurement; коробка без текста отвечает раскладкой.
-            if let Some(measure) = &measure {
-                measure.reset();
-            }
-            let size = p.window.measure_layout_size(
-                root,
-                size(AvailableSpace::MaxContent, a),
-                gpui::Axis::Vertical,
-                p.cx,
-            );
-            let text = measure.as_ref().map_or(0.0, |measure| measure.extent());
-            let laid = f32::from(size.height);
-            if text > 0.0 { text.min(laid) } else { laid }
-        } else {
-            f32::from(
-                p.window
-                    .measure_layout_size(
-                        root,
-                        size(a, AvailableSpace::MaxContent),
-                        gpui::Axis::Horizontal,
-                        p.cx,
-                    )
-                    .width,
-            )
-        }
-    };
-    let mn = w(AvailableSpace::MinContent, p);
-    let mx = w(AvailableSpace::MaxContent, p);
-    (mn, mx.max(mn))
 }

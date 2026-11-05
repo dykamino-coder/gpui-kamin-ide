@@ -14,19 +14,20 @@ pub(super) struct OofHost {
     pub(super) containing: Option<(u64, std::rc::Rc<crate::layout::layout_state::LayoutState>)>,
 }
 
-pub(super) fn build_one(
+pub(super) async fn build_one_async(
     item: Item,
     bounds: Bounds<Pixels>,
     place: Place,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> (AnyElement, Option<super::DeferredPaint>) {
     let (spot, mut kid) = item;
     while let OofKid::Waiting(_, inner) = kid {
         kid = *inner;
     }
     if let OofKid::Trials(build, paint) = kid {
-        return (build(bounds, spot, place, window, cx), paint);
+        return (build(bounds, spot, place, window, cx, stack).await, paint);
     }
     let (child, paint) = match kid {
         OofKid::Ready(child) => (child, None),
@@ -39,7 +40,7 @@ pub(super) fn build_one(
         .h(bounds.size.height)
         .child(place(spot, child))
         .into_any_element();
-    root.layout_as_root_at(
+    root.layout_as_root_at_async(
         bounds.origin,
         size(
             AvailableSpace::Definite(bounds.size.width),
@@ -47,7 +48,9 @@ pub(super) fn build_one(
         ),
         window,
         cx,
-    );
+        stack,
+    )
+    .await;
     (root, paint)
 }
 
@@ -105,7 +108,8 @@ impl Hooks for OofHost {
                 continue;
             }
             let siblings = self.queue.items.take();
-            let (mut root, paint) = build_one(item, bounds, self.place, window, cx);
+            let (mut root, paint) =
+                build_one_async(item, bounds, self.place, window, cx, stack).await;
             root.prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
                 .await;
             match paint {
@@ -120,7 +124,7 @@ impl Hooks for OofHost {
             .pending
             .register(&self.queue, bounds, self.place, context, &built);
         if self.queue.initial {
-            self.queue.pending.finish(window, cx);
+            self.queue.pending.finish_async(window, cx, stack).await;
         }
         built
     }
@@ -147,7 +151,8 @@ impl Hooks for OofHost {
     ) -> gpui::PaintFuture<'a> {
         Box::pin(async move {
             crate::hooks::paint_reopen_async(window, async |window| {
-                for child in built.borrow_mut().iter_mut() {
+                let mut children = super::pending::PaintedGuard::take(built);
+                for child in children.iter_mut() {
                     child.paint_async(window, cx, stack).await;
                 }
             })

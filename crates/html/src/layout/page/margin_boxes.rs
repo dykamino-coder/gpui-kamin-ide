@@ -14,11 +14,12 @@ use gpui::{AnyElement, App, AvailableSpace, Window};
 /// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
 // Margin boxes share the page's geometry and generated-content callbacks.
 #[allow(clippy::type_complexity)]
-pub(super) fn layout_margin_boxes(
+pub(super) async fn layout_margin_boxes_async(
     boxes: Vec<MarginBox>,
     g: &PageGeom,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> Vec<((f32, f32, f32, f32), AnyElement)> {
     use crate::layout::page::margin_layout::{self as pm, Place, Pref, Side};
     let mut out: Vec<(usize, (f32, f32, f32, f32), AnyElement)> = Vec::new();
@@ -34,13 +35,31 @@ pub(super) fn layout_margin_boxes(
                 let cb = pm::containing_block(b.place, g.size, g.margin);
                 let available_w = cb.2 - b.margin[1].unwrap_or(0.0) - b.margin[3].unwrap_or(0.0);
                 let available_h = cb.3 - b.margin[0].unwrap_or(0.0) - b.margin[2].unwrap_or(0.0);
-                b.w = b.w.or_else(|| {
-                    margin_box_size::intrinsic(&mut b, true, None, available_w, window, cx)
-                });
+                if b.w.is_none() {
+                    b.w = margin_box_size::intrinsic_async(
+                        &mut b,
+                        true,
+                        None,
+                        available_w,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await;
+                }
                 let width = b.w.unwrap_or(available_w).max(0.0);
-                b.h = b.h.or_else(|| {
-                    margin_box_size::intrinsic(&mut b, false, Some(width), available_h, window, cx)
-                });
+                if b.h.is_none() {
+                    b.h = margin_box_size::intrinsic_async(
+                        &mut b,
+                        false,
+                        Some(width),
+                        available_h,
+                        window,
+                        cx,
+                        stack,
+                    )
+                    .await;
+                }
                 // Обе оси «растягиваются» по своему полю листа, затем поля
                 // решаются у обоих краёв бумаги.
                 let w =
@@ -94,9 +113,20 @@ pub(super) fn layout_margin_boxes(
             };
             let margins = ma.unwrap_or(0.0) + mb.unwrap_or(0.0);
             let other = if horiz { None } else { Some(cross(b)) };
-            let spec = spec.or_else(|| {
-                margin_box_size::intrinsic(b, horiz, other, main_avail - margins, window, cx)
-            });
+            let spec = if let Some(spec) = spec {
+                Some(spec)
+            } else {
+                margin_box_size::intrinsic_async(
+                    b,
+                    horiz,
+                    other,
+                    main_avail - margins,
+                    window,
+                    cx,
+                    stack,
+                )
+                .await
+            };
             let (min, max) = match spec {
                 Some(v) => (v, v),
                 None => {
@@ -105,23 +135,27 @@ pub(super) fn layout_margin_boxes(
                     } else {
                         None
                     };
-                    let max = margin_box_size::measure(
+                    let max = margin_box_size::measure_async(
                         b,
                         horiz,
                         other,
                         AvailableSpace::MaxContent,
                         window,
                         cx,
-                    );
+                        stack,
+                    )
+                    .await;
                     let min = if horiz != b.vertical {
-                        margin_box_size::measure(
+                        margin_box_size::measure_async(
                             b,
                             horiz,
                             other,
                             AvailableSpace::MinContent,
                             window,
                             cx,
+                            stack,
                         )
+                        .await
                     } else {
                         max
                     };
@@ -146,14 +180,16 @@ pub(super) fn layout_margin_boxes(
             } else {
                 b.margin[1].unwrap_or(0.0) + b.margin[3].unwrap_or(0.0)
             };
-            let c = margin_box_size::intrinsic(
+            let c = margin_box_size::intrinsic_async(
                 &mut b,
                 !horiz,
                 Some(main),
                 cross_avail - cross_margins,
                 window,
                 cx,
+                stack,
             )
+            .await
             .unwrap_or_else(|| cross(&b));
             let (ms, me) = if horiz {
                 (b.margin[3].unwrap_or(0.0), b.margin[1].unwrap_or(0.0))

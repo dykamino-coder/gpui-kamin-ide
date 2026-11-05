@@ -120,3 +120,14 @@ pub struct Kid {
     /// stands at its right edge (CSS 2.1 §10.3.3, over-constrained margins).
     pub rtl: bool,
 }
+
+impl Drop for Nest {
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.kids);
+        while let Some(mut kid) = pending.pop() {
+            if let Some(nest) = &mut kid.nest {
+                pending.append(&mut nest.kids);
+            }
+        }
+    }
+}

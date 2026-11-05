@@ -59,7 +59,7 @@ impl ClampHost {
 mod flow;
 pub(crate) use flow::ClampFlow;
 mod measure;
-use measure::measure;
+use measure::measure_async;
 
 impl Hooks for ClampHost {
     type Layout = LayoutId;
@@ -76,9 +76,14 @@ impl Hooks for ClampHost {
         let build = self.build.clone();
         let cache = self.plan.clone();
         let fragment = self.fragment.clone();
-        let id = window.request_measured_layout_with_box(
+        let id = window.request_measured_layout_with_box_async(
             self.style.clone(),
-            move |known, available, used_box, window, cx| {
+            async move |known,
+                        available,
+                        used_box,
+                        window: &mut Window,
+                        cx: &mut App,
+                        stack: &mut gpui::PaintStack| {
                 let edges = used_box.inset();
                 let inset = size(edges.left + edges.right, edges.top + edges.bottom);
                 let add = |space, edge| match space {
@@ -89,7 +94,7 @@ impl Hooks for ClampHost {
                     add(available.width, inset.width),
                     add(available.height, inset.height),
                 );
-                let (size, plan) = measure(
+                let (size, plan) = measure_async(
                     key,
                     &geometry,
                     &build,
@@ -100,13 +105,15 @@ impl Hooks for ClampHost {
                     fragment.as_ref(),
                     window,
                     cx,
-                );
+                    stack,
+                )
+                .await;
                 *cache.borrow_mut() = Some((size.width, plan, used_box));
                 // Native leaf ожидает content-box и сам добавит разрешённые края.
-                gpui::size(
+                gpui::MeasuredContent::new(gpui::size(
                     (size.width - inset.width).max(px(0.)),
                     (size.height - inset.height).max(px(0.)),
-                )
+                ))
             },
         );
         if let Some(fragment) = &self.fragment {
@@ -135,27 +142,31 @@ impl Hooks for ClampHost {
             .as_ref()
             .map(|(_, _, used)| *used)
             .expect("performed measured layout supplies the original containing block");
-        let plan = self
+        let cached = self
             .plan
             .borrow()
             .as_ref()
             .filter(|(width, _, _)| *width == extent.width)
-            .map(|(_, plan, _)| plan.clone())
-            .unwrap_or_else(|| {
-                measure(
-                    self.key,
-                    &self.geometry,
-                    &self.build,
-                    used_box,
-                    self.border_box,
-                    size(Some(extent.width), Some(extent.height)),
-                    space,
-                    None,
-                    window,
-                    cx,
-                )
-                .1
-            });
+            .map(|(_, plan, _)| plan.clone());
+        let plan = if let Some(plan) = cached {
+            plan
+        } else {
+            measure_async(
+                self.key,
+                &self.geometry,
+                &self.build,
+                used_box,
+                self.border_box,
+                size(Some(extent.width), Some(extent.height)),
+                space,
+                None,
+                window,
+                cx,
+                stack,
+            )
+            .await
+            .1
+        };
         // Сборка для краски пишет строки только в свою область записей.
         let _flow = self.fragment.as_ref().map(ClampFlow::scope);
         let mut el = (self.build)(ClampInput::Apply(plan), Some(extent.width), used_box, true);

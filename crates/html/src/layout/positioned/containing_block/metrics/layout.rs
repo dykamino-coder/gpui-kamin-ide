@@ -10,9 +10,21 @@ use std::rc::Rc;
 mod native;
 mod source;
 pub(crate) use native::Native;
-pub(crate) use source::{collect, collect_paged, contains_oof_box, contains_positioned};
+pub(crate) use source::{
+    collect_async, collect_paged_async, contains_oof_box, contains_positioned,
+};
 
-pub(crate) type PageSource = Rc<dyn Fn((f32, f32), &mut Window, &mut App) -> Rc<super::Snapshot>>;
+#[cfg(test)]
+pub(crate) use source::collect;
+
+pub(crate) type PageSource = Rc<
+    dyn for<'a> Fn(
+        (f32, f32),
+        &'a mut Window,
+        &'a mut App,
+        &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, Rc<super::Snapshot>>,
+>;
 
 type Build = Box<dyn FnOnce(RenderOpts) -> AnyElement>;
 
@@ -65,7 +77,19 @@ impl Wrap for Original {
         cx: &mut App,
         stack: &mut gpui::PaintStack,
     ) -> LayoutId {
-        let geometry = collect(&self.kids, &self.parent, self.width, &self.opts, window, cx);
+        let geometry = stack
+            .run(|stack| {
+                collect_async(
+                    &self.kids,
+                    &self.parent,
+                    self.width,
+                    &self.opts,
+                    window,
+                    cx,
+                    stack,
+                )
+            })
+            .await;
         self.opts.cx.position.geometry = Some(geometry);
         let build = self
             .build

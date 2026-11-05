@@ -7,16 +7,23 @@ pub(super) struct Target {
     pub vertical: bool,
 }
 pub(super) type Factory = Box<dyn Fn(Target) -> AnyElement>;
-pub(super) fn measure(
+pub(super) async fn measure(
     child: &mut AnyElement,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> (LayoutId, Metrics) {
     let available = size(AvailableSpace::MaxContent, AvailableSpace::MaxContent);
-    let root = child.request_layout(window, cx);
-    window.compute_layout(root, available, cx);
+    let root = stack
+        .run(|stack| child.request_layout_async(window, cx, stack))
+        .await;
+    stack
+        .run(|stack| window.compute_layout_async(root, available, cx, stack))
+        .await;
     let mut measurement = window.snapshot_layout_measurement(root);
-    let (_, first, _) = measurement.measure(available, window, cx);
+    let (_, first, _) = stack
+        .run(|stack| measurement.measure_async(available, window, cx, stack))
+        .await;
     let (_, size) = window.layout_exact(root);
     let ascent = f32::from(first.unwrap_or(size.height));
     (
@@ -28,7 +35,7 @@ pub(super) fn measure(
         },
     )
 }
-pub(super) fn constrain(
+pub(super) async fn constrain(
     kind: Kind,
     children: &mut [AnyElement],
     factories: &[Option<(u8, Factory)>],
@@ -36,6 +43,7 @@ pub(super) fn constrain(
     roots: &mut [LayoutId],
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) {
     let vertical = matches!(kind, Kind::Row | Kind::Padded(_));
     if !vertical && !matches!(kind, Kind::Limits(..)) {
@@ -74,7 +82,7 @@ pub(super) fn constrain(
             continue;
         }
         let mut child = factory(Target { length, vertical });
-        let (root, m) = measure(&mut child, window, cx);
+        let (root, m) = measure(&mut child, window, cx, stack).await;
         children[i] = child;
         roots[i] = root;
         metrics[i] = m;

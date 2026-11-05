@@ -13,6 +13,15 @@ impl Window {
         self.with_transform_frame(transformation, None, f)
     }
 
+    /// Выполняет продолжение в конечной системе координат.
+    pub async fn with_absolute_transformation_async<R>(
+        &mut self,
+        transformation: TransformationMatrix,
+        f: impl AsyncFnOnce(&mut Self) -> R,
+    ) -> R {
+        self.with_transform_frame_async(transformation, None, f).await
+    }
+
     pub(super) fn with_transform_frame<R>(
         &mut self,
         transformation: TransformationMatrix,

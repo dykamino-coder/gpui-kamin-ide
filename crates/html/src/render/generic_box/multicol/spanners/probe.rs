@@ -36,62 +36,69 @@ impl Wrap for Capture {
     }
 }
 
-pub(super) fn measure(
+pub(super) async fn measure_async(
     child: &Element,
     parent: &BoxStyle,
     width: f32,
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> SpannerMetrics {
-    window.with_nested_layout(|window| {
-        let id = Rc::new(Cell::new(None));
-        let el = Capture {
-            child: opts.cx.contracts.build.element(child, parent, opts),
-            id: id.clone(),
-        };
-        let mut root = div()
-            .block()
-            .w(px(width))
-            .child(el.into_hooked())
-            .into_any_element();
-        root.layout_as_root_unrounded(
-            size(
-                AvailableSpace::Definite(px(width)),
-                AvailableSpace::MaxContent,
-            ),
-            window,
-            cx,
-        );
-        let block_size = f32::from(window.layout_size_unrounded(id.get().unwrap()).height);
+    window
+        .with_nested_layout_async(async |window| {
+            let id = Rc::new(Cell::new(None));
+            let el = Capture {
+                child: opts.cx.contracts.build.element(child, parent, opts),
+                id: id.clone(),
+            };
+            let mut root = div()
+                .block()
+                .w(px(width))
+                .child(el.into_hooked())
+                .into_any_element();
+            root.layout_as_root_unrounded_async(
+                size(
+                    AvailableSpace::Definite(px(width)),
+                    AvailableSpace::MaxContent,
+                ),
+                window,
+                cx,
+                stack,
+            )
+            .await;
+            let block_size = f32::from(window.layout_size_unrounded(id.get().unwrap()).height);
 
-        let style = box_style(parent, &child.style, opts.cx.vcx());
-        let sizes = BoxDimensions::for_element(child, &style);
-        let constrained =
-            !matches!(sizes.preferred[1], None | Some(Len::Auto)) || sizes.minimum[1].is_some();
-        let (content_width, border_size, start_edge) =
-            shell(child, &style, sizes, width, opts, window, cx);
-        let (_, edges, _) = shell(
-            child,
-            &style,
-            sizes.unconstrained_height(),
-            width,
-            opts,
-            window,
-            cx,
-        );
-        SpannerMetrics {
-            block_size,
-            content_width,
-            content_size: constrained.then_some((border_size - edges).max(0.)),
-            start_edge,
-            end_edge: (edges - start_edge).max(0.),
-        }
-    })
+            let style = box_style(parent, &child.style, opts.cx.vcx());
+            let sizes = BoxDimensions::for_element(child, &style);
+            let constrained =
+                !matches!(sizes.preferred[1], None | Some(Len::Auto)) || sizes.minimum[1].is_some();
+            let (content_width, border_size, start_edge) =
+                shell_async(child, &style, sizes, width, opts, window, cx, stack).await;
+            let (_, edges, _) = shell_async(
+                child,
+                &style,
+                sizes.unconstrained_height(),
+                width,
+                opts,
+                window,
+                cx,
+                stack,
+            )
+            .await;
+            SpannerMetrics {
+                block_size,
+                content_width,
+                content_size: constrained.then_some((border_size - edges).max(0.)),
+                start_edge,
+                end_edge: (edges - start_edge).max(0.),
+            }
+        })
+        .await
 }
 
 #[allow(clippy::too_many_arguments)]
-fn shell(
+async fn shell_async(
     child: &Element,
     style: &BoxStyle,
     sizes: BoxDimensions,
@@ -99,6 +106,7 @@ fn shell(
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> (f32, f32, f32) {
     let id = Rc::new(Cell::new(None));
     let inner = Rc::new(Cell::new(None));
@@ -122,14 +130,16 @@ fn shell(
         .w(px(width))
         .child(el.into_hooked())
         .into_any_element();
-    root.layout_as_root_unrounded(
+    root.layout_as_root_unrounded_async(
         size(
             AvailableSpace::Definite(px(width)),
             AvailableSpace::MaxContent,
         ),
         window,
         cx,
-    );
+        stack,
+    )
+    .await;
     let (id, inner) = (id.get().unwrap(), inner.get().unwrap());
     (
         f32::from(window.layout_size_unrounded(inner).width),

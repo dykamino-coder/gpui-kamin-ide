@@ -187,34 +187,39 @@ pub(super) fn defer(
         )
     } else {
         OofKid::Trials(
-            Box::new(move |bounds, spot, place, window, cx| {
-                let vcx = base_opts.cx.vcx();
-                let mut base = box_style(&base_inherited, &base_source.style, vcx);
-                base.self_node = base_source.node_id;
-                base.anchor_key = key_of(&base_source);
-                base.anchor_seq = base_opts.cx.anchor_seq_for(&base_source);
-                base.resolve_viewport(base_opts.viewport, vcx);
-                let options = crate::layout::positioned::anchor::trials::Options::new(
-                    &base,
-                    &base_inherited,
-                    vcx,
-                    base_opts.cx.layout(),
-                );
-                trials::run(
-                    bounds,
-                    spot,
-                    place,
-                    &options,
-                    &base_inherited,
-                    |style, probe, window| {
-                        let (positioning, escaped) = retained.isolate();
-                        let child = build(Some(style), positioning, Some(probe), bounds, window);
-                        (child, escaped)
-                    },
-                    window,
-                    cx,
-                    vcx,
-                )
+            Box::new(move |bounds, spot, place, window, cx, stack| {
+                Box::pin(async move {
+                    let vcx = base_opts.cx.vcx();
+                    let mut base = box_style(&base_inherited, &base_source.style, vcx);
+                    base.self_node = base_source.node_id;
+                    base.anchor_key = key_of(&base_source);
+                    base.anchor_seq = base_opts.cx.anchor_seq_for(&base_source);
+                    base.resolve_viewport(base_opts.viewport, vcx);
+                    let options = crate::layout::positioned::anchor::trials::Options::new(
+                        &base,
+                        &base_inherited,
+                        vcx,
+                        base_opts.cx.layout(),
+                    );
+                    trials::run_async(
+                        bounds,
+                        spot,
+                        place,
+                        &options,
+                        &base_inherited,
+                        |style, probe, window| {
+                            let (positioning, escaped) = retained.isolate();
+                            let child =
+                                build(Some(style), positioning, Some(probe), bounds, window);
+                            (child, escaped)
+                        },
+                        window,
+                        cx,
+                        vcx,
+                        stack,
+                    )
+                    .await
+                })
             }),
             source_paint.clone(),
         )

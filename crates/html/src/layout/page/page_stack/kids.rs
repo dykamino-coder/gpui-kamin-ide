@@ -1,9 +1,9 @@
 //! Дети стопки листов (Kid) и предраскладка марджин-боксов.
 
-use super::measure::measure;
+use super::measure::measure_async;
 use super::{PageGeom, PageStack};
 use crate::layout::fragment::types::Kid;
-use crate::layout::page::margin_boxes::layout_margin_boxes;
+use crate::layout::page::margin_boxes::layout_margin_boxes_async;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
@@ -29,7 +29,8 @@ impl PageStack {
                     pg,
                 );
                 let (sx, sy) = self.sheet_origin(p);
-                for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
+                for (rect, mut el) in layout_margin_boxes_async(boxes, pg, window, cx, stack).await
+                {
                     let rect = round_rect(rect);
                     el.layout_as_root_async(
                         size(
@@ -57,21 +58,24 @@ impl PageStack {
         }
     }
 
-    pub(super) fn page_kids(
+    pub(super) async fn page_kids_async(
         &mut self,
         window: &mut Window,
         cx: &mut App,
         (aw, ah): (f32, f32),
+        stack: &mut gpui::PaintStack,
     ) -> (
         Vec<Kid>,
         Vec<crate::layout::fragment::flow::inline::Geometry>,
         usize,
     ) {
-        let (kids, inline) = self
-            .kids
-            .iter_mut()
-            .map(|k| measure(k, self.axis, (aw, ah), 0, window, cx))
-            .unzip();
+        let mut kids = Vec::with_capacity(self.kids.len());
+        let mut inline = Vec::with_capacity(self.kids.len());
+        for k in &mut self.kids {
+            let (kid, geometry) = measure_async(k, self.axis, (aw, ah), 0, window, cx, stack).await;
+            kids.push(kid);
+            inline.push(geometry);
+        }
         let limit = self
             .kids
             .iter()

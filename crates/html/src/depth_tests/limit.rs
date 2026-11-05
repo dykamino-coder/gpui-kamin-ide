@@ -1,7 +1,7 @@
-//! Reflow и построение боксов имеют разные пределы; исходный DOM не режется.
+//! Глубокое содержимое проходит построение, layout и paint без усечения.
 
 use super::*;
-use crate::document::{RevisionStatus, TraversalKind};
+use crate::document::RevisionStatus;
 
 fn draw(document: &Document) {
     let mut cx = gpui::TestAppContext::single();
@@ -31,19 +31,15 @@ fn source_text(document: &Document) -> String {
 }
 
 #[test]
-fn reflow_reports_its_limit_after_building_the_deeper_boxes() {
+fn reflow_keeps_content_beyond_the_former_layout_limit() {
     regression::on_eight_mib(|| {
         let document = Document::builder(&(markup(1500) + "<p>tail</p>"), "")
             .build()
             .unwrap();
         assert_eq!(document.report().status, RevisionStatus::Complete);
         draw(&document);
-        let report = document.report();
-        assert_eq!(report.status, RevisionStatus::Degraded);
-        let limit = report.degradation.unwrap();
-        assert_eq!(limit.traversal, TraversalKind::Layout);
-        assert_eq!(limit.limit, 1026);
-        assert_eq!(limit.attempted, 1027);
+        assert_eq!(document.report().status, RevisionStatus::Complete);
+        assert!(document.traversal_limit().is_none());
         assert_eq!(source_text(&document), "leaftail");
         let mut text = String::new();
         crate::dom::text_content::gather_text(document.nodes(), &mut text);
@@ -52,28 +48,19 @@ fn reflow_reports_its_limit_after_building_the_deeper_boxes() {
 }
 
 #[test]
-fn layout_limit_is_delivered_at_the_frame_boundary_once_per_key() {
+fn repeated_deep_frames_do_not_report_depth_degradation() {
     regression::on_eight_mib(|| {
         let document = Document::builder(&markup(1500), "").build().unwrap();
-        assert!(document.take_diagnostics().is_empty());
-        draw(&document);
-        let batch = document.take_diagnostics();
-        let [record] = batch.records.as_slice() else {
-            panic!("{:?}", batch.records)
-        };
-        assert_eq!(
-            record.phase,
-            crate::diagnostics::Phase::Traversal(TraversalKind::Layout)
-        );
-        draw(&document);
-        assert!(document.take_diagnostics().is_empty());
-        let repeated = document.diagnostics().records[0].occurrences;
-        assert!(repeated > record.occurrences);
+        for _ in 0..2 {
+            draw(&document);
+            assert!(document.take_diagnostics().is_empty());
+            assert_eq!(document.report().status, RevisionStatus::Complete);
+        }
     });
 }
 
 #[test]
-fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
+fn beyond_the_former_box_limit_paints_the_leaf_and_following_sibling() {
     regression::on_eight_mib(|| {
         for source in [
             markup(4096),
@@ -86,22 +73,18 @@ fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
             let document = Document::builder(&(source + "<p>tail</p>"), "")
                 .build()
                 .unwrap();
-            let before = document.report().degradation.unwrap();
-            assert_eq!(before.traversal, TraversalKind::BoxBuild);
-            assert_eq!(before.limit, 2052);
             draw(&document);
-            assert_eq!(document.report().degradation, Some(before));
+            assert_eq!(document.report().status, RevisionStatus::Complete);
+            assert!(document.traversal_limit().is_none());
             assert_eq!(source_text(&document), "leaftail");
             let mut text = String::new();
             crate::dom::text_content::gather_text(document.nodes(), &mut text);
-            assert_eq!(text, "tail");
+            assert_eq!(text, "leaftail");
         }
     });
 }
 
-/// Запас стека рекурсии Taffy: вложенные float до предела построения боксов
-/// укладываются в 7,5 МиБ. До выноса тяжёлых нерекурсивных частей из кадров
-/// Taffy этот сценарий занимал ~7,9 МиБ и переполнял такой поток.
+/// Регрессия #618 / INC-2026-0084: полный кадр float на прежнем стеке 7,5 МиБ.
 #[test]
 fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
     regression::on_stack(15 * 512 * 1024, || {
@@ -111,9 +94,22 @@ fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
             "</div>".repeat(2053)
         );
         let document = Document::builder(&source, "").build().unwrap();
-        let before = document.report().degradation.unwrap();
-        assert_eq!(before.traversal, TraversalKind::BoxBuild);
         draw(&document);
-        assert_eq!(document.report().degradation, Some(before));
+        assert_eq!(document.report().status, RevisionStatus::Complete);
+        assert!(document.traversal_limit().is_none());
+        assert_eq!(source_text(&document), "leaftail");
+    });
+}
+
+#[test]
+fn twenty_thousand_levels_complete_all_frame_phases_on_a_small_stack() {
+    regression::on_stack(512 * 1024, || {
+        let document = Document::builder(&markup(20_000), "").build().unwrap();
+        draw(&document);
+        assert_eq!(document.report().status, RevisionStatus::Complete);
+        assert!(document.take_diagnostics().is_empty());
+        let mut text = String::new();
+        crate::dom::text_content::gather_text(document.nodes(), &mut text);
+        assert_eq!(text, "leaf");
     });
 }

@@ -120,14 +120,17 @@ impl Hooks for MeasuredReplaced {
         // making its percentage-painted content overlap a dotted border.
         let dimensions = window.layout_size_unrounded(state.1);
         let origin = window.layout_origin_unrounded(state.1);
-        window.compute_layout(
-            state.0,
-            size(
-                AvailableSpace::Definite(dimensions.width),
-                AvailableSpace::Definite(dimensions.height),
-            ),
-            cx,
-        );
+        window
+            .compute_layout_async(
+                state.0,
+                size(
+                    AvailableSpace::Definite(dimensions.width),
+                    AvailableSpace::Definite(dimensions.height),
+                ),
+                cx,
+                stack,
+            )
+            .await;
         window.set_layout_root_origin(state.0, origin);
         self.image
             .prepaint_at_async(point(px(0.0), px(0.0)), window, cx, stack)
@@ -142,6 +145,18 @@ impl Hooks for MeasuredReplaced {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.image.paint(window, cx);
+        crate::hooks::paint_on_stack(self, _bounds, _state, _prepaint, window, cx);
+    }
+
+    fn paint_async<'a>(
+        &'a mut self,
+        _bounds: Bounds<Pixels>,
+        _state: &'a mut Self::Layout,
+        _prepaint: &'a mut Self::Prepaint,
+        window: &'a mut Window,
+        cx: &'a mut App,
+        stack: &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a> {
+        Box::pin(async move { self.image.paint_async(window, cx, stack).await })
     }
 }

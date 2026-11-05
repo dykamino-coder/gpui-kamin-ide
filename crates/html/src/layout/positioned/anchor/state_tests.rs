@@ -86,10 +86,14 @@ fn deferred_context_restores_the_original_stack_without_changing_another_documen
     tf_pop(av);
     tf_push([[1., 0., 30.], [0., 1., 40.]], av);
     tf_push([[1., 0., 50.], [0., 1., 60.]], bv);
-    saved.enter(|| {
-        assert_eq!(tf_map(rect, av).0.origin, point(px(12.), px(23.)));
-        assert_eq!(tf_map(rect, bv).0.origin, point(px(52.), px(63.)));
-    });
+    use futures::FutureExt as _;
+    saved
+        .enter_async(async || {
+            assert_eq!(tf_map(rect, av).0.origin, point(px(12.), px(23.)));
+            assert_eq!(tf_map(rect, bv).0.origin, point(px(52.), px(63.)));
+        })
+        .now_or_never()
+        .unwrap();
     assert_eq!(tf_map(rect, av).0.origin, point(px(32.), px(43.)));
     assert_eq!(tf_map(rect, bv).0.origin, point(px(52.), px(63.)));
 }

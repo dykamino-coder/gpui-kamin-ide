@@ -42,208 +42,114 @@ pub(crate) fn min_shortage(values: impl IntoIterator<Item = Option<f32>>) -> Opt
         .min_by(f32::total_cmp)
 }
 
-/// Все вызовы `trial` обязаны начинаться с одного входного курсора и снимка.
-/// `ceiling` — CSS-потолок либо высота, вмещающая целый исходный поток.
+/// Все пробы начинаются с одного входного курсора и снимка.
+struct Search<T> {
+    low: f32,
+    high: f32,
+    at: f32,
+    ceiling: f32,
+    constrained: bool,
+    best: Option<T>,
+    seen: HashSet<u32>,
+}
+impl<T> Search<T> {
+    fn new(start: f32, ceiling: f32, constrained: bool) -> Result<Self, Error> {
+        if !start.is_finite() || !ceiling.is_finite() || start <= 0. || ceiling < start {
+            return Err(Error::InvalidGeometry);
+        }
+        Ok(Self {
+            low: before(start),
+            high: ceiling,
+            at: ceil_unit(start).min(ceiling),
+            ceiling,
+            constrained,
+            best: None,
+            seen: HashSet::new(),
+        })
+    }
+    fn next(&mut self) -> Result<f32, Error> {
+        if !self.seen.insert(self.at.to_bits()) {
+            return Err(Error::NoProgress);
+        }
+        crate::work::add!(MulticolProbes, 1);
+        Ok(self.at)
+    }
+    fn accept(&mut self, result: Trial<T>) -> Result<Option<(f32, T)>, Error> {
+        if result.fits {
+            self.high = self.at;
+            self.best = Some(result.value);
+        } else if self.at == self.ceiling {
+            return if self.constrained {
+                Ok(Some((self.at, result.value)))
+            } else {
+                Err(Error::NoProgress)
+            };
+        } else {
+            self.low = self.at;
+            if let Some(shortage) = result.shortage.filter(|s| s.is_finite() && *s > 0.) {
+                // Минимальный недолаз — наименьший прирост, меняющий хоть один
+                // разрыв пробы (Blink `MinimalSpaceShortage` и растяжение в
+                // `ColumnLayoutAlgorithm::LayoutRow`). Более низкие высоты
+                // повторяют те же разрывы, поэтому они отвергнуты вместе с пробой.
+                let next = ceil_unit(self.at + shortage)
+                    .max(after(self.at))
+                    .min(self.high);
+                self.low = before(next).max(self.at);
+                if self.best.is_none() || next < self.high {
+                    self.at = next;
+                    return Ok(None);
+                }
+            }
+        }
+        if self.best.is_some() && after(self.low) >= self.high {
+            return self
+                .best
+                .take()
+                .map(|value| Some((self.high, value)))
+                .ok_or(Error::NoProgress);
+        }
+        // Сначала проверяем верхнюю границу. После успешной пробы интервал
+        // строго уменьшается на конечной сетке layout units.
+        self.at = if self.best.is_none() {
+            self.high
+        } else {
+            let middle = ((f64::from(self.low) + f64::from(self.high)) / 2.) as f32;
+            ceil_unit(middle)
+                .max(after(self.low))
+                .min(before(self.high))
+        };
+
+        Ok(None)
+    }
+}
 pub(crate) fn search<T>(
     start: f32,
     ceiling: f32,
     constrained: bool,
     mut trial: impl FnMut(f32) -> Trial<T>,
 ) -> Result<(f32, T), Error> {
-    if !start.is_finite() || !ceiling.is_finite() || start <= 0. || ceiling < start {
-        return Err(Error::InvalidGeometry);
-    }
-    let mut low = before(start);
-    let mut high = ceiling;
-    let mut at = ceil_unit(start).min(ceiling);
-    let mut best = None;
-    let mut seen = HashSet::new();
+    let mut state = Search::new(start, ceiling, constrained)?;
     loop {
-        if !seen.insert(at.to_bits()) {
-            return Err(Error::NoProgress);
+        let result = trial(state.next()?);
+        if let Some(chosen) = state.accept(result)? {
+            return Ok(chosen);
         }
-        crate::work::add!(MulticolProbes, 1);
-        let result = trial(at);
-        if result.fits {
-            high = at;
-            best = Some(result.value);
-        } else if at == ceiling {
-            return if constrained {
-                Ok((at, result.value))
-            } else {
-                Err(Error::NoProgress)
-            };
-        } else {
-            low = at;
-            if let Some(shortage) = result.shortage.filter(|s| s.is_finite() && *s > 0.) {
-                // Минимальный недолаз — наименьший прирост, меняющий хоть один
-                // разрыв пробы (Blink `MinimalSpaceShortage` и растяжение в
-                // `ColumnLayoutAlgorithm::LayoutRow`). Более низкие высоты
-                // повторяют те же разрывы, поэтому они отвергнуты вместе с пробой.
-                let next = ceil_unit(at + shortage).max(after(at)).min(high);
-                low = before(next).max(at);
-                if best.is_none() || next < high {
-                    at = next;
-                    continue;
-                }
-            }
+    }
+}
+pub(crate) async fn search_async<T>(
+    start: f32,
+    ceiling: f32,
+    constrained: bool,
+    mut trial: impl AsyncFnMut(f32) -> Trial<T>,
+) -> Result<(f32, T), Error> {
+    let mut state = Search::new(start, ceiling, constrained)?;
+    loop {
+        let result = trial(state.next()?).await;
+        if let Some(chosen) = state.accept(result)? {
+            return Ok(chosen);
         }
-        if best.is_some() && after(low) >= high {
-            return best.map(|value| (high, value)).ok_or(Error::NoProgress);
-        }
-        // Сначала проверяем верхнюю границу. После успешной пробы интервал
-        // строго уменьшается на конечной сетке layout units.
-        at = if best.is_none() {
-            high
-        } else {
-            let middle = ((f64::from(low) + f64::from(high)) / 2.) as f32;
-            ceil_unit(middle).max(after(low)).min(before(high))
-        };
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn feasible_and_infeasible_bounds_meet_at_adjacent_layout_units() {
-        let threshold = 137.25f32;
-        let mut heights = HashSet::new();
-        let (height, chosen) = search(1., 200., false, |height| {
-            assert!(heights.insert(height.to_bits()), "repeated trial");
-            Trial {
-                fits: height >= threshold,
-                shortage: None,
-                value: height,
-            }
-        })
-        .unwrap();
-        assert_eq!(height, threshold);
-        assert_eq!(chosen, height);
-        assert_eq!(before(height), threshold - 1. / 64.);
-    }
-
-    #[test]
-    fn positive_shortage_stretches_to_the_first_feasible_height() {
-        let mut heights = Vec::new();
-        let (height, _) = search(25., 500., false, |height| {
-            heights.push(height);
-            Trial {
-                fits: height >= 100.,
-                shortage: Some(100. - height),
-                value: (),
-            }
-        })
-        .unwrap();
-        assert_eq!(height, 100.);
-        assert_eq!(heights, [25., 100.]);
-    }
-
-    #[test]
-    fn minimal_shortage_rejects_the_heights_it_skips() {
-        // Разрывы пробы меняются только после прироста на минимальный
-        // недолаз; срез пустой коробки внутри пропуска не проверяется.
-        let mut heights = Vec::new();
-        let (height, _) = search(65., 150., false, |height| {
-            heights.push(height);
-            Trial {
-                fits: height >= 75.,
-                shortage: Some(20.),
-                value: (),
-            }
-        })
-        .unwrap();
-        assert_eq!((height, heights), (85., vec![65., 85.]));
-    }
-
-    #[test]
-    fn repeated_shortage_steps_until_the_stretched_height_fits() {
-        let mut heights = Vec::new();
-        let (height, _) = search(10., 100., false, |height| {
-            heights.push(height);
-            Trial {
-                fits: height >= 30.,
-                shortage: Some(7.5),
-                value: (),
-            }
-        })
-        .unwrap();
-        assert_eq!((height, heights), (32.5, vec![10., 17.5, 25., 32.5]));
-    }
-
-    #[test]
-    fn rounded_shortage_advances_one_layout_unit() {
-        let floor = 1024f32;
-        let (height, _) = search(floor, floor + 1. / 64., false, |height| Trial {
-            fits: height > floor,
-            shortage: Some(f32::MIN_POSITIVE),
-            value: (),
-        })
-        .unwrap();
-        assert_eq!(height, floor + 1. / 64.);
-    }
-
-    #[test]
-    fn css_ceiling_between_layout_units_is_preserved() {
-        let cap = 10.001;
-        let (height, _) = search(10., cap, true, |_| Trial {
-            fits: false,
-            shortage: Some(1.),
-            value: (),
-        })
-        .unwrap();
-        assert_eq!(height, cap);
-    }
-
-    #[test]
-    fn untested_adjacent_upper_bound_is_tried_without_shortage() {
-        let cap = 10.001;
-        let (height, _) = search(10., cap, false, |h| Trial {
-            fits: h == cap,
-            shortage: None,
-            value: (),
-        })
-        .unwrap();
-        assert_eq!(height, cap);
-        assert_eq!(
-            min_shortage([Some(30.), None, Some(10.), Some(50.)]),
-            Some(10.)
-        );
-    }
-
-    #[test]
-    fn css_ceiling_can_overflow_but_unproven_unconstrained_bound_is_an_error() {
-        let infeasible = |_| Trial {
-            fits: false,
-            shortage: None,
-            value: (),
-        };
-        assert_eq!(search(10., 20., true, infeasible).unwrap().0, 20.);
-        assert_eq!(search(10., 20., false, infeasible), Err(Error::NoProgress));
-        assert_eq!(
-            search(20., 10., false, infeasible),
-            Err(Error::InvalidGeometry)
-        );
-    }
-
-    #[test]
-    fn best_feasible_trial_survives_later_infeasible_trials() {
-        let mut sequence = 0;
-        let mut accepted = Vec::new();
-        let (height, chosen) = search(1., 200., false, |height| {
-            sequence += 1;
-            if height >= 101. {
-                accepted.push((height, sequence));
-            }
-            Trial {
-                fits: height >= 101.,
-                shortage: None,
-                value: sequence,
-            }
-        })
-        .unwrap();
-        assert_eq!((height, chosen), *accepted.last().unwrap());
-        assert_eq!(height, 101.);
-    }
-}
+mod tests;

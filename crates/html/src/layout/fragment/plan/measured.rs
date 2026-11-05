@@ -1,5 +1,5 @@
 //! План укладки с повторной мерой содержимого в новом фрагментаинере.
-use super::{Plan, Space, fill_pieces, open_kid};
+use super::{Plan, Space, open_kid};
 use crate::layout::fragment::types::Kid;
 
 /// Ограничения и курсор содержимого перед мерой очередной копии. Полная высота
@@ -46,7 +46,7 @@ pub(crate) fn fill_measured(
 }
 
 #[allow(clippy::type_complexity)]
-pub(crate) fn fill_resumed(
+pub(crate) async fn fill_resumed_async(
     kids: &[Kid],
     space_at: &dyn Fn(usize) -> crate::layout::fragment::token::Space,
     space: Space,
@@ -54,7 +54,7 @@ pub(crate) fn fill_resumed(
         usize,
         crate::layout::fragment::token::Space,
     ) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
-    remeasure: &mut super::ResumeMeasure<'_>,
+    mut remeasure: impl AsyncFnMut(super::MeasureRequest) -> Measurement,
 ) -> Result<(usize, f32, Plan), crate::layout::fragment::token::Error> {
     let target_at = &|col| space_at(col).block_size.expect("definite fragmentainer");
     let limit = space.limit;
@@ -134,7 +134,7 @@ pub(crate) fn fill_resumed(
         // Полосы повтора таблицы (`Repeat::leads`); у прочих детей нули, и
         // укладка тождественна прежней.
         let rg = k.repeat;
-        fill_pieces(
+        super::piece::fill_pieces_async(
             target_at,
             &|col| space_at(col).inline_size,
             limit,
@@ -153,11 +153,12 @@ pub(crate) fn fill_resumed(
             copy,
             flow,
             rg,
-            &mut |mut request| {
+            &mut async |mut request| {
                 request.page = space_at(request.col).page;
-                remeasure(request)
+                remeasure(request).await
             },
-        )?;
+        )
+        .await?;
         // Флоат ушёл целиком в следующую колонку, а в текущей осталось
         // место: следующие коробки продолжают её (`Par::float`).
         if k.par.float && k.par.group == 0 && float_hold.is_none() {
@@ -218,4 +219,24 @@ pub(crate) fn fill_resumed(
         .checked_add(1)
         .ok_or(crate::layout::fragment::token::Error::ResourceExhausted)?;
     Ok((pages, shortage, out))
+}
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn fill_resumed(
+    kids: &[Kid],
+    space_at: &dyn Fn(usize) -> crate::layout::fragment::token::Space,
+    space: Space,
+    leaf_at: &dyn Fn(
+        usize,
+        crate::layout::fragment::token::Space,
+    ) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
+    remeasure: &mut super::ResumeMeasure<'_>,
+) -> Result<(usize, f32, Plan), crate::layout::fragment::token::Error> {
+    super::ready::run(fill_resumed_async(
+        kids,
+        space_at,
+        space,
+        leaf_at,
+        async |request| remeasure(request),
+    ))
 }

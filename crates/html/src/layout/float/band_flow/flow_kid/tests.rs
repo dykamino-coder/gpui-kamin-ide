@@ -130,3 +130,33 @@ fn anonymous_inline_max_includes_preceding_floats_and_skips_struts() {
     assert_eq!(sizes, (20., 69.));
     assert_eq!(calls, 2);
 }
+
+#[test]
+fn intrinsic_twenty_thousand_levels_and_drop_use_a_small_stack() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            let mut root = kid(0, Kind::Flow);
+            for id in 1..=20_000 {
+                let mut parent = kid(id, Kind::Nest);
+                parent.nest = Some(Nest {
+                    kids: vec![root],
+                    inset: [Edge::Px(0.); 4],
+                    height: None,
+                    width: None,
+                    group: None,
+                });
+                root = parent;
+            }
+            let mut calls = 0;
+            let sizes = intrinsic_sizes_with(&[root], &mut |_| {
+                calls += 1;
+                (11., 37.)
+            });
+            assert_eq!(sizes, (11., 37.));
+            assert_eq!(calls, 1);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

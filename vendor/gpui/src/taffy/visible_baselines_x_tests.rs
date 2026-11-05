@@ -13,7 +13,9 @@ fn clipped_right_origin_lines_include_final_width_insets_and_scrollbar_gutter() 
         tree.disable_rounding();
         let context = NodeContext {
             static_positions: Vec::new(),
-            measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| unreachable!())))),
+            measure: Rc::new(RefCell::new(node_measure(Box::new(
+                |_, _, _, _, _| unreachable!(),
+            )))),
             layout_lines: None,
             layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)]),
             layout_lines_x_from_right: true,
@@ -70,4 +72,52 @@ fn clipped_right_origin_lines_include_final_width_insets_and_scrollbar_gutter() 
             None
         );
     }
+}
+
+#[test]
+fn visible_lines_at_twenty_thousand_levels_use_bounded_native_stack() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            use taffy::{Baselines, CacheTree, LayoutInput, LayoutOutput, RunMode};
+            let mut tree = TaffyTree::<NodeContext>::new();
+            let leaf = tree.new_leaf(Style::default()).unwrap();
+            let mut nodes = vec![leaf];
+            let mut root = leaf;
+            for _ in 0..20_000 {
+                root = tree.new_with_children(Style::default(), &[root]).unwrap();
+                nodes.push(root);
+            }
+            let sibling = tree.new_leaf(Style::default()).unwrap();
+            tree.add_child(root, sibling).unwrap();
+            nodes.push(sibling);
+            // Isolate traversal from the layout algorithm: these are completed
+            // outputs with zero origins, as in a cached native layout tree.
+            for node in nodes {
+                tree.cache_store(
+                    node,
+                    &LayoutInput {
+                        run_mode: RunMode::PerformLayout,
+                        ..LayoutInput::HIDDEN
+                    },
+                    LayoutOutput {
+                        baselines: Baselines {
+                            first: Some(3.0),
+                            last: Some(9.0),
+                        },
+                        baselines_x: Baselines {
+                            first: Some(3.0),
+                            last: Some(9.0),
+                        },
+                        ..LayoutOutput::DEFAULT
+                    },
+                );
+            }
+            let mut lines = Vec::new();
+            collect(&tree, root, 0.0, 1.0, &mut lines);
+            assert_eq!(lines, vec![px(3.0), px(9.0), px(3.0), px(9.0)]);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

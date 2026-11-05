@@ -10,7 +10,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::multicol::measure::{SpannerRow, row_plan_in, tail_rest_height};
 use crate::layout::multicol::spanner::{
-    RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners, spanner_box,
+    RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners_async, spanner_box,
 };
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
@@ -27,191 +27,46 @@ pub(super) fn deferred(
 ) -> AnyElement {
     let mut opts = opts.clone();
     opts.cx.position.state = opts.cx.position.state.retain().resume();
-    let (e, merged, inherited) = (e.clone(), merged.clone(), inherited.clone());
-    let (intrinsic_e, intrinsic_style, intrinsic_opts) = (e.clone(), merged.clone(), opts.clone());
-    let row_measures = Rc::new(RowMeasures::default());
+    let recipe = Rc::new(Recipe {
+        e: e.clone(),
+        merged: merged.clone(),
+        inherited: inherited.clone(),
+        opts,
+        outer,
+        row_measures: Rc::new(RowMeasures::default()),
+    });
+    let intrinsic = recipe.clone();
     SpannerFlow::deferred(
-        move |available, pass, window, cx| {
-            let AvailableSpace::Definite(width) = available.width else {
-                unreachable!("resolved spanner width")
-            };
-            let width = f32::from(width);
-            let mut host = e.clone();
-            let style = merged.clone();
-            let height = match available.height {
-                AvailableSpace::Definite(h) => Some(f32::from(h)),
-                _ => None,
-            };
-            let dimensions =
-                MulticolDimensions::for_element(&e, &style).with_measured_size(width, height);
-            // План рядов читает собственные ограничения; стадия коробки
-            // может разрешить процентную высоту иначе (quirks mode).
-            let own = MulticolDimensions::for_element(&host, &host.style.used())
-                .with_measured_size(width, height);
-            host.children = crate::layout::fragment::flow::column_percentages_in(
-                &host.children,
-                &style,
-                dimensions.percentage_height(
-                    &style,
-                    opts.cx.constraints.avail_h,
-                    opts.cx.constraints.avail_w,
-                    opts.viewport.1,
-                ),
-                Some(width),
-                &opts,
-            )
-            .into();
-            let plan = column_plan_in(&host, &style, &opts, dimensions, own);
-            let count = plan.used_count.unwrap_or(1).max(1);
-            let column_width = ((width + plan.used_gap) / f32::from(count) - plan.used_gap).max(0.);
-            let mut probe_opts = opts.clone();
-            probe_opts.frag.watch = None;
-            probe_opts.cx.position.state = Default::default();
-            probe_opts.cx.deferred = Default::default();
-            if opts.cx.position.geometry_record.is_none() && opts.cx.position.geometry.is_none() {
-                let kids: Vec<_> = host
-                    .children
-                    .iter()
-                    .filter_map(|n| match n {
-                        Node::Element(e) => Some(e.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                probe_opts.cx.position.geometry = Some(
-                    crate::layout::positioned::containing_block::metrics::layout::collect(
-                        &kids,
-                        &style,
-                        column_width,
-                        &probe_opts,
-                        window,
-                        cx,
-                    ),
-                );
-            }
-            let mut measure = |child: &Element, parent: &BoxStyle, width: f32| {
-                probe::measure(child, parent, width, &probe_opts, window, cx)
-            };
-            if let Some(kids) =
-                hoist_spanners(&host.children, &style, &opts, column_width, &mut measure)
-            {
-                host.children = kids.into();
-            }
-            // Каждый ряд между спаннерами — свой набор колонок (css-multicol-1
-            // §6.1; Blink `ColumnLayoutAlgorithm::LayoutRow`): исходный OOF-поток
-            // ряда раскладывается от начала ряда и рисуется своей стопкой.
-            let row_geometry = probe_opts
-                .cx
-                .position
-                .geometry
-                .is_some()
-                .then(|| {
-                    let mut source_opts = probe_opts.clone();
-                    source_opts.cx.position.geometry = None;
-                    crate::layout::multicol::container::row_bodies(&host, is_span)
-                    .into_iter()
-                    .map(|body| {
-                        let kids: Vec<_> = body
-                            .iter()
-                            .filter_map(|n| match n {
-                                Node::Element(e) => Some(e.clone()),
-                                _ => None,
-                            })
-                            .collect();
-                        Some(crate::layout::positioned::containing_block::metrics::layout::collect(
-                            &kids,
-                            &style,
-                            column_width,
-                            &source_opts,
-                            window,
-                            cx,
-                        ))
-                    })
-                    .collect::<Rc<[_]>>()
-                })
-                .map(|rows| (style.self_node, rows));
-            let rows = row_plan_in(
-                &host,
-                &opts,
-                plan.column_width,
-                count,
-                plan.col_vert,
-                outer.clone(),
-                own,
-            );
-            let rest = match (
-                rows.box_h,
-                rows.rows.is_none_or(|r| r.cap),
-                host.children.iter().rposition(is_span),
-            ) {
-                (Some(total), true, Some(last)) => {
-                    let mut prefix = host.clone();
-                    prefix.children.truncate(last + 1);
-                    let prefix_style = style.clone();
-                    let used = window.with_nested_layout(|window| {
-                        let mut el = build(
-                            &prefix,
-                            prefix_style,
-                            &inherited,
-                            &probe_opts,
-                            None,
-                            None,
-                            (dimensions.prefix(), own.prefix()),
-                        );
-                        f32::from(
-                            el.layout_as_root_unrounded(
-                                size(
-                                    AvailableSpace::Definite(px(width)),
-                                    AvailableSpace::MaxContent,
-                                ),
-                                window,
-                                cx,
-                            )
-                            .height,
-                        )
-                    });
-                    let phase = SpannerRow::after_spanner(last, used)
-                        .expect("finite completed spanner row geometry");
-                    Some(tail_rest_height(total, &phase))
-                }
-                _ => None,
-            };
-            let mut final_opts: RenderOpts = if pass == SpannerPass::Final {
-                opts.clone()
-            } else {
-                probe_opts.clone()
-            };
-            final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
-            final_opts.cx.position.row_geometry = row_geometry;
-            final_opts.cx.fragmentation.spanner_rows = RowSlot::build(
-                &row_measures,
-                e.node_id,
-                (width.to_bits(), height.map(f32::to_bits)),
-                pass == SpannerPass::Measure,
-                final_opts.frag.watch.is_some(),
-            );
-            build(
-                &host,
-                style,
-                &inherited,
-                &final_opts,
-                outer.clone(),
-                rest,
-                (dimensions, own),
-            )
+        move |available, pass, window, cx, stack| {
+            let recipe = recipe.clone();
+            Box::pin(async move { recipe.build_async(available, pass, window, cx, stack).await })
         },
-        move |available, window, cx| {
-            intrinsic::measure(
-                &intrinsic_e,
-                &intrinsic_style,
-                &intrinsic_opts,
-                available,
-                window,
-                cx,
-            )
+        move |available, window, cx, stack| {
+            let recipe = intrinsic.clone();
+            Box::pin(async move {
+                intrinsic::measure_async(
+                    &recipe.e,
+                    &recipe.merged,
+                    &recipe.opts,
+                    available,
+                    window,
+                    cx,
+                    stack,
+                )
+                .await
+            })
         },
     )
 }
-
 fn is_span(n: &Node) -> bool {
-    matches!(n, Node::Element(e) if spanner_box(e))
+    matches!(n,Node::Element(e) if spanner_box(e))
 }
+struct Recipe {
+    e: Element,
+    merged: BoxStyle,
+    inherited: Computed,
+    opts: RenderOpts,
+    outer: Option<Rc<Nested>>,
+    row_measures: Rc<RowMeasures>,
+}
+mod materialize;

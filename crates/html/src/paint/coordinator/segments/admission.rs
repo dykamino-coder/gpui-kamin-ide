@@ -4,6 +4,7 @@ use super::*;
 mod traversal;
 pub(crate) use traversal::node_async;
 
+#[cfg(test)]
 pub(crate) fn node(
     id: u64,
     cb: Option<u64>,
@@ -36,6 +37,7 @@ pub(crate) fn node(
     }
 }
 
+#[cfg(test)]
 fn admitted(
     source: Rc<Source>,
     id: u64,

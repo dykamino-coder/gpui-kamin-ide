@@ -1,7 +1,7 @@
 //! Продолжение при смене ограничений: новая мера и адрес обычного и независимых flex-потоков.
 mod inline;
 mod normal;
-use super::{PageStack, measure::measure, resume::Resume};
+use super::{PageStack, measure::measure_async, resume::Resume};
 use crate::layout::fragment::flow::blocks::Laid;
 use crate::layout::fragment::types::Kid;
 use crate::tolerance::COORD_EPS;
@@ -40,7 +40,7 @@ impl CopyGeometry {
 
 impl PageStack {
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn remeasure_copy(
+    pub(super) async fn remeasure_copy_async(
         &mut self,
         index: usize,
         copy: usize,
@@ -49,6 +49,7 @@ impl PageStack {
         page: Option<crate::layout::fragment::token::space::PageIdentity>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Result<Option<(Kid, f32)>, crate::layout::fragment::token::Error> {
         let parallel = self.kids[index]
             .watched
@@ -68,8 +69,19 @@ impl PageStack {
                 .map(std::rc::Rc::new)
             })
             .transpose()?;
-        let geometry =
-            self.remeasure_geometry(index, copy, area, from, page, parallel.clone(), window, cx);
+        let geometry = self
+            .remeasure_geometry_async(
+                index,
+                copy,
+                area,
+                from,
+                page,
+                parallel.clone(),
+                window,
+                cx,
+                stack,
+            )
+            .await;
         // Неизменные constraints переиспользуют геометрию, но новый
         // фрагмент всё равно сохраняет собственные child tokens и sequence.
         self.measured
@@ -79,7 +91,7 @@ impl PageStack {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn remeasure_geometry(
+    async fn remeasure_geometry_async(
         &mut self,
         index: usize,
         copy: usize,
@@ -89,6 +101,7 @@ impl PageStack {
         parallel: Option<std::rc::Rc<crate::layout::fragment::flow::Parallel>>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Option<(Kid, f32)> {
         let base = self.kids[index].regrow.as_ref()?.clone();
         // Рост границ блоков допустим без токена атомарной строки; смена
@@ -166,12 +179,13 @@ impl PageStack {
         let inline_addresses = inline::resume(&rec.flow, &old.inline, from);
         k.watched = Some(rec.clone());
         rebuild_copy(k, copy, &own);
-        let (mut next, mut next_inline) = measure(k, self.axis, area, copy, window, cx);
+        let (mut next, mut next_inline) =
+            measure_async(k, self.axis, area, copy, window, cx, stack).await;
         let consumed = token.consumed(&k.regrow.as_ref()?.laid);
         if consumed.values().any(|v| v.0 > COORD_EPS || v.1) {
             rec.consume_flex_items(consumed, window);
             rebuild_copy(k, copy, &own);
-            (next, next_inline) = measure(k, self.axis, area, copy, window, cx);
+            (next, next_inline) = measure_async(k, self.axis, area, copy, window, cx, stack).await;
         }
         k.watched = Some(main.clone());
         let fresh = std::mem::replace(&mut k.regrow.as_mut()?.laid, original);

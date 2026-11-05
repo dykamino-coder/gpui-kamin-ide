@@ -106,17 +106,20 @@ impl Recipe {
     }
 
     /// Один и тот же проход до баланса в измерительном callback и prepaint.
-    pub(crate) fn prepare(
+    pub(crate) async fn prepare_async(
         &self,
         stack: &mut ColumnStack,
         width: f32,
         window: &mut Window,
         cx: &mut App,
+        scheduler: &mut gpui::PaintStack,
     ) {
         stack.forced_h = None;
         stack.balance_failure = None;
         stack.col_w.set(width);
-        let (children, geometry) = self.recorded_children(width, window, cx);
+        let (children, geometry) = self
+            .recorded_children_async(width, window, cx, scheduler)
+            .await;
         stack.children = children;
         stack.oof.geometry = geometry;
         if stack.fixed_height.is_some() {
@@ -129,36 +132,42 @@ impl Recipe {
                 .max(stack.count);
         }
         for i in 0..stack.children.len() {
-            if !stack.resume_nested(i, window, cx) {
-                stack.lay_out_main(i, window, cx);
+            if !stack.resume_nested_async(i, window, cx, scheduler).await {
+                stack.lay_out_main_async(i, window, cx, scheduler).await;
             }
         }
-        stack.regrow_children(window, cx);
-        stack.paginate_children(window, cx);
+        stack.regrow_children_async(window, cx, scheduler).await;
+        stack.paginate_children_async(window, cx, scheduler).await;
         stack.reserve_overflow_copies();
         stack.report_lead();
     }
 
-    pub(crate) fn measure(
+    pub(crate) async fn measure_async(
         &self,
         stack: &mut ColumnStack,
         width: f32,
         window: &mut Window,
         cx: &mut App,
+        scheduler: &mut gpui::PaintStack,
     ) -> (f32, Option<Pixels>, Option<Pixels>) {
         if let Some(extent) = self.row.as_ref().and_then(|row| row.get(width)) {
             crate::work::add!(SpannerRowReuses, 1);
             return extent;
         }
-        let extent = gpui::with_temporary_element_arena(|| {
-            window.with_nested_layout(|window| {
-                let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
-                    / stack.count as f32)
-                    .max(1.0);
-                self.prepare(stack, col_width, window, cx);
-                self.measured_extent(stack, width, window, cx)
-            })
-        });
+        let extent = gpui::with_temporary_element_arena_async(async || {
+            window
+                .with_retained_layout_async(&mut gpui::RetainedLayout::default(), async |window| {
+                    let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
+                        / stack.count as f32)
+                        .max(1.0);
+                    self.prepare_async(stack, col_width, window, cx, scheduler)
+                        .await;
+                    self.measured_extent_async(stack, width, window, cx, scheduler)
+                        .await
+                })
+                .await
+        })
+        .await;
         if let Some(row) = &self.row {
             row.put(width, extent);
         }
@@ -168,12 +177,13 @@ impl Recipe {
     /// Высота и базовые линии подготовленной стопки — отдельным кадром после
     /// вложенных раскладок `prepare`.
     #[inline(never)]
-    fn measured_extent(
+    async fn measured_extent_async(
         &self,
         stack: &mut ColumnStack,
         width: f32,
         window: &mut Window,
         cx: &mut App,
+        scheduler: &mut gpui::PaintStack,
     ) -> (f32, Option<Pixels>, Option<Pixels>) {
         let kids = stack.kid_geoms();
         let (height, lines, plan, spans) = stack.balance(&kids);
@@ -183,9 +193,18 @@ impl Recipe {
         let (first, last) = if self.axis.is_vertical() {
             (None, None)
         } else {
-            let mut baselines =
-                super::column_baselines::Measurements::new(&mut stack.children, window, cx);
-            baselines.measure(stack, &kids, width, &lines, &plan, &spans, window, cx)
+            let mut baselines = super::column_baselines::Measurements::new_async(
+                &mut stack.children,
+                window,
+                cx,
+                scheduler,
+            )
+            .await;
+            baselines
+                .measure_async(
+                    stack, &kids, width, &lines, &plan, &spans, window, cx, scheduler,
+                )
+                .await
         };
         // Элементы с LayoutId вложенного движка не переживают этот вызов.
         stack.children.clear();
@@ -196,3 +215,33 @@ impl Recipe {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+impl Recipe {
+    pub(crate) fn prepare(
+        &self,
+        column: &mut ColumnStack,
+        width: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> () {
+        reblessive::Stack::new()
+            .enter(|stack| self.prepare_async(column, width, window, cx, stack))
+            .finish()
+    }
+}
+
+#[cfg(test)]
+impl Recipe {
+    pub(crate) fn measure(
+        &self,
+        column: &mut ColumnStack,
+        width: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (f32, Option<Pixels>, Option<Pixels>) {
+        reblessive::Stack::new()
+            .enter(|stack| self.measure_async(column, width, window, cx, stack))
+            .finish()
+    }
+}

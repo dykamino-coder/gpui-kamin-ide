@@ -1,6 +1,6 @@
 //! Подъём охватчиков и внутренний инлайн-размер многоколоночника.
 
-use super::fragment::spanner_parts;
+use super::fragment::spanner_parts_async;
 use super::{SpanPart, has_deep_spanner, passes_spanner, splits_for_spanner};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
@@ -23,12 +23,18 @@ use crate::style::values::value::Len;
 /// нас раскладка колонок принимает спаннера ТОЛЬКО прямым ребёнком
 /// (`render::generic_box::multicol` `is_span`, `StackChild::span`), поэтому тот же разрез
 /// делается в дереве до неё.
-pub(crate) fn hoist_spanners(
+pub(crate) async fn hoist_spanners_async(
     kids: &[Node],
     parent: &BoxStyle,
     opts: &RenderOpts,
     width: f32,
-    measure: &mut dyn FnMut(&Element, &BoxStyle, f32) -> super::SpannerMetrics,
+    measure: &mut impl AsyncFnMut(
+        &Element,
+        &BoxStyle,
+        f32,
+        &mut gpui::PaintStack,
+    ) -> super::SpannerMetrics,
+    stack: &mut gpui::PaintStack,
 ) -> Option<Vec<Node>> {
     if !kids.iter().any(|n| {
         matches!(n, Node::Element(c)
@@ -37,7 +43,7 @@ pub(crate) fn hoist_spanners(
         return None;
     }
     let mut out: Vec<Node> = Vec::with_capacity(kids.len() + 2);
-    for p in spanner_parts(kids, parent, opts, width, measure) {
+    for p in spanner_parts_async(kids, parent, opts, width, measure, stack).await {
         match p {
             SpanPart::Body(b) => out.extend(b),
             SpanPart::Span(s) => out.push(s),

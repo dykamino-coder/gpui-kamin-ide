@@ -33,19 +33,23 @@ impl BandFlow {
                 let kids = self.kids.clone();
                 let mut engine = gpui::RetainedLayout::default();
                 let retained = engine.clone();
-                let plan = window.with_retained_layout(&mut engine, |window| {
-                    let mut p = Probe::new(
-                        window,
-                        cx,
-                        vert.is_some(),
-                        self.fragment.as_ref(),
-                        self.paint.clone(),
-                        self.probe_scopes(),
-                        self.build,
-                    );
-                    p.engine = Some(retained);
-                    plan(&kids, cb, contain_floats, &mut p)
-                });
+                let plan = window
+                    .with_retained_layout_async(&mut engine, async |window| {
+                        let mut p = Probe::new(
+                            window,
+                            cx,
+                            vert.is_some(),
+                            self.fragment.as_ref(),
+                            self.paint.clone(),
+                            self.probe_scopes(),
+                            self.build,
+                        );
+                        p.engine = Some(retained);
+                        stack
+                            .run(|stack| plan(&kids, cb, contain_floats, &mut p, stack))
+                            .await
+                    })
+                    .await;
                 self.plan.insert(plan)
             }
         };

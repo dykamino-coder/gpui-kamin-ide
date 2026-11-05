@@ -38,7 +38,7 @@ impl ColumnStack {
     }
 
     /// Rebuild with `struts`, lay the main copy out, read candidate boxes.
-    pub(super) fn lay_out(
+    pub(super) async fn lay_out_async(
         &mut self,
         i: usize,
         p: &Paginate,
@@ -46,6 +46,7 @@ impl ColumnStack {
         struts: &Struts,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Option<Vec<Geom>> {
         let w = self.children[i].measure?;
         let (el, frags) = (p.rebuild)(struts, n)?;
@@ -55,11 +56,14 @@ impl ColumnStack {
         c.frags = frags;
         p.watched.reset();
         crate::work::add!(MulticolChildLayouts, 1);
-        let (sz, content) = c.el.layout_as_root_with_content(
-            size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
-            window,
-            cx,
-        );
+        let (sz, content) =
+            c.el.layout_as_root_with_content_async(
+                size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
+                window,
+                cx,
+                stack,
+            )
+            .await;
         c.h = f32::from(sz.height);
         c.over = c.h.max(f32::from(content.height));
         let measured = p

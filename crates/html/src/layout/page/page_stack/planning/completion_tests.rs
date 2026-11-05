@@ -1,5 +1,5 @@
 //! Неполный запас копий не становится полным планом после сходимости.
-use super::settle;
+use super::settlement::settle;
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::Kid;
 

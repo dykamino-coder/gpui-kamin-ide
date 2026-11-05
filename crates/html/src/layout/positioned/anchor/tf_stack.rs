@@ -18,12 +18,19 @@ impl TransformContext {
         Self { layout, stack }
     }
 
-    pub(crate) fn enter<R>(&self, f: impl FnOnce() -> R) -> R {
+    pub(crate) async fn enter_async<R>(&self, f: impl AsyncFnOnce() -> R) -> R {
         let tf = &self.layout.anchors.tf;
-        let previous = tf.replace(self.stack.clone());
-        let result = f();
-        tf.replace(previous);
-        result
+        struct Restore<'a>(
+            &'a std::cell::RefCell<Vec<(u32, [[f32; 3]; 2])>>,
+            Vec<(u32, [[f32; 3]; 2])>,
+        );
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.0.replace(std::mem::take(&mut self.1));
+            }
+        }
+        let _restore = Restore(tf, tf.replace(self.stack.clone()));
+        f().await
     }
 }
 

@@ -6,40 +6,52 @@
 use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::types::Intrinsic;
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{AnyElement, App, LayoutId, Window, px, size};
+use gpui::{App, LayoutId, Window, px, size};
 
 mod breaks;
+mod intrinsic;
 
 impl ColumnStack {
     /// Раскладка детей идёт отдельным малым кадром: копия ребёнка может сама
     /// нести многоколоночник, чья раскладка вложена в эту, и большой кадр
     /// запроса меры (`request_measured`) на это время на стеке не лежит.
-    pub(crate) fn request_column_layout(
+    pub(crate) async fn request_column_layout_async(
         &mut self,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (LayoutId, LayoutId) {
-        self.lay_out_children(window, cx);
-        self.request_measured(window, cx)
+        self.lay_out_children_async(window, cx, stack).await;
+        self.request_measured_async(window, cx, stack).await
     }
 
     #[inline(never)]
-    fn lay_out_children(&mut self, window: &mut Window, cx: &mut App) {
+    async fn lay_out_children_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.deferred.is_none() {
             for i in 0..self.children.len() {
-                if !self.resume_nested(i, window, cx) {
-                    self.lay_out_main(i, window, cx);
+                if !self.resume_nested_async(i, window, cx, stack).await {
+                    self.lay_out_main_async(i, window, cx, stack).await;
                 }
             }
-            self.regrow_children(window, cx);
-            self.paginate_children(window, cx);
+            self.regrow_children_async(window, cx, stack).await;
+            self.paginate_children_async(window, cx, stack).await;
             self.reserve_overflow_copies();
             self.report_lead();
         }
     }
 
     #[inline(never)]
-    fn request_measured(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
+    async fn request_measured_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, LayoutId) {
         // Распорки роста по раскладке копий — до разметки по сетке: её рамки
         // берут план с уже выросшими соседями.
         let heights = self.kid_geoms();
@@ -71,92 +83,33 @@ impl ColumnStack {
         // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
         // блочному контейнеру её даёт родитель, и второй проход раскладки там
         // ничего не даст, кроме времени.
-        let deferred_intrinsic = self.deferred.is_some();
-        let intrinsic = self
-            .intrinsic
-            .filter(|_| !axis.is_vertical())
-            .map(|Intrinsic(col_w)| {
-                // A deferred stack builds its children for this only: an
-                // unmeasured container never needs them.
-                let mut intrinsic_children = self
-                    .deferred
-                    .as_ref()
-                    .map(|r| r.intrinsic_children())
-                    .unwrap_or_default();
-                let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
-                let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
-                for (el, span) in self
-                    .children
-                    .iter_mut()
-                    .filter(|_| !deferred_intrinsic)
-                    .map(|c| (&mut c.el, c.span))
-                    .chain(intrinsic_children.iter_mut().map(|el| (el, false)))
-                {
-                    let mut measure = |el: &mut AnyElement, w: gpui::AvailableSpace| {
-                        f32::from(
-                            el.layout_as_root_unrounded(
-                                size(w, gpui::AvailableSpace::MaxContent),
-                                window,
-                                cx,
-                            )
-                            .width,
-                        )
-                    };
-                    let mn = measure(el, gpui::AvailableSpace::MinContent);
-                    let mx = measure(el, gpui::AvailableSpace::MaxContent);
-                    // Спаннер идёт во всю ширину коробки: на число колонок он не
-                    // умножается, а лишь ПОДНИМАЕТ итог — Blink
-                    // `ComputeSpannersMinMaxSizes` (:523) через
-                    // `MinMaxSizes::Encompass` (`min_max_sizes.h:26`, это `max`
-                    // по обеим границам).
-                    if span {
-                        span_min = span_min.max(mn);
-                        span_max = span_max.max(mx);
-                    } else {
-                        kid_min = kid_min.max(mn);
-                        kid_max = kid_max.max(mx);
-                    }
-                }
-                let n = count.max(1) as f32;
-                let gap_extra = gap * (n - 1.0);
-                let (mut mn, mut mx) = (kid_min, kid_max);
-                match col_w.filter(|w| *w > 0.0) {
-                    // «The min-content inline size of a multi-column container
-                    // with a computed column-width not auto is the smaller of its
-                    // column-width and the largest min-content inline-size
-                    // contribution of its contents.»
-                    Some(w) => {
-                        mn = mn.min(w);
-                        mx = mx.max(w).max(mn);
-                    }
-                    // «…with a computed column-width of auto is the largest
-                    // min-content inline-size contribution of its contents
-                    // multiplied by its column-count …, plus its column-gap
-                    // multiplied by column-count minus 1.» При ЗАДАННОЙ ширине
-                    // колонки минимум на число колонок не умножается (Blink
-                    // :482 — «column-count … is ignored in intrinsic min
-                    // inline-size calculation, if column-width is specified»).
-                    None => mn = mn * n + gap_extra,
-                }
-                mx = mx * n + gap_extra;
-                (mn.max(span_min), mx.max(span_max))
-            });
-        let mut baselines = (!axis.is_vertical() && self.deferred.is_none()).then(|| {
-            crate::layout::multicol::column_baselines::Measurements::new(
-                &mut self.children,
-                window,
-                cx,
+        let intrinsic = self.intrinsic_widths(window, cx, stack).await;
+        let mut baselines = if !axis.is_vertical() && self.deferred.is_none() {
+            Some(
+                crate::layout::multicol::column_baselines::Measurements::new_async(
+                    &mut self.children,
+                    window,
+                    cx,
+                    stack,
+                )
+                .await,
             )
-        });
+        } else {
+            None
+        };
         let paint = self.paint.clone();
         let deferred = self.deferred.clone();
         let nest_report = self.nest_report.clone();
         let lead_report = self.lead_report.clone();
         let discard = self.discard;
         let replay = self.replay;
-        let id = window.request_measured_layout_with_baselines(
+        let id = window.request_measured_layout_with_baselines_async(
             gpui::Style::default(),
-            move |known, available, window, cx| {
+            async move |known,
+                        available,
+                        window: &mut Window,
+                        cx: &mut App,
+                        stack: &mut gpui::PaintStack| {
                 let mut probe = ColumnStack {
                     paint: paint.clone(),
                     children: Vec::new(),
@@ -203,7 +156,10 @@ impl ColumnStack {
                         .col_w
                         .set(((inline - gap * (count as f32 - 1.)) / count as f32).max(1.));
                     let block = if let Some(recipe) = &deferred {
-                        recipe.measure(&mut probe, inline, window, cx).0
+                        recipe
+                            .measure_async(&mut probe, inline, window, cx, stack)
+                            .await
+                            .0
                     } else {
                         probe.balance(&heights).0
                     };
@@ -219,7 +175,8 @@ impl ColumnStack {
                     })
                     .unwrap_or(0.0);
                 if let Some(recipe) = &deferred {
-                    let (height, first, last) = recipe.measure(&mut probe, w, window, cx);
+                    let (height, first, last) =
+                        recipe.measure_async(&mut probe, w, window, cx, stack).await;
                     return (size(px(w), px(height)), first, last);
                 }
                 probe
@@ -232,9 +189,15 @@ impl ColumnStack {
                     ));
                 }
                 let height = row_extent.block_size(height, &lines, &spans, &plan, count, &heights);
-                let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
-                    baselines.measure(&probe, &heights, w, &lines, &plan, &spans, window, cx)
-                });
+                let (first, last) = if let Some(baselines) = &mut baselines {
+                    baselines
+                        .measure_async(
+                            &probe, &heights, w, &lines, &plan, &spans, window, cx, stack,
+                        )
+                        .await
+                } else {
+                    (None, None)
+                };
                 (size(px(w), px(height)), first, last)
             },
         );

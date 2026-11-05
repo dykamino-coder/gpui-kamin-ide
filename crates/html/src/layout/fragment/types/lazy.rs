@@ -4,6 +4,9 @@ use crate::hooks::{Hooks, IntoHooked};
 use gpui::{AnyElement, App, AvailableSpace, LayoutId, LayoutMeasurement, Pixels, Size, Window};
 use std::{cell::RefCell, rc::Rc};
 
+mod element;
+use element::ElementGuard;
+
 type Builder = Rc<dyn Fn() -> AnyElement>;
 
 #[derive(Clone)]
@@ -24,12 +27,21 @@ impl FragmentHandle {
         Deferred(self.clone()).hooked()
     }
 
-    pub(crate) fn measurement(&self, window: &mut Window, cx: &mut App) -> FragmentMeasurement {
-        let ready = self
-            .element
-            .borrow_mut()
-            .as_mut()
-            .map(|el| el.snapshot_layout_measurement(window, cx));
+    pub(crate) async fn measurement_async(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> FragmentMeasurement {
+        let mut element = ElementGuard::take(&self.element);
+        let ready = if let Some(el) = element.as_mut() {
+            Some(
+                el.snapshot_layout_measurement_async(window, cx, stack)
+                    .await,
+            )
+        } else {
+            None
+        };
         FragmentMeasurement {
             ready,
             build: Some(self.build.clone()),
@@ -61,10 +73,9 @@ impl Hooks for Deferred {
         stack: &mut gpui::PaintStack,
     ) -> (LayoutId, ()) {
         self.prepare();
+        let mut element = ElementGuard::take(&self.0.element);
         (
-            self.0
-                .element
-                .borrow_mut()
+            element
                 .as_mut()
                 .unwrap()
                 .request_layout_async(window, cx, stack)
@@ -81,9 +92,8 @@ impl Hooks for Deferred {
         cx: &mut App,
         stack: &mut gpui::PaintStack,
     ) {
-        self.0
-            .element
-            .borrow_mut()
+        let mut element = ElementGuard::take(&self.0.element);
+        element
             .as_mut()
             .unwrap()
             .prepaint_async(window, cx, stack)
@@ -111,9 +121,8 @@ impl Hooks for Deferred {
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a> {
         Box::pin(async move {
-            self.0
-                .element
-                .borrow_mut()
+            let mut element = ElementGuard::take(&self.0.element);
+            element
                 .as_mut()
                 .unwrap()
                 .paint_async(window, cx, stack)
@@ -137,36 +146,57 @@ impl FragmentMeasurement {
     }
 
     #[inline(never)]
-    fn prepare(&mut self, window: &mut Window, cx: &mut App) -> &mut LayoutMeasurement {
+    async fn prepare_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> &mut LayoutMeasurement {
         if self.ready.is_none() {
             let build = self.build.as_ref().expect("fragment recipe");
             // Родительская раскладка держит основной Taffy. Измерение получает
             // отдельный движок; его layout-id не попадают в дерево для paint.
             self.ready = Some(
-                window.with_nested_layout(|window| build().snapshot_layout_measurement(window, cx)),
+                window
+                    .with_retained_layout_async(
+                        &mut gpui::RetainedLayout::default(),
+                        async |window| {
+                            build()
+                                .snapshot_layout_measurement_async(window, cx, stack)
+                                .await
+                        },
+                    )
+                    .await,
             );
         }
         self.ready.as_mut().unwrap()
     }
 
-    pub(crate) fn measure(
+    pub(crate) async fn measure_async(
         &mut self,
         available: Size<AvailableSpace>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>) {
-        self.prepare(window, cx).measure(available, window, cx)
+        self.prepare_async(window, cx, stack)
+            .await
+            .measure_async(available, window, cx, stack)
+            .await
     }
 
-    pub(crate) fn measure_slice(
+    pub(crate) async fn measure_slice_async(
         &mut self,
         available: Size<AvailableSpace>,
         from: Pixels,
         height: Pixels,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>) {
-        self.prepare(window, cx)
-            .measure_slice(available, from, height, window, cx)
+        self.prepare_async(window, cx, stack)
+            .await
+            .measure_slice_async(available, from, height, window, cx, stack)
+            .await
     }
 }

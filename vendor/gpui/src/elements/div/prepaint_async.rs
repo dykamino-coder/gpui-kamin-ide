@@ -123,7 +123,7 @@ impl Interactivity {
     ) -> R {
         let style = self.compute_style_boxed(None, element_state.as_deref_mut(), window, cx);
 
-        if let Some(element_state) = element_state.as_deref_mut() {
+        if let Some(element_state) = element_state {
             if let Some(clicked_state) = element_state.clicked_state.as_ref() {
                 let clicked_state = clicked_state.borrow();
                 self.active = Some(clicked_state.element);

@@ -23,7 +23,7 @@ pub(super) struct Layer {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn prepare(
+pub(super) async fn prepare_async(
     e: &mut Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -32,6 +32,7 @@ pub(super) fn prepare(
     window: &mut Window,
     cx: &mut App,
     layers: &mut Vec<Layer>,
+    stack: &mut gpui::PaintStack,
 ) {
     let vcx = opts.cx.vcx();
     let merged = box_style(inherited, &e.style, vcx);
@@ -62,7 +63,8 @@ pub(super) fn prepare(
         let (origin, paint_size) = super::geometry::capture(&merged, (w, h), viewport, zoom);
         let density = (super::super::DENSITY * scale / zoom).clamp(1.0, 8.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        format!("{e:?}{merged:?}").hash(&mut hasher);
+        super::fingerprint::hash_tree(e, &mut hasher);
+        format!("{merged:?}").hash(&mut hasher);
         // Raster identity includes document content and the application text
         // defaults; it does not depend on which document owns identical HTML.
         format!("{:?}", opts.text).hash(&mut hasher);
@@ -89,23 +91,42 @@ pub(super) fn prepare(
                 AvailableSpace::Definite(px(w * zoom)),
                 AvailableSpace::Definite(px(h * zoom)),
             );
-            window.with_scene_capture_scale(density, |window| {
-                window.with_absolute_transformation(gpui::TransformationMatrix::unit(), |window| {
-                    window.with_content_mask_replaced(
-                        gpui::ContentMask {
-                            bounds: gpui::Bounds {
-                                origin: gpui::Point::default(),
-                                size: paint_size,
+            window
+                .with_scene_capture_scale_async(density, async |window| {
+                    window
+                        .with_absolute_transformation_async(
+                            gpui::TransformationMatrix::unit(),
+                            async |window| {
+                                window
+                                    .with_content_mask_replaced_async(
+                                        gpui::ContentMask {
+                                            bounds: gpui::Bounds {
+                                                origin: gpui::Point::default(),
+                                                size: paint_size,
+                                            },
+                                        },
+                                        async |window| {
+                                            window
+                                                .with_mask_scale_async(
+                                                    gpui::Point::default(),
+                                                    1.0,
+                                                    async |window| {
+                                                        element
+                                                            .prepaint_as_root_async(
+                                                                origin, size, window, cx, stack,
+                                                            )
+                                                            .await;
+                                                    },
+                                                )
+                                                .await;
+                                        },
+                                    )
+                                    .await;
                             },
-                        },
-                        |window| {
-                            window.with_mask_scale(gpui::Point::default(), 1.0, |window| {
-                                element.prepaint_as_root(origin, size, window, cx);
-                            });
-                        },
-                    );
-                });
-            });
+                        )
+                        .await;
+                })
+                .await;
             Some(element)
         } else {
             None
@@ -140,7 +161,13 @@ pub(super) fn prepare(
     };
     for child in &mut e.children {
         if let Node::Element(child) = child {
-            prepare(child, &merged, opts, viewport, scale, window, cx, layers);
+            stack
+                .run(|stack| {
+                    prepare_async(
+                        child, &merged, opts, viewport, scale, window, cx, layers, stack,
+                    )
+                })
+                .await;
         }
     }
 }
@@ -192,14 +219,16 @@ pub(super) fn cache(key: u64, png: &[u8], vcx: ValueCx<'_>) -> String {
 }
 
 pub(super) fn set_image(e: &mut Element, id: u64, uri: String) {
-    if e.node_id == id && e.tag == "image" {
-        e.attrs.push(("href".into(), uri));
-        return;
-    }
-    for child in &mut e.children {
-        if let Node::Element(child) = child {
-            set_image(child, id, uri.clone());
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if e.node_id == id && e.tag == "image" {
+            e.attrs.push(("href".into(), uri.clone()));
+            continue;
         }
+        pending.extend(e.children.iter_mut().rev().filter_map(|n| match n {
+            Node::Element(e) => Some(e),
+            _ => None,
+        }));
     }
 }
 

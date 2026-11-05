@@ -21,36 +21,42 @@ pub(super) struct Measurements {
 }
 
 impl Measurements {
-    pub(super) fn new(children: &mut [StackChild], window: &mut Window, cx: &mut App) -> Self {
+    pub(super) async fn new_async(
+        children: &mut [StackChild],
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> Self {
         let relative_y = children.iter().map(|child| child.rel.1).collect();
         let replayed = children
             .iter()
             .map(|child| child.replay && child.clone_dec.is_none())
             .collect();
-        let repeated = children
-            .iter_mut()
-            .map(|child| repeated::RepeatedMeasurements::new(child, window, cx))
-            .collect();
-        let children = children
-            .iter_mut()
-            .map(|child| {
-                if child.fragment_builders.len() == child.frags.len() + 1 {
-                    return child
-                        .fragment_builders
-                        .iter()
-                        .map(|handle| handle.measurement(window, cx))
-                        .collect();
+        let mut repeated = Vec::with_capacity(children.len());
+        for child in children.iter_mut() {
+            repeated
+                .push(repeated::RepeatedMeasurements::new_async(child, window, cx, stack).await);
+        }
+        let mut measures = Vec::with_capacity(children.len());
+        for child in children {
+            let mut copies = Vec::with_capacity(child.frags.len() + 1);
+            if child.fragment_builders.len() == child.frags.len() + 1 {
+                for handle in &child.fragment_builders {
+                    copies.push(handle.measurement_async(window, cx, stack).await);
                 }
-                std::iter::once(&mut child.el)
-                    .chain(child.frags.iter_mut())
-                    .map(|element| {
-                        FragmentMeasurement::ready(element.snapshot_layout_measurement(window, cx))
-                    })
-                    .collect()
-            })
-            .collect();
+            } else {
+                for element in std::iter::once(&mut child.el).chain(child.frags.iter_mut()) {
+                    copies.push(FragmentMeasurement::ready(
+                        element
+                            .snapshot_layout_measurement_async(window, cx, stack)
+                            .await,
+                    ));
+                }
+            }
+            measures.push(copies);
+        }
         Self {
-            children,
+            children: measures,
             relative_y,
             repeated,
             replayed,
@@ -59,7 +65,7 @@ impl Measurements {
 
     // Baselines depend on the fragment, its column geometry and the paint context.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn measure(
+    pub(super) async fn measure_async(
         &mut self,
         probe: &ColumnStack,
         kids: &[Kid],
@@ -69,6 +75,7 @@ impl Measurements {
         spans: &[(usize, f32)],
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> (Option<Pixels>, Option<Pixels>) {
         let col_width =
             ((width - probe.gap * (probe.count as f32 - 1.0)) / probe.count as f32).max(1.0);
@@ -101,9 +108,11 @@ impl Measurements {
             );
             let clipped = parts[fragment.kid] > 1 || clone;
             let (_, first, last) = if clipped {
-                measure.measure_slice(available, px(from), px(fragment.h), window, cx)
+                measure
+                    .measure_slice_async(available, px(from), px(fragment.h), window, cx, stack)
+                    .await
             } else {
-                measure.measure(available, window, cx)
+                measure.measure_async(available, window, cx, stack).await
             };
             let line_y = match probe.rows {
                 Some(rows) if rows.wrap => lines
@@ -113,8 +122,9 @@ impl Measurements {
             };
             let column = columns.entry(fragment.col).or_default();
             let y = line_y + fragment.y + self.relative_y[fragment.kid];
-            let (head, foot) =
-                self.repeated[fragment.kid].measure(fragment, available, y, window, cx);
+            let (head, foot) = self.repeated[fragment.kid]
+                .measure_async(fragment, available, y, window, cx, stack)
+                .await;
             column.include_unclipped(head.first, head.last, 0.0, 0.0);
             if clipped {
                 column.include(
@@ -134,14 +144,17 @@ impl Measurements {
             result.encompass(*column);
         }
         for &(kid, y) in spans {
-            let (_, first, last) = self.children[kid][0].measure(
-                size(
-                    AvailableSpace::Definite(px(width)),
-                    AvailableSpace::Definite(px(kids[kid].h)),
-                ),
-                window,
-                cx,
-            );
+            let (_, first, last) = self.children[kid][0]
+                .measure_async(
+                    size(
+                        AvailableSpace::Definite(px(width)),
+                        AvailableSpace::Definite(px(kids[kid].h)),
+                    ),
+                    window,
+                    cx,
+                    stack,
+                )
+                .await;
             result.encompass(Baselines {
                 first: first.map(|b| y + f32::from(b)),
                 last: last.map(|b| y + f32::from(b)),

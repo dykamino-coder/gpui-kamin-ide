@@ -50,7 +50,8 @@ impl Hooks for PageStack {
         let area = self.area_logical(&g);
         self.complete.set(false);
         let Ok((kids, mut geoms, names, pages, mut plan)) = self
-            .fragment_plan(window, cx, g, area)
+            .fragment_plan_async(window, cx, g, area, stack)
+            .await
             .inspect_err(|error| {
                 self.plan.borrow_mut().failure = match error {
                     super::planning::Failure::Continuation(error) => Some(*error),
@@ -87,7 +88,7 @@ impl Hooks for PageStack {
             geoms.push((self.geom_for)(i, &tail));
         }
         geoms.truncate(pages);
-        self.plan_oof(
+        self.plan_oof_async(
             super::oof::Normal {
                 plan: &plan,
                 geoms: &geoms,
@@ -96,7 +97,9 @@ impl Hooks for PageStack {
             },
             window,
             cx,
-        );
+            stack,
+        )
+        .await;
         // Independent OOF continuations need their own sheets (css-break-3
         // parallel flows): the stream plan, not an estimate, owns the count.
         let oof_pages = self.oof.plan.borrow().iter().map(|f| f.col + 1).max();

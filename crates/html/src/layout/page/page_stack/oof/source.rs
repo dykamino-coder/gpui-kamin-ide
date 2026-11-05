@@ -9,12 +9,13 @@ use gpui::{Bounds, Pixels};
 type Sources = Vec<(usize, Source)>;
 
 impl PageStack {
-    pub(super) fn oof_inputs(
+    pub(super) async fn oof_inputs_async(
         &self,
         normal: &Plan,
         pages: &Pages<'_>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Result<(Sources, Vec<Input>), Error> {
         let mut sources = Vec::new();
         let mut inputs = Vec::new();
@@ -22,7 +23,7 @@ impl PageStack {
             let Some(build) = &kid.oof else { continue };
             let first = normal.iter().find(|f| f.kid == owner).map_or(0, |f| f.col);
             let geom = pages.geometry(first);
-            let snapshot = build(geom.area, window, cx);
+            let snapshot = build(geom.area, window, cx, stack).await;
             self.oof
                 .snapshots
                 .borrow_mut()
@@ -124,7 +125,7 @@ impl PageStack {
         })
     }
 
-    pub(super) fn refresh_fixed(
+    pub(super) async fn refresh_fixed_async(
         &self,
         sources: &[(usize, Source)],
         context: &Context<'_>,
@@ -132,6 +133,7 @@ impl PageStack {
         streams: &mut Streams,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> Result<(), Error> {
         for (owner, kid) in self.kids.iter().enumerate() {
             if !sources
@@ -141,7 +143,7 @@ impl PageStack {
                 continue;
             }
             let build = kid.oof.as_ref().ok_or(Error::InvalidGeometry)?;
-            let snapshot = build(context.pages.geometry(index).area, window, cx);
+            let snapshot = build(context.pages.geometry(index).area, window, cx, stack).await;
             for (id, (_, old)) in sources
                 .iter()
                 .enumerate()

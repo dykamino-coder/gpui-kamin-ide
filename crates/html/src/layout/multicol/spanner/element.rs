@@ -13,8 +13,19 @@ pub(crate) enum SpannerPass {
     Final,
 }
 
-type Build = dyn Fn(Size<AvailableSpace>, SpannerPass, &mut Window, &mut App) -> AnyElement;
-type Intrinsic = dyn Fn(Size<AvailableSpace>, &mut Window, &mut App) -> f32;
+type Build = dyn for<'a> Fn(
+    Size<AvailableSpace>,
+    SpannerPass,
+    &'a mut Window,
+    &'a mut App,
+    &'a mut gpui::PaintStack,
+) -> gpui::PaintFuture<'a, AnyElement>;
+type Intrinsic = dyn for<'a> Fn(
+    Size<AvailableSpace>,
+    &'a mut Window,
+    &'a mut App,
+    &'a mut gpui::PaintStack,
+) -> gpui::PaintFuture<'a, f32>;
 
 pub(crate) struct SpannerFlow {
     pub(crate) build: Rc<Build>,
@@ -37,8 +48,21 @@ type MeasureMemo = Cell<Option<(Size<AvailableSpace>, gpui::MeasuredContent)>>;
 
 impl SpannerFlow {
     pub(crate) fn deferred(
-        build: impl Fn(Size<AvailableSpace>, SpannerPass, &mut Window, &mut App) -> AnyElement + 'static,
-        intrinsic: impl Fn(Size<AvailableSpace>, &mut Window, &mut App) -> f32 + 'static,
+        build: impl for<'a> Fn(
+            Size<AvailableSpace>,
+            SpannerPass,
+            &'a mut Window,
+            &'a mut App,
+            &'a mut gpui::PaintStack,
+        ) -> gpui::PaintFuture<'a, AnyElement>
+        + 'static,
+        intrinsic: impl for<'a> Fn(
+            Size<AvailableSpace>,
+            &'a mut Window,
+            &'a mut App,
+            &'a mut gpui::PaintStack,
+        ) -> gpui::PaintFuture<'a, f32>
+        + 'static,
     ) -> AnyElement {
         Self {
             build: Rc::new(build),
@@ -69,38 +93,48 @@ impl Hooks for SpannerFlow {
         // Анонимный поток сохраняет определённую высоту своего CSS-хоста;
         // при auto-высоте циклический процент остаётся неопределённым.
         style.size.height = gpui::relative(1.).into();
-        let id = window.request_measured_layout_with_physical_baselines(
+        let id = window.request_measured_layout_with_physical_baselines_async(
             style,
-            move |known, available, window, cx| {
+            async move |known,
+                        available,
+                        window: &mut Window,
+                        cx: &mut App,
+                        stack: &mut gpui::PaintStack| {
                 definite_height.set(known.height);
-                window.with_nested_layout(|window| {
-                    let height = known
-                        .height
-                        .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite);
-                    let width =
-                        known
-                            .width
-                            .map(f32::from)
-                            .unwrap_or_else(|| match available.width {
-                                AvailableSpace::Definite(w) => f32::from(w),
-                                other => intrinsic(size(other, height), window, cx),
-                            });
-                    let available = size(AvailableSpace::Definite(px(width)), height);
-                    let last = measured.take();
-                    if let Some((space, content)) = last.as_ref()
-                        && *space == available
-                    {
-                        crate::work::add!(SpannerMeasureReuses, 1);
-                        let content = content.clone();
-                        measured.set(last);
-                        return content;
-                    }
-                    let mut child = build(available, SpannerPass::Measure, window, cx);
-                    let mut snapshot = child.snapshot_layout_measurement(window, cx);
-                    let content = snapshot.measure_physical_baselines(available, window, cx);
-                    measured.set(Some((available, content.clone())));
-                    content
-                })
+                window
+                    .with_nested_layout_async(async |window| {
+                        let height = known
+                            .height
+                            .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite);
+                        let width = match known.width {
+                            Some(width) => f32::from(width),
+                            None => match available.width {
+                                AvailableSpace::Definite(width) => f32::from(width),
+                                other => intrinsic(size(other, height), window, cx, stack).await,
+                            },
+                        };
+                        let available = size(AvailableSpace::Definite(px(width)), height);
+                        let last = measured.take();
+                        if let Some((space, content)) = last.as_ref()
+                            && *space == available
+                        {
+                            crate::work::add!(SpannerMeasureReuses, 1);
+                            let content = content.clone();
+                            measured.set(last);
+                            return content;
+                        }
+                        let mut child =
+                            build(available, SpannerPass::Measure, window, cx, stack).await;
+                        let mut snapshot = child
+                            .snapshot_layout_measurement_async(window, cx, stack)
+                            .await;
+                        let content = snapshot
+                            .measure_physical_baselines_async(available, window, cx, stack)
+                            .await;
+                        measured.set(Some((available, content.clone())));
+                        content
+                    })
+                    .await
             },
         );
         (id, id)
@@ -122,7 +156,7 @@ impl Hooks for SpannerFlow {
                 .get()
                 .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite),
         );
-        let mut child = (self.build)(available, SpannerPass::Final, window, cx);
+        let mut child = (self.build)(available, SpannerPass::Final, window, cx, stack).await;
         child
             .layout_as_root_at_async(origin, available, window, cx, stack)
             .await;

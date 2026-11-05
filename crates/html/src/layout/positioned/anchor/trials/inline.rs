@@ -93,52 +93,56 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
     let cb_node = own.cb_node;
     let dependencies = super::super::Dependencies::of(&own, &inherited, vcx, opts.cx.layout());
     let kid = OofKid::Trials(
-        Box::new(move |bounds, spot, place, window, cx| {
-            let vcx = build_opts.cx.vcx();
-            let mut base = box_style(&inherited, &source.style, vcx);
-            base.self_node = source.node_id;
-            base.anchor_key = super::super::key_of(&source);
-            base.anchor_seq = build_opts.cx.anchor_seq_for(&source);
-            base.resolve_viewport(build_opts.viewport, vcx);
-            let options = super::Options::new(&base, &inherited, vcx, build_opts.cx.layout());
-            super::run(
-                bounds,
-                spot,
-                place,
-                &options,
-                &inherited,
-                |style, trial, window| {
-                    let (positioning, escaped) = retained.isolate();
-                    let mut opts = build_opts.clone();
-                    opts.cx.position.state = positioning;
-                    opts.cx.position.oof_trial = Some((base.anchor_key, trial));
-                    opts.cx.position.oof_computed =
-                        style.element_style.clone().map(|e| (base.anchor_key, e));
-                    opts.cx.position.oof_sizes = Some((
-                        base.anchor_key,
-                        super::super::resolve::current_inputs(
-                            style,
-                            &inherited,
-                            bounds,
-                            window,
-                            vcx,
-                            build_opts.cx.layout(),
-                        ),
-                    ));
-                    let mut candidate = source.clone();
-                    super::apply_style(candidate.style.used_mut(), style);
-                    let child =
-                        crate::layout::atom::positioned::trial(&inherited, &candidate, &opts)
-                            .unwrap_or_else(|| gpui::div().into_any_element());
-                    let child = crate::layout::atom::positioned::inline_abs_paint_last(
-                        &candidate, child, &opts.cx,
-                    );
-                    (child, escaped)
-                },
-                window,
-                cx,
-                vcx,
-            )
+        Box::new(move |bounds, spot, place, window, cx, stack| {
+            Box::pin(async move {
+                let vcx = build_opts.cx.vcx();
+                let mut base = box_style(&inherited, &source.style, vcx);
+                base.self_node = source.node_id;
+                base.anchor_key = super::super::key_of(&source);
+                base.anchor_seq = build_opts.cx.anchor_seq_for(&source);
+                base.resolve_viewport(build_opts.viewport, vcx);
+                let options = super::Options::new(&base, &inherited, vcx, build_opts.cx.layout());
+                super::run_async(
+                    bounds,
+                    spot,
+                    place,
+                    &options,
+                    &inherited,
+                    |style, trial, window| {
+                        let (positioning, escaped) = retained.isolate();
+                        let mut opts = build_opts.clone();
+                        opts.cx.position.state = positioning;
+                        opts.cx.position.oof_trial = Some((base.anchor_key, trial));
+                        opts.cx.position.oof_computed =
+                            style.element_style.clone().map(|e| (base.anchor_key, e));
+                        opts.cx.position.oof_sizes = Some((
+                            base.anchor_key,
+                            super::super::resolve::current_inputs(
+                                style,
+                                &inherited,
+                                bounds,
+                                window,
+                                vcx,
+                                build_opts.cx.layout(),
+                            ),
+                        ));
+                        let mut candidate = source.clone();
+                        super::apply_style(candidate.style.used_mut(), style);
+                        let child =
+                            crate::layout::atom::positioned::trial(&inherited, &candidate, &opts)
+                                .unwrap_or_else(|| gpui::div().into_any_element());
+                        let child = crate::layout::atom::positioned::inline_abs_paint_last(
+                            &candidate, child, &opts.cx,
+                        );
+                        (child, escaped)
+                    },
+                    window,
+                    cx,
+                    vcx,
+                    stack,
+                )
+                .await
+            })
         }),
         None,
     );

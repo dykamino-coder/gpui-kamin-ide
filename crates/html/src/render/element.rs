@@ -32,8 +32,6 @@ pub(crate) async fn element_stack(
     opts: &RenderOpts,
 ) -> AnyElement {
     crate::work::add!(RebuiltNodes, 1);
-    let entered = opts.inner(|cx| cx.contracts.reflow_depth += 1);
-    let opts = &*entered;
     let own = crate::layout::positioned::containing_block::metrics::fragmentation::options(e, opts);
     let opts = own.as_deref().unwrap_or(opts);
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
@@ -48,12 +46,11 @@ pub(crate) async fn element_stack(
         inner.frag.watch = Some(watch);
         Some(inner)
     });
-    let built = crate::layout::fragment::paginate::watch::wrap(
+    crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
         element_inner(stk, e, inherited, nested.as_deref().unwrap_or(opts)).await,
         opts,
-    );
-    crate::layout::depth::wrap(built, opts)
+    )
 }
 
 #[cfg(test)]

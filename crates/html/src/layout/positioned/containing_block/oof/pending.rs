@@ -2,7 +2,9 @@
 
 use super::{Item, OofKid, OofQueue, Place};
 mod context;
+mod painted_guard;
 use context::Context;
+pub(super) use painted_guard::PaintedGuard;
 type Output = Rc<RefCell<Vec<Painted>>>;
 use gpui::{AnyElement, App, Bounds, ContentMask, Pixels, ResultExt, Window, point, px};
 use std::{
@@ -119,7 +121,12 @@ impl Pending {
         }
     }
 
-    pub(super) fn finish(&self, window: &mut Window, cx: &mut App) {
+    pub(super) async fn finish_async(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         loop {
             // Выбранная проба может породить OOF в уже пройденный слой.
             self.collect();
@@ -143,14 +150,17 @@ impl Pending {
             // либо отсутствующий якорь. Ранняя вершина получает CSS fallback;
             // FnOnce исключает повторное построение этой коробки.
             context
-                .enter(window, |window| {
-                    let (mut root, paint) = super::host::build_one(item, bounds, place, window, cx);
-                    root.prepaint_at(point(px(0.), px(0.)), window, cx);
+                .enter_async(window, async |window| {
+                    let (mut root, paint) =
+                        super::host::build_one_async(item, bounds, place, window, cx, stack).await;
+                    root.prepaint_at_async(point(px(0.), px(0.)), window, cx, stack)
+                        .await;
                     match paint {
                         Some(paint) => paint.publish(root, context.mask),
                         None => output.borrow_mut().push(Painted(root, context.mask)),
                     }
                 })
+                .await
                 .log_err();
         }
     }

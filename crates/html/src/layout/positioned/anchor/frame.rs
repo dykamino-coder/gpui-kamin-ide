@@ -34,11 +34,27 @@ pub(crate) fn next_seq(anchors: &AnchorState) -> u32 {
 
 /// Run `f` with its own record of anchor misses (boxes whose anchor lookup
 /// failed) and return them; the frame keeps every miss.
-pub(crate) fn misses_of(anchors: &AnchorState, f: impl FnOnce()) -> std::collections::HashSet<u64> {
-    let misses = &anchors.misses;
-    let before = misses.take();
-    f();
-    let during = misses.replace(before);
-    misses.borrow_mut().extend(during.iter().copied());
+pub(crate) async fn misses_of_async(
+    anchors: &AnchorState,
+    f: impl AsyncFnOnce(),
+) -> std::collections::HashSet<u64> {
+    struct Misses<'a> {
+        anchors: &'a AnchorState,
+        before: std::collections::HashSet<u64>,
+    }
+    impl Drop for Misses<'_> {
+        fn drop(&mut self) {
+            let mut during = self.anchors.misses.take();
+            during.extend(self.before.drain());
+            self.anchors.misses.replace(during);
+        }
+    }
+    let guard = Misses {
+        anchors,
+        before: anchors.misses.take(),
+    };
+    f().await;
+    let during = anchors.misses.borrow().clone();
+    drop(guard);
     during
 }

@@ -1,8 +1,8 @@
 //! Intermediate lines are extracted from completed native leaf geometry with actual insets.
 
 use super::*;
-use crate::taffy::node_measure;
 use crate::px;
+use crate::taffy::node_measure;
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;
 
@@ -137,4 +137,52 @@ fn copied_line_metadata_is_independent_while_callbacks_are_shared() {
     assert_eq!(original.layout_lines.as_ref().unwrap()[0], px(5.0));
     assert_eq!(original.layout_lines_x.as_ref().unwrap()[0], px(23.0));
     assert!(Rc::ptr_eq(&original.measure, &copy.measure));
+}
+
+#[test]
+fn visible_lines_at_twenty_thousand_levels_use_bounded_native_stack() {
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            use taffy::{Baselines, CacheTree, LayoutInput, LayoutOutput, RunMode};
+            let mut tree = TaffyTree::<NodeContext>::new();
+            let leaf = tree.new_leaf(Style::default()).unwrap();
+            let mut nodes = vec![leaf];
+            let mut root = leaf;
+            for _ in 0..20_000 {
+                root = tree.new_with_children(Style::default(), &[root]).unwrap();
+                nodes.push(root);
+            }
+            let sibling = tree.new_leaf(Style::default()).unwrap();
+            tree.add_child(root, sibling).unwrap();
+            nodes.push(sibling);
+            // Isolate traversal from the layout algorithm: these are completed
+            // outputs with zero origins, as in a cached native layout tree.
+            for node in nodes {
+                tree.cache_store(
+                    node,
+                    &LayoutInput {
+                        run_mode: RunMode::PerformLayout,
+                        ..LayoutInput::HIDDEN
+                    },
+                    LayoutOutput {
+                        baselines: Baselines {
+                            first: Some(3.0),
+                            last: Some(9.0),
+                        },
+                        baselines_x: Baselines {
+                            first: Some(3.0),
+                            last: Some(9.0),
+                        },
+                        ..LayoutOutput::DEFAULT
+                    },
+                );
+            }
+            let mut lines = Vec::new();
+            collect(&tree, root, 0.0, 1.0, &mut lines);
+            assert_eq!(lines, vec![px(3.0), px(9.0), px(3.0), px(9.0)]);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

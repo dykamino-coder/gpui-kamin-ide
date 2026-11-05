@@ -8,6 +8,7 @@ pub(super) use traversal::own_capture_async;
 /// Paint a continued root once into its own capture, without its ancestors'
 /// effects; re-admit placements that no legacy copy replays.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(super) fn own_capture(
     source: &Rc<Source>,
     id: u64,

@@ -1,7 +1,9 @@
 //! Геометрия разрывов измеренного плана band до того, как временные деревья истекут.
 
-use super::{Kid, Plan, Slot};
-use crate::layout::fragment::flow::{FloatGeometry, FlowGeometry, FlowMeasure, FlowNode};
+#[cfg(test)]
+use super::Slot;
+use super::{Kid, Plan};
+use crate::layout::fragment::flow::{FlowGeometry, FlowMeasure, FlowNode};
 use std::rc::Rc;
 
 impl super::BandFlow {
@@ -72,83 +74,16 @@ impl FragmentFlow {
     }
 }
 
-fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
-    for (kid, slot) in kids.iter().zip(slots) {
-        geometry
-            .boxes
-            .insert(kid.node_id, (slot.y, slot.y + slot.b));
-        let mut child = FlowGeometry::default();
-        if matches!(kid.kind, super::Kind::Float { .. }) {
-            let bounds = FloatGeometry {
-                id: kid.node_id,
-                anchor: slot.y - slot.float_margins[0],
-                top: slot.y,
-                bottom: slot.y + slot.b,
-                margins: slot.float_margins,
-                first_break: (!kid.monolithic)
-                    .then(|| slot.y + slot.geometry.cuts.first().map_or(0.0, |&(a, _)| a)),
-            };
-            geometry.floats.push(bounds);
-            child
-                .float_contexts
-                .push(crate::layout::fragment::flow::float_resume::Snapshot {
-                    scope: Vec::new(),
-                    bounds,
-                });
-        }
-        let (start, end) = if kid.monolithic && matches!(kid.kind, super::Kind::Float { .. }) {
-            // Float margins stay with an unbreakable box during balancing.
-            (
-                slot.y - slot.float_margins[0],
-                slot.y + slot.b + slot.float_margins[1],
-            )
-        } else {
-            (slot.y, slot.y + slot.b)
-        };
-        if kid.monolithic {
-            if !matches!(kid.kind, super::Kind::Float { .. }) {
-                geometry.solid.push((start, end));
-            }
-        } else if let Some(nest) = &kid.nest {
-            // Nested slots already use the host's coordinates.
-            append(&mut child, &nest.kids, &slot.kids);
-        } else {
-            child.append(&slot.geometry, slot.y);
-        }
-        prefix(&mut child, kid.flow_key);
-        if matches!(kid.kind, super::Kind::Float { .. }) {
-            child.float_leads.extend(
-                child
-                    .line_pushes
-                    .iter()
-                    .filter(|p| (p.at - slot.y).abs() < crate::tolerance::COORD_EPS)
-                    .cloned()
-                    .map(|p| (kid.node_id, p)),
-            );
-        }
-        geometry.append(&child, 0.0);
-        geometry.cuts.push((start, start));
-        geometry.cuts.push((end, end));
-    }
-}
-
-fn prefix(geometry: &mut FlowGeometry, key: usize) {
-    for p in &mut geometry.inline {
-        p.scope.insert(0, key);
-    }
-    for f in &mut geometry.float_contexts {
-        f.scope.insert(0, key);
-    }
-}
+mod geometry;
+use geometry::{append, prefix};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::layout::float::band_flow::{Edge, Kind};
 
-    #[test]
-    fn unused_block_size_is_fragmentable_unless_the_box_is_monolithic() {
-        let mut kid = Kid {
+    fn node() -> Kid {
+        Kid {
             intrinsic: Default::default(),
             flow: None,
             watched: None,
@@ -175,7 +110,12 @@ mod tests {
             start_open: true,
             shape: None,
             rtl: false,
-        };
+        }
+    }
+
+    #[test]
+    fn unused_block_size_is_fragmentable_unless_the_box_is_monolithic() {
+        let mut kid = node();
         let slot = Slot {
             b: 200.,
             ..Default::default()
@@ -218,5 +158,45 @@ mod tests {
         append(&mut geometry, &[kid], &[slot]);
         assert_eq!(geometry.floats[0].first_break, Some(120.));
         assert_eq!(geometry.floats[0].bottom, 150.);
+    }
+
+    #[test]
+    fn deep_slot_geometry_uses_a_small_native_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let mut kid = node();
+                kid.kind = Kind::Flow;
+                let mut slot = Slot {
+                    b: 20.,
+                    ..Default::default()
+                };
+                for id in 1..=1_000 {
+                    let mut parent = node();
+                    parent.node_id = id;
+                    parent.kind = Kind::Nest;
+                    parent.nest = Some(super::super::Nest {
+                        kids: vec![kid],
+                        inset: [Edge::Px(0.); 4],
+                        height: None,
+                        width: None,
+                        group: None,
+                    });
+                    kid = parent;
+                    slot = Slot {
+                        b: 20.,
+                        kids: vec![slot].into(),
+                        ..Default::default()
+                    };
+                }
+                let mut geometry = FlowGeometry::default();
+                append(&mut geometry, &[kid], &[slot]);
+                assert_eq!(geometry.boxes.len(), 1_001);
+                assert_eq!(geometry.cuts.len(), 2_002);
+                assert!(geometry.boxes.values().all(|&v| v == (0., 20.)));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

@@ -1,7 +1,7 @@
 //! Общий вызов раскладки кусков: полный проход и независимый шаг одного потока.
 
+use super::Plan;
 use super::cuts::InlineTokens;
-use super::{Plan, ResumeMeasure};
 use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::{Kid, RepeatGeom};
 
@@ -17,7 +17,7 @@ pub(super) struct Cursor {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn fill_pieces(
+pub(super) async fn fill_pieces_async(
     target_at: &dyn Fn(usize) -> f32,
     inline_at: &dyn Fn(usize) -> Option<f32>,
     limit: usize,
@@ -36,9 +36,9 @@ pub(super) fn fill_pieces(
     copy: usize,
     flow: f32,
     rg: RepeatGeom,
-    remeasure: &mut ResumeMeasure<'_>,
+    remeasure: &mut impl AsyncFnMut(super::MeasureRequest) -> super::Measurement,
 ) -> Result<(), Error> {
-    super::pieces::fill_pieces_inner(
+    super::pieces::fill_pieces_inner_async(
         target_at,
         inline_at,
         limit,
@@ -60,6 +60,7 @@ pub(super) fn fill_pieces(
         remeasure,
         &mut InlineTokens::default(),
         false,
-    )?;
+    )
+    .await?;
     Ok(())
 }

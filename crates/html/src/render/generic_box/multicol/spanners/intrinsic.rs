@@ -2,20 +2,21 @@
 
 use super::{is_span, probe};
 use crate::dom::{Element, Node};
-use crate::layout::multicol::spanner::hoist_spanners;
+use crate::layout::multicol::spanner::hoist_spanners_async;
 use crate::layout::options::RenderOpts;
 use crate::render::generic_box::columns::column_plan;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{App, AvailableSpace, IntoElement, ParentElement, Window, div};
 
-pub(super) fn measure(
+pub(super) async fn measure_async(
     e: &Element,
     style: &BoxStyle,
     opts: &RenderOpts,
     available: gpui::Size<AvailableSpace>,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> f32 {
     let mut opts = opts.clone();
     opts.frag.watch = None;
@@ -28,11 +29,18 @@ pub(super) fn measure(
     let mut root = div()
         .children(opts.cx.contracts.build.blocks(&e.children, style, opts))
         .into_any_element();
-    let width = f32::from(root.layout_as_root_unrounded(available, window, cx).width);
-    let mut measure = |child: &Element, parent: &BoxStyle, width: f32| {
-        probe::measure(child, parent, width, opts, window, cx)
-    };
-    if let Some(kids) = hoist_spanners(&e.children, style, opts, width, &mut measure) {
+    let width = f32::from(
+        root.layout_as_root_unrounded_async(available, window, cx, stack)
+            .await
+            .width,
+    );
+    let mut measure =
+        async |child: &Element, parent: &BoxStyle, width: f32, stack: &mut gpui::PaintStack| {
+            probe::measure_async(child, parent, width, opts, window, cx, stack).await
+        };
+    if let Some(kids) =
+        hoist_spanners_async(&e.children, style, opts, width, &mut measure, stack).await
+    {
         e.children = kids.into();
     }
     let p = column_plan(&e, style, opts);
@@ -47,12 +55,16 @@ pub(super) fn measure(
             .children(opts.cx.contracts.build.blocks(nodes, style, opts))
             .into_any_element();
         body = body.max(f32::from(
-            el.layout_as_root_unrounded(available, window, cx).width,
+            el.layout_as_root_unrounded_async(available, window, cx, stack)
+                .await
+                .width,
         ));
         if let Some(Node::Element(sp)) = spanner {
             let mut el = opts.cx.contracts.build.element(sp, style, opts);
             span = span.max(f32::from(
-                el.layout_as_root_unrounded(available, window, cx).width,
+                el.layout_as_root_unrounded_async(available, window, cx, stack)
+                    .await
+                    .width,
             ));
         }
     }

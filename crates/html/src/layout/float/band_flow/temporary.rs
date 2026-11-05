@@ -3,7 +3,11 @@
 use super::Probe;
 
 impl Probe<'_> {
-    pub(super) fn temporary_layout<T>(&mut self, run: impl FnOnce(&mut Probe<'_>) -> T) -> T {
+    pub(super) async fn temporary_layout<T>(
+        &mut self,
+        stack: &mut gpui::PaintStack,
+        run: impl AsyncFnOnce(&mut Probe<'_>, &mut gpui::PaintStack) -> T,
+    ) -> T {
         let Self {
             window,
             cx,
@@ -18,24 +22,27 @@ impl Probe<'_> {
             engine: _,
             last_prepared: _,
         } = self;
-        let (result, geometry, clamped) = gpui::with_temporary_element_arena(|| {
-            window.with_nested_layout(|window| {
-                let mut probe = Probe::new(
-                    window,
-                    cx,
-                    *vert,
-                    fragment.as_ref(),
-                    paint.clone(),
-                    super::fragment::ProbeScopes {
-                        clamp: clamp.clone(),
-                        positioning: positioning.clone(),
-                    },
-                    *build,
-                );
-                let result = run(&mut probe);
-                (result, probe.last_geometry, probe.last_clamp)
-            })
-        });
+        let (result, geometry, clamped) = gpui::with_temporary_element_arena_async(async || {
+            window
+                .with_retained_layout_async(&mut gpui::RetainedLayout::default(), async |window| {
+                    let mut probe = Probe::new(
+                        window,
+                        cx,
+                        *vert,
+                        fragment.as_ref(),
+                        paint.clone(),
+                        super::fragment::ProbeScopes {
+                            clamp: clamp.clone(),
+                            positioning: positioning.clone(),
+                        },
+                        *build,
+                    );
+                    let result = run(&mut probe, stack).await;
+                    (result, probe.last_geometry, probe.last_clamp)
+                })
+                .await
+        })
+        .await;
         *last_geometry = geometry;
         *last_clamp = clamped;
         result
@@ -116,20 +123,26 @@ mod tests {
                     },
                     layout.contracts.build,
                 );
-                for expected in 1..=3 {
-                    super::super::probe_of(
-                        super::super::Kind::Flow,
-                        &build,
-                        100.,
-                        100.,
-                        None,
-                        None,
-                        &mut probe,
-                    );
-                    assert_eq!(drops.get(), expected);
-                }
-                super::super::intrinsic_of(&build, &mut probe);
-                assert_eq!(drops.get(), 4);
+                reblessive::Stack::new()
+                    .enter(|stack| async {
+                        for expected in 1..=3 {
+                            super::super::probe_of(
+                                super::super::Kind::Flow,
+                                &build,
+                                100.,
+                                100.,
+                                None,
+                                None,
+                                &mut probe,
+                                stack,
+                            )
+                            .await;
+                            assert_eq!(drops.get(), expected);
+                        }
+                        super::super::intrinsic_of(&build, &mut probe, stack).await;
+                        assert_eq!(drops.get(), 4);
+                    })
+                    .finish();
                 div()
             },
         );

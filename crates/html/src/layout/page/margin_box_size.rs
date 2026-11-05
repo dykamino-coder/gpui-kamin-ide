@@ -18,23 +18,54 @@ pub(super) fn keyword(length: Option<Len>) -> bool {
 // CSS Sizing 3 §sizing-values instead measures intrinsic sizing keywords.
 // Blink LayoutEdgeMarginNode lays out the cross axis after fixing the main
 // axis (page_container_layout_algorithm.cc:802-815).
-pub(super) fn intrinsic(
+pub(super) async fn intrinsic_async(
     b: &mut MarginBox,
     horizontal: bool,
     other: Option<f32>,
     available: f32,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> Option<f32> {
     let length = b.intrinsic[usize::from(!horizontal)];
     if !keyword(length) {
         return None;
     }
-    let mut measure = |axis| measure(b, horizontal, other, axis, window, cx);
-    let max = measure(AvailableSpace::MaxContent);
+    let max = measure_async(
+        b,
+        horizontal,
+        other,
+        AvailableSpace::MaxContent,
+        window,
+        cx,
+        stack,
+    )
+    .await;
     Some(match length {
-        Some(Len::MinContent) => measure(AvailableSpace::MinContent),
-        Some(Len::FitContent) => max.min(available).max(measure(AvailableSpace::MinContent)),
+        Some(Len::MinContent) => {
+            measure_async(
+                b,
+                horizontal,
+                other,
+                AvailableSpace::MinContent,
+                window,
+                cx,
+                stack,
+            )
+            .await
+        }
+        Some(Len::FitContent) => max.min(available).max(
+            measure_async(
+                b,
+                horizontal,
+                other,
+                AvailableSpace::MinContent,
+                window,
+                cx,
+                stack,
+            )
+            .await,
+        ),
         _ => max,
     })
 }
@@ -42,13 +73,14 @@ pub(super) fn intrinsic(
 // CSS Page 3 §margin-box-terms: intrinsic contributions follow the box's
 // inline axis, even on a physically vertical page edge. Blink
 // page_container_layout_algorithm.cc:536-588 makes the same axis distinction.
-pub(super) fn measure(
+pub(super) async fn measure_async(
     b: &MarginBox,
     horizontal: bool,
     other: Option<f32>,
     axis: AvailableSpace,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> f32 {
     let inline = if b.vertical {
         if horizontal {
@@ -72,7 +104,9 @@ pub(super) fn measure(
     } else {
         size(other, axis)
     };
-    let measured = probe.layout_as_root_unrounded(space, window, cx);
+    let measured = probe
+        .layout_as_root_unrounded_async(space, window, cx, stack)
+        .await;
     if horizontal {
         measured.width.into()
     } else {

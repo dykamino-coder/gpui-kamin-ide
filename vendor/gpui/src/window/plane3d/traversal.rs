@@ -81,7 +81,7 @@ impl Window {
             } else {
                 0
             };
-            self.insert_plane_mark(id, fragment, ctx.content_mask.clone());
+            self.insert_plane_mark(id, fragment, ctx.content_mask);
         }
         result
     }

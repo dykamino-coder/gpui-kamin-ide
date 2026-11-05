@@ -2,7 +2,7 @@
 
 pub(crate) mod inline;
 mod run;
-pub(crate) use run::run;
+pub(crate) use run::run_async;
 mod candidates;
 mod owned;
 mod signature;

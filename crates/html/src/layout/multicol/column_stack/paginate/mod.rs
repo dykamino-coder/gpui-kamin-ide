@@ -21,18 +21,29 @@ const INNER: usize = 24;
 const OUTER: usize = 12;
 
 impl ColumnStack {
-    pub(crate) fn paginate_children(&mut self, window: &mut Window, cx: &mut App) {
+    pub(crate) async fn paginate_children_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         if self.rows.is_some_and(|r| !r.cap) || self.axis.is_vertical() {
             return;
         }
         for i in 0..self.children.len() {
             if self.children[i].paginate.is_some() && self.children[i].measure.is_some() {
-                self.paginate_one(i, window, cx);
+                self.paginate_one_async(i, window, cx, stack).await;
             }
         }
     }
 
-    fn paginate_one(&mut self, i: usize, window: &mut Window, cx: &mut App) {
+    async fn paginate_one_async(
+        &mut self,
+        i: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let Some(p) = self.children[i].paginate.take() else {
             return;
         };
@@ -53,7 +64,10 @@ impl ColumnStack {
         let balanced = self.fixed_height.is_none();
         let mut struts: Struts = Struts::new();
         let ok = 'solve: {
-            let Some(geoms) = self.lay_out(i, &p, n, &struts, window, cx) else {
+            let Some(geoms) = self
+                .lay_out_async(i, &p, n, &struts, window, cx, stack)
+                .await
+            else {
                 break 'solve false;
             };
             // First guess: the ordinary balance told where the unfragmented
@@ -101,7 +115,10 @@ impl ColumnStack {
                 struts = frozen.clone();
                 let mut shortage = f32::MAX;
                 for _ in 0..INNER {
-                    let Some(geoms) = self.lay_out(i, &p, n, &struts, window, cx) else {
+                    let Some(geoms) = self
+                        .lay_out_async(i, &p, n, &struts, window, cx, stack)
+                        .await
+                    else {
                         break 'solve false;
                     };
                     let (h, y0, _) = self.frame_of(i);

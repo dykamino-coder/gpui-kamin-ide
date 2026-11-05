@@ -15,7 +15,7 @@ pub(crate) use rows::{RowMeasures, RowSlot};
 mod parent;
 pub(crate) use parent::SpannerMetrics;
 mod hoist;
-pub(crate) use hoist::hoist_spanners;
+pub(crate) use hoist::hoist_spanners_async;
 pub(super) use hoist::intrinsic_inline_size;
 pub(crate) use hoist::multicol_container;
 
@@ -210,11 +210,20 @@ fn passes_spanner(c: &Element) -> bool {
 
 /// Есть ли в поддереве спаннер, достижимый через проходимых предков.
 pub(crate) fn has_deep_spanner(c: &Element) -> bool {
-    c.children.iter().any(|n| match n {
-        Node::Element(k) if spanner_box(k) => true,
-        Node::Element(k) if passes_spanner(k) || splits_for_spanner(k) => has_deep_spanner(k),
-        _ => false,
-    })
+    let mut pending = vec![c.children.iter()];
+    while let Some(children) = pending.last_mut() {
+        match children.next() {
+            Some(Node::Element(k)) if spanner_box(k) => return true,
+            Some(Node::Element(k)) if passes_spanner(k) || splits_for_spanner(k) => {
+                pending.push(k.children.iter())
+            }
+            Some(_) => {}
+            None => {
+                pending.pop();
+            }
+        }
+    }
+    false
 }
 
 /// Строчный предок спаннера. Блок внутри строчного рвёт его на анонимные

@@ -24,7 +24,13 @@ impl ColumnStack {
     /// Копия может сама содержать многоколоночник, и его раскладка идёт внутри
     /// этой: кадр, живущий на время вложенной раскладки, держится малым, а
     /// разбор её итога — отдельным кадром (`record_main`) после возврата.
-    pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) {
+    pub(crate) async fn lay_out_main_async(
+        &mut self,
+        i: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let axis = self.axis;
         let c = &mut self.children[i];
         let (measured, w) = match (c.measure, c.breaks_w) {
@@ -34,20 +40,28 @@ impl ColumnStack {
         };
         crate::work::add!(MulticolChildLayouts, 1);
         crate::work::time!(_layout, MulticolChildLayoutNs);
-        let (sz, content) = c.el.layout_as_root_with_content(
-            if axis.is_vertical() {
-                size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
-            } else {
-                size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
-            },
-            window,
-            cx,
-        );
+        let (sz, content) =
+            c.el.layout_as_root_with_content_async(
+                if axis.is_vertical() {
+                    size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
+                } else {
+                    size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
+                },
+                window,
+                cx,
+                stack,
+            )
+            .await;
         self.record_main(i, measured, (sz, content), window);
     }
 
     /// Применить заявки и переложить только изменённые деревья.
-    fn grow_once(&mut self, window: &mut Window, cx: &mut App) -> bool {
+    async fn grow_once_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> bool {
         let local_grows = self.growth_requests();
         let mut dirty = vec![false; self.children.len()];
         for (index, grows) in local_grows.into_iter().enumerate() {
@@ -60,10 +74,19 @@ impl ColumnStack {
         }
         for (i, _) in dirty.iter().enumerate().filter(|d| *d.1) {
             copies::rebuild(&mut self.children[i]);
-            self.lay_out_main(i, window, cx);
+            self.lay_out_main_async(i, window, cx, stack).await;
         }
         self.reserve_row_copies();
         self.reserve_overflow_copies();
         true
+    }
+}
+
+#[cfg(test)]
+impl ColumnStack {
+    pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) -> () {
+        reblessive::Stack::new()
+            .enter(|stack| self.lay_out_main_async(i, window, cx, stack))
+            .finish()
     }
 }

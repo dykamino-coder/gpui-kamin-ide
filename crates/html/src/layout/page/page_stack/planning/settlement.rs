@@ -77,12 +77,12 @@ impl State {
     }
 }
 
-pub(super) fn settle<S: Eq + Hash, T>(
-    mut step: impl FnMut() -> (bool, S, T),
+pub(super) async fn settle_async<S: Eq + Hash, T>(
+    mut step: impl AsyncFnMut() -> (bool, S, T),
 ) -> Result<T, Incomplete> {
     let mut seen = HashSet::new();
     loop {
-        let (stable, state, value) = step();
+        let (stable, state, value) = step().await;
         if stable {
             return Ok(value);
         }
@@ -90,4 +90,14 @@ pub(super) fn settle<S: Eq + Hash, T>(
             return Err(Incomplete);
         }
     }
+}
+
+#[cfg(test)]
+pub(super) fn settle<S: Eq + Hash, T>(
+    mut step: impl FnMut() -> (bool, S, T),
+) -> Result<T, Incomplete> {
+    use futures::FutureExt as _;
+    settle_async(async || step())
+        .now_or_never()
+        .expect("synchronous settlement never suspends")
 }

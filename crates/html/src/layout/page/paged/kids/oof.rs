@@ -27,9 +27,26 @@ impl Paint<'_> {
         let padding = self.padding;
         let first = self.first;
         let vertical = self.vertical;
-        Some(Rc::new(move |area, window, cx| {
-            let frame = || super::frame::wrap(padding, area.1, first, vertical);
-            layout::collect_paged(&nodes, &root, (area, &frame), &opts, window, cx)
+        let source = Rc::new((nodes, root, opts));
+        Some(Rc::new(move |area, window, cx, stack| {
+            let source = source.clone();
+            Box::pin(async move {
+                let (nodes, root, opts) = &*source;
+                let frame = || super::frame::wrap(padding, area.1, first, vertical);
+                stack
+                    .run(|stack| {
+                        layout::collect_paged_async(
+                            nodes,
+                            root,
+                            (area, &frame),
+                            opts,
+                            window,
+                            cx,
+                            stack,
+                        )
+                    })
+                    .await
+            })
         }))
     }
 }

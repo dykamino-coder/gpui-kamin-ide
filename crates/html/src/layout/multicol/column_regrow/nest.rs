@@ -15,14 +15,21 @@ impl ColumnStack {
     /// заданная высота колонок либо, у единственного вложенного многоколоночника
     /// заданной высоты в балансируемых колонках, его доля на колонку.
     /// Ложь — ребёнок не вложенный ряд, его меряет `lay_out_main`.
-    pub(crate) fn resume_nested(&mut self, i: usize, window: &mut Window, cx: &mut App) -> bool {
+    pub(crate) async fn resume_nested_async(
+        &mut self,
+        i: usize,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> bool {
         let Some(resume) = self.children[i].resume.clone() else {
             return false;
         };
         match fragmentainer_extent(self.fixed_height, self.rows) {
             Some(hh) => {
                 let start = self.start_in_fragmentainer(i, hh);
-                self.place_nested(i, &resume, Some((hh, start)), window, cx);
+                self.place_nested_async(i, &resume, Some((hh, start)), window, cx, stack)
+                    .await;
                 let need = self.children[i].nest_report.as_ref().and_then(|r| r.get());
                 if start > COORD_EPS
                     && let Some(need) = need
@@ -30,16 +37,19 @@ impl ColumnStack {
                     // Ряд в остатке фрагментаинера не уместил своё начало: разрыв
                     // перед многоколоночником лучше (css-break-3 §4.4). Коробка
                     // начинает следующий фрагментаинер, её начало неделимо.
-                    self.place_nested(i, &resume, Some((hh, 0.0)), window, cx);
+                    self.place_nested_async(i, &resume, Some((hh, 0.0)), window, cx, stack)
+                        .await;
                     self.children[i].solid.push((0.0, need));
                 }
             }
             None => {
-                self.place_nested(i, &resume, None, window, cx);
+                self.place_nested_async(i, &resume, None, window, cx, stack)
+                    .await;
                 let per = self.children[i].h / self.count as f32;
                 let per = self.rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap));
                 if per > 1.0 {
-                    self.place_nested(i, &resume, Some((per, 0.0)), window, cx);
+                    self.place_nested_async(i, &resume, Some((per, 0.0)), window, cx, stack)
+                        .await;
                 }
             }
         }
@@ -47,20 +57,21 @@ impl ColumnStack {
     }
 
     /// Ребёнок `i` в пространстве `nest`, измеренный своей копией.
-    fn place_nested(
+    async fn place_nested_async(
         &mut self,
         i: usize,
         resume: &crate::layout::fragment::types::ResumeChild,
         nest: Option<(f32, f32)>,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) {
         if nest != self.children[i].nest {
             let mut child = resume(nest);
             child.resume = Some(resume.clone());
             self.children[i] = child;
         }
-        self.lay_out_main(i, window, cx);
+        self.lay_out_main_async(i, window, cx, stack).await;
     }
 
     /// Начало ребёнка `i` в его фрагментаинере по укладке предшествующих детей:

@@ -33,20 +33,20 @@ use crate::tree::{
     NodeId, PrintTree, RoundTree, RunMode, TraversePartialTree, TraverseTree,
 };
 use crate::util::debug::{debug_log, debug_log_node};
-use crate::util::sys::{new_const_children_vec, new_vec_with_capacity, Box, ChildrenVec, Vec};
+use crate::util::sys::{Box, ChildrenVec, Vec, new_const_children_vec, new_vec_with_capacity};
 
+use crate::CacheTree;
 use crate::compute::{
     compute_cached_layout_async, compute_leaf_layout, compute_oof_layout_async,
     compute_root_layout_async, round_layout,
 };
-use crate::CacheTree;
 
 #[cfg(feature = "block_layout")]
-use crate::{compute::compute_block_layout_async, LayoutBlockContainer};
+use crate::{LayoutBlockContainer, compute::compute_block_layout_async};
 #[cfg(feature = "flexbox")]
-use crate::{compute::compute_flexbox_layout_async, LayoutFlexboxContainer};
+use crate::{LayoutFlexboxContainer, compute::compute_flexbox_layout_async};
 #[cfg(feature = "grid")]
-use crate::{compute::compute_grid_layout_async, LayoutGridContainer};
+use crate::{LayoutGridContainer, compute::compute_grid_layout_async};
 
 #[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
@@ -83,7 +83,10 @@ impl core::fmt::Display for TaffyError {
                 child_index,
                 child_count,
             } => {
-                write!(f, "Index (is {child_index}) should be < child_count ({child_count}) for parent node {parent:?}")
+                write!(
+                    f,
+                    "Index (is {child_index}) should be < child_count ({child_count}) for parent node {parent:?}"
+                )
             }
             TaffyError::InvalidParentNode(parent) => {
                 write!(f, "Parent Node {parent:?} is not in the TaffyTree instance")
@@ -851,23 +854,27 @@ where
             .finish()
     }
     /// KaminIDE patch: Suspend a descendant without consuming a native frame.
-    async fn compute_child_layout_async<'a>(
+    // Keep future construction outside the poll frame on small native stacks.
+    #[allow(clippy::manual_async_fn)]
+    fn compute_child_layout_async<'a>(
         &'a mut self,
         node: NodeId,
         inputs: LayoutInput,
         stack: &'a mut reblessive::Stk,
-    ) -> LayoutOutput {
-        stack
-            .run(|stack| {
-                self.compute_child_layout_on_stack(
-                    node,
-                    inputs,
-                    #[cfg(feature = "block_layout")]
-                    None,
-                    stack,
-                )
-            })
-            .await
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        async move {
+            stack
+                .run(|stack| {
+                    self.compute_child_layout_on_stack(
+                        node,
+                        inputs,
+                        #[cfg(feature = "block_layout")]
+                        None,
+                        stack,
+                    )
+                })
+                .await
+        }
     }
 }
 
@@ -960,16 +967,20 @@ where
             .finish()
     }
     /// KaminIDE patch: Suspend a descendant without consuming a native frame.
-    async fn compute_block_child_layout_async<'a, 'ctx: 'a>(
+    // Keep future construction outside the poll frame on small native stacks.
+    #[allow(clippy::manual_async_fn)]
+    fn compute_block_child_layout_async<'a, 'ctx: 'a>(
         &'a mut self,
         node: NodeId,
         inputs: LayoutInput,
         context: Option<&'a mut BlockContext<'ctx>>,
         stack: &'a mut reblessive::Stk,
-    ) -> LayoutOutput {
-        stack
-            .run(|stack| self.compute_child_layout_on_stack(node, inputs, context, stack))
-            .await
+    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
+        async move {
+            stack
+                .run(|stack| self.compute_child_layout_on_stack(node, inputs, context, stack))
+                .await
+        }
     }
 }
 
@@ -2703,18 +2714,21 @@ mod tests {
                     panic!("a hidden descendant must not be measured")
                 })
                 .unwrap();
-                assert!(tree
-                    .nodes
-                    .values()
-                    .all(|node| node.unrounded_layout.size == Size::ZERO));
-                assert!(tree
-                    .nodes
-                    .values()
-                    .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO));
-                assert!(tree
-                    .nodes
-                    .iter()
-                    .all(|(key, node)| key == root.into() || node.cache.is_empty()));
+                assert!(
+                    tree.nodes
+                        .values()
+                        .all(|node| node.unrounded_layout.size == Size::ZERO)
+                );
+                assert!(
+                    tree.nodes
+                        .values()
+                        .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO)
+                );
+                assert!(
+                    tree.nodes
+                        .iter()
+                        .all(|(key, node)| key == root.into() || node.cache.is_empty())
+                );
             })
             .unwrap()
             .join()

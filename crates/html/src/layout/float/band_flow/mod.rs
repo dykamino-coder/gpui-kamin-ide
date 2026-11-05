@@ -15,18 +15,18 @@
 //! Измеренный ребёнок сохраняет независимый движок до paint; держатель связывает его
 //! с основным деревом через размер и окончательное абсолютное начало.
 
-use crate::layout::float::bands::FloatBands;
 mod clamp;
 mod clearance;
 mod kid;
 mod piece;
 mod prepaint;
+mod slot_tree;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
 pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
 use std::{cell::Cell, rc::Rc, sync::Arc};
 mod place;
-use place::place_seq;
+use place::plan;
 mod float_kid;
 mod flow_kid;
 use float_kid::{place_float, place_nest};
@@ -38,12 +38,14 @@ pub use element::BandFlow;
 mod tap;
 use tap::Tap;
 mod cache;
+mod intrinsic;
 mod prepared;
 mod probe;
 mod temporary;
 #[cfg(test)]
 mod tests;
-use probe::{intrinsic, intrinsic_of, probe, probe_of};
+use intrinsic::{intrinsic, intrinsic_of};
+use probe::{probe, probe_of};
 
 /// Вырезы обтекания для строк потокового ребёнка: левые и правые формы от
 /// его верха (`FloatBands::shapes`).
@@ -82,7 +84,7 @@ impl Edge {
 
 /// Место ребёнка в плане: начало border-box, доступная ширина и готовая
 /// проба либо размеры ещё не построенной оболочки вложенного блока.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 struct Slot {
     prepared: prepared::Prepared,
     clamp: crate::text::clamp::MeasuredClamp,
@@ -96,7 +98,7 @@ struct Slot {
     /// Высота содержимого `Kind::Nest`.
     h: Option<f32>,
     /// Места детей `Kind::Nest`.
-    kids: Vec<Slot>,
+    kids: slot_tree::Children,
     /// Блочный размер border-box: в вертикальном письме по нему ставится
     /// физический левый край (`vertical-rl` идёт от ПРАВОГО края).
     b: f32,
@@ -122,7 +124,7 @@ pub(super) struct Probe<'a> {
     last_geometry: crate::layout::fragment::flow::FlowGeometry,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 struct Plan {
     width: f32,
     height: f32,
@@ -182,23 +184,6 @@ fn frame(
     .into_any_element()
 }
 
-/// План раскладки при ширине контекста `cb`: позиции всех детей и высота.
-fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
-    crate::work::add!(FloatPlans, 1);
-    let mut bands = FloatBands::new(cb);
-    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, p);
-    Plan {
-        width: cb,
-        // §§10.6.3, 10.6.7: only a formatting-context root contains floats.
-        height: if contain_floats {
-            bands.bottom(None).max(y)
-        } else {
-            y
-        },
-        slots,
-    }
-}
-
 /// Painting layer of a host child (CSS 2.1 Appendix E): in-flow block-level
 /// boxes paint their backgrounds (step 4) below floats (step 5), and inline
 /// content (step 7) above them. An anonymous inline run has no box of its
@@ -219,30 +204,5 @@ fn layer(kid: &Kid) -> Layer {
         _ if kid.anon => Layer::Inline,
         _ if kid.nest.as_ref().is_some_and(|n| n.group.is_some()) => Layer::Group,
         _ => Layer::Block,
-    }
-}
-
-/// Дети слоя `layer` и их места плоским списком в порядке краски, на любой
-/// глубине (коробка `Kind::Nest` раньше своих детей). The descendants of a
-/// paint group belong to the group's own holder, not to the host's layers
-/// (Blink `BoxFragmentPainter::PaintFloatingChildren` skips self-painting
-/// layers).
-fn flatten<'a>(
-    kids: &'a [Kid],
-    slots: &'a [Slot],
-    which: Layer,
-    out: &mut Vec<(&'a Kid, &'a Slot)>,
-) {
-    for (kid, s) in kids.iter().zip(slots.iter()) {
-        let own = layer(kid);
-        if own == which {
-            out.push((kid, s));
-        }
-        if own == Layer::Group {
-            continue;
-        }
-        if let Some(nest) = kid.nest.as_ref() {
-            flatten(&nest.kids, &s.kids, which, out);
-        }
     }
 }

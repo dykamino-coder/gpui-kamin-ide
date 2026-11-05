@@ -11,7 +11,7 @@ use gpui::{
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn run(
+pub(crate) async fn run_async(
     bounds: Bounds<Pixels>,
     spot: SpotCell,
     place: fn(SpotCell, AnyElement) -> AnyElement,
@@ -21,6 +21,7 @@ pub(crate) fn run(
     window: &mut Window,
     cx: &mut App,
     vcx: ValueCx<'_>,
+    stack: &mut gpui::PaintStack,
 ) -> AnyElement {
     let mut roots = Vec::new();
     let mut probes = Vec::new();
@@ -66,7 +67,7 @@ pub(crate) fn run(
             .h(bounds.size.height)
             .child(place(probe.spot.clone(), child))
             .into_any_element();
-        root.layout_as_root_at(
+        root.layout_as_root_at_async(
             bounds.origin,
             size(
                 AvailableSpace::Definite(bounds.size.width),
@@ -74,7 +75,9 @@ pub(crate) fn run(
             ),
             window,
             cx,
-        );
+            stack,
+        )
+        .await;
         roots.push((root, escaped));
         probes.push(probe);
     }

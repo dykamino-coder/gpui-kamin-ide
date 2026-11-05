@@ -8,8 +8,16 @@ use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
 pub(crate) type BuildOof = Box<dyn FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> AnyElement>;
-pub(crate) type BuildTrials =
-    Box<dyn FnOnce(Bounds<Pixels>, SpotCell, Place, &mut Window, &mut App) -> AnyElement>;
+pub(crate) type BuildTrials = Box<
+    dyn for<'a> FnOnce(
+        Bounds<Pixels>,
+        SpotCell,
+        Place,
+        &'a mut Window,
+        &'a mut App,
+        &'a mut gpui::PaintStack,
+    ) -> gpui::PaintFuture<'a, AnyElement>,
+>;
 
 /// Готовая геометрия остаётся в исходной раскладке; отложенная строится один раз.
 pub(crate) enum OofKid {

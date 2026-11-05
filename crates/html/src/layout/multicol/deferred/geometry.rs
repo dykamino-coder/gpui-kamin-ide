@@ -3,12 +3,13 @@
 use super::*;
 
 impl Recipe {
-    pub(super) fn geometry_options(
+    pub(super) async fn geometry_options_async(
         &self,
         host: &Element,
         width: f32,
         window: &mut Window,
         cx: &mut App,
+        stack: &mut gpui::PaintStack,
     ) -> RenderOpts {
         let mut opts = self.opts.clone();
         if !self.axis.is_vertical()
@@ -24,14 +25,16 @@ impl Recipe {
                 })
                 .collect::<Vec<_>>();
             opts.cx.position.geometry = Some(
-                crate::layout::positioned::containing_block::metrics::layout::collect(
+                crate::layout::positioned::containing_block::metrics::layout::collect_async(
                     &source,
                     &self.merged,
                     width,
                     &opts,
                     window,
                     cx,
-                ),
+                    stack,
+                )
+                .await,
             );
         }
         opts

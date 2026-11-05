@@ -5,7 +5,7 @@ use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::Kid;
 use gpui::{App, Window};
 mod settlement;
-use settlement::{Incomplete, State, settle};
+use settlement::{Incomplete, State, settle_async};
 
 pub(super) type PlannedPages = (Vec<Kid>, Vec<PageGeom>, Vec<String>, usize, Plan);
 #[derive(Debug)]
@@ -22,27 +22,29 @@ impl std::fmt::Display for Failure {
     }
 }
 impl PageStack {
-    pub(super) fn fragment_plan(
+    pub(super) async fn fragment_plan_async(
         &mut self,
         window: &mut Window,
         cx: &mut App,
         g: PageGeom,
         area: (f32, f32),
+        stack: &mut gpui::PaintStack,
     ) -> Result<PlannedPages, Failure> {
         let first = self
             .kids
             .first()
             .map(|k| k.page.clone())
             .unwrap_or_default();
-        let (mut kids, mut inline, limit) =
-            self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
+        let (mut kids, mut inline, limit) = self
+            .page_kids_async(window, cx, (area.0.max(1.0), area.1.max(1.0)), stack)
+            .await;
         let kid_names: Vec<_> = self.kids.iter().map(|k| k.page.clone()).collect();
         let mut interned = kid_names.clone();
         interned.sort();
         interned.dedup();
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
-        let result = settle(|| {
+        let result = settle_async(async || {
             let geom_for = self.geom_for.clone();
             let pages = super::spaces::Pages {
                 names: &names,
@@ -91,12 +93,12 @@ impl PageStack {
                 .map(|p| p.leaf.as_ref().map(|l| l.geometry.clone()))
                 .collect();
             let mut continuation_error = None;
-            let planned = plan::fill_resumed(
+            let planned = plan::fill_resumed_async(
                 &kids,
                 &|col| spaces.at(col).expect("resolved page geometry"),
                 Space::pages(limit),
                 &|index, space| leaves[index].as_ref().map(|at| at(space)),
-                &mut |request| {
+                async |request| {
                     let plan::MeasureRequest {
                         kid,
                         copy,
@@ -114,14 +116,16 @@ impl PageStack {
                     } else {
                         (pg.area.0, block_size)
                     };
-                    let geometry =
-                        match self.remeasure_copy(kid, copy, area, from, page, window, cx) {
-                            Ok(geometry) => geometry,
-                            Err(error) => {
-                                continuation_error = Some(error);
-                                None
-                            }
-                        };
+                    let geometry = match self
+                        .remeasure_copy_async(kid, copy, area, from, page, window, cx, stack)
+                        .await
+                    {
+                        Ok(geometry) => geometry,
+                        Err(error) => {
+                            continuation_error = Some(error);
+                            None
+                        }
+                    };
                     plan::Measurement {
                         copy: geometry,
                         inline: self
@@ -130,7 +134,8 @@ impl PageStack {
                             .map_or_else(|| inline[kid].clone(), |m| m.inline.clone()),
                     }
                 },
-            );
+            )
+            .await;
             if let Some(error) = continuation_error {
                 return (
                     true,
@@ -151,7 +156,9 @@ impl PageStack {
             let extents: Vec<_> = (0..pages).map(heights).collect();
             let state = State::new(&names, &geoms, &plan, &self.measured);
             if self.regrow_flex(&kids, &plan, &extents) {
-                (kids, inline, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
+                (kids, inline, _) = self
+                    .page_kids_async(window, cx, (area.0.max(1.0), area.1.max(1.0)), stack)
+                    .await;
                 return (false, state, Ok((pages, plan)));
             }
             let mut new_names: Vec<Option<String>> = vec![None; pages];
@@ -181,6 +188,7 @@ impl PageStack {
                 .collect();
             (stable, state, Ok((pages, plan)))
         })
+        .await
         .map_err(|Incomplete| Failure::Settlement)?
         .map_err(Failure::Continuation)?;
         for (index, kid) in self.kids.iter_mut().enumerate() {

@@ -3,13 +3,14 @@ use super::PageKid;
 use crate::layout::fragment::types::{Kid, Par, StackAxis};
 use gpui::{App, Window, point, px, size};
 
-pub(super) fn measure(
+pub(super) async fn measure_async(
     k: &mut PageKid,
     axis: StackAxis,
     (aw, ah): (f32, f32),
     copy: usize,
     window: &mut Window,
     cx: &mut App,
+    stack: &mut gpui::PaintStack,
 ) -> (Kid, crate::layout::fragment::flow::inline::Geometry) {
     let vertical = axis.is_vertical();
     // `aw` is the INLINE size of the page area; a vertical root
@@ -23,9 +24,14 @@ pub(super) fn measure(
     } else {
         size(fixed, free)
     };
-    let (laid, content) = crate::layout::fragment::types::frag_copy(&mut k.el, &mut k.frags, copy)
-        .map(|el| el.layout_as_root_with_content(space, window, cx))
-        .unwrap_or_default();
+    let (laid, content) = if let Some(el) =
+        crate::layout::fragment::types::frag_copy(&mut k.el, &mut k.frags, copy)
+    {
+        el.layout_as_root_with_content_async(space, window, cx, stack)
+            .await
+    } else {
+        Default::default()
+    };
     let measured_flow = k
         .watched
         .as_ref()
@@ -199,3 +205,17 @@ fn anonymous_breaks(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(super) fn measure(
+    k: &mut PageKid,
+    axis: StackAxis,
+    area: (f32, f32),
+    copy: usize,
+    window: &mut Window,
+    cx: &mut App,
+) -> (Kid, crate::layout::fragment::flow::inline::Geometry) {
+    reblessive::Stack::new()
+        .enter(|stack| measure_async(k, axis, area, copy, window, cx, stack))
+        .finish()
+}

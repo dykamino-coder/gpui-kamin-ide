@@ -5,13 +5,13 @@ use super::{COORD_EPS, Probe, Slot, clearance, intrinsic, probe};
 use crate::layout::float::bands::FloatBands;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn place_flow(
+pub(super) async fn place_flow(
     x0: f32,
     x1: f32,
     y0: f32,
     adjoining0: bool,
     bands: &mut FloatBands,
-    p: &mut Probe,
+    p: &mut Probe<'_>,
     cbw: f32,
     slots: &mut [Slot],
     y: &mut f32,
@@ -21,6 +21,7 @@ pub(super) fn place_flow(
     mr: f32,
     mb: f32,
     ml: f32,
+    stack: &mut gpui::PaintStack,
 ) {
     // Коробка во всю ширину содержащего блока: флоаты её
     // перекрывают, а строки получают вырезы полос от её верха
@@ -42,7 +43,7 @@ pub(super) fn place_flow(
     let walls = bands.set_walls(x0 + ml, x1 - mr);
     let shapes = bands.shapes(top);
     bands.set_walls(walls.0, walls.1);
-    let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
+    let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p, stack).await;
     slots[k] = Slot {
         prepared: p.last_prepared.clone(),
         // CSS 2.1 §10.3.3: an over-constrained box drops its end margin; in an
@@ -77,34 +78,34 @@ pub(super) fn inline_start(x0: f32, x1: f32, width: f32, rtl: bool) -> f32 {
 /// заменяет флоат, если больше); min-content — максимум по детям, каждый на
 /// своей строке. Без обрыва на `clear` плавающий контейнер из дюжины
 /// абзацев с `clear: left` мерился суммой всех (`letter-spacing-206-ref`).
-pub(super) fn intrinsic_sizes(kids: &[Kid], p: &mut Probe) -> (f32, f32) {
-    intrinsic_sizes_with(kids, &mut |kid| intrinsic(kid, p))
+pub(super) async fn intrinsic_sizes(
+    kids: &[Kid],
+    p: &mut Probe<'_>,
+    stack: &mut gpui::PaintStack,
+) -> (f32, f32) {
+    intrinsic_sizes_async(kids, async |kid| intrinsic(kid, p, stack).await).await
 }
 
-fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f32)) -> (f32, f32) {
-    let (mut fl, mut fr) = (0.0f32, 0.0f32);
-    let (mut max_size, mut min_size) = (0.0f32, 0.0f32);
-    for kid in kids {
-        if matches!(kid.kind, Kind::Strut(_)) {
-            continue;
-        }
+#[derive(Clone, Copy, Default)]
+struct IntrinsicSum {
+    fl: f32,
+    fr: f32,
+    max_size: f32,
+    min_size: f32,
+}
+impl IntrinsicSum {
+    fn finish(self) -> (f32, f32) {
+        (self.min_size, self.max_size.max(self.min_size))
+    }
+    fn include(&mut self, kid: &Kid, sizes: (f32, f32)) {
         let [_, mr, _, ml] = kid.margin.map(|e| e.at(0.0));
-        let (mn, mx) = if let Some(sizes) = kid.intrinsic.get() {
-            sizes
-        } else {
-            match kid.nest.as_ref() {
-                // Коробка с детьми на общих полосах: её внутренний размер — от
-                // детей плюс рамка с отступом.
-                Some(nest) => {
-                    let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
-                    let (min, max) = intrinsic_sizes_with(&nest.kids, measure);
-                    let sizes = (min + il + ir, max + il + ir);
-                    kid.intrinsic.set(Some(sizes));
-                    sizes
-                }
-                None => measure(kid),
-            }
-        };
+        let (mn, mx) = sizes;
+        let Self {
+            mut fl,
+            mut fr,
+            mut max_size,
+            mut min_size,
+        } = *self;
         let is_float = matches!(kid.kind, Kind::Float { .. });
         let is_fc = matches!(kid.kind, Kind::Piece { .. });
         let clear = match kid.kind {
@@ -156,8 +157,55 @@ fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f3
             fl = 0.0;
             fr = 0.0;
         }
+        *self = Self {
+            fl,
+            fr,
+            max_size,
+            min_size,
+        };
     }
-    (min_size, max_size.max(min_size))
+}
+
+async fn intrinsic_sizes_async<'a>(
+    kids: &'a [Kid],
+    mut measure: impl AsyncFnMut(&'a Kid) -> (f32, f32),
+) -> (f32, f32) {
+    let mut pending = vec![(kids.iter(), IntrinsicSum::default(), None::<&Kid>)];
+    loop {
+        let (iter, sum, _) = pending
+            .last_mut()
+            .expect("intrinsic root remains until return");
+        let Some(kid) = iter.next() else {
+            let (_, sum, owner) = pending.pop().unwrap();
+            let (mn, mx) = sum.finish();
+            let Some(owner) = owner else {
+                return (mn, mx);
+            };
+            let nest = owner.nest.as_ref().unwrap();
+            let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
+            let sizes = (mn + il + ir, mx + il + ir);
+            owner.intrinsic.set(Some(sizes));
+            pending.last_mut().unwrap().1.include(owner, sizes);
+            continue;
+        };
+        if matches!(kid.kind, Kind::Strut(_)) {
+            continue;
+        }
+        if let Some(sizes) = kid.intrinsic.get() {
+            sum.include(kid, sizes);
+        } else if let Some(nest) = &kid.nest {
+            pending.push((nest.kids.iter(), IntrinsicSum::default(), Some(kid)));
+        } else {
+            sum.include(kid, measure(kid).await);
+        }
+    }
+}
+
+#[cfg(test)]
+fn intrinsic_sizes_with(kids: &[Kid], measure: &mut impl FnMut(&Kid) -> (f32, f32)) -> (f32, f32) {
+    reblessive::Stack::new()
+        .enter(|_| intrinsic_sizes_async(kids, async |kid| measure(kid)))
+        .finish()
 }
 
 #[cfg(test)]

@@ -6,7 +6,6 @@ use super::{
     sibling_survey::{Survey, Visit},
 };
 use crate::budget::admission::{Buffer, Error};
-use crate::dom::outcome::TraversalKind;
 use crate::dom::{Node, shadow::Scope, tree_index::TreeIndex};
 use crate::style::{css::VarMap, generated::counters::Counters, select::Ancestor};
 use crate::values::ValueCx;
@@ -168,63 +167,50 @@ pub fn walk_children(
                     output.last_mut().expect("parent output"),
                 )?;
             }
-            Work::Visit(v) => {
-                let limit = crate::values::MAX_DEPTH;
-                if v.depth > limit
-                    && matches!(
-                        v.handle().data,
-                        NodeData::Text { .. } | NodeData::Element { .. }
-                    )
-                {
-                    tree.doc
-                        .traversal_limit_reached(TraversalKind::BoxBuild, limit, v.depth);
-                    continue;
-                }
-                match &v.handle().data {
-                    NodeData::Text { contents } => super::text_nodes::walk_text(
-                        crate::dom::Text::from_source(
-                            contents.borrow().to_string(),
-                            v.vcx.doc.traversal.record_text(v.handle()),
-                        ),
-                        v.preserve,
-                        &v.survey.nodes,
-                        v.index,
-                        output.last_mut().expect("output"),
+            Work::Visit(v) => match &v.handle().data {
+                NodeData::Text { contents } => super::text_nodes::walk_text(
+                    crate::dom::Text::from_source(
+                        contents.borrow().to_string(),
+                        v.vcx.doc.traversal.record_text(v.handle()),
                     ),
-                    NodeData::Element { .. } => {
-                        if let Some(mut p) = enter(
-                            v,
-                            tree,
-                            &sharing,
-                            counter,
-                            counters,
-                            path,
-                            output.last_mut().expect("output"),
-                        ) {
-                            let (mut children, restore) = descend(&p, tree, path)?;
-                            output.push(std::mem::take(&mut p.children), &admission)?;
-                            work.push(Work::Leave(p, restore), &admission)?;
-                            while let Some(job) = children.pop() {
-                                work.push(Work::Visit(job), &admission)?;
-                            }
-                        }
-                    }
-                    _ => {
-                        let mut jobs = visits(
-                            Survey::children(v.handle(), tree),
-                            v.scope.clone(),
-                            v.vars.clone(),
-                            v.preserve,
-                            v.depth,
-                            v.vcx,
-                            0,
-                        )?;
-                        while let Some(job) = jobs.pop() {
+                    v.preserve,
+                    &v.survey.nodes,
+                    v.index,
+                    output.last_mut().expect("output"),
+                ),
+                NodeData::Element { .. } => {
+                    if let Some(mut p) = enter(
+                        v,
+                        tree,
+                        &sharing,
+                        counter,
+                        counters,
+                        path,
+                        output.last_mut().expect("output"),
+                    ) {
+                        let (mut children, restore) = descend(&p, tree, path)?;
+                        output.push(std::mem::take(&mut p.children), &admission)?;
+                        work.push(Work::Leave(p, restore), &admission)?;
+                        while let Some(job) = children.pop() {
                             work.push(Work::Visit(job), &admission)?;
                         }
                     }
                 }
-            }
+                _ => {
+                    let mut jobs = visits(
+                        Survey::children(v.handle(), tree),
+                        v.scope.clone(),
+                        v.vars.clone(),
+                        v.preserve,
+                        v.depth,
+                        v.vcx,
+                        0,
+                    )?;
+                    while let Some(job) = jobs.pop() {
+                        work.push(Work::Visit(job), &admission)?;
+                    }
+                }
+            },
         }
     }
     *out = output.pop().expect("root output");

@@ -17,6 +17,7 @@ mod boxes;
 mod capture;
 pub(crate) use boxes::{box_painter, decoration_async, decorations};
 mod shift;
+#[cfg(test)]
 use capture::own_capture;
 pub(super) use capture::remember_clips;
 
@@ -111,7 +112,9 @@ pub(crate) async fn outside_source_async<R>(
 }
 
 mod admission;
-pub(crate) use admission::{node, node_async};
+#[cfg(test)]
+pub(crate) use admission::node;
+pub(crate) use admission::node_async;
 
 mod traversal;
 pub(crate) use traversal::{prepaint_async, record_async};

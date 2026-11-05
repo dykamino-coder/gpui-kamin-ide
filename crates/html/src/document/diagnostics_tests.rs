@@ -2,7 +2,7 @@
 //! вне очереди, вложенные документы и штатно игнорируемый CSS.
 
 use super::*;
-use crate::diagnostics::{Diagnostic, DisplayStatus, Measure, Phase, Severity};
+use crate::diagnostics::{Diagnostic, DisplayStatus, Severity};
 
 fn deep(depth: usize) -> String {
     format!(
@@ -26,34 +26,16 @@ fn ignored_css_and_unsupported_features_are_not_diagnostics() {
 }
 
 #[test]
-fn box_limit_is_one_aggregated_warning_delivered_once() {
+fn former_box_limit_does_not_emit_a_degradation_warning() {
     let doc = Document::builder(&deep(2053), "").build().unwrap();
     let batch = doc.take_diagnostics();
     assert_eq!(batch.revision, Some(doc.salt()));
     assert_eq!((batch.suppressed, batch.terminal), (0, None));
-    let [record] = batch.records.as_slice() else {
-        panic!("{:?}", batch.records)
-    };
-    assert_eq!(record.severity, Severity::Warning);
-    assert_eq!(record.phase, Phase::Traversal(TraversalKind::BoxBuild));
-    assert_eq!(
-        record.measure,
-        Some(Measure::Depth {
-            limit: 2052,
-            attempted: 2053
-        })
-    );
-    assert!(doc.take_diagnostics().records.is_empty());
-    assert_eq!(doc.diagnostics().records, batch.records);
-    assert_eq!(doc.report().status, RevisionStatus::Degraded);
-    assert!(matches!(
-        doc.display_status(),
-        DisplayStatus::Degraded {
-            problems: 1,
-            suppressed: 0,
-            ..
-        }
-    ));
+    assert!(batch.records.is_empty());
+    assert!(doc.take_diagnostics().is_empty());
+    assert!(doc.diagnostics().records.is_empty());
+    assert_eq!(doc.report().status, RevisionStatus::Complete);
+    assert_eq!(doc.display_status(), DisplayStatus::Complete);
 }
 
 #[test]

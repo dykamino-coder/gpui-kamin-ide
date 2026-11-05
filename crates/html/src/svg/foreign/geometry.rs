@@ -100,32 +100,35 @@ pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>,
 
 // A sole SVG paint contribution can blend with the host backdrop after SVG
 // transforms/clips have been applied. Multiple contributions retain SVG order.
-pub(super) fn sole_blend(e: &Element) -> Option<u8> {
-    if e.style.used().reset_effects.isolate == Some(true)
-        || e.style
-            .used()
-            .reset_effects
-            .opacity
-            .is_some_and(|v| v < 1.0)
-    {
-        return None;
-    }
-    let mut children = e.children.iter().filter_map(|n| match n {
-        Node::Element(c) if !matches!(c.tag.as_str(), "defs" | "style" | "title" | "desc") => {
-            Some(c)
+pub(super) fn sole_blend(mut e: &Element) -> Option<u8> {
+    loop {
+        if e.style.used().reset_effects.isolate == Some(true)
+            || e.style
+                .used()
+                .reset_effects
+                .opacity
+                .is_some_and(|v| v < 1.0)
+        {
+            return None;
         }
-        _ => None,
-    });
-    let child = children.next()?;
-    if children.next().is_some() {
-        return None;
-    }
-    if child.tag.eq_ignore_ascii_case("foreignObject") {
-        child.style.used().reset_effects.blend.filter(|v| *v != 0)
-    } else if matches!(child.tag.as_str(), "g" | "svg") {
-        sole_blend(child)
-    } else {
-        None
+        let mut children = e.children.iter().filter_map(|n| match n {
+            Node::Element(c) if !matches!(c.tag.as_str(), "defs" | "style" | "title" | "desc") => {
+                Some(c)
+            }
+            _ => None,
+        });
+        let child = children.next()?;
+        if children.next().is_some() {
+            return None;
+        }
+        if child.tag.eq_ignore_ascii_case("foreignObject") {
+            return child.style.used().reset_effects.blend.filter(|v| *v != 0);
+        } else if matches!(child.tag.as_str(), "g" | "svg") {
+            e = child;
+            continue;
+        } else {
+            return None;
+        }
     }
 }
 
