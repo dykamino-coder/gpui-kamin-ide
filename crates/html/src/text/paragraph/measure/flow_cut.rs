@@ -109,6 +109,7 @@ mod tests {
             at: 0,
             h: 100.,
             base: 100.,
+            drop: 0.0,
             align: AtomAlign::Shift(0.),
             over: 0.,
             under: 0.,

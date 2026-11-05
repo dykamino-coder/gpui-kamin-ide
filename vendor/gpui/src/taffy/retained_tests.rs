@@ -187,39 +187,6 @@ fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
     assert!(c != a && c != b);
     assert_eq!(engine.claimed_nodes(), 2);
 }
-fn constant(engine: &mut TaffyLayoutEngine, class: u16) -> LayoutId {
-    engine.set_next_layout_constant(std::num::NonZeroU16::new(class).unwrap());
-    measured(engine, None)
-}
-
-#[test]
-fn constant_leaves_are_kept_at_their_positions_without_side_tables() {
-    let mut engine = TaffyLayoutEngine::new();
-    engine.set_layout_keys(true);
-    let mut parents = Vec::new();
-    for width in [10., 20., 30.] {
-        let probe = constant(&mut engine, 1);
-        let a = leaf(&mut engine, width);
-        parents.push(parent(&mut engine, &[probe, a]));
-    }
-    engine.clear();
-    assert!(engine.retained.by_key.is_empty());
-    engine.set_layout_keys(true);
-    for (width, old) in [10., 20., 30.].into_iter().zip(parents) {
-        let probe = constant(&mut engine, 1);
-        let a = leaf(&mut engine, width);
-        assert_eq!(parent(&mut engine, &[probe, a]), old);
-    }
-    assert_eq!(engine.claimed_nodes(), 9);
-    engine.clear();
-    engine.set_layout_keys(true);
-    // Another class, or a keyed request, does not take a constant leaf.
-    let other = constant(&mut engine, 2);
-    let _ = measured(&mut engine, Some(1));
-    assert_eq!(engine.claimed_nodes(), 9);
-    let _ = other;
-}
-
 #[test]
 fn a_stamped_node_is_never_reused_for_another_subtree() {
     let mut engine = TaffyLayoutEngine::new();

@@ -18,9 +18,7 @@
 //!   request sequence, when it is still a childless plain leaf of that style;
 //! - a measured leaf is any unclaimed previous leaf with the same layout key
 //!   and style (equal keys mean interchangeable measurements), the one at the
-//!   same request position first;
-//! - a constant measured leaf (`set_next_layout_constant`) is the leaf of the
-//!   same class and style at the same request position.
+//!   same request position first.
 //!
 //! Styles are compared by value (shared allocation first, `style_share`); a
 //! claimed node takes this pass's shared allocation of its equal style.
@@ -30,28 +28,18 @@
 //! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
 //! were not claimed are dropped in one sweep (`TaffyTree::retain_nodes`).
 //!
-//! The bookkeeping lives on the nodes where it can: a key's candidate slot and
-//! a constant class in the measured leaf's context, the pinned identity of a
-//! stamped node in its Taffy node; only keys and memos are side tables.
+//! The bookkeeping lives on the nodes where it can: a key's candidate slot in
+//! the measured leaf's context, the pinned identity of a stamped node in its
+//! Taffy node; only keys and memos are side tables.
 
 use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 use collections::{FxHashMap, FxHashSet};
 use std::any::Any;
-use std::num::NonZeroU16;
 use std::rc::Rc;
 use taffy::tree::NodeId;
 
 /// `NodeContext::key_slot` of a leaf that is in no candidate list.
 pub(super) const NO_SLOT: u32 = u32::MAX;
-
-/// What the host vouches for the next measured leaf request.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum LeafKey {
-    /// A layout key covering everything the measure function reads.
-    Key(u64),
-    /// A measure function of this class that reads nothing.
-    Constant(NonZeroU16),
-}
 
 /// Request history of the frame tree across passes.
 #[derive(Default)]
@@ -69,8 +57,8 @@ pub(super) struct Retained {
     /// recycled leaf leaves its list in O(1) and a key shared by many leaves
     /// never makes a request scan the leaves already claimed.
     pub(super) by_key: FxHashMap<u64, Vec<NodeId>>,
-    /// Key for the next measured leaf request.
-    pub(super) next_key: Option<LeafKey>,
+    /// Layout key for the next measured leaf request.
+    pub(super) next_key: Option<u64>,
     /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
     pub(super) keys_enabled: bool,
     /// Nodes claimed from a previous pass, for counters and tests.
@@ -132,7 +120,7 @@ impl TaffyLayoutEngine {
     /// (static positions, line baselines) and cache stay.
     pub(super) fn claim_measured(
         &mut self,
-        key: LeafKey,
+        key: u64,
         style: &taffy::SharedStyle,
         context: &mut Option<NodeContext>,
     ) -> Option<LayoutId> {
@@ -146,32 +134,22 @@ impl TaffyLayoutEngine {
                 && taffy.style_equals(*node, style)
                 && taffy.children_slice(*node).is_empty()
         };
-        let constant = |node: &NodeId| {
-            taffy
-                .get_node_context(*node)
-                .map_or(0, |context| context.constant)
-        };
         // The leaf at the same request position first: leaves of one key are
         // interchangeable, but keeping each at its place keeps its parent.
-        let at_position = self.retained.prev.get(self.retained.seq.len()).copied();
-        let node = match key {
-            LeafKey::Constant(class) => {
-                at_position.filter(|node| constant(node) == class.get() && fits(node))?
-            }
-            LeafKey::Key(key) => {
-                let at_position = at_position
-                    .filter(|node| self.retained.keys.get(node) == Some(&key) && fits(node));
-                let node = match at_position {
-                    Some(node) => node,
-                    None => {
-                        let candidates = self.retained.by_key.get(&key)?;
-                        candidates[candidates.iter().rposition(fits)?]
-                    }
-                };
-                self.unlist(key, node);
-                node
+        let at_position = self
+            .retained
+            .prev
+            .get(self.retained.seq.len())
+            .copied()
+            .filter(|node| self.retained.keys.get(node) == Some(&key) && fits(node));
+        let node = match at_position {
+            Some(node) => node,
+            None => {
+                let candidates = self.retained.by_key.get(&key)?;
+                candidates[candidates.iter().rposition(fits)?]
             }
         };
+        self.unlist(key, node);
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
@@ -230,14 +208,14 @@ impl TaffyLayoutEngine {
     }
 
     /// Register a node created in this pass; `key` is its layout key.
-    pub(super) fn created(&mut self, node: LayoutId, key: Option<LeafKey>) -> LayoutId {
+    pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
         if self.frame_tree {
             self.retained.note(node.0);
             debug_assert!(
                 !self.retained.memos.contains_key(&node.0),
                 "a reused node never had a stamp, so it has no memo"
             );
-            if let Some(LeafKey::Key(key)) = key {
+            if let Some(key) = key {
                 self.retained.keys.insert(node.0, key);
             }
         }

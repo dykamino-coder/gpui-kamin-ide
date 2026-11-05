@@ -27,14 +27,18 @@ pub(super) struct FitAtom {
     at: usize,
     /// Baseline of the real max-content layout in this paragraph.
     base: f32,
+    /// Downward shift of the atom in its wrapper row (AtomBox::drop).
+    drop: f32,
     /// Measurements of the atom's subtree, shared with later frames.
     memo: Rc<AtomMemo>,
-    /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
+    /// Copy of the atom wrapper tree for unseen widths (this frame's measures:
+    /// not kept).
     snap: gpui::LayoutMeasurement,
 }
 
-/// Resolved atom geometry for one available width: (index, width, height, baseline).
-pub(super) type Fitted = Vec<(usize, f32, f32, f32)>;
+/// Resolved atom geometry for one available width: (index, width, height,
+/// baseline, downward shift in the wrapper row — AtomBox::drop).
+pub(super) type Fitted = Vec<(usize, f32, f32, f32, f32)>;
 
 #[derive(Default)]
 pub(super) struct AtomFit {
@@ -42,8 +46,9 @@ pub(super) struct AtomFit {
     cache: Vec<(f32, Fitted)>,
 }
 
-/// The wrapper (`Paragraph::atoms`) is a row of [probe, atom]: the atom is child 1.
-const ATOM_CHILD: usize = 1;
+/// The wrapper (`Paragraph::atoms`) is a baseline row whose only child is the
+/// atom.
+const ATOM_CHILD: usize = 0;
 
 impl AtomFit {
     pub(super) fn is_empty(&self) -> bool {
@@ -94,7 +99,7 @@ impl AtomFit {
                 (Some(b), Some(b0)) => a.base + (b - b0),
                 _ => a.base + (h - snap_h),
             };
-            out.push((a.k, w, h, base));
+            out.push((a.k, w, h, base, a.drop));
         }
         self.cache.push((avail, out.clone()));
         out
@@ -144,6 +149,7 @@ impl Paragraph {
                     k,
                     at: b.at,
                     base: b.base,
+                    drop: b.drop,
                     memo,
                     snap,
                 });
@@ -159,13 +165,14 @@ impl Paragraph {
             let fit = self.atom_fit.borrow();
             fit.atoms.iter().map(|a| (a.k, a.at)).collect()
         };
-        for &(k, w, h, base) in fitted {
+        for &(k, w, h, base, drop) in fitted {
             let Some(&(_, at)) = ats.iter().find(|(i, _)| *i == k) else {
                 continue;
             };
             if let Some(b) = self.atom_boxes.get_mut(k) {
                 b.h = h;
                 b.base = base;
+                b.drop = drop;
             }
             let len = self.text[at..].chars().next().map_or(0, char::len_utf8);
             if let Some(span) = self
@@ -184,8 +191,8 @@ impl Paragraph {
             return;
         }
         let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for (k, slot) in self.atoms.iter_mut().enumerate() {
-            let Some(&(_, w, _, _)) = fitted.iter().find(|f| f.0 == k) else {
+        for &(k, w, _, _, _) in &fitted {
+            let Some(slot) = self.atoms.get_mut(k) else {
                 continue;
             };
             let Some(root) = slot.root.get() else {
@@ -204,22 +211,21 @@ impl Paragraph {
         // Real geometry wins over the copy's for placement and painting.
         let fitted: Fitted = fitted
             .iter()
-            .map(|&(k, w, h, base)| {
-                let slot = &self.atoms[k];
-                let real_h = slot
-                    .root
-                    .get()
-                    .map_or(h, |id| f32::from(window.layout_exact(id).1.height));
-                let real_base = slot
-                    .probe
-                    .get()
-                    .map_or(base, |id| f32::from(window.layout_exact(id).0.y));
+            .map(|&(k, w, h, base, drop)| {
+                let root = self.atoms[k].root.get();
+                let (real_h, real_base, drop) = match root {
+                    Some(id) => {
+                        let row_h = f32::from(window.layout_exact(id).1.height);
+                        atoms::row_geometry::row_geometry(Some(id), row_h, window)
+                    }
+                    None => (h, base, drop),
+                };
                 let real_base = if real_base <= 0.0 && real_h > 0.0 {
                     real_h
                 } else {
                     real_base
                 };
-                (k, w, real_h, real_base)
+                (k, w, real_h, real_base, drop)
             })
             .collect();
         self.apply_atom_fit(&fitted);

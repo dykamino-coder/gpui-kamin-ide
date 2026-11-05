@@ -6058,6 +6058,34 @@ impl Window {
             .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
     }
 
+    /// KaminIDE patch: `request_layout_ref` for a style that is `refinement` applied to the
+    /// default style alone; the layout engine reuses the conversion of an earlier request with
+    /// the same refinement allocation.
+    #[must_use]
+    pub fn request_layout_refined(
+        &mut self,
+        style: &Style,
+        refinement: &Rc<crate::StyleRefinement>,
+        children: impl IntoIterator<Item = LayoutId>,
+        cx: &mut App,
+    ) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+
+        cx.layout_id_buffer.clear();
+        cx.layout_id_buffer.extend(children);
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.reserve_layout_nodes();
+
+        self.layout_engine.as_mut().unwrap().request_layout_refined(
+            style,
+            refinement,
+            rem_size,
+            scale_factor,
+            &cx.layout_id_buffer,
+        )
+    }
+
     /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
     #[must_use]
     pub fn request_layout_ref(
@@ -6096,16 +6124,6 @@ impl Window {
         self.scale_factor().to_bits().hash(&mut hasher);
         if let Some(engine) = self.layout_engine.as_mut() {
             engine.set_next_layout_key(hasher.finish());
-        }
-    }
-
-    /// KaminIDE patch: the next measured leaf request has a constant measure
-    /// of `class`: a function that reads nothing, the same for every leaf of
-    /// the class. Such a leaf keeps the previous leaf of its class and style at
-    /// its request position, without a key or any side table.
-    pub fn set_next_layout_constant(&mut self, class: std::num::NonZeroU16) {
-        if let Some(engine) = self.layout_engine.as_mut() {
-            engine.set_next_layout_constant(class);
         }
     }
 
