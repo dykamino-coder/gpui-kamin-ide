@@ -20,56 +20,51 @@ use crate::values::ValueCx;
 /// то есть в единственной точке, где письмо узла уже окончательно.
 pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
     use crate::style::computed::writing_mode::WritingProps;
-    fn walk(nodes: &mut [Node], parent: WritingProps, vcx: ValueCx<'_>) {
-        for n in nodes.iter_mut() {
-            let Node::Element(e) = n else { continue };
-            // `writing-mode` и `direction` наследуются (css-writing-modes-4 §3.1, §2.1):
-            // логические стороны коробки раскладываются по унаследованному значению, а в
-            // собственном стиле его нет (слияние с родителем делает сборщик дерева).
-            let props = WritingProps::of(e.style.cascaded()).inherit(parent);
-            let wm = props.wm();
-            let parent_vertical = parent.wm().vertical();
-            // Ячейка таблицы узнаётся и по тегу: `Display::TableCell` на этом шаге
-            // приходит только из авторского CSS.
-            let is_cell = matches!(e.tag.as_str(), "td" | "th")
-                || e.style.cascaded().reset_box_layout.display
-                    == Some(crate::style::computed::Display::TableCell);
-            if e.style.cascaded().reset_context.logical.is_some() {
-                e.style
+    crate::dom::traversal::for_each_inherited(&mut nodes, WritingProps::default(), |e, parent| {
+        // `writing-mode` и `direction` наследуются (css-writing-modes-4 §3.1, §2.1):
+        // логические стороны коробки раскладываются по унаследованному значению, а в
+        // собственном стиле его нет (слияние с родителем делает сборщик дерева).
+        let props = WritingProps::of(e.style.cascaded()).inherit(*parent);
+        let wm = props.wm();
+        let parent_vertical = parent.wm().vertical();
+        // Ячейка таблицы узнаётся и по тегу: `Display::TableCell` на этом шаге
+        // приходит только из авторского CSS.
+        let is_cell = matches!(e.tag.as_str(), "td" | "th")
+            || e.style.cascaded().reset_box_layout.display
+                == Some(crate::style::computed::Display::TableCell);
+        if e.style.cascaded().reset_context.logical.is_some() {
+            e.style
+                .cascaded_mut()
+                .resolve_logical(wm, parent_vertical, is_cell, vcx);
+        }
+        // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
+        // снятые до этого прохода, поэтому логические стороны ложатся на их
+        // физические поля тем же письмом, что у элемента
+        // (`::first-letter { margin-block-start }` доезжает до буквицы).
+        for layer in [
+            e.hover.as_mut(),
+            e.first_letter.as_mut(),
+            e.first_line.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if layer.cascaded().reset_context.logical.is_some() {
+                layer
                     .cascaded_mut()
                     .resolve_logical(wm, parent_vertical, is_cell, vcx);
             }
-            // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
-            // снятые до этого прохода, поэтому логические стороны ложатся на их
-            // физические поля тем же письмом, что у элемента
-            // (`::first-letter { margin-block-start }` доезжает до буквицы).
-            for layer in [
-                e.hover.as_mut(),
-                e.first_letter.as_mut(),
-                e.first_line.as_mut(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                if layer.cascaded().reset_context.logical.is_some() {
-                    layer
-                        .cascaded_mut()
-                        .resolve_logical(wm, parent_vertical, is_cell, vcx);
-                }
-            }
-            // Физические поля здесь окончательны; схлопывание изменит их позже.
-            // Ортогональный корень потока тоже сохраняет их: его строчный размер —
-            // запасное доступное место минус собственные поля строчной оси
-            // (css-writing-modes-4 §7.3), которые схлопывание может вынести наружу.
-            if e.style.cascaded().reset_mask.clip_ref == Some(1) || wm.vertical() != parent_vertical
-            {
-                e.style.cascaded_mut().reset_box_layout.own_margin =
-                    Some(e.style.cascaded().reset_box_layout.margin);
-            }
-            walk(&mut e.children, props, vcx);
         }
-    }
-    walk(&mut nodes, WritingProps::default(), vcx);
+        // Физические поля здесь окончательны; схлопывание изменит их позже.
+        // Ортогональный корень потока тоже сохраняет их: его строчный размер —
+        // запасное доступное место минус собственные поля строчной оси
+        // (css-writing-modes-4 §7.3), которые схлопывание может вынести наружу.
+        if e.style.cascaded().reset_mask.clip_ref == Some(1) || wm.vertical() != parent_vertical {
+            e.style.cascaded_mut().reset_box_layout.own_margin =
+                Some(e.style.cascaded().reset_box_layout.margin);
+        }
+        props
+    });
     // Зум, каскадное `inherit` ненаследуемых свойств (`z-index`, `clip`,
     // `text-overflow`, свойства реестра) — стадия вычисленных значений
     // (`style::cascade::compute`): раскладка читает вычисленный стиль.
@@ -91,116 +86,14 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
 /// Группировка масок читает стиль до слияния при отрисовке, поэтому разрешаем
 /// наследование здесь, не создавая коробок для предков без собственного стиля.
 fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
-    for node in nodes {
-        let Node::Element(e) = node else { continue };
-        let orientation = e.style.cascaded().inh.ui.image_orient_none.or(parent);
+    crate::dom::traversal::for_each_inherited(nodes, parent, |e, parent| {
+        let orientation = e.style.cascaded().inh.ui.image_orient_none.or(*parent);
         if e.style.cascaded().reset_mask.mask_image.is_some() {
             e.style.cascaded_mut().inh.ui.image_orient_none = orientation;
         }
-        settle_mask_orientation(&mut e.children, orientation);
-    }
+        orientation
+    });
 }
 
 #[cfg(test)]
-mod tests {
-    //! Ориентация картинок масок сохраняется при подготовке документа.
-    use crate::document::Document;
-    use crate::dom::Node;
-
-    #[test]
-    fn absent_logical_properties_preserve_publication_and_variant_groups() {
-        use crate::dom::{Element, Marks};
-        use crate::style::cascade::materialize::materialize;
-        let doc = crate::values::DocumentValues::detached(Default::default());
-        let seed = doc.initial_style();
-        let mut element = Element::synthetic("div", seed.clone(), Marks::default(), Vec::new());
-        element.hover = Some(seed.clone().into());
-        element.first_letter = Some(seed.clone().into());
-        element.first_line = Some(seed.clone().into());
-        let nodes = vec![Node::Element(element)];
-        materialize(&nodes, &std::rc::Rc::new(seed.clone()), doc.values());
-        let Node::Element(element) = &nodes[0] else {
-            panic!("element")
-        };
-        let published = element.style.published().unwrap();
-        let nodes = super::resolve_logical(nodes, doc.values());
-        let Node::Element(element) = &nodes[0] else {
-            panic!("element")
-        };
-        assert!(published.ptr_eq(&element.style.published().unwrap()));
-        for style in [
-            Some(&element.style),
-            element.hover.as_ref(),
-            element.first_letter.as_ref(),
-            element.first_line.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            assert!(seed.reset_context.ptr_eq(&style.cascaded().reset_context));
-            assert_eq!(seed, *style.cascaded());
-        }
-    }
-
-    #[test]
-    fn mask_orientation_inherits_through_unwrapped_ancestors_and_resets() {
-        let doc = Document::builder(
-            r#"<style>
-        html { image-orientation: none }
-        .mask { mask-image: url(unused.jpg) }
-        .reset { image-orientation: from-image }
-        </style><body style="margin:0">
-        <div class="mask"></div>
-        <section class="reset"><div class="mask"></div></section>
-        <section><div class="mask" style="image-orientation:from-image"></div></section>
-        </body>"#,
-            "",
-        )
-        .build()
-        .unwrap();
-        fn collect(nodes: &[Node], flags: &mut Vec<Option<bool>>) {
-            for node in nodes {
-                if let Node::Element(e) = node {
-                    if e.style.cascaded().reset_mask.mask_image.is_some() {
-                        flags.push(e.style.cascaded().inh.ui.image_orient_none);
-                    }
-                    collect(&e.children, flags);
-                }
-            }
-        }
-        let mut flags = Vec::new();
-        collect(doc.nodes(), &mut flags);
-        assert_eq!(flags, [Some(true), Some(false), Some(false)]);
-    }
-
-    #[test]
-    fn logical_sides_map_by_the_inherited_mode_without_touching_own_styles() {
-        use crate::style::values::value::Len;
-        let doc = Document::builder(
-            r#"<body><div style="writing-mode: sideways-lr; direction: rtl">
-            <p id="a" style="margin-inline-start: 15px; padding-block-start: 5px"></p>
-            </div></body>"#,
-            "",
-        )
-        .build()
-        .unwrap();
-        let p =
-            crate::dom::test_support::find(doc.nodes(), &|e| e.attr("id") == Some("a")).expect("p");
-        // sideways-lr + rtl: inline-start сверху, block-start слева (§6.4).
-        assert_eq!(
-            p.style.cascaded().reset_box_layout.margin.top,
-            Some(Len::Px(15.0))
-        );
-        assert_eq!(
-            p.style.cascaded().reset_box_layout.padding.left,
-            Some(Len::Px(5.0))
-        );
-        assert_eq!(
-            (
-                p.style.cascaded().inh.writing.writing_mode,
-                p.style.cascaded().inh.writing.rtl
-            ),
-            (None, None)
-        );
-    }
-}
+mod tests;

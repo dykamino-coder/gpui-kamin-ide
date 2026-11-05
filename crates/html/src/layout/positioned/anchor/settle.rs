@@ -16,17 +16,15 @@ use std::collections::HashSet;
 /// (`position-anchor-none/normal-pseudo-element-implicit-002`).
 pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
-        for n in nodes {
+        for n in crate::dom::traversal::read_nodes(nodes) {
             let Node::Element(e) = n else { continue };
             if let Some(list) = &e.style.used().reset_positioned.anchor_name {
                 out.extend(list.iter().cloned());
             }
-            names(&e.children, out);
         }
     }
-    fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
-        for n in nodes.iter_mut() {
-            let Node::Element(e) = n else { continue };
+    fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: Parent, vcx: ValueCx<'_>) {
+        crate::dom::traversal::for_each_inherited(nodes, parent, |e, parent| {
             if e.style.used().reset_positioned.position_anchor == Some(PositionAnchor::MatchParent)
             {
                 let (pa, implicit) = match_parent(parent);
@@ -72,12 +70,12 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
                     e.style.used().reset_positioned.implicit_anchor,
                 )
             });
-            settle(&mut e.children, known, &me, vcx);
-        }
+            me
+        });
     }
     let mut known = HashSet::new();
     names(nodes, &mut known);
-    settle(nodes, &known, &None, vcx);
+    settle(nodes, &known, None, vcx);
 }
 
 /// Одна вставка: цепочка запасных значений раскручивается, пока не

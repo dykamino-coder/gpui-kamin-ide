@@ -10,14 +10,13 @@ use crate::dom::Node;
 
 /// Собрать фигуры с `id`. По `getElementById` побеждает ПЕРВАЯ.
 pub(super) fn collect_shapes(nodes: &[Node], out: &mut std::collections::HashMap<String, String>) {
-    for n in nodes {
+    for n in crate::dom::traversal::read_nodes(nodes) {
         let Node::Element(e) = n else { continue };
         if let Some(d) = shape_d(e)
             && let Some(id) = e.attr("id")
         {
             out.entry(id.to_string()).or_insert(d);
         }
-        collect_shapes(&e.children, out);
     }
 }
 

@@ -46,7 +46,7 @@ impl MaskResources {
     pub fn collect(&self, nodes: &[Node], vcx: ValueCx<'_>) {
         crate::work::add!(FullTreeWalks, 1);
         fn walk(nodes: &[Node], out: &mut MaskDefinitions, vcx: ValueCx<'_>) {
-            for n in nodes {
+            for n in crate::dom::traversal::read_nodes(nodes) {
                 crate::work::add!(TreeNodesVisited, 1);
                 let Node::Element(e) = n else { continue };
                 let tag = e.tag.to_ascii_lowercase();
@@ -87,7 +87,6 @@ impl MaskResources {
                         },
                     );
                 }
-                walk(&e.children, out, vcx);
             }
         }
         let mut definitions = MaskDefinitions::default();
@@ -166,5 +165,33 @@ mod tests {
             before.get("m").unwrap().markup,
             context.definitions().get("m").unwrap().markup
         );
+    }
+
+    #[test]
+    fn deep_mask_definitions_are_collected_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let doc = DocumentValues::detached(Media::default());
+                let mut tree = nodes(true, "red", &doc);
+                for _ in 0..20_000 {
+                    tree = vec![Node::Element(crate::dom::Element::synthetic(
+                        "div",
+                        doc.initial_style(),
+                        Default::default(),
+                        tree,
+                    ))];
+                }
+                let resources = MaskResources::default();
+                resources.collect(&tree, doc.values());
+                let definitions = resources.definitions();
+                assert!(definitions.get("m").unwrap().alpha);
+                assert!(definitions.get("m").unwrap().markup.contains("red"));
+                assert!(definitions.get("c").is_some());
+                assert!(definitions.get("filter:f").is_some());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }
