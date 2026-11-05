@@ -10,7 +10,7 @@
 //! allocation reuses the freed block instead of growing the frame's working set. The
 //! candidates are per thread and bounded: at most `CANDIDATES` refinements outlive their frame.
 
-use crate::StyleRefinement;
+use crate::{Refineable, Style, StyleRefinement};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -54,6 +54,44 @@ impl RefinementShare {
     }
 }
 
+thread_local! {
+    static COMPUTED: RefCell<ComputedShare> = RefCell::default();
+}
+
+/// The computed style of a div whose style is `refinement` applied to the default style alone
+/// (no state styles): computed once per recent refinement allocation and shared by every
+/// request, prepaint and paint of every div holding that allocation. As in Stylo and Blink,
+/// boxes with equal styles read one computed style object instead of each building a copy.
+pub(crate) fn computed(refinement: &Rc<StyleRefinement>) -> Rc<Style> {
+    COMPUTED.with(|share| share.borrow_mut().computed(refinement))
+}
+
+#[derive(Default)]
+struct ComputedShare {
+    /// The refinement is held so its address cannot be reused by another refinement; writes to
+    /// a shared refinement copy it (`Rc::make_mut`), so a held one never changes.
+    recent: [Option<(Rc<StyleRefinement>, Rc<Style>)>; CANDIDATES],
+    next: usize,
+}
+
+impl ComputedShare {
+    fn computed(&mut self, refinement: &Rc<StyleRefinement>) -> Rc<Style> {
+        for back in 1..=CANDIDATES {
+            let slot = (self.next + CANDIDATES - back) % CANDIDATES;
+            match &self.recent[slot] {
+                Some((key, style)) if Rc::ptr_eq(key, refinement) => return style.clone(),
+                Some(_) => {}
+                None => break,
+            }
+        }
+        let mut style = Style::default();
+        style.refine(refinement);
+        let style = Rc::new(style);
+        self.recent[self.next] = Some((refinement.clone(), style.clone()));
+        self.next = (self.next + 1) % CANDIDATES;
+        style
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +154,22 @@ mod tests {
         assert_eq!(*after, *first);
     }
 
+    #[test]
+    fn a_refinement_is_computed_once_and_equal_to_refining_the_default() {
+        let mut share = ComputedShare::default();
+        let refinement = sized(8.0);
+        let first = share.computed(&refinement);
+        let again = share.computed(&refinement);
+        assert!(Rc::ptr_eq(&first, &again));
+        let mut expected = Style::default();
+        expected.refine(&refinement);
+        // Style has no PartialEq; its debug form lists every field.
+        assert_eq!(format!("{:?}", *first), format!("{expected:?}"));
+        // An equal refinement in another allocation is computed on its own.
+        let other = share.computed(&sized(8.0));
+        assert!(!Rc::ptr_eq(&first, &other));
+        assert_eq!(format!("{:?}", *other), format!("{expected:?}"));
+    }
     #[test]
     fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
         use crate::{InteractiveElement, IntoElement, Styled, div};
