@@ -148,6 +148,18 @@ fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
 }
 
 impl Len {
+    /// Нужна ли свёртка окна/контейнера: проверка без изменения арены.
+    pub fn needs_viewport_resolution(self, vcx: ValueCx<'_>) -> bool {
+        match self {
+            Len::Vw(_) | Len::Vh(_) => true,
+            Len::Calc(i) => {
+                let sum = calc_get(i, vcx);
+                sum.vw != 0.0 || sum.vh != 0.0 || sum.ext.iter().any(|v| *v != 0.0)
+            }
+            _ => false,
+        }
+    }
+
     /// Единицы контейнера становятся абсолютными длинами до наследования.
     pub fn fold_container(self, vp: ViewportCx, vcx: ValueCx<'_>) -> Len {
         if let Len::Calc(i) = self {

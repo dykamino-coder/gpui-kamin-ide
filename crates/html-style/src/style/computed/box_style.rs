@@ -172,7 +172,9 @@ impl BoxStyle {
 
     /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
-        if let Some(paint) = &mut self.paint {
+        if let Some(paint) = &mut self.paint
+            && paint.background.has_viewport_lengths(vcx)
+        {
             Rc::make_mut(paint)
                 .background
                 .resolve_viewport(&self.style, viewport, vcx);

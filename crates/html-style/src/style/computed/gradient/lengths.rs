@@ -5,6 +5,25 @@ use crate::style::values::value::calc_get;
 use crate::values::ValueCx;
 
 impl Gradient {
+    /// Проверка перед COW: сам обход не должен отделять неизменный градиент.
+    pub fn needs_length_resolution(&self, needs: &impl Fn(&Option<Len>) -> bool) -> bool {
+        // Неразрешённые stop records проход также нормализует в stops_raw.
+        !self.stop_lengths.is_empty()
+            || match &self.shape {
+                GradientShape::Radial { position, size, .. } => {
+                    needs(&position.x)
+                        || needs(&position.y)
+                        || match size {
+                            RadialSize::Explicit(first, second) => {
+                                needs(&Some(*first)) || needs(second)
+                            }
+                            _ => false,
+                        }
+                }
+                _ => false,
+            }
+    }
+
     pub fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
         let needs_line = |length: &Option<Len>| length.is_some_and(|l| l.needs_line_height(vcx));
         self.stop_lengths.iter().any(needs_line)

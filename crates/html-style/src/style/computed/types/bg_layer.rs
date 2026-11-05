@@ -97,6 +97,18 @@ impl BgLayer {
                 .any(|l| l.needs_line_height(vcx))
     }
 
+    pub fn needs_length_resolution(&self, needs: &impl Fn(&Option<Len>) -> bool) -> bool {
+        self.image
+            .as_ref()
+            .is_some_and(|image| image.needs_length_resolution(needs))
+            || needs(&self.position.x)
+            || needs(&self.position.y)
+            || match self.size {
+                BgSize::Fixed(w, h) => needs(&w) || needs(&h),
+                _ => false,
+            }
+    }
+
     pub fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         if let Some(image) = &mut self.image {
             image.resolve_lengths(fix, vcx);

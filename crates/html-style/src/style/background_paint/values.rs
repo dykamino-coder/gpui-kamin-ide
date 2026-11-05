@@ -49,6 +49,25 @@ impl BackgroundValues {
         }
     }
 
+    /// Проверяет ровно те операнды, которые разрешает resolve_viewport.
+    pub fn has_viewport_lengths(&self, vcx: ValueCx<'_>) -> bool {
+        let needs = |l: &Option<crate::style::values::value::Len>| {
+            l.is_some_and(|l| l.needs_viewport_resolution(vcx))
+        };
+        self.gradient
+            .as_ref()
+            .is_some_and(|g| g.needs_length_resolution(&needs))
+            || [&self.gradient_image, &self.top.image]
+                .into_iter()
+                .flatten()
+                .any(|i| i.needs_length_resolution(&needs))
+            || self
+                .layers
+                .iter()
+                .flatten()
+                .any(|l| l.needs_length_resolution(&needs))
+    }
+
     /// Позднее разрешение единиц окна тем же обходом операндов, что у CSS.
     /// Размер области и ось берутся от корня, как до выделения этого входа.
     pub fn resolve_viewport(&mut self, root: &Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {

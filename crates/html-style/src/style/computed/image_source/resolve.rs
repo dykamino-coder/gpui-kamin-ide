@@ -5,6 +5,21 @@ use crate::style::computed::{GradientShape, RadialSize};
 use crate::values::ValueCx;
 
 impl ImageSource {
+    /// Все операнды, которые меняет resolve_lengths, включая вложенные образы.
+    pub fn needs_length_resolution(&self, needs: &impl Fn(&Option<Len>) -> bool) -> bool {
+        match self {
+            Self::Gradient { value, .. } => value.needs_length_resolution(needs),
+            Self::Conic(value) => needs(&value.position.x) || needs(&value.position.y),
+            Self::CrossFade(items) => items
+                .iter()
+                .any(|(image, _)| image.needs_length_resolution(needs)),
+            Self::Filter { image, program } => {
+                image.needs_length_resolution(needs) || !program.cacheable()
+            }
+            Self::Url(_) | Self::Color(_) | Self::Fallback { .. } | Self::Invalid => false,
+        }
+    }
+
     pub fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
         match self {
             Self::Gradient { value, .. } => value.needs_line_height(vcx),
