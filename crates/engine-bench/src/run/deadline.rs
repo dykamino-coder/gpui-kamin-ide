@@ -20,13 +20,18 @@ mod tests {
     use super::*;
     use std::{
         pin::pin,
-        sync::Arc,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering::Relaxed},
+        },
         task::{Context, Poll, Wake, Waker},
     };
 
-    struct Observer;
+    struct Observer(AtomicUsize);
     impl Wake for Observer {
-        fn wake(self: Arc<Self>) {}
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Relaxed);
+        }
     }
 
     #[test]
@@ -43,7 +48,7 @@ mod tests {
 
     #[test]
     fn repeated_completed_frames_release_pending_deadline_wakers() {
-        let observer = Arc::new(Observer);
+        let observer = Arc::new(Observer(AtomicUsize::new(0)));
         let waker = Waker::from(observer.clone());
         let mut cx = Context::from_waker(&waker);
         for _ in 0..1000 {
@@ -63,5 +68,6 @@ mod tests {
         async_io::block_on(async_io::Timer::after(Duration::from_millis(20)));
         drop(waker);
         assert_eq!(Arc::strong_count(&observer), 1);
+        assert_eq!(observer.0.load(Relaxed), 0);
     }
 }
