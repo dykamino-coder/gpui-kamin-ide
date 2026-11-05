@@ -24,7 +24,7 @@ pub(super) fn fixed_column_height(
         (
             sizes.preferred[0],
             sizes.maximum[0],
-            parent.avail_w,
+            parent.avail_w(),
             parent.avail_h,
         )
     } else {
@@ -32,7 +32,7 @@ pub(super) fn fixed_column_height(
             sizes.preferred[1],
             sizes.maximum[1],
             parent.avail_h,
-            parent.cb_width,
+            parent.cb_width(),
         )
     };
     // При auto потолок колонок задаёт max-height (css-multicol-1
@@ -60,7 +60,7 @@ pub(super) fn box_block_limit(
             false,
             l,
             parent.avail_h,
-            parent.cb_width,
+            parent.cb_width(),
         ),
         _ => None,
     };

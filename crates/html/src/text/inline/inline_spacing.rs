@@ -16,7 +16,7 @@ pub(super) fn inline_sides(
     e: &Element,
     merged: &Computed,
     flow: &Computed,
-    cb: Option<f32>,
+    cb: impl Fn() -> Option<f32>,
     vcx: crate::values::ValueCx<'_>,
 ) -> ((f32, f32), (f32, f32)) {
     let size = match merged.inh.font.font_size {
@@ -33,7 +33,7 @@ pub(super) fn inline_sides(
         Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_)) => {
             crate::text::metrics::spacing_px(l, &family, size, vcx)
         }
-        Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
+        Some(Len::Pct(k)) => cb().map_or(0.0, |w| k * w),
         _ => 0.0,
     };
     let border = e.style.used().borders();

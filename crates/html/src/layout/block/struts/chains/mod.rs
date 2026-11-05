@@ -22,7 +22,7 @@ pub(crate) use zero::{ZeroPaths, zero_paths};
 pub(crate) fn leading_chain(
     children: &[Node],
     eat: &mut ZeroPaths,
-    cb: Option<f32>,
+    cb: crate::layout::cx::WidthBasis<'_>,
     vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     let mut cache = ThroughCache::default();
@@ -106,7 +106,7 @@ pub(crate) fn leading_chain(
             // не увозит (ассерт `new-fc-separates-from-float`: «will need to
             // separate its margin from the float, so that it doesn't affect the
             // float»). Дальше по цепи примыкание не идёт.
-            if adjoining_floats.is_some_and(|w| bfc_no_fit(ch, w, cb)) {
+            if adjoining_floats.is_some_and(|w| bfc_no_fit(ch, w, cb.get())) {
                 return Some(s);
             }
             // Поле САМОГО ребёнка примыкает к полю родителя всегда — даже когда
@@ -143,7 +143,7 @@ pub(crate) fn leading_chain(
                 // Содержащий блок детей `ch` — сам `ch`: его ширина точками —
                 // оценка для `bfc_no_fit` на спуске.
                 cb = match ch.style.used().reset_box_layout.width {
-                    Some(Len::Px(w)) if w > 0.0 => Some(w),
+                    Some(Len::Px(w)) if w > 0.0 => crate::layout::cx::WidthBasis::Known(Some(w)),
                     _ => cb,
                 };
                 vcx = with_inner_dimensions(

@@ -164,6 +164,47 @@ fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
     }
     assert_eq!(engine.claimed_nodes(), 12);
 }
+#[test]
+fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
+    let mut engine = TaffyLayoutEngine::new();
+    let start = engine.request_position();
+    let (a, b) = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let p = parent(&mut engine, &[a, b]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    assert_eq!(&*nodes, &[a.0, b.0, p.0]);
+    let root = parent(&mut engine, &[p]);
+    engine.clear();
+    // Claimed whole: no requests for its nodes, the next pass keeps them.
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None, "claimed once per pass");
+    assert_eq!(parent(&mut engine, &[p]), root);
+    assert!(!engine.layout_stale());
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 4);
+    // A pass that renews the subtree drops the stamp: the capture is void.
+    let (a2, c) = (leaf(&mut engine, 10.), leaf(&mut engine, 30.));
+    let _ = parent(&mut engine, &[a2, c]);
+    engine.clear();
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None);
+}
+
+#[test]
+fn a_keyed_leaf_of_a_subtree_claimed_whole_leaves_the_candidates_of_its_key() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let start = engine.request_position();
+    let m = measured(&mut engine, Some(1));
+    let p = parent(&mut engine, &[m]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    engine.clear();
+    engine.set_layout_keys(true);
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    let context = engine.taffy.get_node_context(m.0).expect("measured leaf");
+    assert_eq!(context.key_slot, super::retained::NO_SLOT);
+    // A request of the same key does not take the claimed leaf again.
+    assert_ne!(measured(&mut engine, Some(1)), m);
+}
 
 #[test]
 fn a_claimed_leaf_leaves_the_candidates_of_its_key() {

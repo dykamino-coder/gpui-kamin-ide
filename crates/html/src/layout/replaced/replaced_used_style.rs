@@ -140,16 +140,21 @@ pub(crate) fn inline_percentage_width(
 
 /// Freeze the CSS containing block before float adapters create flex wrappers.
 /// Their width is the remaining line window, not the percentage sizing basis.
+/// The basis is read only for an image whose width is a percentage.
 pub(crate) fn inline_nodes(
     mut nodes: Vec<crate::dom::Node>,
-    basis: Option<f32>,
+    basis: impl Fn() -> Option<f32>,
 ) -> Vec<crate::dom::Node> {
     for node in &mut nodes {
         if let crate::dom::Node::Element(element) = node
             && element.tag == "img"
             && crate::layout::box_kind::inline_level(element)
+            && matches!(
+                element.style.used().reset_box_layout.width,
+                Some(Len::Pct(_))
+            )
         {
-            inline_percentage_width(element.style.used_mut(), basis);
+            inline_percentage_width(element.style.used_mut(), basis());
         }
     }
     nodes

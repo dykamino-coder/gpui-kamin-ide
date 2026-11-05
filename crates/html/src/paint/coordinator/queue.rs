@@ -11,8 +11,16 @@ pub(super) struct Positioned {
 }
 
 pub(super) struct Inline {
-    pub child: AnyElement,
+    pub job: Job,
     pub context: RasterPaintCtx,
+    /// Снятие команд задания для повтора блока на экране (`tap`).
+    pub tap: Option<Rc<super::tap::JobSlot>>,
+}
+
+/// Задание строк: элемент или повтор команд прошлого кадра.
+pub(super) enum Job {
+    Paint(AnyElement),
+    Replay(Rc<super::tap::JobSlot>),
 }
 
 pub(super) struct Frame {
@@ -52,8 +60,9 @@ impl CssPaintPass {
         loop {
             let next = self.jobs.pop_inline(depth);
             let Some(Inline {
-                mut child,
+                job,
                 mut context,
+                tap,
             }) = next
             else {
                 break;
@@ -61,9 +70,7 @@ impl CssPaintPass {
             // Строки сохраняют glyph/background origin, заливка наследуется
             // от текущего места flush, как и в исходном CSS consumer.
             context.set_fill_transform(window.raster_frame().fill_transform);
-            window
-                .with_raster_paint_ctx(context, |window| child.paint(window, cx))
-                .expect("CSS inline job stays in its live GPUI scope");
+            super::tap::paint_inline(job, tap, context, window, cx);
         }
     }
 

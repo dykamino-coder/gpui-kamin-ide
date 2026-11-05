@@ -75,7 +75,7 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
-pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedPrepaint};
+pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedSubtree, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -1343,6 +1343,8 @@ pub struct Window {
     pub(crate) focus_generation: u64,
     /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
     interaction_epoch: u64,
+    /// KaminIDE patch: frames drawn so far (Window::frame_serial).
+    pub(crate) frame_serial: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -2269,6 +2271,7 @@ impl Window {
             focus_enabled: true,
             focus_generation: 0,
             interaction_epoch: 0,
+            frame_serial: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -3672,6 +3675,7 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
+        self.frame_serial += 1;
         self.next_frame.clear();
         let current_focus_path = self.rendered_frame.focus_path();
         let current_window_active = self.rendered_frame.window_active;

@@ -41,9 +41,9 @@ pub(super) fn build_band_kid(
             cx.clamp.build = cx.clamp.build.bfc();
         }
         if cb > 0.0 {
-            cx.constraints.cb_width = Some(cb);
+            cx.constraints.set_cb_width(Some(cb));
         }
-        cx.constraints.avail_w = (avail > 0.0).then_some(avail);
+        cx.constraints.set_avail_w((avail > 0.0).then_some(avail));
     });
     let mut copy = node.clone();
     cont_indent(&mut copy, inherited);

@@ -13,7 +13,7 @@ mod text_context;
 
 fn block_cx() -> crate::layout::cx::LayoutCx {
     let mut cx = crate::layout::cx::LayoutCx::default();
-    cx.constraints.avail_w = Some(100.);
+    cx.constraints.set_avail_w(Some(100.));
     cx
 }
 
