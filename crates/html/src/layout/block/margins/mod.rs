@@ -30,7 +30,11 @@ pub(crate) fn fragment_box(
         ..CollapseInputs::default()
     });
     let mut nodes = [Node::Element(element)];
-    collapse_kid_margins(&mut nodes, Some(width), mcx);
+    collapse_kid_margins(
+        &mut nodes,
+        crate::layout::cx::WidthBasis::Known(Some(width)),
+        mcx,
+    );
     let [Node::Element(mut element)] = nodes else {
         unreachable!("margin collapse preserves the box")
     };
@@ -112,7 +116,13 @@ pub(crate) fn collapse_margins(
     cb: Option<f32>,
     vcx: MarginCx<'_>,
 ) -> Vec<Node> {
-    collapse_margins_prepared(nodes, abs_parent, cb, vcx, true)
+    collapse_margins_prepared(
+        nodes,
+        abs_parent,
+        crate::layout::cx::WidthBasis::Known(cb),
+        vcx,
+        true,
+    )
 }
 
 /// Отсутствие block-in-inline доказано общими фактами снимка, независимо от
@@ -120,7 +130,7 @@ pub(crate) fn collapse_margins(
 pub(crate) fn collapse_margins_prepared(
     nodes: &[Node],
     abs_parent: bool,
-    cb: Option<f32>,
+    cb: crate::layout::cx::WidthBasis<'_>,
     vcx: MarginCx<'_>,
     inline_preparation: bool,
 ) -> Vec<Node> {

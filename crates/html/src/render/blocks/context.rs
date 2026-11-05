@@ -29,21 +29,28 @@ pub(super) fn child_options(
     opts: &RenderOpts,
 ) -> Box<RenderOpts> {
     let outer = &opts.cx.constraints;
+    // A child inherits the outer widths by copy; reading them here would
+    // record a read of an outside width (`BoxConstraints::track_widths`).
     let cb_width = match sizes.preferred[0] {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
-        _ => outer.cb_width,
+        _ => None,
     };
-    let avail_h = available_height::inner_with_dimensions(
-        inherited,
-        sizes,
-        outer.avail_h,
-        outer.avail_w,
-        opts.viewport.1,
-    );
-    let avail_w = available_width::inner_with_dimensions(inherited, sizes, outer.avail_w);
+    let avail_h = outer.with_avail_w(|avail_w| {
+        available_height::inner_with_dimensions(
+            inherited,
+            sizes,
+            outer.avail_h,
+            avail_w,
+            opts.viewport.1,
+        )
+    });
     opts.inner(|cx| {
-        cx.constraints.cb_width = cb_width;
-        cx.constraints.avail_w = avail_w;
+        if cb_width.is_some() {
+            cx.constraints.set_cb_width(cb_width);
+        }
+        cx.constraints.derive_avail_w(|outer| {
+            available_width::inner_with_dimensions(inherited, sizes, outer)
+        });
         cx.constraints.avail_h = avail_h;
         cx.constraints.cell_bfc = false;
     })

@@ -43,14 +43,14 @@ fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Eleme
         available_height::inner(
             &parent,
             constraints.avail_h,
-            constraints.avail_w,
+            constraints.avail_w(),
             opts.viewport.1,
         )
     };
     let width = if parent.reset_context.icb {
         Some(opts.viewport.0)
     } else {
-        available_width::inner(&parent, constraints.avail_w)
+        available_width::inner(&parent, constraints.avail_w())
     };
     resolve(e, &parent, height, width, opts)
 }
@@ -69,7 +69,7 @@ pub(crate) fn column_percentages(
     let height = available_height::inner(
         &ordinary,
         opts.cx.constraints.avail_h,
-        opts.cx.constraints.avail_w,
+        opts.cx.constraints.avail_w(),
         opts.viewport.1,
     );
     column_percentages_in(nodes, parent, height, width, opts)
