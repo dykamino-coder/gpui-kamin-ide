@@ -14,8 +14,12 @@ use crate::{Refineable, Style, StyleRefinement};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Distinct recent refinements kept as sharing candidates.
-const CANDIDATES: usize = 8;
+/// Distinct recent refinements kept as sharing candidates. Boxes that differ only in paint
+/// (selectors-3200: 24 cells per row, each with its own border colour) repeat with a period
+/// longer than a handful of candidates; with eight, every cell missed and was refined, converted
+/// and laid out from its own copy. Stylo's style sharing cache keeps 32 candidates for the same
+/// reason. A miss scans every candidate, but equality stops at the first differing field.
+const CANDIDATES: usize = 32;
 
 thread_local! {
     static RECENT: RefCell<RefinementShare> = RefCell::default();
@@ -152,6 +156,31 @@ mod tests {
         share.share(&mut after);
         assert!(!Rc::ptr_eq(&first, &after));
         assert_eq!(*after, *first);
+    }
+
+    #[test]
+    fn a_row_of_paint_variants_stays_shared_and_computed_once() {
+        // selectors-3200: rows of 24 cells, each cell its own refinement; the next row
+        // repeats them. Every cell of the second row shares the first row's allocation
+        // and its computed style.
+        let mut share = RefinementShare::default();
+        let mut computed = ComputedShare::default();
+        let row = |share: &mut RefinementShare| -> Vec<Rc<StyleRefinement>> {
+            (0..24)
+                .map(|cell| {
+                    let mut style = sized(cell as f32);
+                    share.share(&mut style);
+                    style
+                })
+                .collect()
+        };
+        let first = row(&mut share);
+        let first_computed: Vec<_> = first.iter().map(|s| computed.computed(s)).collect();
+        let second = row(&mut share);
+        for (cell, style) in second.iter().enumerate() {
+            assert!(Rc::ptr_eq(style, &first[cell]));
+            assert!(Rc::ptr_eq(&computed.computed(style), &first_computed[cell]));
+        }
     }
 
     #[test]

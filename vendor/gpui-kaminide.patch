@@ -9828,10 +9828,10 @@ index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b17dfd5c2f00c8512990e93e48e6ebbf
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ea157728358c3d61dd07dec01839bdc32ee89c8a
+index 0000000000000000000000000000000000000000..a06f84c9f8204d5c42496b369cc318b0e99903d9
 --- /dev/null
 +++ b/vendor/gpui/src/elements/refinement_share.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,214 @@
 +//! KaminIDE patch: equal div base style refinements share one allocation.
 +//!
 +//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
@@ -9848,8 +9848,12 @@ index 0000000000000000000000000000000000000000..ea157728358c3d61dd07dec01839bdc3
 +use std::cell::RefCell;
 +use std::rc::Rc;
 +
-+/// Distinct recent refinements kept as sharing candidates.
-+const CANDIDATES: usize = 8;
++/// Distinct recent refinements kept as sharing candidates. Boxes that differ only in paint
++/// (selectors-3200: 24 cells per row, each with its own border colour) repeat with a period
++/// longer than a handful of candidates; with eight, every cell missed and was refined, converted
++/// and laid out from its own copy. Stylo's style sharing cache keeps 32 candidates for the same
++/// reason. A miss scans every candidate, but equality stops at the first differing field.
++const CANDIDATES: usize = 32;
 +
 +thread_local! {
 +    static RECENT: RefCell<RefinementShare> = RefCell::default();
@@ -9986,6 +9990,31 @@ index 0000000000000000000000000000000000000000..ea157728358c3d61dd07dec01839bdc3
 +        share.share(&mut after);
 +        assert!(!Rc::ptr_eq(&first, &after));
 +        assert_eq!(*after, *first);
++    }
++
++    #[test]
++    fn a_row_of_paint_variants_stays_shared_and_computed_once() {
++        // selectors-3200: rows of 24 cells, each cell its own refinement; the next row
++        // repeats them. Every cell of the second row shares the first row's allocation
++        // and its computed style.
++        let mut share = RefinementShare::default();
++        let mut computed = ComputedShare::default();
++        let row = |share: &mut RefinementShare| -> Vec<Rc<StyleRefinement>> {
++            (0..24)
++                .map(|cell| {
++                    let mut style = sized(cell as f32);
++                    share.share(&mut style);
++                    style
++                })
++                .collect()
++        };
++        let first = row(&mut share);
++        let first_computed: Vec<_> = first.iter().map(|s| computed.computed(s)).collect();
++        let second = row(&mut share);
++        for (cell, style) in second.iter().enumerate() {
++            assert!(Rc::ptr_eq(style, &first[cell]));
++            assert!(Rc::ptr_eq(&computed.computed(style), &first_computed[cell]));
++        }
 +    }
 +
 +    #[test]
@@ -18170,10 +18199,10 @@ index 0000000000000000000000000000000000000000..e8bbbe7f0617c6adf091efe0ad4353a4
 +}
 diff --git a/vendor/gpui/src/taffy/style_share.rs b/vendor/gpui/src/taffy/style_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0f896dcbeed344c8c20f492821c7b57404c01ec4
+index 0000000000000000000000000000000000000000..4a8ccd8b3434e4ad6d705bc2fc1e61b4da63d37e
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/style_share.rs
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,202 @@
 +//! KaminIDE patch: equal node styles of one layout tree share one allocation.
 +//!
 +//! A taffy `Style` is about 1 KiB and every node of a frame tree used to own a copy, although
@@ -18195,8 +18224,9 @@ index 0000000000000000000000000000000000000000..0f896dcbeed344c8c20f492821c7b574
 +use std::rc::Rc;
 +use taffy::{SharedStyle, Style};
 +
-+/// Distinct recent styles kept as sharing candidates.
-+const CANDIDATES: usize = 8;
++/// Distinct recent styles kept as sharing candidates; as many as the refinement candidates
++/// (`refinement_share`), so a converted refinement stays until its refinement is replaced.
++const CANDIDATES: usize = 32;
 +
 +#[derive(Default)]
 +pub(super) struct StyleShare {
@@ -18343,6 +18373,23 @@ index 0000000000000000000000000000000000000000..0f896dcbeed344c8c20f492821c7b574
 +        assert_eq!(*scaled, sized(3.0));
 +        assert_eq!(*rem, sized(4.0));
 +        assert_eq!(conversions, 3);
++    }
++
++    #[test]
++    fn a_row_of_24_refinements_is_converted_once() {
++        // Rows of 24 paint variants (selectors-3200) repeat: the second row converts nothing.
++        let mut share = StyleShare::default();
++        let row: Vec<_> = (0..24).map(|_| Rc::new(StyleRefinement::default())).collect();
++        let mut conversions = 0;
++        for _ in 0..2 {
++            for refinement in &row {
++                share.share_refinement(refinement, Pixels(16.0), 1.0, || {
++                    conversions += 1;
++                    sized(1.0)
++                });
++            }
++        }
++        assert_eq!(conversions, 24);
 +    }
 +
 +    #[test]
