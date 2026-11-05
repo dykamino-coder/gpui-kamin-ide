@@ -77,6 +77,14 @@ pub(super) fn independent(e: &Element, vcx: ValueCx<'_>) -> Width {
     }
 }
 
+/// The border box of block `e` of `Width::Stretch` is the flow width less its
+/// fixed margins at every flow width (CSS 2.1 §10.3.3): no `min-width` or
+/// `max-width` holds it.
+pub(super) fn tracks_flow(e: &Element) -> bool {
+    let b = &e.style.used().reset_box_layout;
+    b.width.is_none() && b.min_width.is_none() && b.max_width.is_none()
+}
+
 /// Блок без своих псевдослоёв, дети которого — только текст, набранный от
 /// начального края без процентного отступа.
 fn text_only(e: &Element) -> bool {

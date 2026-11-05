@@ -160,3 +160,40 @@ fn wrapping_or_centred_text_blocks_are_rebuilt_after_a_width_change(cx: &mut Tes
         assert_eq!(skipped, 0);
     }
 }
+
+/// A block of text that wrapped while the flow width changed wraps in every
+/// narrower flow, where its record would be refused: such builds do not wrap
+/// it for recording. A wider flow, where its text fits on one line, records it.
+#[gpui::test]
+fn a_wrapped_text_block_is_not_tracked_in_a_narrower_flow(cx: &mut TestAppContext) {
+    let page = text_rows("").replace("alpha beta", &"alpha beta ".repeat(6));
+    let (view, cx) = open(cx, &page);
+    frame(cx);
+    let tracked = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.tracked_blocks())
+    };
+    resize(&view, cx, 401.);
+    let wrapped = tracked(&view, cx);
+    assert!(
+        wrapped > 500,
+        "the wrapping blocks were not tracked: {wrapped}"
+    );
+    for width in [400., 401., 300.] {
+        resize(&view, cx, width);
+        assert_eq!(tracked(&view, cx), wrapped, "tracked again at {width}");
+    }
+    let before = reused(&view, cx).0;
+    resize(&view, cx, 1200.);
+    let wide = tracked(&view, cx) - wrapped;
+    assert!(
+        wide > 500,
+        "blocks in a wider flow were not tracked: {wide}"
+    );
+    let (recorded, _, rebuilt) = reused(&view, cx);
+    let recorded = recorded - before;
+    assert!(
+        recorded > 500,
+        "one-line blocks were not recorded: {recorded}"
+    );
+    assert_eq!(rebuilt, 0);
+}

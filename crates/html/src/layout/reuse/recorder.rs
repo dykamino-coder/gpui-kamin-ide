@@ -40,6 +40,10 @@ pub(super) struct Pending {
     /// у начального края (	able::StartWrapper): лист снимается сквозь неё,
     /// а ширина блока — ширина содержимого, если оно шире обёртки.
     unpainted: bool,
+    /// The block's border box is the flow width less fixed margins
+    /// (`width::tracks_flow`): a wrap at this flow width is one at every
+    /// narrower flow (`Finished::Narrow`).
+    tracks_flow: bool,
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
     /// Строки абзацев блока в этом кадре.
@@ -59,6 +63,37 @@ struct Output {
     paint: Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>,
 }
 
+/// What a pending record became after the frame (`Pending::finish`).
+pub(super) enum Finished {
+    Record(Record),
+    /// No record now nor at any narrower flow (`Narrow`).
+    Narrow(Narrow),
+    Dropped,
+}
+
+/// A block of text alone whose border box tracks the flow and whose text
+/// wrapped in a flow of width `flow`, recorded while the flow width changed.
+/// Text set from the start edge that does not fit on one line does not fit in
+/// less room (CSS Text 3 §5: a line breaks only where its content overflows
+/// it), so in a flow no wider and with the same subtree the block wraps
+/// again and its record would be refused again (`width::reusable_range`):
+/// a later resized build does not wrap it for recording at all.
+pub(super) struct Narrow {
+    source: Source,
+    flow: f32,
+}
+
+impl Narrow {
+    /// The block `e` in a flow of width `flow` wraps as it did here.
+    pub(super) fn holds(&self, e: &crate::dom::Element, flow: Option<f32>) -> bool {
+        flow.is_some_and(|flow| flow <= self.flow) && self.source.same(e)
+    }
+
+    pub(super) fn id(&self) -> u64 {
+        self.source.id()
+    }
+}
+
 impl Pending {
     pub(super) fn new(
         key: Rc<FlowKey>,
@@ -67,6 +102,7 @@ impl Pending {
         width: Width,
         settled: bool,
         unpainted: bool,
+        tracks_flow: bool,
     ) -> Self {
         Self {
             key,
@@ -82,6 +118,7 @@ impl Pending {
             width,
             settled,
             unpainted,
+            tracks_flow,
             border: Cell::new(0.0),
             lines: Rc::default(),
             output: RefCell::new(None),
@@ -92,6 +129,32 @@ impl Pending {
     /// инертно и либо был далеко от экрана `screen`, либо его вывод кадра
     /// `epoch` повторяем под маской корня `mask`.
     pub(super) fn finish(
+        &self,
+        source: Source,
+        screen: Bounds<ScaledPixels>,
+        mask: Bounds<Pixels>,
+        epoch: u64,
+    ) -> Finished {
+        // A block recorded while the flow width changes is kept only at
+        // other widths; one whose text wrapped here wraps at any narrower
+        // flow and is no record there either (`Narrow`).
+        let flow = self.key.constraints.avail_w;
+        if !self.settled
+            && self.width == Width::Stretch
+            && self.tracks_flow
+            && self.lines.broken()
+            && reusable_range(self.width, self.border.get(), flow, None).is_none()
+            && let Some(flow) = flow
+        {
+            return Finished::Narrow(Narrow { source, flow });
+        }
+        match self.record(source, screen, mask, epoch) {
+            Some(record) => Finished::Record(record),
+            None => Finished::Dropped,
+        }
+    }
+
+    fn record(
         &self,
         source: Source,
         screen: Bounds<ScaledPixels>,

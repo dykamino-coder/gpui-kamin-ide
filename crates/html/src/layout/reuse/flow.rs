@@ -119,8 +119,9 @@ impl FlowReuse {
             self.store.keep_width_independent(&key);
         } else if !settled {
             // Записи другого ключа не подойдут, а держат стили кадра записи.
-            self.store.records.take();
+            self.store.reset();
         }
+        self.resized.set(resized);
         let edges = match self.root {
             Root::Body { .. } => edges_free(key.html.as_ref()) && edges_free(key.body.as_ref()),
             Root::TopLevel => false,
@@ -222,6 +223,17 @@ impl FlowCx {
         if !self.settled && width == super::width::Width::Dependent {
             return;
         }
+        // A block that wrapped at a flow at least this wide wraps here too:
+        // its record would be refused (`recorder::Narrow`).
+        if !self.settled
+            && width == super::width::Width::Stretch
+            && let Some(narrow) = self.reuse.store.wraps(e, self.key.constraints.avail_w)
+        {
+            let mut narrowed = self.reuse.narrowed.take();
+            narrowed.insert(e.node_id, narrow);
+            self.reuse.narrowed.replace(narrowed);
+            return;
+        }
         let Some(mut child) = out.pop() else { return };
         // Обёртка таблицы у начального края: лист снимается сквозь неё.
         let unpainted = child
@@ -234,6 +246,7 @@ impl FlowCx {
             width,
             self.settled,
             unpainted,
+            super::width::tracks_flow(e),
         ));
         let source = self.reuse.shells.source(e);
         super::push(&self.reuse.pending, (pending.clone(), source));

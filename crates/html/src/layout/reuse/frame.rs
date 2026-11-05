@@ -78,11 +78,25 @@ impl FlowReuse {
             .count() as u64;
         let mut recorded = 0;
         let epoch = self.store.epoch.get();
-        for (pending, source) in self.pending.take() {
-            if let Some(record) = pending.finish(source, screen, mask, epoch) {
-                next.insert(record.source.id(), Rc::new(record));
-                recorded += 1;
+        let pending = self.pending.take();
+        let tracked = pending.len() as u64;
+        let mut narrowed = self.narrowed.take();
+        for (pending, source) in pending {
+            match pending.finish(source, screen, mask, epoch) {
+                recorder::Finished::Record(record) => {
+                    next.insert(record.source.id(), Rc::new(record));
+                    recorded += 1;
+                }
+                recorder::Finished::Narrow(narrow) => {
+                    narrowed.insert(narrow.id(), Rc::new(narrow));
+                }
+                recorder::Finished::Dropped => {}
             }
+        }
+        // The wraps of a build at a settled width are not taken: its blocks
+        // are recorded whatever their lines.
+        if self.resized.get() {
+            self.store.narrow.replace(narrowed);
         }
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
@@ -90,6 +104,7 @@ impl FlowReuse {
             self.store.records.replace(next);
         }
         let mut stats = self.store.stats.get();
+        stats.tracked += tracked;
         stats.recorded += recorded;
         stats.skipped += skipped;
         stats.replayed += replayed;

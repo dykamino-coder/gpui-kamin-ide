@@ -55,6 +55,9 @@ pub(crate) struct Store {
     /// Ключ кадра до `last`: повторная сборка того же кадра сравнивает с
     /// ним, как первая (`FlowReuse::again`).
     prev: RefCell<Option<Rc<FlowKey>>>,
+    /// Blocks whose text wrapped in the last build with a changing flow
+    /// width, by node id (`recorder::Narrow`): not recorded in a flow no wider.
+    narrow: RefCell<HashMap<u64, Rc<recorder::Narrow>>>,
     /// Блоки, отказанные `FlowReuse::validate`: пересборка кадра их собирает.
     refused: RefCell<std::collections::HashSet<u64>>,
     /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
@@ -104,11 +107,27 @@ impl Store {
         records.retain(|_, r| r.fits_width(key));
         self.records.replace(records);
     }
+
+    /// The flow key changed in more than its width: no record or wrap of
+    /// the last key holds.
+    fn reset(&self) {
+        self.records.take();
+        self.narrow.take();
+    }
+
+    /// The block `e` wraps in a flow of width `flow` as in the last build
+    /// with a changing width (`recorder::Narrow`).
+    fn wraps(&self, e: &Element, flow: Option<f32>) -> Option<Rc<recorder::Narrow>> {
+        let narrow = self.narrow.borrow().get(&e.node_id).cloned()?;
+        narrow.holds(e, flow).then_some(narrow)
+    }
 }
 
 /// Счётчики наблюдения повтора блоков.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ReuseStats {
+    /// Blocks wrapped for recording (`recorder::Pending`).
+    pub tracked: u64,
     pub recorded: u64,
     pub skipped: u64,
     pub rebuilt_frames: u64,
@@ -166,6 +185,11 @@ pub(crate) struct FlowReuse {
     seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
+    /// The flow width changes in this build: the wraps of its blocks replace
+    /// the store's (`Store::narrow`).
+    resized: Cell<bool>,
+    /// Wraps of this build's blocks (`recorder::Narrow`).
+    narrowed: RefCell<HashMap<u64, Rc<recorder::Narrow>>>,
     /// Pending records with the comparison inputs of their blocks.
     pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
     /// Shells the sources of this build share (`source`).
@@ -217,6 +241,8 @@ impl FlowReuse {
             seen: Default::default(),
             claimed: Cell::new(false),
             next: Default::default(),
+            resized: Cell::new(false),
+            narrowed: Default::default(),
             pending: Default::default(),
             shells: Shells::default(),
             placeholders: Default::default(),

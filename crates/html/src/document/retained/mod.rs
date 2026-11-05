@@ -140,6 +140,12 @@ impl Document {
         (stats.recorded, stats.skipped, stats.rebuilt_frames)
     }
 
+    /// Blocks wrapped for recording so far (`layout::reuse::recorder`).
+    #[cfg(test)]
+    pub(crate) fn tracked_blocks(&self) -> u64 {
+        self.reuse.stats.get().tracked
+    }
+
     /// Из пропущенных блоков — повторены из прошлого кадра на экране.
     pub fn replayed_blocks(&self) -> u64 {
         self.reuse.stats.get().replayed

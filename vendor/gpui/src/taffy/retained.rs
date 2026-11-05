@@ -27,6 +27,14 @@
 //! finds is claimed only when it is a childless plain leaf of an equal style,
 //! whose layout depends on nothing else.
 //!
+//! Equal keys repeat (equal texts), so a keyed leaf moves the cursor only
+//! while the cursor may be off (`astray`: a node was created since the last
+//! anchor, or a parent was claimed away from the cursor). While the cursor
+//! is aligned, a keyed request takes the leaf at the cursor or one left
+//! behind it, never one ahead: that one belongs to a later request (a cell
+//! whose text became that of a later cell), and taking it would move the
+//! cursor there and set every later request against the wrong nodes.
+//!
 //! Styles are compared by value (shared allocation first, `style_share`); a
 //! claimed node takes this pass's shared allocation of its equal style.
 //!
@@ -48,6 +56,9 @@ pub(super) struct Retained {
     seq: Vec<NodeId>,
     /// Position in `prev` that corresponds to the next request of this pass.
     cursor: usize,
+    /// The cursor may be off: a node was created since it was last confirmed
+    /// (a keyed leaf claimed at the cursor, a parent claimed at the cursor).
+    astray: bool,
     /// Nodes requested (claimed or created) in this pass.
     live: FxHashSet<NodeId>,
     /// Layout keys of the measured leaves in the tree.
@@ -91,6 +102,11 @@ impl TaffyLayoutEngine {
                 .iter()
                 .all(|child| self.taffy.parent(child.0) == Some(parent))
             && self.taffy.style_equals(parent, style);
+        if found {
+            // A parent is known by its children: claimed at the cursor, it
+            // confirms the alignment; elsewhere, it shows the cursor is off.
+            self.retained.astray = self.retained.prev.get(self.retained.cursor) != Some(&parent);
+        }
         found.then(|| self.claim(parent, style))
     }
 
@@ -134,7 +150,11 @@ impl TaffyLayoutEngine {
         let after = candidates[start..].iter().position(fits).map(|at| start + at);
         let before = candidates[..start].iter().rposition(fits);
         let distance = |at: usize| (candidates[at] as usize).abs_diff(cursor);
+        let astray = self.retained.astray;
         let at = match (before, after) {
+            (_, Some(a)) if distance(a) == 0 => a,
+            // An aligned cursor: a leaf ahead is a later request's.
+            (b, _) if !astray => b?,
             (Some(b), Some(a)) if distance(b) < distance(a) => b,
             (_, Some(a)) => a,
             (b, None) => b?,
@@ -145,8 +165,12 @@ impl TaffyLayoutEngine {
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
         }
-        // The requests after this leaf follow the ones after it last pass.
-        self.retained.cursor = position;
+        // The requests after this leaf follow the ones after it last pass; a
+        // leaf left behind an aligned cursor is new content, the cursor stays.
+        if astray || position == cursor {
+            self.retained.cursor = position;
+            self.retained.astray = false;
+        }
         Some(self.claim(node, style))
     }
 
@@ -185,6 +209,7 @@ impl TaffyLayoutEngine {
     /// Register a node created in this pass; `key` is its layout key.
     pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
         if self.frame_tree {
+            self.retained.astray = true;
             self.retained.note(node.0);
             if let Some(key) = key {
                 self.retained.keys.insert(node.0, key);
@@ -219,6 +244,7 @@ impl TaffyLayoutEngine {
         }
         retained.prev = std::mem::take(&mut retained.seq);
         retained.cursor = 0;
+        retained.astray = false;
         retained.next_key = None;
         retained.keys_enabled = false;
         retained.live = live;

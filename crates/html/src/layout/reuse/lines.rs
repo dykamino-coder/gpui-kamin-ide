@@ -34,6 +34,11 @@ impl LineSink {
         (!self.broken.get() && self.paragraphs.get() == 1).then(|| self.slack.get())
     }
 
+    /// A paragraph of the block took more than one line (or is vertical).
+    pub(super) fn broken(&self) -> bool {
+        self.broken.get()
+    }
+
     /// Абзац ширины `width` из одной строки `one` (`None` — иначе).
     fn note(&self, width: f32, one: Option<f32>) {
         self.paragraphs.set(self.paragraphs.get() + 1);

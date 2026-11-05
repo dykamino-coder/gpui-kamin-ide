@@ -17595,10 +17595,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd6833817a2c276
+index 0000000000000000000000000000000000000000..3b79ab22cc182786f2cd49d7c9a0f9bc2cb2dd6d
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,274 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17628,6 +17628,14 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +//! finds is claimed only when it is a childless plain leaf of an equal style,
 +//! whose layout depends on nothing else.
 +//!
++//! Equal keys repeat (equal texts), so a keyed leaf moves the cursor only
++//! while the cursor may be off (`astray`: a node was created since the last
++//! anchor, or a parent was claimed away from the cursor). While the cursor
++//! is aligned, a keyed request takes the leaf at the cursor or one left
++//! behind it, never one ahead: that one belongs to a later request (a cell
++//! whose text became that of a later cell), and taking it would move the
++//! cursor there and set every later request against the wrong nodes.
++//!
 +//! Styles are compared by value (shared allocation first, `style_share`); a
 +//! claimed node takes this pass's shared allocation of its equal style.
 +//!
@@ -17649,6 +17657,9 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +    seq: Vec<NodeId>,
 +    /// Position in `prev` that corresponds to the next request of this pass.
 +    cursor: usize,
++    /// The cursor may be off: a node was created since it was last confirmed
++    /// (a keyed leaf claimed at the cursor, a parent claimed at the cursor).
++    astray: bool,
 +    /// Nodes requested (claimed or created) in this pass.
 +    live: FxHashSet<NodeId>,
 +    /// Layout keys of the measured leaves in the tree.
@@ -17692,6 +17703,11 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +                .iter()
 +                .all(|child| self.taffy.parent(child.0) == Some(parent))
 +            && self.taffy.style_equals(parent, style);
++        if found {
++            // A parent is known by its children: claimed at the cursor, it
++            // confirms the alignment; elsewhere, it shows the cursor is off.
++            self.retained.astray = self.retained.prev.get(self.retained.cursor) != Some(&parent);
++        }
 +        found.then(|| self.claim(parent, style))
 +    }
 +
@@ -17735,7 +17751,11 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +        let after = candidates[start..].iter().position(fits).map(|at| start + at);
 +        let before = candidates[..start].iter().rposition(fits);
 +        let distance = |at: usize| (candidates[at] as usize).abs_diff(cursor);
++        let astray = self.retained.astray;
 +        let at = match (before, after) {
++            (_, Some(a)) if distance(a) == 0 => a,
++            // An aligned cursor: a leaf ahead is a later request's.
++            (b, _) if !astray => b?,
 +            (Some(b), Some(a)) if distance(b) < distance(a) => b,
 +            (_, Some(a)) => a,
 +            (b, None) => b?,
@@ -17746,8 +17766,12 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +        if let Some(old) = self.taffy.get_node_context_mut(node) {
 +            old.measure = fresh.measure;
 +        }
-+        // The requests after this leaf follow the ones after it last pass.
-+        self.retained.cursor = position;
++        // The requests after this leaf follow the ones after it last pass; a
++        // leaf left behind an aligned cursor is new content, the cursor stays.
++        if astray || position == cursor {
++            self.retained.cursor = position;
++            self.retained.astray = false;
++        }
 +        Some(self.claim(node, style))
 +    }
 +
@@ -17786,6 +17810,7 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +    /// Register a node created in this pass; `key` is its layout key.
 +    pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
 +        if self.frame_tree {
++            self.retained.astray = true;
 +            self.retained.note(node.0);
 +            if let Some(key) = key {
 +                self.retained.keys.insert(node.0, key);
@@ -17820,6 +17845,7 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +        }
 +        retained.prev = std::mem::take(&mut retained.seq);
 +        retained.cursor = 0;
++        retained.astray = false;
 +        retained.next_key = None;
 +        retained.keys_enabled = false;
 +        retained.live = live;
@@ -17849,10 +17875,10 @@ index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd68338
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c85b144f54c5dc35fb0b714029f1e41958caff86
+index 0000000000000000000000000000000000000000..ece20e150c578d5f37925ba0a02321956278abee
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,182 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -18012,7 +18038,29 @@ index 0000000000000000000000000000000000000000..c85b144f54c5dc35fb0b714029f1e419
 +    assert_eq!(measured(&mut engine, Some(7)), keyed);
 +    assert_eq!(leaf(&mut engine, 20.), after);
 +}
-\ No newline at end of file
++/// A table cell: a plain leaf, a keyed text leaf and their parent.
++fn cell(engine: &mut TaffyLayoutEngine, key: u64) -> [LayoutId; 3] {
++    let plain = leaf(engine, 10.);
++    let keyed = measured(engine, Some(key));
++    [plain, keyed, parent(engine, &[plain, keyed])]
++}
++
++#[test]
++fn a_leaf_whose_new_key_a_later_leaf_has_takes_no_node_of_a_later_request() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let before = [1, 2, 3, 4].map(|key| cell(&mut engine, key));
++    parent(&mut engine, &before.map(|c| c[2]));
++    engine.clear();
++    // The second cell's text became the fourth one's: the second cell is new,
++    // and the cells after it keep their nodes, the fourth its own leaf.
++    engine.set_layout_keys(true);
++    let after = [1, 4, 3, 4].map(|key| cell(&mut engine, key));
++    parent(&mut engine, &after.map(|c| c[2]));
++    assert_eq!([after[0], after[2], after[3]], [before[0], before[2], before[3]]);
++    assert_eq!(after[1][0], before[1][0]);
++    assert_eq!(engine.claimed_nodes(), 10);
++}
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..fb19083af0f432d1dd961edd14fe95e5795e2640
