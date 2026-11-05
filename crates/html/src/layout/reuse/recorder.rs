@@ -3,6 +3,7 @@
 //! строк; `Pending::finish` делает из них запись.
 
 use super::lines::LineSink;
+use super::narrow::Narrow;
 use super::width::{Width, reusable_range};
 use super::{Counters, FlowKey, Record, Replay, Source, placed};
 use crate::hooks::LineCapture;
@@ -42,7 +43,7 @@ pub(super) struct Pending {
     unpainted: bool,
     /// The block's border box is the flow width less fixed margins
     /// (`width::tracks_flow`): a wrap at this flow width is one at every
-    /// narrower flow (`Narrow`).
+    /// narrower flow (`narrow`).
     tracks_flow: bool,
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
@@ -66,54 +67,8 @@ struct Output {
 /// What a pending record became after the frame (`Pending::finish`).
 pub(super) struct Finished {
     pub(super) record: Option<Record>,
-    /// The block's text wrapped: no record at any narrower flow (`Narrow`).
+    /// The block's text wrapped: no record at any narrower flow (`narrow`).
     pub(super) narrow: Option<Narrow>,
-}
-
-/// A block of text alone whose border box tracks the flow and whose text
-/// wrapped in a flow of width `flow`. Text set from the start edge that does
-/// not fit on one line does not fit in less room (CSS Text 3 §5: a line breaks
-/// only where its content overflows it), so in a flow no wider and with the
-/// same text the block wraps again, and a record made while the flow width
-/// changes would be refused (`width::reusable_range`): such a build does not
-/// wrap it for recording at all.
-///
-/// The entry knows its text by the identity of the block's child list (a
-/// changed text is a new list), through a mark that does not keep the list:
-/// holding the block's subtree or styles here kept a previous build's styles
-/// of every wrapped block alive. Not wrapping a block for recording never
-/// changes its layout or paint, only whether a later frame may skip it, so a
-/// style change under the same text costs at most that block's record.
-#[derive(Clone)]
-pub(super) struct Narrow {
-    id: u64,
-    children: crate::dom::ChildrenMark,
-    identity: usize,
-    flow: f32,
-}
-
-impl Narrow {
-    fn of(source: &Source, flow: f32) -> Self {
-        let children = source.children();
-        Self {
-            id: source.id(),
-            children: children.mark(),
-            identity: children.identity(),
-            flow,
-        }
-    }
-
-    /// The block `e` in a flow of width `flow` wraps as it did here.
-    pub(super) fn holds(&self, e: &crate::dom::Element, flow: Option<f32>) -> bool {
-        flow.is_some_and(|flow| flow <= self.flow)
-            && e.node_id == self.id
-            && self.children.is_alive()
-            && e.children.identity() == self.identity
-    }
-
-    pub(super) fn id(&self) -> u64 {
-        self.id
-    }
 }
 
 impl Pending {
@@ -158,7 +113,7 @@ impl Pending {
         epoch: u64,
     ) -> Finished {
         // A block whose text wrapped here wraps at any narrower flow, where
-        // a record made while the width changes would be refused (`Narrow`).
+        // a record made while the width changes would be refused (`narrow`).
         let flow = self.key.constraints.avail_w;
         let wrapped = self.width == Width::Stretch
             && self.tracks_flow

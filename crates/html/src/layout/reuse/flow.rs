@@ -220,18 +220,8 @@ impl FlowCx {
         }
         // Запись при другой ширине потока годна лишь независимому от неё блоку.
         let width = super::width::independent(e, opts.cx.vcx());
-        if !self.settled && width == super::width::Width::Dependent {
-            return;
-        }
-        // A block that wrapped at a flow at least this wide wraps here too:
-        // its record would be refused (`recorder::Narrow`).
-        if !self.settled
-            && width == super::width::Width::Stretch
-            && let Some(narrow) = self.reuse.store.wraps(e, self.key.constraints.avail_w)
-        {
-            let mut narrowed = self.reuse.narrowed.take();
-            narrowed.insert(e.node_id, narrow);
-            self.reuse.narrowed.replace(narrowed);
+        let flow = self.key.constraints.avail_w;
+        if !self.settled && !self.reuse.width_recordable(e, width, flow) {
             return;
         }
         let Some(mut child) = out.pop() else { return };

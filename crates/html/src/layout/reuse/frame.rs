@@ -80,27 +80,17 @@ impl FlowReuse {
         let epoch = self.store.epoch.get();
         let pending = self.pending.take();
         let tracked = pending.len() as u64;
-        let mut narrowed = self.narrowed.take();
         for (pending, source) in pending {
             let finished = pending.finish(source, screen, mask, epoch);
             if let Some(narrow) = finished.narrow {
-                narrowed.insert(narrow.id(), narrow);
+                self.narrowed.add(narrow);
             }
             if let Some(record) = finished.record {
                 next.insert(record.source.id(), Rc::new(record));
                 recorded += 1;
             }
         }
-        // A build at a changed width visits every block it may record and
-        // replaces the wraps; a settled one adds those of the blocks it
-        // recorded, so the first build at a narrower width already skips them.
-        if self.resized.get() {
-            self.store.narrow.replace(narrowed);
-        } else if !narrowed.is_empty() {
-            let mut all = self.store.narrow.take();
-            all.extend(narrowed);
-            self.store.narrow.replace(all);
-        }
+        self.learn_wraps();
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {
@@ -121,3 +111,31 @@ impl FlowReuse {
         self.store.stats.set(stats);
     }
 }
+
+pub(super) fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
+    point(
+        ScaledPixels(p.x.as_f32() * scale),
+        ScaledPixels(p.y.as_f32() * scale),
+    )
+}
+
+/// Чернила записи, поставленные в начало `origin` и расширенные на `margin`.
+pub(super) fn placed(
+    ink: Bounds<ScaledPixels>,
+    origin: Point<ScaledPixels>,
+    margin: f32,
+) -> Bounds<ScaledPixels> {
+    Bounds {
+        origin: point(
+            ScaledPixels(ink.origin.x.0 + origin.x.0 - margin),
+            ScaledPixels(ink.origin.y.0 + origin.y.0 - margin),
+        ),
+        size: size(
+            ScaledPixels(ink.size.width.0 + 2.0 * margin),
+            ScaledPixels(ink.size.height.0 + 2.0 * margin),
+        ),
+    }
+}
+
+/// Запас проверки экрана на округление краёв, в точках устройства.
+pub(super) const SNAP: f32 = 2.0;

@@ -23,6 +23,7 @@ mod flow;
 mod frame;
 mod key;
 pub(crate) mod lines;
+mod narrow;
 mod placeholder;
 mod plain;
 mod record;
@@ -34,6 +35,7 @@ mod width;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
+use frame::{SNAP, placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
 pub(crate) use placeholder::Replay;
@@ -55,9 +57,8 @@ pub(crate) struct Store {
     /// Ключ кадра до `last`: повторная сборка того же кадра сравнивает с
     /// ним, как первая (`FlowReuse::again`).
     prev: RefCell<Option<Rc<FlowKey>>>,
-    /// Blocks whose text wrapped in the last build with a changing flow
-    /// width, by node id (`recorder::Narrow`): not recorded in a flow no wider.
-    narrow: RefCell<HashMap<u64, recorder::Narrow>>,
+    /// Blocks whose text wrapped: not recorded in a flow no wider (`narrow`).
+    narrow: narrow::Wraps,
     /// Блоки, отказанные `FlowReuse::validate`: пересборка кадра их собирает.
     refused: RefCell<std::collections::HashSet<u64>>,
     /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
@@ -112,15 +113,7 @@ impl Store {
     /// the last key holds.
     fn reset(&self) {
         self.records.take();
-        self.narrow.take();
-    }
-
-    /// The block `e` wraps in a flow of width `flow` as in the last build
-    /// with a changing width (`recorder::Narrow`).
-    fn wraps(&self, e: &Element, flow: Option<f32>) -> Option<recorder::Narrow> {
-        let narrow = self.narrow.borrow();
-        let narrow = narrow.get(&e.node_id)?;
-        narrow.holds(e, flow).then(|| narrow.clone())
+        self.narrow.reset();
     }
 }
 
@@ -135,34 +128,6 @@ pub struct ReuseStats {
     /// Из пропущенных — повторены из прошлого кадра (видимые).
     pub replayed: u64,
 }
-
-fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
-    point(
-        ScaledPixels(p.x.as_f32() * scale),
-        ScaledPixels(p.y.as_f32() * scale),
-    )
-}
-
-/// Чернила записи, поставленные в начало `origin` и расширенные на `margin`.
-fn placed(
-    ink: Bounds<ScaledPixels>,
-    origin: Point<ScaledPixels>,
-    margin: f32,
-) -> Bounds<ScaledPixels> {
-    Bounds {
-        origin: point(
-            ScaledPixels(ink.origin.x.0 + origin.x.0 - margin),
-            ScaledPixels(ink.origin.y.0 + origin.y.0 - margin),
-        ),
-        size: size(
-            ScaledPixels(ink.size.width.0 + 2.0 * margin),
-            ScaledPixels(ink.size.height.0 + 2.0 * margin),
-        ),
-    }
-}
-
-/// Запас проверки экрана на округление краёв, в точках устройства.
-const SNAP: f32 = 2.0;
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -186,11 +151,10 @@ pub(crate) struct FlowReuse {
     seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
-    /// The flow width changes in this build: the wraps of its blocks replace
-    /// the store's (`Store::narrow`).
+    /// The flow width changes in this build (`narrow`).
     resized: Cell<bool>,
-    /// Wraps of this build's blocks (`recorder::Narrow`).
-    narrowed: RefCell<HashMap<u64, recorder::Narrow>>,
+    /// Wraps of this build's blocks (`narrow`).
+    narrowed: narrow::Wraps,
     /// Pending records with the comparison inputs of their blocks.
     pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
     /// Shells the sources of this build share (`source`).
