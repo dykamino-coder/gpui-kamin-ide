@@ -85,6 +85,25 @@ pub fn compute_root_layout(
     root: NodeId,
     available_space: Size<AvailableSpace>,
 ) {
+    compute_detached_layout(tree, root, available_space, false);
+}
+
+/// Lay out an atomic inline's independent formatting context. The caller owns
+/// line breaking and positions its margin box; no synthetic flex parent is needed.
+pub fn compute_inline_layout(
+    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
+    node: NodeId,
+    available_space: Size<AvailableSpace>,
+) {
+    compute_detached_layout(tree, node, available_space, true);
+}
+
+fn compute_detached_layout(
+    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
+    root: NodeId,
+    available_space: Size<AvailableSpace>,
+    inline: bool,
+) {
     let direction = tree.get_core_container_style(root).direction();
     let icb_size = available_space.into_options();
 
@@ -94,7 +113,7 @@ pub fn compute_root_layout(
     let mut root_is_cached = false;
 
     let (layout, candidates) =
-        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
+        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline);
 
     // Final positioning pass for out-of-flow boxes with no nearer containing block: the initial
     // containing block is the containing block for `position: fixed` boxes and for
@@ -155,17 +174,26 @@ fn compute_in_flow_root_layout(
     root: NodeId,
     available_space: Size<AvailableSpace>,
     root_is_cached: &mut bool,
+    inline: bool,
 ) -> (Layout, OofCandidates) {
     #[cfg(feature = "block_layout")]
-    let known_dimensions = root_block_constraints::known(tree, root, available_space);
+    let known_dimensions = if inline { Size::NONE } else { root_block_constraints::known(tree, root, available_space) };
     #[cfg(not(feature = "block_layout"))]
     let known_dimensions = Size::NONE;
 
+    let child_space = if inline {
+        let style = tree.get_core_container_style(root);
+        let margin = style.margin().resolve_or_zero(available_space.width.into_option(), |v, basis| tree.calc(v, basis));
+        Size {
+            width: available_space.width.map_definite_value(|v| (v - margin.horizontal_axis_sum()).max(0.0)),
+            height: available_space.height.map_definite_value(|v| (v - margin.vertical_axis_sum()).max(0.0)),
+        }
+    } else { available_space };
     let inputs = LayoutInput {
         known_dimensions,
-        known_dimensions_are_definite: Size { width: true, height: true },
+        known_dimensions_are_definite: Size { width: !inline, height: !inline },
         parent_size: available_space.into_options(),
-        available_space,
+        available_space: child_space,
         sizing_mode: SizingMode::InherentSize,
         axis: RequestedAxis::Both,
         run_mode: RunMode::PerformLayout,
@@ -225,7 +253,7 @@ fn compute_in_flow_root_layout(
         width: style.direction().is_rtl(),
         height: false,
     };
-    let location = Point {
+    let mut location = Point {
         x: if reversed.width {
             available_space
                 .width
@@ -244,12 +272,31 @@ fn compute_in_flow_root_layout(
         },
         };
 
+    let mut relative_offset = Point::ZERO;
+    if inline {
+        // The IFC advances by the margin box, while descendants use border-box
+        // coordinates. Auto inline margins are zero (CSS 2.1 §10.3.9).
+        location = Point { x: margin.left, y: margin.top };
+        if style.position() == crate::Position::Relative {
+            use crate::util::MaybeResolve;
+            let inset = style.inset().zip_size(available_space.into_options(), |v, basis| {
+                v.maybe_resolve(basis, |value, basis| tree.calc(value, basis))
+            });
+            relative_offset = Point {
+                x: if style.direction().is_rtl() { inset.right.map(|v| -v).or(inset.left) }
+                    else { inset.left.or(inset.right.map(|v| -v)) }.unwrap_or(0.0),
+                y: inset.top.or(inset.bottom.map(|v| -v)).unwrap_or(0.0),
+            };
+            location.x += relative_offset.x;
+            location.y += relative_offset.y;
+        }
+    }
     drop(style);
 
     let layout = Layout {
         order: 0,
         location,
-        relative_offset: Point::ZERO,
+        relative_offset,
         size: output.size,
         #[cfg(feature = "content_size")]
         scrollable_overflow_rect: output.scrollable_overflow_rect,

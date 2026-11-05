@@ -6420,6 +6420,25 @@ impl Window {
         self.layout_engine = Some(layout_engine);
     }
 
+    /// Lay out an atomic inline's own node, without a synthetic flex container.
+    pub fn compute_inline_layout(&mut self, id: LayoutId, available: Size<AvailableSpace>, cx: &mut App) {
+        self.invalidator.debug_assert_prepaint();
+        let mut engine = self.layout_engine.take().unwrap();
+        engine.compute_inline_layout(id, available, self, cx);
+        self.layout_engine = Some(engine);
+    }
+
+    /// Unrounded margin-box size and baseline consumed by an inline formatting context.
+    pub fn inline_geometry(&self, id: LayoutId) -> (Size<Pixels>, crate::RowItemBaseline) {
+        self.layout_engine.as_ref().unwrap().inline_geometry(id, self.scale_factor())
+    }
+
+    /// Limit the margin box of the atomic node itself for shrink-to-fit.
+    pub fn cap_layout_outer_width(&mut self, id: LayoutId, width: Pixels) -> bool {
+        let scale = self.scale_factor();
+        self.layout_engine.as_mut().unwrap().cap_outer_width(id, width, scale)
+    }
+
     /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
     /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
     /// надо с нулевым смещением — его границы уже абсолютные.

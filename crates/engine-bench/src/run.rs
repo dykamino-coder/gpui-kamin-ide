@@ -8,58 +8,22 @@ use super::{
     view::{Phases, View},
     work,
 };
-use gpui::{AsyncApp, WindowHandle, frame_perf};
+use gpui::{AsyncApp, WindowHandle};
 use kamin_html::host::capture::CaptureSession;
 use kamin_html::{BROWSER_CSS, Document, metrics::FontContext};
 use serde_json::json;
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::atomic::Ordering::Relaxed,
     time::{Duration, Instant},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// Что меняется перед кадром замера.
-#[derive(Clone, Copy)]
-pub(super) enum Step<'a> {
-    /// Новый документ: из файла входа или из данной разметки.
-    Cold(Option<&'a str>),
-    /// Тот же документ, принудительная перерисовка.
-    Warm,
-    /// `Document::update` данной разметкой (локальная правка).
-    Update(&'a str),
-}
-
-impl Step<'_> {
-    fn cold(self) -> bool {
-        matches!(self, Self::Cold(_))
-    }
-}
-
-struct Counters {
-    draw: u32,
-    present: u32,
-    layout: u32,
-    frames: u32,
-    readback: Duration,
-}
-
-impl Counters {
-    fn read(capture: &CaptureSession) -> Self {
-        Self {
-            draw: frame_perf::DRAW_US.load(Relaxed),
-            present: frame_perf::PRESENT_US.load(Relaxed),
-            layout: frame_perf::TAFFY_US.load(Relaxed),
-            frames: frame_perf::FRAMES.load(Relaxed),
-            readback: capture.readback_time(),
-        }
-    }
-    fn delta(current: u32, previous: u32) -> Duration {
-        Duration::from_micros(u64::from(current.wrapping_sub(previous)))
-    }
-}
+mod counters;
+mod step;
+use counters::Counters;
+pub(super) use step::Step;
 
 async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
     use futures::future::{Either, select};
@@ -140,7 +104,7 @@ pub(super) async fn sample(
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let work = window.read_with(cx, |view, _| work.finish(step.cold(), &view.doc))?;
+    let work = window.read_with(cx, |view, _| work.finish(step.document_work(), &view.doc))?;
     let after = Counters::read(capture);
     let frame = capture
         .take_first()
@@ -242,10 +206,8 @@ pub(super) async fn run(
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
-        let mut mode = report::mode(&samples);
+        let mut mode = report::mode_with_work(&samples, work, usage);
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
-        mode["work_counters"] = serde_json::json!({"samples": work});
-        mode["process_resources"] = serde_json::json!({"samples": usage});
         modes.insert(name.into(), mode);
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,

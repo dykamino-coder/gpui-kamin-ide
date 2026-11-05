@@ -62,6 +62,22 @@ fn copy_subtree(
 }
 
 impl LayoutMeasurement {
+    /// Limit the atomic inline itself, rather than a child of a wrapper row.
+    pub fn cap_outer_width(&mut self, width: Pixels) -> bool {
+        super::cap_outer_width(&mut self.tree, self.root, width.0 * self.scale_factor)
+    }
+
+    /// Measure an atomic inline with the same child-layout inputs as its real node.
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
+    pub fn measure_inline(&mut self, available: Size<AvailableSpace>, window: &mut Window, cx: &mut App)
+        -> (Size<Pixels>, Option<Pixels>, Option<Pixels>) {
+        let scale = self.scale_factor;
+        self.tree.compute_inline_with_measure(self.root, taffy::Size {
+            width: to_native(available.width, scale), height: to_native(available.height, scale),
+        }, |input, _, context, style| leaf(input, context, style, scale, window, cx)).expect(EXPECT_MESSAGE);
+        let (size, item) = super::row_item::inline_geometry(&self.tree, self.root, scale);
+        (size, item.baseline.map(Pixels), None)
+    }
     /// Cap the margin-box inline size of the root's `index`-th child in this
     /// copy only (see [`TaffyLayoutEngine::cap_child_outer_width`]).
     pub fn cap_child_outer_width(&mut self, index: usize, width: Pixels) -> bool {

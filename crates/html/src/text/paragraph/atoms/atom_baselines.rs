@@ -1,21 +1,17 @@
 //! Базовые линии атомов и строк (CSS 2.1 §10.8.1): регистрация атомов абзаца
-//! в обёртке-ряде `align-items: baseline`, верх атома от базовой
+//! собственным узлом внутри IFC, верх атома от базовой
 //! по `vertical-align`, протяжённость строки над и под базовой по строчным
 //! коробкам, базовая струта, подъём/спуск прогонов и базовая линия отрезка.
 
-use crate::hooks::IntoHooked;
 use crate::text::paragraph::*;
-use gpui::{AnyElement, IntoElement, Window};
+use gpui::{AnyElement, Window};
 
 impl Paragraph {
     /// Атомы в строке: место в тексте (байт распорки) → элемент и его
-    /// `vertical-align`. Каждый заворачивается в ряд `align-items: baseline`
-    /// без щупа: обёртка обтягивает коробку полей атома, а базовую линию,
-    /// по которой ряд его ставит, отдаёт готовая раскладка самого атома
-    /// (`row_geometry`).
+    /// `vertical-align`. IFC использует коробку полей и базовую линию
+    /// готовой раскладки самого атома; дополнительный flex-ряд не нужен.
     pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents, bool)>) -> Self {
         self.invalidate_prepared();
-        use gpui::{ParentElement, Styled};
         // Распорка атома — не распорка полей: из текста для переноса её не
         // вынимают, а читают знаком-заместителем (см. `linebreaks`).
         super::positions::remove_atom_spacers(&mut self.spacers, atoms.iter().map(|a| a.0));
@@ -23,15 +19,6 @@ impl Paragraph {
             .into_iter()
             .map(|(at, el, align, extents, fixed_inline)| {
                 let root = std::rc::Rc::new(std::cell::Cell::new(None));
-                let el = LayoutTap {
-                    child: gpui::div()
-                        .flex()
-                        .items_baseline()
-                        .child(el)
-                        .into_any_element(),
-                    slot: root.clone(),
-                }
-                .hooked();
                 AtomSlot {
                     at,
                     el,

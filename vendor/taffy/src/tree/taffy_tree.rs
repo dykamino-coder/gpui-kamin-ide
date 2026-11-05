@@ -1525,6 +1525,32 @@ impl<NodeContext> TaffyTree<NodeContext> {
     where
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
+        self.compute_detached_with_measure(node_id, available_space, measure_function, false)
+    }
+
+    /// KaminIDE patch: perform layout of an atomic inline directly, without a wrapper root.
+    pub fn compute_inline_with_measure<MeasureFunction>(
+        &mut self,
+        node_id: NodeId,
+        available_space: Size<AvailableSpace>,
+        measure_function: MeasureFunction,
+    ) -> Result<(), TaffyError>
+    where
+        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+    {
+        self.compute_detached_with_measure(node_id, available_space, measure_function, true)
+    }
+
+    fn compute_detached_with_measure<MeasureFunction>(
+        &mut self,
+        node_id: NodeId,
+        available_space: Size<AvailableSpace>,
+        measure_function: MeasureFunction,
+        inline: bool,
+    ) -> Result<(), TaffyError>
+    where
+        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+    {
         let use_rounding = self.config.use_rounding;
         #[cfg(feature = "std")]
         let _calc = self.calc_scope();
@@ -1532,7 +1558,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
             taffy: self,
             measure_function,
         };
-        compute_root_layout(&mut taffy_view, node_id, available_space);
+        if inline {
+            crate::compute::compute_inline_layout(&mut taffy_view, node_id, available_space);
+        } else {
+            compute_root_layout(&mut taffy_view, node_id, available_space);
+        }
         if use_rounding {
             round_layout(&mut taffy_view, node_id);
         }
@@ -1589,6 +1619,10 @@ impl<NodeContext> TaffyTree<NodeContext> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "inline_layout_tests.rs"]
+mod inline_layout_tests;
 
 #[cfg(test)]
 mod tests {

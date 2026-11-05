@@ -1,26 +1,27 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 1. Atomic inline layout: an independent child-layout entry point uses inherent sizing and noncollapsing margins on the actual node, retaining relative offsets, cached output and out-of-flow completion without allocating a flex parent.
+# 2. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 21. Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -15052,7 +15053,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a382cf376db
+index 1366d8349f1668c19f04bd2d85e88422918b6604..84536b82961e1f7f7ca6be3f377a83cbcfc400ff
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15094,19 +15095,38 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +88 @@
+@@ -82,5 +88,20 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
 -    drop(style);
 -
++    compute_detached_layout(tree, root, available_space, false);
++}
++
++/// Lay out an atomic inline's independent formatting context. The caller owns
++/// line breaking and positions its margin box; no synthetic flex parent is needed.
++pub fn compute_inline_layout(
++    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
++    node: NodeId,
++    available_space: Size<AvailableSpace>,
++) {
++    compute_detached_layout(tree, node, available_space, true);
++}
++
++fn compute_detached_layout(
++    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
++    root: NodeId,
++    available_space: Size<AvailableSpace>,
++    inline: bool,
++) {
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +89,0 @@
+@@ -88,4 +108,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +96,2 @@
+@@ -98,35 +115,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15143,22 +15163,30 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 -        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached)
 -    };
 +    let (layout, candidates) =
-+        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
-@@ -168 +133 @@
++        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline);
+@@ -168 +152 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -194,10 +158,0 @@
+@@ -192,0 +177 @@
++    inline: bool,
+@@ -194,4 +179,6 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
 -    let root_available_space = {
--        let style = tree.get_core_container_style(root);
++    #[cfg(feature = "block_layout")]
++    let known_dimensions = if inline { Size::NONE } else { root_block_constraints::known(tree, root, available_space) };
++    #[cfg(not(feature = "block_layout"))]
++    let known_dimensions = Size::NONE;
++
++    let child_space = if inline {
+@@ -199,54 +186,4 @@
 -        let margin =
 -            style.margin().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +160,3 @@
+-    #[cfg(feature = "block_layout")]
 -    {
 -        use crate::BoxSizing;
 -
@@ -15207,15 +15235,21 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 -                .maybe_max(padding_border_size);
 -
 -            known_dimensions = styled_based_known_dimensions;
--        }
++        let margin = style.margin().resolve_or_zero(available_space.width.into_option(), |v, basis| tree.calc(v, basis));
++        Size {
++            width: available_space.width.map_definite_value(|v| (v - margin.horizontal_axis_sum()).max(0.0)),
++            height: available_space.height.map_definite_value(|v| (v - margin.vertical_axis_sum()).max(0.0)),
+@@ -254,2 +191 @@
 -    }
-+    let known_dimensions = root_block_constraints::known(tree, root, available_space);
-+    #[cfg(not(feature = "block_layout"))]
-+    let known_dimensions = Size::NONE;
-@@ -260 +168 @@
+-
++    } else { available_space };
+@@ -258 +194 @@
+-        known_dimensions_are_definite: Size { width: true, height: true },
++        known_dimensions_are_definite: Size { width: !inline, height: !inline },
+@@ -260 +196 @@
 -        available_space: root_available_space,
-+        available_space,
-@@ -271,6 +179,25 @@
++        available_space: child_space,
+@@ -271,6 +207,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15247,33 +15281,16 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,7 +208,5 @@
+@@ -281,3 +236,20 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
--    let mut location = Point {
--        x: match (is_rtl, available_space.width.into_option()) {
--            (true, Some(available_width)) => available_width - output.size.width - margin.right,
--            _ => margin.left,
 +    #[cfg(feature = "block_layout")]
 +    let reversed = flow.map_or(
 +        Size {
 +            width: style.direction().is_rtl(),
 +            height: false,
-@@ -289,13 +214,20 @@
--        y: margin.top,
--    };
--
--    // A relatively positioned root is offset by its insets (resolved against the initial containing block)
--    if style.position() == Position::Relative {
--        let icb_size = available_space.into_options();
--        let inset = style.inset();
--        let left = inset.left.maybe_resolve(icb_size.width, |val, basis| tree.calc(val, basis));
--        let right = inset.right.maybe_resolve(icb_size.width, |val, basis| tree.calc(val, basis));
--        let top = inset.top.maybe_resolve(icb_size.height, |val, basis| tree.calc(val, basis));
--        let bottom = inset.bottom.maybe_resolve(icb_size.height, |val, basis| tree.calc(val, basis));
--        location.x += if is_rtl {
--            right.map(|right| -right).or(left).unwrap_or(0.0)
++        },
 +        |flow| Size {
 +            width: if flow.vertical {
 +                flow.block_reverse
@@ -15288,34 +15305,67 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..4e3b6b1c6affbc73dc8122ae7be42a38
 +        width: style.direction().is_rtl(),
 +        height: false,
 +    };
-+    let location = Point {
+@@ -285,3 +257,7 @@
+-        x: match (is_rtl, available_space.width.into_option()) {
+-            (true, Some(available_width)) => available_width - output.size.width - margin.right,
+-            _ => margin.left,
 +        x: if reversed.width {
 +            available_space
 +                .width
 +                .into_option()
 +                .map_or(0.0, |available_width| available_width - output.size.width)
-@@ -303 +235,10 @@
--            left.or(right.map(|right| -right)).unwrap_or(0.0)
++        } else {
 +            0.0
-+        },
+@@ -289,13 +265,5 @@
+-        y: margin.top,
+-    };
+-
+-    // A relatively positioned root is offset by its insets (resolved against the initial containing block)
+-    if style.position() == Position::Relative {
+-        let icb_size = available_space.into_options();
+-        let inset = style.inset();
+-        let left = inset.left.maybe_resolve(icb_size.width, |val, basis| tree.calc(val, basis));
+-        let right = inset.right.maybe_resolve(icb_size.width, |val, basis| tree.calc(val, basis));
+-        let top = inset.top.maybe_resolve(icb_size.height, |val, basis| tree.calc(val, basis));
+-        let bottom = inset.bottom.maybe_resolve(icb_size.height, |val, basis| tree.calc(val, basis));
+-        location.x += if is_rtl {
+-            right.map(|right| -right).or(left).unwrap_or(0.0)
 +        y: if reversed.height {
 +            available_space
 +                .height
 +                .into_option()
 +                .map_or(0.0, |height| height - output.size.height)
-+        } else {
+@@ -303 +271,2 @@
+-            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
-@@ -305,2 +246 @@
+@@ -305 +274,19 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
--    }
 +
-@@ -311,0 +252 @@
-+        relative_offset: Point::ZERO,
-@@ -355 +296 @@
++    let mut relative_offset = Point::ZERO;
++    if inline {
++        // The IFC advances by the margin box, while descendants use border-box
++        // coordinates. Auto inline margins are zero (CSS 2.1 §10.3.9).
++        location = Point { x: margin.left, y: margin.top };
++        if style.position() == crate::Position::Relative {
++            use crate::util::MaybeResolve;
++            let inset = style.inset().zip_size(available_space.into_options(), |v, basis| {
++                v.maybe_resolve(basis, |value, basis| tree.calc(value, basis))
++            });
++            relative_offset = Point {
++                x: if style.direction().is_rtl() { inset.right.map(|v| -v).or(inset.left) }
++                    else { inset.left.or(inset.right.map(|v| -v)) }.unwrap_or(0.0),
++                y: inset.top.or(inset.bottom.map(|v| -v)).unwrap_or(0.0),
++            };
++            location.x += relative_offset.x;
++            location.y += relative_offset.y;
++        }
+@@ -311,0 +299 @@
++        relative_offset,
+@@ -355 +343 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +302,13 @@
+@@ -360,0 +349,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
@@ -22487,6 +22537,94 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +        }
 +    }
 +}
+diff --git a/vendor/taffy/src/tree/inline_layout_tests.rs b/vendor/taffy/src/tree/inline_layout_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b92486139b8e4e5fb935b52cd50f27c1c5bc342b
+--- /dev/null
++++ b/vendor/taffy/src/tree/inline_layout_tests.rs
+@@ -0,0 +1,82 @@
++//! Контракт атомарной коробки: реальные поля, ограничения и baseline без flex-родителя.
++
++use super::*;
++use crate::{geometry::Point, style_helpers::*, Baselines, MeasureOutput, Rect};
++
++fn measured(inputs: LayoutInput, style: &Style) -> LayoutOutput {
++    compute_leaf_layout(inputs, style, calc_value, |known, _| MeasureOutput {
++        size: known.unwrap_or(Size { width: 60.0, height: 20.0 }),
++        baseline: Some(12.0),
++        last_baseline: Some(16.0),
++        ..Size::ZERO.into()
++    })
++}
++
++#[test]
++fn atomic_inline_uses_its_own_node_and_border_box_coordinates() {
++    let mut tree = TaffyTree::<()>::new();
++    tree.disable_rounding();
++    let node = tree.new_leaf(Style {
++        margin: Rect { left: length(3.0), right: length(7.0), top: length(5.0), bottom: length(9.0) },
++        inset: Rect { left: length(2.0), top: length(-4.0), ..auto() },
++        position: crate::Position::Relative,
++        ..Default::default()
++    }).unwrap();
++    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, |inputs, _, _, style| measured(inputs, style)).unwrap();
++    assert_eq!(tree.total_node_count(), 1);
++    assert_eq!(tree.parent(node), None);
++    let layout = tree.layout(node).unwrap();
++    assert_eq!(layout.size, Size { width: 60.0, height: 20.0 });
++    assert_eq!(layout.location, Point { x: 5.0, y: 1.0 });
++    assert_eq!(layout.relative_offset, Point { x: 2.0, y: -4.0 });
++    let output = tree.computed_layout_output(node).unwrap().unwrap();
++    assert_eq!(output.baselines, Baselines { first: Some(12.0), last: Some(16.0) });
++}
++
++#[test]
++fn available_space_excludes_margins_but_percentage_basis_does_not() {
++    let mut tree = TaffyTree::<()>::new();
++    let node = tree.new_leaf(Style {
++        margin: Rect { left: percent(0.1), right: percent(0.2), ..zero() },
++        ..Default::default()
++    }).unwrap();
++    let mut called = false;
++    tree.compute_inline_with_measure(node, Size { width: AvailableSpace::Definite(100.0), height: AvailableSpace::MaxContent },
++        |inputs, _, _, style| {
++            called = true;
++            assert_eq!(inputs.parent_size.width, Some(100.0));
++            assert_eq!(inputs.available_space.width, AvailableSpace::Definite(70.0));
++            assert_eq!(inputs.known_dimensions, Size::NONE);
++            assert_eq!(inputs.vertical_margins_are_collapsible, crate::geometry::Line::FALSE);
++            measured(inputs, style)
++        }).unwrap();
++    assert!(called);
++    assert_eq!(tree.layout(node).unwrap().margin.left, 10.0);
++    assert_eq!(tree.layout(node).unwrap().margin.right, 20.0);
++}
++
++#[test]
++fn shrink_to_fit_relayout_keeps_box_sizing_and_baselines() {
++    let mut tree = TaffyTree::<()>::new();
++    tree.disable_rounding();
++    let node = tree.new_leaf(Style {
++        box_sizing: crate::BoxSizing::ContentBox,
++        padding: length(2.0),
++        border: length(1.0),
++        ..Default::default()
++    }).unwrap();
++    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, |inputs, _, _, style| measured(inputs, style)).unwrap();
++    assert_eq!(tree.layout(node).unwrap().size.width, 66.0);
++    let mut style = tree.style(node).unwrap().clone();
++    style.max_size.width = length(30.0);
++    tree.set_style(node, style).unwrap();
++    let available = Size { width: AvailableSpace::Definite(36.0), height: AvailableSpace::MaxContent };
++    tree.compute_inline_with_measure(node, available, |inputs, _, _, style| measured(inputs, style)).unwrap();
++    assert_eq!(tree.layout(node).unwrap().size.width, 36.0);
++    let output = tree.computed_layout_output(node).unwrap().unwrap();
++    assert_eq!(output.baselines.first, Some(15.0));
++    assert_eq!(output.baselines.last, Some(19.0));
++    // A repeated performed pass must retain descendant geometry and output.
++    tree.compute_inline_with_measure(node, available, |_, _, _, _| panic!("performed layout should be cached")).unwrap();
++    assert_eq!(tree.layout(node).unwrap().size.width, 36.0);
++}
 diff --git a/vendor/taffy/src/tree/kamin_calc.rs b/vendor/taffy/src/tree/kamin_calc.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..bbf3bd729fe7a3b1daeb63a223f0fc2f2d9a294a
@@ -25663,7 +25801,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf2b30307d
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..6b76ebd43e01c6d50e687774053548cbe9fa0273
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -26344,15 +26482,50 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1529,6 @@
+@@ -975,0 +1528,26 @@
++        self.compute_detached_with_measure(node_id, available_space, measure_function, false)
++    }
++
++    /// KaminIDE patch: perform layout of an atomic inline directly, without a wrapper root.
++    pub fn compute_inline_with_measure<MeasureFunction>(
++        &mut self,
++        node_id: NodeId,
++        available_space: Size<AvailableSpace>,
++        measure_function: MeasureFunction,
++    ) -> Result<(), TaffyError>
++    where
++        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++    {
++        self.compute_detached_with_measure(node_id, available_space, measure_function, true)
++    }
++
++    fn compute_detached_with_measure<MeasureFunction>(
++        &mut self,
++        node_id: NodeId,
++        available_space: Size<AvailableSpace>,
++        measure_function: MeasureFunction,
++        inline: bool,
++    ) -> Result<(), TaffyError>
++    where
++        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++    {
+@@ -977,2 +1555,11 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
+-        compute_root_layout(&mut taffy_view, node_id, available_space);
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
 +        let mut taffy_view = TaffyView {
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1542,26 @@
++        if inline {
++            crate::compute::compute_inline_layout(&mut taffy_view, node_id, available_space);
++        } else {
++            compute_root_layout(&mut taffy_view, node_id, available_space);
++        }
+@@ -982,0 +1570,26 @@
++    }
++
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26377,17 +26550,25 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +            available_space,
 +            vertical_margins_are_collapsible: crate::geometry::Line::FALSE,
 +        }, #[cfg(feature = "block_layout")] None)
-+    }
-+
-@@ -988 +1571 @@
+@@ -988 +1601 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1586,3 @@
+@@ -1003,4 +1616,10 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
+-        }
+-    }
+-}
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1615,54 @@
++        }
++    }
++}
++
++#[cfg(test)]
++#[path = "inline_layout_tests.rs"]
++mod inline_layout_tests;
+@@ -1029,0 +1649,54 @@
 +    }
 +
 +    #[test]
@@ -26442,7 +26623,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2182,81 @@
+@@ -1543 +2216,81 @@
 -}
 +
 +    #[test]

@@ -479,6 +479,29 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.compute_detached(id, available_space, window, cx, false);
+    }
+
+    /// Perform the independent formatting context of an atomic inline directly.
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
+    pub fn compute_inline_layout(
+        &mut self,
+        id: LayoutId,
+        available_space: Size<AvailableSpace>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.compute_detached(id, available_space, window, cx, true);
+    }
+
+    fn compute_detached(
+        &mut self,
+        id: LayoutId,
+        available_space: Size<AvailableSpace>,
+        window: &mut Window,
+        cx: &mut App,
+        inline: bool,
+    ) {
         // Leaving this here until we have a better instrumentation approach.
         // println!("Laying out {} children", self.count_all_children(id)?);
         // println!("Max layout depth: {}", self.max_depth(0, id)?);
@@ -524,15 +547,14 @@ impl TaffyLayoutEngine {
         );
 
         let _taffy_started = std::time::Instant::now();
-        self.taffy
-            .compute_layout_with_measure(
-                id.into(),
-                available_space.into(),
-                |inputs, _id, node_context, style| {
-                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
-                },
-            )
-            .expect(EXPECT_MESSAGE);
+        let measure = |inputs, _id, node_context: Option<&mut NodeContext>, style: &taffy::Style| {
+            measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
+        };
+        if inline {
+            self.taffy.compute_inline_with_measure(id.into(), available_space.into(), measure)
+        } else {
+            self.taffy.compute_layout_with_measure(id.into(), available_space.into(), measure)
+        }.expect(EXPECT_MESSAGE);
         self.finish_geometry(id, logical_space, scale_factor);
         crate::frame_perf::TAFFY_US.fetch_add(
             _taffy_started.elapsed().as_micros() as u32,
@@ -596,6 +618,11 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
     ) -> bool {
         cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
+    }
+
+    /// Cap the margin-box width of an independently laid out atomic inline.
+    pub fn cap_outer_width(&mut self, id: LayoutId, width: Pixels, scale: f32) -> bool {
+        cap_outer_width(&mut self.taffy, id.into(), width.0 * scale)
     }
 
     /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
@@ -830,10 +857,14 @@ fn cap_child_outer_width(
     index: usize,
     outer: f32,
 ) -> bool {
-    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
     let Ok(child) = tree.child_at_index(parent, index) else {
         return false;
     };
+    cap_outer_width(tree, child, outer)
+}
+
+fn cap_outer_width(tree: &mut TaffyTree<NodeContext>, child: NodeId, outer: f32) -> bool {
+    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
     let Ok(style) = tree.style(child) else {
         return false;
     };

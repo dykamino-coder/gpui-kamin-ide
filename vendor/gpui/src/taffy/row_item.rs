@@ -17,6 +17,10 @@ pub struct RowItemBaseline {
 }
 
 impl TaffyLayoutEngine {
+    /// Margin-box size and baseline of an independently laid out atomic inline.
+    pub fn inline_geometry(&self, item: LayoutId, scale: f32) -> (Size<Pixels>, RowItemBaseline) {
+        inline_geometry(&self.taffy, item.into(), scale)
+    }
     /// The first in-flow item of a laid-out row `row` and its baseline; `None` when the row has
     /// no in-flow item.
     pub fn row_item_baseline(&self, row: LayoutId, scale: f32) -> Option<RowItemBaseline> {
@@ -34,11 +38,22 @@ fn row_item(tree: &TaffyTree<NodeContext>, row: NodeId, scale: f32) -> Option<Ro
             let style = tree.style(child).expect(EXPECT_MESSAGE);
             style.display != taffy::Display::None && style.position != taffy::Position::Absolute
         })?;
+    Some(item_baseline(tree, item, scale, parent.align_items))
+}
+
+pub(super) fn inline_geometry(tree: &TaffyTree<NodeContext>, item: NodeId, scale: f32) -> (Size<Pixels>, RowItemBaseline) {
+    let layout = tree.layout(item).expect(EXPECT_MESSAGE);
+    let baseline = item_baseline(tree, item, scale, taffy::AlignItems::BASELINE);
+    (size(Pixels((layout.size.width + layout.margin.left + layout.margin.right).max(0.0) / scale),
+        Pixels(baseline.outer_height.max(0.0))), baseline)
+}
+
+fn item_baseline(tree: &TaffyTree<NodeContext>, item: NodeId, scale: f32, inherited: taffy::AlignItems) -> RowItemBaseline {
     let style = tree.style(item).expect(EXPECT_MESSAGE);
     let layout = tree.layout(item).expect(EXPECT_MESSAGE);
     let height = layout.size.height;
     let outer_height = (height + layout.margin.top + layout.margin.bottom) / scale;
-    let align = style.align_self.unwrap_or(parent.align_items);
+    let align = style.align_self.unwrap_or(inherited);
     let participates = align.keyword == taffy::AlignItemsKeyword::Baseline
         && !style.margin.top.is_auto()
         && !style.margin.bottom.is_auto();
@@ -58,10 +73,10 @@ fn row_item(tree: &TaffyTree<NodeContext>, row: NodeId, scale: f32) -> Option<Ro
             .unwrap_or(height + layout.margin.bottom);
         (inner + layout.margin.top) / scale
     });
-    Some(RowItemBaseline {
+    RowItemBaseline {
         baseline,
         outer_height,
-    })
+    }
 }
 
 #[cfg(test)]

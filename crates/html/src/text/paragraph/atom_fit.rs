@@ -26,14 +26,14 @@ pub(super) struct FitAtom {
     max: f32,
     base: f32,
     drop: f32,
-    /// Copy of the atom wrapper tree and its max-content height/baseline.
+    /// Copy of the atom subtree and its max-content height/baseline.
     snap: gpui::LayoutMeasurement,
     snap_h: f32,
     snap_base: Option<f32>,
 }
 
 /// Resolved atom geometry for one available width: (index, width, height,
-/// baseline, downward shift in the wrapper row — AtomBox::drop).
+/// baseline, downward shift to the normalized IFC baseline — AtomBox::drop).
 pub(super) type Fitted = Vec<(usize, f32, f32, f32, f32)>;
 
 #[derive(Default)]
@@ -41,10 +41,6 @@ pub(super) struct AtomFit {
     atoms: Vec<FitAtom>,
     cache: Vec<(f32, Fitted)>,
 }
-
-/// The wrapper (`Paragraph::atoms`) is a baseline row whose only child is the
-/// atom.
-const ATOM_CHILD: usize = 0;
 
 impl AtomFit {
     pub(super) fn is_empty(&self) -> bool {
@@ -70,8 +66,8 @@ impl AtomFit {
             if w >= a.max - COORD_EPS {
                 continue;
             }
-            a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
-            let (s, b, _) = a.snap.measure(
+            a.snap.cap_outer_width(px(w));
+            let (s, b, _) = a.snap.measure_inline(
                 size(
                     gpui::AvailableSpace::Definite(px(w)),
                     gpui::AvailableSpace::MaxContent,
@@ -108,9 +104,9 @@ impl Paragraph {
                 if slot.fixed_inline && !cfg!(debug_assertions) {
                     continue;
                 }
-                let max = f32::from(window.layout_exact(root).1.width);
+                let max = f32::from(window.inline_geometry(root).0.width);
                 let mut snap = window.snapshot_layout_measurement(root);
-                let (smin, _, _) = snap.measure(
+                let (smin, _, _) = snap.measure_inline(
                     size(
                         gpui::AvailableSpace::MinContent,
                         gpui::AvailableSpace::MaxContent,
@@ -126,7 +122,7 @@ impl Paragraph {
                     !slot.fixed_inline,
                     "style-fixed atom width must not depend on the containing block: min {min}, max {max}"
                 );
-                let (smax, sbase, _) = snap.measure(
+                let (smax, sbase, _) = snap.measure_inline(
                     size(
                         gpui::AvailableSpace::MaxContent,
                         gpui::AvailableSpace::MaxContent,
@@ -190,13 +186,13 @@ impl Paragraph {
             let Some(root) = slot.root.get() else {
                 continue;
             };
-            window.cap_layout_child_outer_width(root, ATOM_CHILD, px(w));
-            slot.el.layout_as_root(
+            window.cap_layout_outer_width(root, px(w));
+            window.compute_inline_layout(
+                root,
                 size(
                     gpui::AvailableSpace::Definite(px(w)),
                     gpui::AvailableSpace::MaxContent,
                 ),
-                window,
                 cx,
             );
         }
@@ -207,7 +203,7 @@ impl Paragraph {
                 let root = self.atoms[k].root.get();
                 let (real_h, real_base, drop) = match root {
                     Some(id) => {
-                        let row_h = f32::from(window.layout_exact(id).1.height);
+                        let row_h = f32::from(window.inline_geometry(id).0.height);
                         atoms::row_geometry::row_geometry(Some(id), row_h, window)
                     }
                     None => (h, base, drop),

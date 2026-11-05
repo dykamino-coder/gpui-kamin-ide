@@ -40,6 +40,14 @@ pub(super) fn mode(samples: &[Sample]) -> Value {
     json!({"summary": summary, "samples_ms": samples})
 }
 
+/// Сохраняем измеренные ресурсы и для обычного кадра, и для Document::update.
+pub(super) fn mode_with_work(samples: &[Sample], work: Vec<Value>, usage: Vec<Value>) -> Value {
+    let mut mode = mode(samples);
+    mode["work_counters"] = json!({"samples": work});
+    mode["process_resources"] = json!({"samples": usage});
+    mode
+}
+
 pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json::Error> {
     if json_output {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -104,5 +112,16 @@ mod tests {
         let report = mode(&[Sample::from([("parse", None), ("paint", Some(0.5))])]);
         assert!(report["summary"]["parse"].is_null());
         assert!(report["samples_ms"][0]["parse"].is_null());
+    }
+
+    #[test]
+    fn edit_resources_preserve_phase_heap_and_exact_work_counts() {
+        let counts = json!({"style": {"rebuilt_nodes": 9_007_199_254_740_993u64}});
+        let resources = json!({"phases": {
+            "style": {"end": {"rust_allocations": {"live_requested_bytes": 123456}}}
+        }});
+        let report = mode_with_work(&[], vec![counts.clone()], vec![resources.clone()]);
+        assert_eq!(report["work_counters"]["samples"][0], counts);
+        assert_eq!(report["process_resources"]["samples"][0], resources);
     }
 }

@@ -38,22 +38,19 @@ impl Paragraph {
         // the loop (the computation needs the whole paragraph).
         let mut overhangs: Vec<(usize, usize, usize, f32, f32, f32, RubyOverhangInfo)> = Vec::new();
         for slot in self.atoms.iter_mut() {
-            let rounded = slot.el.layout_as_root(
+            let id = slot.el.request_layout(window, cx);
+            slot.root.set(Some(id));
+            window.compute_inline_layout(
+                id,
                 size(
                     gpui::AvailableSpace::MaxContent,
                     gpui::AvailableSpace::MaxContent,
                 ),
-                window,
                 cx,
             );
-            // Размер и базовая линия — ТОЧНЫЕ, без округления к точке
-            // устройства (см. `LayoutTap`); щуп стоит прямо в обёртке, и его
-            // смещение от неё и есть базовая линия.
-            let s = slot
-                .root
-                .get()
-                .map(|id| window.layout_exact(id).1)
-                .unwrap_or(rounded);
+            // IFC продвигается на точную ширину коробки полей;
+            // содержимое атома раскладывается в координатах его рамки.
+            let s = window.inline_geometry(id).0;
             let (h, base, drop) =
                 super::row_geometry::row_geometry(slot.root.get(), f32::from(s.height), window);
             // Базовая на самом ВЕРХУ коробки — признак того, что раскладка

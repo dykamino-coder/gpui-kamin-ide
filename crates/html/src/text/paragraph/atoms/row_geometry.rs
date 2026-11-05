@@ -1,15 +1,11 @@
-//! Где ряд-обёртка атома ставит его базовую линию (CSS 2.1 §10.8.1,
-//! css-align-3 §9.1): базовая читается из готовой раскладки самого атома
-//! (`Window::row_item_baseline`), без щупа-соседа и второго прохода.
+//! Экстенты атома в IFC (CSS 2.1 §10.8.1, css-align-3 §9.1):
+//! коробка полей и базовая читаются из готовой раскладки самого атома.
 
 use gpui::Window;
-/// Height, baseline and downward shift of an atom inside its baseline row, as the row aligns
-/// it (CSS 2.1 §10.8.1, css-align-3 §9.1): the baseline comes from the item's own layout output
-/// (`Window::row_item_baseline`). With `b` the item baseline from the row top, the row puts its
-/// baseline at `max(b, 0)`: a negative baseline (a large negative top margin) moves the item
-/// down by `-b` and the row grows to hold the margin box below the baseline. Without a
-/// participating item the baseline is 0, which `lay_atoms` reads as "no baseline: the bottom
-/// of the box". Without a row node the atom has `fallback` height and its bottom as baseline.
+/// IFC ascent/descent and placement shift from the atom's completed output.
+/// A baseline above its margin box is normalized to zero for the line model;
+/// `drop` retains the matching placement displacement. An absent participating
+/// baseline uses the margin-box bottom in `lay_atoms`.
 pub(crate) fn row_geometry(
     root: Option<gpui::LayoutId>,
     fallback: f32,
@@ -18,11 +14,11 @@ pub(crate) fn row_geometry(
     let Some(root) = root else {
         return (fallback, fallback, 0.0);
     };
-    match window.row_item_baseline(root) {
-        Some(gpui::RowItemBaseline {
+    match window.inline_geometry(root).1 {
+        gpui::RowItemBaseline {
             baseline: Some(b),
             outer_height,
-        }) => from_item_baseline(b, outer_height),
+        } => from_item_baseline(b, outer_height),
         _ => (fallback, 0.0, 0.0),
     }
 }

@@ -29,12 +29,12 @@ pub enum AtomAlign {
     Bottom,
 }
 
-/// Атом в строке: элемент-обёртка (ряд lign-items: baseline).
+/// Собственная атомарная коробка, которую размещает строчный контекст.
 pub(super) struct AtomSlot {
     pub(crate) at: usize,
     pub(crate) el: AnyElement,
     pub(crate) align: AtomAlign,
-    /// Узел самой обёртки (см. `LayoutTap`).
+    /// Собственный узел атомарной коробки; IFC размещает его без обёртки.
     pub(crate) root: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
     /// Узлы уровней аннотаций руби (`ruby_extent`): `true` — под базой.
     pub(crate) extents: RubyExtents,
