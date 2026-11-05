@@ -147,7 +147,7 @@ impl Pending {
         }
         let snapshot = self.snapshot.take()?;
         Some(Record {
-            source,
+            source: RefCell::new(source),
             key: self.key.clone(),
             start: self.start,
             end: self.end,

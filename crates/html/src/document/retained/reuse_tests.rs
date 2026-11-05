@@ -218,3 +218,21 @@ fn a_changed_block_releases_its_record_before_it_is_built(cx: &mut TestAppContex
         "the record of a changed block stayed in the store"
     );
 }
+
+#[gpui::test]
+fn a_replaced_block_holds_no_tree_of_its_recording_build(cx: &mut TestAppContext) {
+    let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    let marks: Vec<_> = store.recorded().iter().map(|e| e.children.mark()).collect();
+    assert!(marks.len() > 400, "settled blocks were not recorded");
+    update(&view, cx, &rows(300, "row 300"));
+    let (_, skipped, _) = reused(&view, cx);
+    assert!(skipped > 300, "offscreen blocks were rebuilt: {skipped}");
+    // A placeholder's record compares with the replacing build from now on:
+    // the recording build's child lists are freed with that build.
+    let kept = marks.iter().filter(|m| m.is_alive()).count();
+    assert_eq!(
+        kept, 0,
+        "replaced blocks keep {kept} lists of the recording build"
+    );
+}

@@ -54,7 +54,7 @@ impl FlowReuse {
                             .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
-                refused.insert(record.source.id());
+                refused.insert(record.source.borrow().id());
             }
         }
         let ok = refused.is_empty();
@@ -80,7 +80,8 @@ impl FlowReuse {
         let epoch = self.store.epoch.get();
         for (pending, source) in self.pending.take() {
             if let Some(record) = pending.finish(source, screen, mask, epoch) {
-                next.insert(record.source.id(), Rc::new(record));
+                let id = record.source.borrow().id();
+                next.insert(id, Rc::new(record));
                 recorded += 1;
             }
         }

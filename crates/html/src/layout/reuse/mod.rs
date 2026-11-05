@@ -79,7 +79,7 @@ impl Store {
     /// до сборки блока, а не в конце кадра.
     pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
-        if record.source.same(e) {
+        if record.source.borrow().same(e) {
             return Some(record);
         }
         // Записи держат стили: карта меняется целиком, без `&mut` на них.
@@ -93,7 +93,7 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        records.values().map(|r| r.source.element()).collect()
+        records.values().map(|r| r.element()).collect()
     }
 
     /// Ширина потока сменилась: годны только записи, чья раскладка от неё

@@ -4,8 +4,9 @@ use super::*;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 pub(crate) struct Record {
-    /// What a later build of the block is compared with (`source`).
-    pub(super) source: Source,
+    /// What a later build of the block is compared with (`source`). A
+    /// placeholder points it at its own build (`refresh`).
+    pub(super) source: RefCell<Source>,
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
@@ -35,6 +36,21 @@ impl Record {
             Some((lo, hi)) => key.constraints.avail_w.is_some_and(|w| lo <= w && w <= hi),
             None => false,
         }
+    }
+
+    /// The block matched `source`, made from this build's element: compare
+    /// later builds with it. The recorded build's tree may be another
+    /// allocation of equal values (document preparation copies what it
+    /// touches), and a kept source would hold that tree, nodes and styles,
+    /// for as long as the block is replaced: one more document tree.
+    pub(super) fn refresh(&self, source: Source) {
+        drop(self.source.replace(source));
+    }
+
+    /// The build input the record compares with, for tests.
+    #[cfg(test)]
+    pub(super) fn element(&self) -> crate::dom::Element {
+        self.source.borrow().element()
     }
 
     /// Повтор записан в последнем кадре prepaint документа до этого.
