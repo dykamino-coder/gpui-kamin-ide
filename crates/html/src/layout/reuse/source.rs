@@ -25,6 +25,11 @@ impl Source {
         self.id
     }
 
+    /// The recorded child list.
+    pub(super) fn children(&self) -> &Children {
+        &self.children
+    }
+
     /// The subtree of `e` carries the recorded values throughout.
     pub(super) fn same(&self, e: &Element) -> bool {
         self.id == e.node_id

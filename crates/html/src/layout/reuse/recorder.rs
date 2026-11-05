@@ -75,22 +75,45 @@ pub(super) enum Finished {
 /// wrapped in a flow of width `flow`, recorded while the flow width changed.
 /// Text set from the start edge that does not fit on one line does not fit in
 /// less room (CSS Text 3 §5: a line breaks only where its content overflows
-/// it), so in a flow no wider and with the same subtree the block wraps
-/// again and its record would be refused again (`width::reusable_range`):
-/// a later resized build does not wrap it for recording at all.
+/// it), so in a flow no wider and with the same text the block wraps again
+/// and its record would be refused again (`width::reusable_range`): a later
+/// resized build does not wrap it for recording at all.
+///
+/// The entry knows its text by the identity of the block's child list (a
+/// changed text is a new list), through a mark that does not keep the list:
+/// holding the block's subtree or styles here kept a previous build's styles
+/// of every wrapped block alive. Not wrapping a block for recording never
+/// changes its layout or paint, only whether a later frame may skip it, so a
+/// style change under the same text costs at most that block's record.
+#[derive(Clone)]
 pub(super) struct Narrow {
-    source: Source,
+    id: u64,
+    children: crate::dom::ChildrenMark,
+    identity: usize,
     flow: f32,
 }
 
 impl Narrow {
+    fn of(source: &Source, flow: f32) -> Self {
+        let children = source.children();
+        Self {
+            id: source.id(),
+            children: children.mark(),
+            identity: children.identity(),
+            flow,
+        }
+    }
+
     /// The block `e` in a flow of width `flow` wraps as it did here.
     pub(super) fn holds(&self, e: &crate::dom::Element, flow: Option<f32>) -> bool {
-        flow.is_some_and(|flow| flow <= self.flow) && self.source.same(e)
+        flow.is_some_and(|flow| flow <= self.flow)
+            && e.node_id == self.id
+            && self.children.is_alive()
+            && e.children.identity() == self.identity
     }
 
     pub(super) fn id(&self) -> u64 {
-        self.source.id()
+        self.id
     }
 }
 
@@ -146,7 +169,7 @@ impl Pending {
             && reusable_range(self.width, self.border.get(), flow, None).is_none()
             && let Some(flow) = flow
         {
-            return Finished::Narrow(Narrow { source, flow });
+            return Finished::Narrow(Narrow::of(&source, flow));
         }
         match self.record(source, screen, mask, epoch) {
             Some(record) => Finished::Record(record),

@@ -57,7 +57,7 @@ pub(crate) struct Store {
     prev: RefCell<Option<Rc<FlowKey>>>,
     /// Blocks whose text wrapped in the last build with a changing flow
     /// width, by node id (`recorder::Narrow`): not recorded in a flow no wider.
-    narrow: RefCell<HashMap<u64, Rc<recorder::Narrow>>>,
+    narrow: RefCell<HashMap<u64, recorder::Narrow>>,
     /// Блоки, отказанные `FlowReuse::validate`: пересборка кадра их собирает.
     refused: RefCell<std::collections::HashSet<u64>>,
     /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
@@ -117,9 +117,10 @@ impl Store {
 
     /// The block `e` wraps in a flow of width `flow` as in the last build
     /// with a changing width (`recorder::Narrow`).
-    fn wraps(&self, e: &Element, flow: Option<f32>) -> Option<Rc<recorder::Narrow>> {
-        let narrow = self.narrow.borrow().get(&e.node_id).cloned()?;
-        narrow.holds(e, flow).then_some(narrow)
+    fn wraps(&self, e: &Element, flow: Option<f32>) -> Option<recorder::Narrow> {
+        let narrow = self.narrow.borrow();
+        let narrow = narrow.get(&e.node_id)?;
+        narrow.holds(e, flow).then(|| narrow.clone())
     }
 }
 
@@ -189,7 +190,7 @@ pub(crate) struct FlowReuse {
     /// the store's (`Store::narrow`).
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`recorder::Narrow`).
-    narrowed: RefCell<HashMap<u64, Rc<recorder::Narrow>>>,
+    narrowed: RefCell<HashMap<u64, recorder::Narrow>>,
     /// Pending records with the comparison inputs of their blocks.
     pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
     /// Shells the sources of this build share (`source`).

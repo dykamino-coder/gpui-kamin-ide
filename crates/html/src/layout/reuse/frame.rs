@@ -88,7 +88,7 @@ impl FlowReuse {
                     recorded += 1;
                 }
                 recorder::Finished::Narrow(narrow) => {
-                    narrowed.insert(narrow.id(), Rc::new(narrow));
+                    narrowed.insert(narrow.id(), narrow);
                 }
                 recorder::Finished::Dropped => {}
             }
