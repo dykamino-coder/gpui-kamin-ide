@@ -42,7 +42,7 @@ pub(super) struct Pending {
     unpainted: bool,
     /// The block's border box is the flow width less fixed margins
     /// (`width::tracks_flow`): a wrap at this flow width is one at every
-    /// narrower flow (`Finished::Narrow`).
+    /// narrower flow (`Narrow`).
     tracks_flow: bool,
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
@@ -64,20 +64,19 @@ struct Output {
 }
 
 /// What a pending record became after the frame (`Pending::finish`).
-pub(super) enum Finished {
-    Record(Record),
-    /// No record now nor at any narrower flow (`Narrow`).
-    Narrow(Narrow),
-    Dropped,
+pub(super) struct Finished {
+    pub(super) record: Option<Record>,
+    /// The block's text wrapped: no record at any narrower flow (`Narrow`).
+    pub(super) narrow: Option<Narrow>,
 }
 
 /// A block of text alone whose border box tracks the flow and whose text
-/// wrapped in a flow of width `flow`, recorded while the flow width changed.
-/// Text set from the start edge that does not fit on one line does not fit in
-/// less room (CSS Text 3 §5: a line breaks only where its content overflows
-/// it), so in a flow no wider and with the same text the block wraps again
-/// and its record would be refused again (`width::reusable_range`): a later
-/// resized build does not wrap it for recording at all.
+/// wrapped in a flow of width `flow`. Text set from the start edge that does
+/// not fit on one line does not fit in less room (CSS Text 3 §5: a line breaks
+/// only where its content overflows it), so in a flow no wider and with the
+/// same text the block wraps again, and a record made while the flow width
+/// changes would be refused (`width::reusable_range`): such a build does not
+/// wrap it for recording at all.
 ///
 /// The entry knows its text by the identity of the block's child list (a
 /// changed text is a new list), through a mark that does not keep the list:
@@ -158,22 +157,19 @@ impl Pending {
         mask: Bounds<Pixels>,
         epoch: u64,
     ) -> Finished {
-        // A block recorded while the flow width changes is kept only at
-        // other widths; one whose text wrapped here wraps at any narrower
-        // flow and is no record there either (`Narrow`).
+        // A block whose text wrapped here wraps at any narrower flow, where
+        // a record made while the width changes would be refused (`Narrow`).
         let flow = self.key.constraints.avail_w;
-        if !self.settled
-            && self.width == Width::Stretch
+        let wrapped = self.width == Width::Stretch
             && self.tracks_flow
             && self.lines.broken()
-            && reusable_range(self.width, self.border.get(), flow, None).is_none()
-            && let Some(flow) = flow
-        {
-            return Finished::Narrow(Narrow::of(&source, flow));
-        }
-        match self.record(source, screen, mask, epoch) {
-            Some(record) => Finished::Record(record),
-            None => Finished::Dropped,
+            && reusable_range(self.width, self.border.get(), flow, None).is_none();
+        let narrow = flow
+            .filter(|_| wrapped)
+            .map(|flow| Narrow::of(&source, flow));
+        Finished {
+            record: self.record(source, screen, mask, epoch),
+            narrow,
         }
     }
 

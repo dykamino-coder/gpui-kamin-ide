@@ -82,21 +82,24 @@ impl FlowReuse {
         let tracked = pending.len() as u64;
         let mut narrowed = self.narrowed.take();
         for (pending, source) in pending {
-            match pending.finish(source, screen, mask, epoch) {
-                recorder::Finished::Record(record) => {
-                    next.insert(record.source.id(), Rc::new(record));
-                    recorded += 1;
-                }
-                recorder::Finished::Narrow(narrow) => {
-                    narrowed.insert(narrow.id(), narrow);
-                }
-                recorder::Finished::Dropped => {}
+            let finished = pending.finish(source, screen, mask, epoch);
+            if let Some(narrow) = finished.narrow {
+                narrowed.insert(narrow.id(), narrow);
+            }
+            if let Some(record) = finished.record {
+                next.insert(record.source.id(), Rc::new(record));
+                recorded += 1;
             }
         }
-        // The wraps of a build at a settled width are not taken: its blocks
-        // are recorded whatever their lines.
+        // A build at a changed width visits every block it may record and
+        // replaces the wraps; a settled one adds those of the blocks it
+        // recorded, so the first build at a narrower width already skips them.
         if self.resized.get() {
             self.store.narrow.replace(narrowed);
+        } else if !narrowed.is_empty() {
+            let mut all = self.store.narrow.take();
+            all.extend(narrowed);
+            self.store.narrow.replace(all);
         }
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.

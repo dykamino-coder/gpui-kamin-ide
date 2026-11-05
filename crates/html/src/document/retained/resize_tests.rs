@@ -197,3 +197,23 @@ fn a_wrapped_text_block_is_not_tracked_in_a_narrower_flow(cx: &mut TestAppContex
     );
     assert_eq!(rebuilt, 0);
 }
+
+/// A build at a settled flow width learns which blocks wrapped there too, so
+/// the first build at a narrower width already leaves them untracked.
+#[gpui::test]
+fn a_settled_build_learns_the_wrapped_blocks(cx: &mut TestAppContext) {
+    let page = text_rows("").replace("alpha beta", &"alpha beta ".repeat(6));
+    let (view, cx) = open(cx, &page);
+    frame(cx);
+    let tracked = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.tracked_blocks())
+    };
+    let settled = tracked(&view, cx);
+    assert!(
+        settled > 500,
+        "the settled build did not track the blocks: {settled}"
+    );
+    resize(&view, cx, 300.);
+    let narrower = tracked(&view, cx) - settled;
+    assert!(narrower < 50, "wrapped blocks tracked again: {narrower}");
+}
