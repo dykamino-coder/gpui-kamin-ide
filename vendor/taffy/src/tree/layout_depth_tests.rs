@@ -11,7 +11,7 @@ fn small_stack(run: impl FnOnce() + Send + 'static) {
         .unwrap();
 }
 
-fn nested_layout(display: Display) {
+fn nested_layout(display: Display, depth: usize) {
     small_stack(move || {
         let mut tree = TaffyTree::<()>::new();
         let style = SharedStyle::new(Style {
@@ -24,7 +24,7 @@ fn nested_layout(display: Display) {
         });
         let leaf = tree.new_leaf_with_context(style.clone(), ()).unwrap();
         let mut root = leaf;
-        for _ in 0..20_000 {
+        for _ in 0..depth {
             root = tree.new_with_children(style.clone(), &[root]).unwrap();
         }
         let mut measures = 0;
@@ -78,15 +78,19 @@ fn nested_layout(display: Display) {
 
 #[test]
 fn block_layout_twenty_thousand_levels_on_small_stack() {
-    nested_layout(Display::Block);
+    nested_layout(Display::Block, 20_000);
 }
 #[test]
 fn flex_layout_twenty_thousand_levels_on_small_stack() {
-    nested_layout(Display::Flex);
+    nested_layout(Display::Flex, 20_000);
+}
+#[test]
+fn grid_layout_one_level_on_small_stack() {
+    nested_layout(Display::Grid, 1);
 }
 #[test]
 fn grid_layout_twenty_thousand_levels_on_small_stack() {
-    nested_layout(Display::Grid);
+    nested_layout(Display::Grid, 20_000);
 }
 
 struct NestedMeasure<'a> {

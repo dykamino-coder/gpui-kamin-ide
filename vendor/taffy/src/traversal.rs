@@ -24,22 +24,6 @@ pub(crate) async fn then<T>(v: bool, f: impl AsyncFnOnce() -> T) -> Option<T> {
         None
     }
 }
-pub(crate) async fn fold<I: Iterator, A>(
-    iter: I,
-    mut value: A,
-    mut f: impl AsyncFnMut(A, I::Item) -> A,
-) -> A {
-    for item in iter {
-        value = f(value, item).await;
-    }
-    value
-}
-pub(crate) async fn for_each<I: Iterator>(iter: I, mut f: impl AsyncFnMut(I::Item)) {
-    for item in iter {
-        f(item).await;
-    }
-}
-
 pub(crate) async fn max_map<I: Iterator>(
     iter: I,
     mut f: impl AsyncFnMut(I::Item) -> f32,

@@ -46,6 +46,7 @@ pub use types::{GridLineNames, GridLineNamesIter};
 mod alignment;
 mod baseline_x;
 mod container_baselines;
+mod contribution_changes;
 mod explicit_grid;
 // KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12).
 mod fragmentation_growth;
@@ -519,17 +520,20 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     // KaminIDE patch: элементы подсеток-детей вкладываются в дорожки этой
     // сетки (css-grid-2 §9 (h)); сами подсетки в подсеточной оси пусты (§9 (g)).
     let own_item_count = items.len();
-    let subgrid_edges = subgrid::flatten_subgrid_items_async(
-        tree,
-        &mut items,
-        container_gap,
-        inner_node_size,
-        3,
-        Some(&name_resolver),
-        flow,
-        stack,
-    )
-    .await;
+    let subgrid_edges = stack
+        .run(|stack| {
+            subgrid::flatten_subgrid_items_async(
+                tree,
+                &mut items,
+                container_gap,
+                inner_node_size,
+                3,
+                Some(&name_resolver),
+                flow,
+                stack,
+            )
+        })
+        .await;
     let has_subgrids =
         items.len() > own_item_count || items.iter().any(|item| item.sizing_axes != 3);
     if !subgrid_edges.is_empty() {
@@ -818,43 +822,19 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     }
     if !rerun_column_sizing {
         // Note: every item must be visited (no short-circuiting) as the closure updates each item's caches
-        intrinsic_column_contribution_changed = crate::traversal::fold(
-            items.iter_mut().filter(|item| {
-                item.crosses_intrinsic_column && item.sizes_axis(AbstractAxis::Inline)
-            }),
-            false,
-            async |any_changed, item| {
-                let grid_area_size = item.grid_area_size(
+        intrinsic_column_contribution_changed = stack
+            .run(|stack| {
+                contribution_changes::recompute(
+                    tree,
+                    &mut items,
                     AbstractAxis::Inline,
                     &columns,
                     &rows,
                     inner_node_size,
-                    |track: &GridTrack, _| Some(track.base_size),
-                    &|val, basis| tree.calc(val, basis),
-                );
-                let available_space = grid_area_size.with(AbstractAxis::Inline, None);
-                let new_min_content_contribution = item
-                    .min_content_contribution_async(
-                        AbstractAxis::Inline,
-                        tree,
-                        grid_area_size,
-                        available_space,
-                        stack,
-                    )
-                    .await;
-
-                let has_changed =
-                    Some(new_min_content_contribution) != item.min_content_contribution_cache.width;
-
-                item.grid_area_size_cache = Some(grid_area_size);
-                item.min_content_contribution_cache.width = Some(new_min_content_contribution);
-                item.max_content_contribution_cache.width = None;
-                item.minimum_contribution_cache.width = None;
-
-                any_changed | has_changed
-            },
-        )
-        .await;
+                    stack,
+                )
+            })
+            .await;
         rerun_column_sizing = intrinsic_column_contribution_changed;
     } else {
         // Clear intrinsic width caches
@@ -928,43 +908,19 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
         // (unless row sizing is being re-run anyway, in which case the caches have already been cleared).
         if !rerun_row_sizing {
             // Note: every item must be visited (no short-circuiting) as the closure updates each item's caches
-            intrinsic_row_contribution_changed = crate::traversal::fold(
-                items.iter_mut().filter(|item| {
-                    item.crosses_intrinsic_row && item.sizes_axis(AbstractAxis::Block)
-                }),
-                false,
-                async |any_changed, item| {
-                    let grid_area_size = item.grid_area_size(
+            intrinsic_row_contribution_changed = stack
+                .run(|stack| {
+                    contribution_changes::recompute(
+                        tree,
+                        &mut items,
                         AbstractAxis::Block,
                         &rows,
                         &columns,
                         inner_node_size,
-                        |track: &GridTrack, _| Some(track.base_size),
-                        &|val, basis| tree.calc(val, basis),
-                    );
-                    let available_space = grid_area_size.with(AbstractAxis::Block, None);
-                    let new_min_content_contribution = item
-                        .min_content_contribution_async(
-                            AbstractAxis::Block,
-                            tree,
-                            grid_area_size,
-                            available_space,
-                            stack,
-                        )
-                        .await;
-
-                    let has_changed = Some(new_min_content_contribution)
-                        != item.min_content_contribution_cache.height;
-
-                    item.grid_area_size_cache = Some(grid_area_size);
-                    item.min_content_contribution_cache.height = Some(new_min_content_contribution);
-                    item.max_content_contribution_cache.height = None;
-                    item.minimum_contribution_cache.height = None;
-
-                    any_changed | has_changed
-                },
-            )
-            .await;
+                        stack,
+                    )
+                })
+                .await;
             rerun_row_sizing = intrinsic_row_contribution_changed;
         }
     }
@@ -1242,10 +1198,10 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
     // of in-flow children's subtrees (`items` is sorted by `source_order`, i.e. child index)
     let mut order = items.len() as u32;
     let mut in_flow_items = items.iter_mut().peekable();
-    crate::traversal::for_each(0..tree.child_count(node), async |index| {
+    for index in 0..tree.child_count(node) {
         if let Some(item) = in_flow_items.next_if(|item| item.source_order as usize == index) {
             oof_candidates.append(&mut item.oof_candidates);
-            return;
+            continue;
         }
 
         let child = tree.get_child_id(node, index);
@@ -1266,7 +1222,7 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
             )
             .await;
             order += 1;
-            return;
+            continue;
         }
 
         // Emit out-of-flow children as candidates for the out-of-flow positioning pass
@@ -1358,8 +1314,7 @@ pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
 
             order += 1;
         }
-    })
-    .await;
+    }
 
     let absolute_position_inset = border
         + Rect {

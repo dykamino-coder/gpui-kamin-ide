@@ -9245,6 +9245,53 @@ index 0000000000000000000000000000000000000000..c440580a08832198c8f425502e3f28a3
 +        }
 +    );
 +}
+diff --git a/vendor/taffy/src/compute/grid/contribution_changes.rs b/vendor/taffy/src/compute/grid/contribution_changes.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..09e487a606f43c07093bc87a80804c0ed464267d
+--- /dev/null
++++ b/vendor/taffy/src/compute/grid/contribution_changes.rs
+@@ -0,0 +1,41 @@
++//! Повторная оценка вкладов сохраняет кэши и порядок всех элементов оси.
++use super::types::{GridItem, GridTrack};
++use crate::geometry::{AbstractAxis, Size};
++use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt};
++
++/// Отдельное продолжение не включает измеритель элемента в кадр всей сетки.
++pub(super) async fn recompute(
++    tree: &mut impl LayoutPartialTree,
++    items: &mut [GridItem],
++    axis: AbstractAxis,
++    tracks: &[GridTrack],
++    other_tracks: &[GridTrack],
++    inner_size: Size<Option<f32>>,
++    stack: &mut reblessive::Stk,
++) -> bool {
++    let mut any_changed = false;
++    for item in items
++        .iter_mut()
++        .filter(|item| item.crosses_intrinsic_track(axis) && item.sizes_axis(axis))
++    {
++        let grid_area_size = item.grid_area_size(
++            axis,
++            tracks,
++            other_tracks,
++            inner_size,
++            |track: &GridTrack, _| Some(track.base_size),
++            &|val, basis| tree.calc(val, basis),
++        );
++        let available_space = grid_area_size.with(axis, None);
++        let contribution = item
++            .min_content_contribution_async(axis, tree, grid_area_size, available_space, stack)
++            .await;
++        any_changed |= Some(contribution) != item.min_content_contribution_cache.get(axis);
++        item.grid_area_size_cache = Some(grid_area_size);
++        item.min_content_contribution_cache
++            .set(axis, Some(contribution));
++        item.max_content_contribution_cache.set(axis, None);
++        item.minimum_contribution_cache.set(axis, None);
++    }
++    any_changed
++}
 diff --git a/vendor/taffy/src/compute/grid/explicit_grid.rs b/vendor/taffy/src/compute/grid/explicit_grid.rs
 index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..a21ea20e3298d607084b838fd6d36dc191adaa8f
 --- a/vendor/taffy/src/compute/grid/explicit_grid.rs
@@ -13461,7 +13508,7 @@ index 0000000000000000000000000000000000000000..ed0a46e37f350534ce3f23e91ac13176
 +#[path = "block_intrinsic_keyword_tests.rs"]
 +mod block_intrinsic_keyword_tests;
 diff --git a/vendor/taffy/src/compute/grid/mod.rs b/vendor/taffy/src/compute/grid/mod.rs
-index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9aa5368182
+index 4d1884612348ff58e5133cd5785dbc7f24917037..4133e9e1b9f06d4ce85d5d2b9ff0368911afcafd
 --- a/vendor/taffy/src/compute/grid/mod.rs
 +++ b/vendor/taffy/src/compute/grid/mod.rs
 @@ -2,0 +3,3 @@
@@ -13506,13 +13553,14 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +pub(crate) use types::{
 +    GridCoordinate, GridLine, OriginZeroLine, MAX_GRID_TRACKS, MAX_OZ_LINE, MIN_OZ_LINE,
 +};
-@@ -36,0 +47,2 @@
+@@ -36,0 +47,3 @@
 +mod baseline_x;
 +mod container_baselines;
-@@ -37,0 +50,2 @@
++mod contribution_changes;
+@@ -37,0 +51,2 @@
 +// KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12).
 +mod fragmentation_growth;
-@@ -38,0 +53,8 @@
+@@ -38,0 +54,8 @@
 +mod preferred_contribution;
 +// KaminIDE patch: раскладка лунками (css-grid-3) на общем алгоритме дорожек.
 +// Upstream un-gated the detailed grid info (the out-of-flow pass needs it), so this is too.
@@ -13521,21 +13569,21 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +mod lanes_geometry;
 +mod lanes_sizing;
 +mod lanes_stack_measure;
-@@ -39,0 +62,5 @@
+@@ -39,0 +63,5 @@
 +mod subgrid_flow;
 +mod subgrid_tracks;
 +// KaminIDE patch: подсетка (css-grid-2 §9) — дерево размеров на общем пути.
 +mod subgrid;
 +mod table_collapse;
-@@ -40,0 +68 @@
+@@ -40,0 +69 @@
 +mod track_sum;
-@@ -47 +75,4 @@
+@@ -47 +76,4 @@
 -    /// The container's `direction` style
 +    /// KaminIDE patch: physical reversal of the column (`width`) and row (`height`) axes after the
 +    /// writing-mode conversion (`subgrid_flow::axes`)
 +    flow: Size<bool>,
 +    /// The container's inline direction. KaminIDE patch: derived from the physical column reversal.
-@@ -98,3 +129,16 @@
+@@ -98,3 +130,16 @@
 -    let LayoutInput { known_dimensions, parent_size, available_space, .. } = inputs;
 -
 -    let direction = style.direction();
@@ -13555,7 +13603,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    } else {
 +        Direction::Ltr
 +    };
-@@ -107,2 +151,6 @@
+@@ -107,2 +152,6 @@
 -    let padding = style.padding().resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
 -    let border = style.border().resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
 +    let padding = style
@@ -13564,7 +13612,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    let border = style
 +        .border()
 +        .resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
-@@ -111,13 +159,22 @@
+@@ -111,13 +160,22 @@
 -    let box_sizing_adjustment =
 -        if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 -
@@ -13600,7 +13648,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            .maybe_add(box_sizing_adjustment),
 +        inputs,
 +    );
-@@ -165,0 +223,10 @@
+@@ -165,0 +224,10 @@
 +    // KaminIDE patch: a content-sized block axis is a max-content constraint (css-grid-2 §12.1 note), so it
 +    // stays indefinite for track sizing and max-height only clamps the final container size, as Blink's
 +    // grid_layout_algorithm.cc keeps grid_available_size_.block_size indefinite for auto block sizes.
@@ -13611,7 +13659,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            Some(_) => !inputs.known_dimensions_are_definite.height,
 +            None => !matches!(available_space.height, AvailableSpace::Definite(_)),
 +        };
-@@ -170,3 +237,9 @@
+@@ -170,3 +238,9 @@
 -        height: constrained_available_space
 -            .height
 -            .map_definite_value(|space| space - content_box_inset.vertical_axis_sum()),
@@ -13624,14 +13672,14 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            constrained_available_space.height
 +        }
 +        .map_definite_value(|space| space - content_box_inset.vertical_axis_sum()),
-@@ -175,2 +248,4 @@
+@@ -175,2 +249,4 @@
 -    let outer_node_size =
 -        known_dimensions.or(preferred_size).maybe_clamp(min_size, max_size).maybe_max(padding_border_size);
 +    let outer_node_size = known_dimensions
 +        .or(preferred_size)
 +        .maybe_clamp(min_size, max_size)
 +        .maybe_max(padding_border_size);
-@@ -183,2 +258,6 @@
+@@ -183,2 +259,6 @@
 -        width: outer_node_size.width.map(|space| space - content_box_inset.horizontal_axis_sum()),
 -        height: outer_node_size.height.map(|space| space - content_box_inset.vertical_axis_sum()),
 +        width: outer_node_size
@@ -13640,21 +13688,21 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        height: outer_node_size
 +            .height
 +            .map(|space| space - content_box_inset.vertical_axis_sum()),
-@@ -187,0 +267 @@
+@@ -187,0 +268 @@
 +        flow,
-@@ -219 +299 @@
+@@ -219 +300 @@
 -pub fn compute_grid_layout<Tree: LayoutGridContainer>(
 +pub async fn compute_grid_layout_async<Tree: LayoutGridContainer>(
-@@ -222,0 +303 @@
+@@ -222,0 +304 @@
 +    stack: &mut reblessive::Stk,
-@@ -224 +305,5 @@
+@@ -224 +306,5 @@
 -    let LayoutInput { known_dimensions, run_mode, .. } = inputs;
 +    let LayoutInput {
 +        known_dimensions,
 +        run_mode,
 +        ..
 +    } = inputs;
-@@ -226,0 +312,10 @@
+@@ -226,0 +313,10 @@
 +
 +    // KaminIDE patch: контейнер ЛУНОК (css-grid-3 `display: grid-lanes`) —
 +    // своя раскладка поверх тех же дорожек (`lanes.rs`).
@@ -13665,9 +13713,9 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            .await;
 +    }
 +
-@@ -228,0 +324 @@
+@@ -228,0 +325 @@
 +        flow,
-@@ -252,0 +349,18 @@
+@@ -252,0 +350,18 @@
 +    let margin_trim = style.margin_trim();
 +    let own_subgrid = subgrid::own_subgrid_tracks(tree, node, style.subgrid());
 +    let sub_cols = own_subgrid
@@ -13686,14 +13734,14 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        justify_content
 +    };
 +
-@@ -267 +381,5 @@
+@@ -267 +382,5 @@
 -        if let Size { width: Some(width), height: Some(height) } = outer_node_size {
 +        if let Size {
 +            width: Some(width),
 +            height: Some(height),
 +        } = outer_node_size
 +        {
-@@ -301,3 +419,15 @@
+@@ -301,3 +420,15 @@
 -    // Compute the number of rows and columns in the explicit grid *template*
 -    // (explicit tracks from grid_areas are computed separately below)
 -    let (col_auto_repetition_count, grid_template_col_count) = compute_explicit_grid_size_in_axis(
@@ -13712,7 +13760,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    } = subgrid::place_items(
 +        tree,
 +        node,
-@@ -305,4 +435,5 @@
+@@ -305,4 +436,5 @@
 -        auto_fit_container_size.width,
 -        auto_repeat_fit_strategy.width,
 -        |val, basis| tree.calc(val, basis),
@@ -13722,7 +13770,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        own_subgrid.as_ref(),
 +        align_items,
 +        justify_items,
-@@ -310,19 +440,0 @@
+@@ -310,19 +441,0 @@
 -    let (row_auto_repetition_count, grid_template_row_count) = compute_explicit_grid_size_in_axis(
 -        &style,
 -        auto_fit_container_size.height,
@@ -13742,11 +13790,11 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 -    name_resolver.set_explicit_column_count(explicit_col_count);
 -    name_resolver.set_explicit_row_count(explicit_row_count);
 -
-@@ -330 +442,2 @@
+@@ -330 +443,2 @@
 -    let mut detailed_column_line_names = name_resolver.detailed_line_names(AbsoluteAxis::Horizontal);
 +    let mut detailed_column_line_names =
 +        name_resolver.detailed_line_names(AbsoluteAxis::Horizontal);
-@@ -333,43 +446,16 @@
+@@ -333,43 +447,16 @@
 -    // 3. Create the grid items (in document order) and resolve the named lines in their `grid-row`/`grid-column` styles
 -    // Absolutely positioned children do not take part in grid placement and do not create implicit tracks,
 -    // so they are excluded here. Each child's style is read and its named lines resolved exactly once; the
@@ -13806,7 +13854,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                .resolve_or_zero(inner_node_size.height, |val, basis| tree.calc(val, basis))
 +        }),
 +    };
-@@ -382,17 +468,26 @@
+@@ -382,17 +469,26 @@
 -    initialize_grid_tracks(
 -        &mut columns,
 -        final_col_counts,
@@ -13850,7 +13898,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    let table_collapse = style
 +        .table_collapsed_tracks()
 +        .map(|(axis, rows)| (axis, rows.to_vec()));
-@@ -404,0 +500,40 @@
+@@ -404,0 +501,43 @@
 +    // KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12) is not
 +    // part of the unfragmented track sizing; a size a parent measured with it excludes it.
 +    let growth = fragmentation_growth::Growth::read(
@@ -13873,17 +13921,20 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    // KaminIDE patch: элементы подсеток-детей вкладываются в дорожки этой
 +    // сетки (css-grid-2 §9 (h)); сами подсетки в подсеточной оси пусты (§9 (g)).
 +    let own_item_count = items.len();
-+    let subgrid_edges = subgrid::flatten_subgrid_items_async(
-+        tree,
-+        &mut items,
-+        container_gap,
-+        inner_node_size,
-+        3,
-+        Some(&name_resolver),
-+        flow,
-+        stack,
-+    )
-+    .await;
++    let subgrid_edges = stack
++        .run(|stack| {
++            subgrid::flatten_subgrid_items_async(
++                tree,
++                &mut items,
++                container_gap,
++                inner_node_size,
++                3,
++                Some(&name_resolver),
++                flow,
++                stack,
++            )
++        })
++        .await;
 +    let has_subgrids =
 +        items.len() > own_item_count || items.iter().any(|item| item.sizing_axes != 3);
 +    if !subgrid_edges.is_empty() {
@@ -13891,7 +13942,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        subgrid::apply_subgrid_floors(&mut rows, &subgrid_edges, false, final_row_counts);
 +    }
 +
-@@ -410,0 +546,57 @@
+@@ -410,0 +550,57 @@
 +    // KaminIDE patch: `margin-trim` сетки (css-box-4 §margin-trim, «Grid
 +    // Containers»): обнуляются поля элементов у краёв контейнера — в первой
 +    // и последней ЖИВОЙ дорожке каждой оси; схлопнутые (`auto-fit` без
@@ -13949,7 +14000,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        }
 +    }
 +
-@@ -414,0 +607,15 @@
+@@ -414,0 +611,15 @@
 +    // Native cyclic-size and auto-margin guards apply to both baseline groups.
 +    // Preserve distinct fallback edges when removing an item from a group.
 +    for item in &mut items {
@@ -13965,7 +14016,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            };
 +        }
 +    }
-@@ -416 +623,23 @@
+@@ -416 +627,23 @@
 -    let has_baseline_aligned_item = items.iter().any(|item| item.participates_in_baseline_alignment());
 +    let has_baseline_aligned_item = items
 +        .iter()
@@ -13990,7 +14041,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        );
 +    }
 +    let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
-@@ -419,18 +648,28 @@
+@@ -419,18 +652,28 @@
 -    track_sizing_algorithm(
 -        tree,
 -        AbstractAxis::Inline,
@@ -14037,7 +14088,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        })
 +        .await;
 +    let initial_column_sum = track_sum::base_size_sum(&columns);
-@@ -449 +688,20 @@
+@@ -449 +692,20 @@
 -    items.iter_mut().for_each(|item| item.grid_area_size_cache = None);
 +    items
 +        .iter_mut()
@@ -14059,7 +14110,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        );
 +    }
 +    let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
-@@ -452,16 +710,23 @@
+@@ -452,16 +714,23 @@
 -    track_sizing_algorithm(
 -        tree,
 -        AbstractAxis::Block,
@@ -14099,12 +14150,12 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        })
 +        .await;
 +    let initial_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
-@@ -473,0 +739 @@
+@@ -473,0 +743 @@
 +    let visible_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
-@@ -479 +745 @@
+@@ -479 +749 @@
 -            .unwrap_or_else(|| initial_column_sum + content_box_inset.horizontal_axis_sum())
 +            .unwrap_or_else(|| visible_column_sum + content_box_inset.horizontal_axis_sum())
-@@ -489,2 +755,18 @@
+@@ -489,2 +759,18 @@
 -        width: f32_max(0.0, container_border_box.width - content_box_inset.horizontal_axis_sum()),
 -        height: f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum()),
 +        width: f32_max(
@@ -14125,7 +14176,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        min: min_size,
 +        max: max_size,
 +        padding_border: padding_border_size,
-@@ -495 +777,8 @@
+@@ -495 +781,8 @@
 -        return LayoutOutput::from_outer_size(container_border_box);
 +        return LayoutOutput::from_outer_size(growth.container(
 +            container_border_box,
@@ -14135,10 +14186,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            },
 +            &growth_limits,
 +        ));
-@@ -500 +789 @@
+@@ -500 +793 @@
 -    inner_node_size = container_content_box.map(Some);
 +    inner_node_size = growth.unfragmented_size(container_content_box.map(Some), given_size);
-@@ -513,0 +803,16 @@
+@@ -513,0 +807,16 @@
 +    // KaminIDE patch: ряды размерены — подсеткам обе оси (их вклад в колонки
 +    // при повторном проходе меряется уже по своим рядам).
 +    if has_subgrids {
@@ -14155,40 +14206,39 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            flow,
 +        );
 +    }
-@@ -516,2 +821,6 @@
+@@ -516,3 +825,5 @@
 -        intrinsic_column_contribution_changed =
 -            items.iter_mut().filter(|item| item.crosses_intrinsic_column).fold(false, |any_changed, item| {
-+        intrinsic_column_contribution_changed = crate::traversal::fold(
-+            items.iter_mut().filter(|item| {
-+                item.crosses_intrinsic_column && item.sizes_axis(AbstractAxis::Inline)
-+            }),
-+            false,
-+            async |any_changed, item| {
-@@ -527,4 +836,12 @@
+-                let grid_area_size = item.grid_area_size(
++        intrinsic_column_contribution_changed = stack
++            .run(|stack| {
++                contribution_changes::recompute(
++                    tree,
++                    &mut items,
+@@ -523,16 +834,4 @@
+-                    |track: &GridTrack, _| Some(track.base_size),
+-                    &|val, basis| tree.calc(val, basis),
+-                );
+-                let available_space = grid_area_size.with(AbstractAxis::Inline, None);
 -                let new_min_content_contribution =
 -                    item.min_content_contribution(AbstractAxis::Inline, tree, grid_area_size, available_space);
 -
 -                let has_changed = Some(new_min_content_contribution) != item.min_content_contribution_cache.width;
-+                let new_min_content_contribution = item
-+                    .min_content_contribution_async(
-+                        AbstractAxis::Inline,
-+                        tree,
-+                        grid_area_size,
-+                        available_space,
-+                        stack,
-+                    )
-+                    .await;
-+
-+                let has_changed =
-+                    Some(new_min_content_contribution) != item.min_content_contribution_cache.width;
-@@ -538 +855,3 @@
+-
+-                item.grid_area_size_cache = Some(grid_area_size);
+-                item.min_content_contribution_cache.width = Some(new_min_content_contribution);
+-                item.max_content_contribution_cache.width = None;
+-                item.minimum_contribution_cache.width = None;
+-
+-                any_changed | has_changed
 -            });
-+            },
-+        )
-+        .await;
-@@ -568,0 +888 @@
++                    stack,
++                )
++            })
++            .await;
+@@ -568,0 +868 @@
 +        let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
-@@ -570,15 +890,36 @@
+@@ -570,15 +870,36 @@
 -        track_sizing_algorithm(
 -            tree,
 -            AbstractAxis::Inline,
@@ -14240,40 +14290,39 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                flow,
 +            );
 +        }
-@@ -590,2 +931,6 @@
+@@ -590,3 +911,5 @@
 -            intrinsic_row_contribution_changed =
 -                items.iter_mut().filter(|item| item.crosses_intrinsic_row).fold(false, |any_changed, item| {
-+            intrinsic_row_contribution_changed = crate::traversal::fold(
-+                items.iter_mut().filter(|item| {
-+                    item.crosses_intrinsic_row && item.sizes_axis(AbstractAxis::Block)
-+                }),
-+                false,
-+                async |any_changed, item| {
-@@ -601,4 +946,12 @@
+-                    let grid_area_size = item.grid_area_size(
++            intrinsic_row_contribution_changed = stack
++                .run(|stack| {
++                    contribution_changes::recompute(
++                        tree,
++                        &mut items,
+@@ -597,16 +920,4 @@
+-                        |track: &GridTrack, _| Some(track.base_size),
+-                        &|val, basis| tree.calc(val, basis),
+-                    );
+-                    let available_space = grid_area_size.with(AbstractAxis::Block, None);
 -                    let new_min_content_contribution =
 -                        item.min_content_contribution(AbstractAxis::Block, tree, grid_area_size, available_space);
 -
 -                    let has_changed = Some(new_min_content_contribution) != item.min_content_contribution_cache.height;
-+                    let new_min_content_contribution = item
-+                        .min_content_contribution_async(
-+                            AbstractAxis::Block,
-+                            tree,
-+                            grid_area_size,
-+                            available_space,
-+                            stack,
-+                        )
-+                        .await;
-+
-+                    let has_changed = Some(new_min_content_contribution)
-+                        != item.min_content_contribution_cache.height;
-@@ -612 +965,3 @@
+-
+-                    item.grid_area_size_cache = Some(grid_area_size);
+-                    item.min_content_contribution_cache.height = Some(new_min_content_contribution);
+-                    item.max_content_contribution_cache.height = None;
+-                    item.minimum_contribution_cache.height = None;
+-
+-                    any_changed | has_changed
 -                });
-+                },
-+            )
-+            .await;
-@@ -617,0 +973 @@
++                        stack,
++                    )
++                })
++                .await;
+@@ -617,0 +929 @@
 +        let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
-@@ -619,15 +975,20 @@
+@@ -619,15 +931,20 @@
 -        track_sizing_algorithm(
 -            tree,
 -            AbstractAxis::Block,
@@ -14309,19 +14358,19 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                )
 +            })
 +            .await;
-@@ -639,2 +1000,2 @@
+@@ -639,2 +956,2 @@
 -        let final_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
 -        let final_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
 +        let final_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
 +        let final_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
-@@ -648,2 +1009,4 @@
+@@ -648,2 +965,4 @@
 -            container_content_box.width =
 -                f32_max(0.0, container_border_box.width - content_box_inset.horizontal_axis_sum());
 +            container_content_box.width = f32_max(
 +                0.0,
 +                container_border_box.width - content_box_inset.horizontal_axis_sum(),
 +            );
-@@ -658,5 +1021,15 @@
+@@ -658,5 +977,15 @@
 -            container_content_box.height =
 -                f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum());
 -        }
@@ -14342,7 +14391,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            height: table_collapse::visible_sum(&rows, table_collapse.as_ref(), false),
 +        }
 +    };
-@@ -665,3 +1038,26 @@
+@@ -665,3 +994,26 @@
 -        return LayoutOutput::from_outer_size(container_border_box);
 -    }
 -
@@ -14372,17 +14421,17 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    // CSS Tables 3: collapse only after the full logical grid has been sized.
 +    table_collapse::apply(&mut columns, table_collapse.as_ref(), true);
 +    table_collapse::apply(&mut rows, table_collapse.as_ref(), false);
-@@ -671,2 +1067,4 @@
+@@ -671,2 +1023,4 @@
 -    let inline_size_without_scrollbar = f32_max(container_border_box.width - padding_border_size.width, 0.0);
 -    let inline_scrollbar_gutter_for_alignment = f32_min(scrollbar_gutter.x, inline_size_without_scrollbar);
 +    let inline_size_without_scrollbar =
 +        f32_max(container_border_box.width - padding_border_size.width, 0.0);
 +    let inline_scrollbar_gutter_for_alignment =
 +        f32_min(scrollbar_gutter.x, inline_size_without_scrollbar);
-@@ -674 +1072 @@
+@@ -674 +1028 @@
 -        container_content_box.get(AbstractAxis::Inline),
 +        alignment_basis.get(AbstractAxis::Inline),
-@@ -676,2 +1074,12 @@
+@@ -676,2 +1030,12 @@
 -            start: padding.left + if direction.is_rtl() { inline_scrollbar_gutter_for_alignment } else { 0.0 },
 -            end: padding.right + if direction.is_rtl() { 0.0 } else { inline_scrollbar_gutter_for_alignment },
 +            start: padding.left
@@ -14397,13 +14446,13 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                } else {
 +                    inline_scrollbar_gutter_for_alignment
 +                },
-@@ -679 +1087,4 @@
+@@ -679 +1043,4 @@
 -        Line { start: border.left, end: border.right },
 +        Line {
 +            start: border.left,
 +            end: border.right,
 +        },
-@@ -686,3 +1097,9 @@
+@@ -686,3 +1053,9 @@
 -        container_content_box.get(AbstractAxis::Block),
 -        Line { start: padding.top, end: padding.bottom },
 -        Line { start: border.top, end: border.bottom },
@@ -14416,10 +14465,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            start: border.top,
 +            end: border.bottom,
 +        },
-@@ -691 +1108 @@
+@@ -691 +1064 @@
 -        false,
 +        flow.height,
-@@ -692,0 +1110,33 @@
+@@ -692,0 +1066,33 @@
 +
 +    // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры
 +    // по смещениям (доля распределения содержимого входит в зазоры).
@@ -14453,15 +14502,15 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +    // KaminIDE patch: `subgrid::partition_for_axis` permutes the items, so restore document order
 +    // (upstream #1200 otherwise keeps it; the out-of-flow merge below relies on it).
 +    items.sort_by_key(|item| item.source_order);
-@@ -704 +1154,4 @@
+@@ -704 +1110,4 @@
 -    let container_alignment_styles = InBothAbsAxis { horizontal: justify_items, vertical: align_items };
 +    let container_alignment_styles = InBothAbsAxis {
 +        horizontal: justify_items,
 +        vertical: align_items,
 +    };
-@@ -706,0 +1160 @@
+@@ -706,0 +1116 @@
 +    let mut baseline_x_items: Vec<(u16, Line<Option<f32>>)> = Vec::new();
-@@ -708,8 +1162,62 @@
+@@ -708,8 +1118,62 @@
 -        // Tracks are stored in logical order. In RTL the physical offsets are assigned
 -        // right-to-left, so an item's physical left edge is derived from its logical end
 -        // line and its physical right edge from its logical start line.
@@ -14532,7 +14581,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +        if item.table_cell_baseline {
 +            let shim = if item.participates_in_baseline_alignment() {
 +                item.baseline_shim
-@@ -717,26 +1225,9 @@
+@@ -717,26 +1181,9 @@
 -                columns[item.column_indexes.start as usize + 1].offset
 -            },
 -            right: if direction.is_rtl() {
@@ -14568,18 +14617,24 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            item.first_baseline = item.first_baseline.map(|b| b + shim);
 +            item.last_baseline = item.last_baseline.map(|b| b + shim);
 +        }
-@@ -754 +1245 @@
+@@ -754 +1201 @@
 -    (0..tree.child_count(node)).for_each(|index| {
-+    crate::traversal::for_each(0..tree.child_count(node), async |index| {
-@@ -767 +1258 @@
++    for index in 0..tree.child_count(node) {
+@@ -757 +1204 @@
+-            return;
++            continue;
+@@ -767 +1214 @@
 -            tree.perform_child_layout(
 +            tree.perform_child_layout_async(
-@@ -774 +1265,3 @@
+@@ -774 +1221,3 @@
 -            );
 +                stack,
 +            )
 +            .await;
-@@ -786,7 +1279,8 @@
+@@ -776 +1225 @@
+-            return;
++            continue;
+@@ -786,7 +1235,8 @@
 -            let justify_self = child_style.justify_self().unwrap_or(justify_items).resolve_self_relative(
 -                item_direction,
 -                direction,
@@ -14595,9 +14650,9 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                .align_self()
 +                .unwrap_or(align_items)
 +                .resolve_self_relative(item_direction, direction, false);
-@@ -808,0 +1303 @@
+@@ -808,0 +1259 @@
 +                    flow.height,
-@@ -815 +1310,7 @@
+@@ -815 +1266,7 @@
 -                    left: border.left + padding.left + if direction.is_rtl() { scrollbar_gutter.x } else { 0.0 },
 +                    left: border.left
 +                        + padding.left
@@ -14606,28 +14661,28 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                        } else {
 +                            0.0
 +                        },
-@@ -819 +1320,5 @@
+@@ -819 +1276,5 @@
 -                        - if direction.is_rtl() { 0.0 } else { scrollbar_gutter.x },
 +                        - if direction.is_rtl() {
 +                            0.0
 +                        } else {
 +                            scrollbar_gutter.x
 +                        },
-@@ -821 +1326,4 @@
+@@ -821 +1282,4 @@
 -                    bottom: container_border_box.height - border.bottom - padding.bottom - scrollbar_gutter.y,
 +                    bottom: container_border_box.height
 +                        - border.bottom
 +                        - padding.bottom
 +                        - scrollbar_gutter.y,
-@@ -833 +1341,4 @@
+@@ -833 +1297,4 @@
 -                        Line { start: area.left, end: area.right },
 +                        Line {
 +                            start: area.left,
 +                            end: area.right,
 +                        },
-@@ -835,0 +1347 @@
+@@ -835,0 +1303 @@
 +                    // KaminIDE patch: writing modes may reverse the physical row axis too.
-@@ -838,2 +1350,5 @@
+@@ -838,2 +1306,5 @@
 -                        Line { start: area.top, end: area.bottom },
 -                        false,
 +                        Line {
@@ -14635,11 +14690,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                            end: area.bottom,
 +                        },
 +                        flow.height,
-@@ -846 +1361,2 @@
+@@ -846 +1317 @@
 -    });
-+    })
-+    .await;
-@@ -850,2 +1366,10 @@
++    }
+@@ -850,2 +1321,10 @@
 -            left: if direction.is_rtl() { scrollbar_gutter.x } else { 0.0 },
 -            right: if direction.is_rtl() { 0.0 } else { scrollbar_gutter.x },
 +            left: if direction.is_rtl() {
@@ -14652,50 +14706,50 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            } else {
 +                scrollbar_gutter.x
 +            },
-@@ -856 +1380,4 @@
+@@ -856 +1335,4 @@
 -    let absolute_position_offset = Point { x: absolute_position_inset.left, y: absolute_position_inset.top };
 +    let absolute_position_offset = Point {
 +        x: absolute_position_inset.left,
 +        y: absolute_position_inset.top,
 +    };
-@@ -859,2 +1386,4 @@
+@@ -859,2 +1341,4 @@
 -    let areas =
 -        name_resolver.populate_detailed_line_resolvers(&mut detailed_row_line_names, &mut detailed_column_line_names);
 +    let areas = name_resolver.populate_detailed_line_resolvers(
 +        &mut detailed_row_line_names,
 +        &mut detailed_column_line_names,
 +    );
-@@ -863,0 +1393 @@
+@@ -863,0 +1348 @@
 +            axis_reversed: flow,
-@@ -874 +1404,4 @@
+@@ -874 +1359,4 @@
 -            items: items.iter().map(DetailedGridItemsInfo::from_grid_item).collect(),
 +            items: items
 +                .iter()
 +                .map(DetailedGridItemsInfo::from_grid_item)
 +                .collect(),
-@@ -879,2 +1412,4 @@
+@@ -879,2 +1367,4 @@
 -    let oof_positioning_area =
 -        Some(OofPositioningArea { size: absolute_position_area, offset: absolute_position_offset });
 +    let oof_positioning_area = Some(OofPositioningArea {
 +        size: absolute_position_area,
 +        offset: absolute_position_offset,
 +    });
-@@ -888 +1423,5 @@
+@@ -888 +1378,5 @@
 -                overflow_rect.right += if direction.is_rtl() { padding.left } else { padding.right };
 +                overflow_rect.right += if direction.is_rtl() {
 +                    padding.left
 +                } else {
 +                    padding.right
 +                };
-@@ -900 +1439 @@
+@@ -900 +1394 @@
 -    // Determine the grid container baseline(s) (currently we only compute the first baseline)
 +    // KaminIDE patch: first and last container baselines (css-grid-2 §10.8, `container_baselines.rs`).
-@@ -902,2 +1441,2 @@
+@@ -902,2 +1396,2 @@
 -    let grid_container_baseline: Option<f32> = if contain.suppresses_baseline() {
 -        None
 +    let container_baselines = if contain.suppresses_baseline() {
 +        Baselines::NONE
-@@ -905,14 +1444 @@
+@@ -905,14 +1399 @@
 -        // Get the row index of the first row containing items
 -        let first_row = items.iter().map(|item| item.row_indexes.start).min().unwrap();
 -
@@ -14711,17 +14765,17 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 -
 -        Some(item.y_position + item.baseline.unwrap_or(item.height))
 +        container_baselines::compute(&items)
-@@ -928 +1454,5 @@
+@@ -928 +1409,5 @@
 -            overflow_rect.right += if direction.is_rtl() { padding.left } else { padding.right };
 +            overflow_rect.right += if direction.is_rtl() {
 +                padding.left
 +            } else {
 +                padding.right
 +            };
-@@ -936 +1466 @@
+@@ -936 +1421 @@
 -    let mut output = LayoutOutput::from_sizes_and_baselines(
 +    let mut output = LayoutOutput::from_sizes_and_all_baselines(
-@@ -939 +1469,19 @@
+@@ -939 +1424,19 @@
 -        Baselines::from_first(grid_container_baseline),
 +        container_baselines,
 +        // KaminIDE patch: vertical content exports physical-x baselines (a vertical table's first
@@ -14742,26 +14796,26 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                    .and_then(|(_, l)| l.end),
 +            }
 +        },
-@@ -962,0 +1511 @@
+@@ -962,0 +1466 @@
 +    rows_reversed: bool,
-@@ -974 +1523,2 @@
+@@ -974 +1478,2 @@
 -            maybe_grid_line.and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_col_counts))
 +            maybe_grid_line
 +                .and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_col_counts))
-@@ -983 +1533,2 @@
+@@ -983 +1488,2 @@
 -            maybe_grid_line.and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_row_counts))
 +            maybe_grid_line
 +                .and_then(|line: OriginZeroLine| line.try_into_track_vec_index(final_row_counts))
-@@ -1041 +1592,4 @@
+@@ -1041 +1547,4 @@
 -            maybe_col_indexes.start.map(|index| line_as_start_edge(columns, index)).unwrap_or(border.left),
 +            maybe_col_indexes
 +                .start
 +                .map(|index| line_as_start_edge(columns, index))
 +                .unwrap_or(border.left),
-@@ -1048,0 +1603,2 @@
+@@ -1048,0 +1558,2 @@
 +    // KaminIDE patch: rows are physically reversed (bottom-to-top) by a writing mode; their offsets are
 +    // then assigned like RTL columns.
-@@ -1050,5 +1606,14 @@
+@@ -1050,5 +1561,14 @@
 -        top: maybe_row_indexes.start.map(|index| line_as_start_edge(rows, index)).unwrap_or(border.top),
 -        bottom: maybe_row_indexes
 -            .end
@@ -14781,13 +14835,13 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            maybe_row_indexes.end.map(|i| line_as_end_edge(rows, i))
 +        }
 +        .unwrap_or(container_border_box.height - border.bottom - scrollbar_gutter.y),
-@@ -1062,0 +1628,2 @@
+@@ -1062,0 +1583,2 @@
 +    /// KaminIDE patch: physical ordering of rows and columns after writing-mode conversion.
 +    pub axis_reversed: Size<bool>,
-@@ -1070 +1637 @@
+@@ -1070 +1592 @@
 -    areas: GridAreasMap<S>,
 +    pub(crate) areas: GridAreasMap<S>,
-@@ -1102 +1669,6 @@
+@@ -1102 +1624,6 @@
 -            .map(|line| line.and_then(|line| line.try_into_track_vec_index(track_counts).map(|index| index / 2)));
 +            .map(|line| {
 +                line.and_then(|line| {
@@ -14795,21 +14849,21 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                        .map(|index| index / 2)
 +                })
 +            });
-@@ -1108 +1680,5 @@
+@@ -1108 +1635,5 @@
 -                    .or_else(|| self.positions.last().map(|track| if is_reversed { track.start } else { track.end }))
 +                    .or_else(|| {
 +                        self.positions
 +                            .last()
 +                            .map(|track| if is_reversed { track.start } else { track.end })
 +                    })
-@@ -1111 +1687,5 @@
+@@ -1111 +1642,5 @@
 -            .unwrap_or(if is_reversed { padding_end } else { padding_start });
 +            .unwrap_or(if is_reversed {
 +                padding_end
 +            } else {
 +                padding_start
 +            });
-@@ -1118 +1698,9 @@
+@@ -1118 +1653,9 @@
 -                    .or_else(|| self.positions.first().map(|track| if is_reversed { track.end } else { track.start }))
 +                    .or_else(|| {
 +                        self.positions.first().map(|track| {
@@ -14820,26 +14874,26 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +                            }
 +                        })
 +                    })
-@@ -1121 +1709,5 @@
+@@ -1121 +1664,5 @@
 -            .unwrap_or(if is_reversed { padding_start } else { padding_end });
 +            .unwrap_or(if is_reversed {
 +                padding_start
 +            } else {
 +                padding_end
 +            });
-@@ -1126 +1718,4 @@
+@@ -1126 +1673,4 @@
 -            Line { start: f32_min(start_position, end_position), end: start_position }
 +            Line {
 +                start: f32_min(start_position, end_position),
 +                end: start_position,
 +            }
-@@ -1128 +1723,4 @@
+@@ -1128 +1678,4 @@
 -            Line { start: start_position, end: f32_max(start_position, end_position) }
 +            Line {
 +                start: start_position,
 +                end: f32_max(start_position, end_position),
 +            }
-@@ -1134,2 +1732,7 @@
+@@ -1134,2 +1687,7 @@
 -        let range_index = self.collapsed_tracks.partition_point(|range| range.end <= index);
 -        let range = self.collapsed_tracks.get(range_index).filter(|range| range.contains(&index));
 +        let range_index = self
@@ -14849,28 +14903,28 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 +            .collapsed_tracks
 +            .get(range_index)
 +            .filter(|range| range.contains(&index));
-@@ -1138 +1741,5 @@
+@@ -1138 +1696,5 @@
 -                let adjacent = if is_start { Some(range.end) } else { range.start.checked_sub(1) };
 +                let adjacent = if is_start {
 +                    Some(range.end)
 +                } else {
 +                    range.start.checked_sub(1)
 +                };
-@@ -1157 +1764,5 @@
+@@ -1157 +1719,5 @@
 -    pub fn write_grid_template_rows(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_grid_template_rows(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1165 +1776,5 @@
+@@ -1165 +1731,5 @@
 -    pub fn write_grid_template_columns(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_grid_template_columns(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1182,47 +1797,2 @@
+@@ -1182,47 +1752,2 @@
 -
 -    /// Resolve the physical grid area for an absolutely positioned box from its grid placement.
 -    /// The padding box and returned area use coordinates relative to the grid container's border box.
@@ -14920,56 +14974,56 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..e1ebe7ab75f42e031da6b158381a0b9a
 -    }
 +    // KaminIDE patch: `resolve_absolute_grid_area` and `item_grid_area` live in `grid_info_geometry.rs`
 +    // (both support physically reversed axes).
-@@ -1266 +1836,3 @@
+@@ -1266 +1791,3 @@
 -    fn positions_from_grid_track_layout(grid_tracks: &[GridTrack]) -> (Vec<Line<f32>>, Vec<Range<usize>>) {
 +    fn positions_from_grid_track_layout(
 +        grid_tracks: &[GridTrack],
 +    ) -> (Vec<Line<f32>>, Vec<Range<usize>>) {
-@@ -1269 +1841,4 @@
+@@ -1269 +1796,4 @@
 -        for track in grid_tracks.iter().filter(|track| track.kind == GridTrackKind::Track) {
 +        for track in grid_tracks
 +            .iter()
 +            .filter(|track| track.kind == GridTrackKind::Track)
 +        {
-@@ -1277 +1852,4 @@
+@@ -1277 +1807,4 @@
 -            positions.push(Line { start: track.offset, end: track.offset + track.base_size });
 +            positions.push(Line {
 +                start: track.offset,
 +                end: track.offset + track.base_size,
 +            });
-@@ -1288 +1866,2 @@
+@@ -1288 +1821,2 @@
 -        let (positions, collapsed_tracks) = DetailedGridTracksInfo::<S>::positions_from_grid_track_layout(&grid_tracks);
 +        let (positions, collapsed_tracks) =
 +            DetailedGridTracksInfo::<S>::positions_from_grid_track_layout(&grid_tracks);
-@@ -1291 +1870,5 @@
+@@ -1291 +1825,5 @@
 -        let empty_axis_line = if positions.is_empty() { grid_tracks.first().map(|track| track.offset) } else { None };
 +        let empty_axis_line = if positions.is_empty() {
 +            grid_tracks.first().map(|track| track.offset)
 +        } else {
 +            None
 +        };
-@@ -1322 +1905,2 @@
+@@ -1322 +1860,2 @@
 -        let trailing_empty = total_line_count.saturating_sub(leading_empty + self.line_names.line_count());
 +        let trailing_empty =
 +            total_line_count.saturating_sub(leading_empty + self.line_names.line_count());
-@@ -1330 +1914,5 @@
+@@ -1330 +1869,5 @@
 -    pub fn write_track_list(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
 +    pub fn write_track_list(
 +        &self,
 +        out: &mut impl core::fmt::Write,
 +        zoom: f32,
 +    ) -> core::fmt::Result {
-@@ -1332 +1920,4 @@
+@@ -1332 +1875,4 @@
 -        fn write_line_names<S: CheapCloneStr>(out: &mut impl core::fmt::Write, names: &[S]) -> core::fmt::Result {
 +        fn write_line_names<S: CheapCloneStr>(
 +            out: &mut impl core::fmt::Write,
 +            names: &[S],
 +        ) -> core::fmt::Result {
-@@ -1377 +1968,2 @@
+@@ -1377 +1923,2 @@
 -        self.write_track_list(&mut out, zoom).expect("writing to a String cannot fail");
 +        self.write_track_list(&mut out, zoom)
 +            .expect("writing to a String cannot fail");
-@@ -1416,0 +2009,2 @@
+@@ -1416,0 +1964,2 @@
 +
 +mod baseline_orientation;
 diff --git a/vendor/taffy/src/compute/grid/nested_standalone_size.rs b/vendor/taffy/src/compute/grid/nested_standalone_size.rs
@@ -22790,10 +22844,10 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +}
 diff --git a/vendor/taffy/src/traversal.rs b/vendor/taffy/src/traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b9483be5d02a26d9f089d2cce345c6e553d657dd
+index 0000000000000000000000000000000000000000..22a3f2ad7c4a03bcb3efa56599ebae422921af35
 --- /dev/null
 +++ b/vendor/taffy/src/traversal.rs
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,39 @@
 +//! Последовательные ленивые операции для продолжений раскладки.
 +pub(crate) async fn unwrap_or_else<T>(v: Option<T>, f: impl AsyncFnOnce() -> T) -> T {
 +    match v {
@@ -22820,22 +22874,6 @@ index 0000000000000000000000000000000000000000..b9483be5d02a26d9f089d2cce345c6e5
 +        None
 +    }
 +}
-+pub(crate) async fn fold<I: Iterator, A>(
-+    iter: I,
-+    mut value: A,
-+    mut f: impl AsyncFnMut(A, I::Item) -> A,
-+) -> A {
-+    for item in iter {
-+        value = f(value, item).await;
-+    }
-+    value
-+}
-+pub(crate) async fn for_each<I: Iterator>(iter: I, mut f: impl AsyncFnMut(I::Item)) {
-+    for item in iter {
-+        f(item).await;
-+    }
-+}
-+
 +pub(crate) async fn max_map<I: Iterator>(
 +    iter: I,
 +    mut f: impl AsyncFnMut(I::Item) -> f32,
@@ -30745,10 +30783,10 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +}
 diff --git a/vendor/taffy/src/tree/layout_depth_tests.rs b/vendor/taffy/src/tree/layout_depth_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d3b44dfbcb7dfd74024de861e1264d5d74b3b584
+index 0000000000000000000000000000000000000000..e24e11c390f89fbed45a3cb27b263bbe2ae91f8c
 --- /dev/null
 +++ b/vendor/taffy/src/tree/layout_depth_tests.rs
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,178 @@
 +//! Полная раскладка и вложенные callbacks не расходуют стек по глубине.
 +use super::*;
 +use crate::Dimension;
@@ -30762,7 +30800,7 @@ index 0000000000000000000000000000000000000000..d3b44dfbcb7dfd74024de861e1264d5d
 +        .unwrap();
 +}
 +
-+fn nested_layout(display: Display) {
++fn nested_layout(display: Display, depth: usize) {
 +    small_stack(move || {
 +        let mut tree = TaffyTree::<()>::new();
 +        let style = SharedStyle::new(Style {
@@ -30775,7 +30813,7 @@ index 0000000000000000000000000000000000000000..d3b44dfbcb7dfd74024de861e1264d5d
 +        });
 +        let leaf = tree.new_leaf_with_context(style.clone(), ()).unwrap();
 +        let mut root = leaf;
-+        for _ in 0..20_000 {
++        for _ in 0..depth {
 +            root = tree.new_with_children(style.clone(), &[root]).unwrap();
 +        }
 +        let mut measures = 0;
@@ -30829,15 +30867,19 @@ index 0000000000000000000000000000000000000000..d3b44dfbcb7dfd74024de861e1264d5d
 +
 +#[test]
 +fn block_layout_twenty_thousand_levels_on_small_stack() {
-+    nested_layout(Display::Block);
++    nested_layout(Display::Block, 20_000);
 +}
 +#[test]
 +fn flex_layout_twenty_thousand_levels_on_small_stack() {
-+    nested_layout(Display::Flex);
++    nested_layout(Display::Flex, 20_000);
++}
++#[test]
++fn grid_layout_one_level_on_small_stack() {
++    nested_layout(Display::Grid, 1);
 +}
 +#[test]
 +fn grid_layout_twenty_thousand_levels_on_small_stack() {
-+    nested_layout(Display::Grid);
++    nested_layout(Display::Grid, 20_000);
 +}
 +
 +struct NestedMeasure<'a> {
