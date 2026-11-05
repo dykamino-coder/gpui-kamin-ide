@@ -112,7 +112,12 @@ mod tests {
     fn truncated_journal_is_an_error_instead_of_a_shorter_measurement() {
         let mut journal = Journal::new().unwrap();
         journal.push(&json!({"sample": 1})).unwrap();
-        journal.file.set_len(0).unwrap();
+        OpenOptions::new()
+            .write(true)
+            .open(&journal._cleanup.0)
+            .unwrap()
+            .set_len(0)
+            .unwrap();
         assert_eq!(
             journal.read().unwrap_err().kind(),
             io::ErrorKind::InvalidData

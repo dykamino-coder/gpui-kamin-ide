@@ -113,9 +113,18 @@ mod tests {
     #[test]
     fn repeated_relayout_does_not_retain_per_sample_heap() {
         let args = Args::parse(
-            ["page.html", "--mode", "relayout", "--viewport", "2x2"]
-                .into_iter()
-                .map(str::to_owned),
+            [
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/corpus/review4/fable/p10_inline_rich.html"
+                ),
+                "--mode",
+                "relayout",
+                "--viewport",
+                "2x2",
+            ]
+            .into_iter()
+            .map(str::to_owned),
         )
         .unwrap()
         .unwrap();
