@@ -1,6 +1,7 @@
 //! Состояние сборки до блочного ребёнка корневого потока (`FlowCx::mark`).
 
 use super::super::Counters;
+use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use std::rc::Rc;
 
@@ -33,5 +34,41 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         coordinates: paint.coordinates.borrow().len(),
         late: opts.cx.position.state.late_pending(),
         widths: None,
+    }
+}
+
+impl super::FlowCx {
+    /// Состояние до сборки ребёнка `e`; с записью чтений ширин, если его
+    /// запись повтора может пригодиться (`replay_worth_recording`).
+    pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
+        let mut mark = mark_of(opts, out);
+        if self.replay_worth_recording(e) {
+            mark.widths = Some(Rc::default());
+        }
+        mark
+    }
+
+    /// Запись повтора ребёнка `e` может подойти следующей сборке и окупиться.
+    /// Она стоит обёртки, копии элемента, снятия раскладки, prepaint, краски и
+    /// заданий строк, а остаётся только у блока возле экрана. Годится она
+    /// потоку того же ключа вне ширин, а блок, заполняющий ширину
+    /// (`plain::fills_width`) или прочитавший в прошлой записи ширину снаружи,
+    /// — ещё и тех же ширин: пока ширины меняются от сборки к сборке, такой
+    /// блок не пишется. Первая устоявшаяся сборка собирает весь поток;
+    /// инертные блоки (`plain::plain`) она пишет для пропуска, а для повтора
+    /// их пишет следующая, где дальние уже пропущены и собираются лишь
+    /// ближние и изменённые. Так Blink `ShouldCreateSubsequence` кэширует
+    /// подпоследовательность только там, где повтор вероятен.
+    fn replay_worth_recording(&self, e: &Element) -> bool {
+        self.settled_outside_widths
+            && !self.floats.get()
+            && match (self.settled, self.warm) {
+                (true, true) => true,
+                (true, false) => !super::super::plain::plain(e),
+                (false, _) => {
+                    !super::super::plain::fills_width(e)
+                        && !self.reuse.store.reads_widths(e.node_id)
+                }
+            }
     }
 }

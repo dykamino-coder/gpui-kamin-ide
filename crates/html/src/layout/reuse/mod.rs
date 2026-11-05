@@ -25,6 +25,7 @@ mod placeholder;
 mod plain;
 mod recorder;
 mod replay;
+mod store;
 #[cfg(test)]
 mod tests;
 
@@ -36,55 +37,7 @@ use recorder::{SNAP, placed, scaled};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// Записи блоков одного документа между кадрами; переживают `update`.
-#[derive(Default)]
-pub(crate) struct Store {
-    /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
-    /// ключа их сбрасывает, а не держит устаревшие стили.
-    records: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Records of blocks replayed on screen (`replay`), by node id.
-    replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
-    /// Blocks whose replay failed the frame check (moved, or their layout
-    /// needed a new measurement): they are built until the flow key changes.
-    banned: RefCell<std::collections::HashSet<u64>>,
-    /// Blocks whose last replay recording read a width from outside: their
-    /// records fit only the same widths.
-    reads_widths: RefCell<std::collections::HashSet<u64>>,
-    /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
-    /// иначе (ширина меняется каждый кадр) запись не окупается.
-    last: RefCell<Option<Rc<FlowKey>>>,
-    /// Прошлая сборка потока была устоявшейся (ключ равен предыдущему).
-    settled: Cell<bool>,
-    /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
-    pub(crate) stats: Cell<ReuseStats>,
-}
-
-impl Store {
-    /// Кадр документа повторён целиком: диапазоны записей повтора блоков
-    /// указывают в кадр до него и больше не годятся.
-    pub(crate) fn forget_replays(&self) {
-        self.replays.take();
-    }
-
-    fn banned(&self, node: u64) -> bool {
-        self.banned.borrow().contains(&node)
-    }
-
-    fn reads_widths(&self, node: u64) -> bool {
-        self.reads_widths.borrow().contains(&node)
-    }
-}
-
-/// Счётчики наблюдения повтора блоков.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ReuseStats {
-    pub recorded: u64,
-    pub skipped: u64,
-    pub rebuilt_frames: u64,
-    /// Blocks replayed on screen without a build (`replay`).
-    pub replayed: u64,
-}
+pub(crate) use store::Store;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 /// Пишется только для блока, бывшего далеко от экрана (`recorder::far`):
