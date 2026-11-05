@@ -10,10 +10,15 @@
 //! vertical or rotated text) has no key and is measured in every frame.
 
 use crate::text::paragraph::{AtomAlign, Paragraph};
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
+
+/// The key's hasher: deterministic across frames and of hash-table quality,
+/// several times cheaper per write than SipHash on the many small values of a
+/// paragraph.
+type KeyHasher = foldhash::quality::FoldHasher<'static>;
 
 /// Formatter sink that feeds the hasher without building a string.
-struct Sink<'a>(&'a mut std::collections::hash_map::DefaultHasher);
+struct Sink<'a>(&'a mut KeyHasher);
 
 impl std::fmt::Write for Sink<'_> {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
@@ -31,7 +36,7 @@ impl Paragraph {
         if !self.keyable() {
             return None;
         }
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut hasher = foldhash::quality::FixedState::default().build_hasher();
         self.text.as_ref().hash(&mut hasher);
         // Lists that grow with the atoms (one spacer span, one box and style
         // runs per atom) are hashed by their bits: formatting them made the
@@ -68,10 +73,20 @@ impl Paragraph {
         // Style runs split at every atom spacer as well.
         self.runs.len().hash(&mut hasher);
         let px = |v: gpui::Pixels| f32::from(v).to_bits();
+        let mut prev: Option<&gpui::TextRun> = None;
         for run in &self.runs {
+            run.len.hash(&mut hasher);
+            // Runs split at atoms repeat their style: an equal style enters as
+            // one marker, not as its font again.
+            let same = prev.is_some_and(|p| same_style(p, run));
+            prev = Some(run);
+            same.hash(&mut hasher);
+            if same {
+                continue;
+            }
             // Exhaustive: a new run field must be added to the key.
             let gpui::TextRun {
-                len,
+                len: _,
                 font,
                 color,
                 background_color,
@@ -83,7 +98,7 @@ impl Paragraph {
                 underline,
                 strikethrough,
             } = run;
-            (len, font, color, background_color).hash(&mut hasher);
+            (font, color, background_color).hash(&mut hasher);
             (
                 font_size.map(px),
                 background_pad.map(px),
@@ -147,5 +162,61 @@ impl Paragraph {
             && self.emph_spans.is_empty()
             && self.box_spans.is_empty()
             && self.edge_spans.is_empty()
+    }
+}
+
+/// Whether two runs differ only in length.
+fn same_style(a: &gpui::TextRun, b: &gpui::TextRun) -> bool {
+    // Exhaustive: a new run field must be compared too.
+    let gpui::TextRun {
+        len: _,
+        font,
+        color,
+        background_color,
+        font_size,
+        background_pad,
+        background_radius,
+        background_border,
+        background_line_gap,
+        underline,
+        strikethrough,
+    } = a;
+    *font == b.font
+        && *color == b.color
+        && *background_color == b.background_color
+        && *font_size == b.font_size
+        && *background_pad == b.background_pad
+        && *background_radius == b.background_radius
+        && *background_border == b.background_border
+        && *background_line_gap == b.background_line_gap
+        && *underline == b.underline
+        && *strikethrough == b.strikethrough
+}
+
+#[cfg(test)]
+mod tests {
+    use super::same_style;
+
+    #[test]
+    fn runs_that_differ_only_in_length_share_a_style() {
+        let a = gpui::TextRun {
+            len: 3,
+            ..Default::default()
+        };
+        let b = gpui::TextRun {
+            len: 5,
+            ..a.clone()
+        };
+        assert!(same_style(&a, &b));
+        let c = gpui::TextRun {
+            color: gpui::hsla(0.5, 0.5, 0.5, 1.0),
+            ..b.clone()
+        };
+        assert!(!same_style(&b, &c));
+        let d = gpui::TextRun {
+            font_size: Some(gpui::px(20.)),
+            ..b.clone()
+        };
+        assert!(!same_style(&b, &d));
     }
 }
