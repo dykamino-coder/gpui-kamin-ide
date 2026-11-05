@@ -2416,6 +2416,32 @@ impl InteractivityListeners {
     }
 }
 
+/// KaminIDE patch: the style a div computed for one phase: its own copy, or the computed style
+/// shared by every div holding the same base refinement (`refinement_share::computed`).
+pub(crate) enum ComputedStyle {
+    Owned(Box<Style>),
+    Shared(Rc<Style>),
+}
+
+impl ComputedStyle {
+    fn into_owned(self) -> Style {
+        match self {
+            Self::Owned(style) => *style,
+            Self::Shared(style) => Rc::unwrap_or_clone(style),
+        }
+    }
+}
+
+impl std::ops::Deref for ComputedStyle {
+    type Target = Style;
+
+    fn deref(&self) -> &Style {
+        match self {
+            Self::Owned(style) => style,
+            Self::Shared(style) => style,
+        }
+    }
+}
 impl Interactivity {
     /// Layout this element according to this interactivity state's configured styles
     pub fn request_layout(
@@ -2426,19 +2452,25 @@ impl Interactivity {
         cx: &mut App,
         f: impl FnOnce(Style, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
-        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
-            f(*style, window, cx)
-        })
+        self.request_layout_boxed(
+            global_id,
+            _inspector_id,
+            window,
+            cx,
+            |style, _, window, cx| f(style.into_owned(), window, cx),
+        )
     }
 
-    // KaminIDE patch: keep the live style off every ancestor's native stack frame.
+    // KaminIDE patch: keep the live style off every ancestor's native stack frame. `f` also
+    // gets the base refinement when the style is that refinement alone (no state styles), so
+    // the layout engine can reuse its conversion (`request_layout_refined`).
     fn request_layout_boxed(
         &mut self,
         global_id: Option<&GlobalElementId>,
         inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
+        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
         reblessive::Stack::new()
             .enter(|stack| {
@@ -2448,7 +2480,7 @@ impl Interactivity {
                     window,
                     cx,
                     stack,
-                    async |style, window, cx, _stack| f(style, window, cx),
+                    async |style, refinement, window, cx, _stack| f(style, refinement, window, cx),
                 )
             })
             .finish()
@@ -2590,7 +2622,7 @@ impl Interactivity {
                     window,
                     cx,
                     stack,
-                    async |style, window, cx, _stack| f(style, window, cx),
+                    async |style, refinement, window, cx, _stack| f(style, refinement, window, cx),
                 )
             })
             .finish();
@@ -3394,8 +3426,25 @@ impl Interactivity {
         element_state: Option<&mut InteractiveElementState>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Box<Style> {
-        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
+    ) -> ComputedStyle {
+        // Every state style lives in `rare`, and drag-over styles need a hitbox and an active
+        // drag: without them the style is the base refinement on the default style, shared
+        // by all divs holding the same refinement allocation (`refinement_share::computed`).
+        if self.rare.is_none() && !(hitbox.is_some() && cx.has_active_drag()) {
+            if let Some(element_state) = element_state {
+                // `compute_style_internal` creates the clicked state of a stateful div.
+                element_state
+                    .clicked_state
+                    .get_or_insert_with(Default::default);
+            }
+            return ComputedStyle::Shared(super::refinement_share::computed(&self.base_style));
+        }
+        ComputedStyle::Owned(Box::new(self.compute_style_internal(
+            hitbox,
+            element_state,
+            window,
+            cx,
+        )))
     }
 
     /// Called from internal methods that have already called with_element_state.

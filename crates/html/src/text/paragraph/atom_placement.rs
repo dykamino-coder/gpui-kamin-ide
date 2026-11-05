@@ -95,7 +95,7 @@ impl Paragraph {
             // `set_root_origin`). Округлённый угол корня давал точку
             // расхождения с тем же атомом в гибком ряду
             // (`flexbox-justify-content-horiz-002/004`).
-            let origin = point(bounds.origin.x + x, bounds.origin.y + px(top));
+            let origin = point(bounds.origin.x + x, bounds.origin.y + px(top + b.drop));
             match self.atoms[k].root.get() {
                 Some(root) => {
                     window.set_layout_root_origin(root, origin);

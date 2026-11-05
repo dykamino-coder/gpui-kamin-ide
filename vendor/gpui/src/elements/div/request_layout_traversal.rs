@@ -26,7 +26,7 @@ impl Div {
                         window,
                         cx,
                         stack,
-                        async |style, window, cx, stack| {
+                        async |style, refinement, window, cx, stack| {
                             window
                                 .with_text_style_async(
                                     style.text_style().cloned(),
@@ -36,11 +36,13 @@ impl Div {
                                                 child.request_layout_async(window, cx, stack).await,
                                             );
                                         }
-                                        window.request_layout_ref(
-                                            &style,
-                                            child_layout_ids.iter().copied(),
-                                            cx,
-                                        )
+                                        let children = child_layout_ids.iter().copied();
+                                        match refinement {
+                                            Some(refinement) => window.request_layout_refined(
+                                                &style, refinement, children, cx,
+                                            ),
+                                            None => window.request_layout_ref(&style, children, cx),
+                                        }
                                     },
                                 )
                                 .await

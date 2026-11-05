@@ -8845,7 +8845,7 @@ index ddf324a6b26b861ca0e7ef1c2ede3d648abe82a2..7740fe9d7fa2b524b4d0481d0c2a9d1f
 +            (layout_id, ())
 +        })
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e721760d0eab0
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..30058a5bfd1f2b88ebb1cbf93a5daa425fc75b2e
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -16,0 +17,6 @@
@@ -9282,10 +9282,11 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 @@ -1805,0 +1896,2 @@
 +    child_painter: Option<crate::ChildPainter>,
 +    paint_metadata: Option<std::rc::Rc<dyn std::any::Any>>,
-@@ -1810,0 +1903,2 @@
+@@ -1810,0 +1903,12 @@
 +    // KaminIDE patch: layout inputs must observe this node, not a wrapper box.
 +    layout_observer: Option<Box<dyn LayoutObserver>>,
-@@ -1812,0 +1907,10 @@
++}
++
 +/// KaminIDE patch: observes a box's layout lifecycle without adding a node.
 +/// The request phase records identity; prepaint sees the completed layout.
 +pub trait LayoutObserver: 'static {
@@ -9294,8 +9295,6 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +    /// Publish layout inputs before descendants are prepainted. Return false
 +    /// after requesting a layout retry to defer this subtree until that retry.
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
-+}
-+
 @@ -1813,0 +1918,24 @@
 +    /// Локальная замена собственной краски; callback не наследуется потомками.
 +    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
@@ -9719,13 +9718,15 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 @@ -2196 +2384,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2387,30 @@
+@@ -2199,8 +2387,58 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
 -
 -    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
 -    pub(crate) debug_selector: Option<String>,
+-}
+-
 +}
 +
 +impl InteractivityRare {
@@ -9756,11 +9757,42 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +            || !self.drop_listeners.is_empty()
 +            || !self.drag_over_styles.is_empty()
 +    }
-@@ -2217,82 +2429,26 @@
++}
++
++/// KaminIDE patch: the style a div computed for one phase: its own copy, or the computed style
++/// shared by every div holding the same base refinement (`refinement_share::computed`).
++pub(crate) enum ComputedStyle {
++    Owned(Box<Style>),
++    Shared(Rc<Style>),
++}
++
++impl ComputedStyle {
++    fn into_owned(self) -> Style {
++        match self {
++            Self::Owned(style) => *style,
++            Self::Shared(style) => Rc::unwrap_or_clone(style),
++        }
++    }
++}
++
++impl std::ops::Deref for ComputedStyle {
++    type Target = Style;
++
++    fn deref(&self) -> &Style {
++        match self {
++            Self::Owned(style) => style,
++            Self::Shared(style) => style,
++        }
++    }
++}
+@@ -2217,2 +2455,2 @@
 -        #[cfg(any(feature = "inspector", debug_assertions))]
 -        window.with_inspector_state(
--            _inspector_id,
--            cx,
++        self.request_layout_boxed(
++            global_id,
+@@ -2219,0 +2458 @@
++            window,
+@@ -2221,77 +2460 @@
 -            |inspector_state: &mut Option<DivInspectorState>, _window| {
 -                if let Some(inspector_state) = inspector_state {
 -                    self.base_style = inspector_state.base_style.clone();
@@ -9838,20 +9870,20 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 -                let layout_id = f(style, window, cx);
 -                (layout_id, element_state)
 -            },
--        )
-+        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
-+            f(*style, window, cx)
-+        })
++            |style, _, window, cx| f(style.into_owned(), window, cx),
+@@ -2298,0 +2462,25 @@
 +    }
 +
-+    // KaminIDE patch: keep the live style off every ancestor's native stack frame.
++    // KaminIDE patch: keep the live style off every ancestor's native stack frame. `f` also
++    // gets the base refinement when the style is that refinement alone (no state styles), so
++    // the layout engine can reuse its conversion (`request_layout_refined`).
 +    fn request_layout_boxed(
 +        &mut self,
 +        global_id: Option<&GlobalElementId>,
 +        inspector_id: Option<&InspectorElementId>,
 +        window: &mut Window,
 +        cx: &mut App,
-+        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
++        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
 +        reblessive::Stack::new()
 +            .enter(|stack| {
@@ -9861,14 +9893,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +                    window,
 +                    cx,
 +                    stack,
-+                    async |style, window, cx, _stack| f(style, window, cx),
++                    async |style, refinement, window, cx, _stack| f(style, refinement, window, cx),
 +                )
 +            })
 +            .finish()
-@@ -2305 +2461 @@
+@@ -2305 +2493 @@
 -        _inspector_id: Option<&InspectorElementId>,
 +        inspector_id: Option<&InspectorElementId>,
-@@ -2312,93 +2468,16 @@
+@@ -2312,93 +2500,16 @@
 -        self.content_size = content_size;
 -
 -        #[cfg(any(feature = "inspector", debug_assertions))]
@@ -9978,9 +10010,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +                )
 +            })
 +            .finish()
-@@ -2409 +2487,0 @@
+@@ -2409 +2519,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2492,5 @@
+@@ -2414,17 +2524,5 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -10003,10 +10035,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +                .listeners
 +                .as_deref()
 +                .is_some_and(InteractivityListeners::need_hitbox)
-@@ -2510 +2576 @@
+@@ -2510 +2608 @@
 -        _inspector_id: Option<&InspectorElementId>,
 +        inspector_id: Option<&InspectorElementId>,
-@@ -2517,122 +2583,14 @@
+@@ -2517,122 +2615,14 @@
 -        self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
@@ -10139,61 +10171,61 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +                    window,
 +                    cx,
 +                    stack,
-+                    async |style, window, cx, _stack| f(style, window, cx),
++                    async |style, refinement, window, cx, _stack| f(style, refinement, window, cx),
 +                )
 +            })
 +            .finish();
-@@ -2789 +2747,3 @@
+@@ -2789 +2779,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +2756 @@
+@@ -2796 +2788 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +2763 @@
+@@ -2803 +2795 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +2770 @@
+@@ -2810 +2802 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +2777 @@
+@@ -2817 +2809 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +2784 @@
+@@ -2824 +2816 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +2791 @@
+@@ -2831 +2823 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +2798 @@
+@@ -2838 +2830 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +2805,5 @@
+@@ -2845 +2837,5 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self
 +            .rare
 +            .as_deref()
 +            .is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +2811,5 @@
+@@ -2847 +2843,5 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self
 +                    .listeners
 +                    .as_ref()
 +                    .is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +2818 @@
+@@ -2850 +2850 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +2840,5 @@
+@@ -2872 +2872,5 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self
 +            .rare
 +            .as_deref()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
 +        {
-@@ -2897,5 +2869,11 @@
+@@ -2897,5 +2901,11 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -10210,28 +10242,28 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +            .rare
 +            .as_deref_mut()
 +            .and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3111 @@
+@@ -3133 +3143 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3130,4 @@
+@@ -3152 +3162,4 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self
 +                    .rare()
 +                    .map(|rare| rare.hover_listener_mode)
 +                    .unwrap_or_default();
-@@ -3187 +3168 @@
+@@ -3187 +3200 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3209 @@
+@@ -3228 +3241 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3233,3 @@
+@@ -3252,2 +3265,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3257,5 @@
+@@ -3275,4 +3289,5 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -10241,12 +10273,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +        let modifiers_changed_listeners =
 +            self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3308,2 +3291,2 @@
+@@ -3308,2 +3323,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3388,13 @@
+@@ -3404,0 +3420,30 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -10256,52 +10288,69 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +        element_state: Option<&mut InteractiveElementState>,
 +        window: &mut Window,
 +        cx: &mut App,
-+    ) -> Box<Style> {
-+        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
++    ) -> ComputedStyle {
++        // Every state style lives in `rare`, and drag-over styles need a hitbox and an active
++        // drag: without them the style is the base refinement on the default style, shared
++        // by all divs holding the same refinement allocation (`refinement_share::computed`).
++        if self.rare.is_none() && !(hitbox.is_some() && cx.has_active_drag()) {
++            if let Some(element_state) = element_state {
++                // `compute_style_internal` creates the clicked state of a stateful div.
++                element_state
++                    .clicked_state
++                    .get_or_insert_with(Default::default);
++            }
++            return ComputedStyle::Shared(super::refinement_share::computed(&self.base_style));
++        }
++        ComputedStyle::Owned(Box::new(self.compute_style_internal(
++            hitbox,
++            element_state,
++            window,
++            cx,
++        )))
 +    }
 +
-@@ -3414,0 +3411 @@
+@@ -3414,0 +3460 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3414 @@
+@@ -3417 +3463 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3420 @@
+@@ -3423 +3469 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3426,2 @@
+@@ -3429 +3475,2 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) =
 +                rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3436 @@
+@@ -3438 +3485 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3456 @@
+@@ -3458 +3505 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3479,3 @@
+@@ -3481 +3528,3 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) =
 +                    rare.and_then(|rare| rare.can_drop_predicate.as_ref())
 +                {
-@@ -3486 +3486,5 @@
+@@ -3486 +3535,5 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self
 +                        .listeners
 +                        .iter()
 +                        .flat_map(|l| &l.group_drag_over_styles)
 +                    {
-@@ -3496 +3500,3 @@
+@@ -3496 +3549,3 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in
 +                        self.listeners.iter().flat_map(|l| &l.drag_over_styles)
 +                    {
-@@ -3515 +3521 @@
+@@ -3515 +3570 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3526 @@
+@@ -3520 +3575 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3537,70 @@
+@@ -3531,64 +3586,70 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -10436,10 +10485,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +            .as_ref()
 +            .is_some_and(|l| !l.click_listeners.is_empty())
 +        {
-@@ -3600 +3612 @@
+@@ -3600 +3661 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4099,0 +4112,47 @@
+@@ -4099,0 +4161,47 @@
 +    fn request_layout_async<'a>(
 +        &'a mut self,
 +        id: Option<&'a GlobalElementId>,
@@ -10487,7 +10536,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +        )
 +    }
 +
-@@ -4101,0 +4161,7 @@
+@@ -4101,0 +4210,7 @@
 +
 +    fn paint_boundary(&self) -> bool {
 +        self.element.paint_boundary()
@@ -10495,7 +10544,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
 +        self.element.paint_metadata()
 +    }
-@@ -4448,0 +4515,32 @@
+@@ -4448,0 +4564,32 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -10528,7 +10577,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..3d38da236662ce85fe42332f6d2e7217
 +            std::mem::size_of::<InteractivityListeners>() >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5366,8 @@
+@@ -5268,8 +5415,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -11092,10 +11141,10 @@ index 0000000000000000000000000000000000000000..0afbb0efcdc8a955357cbb385395a7ad
 +}
 diff --git a/vendor/gpui/src/elements/div/request_async.rs b/vendor/gpui/src/elements/div/request_async.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b87d7f113e146d5411d489e1cc9cb9470a77bd59
+index 0000000000000000000000000000000000000000..24b514d2b49f2594111e710a32bb663c6dfaecfc
 --- /dev/null
 +++ b/vendor/gpui/src/elements/div/request_async.rs
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,110 @@
 +//! Состояние interactivity остаётся в продолжении запроса раскладки.
 +
 +use super::*;
@@ -11108,7 +11157,13 @@ index 0000000000000000000000000000000000000000..b87d7f113e146d5411d489e1cc9cb947
 +        window: &mut Window,
 +        cx: &mut App,
 +        stack: &mut crate::PaintStack,
-+        f: impl AsyncFnOnce(Box<Style>, &mut Window, &mut App, &mut crate::PaintStack) -> LayoutId,
++        f: impl AsyncFnOnce(
++            ComputedStyle,
++            Option<&Rc<StyleRefinement>>,
++            &mut Window,
++            &mut App,
++            &mut crate::PaintStack,
++        ) -> LayoutId,
 +    ) -> LayoutId {
 +        #[cfg(any(feature = "inspector", debug_assertions))]
 +        window.with_inspector_state(
@@ -11192,7 +11247,8 @@ index 0000000000000000000000000000000000000000..b87d7f113e146d5411d489e1cc9cb947
 +                    }
 +
 +                    let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-+                    let layout_id = f(style, window, cx, stack).await;
++                    let refinement = self.rare.is_none().then_some(&self.base_style);
++                    let layout_id = f(style, refinement, window, cx, stack).await;
 +                    (layout_id, element_state)
 +                },
 +            )
@@ -11201,10 +11257,10 @@ index 0000000000000000000000000000000000000000..b87d7f113e146d5411d489e1cc9cb947
 +}
 diff --git a/vendor/gpui/src/elements/div/request_layout_traversal.rs b/vendor/gpui/src/elements/div/request_layout_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..124eb8f343253c50c14353d5a56b07d10a0c2e85
+index 0000000000000000000000000000000000000000..79fa8a526b9f0146e19efed286c5a9fefe3991ca
 --- /dev/null
 +++ b/vendor/gpui/src/elements/div/request_layout_traversal.rs
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,68 @@
 +//! Продолжение Div сохраняет порядок и области дочерней фазы request_layout.
 +
 +use super::*;
@@ -11233,7 +11289,7 @@ index 0000000000000000000000000000000000000000..124eb8f343253c50c14353d5a56b07d1
 +                        window,
 +                        cx,
 +                        stack,
-+                        async |style, window, cx, stack| {
++                        async |style, refinement, window, cx, stack| {
 +                            window
 +                                .with_text_style_async(
 +                                    style.text_style().cloned(),
@@ -11243,11 +11299,13 @@ index 0000000000000000000000000000000000000000..124eb8f343253c50c14353d5a56b07d1
 +                                                child.request_layout_async(window, cx, stack).await,
 +                                            );
 +                                        }
-+                                        window.request_layout_ref(
-+                                            &style,
-+                                            child_layout_ids.iter().copied(),
-+                                            cx,
-+                                        )
++                                        let children = child_layout_ids.iter().copied();
++                                        match refinement {
++                                            Some(refinement) => window.request_layout_refined(
++                                                &style, refinement, children, cx,
++                                            ),
++                                            None => window.request_layout_ref(&style, children, cx),
++                                        }
 +                                    },
 +                                )
 +                                .await
@@ -11866,10 +11924,10 @@ index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b17dfd5c2f00c8512990e93e48e6ebbf
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d9e268ce06696c3ad6cfc0a5e7b67d04e0737944
+index 0000000000000000000000000000000000000000..ea157728358c3d61dd07dec01839bdc32ee89c8a
 --- /dev/null
 +++ b/vendor/gpui/src/elements/refinement_share.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,185 @@
 +//! KaminIDE patch: equal div base style refinements share one allocation.
 +//!
 +//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
@@ -11882,7 +11940,7 @@ index 0000000000000000000000000000000000000000..d9e268ce06696c3ad6cfc0a5e7b67d04
 +//! allocation reuses the freed block instead of growing the frame's working set. The
 +//! candidates are per thread and bounded: at most `CANDIDATES` refinements outlive their frame.
 +
-+use crate::StyleRefinement;
++use crate::{Refineable, Style, StyleRefinement};
 +use std::cell::RefCell;
 +use std::rc::Rc;
 +
@@ -11926,6 +11984,44 @@ index 0000000000000000000000000000000000000000..d9e268ce06696c3ad6cfc0a5e7b67d04
 +    }
 +}
 +
++thread_local! {
++    static COMPUTED: RefCell<ComputedShare> = RefCell::default();
++}
++
++/// The computed style of a div whose style is `refinement` applied to the default style alone
++/// (no state styles): computed once per recent refinement allocation and shared by every
++/// request, prepaint and paint of every div holding that allocation. As in Stylo and Blink,
++/// boxes with equal styles read one computed style object instead of each building a copy.
++pub(crate) fn computed(refinement: &Rc<StyleRefinement>) -> Rc<Style> {
++    COMPUTED.with(|share| share.borrow_mut().computed(refinement))
++}
++
++#[derive(Default)]
++struct ComputedShare {
++    /// The refinement is held so its address cannot be reused by another refinement; writes to
++    /// a shared refinement copy it (`Rc::make_mut`), so a held one never changes.
++    recent: [Option<(Rc<StyleRefinement>, Rc<Style>)>; CANDIDATES],
++    next: usize,
++}
++
++impl ComputedShare {
++    fn computed(&mut self, refinement: &Rc<StyleRefinement>) -> Rc<Style> {
++        for back in 1..=CANDIDATES {
++            let slot = (self.next + CANDIDATES - back) % CANDIDATES;
++            match &self.recent[slot] {
++                Some((key, style)) if Rc::ptr_eq(key, refinement) => return style.clone(),
++                Some(_) => {}
++                None => break,
++            }
++        }
++        let mut style = Style::default();
++        style.refine(refinement);
++        let style = Rc::new(style);
++        self.recent[self.next] = Some((refinement.clone(), style.clone()));
++        self.next = (self.next + 1) % CANDIDATES;
++        style
++    }
++}
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
@@ -11988,6 +12084,22 @@ index 0000000000000000000000000000000000000000..d9e268ce06696c3ad6cfc0a5e7b67d04
 +        assert_eq!(*after, *first);
 +    }
 +
++    #[test]
++    fn a_refinement_is_computed_once_and_equal_to_refining_the_default() {
++        let mut share = ComputedShare::default();
++        let refinement = sized(8.0);
++        let first = share.computed(&refinement);
++        let again = share.computed(&refinement);
++        assert!(Rc::ptr_eq(&first, &again));
++        let mut expected = Style::default();
++        expected.refine(&refinement);
++        // Style has no PartialEq; its debug form lists every field.
++        assert_eq!(format!("{:?}", *first), format!("{expected:?}"));
++        // An equal refinement in another allocation is computed on its own.
++        let other = share.computed(&sized(8.0));
++        assert!(!Rc::ptr_eq(&first, &other));
++        assert_eq!(format!("{:?}", *other), format!("{expected:?}"));
++    }
 +    #[test]
 +    fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
 +        use crate::{InteractiveElement, IntoElement, Styled, div};
@@ -12466,7 +12578,7 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 @@ -3936,0 +4091 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
-index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..2af88e58215af1d171f0141e53f368965a190834
+index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..c9127de50bc4ced196384b31fd8f461c98af7ddb
 --- a/vendor/gpui/src/gpui.rs
 +++ b/vendor/gpui/src/gpui.rs
 @@ -15,0 +16 @@
@@ -12572,7 +12684,7 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..2af88e58215af1d171f0141e53f36896
 +pub use text_system::FontStretch;
 @@ -209 +304 @@
 -pub use taffy::{AvailableSpace, LayoutId};
-+pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent, MeasuredStaticPosition};
++pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent, MeasuredStaticPosition, RowItemBaseline};
 diff --git a/vendor/gpui/src/instrumentation.rs b/vendor/gpui/src/instrumentation.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff4037c3a56a
@@ -16286,10 +16398,10 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e6073bbee
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..34eb6f38a6a87f3b780d61cd28cc30f909b170f9
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,49 @@
 +mod grid_item_lines;
 +// KaminIDE patch: fragmentation growth after grid tracks.
 +mod grid_fragmentation;
@@ -16302,6 +16414,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +mod measurement;
 +// KaminIDE patch: read the first actual content baseline from completed layout.
 +mod content_line;
++// KaminIDE patch: the baseline a row gives its single item, from the stored layout output.
++mod row_item;
++pub use row_item::RowItemBaseline;
 +mod measured_box;
 +mod measured_content;
 +// KaminIDE patch: exact leaves standing in for skipped retained subtrees.
@@ -16336,14 +16451,14 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +#[cfg(test)]
 +mod retained_tests;
 +
-@@ -3,5 +49 @@
+@@ -3,5 +52 @@
 -    Style, Window, size,
 -    util::{
 -        ceil_to_device_pixel, round_half_toward_zero, round_stroke_to_device_pixel,
 -        round_to_device_pixel,
 -    },
 +    Style, Window, point, size, util::round_to_device_pixel,
-@@ -24,4 +66,20 @@
+@@ -24,4 +69,20 @@
 -type MeasureFn =
 -    dyn FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>;
 -type NodeMeasureFn = StackSafe<Box<MeasureFn>>;
@@ -16368,7 +16483,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +mod layout_async;
 +
 +#[derive(Clone)]
-@@ -29 +87,6 @@
+@@ -29 +90,6 @@
 -    measure: NodeMeasureFn,
 +    // KaminIDE patch: intrinsic callbacks cannot overwrite performed static rects.
 +    static_positions: Vec<MeasuredStaticPosition>,
@@ -16376,9 +16491,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +    layout_lines: Option<Vec<Pixels>>,
 +    layout_lines_x: Option<Vec<Pixels>>,
 +    layout_lines_x_from_right: bool,
-@@ -31,0 +95 @@
+@@ -31,0 +98 @@
 +    final_geometry: final_geometry::FinalGeometry,
-@@ -34,2 +98,9 @@
+@@ -34,2 +101,9 @@
 -    /// Unrounded absolute border-box top-left per-node coordinate in device pixels.
 -    absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
 +    /// KaminIDE patch: абсолютная позиция узла в физических точках БЕЗ
@@ -16390,7 +16505,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +    root_origins: FxHashMap<LayoutId, (f32, f32)>,
 +    /// Paint placement of a subtree, applied before device-pixel rounding.
 +    placed_origins: FxHashMap<LayoutId, (f32, f32)>,
-@@ -37,0 +109,7 @@
+@@ -37,0 +112,7 @@
 +    /// KaminIDE patch: the window's frame tree, sized by the frame's elements;
 +    /// independent subtrees hold only their own nodes.
 +    frame_tree: bool,
@@ -16398,11 +16513,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +    retained: retained::Retained,
 +    /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
 +    styles: style_share::StyleShare,
-@@ -40,0 +119,3 @@
+@@ -40,0 +122,3 @@
 +
 +/// KaminIDE patch: node count from which a full frame tree grows to the frame's hint.
 +const RESERVE_FROM_NODES: usize = 4096;
-@@ -44 +125,19 @@
+@@ -44 +128,19 @@
 -        let mut taffy = TaffyTree::new();
 +        Self {
 +            frame_tree: true,
@@ -16423,14 +16538,14 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        // (6 точек = 7.5 физических) округлялась вверх на каждом уровне, и
 +        // ошибка копилась вглубь вложенности: на 11 уровнях блок уезжал на
 +        // 5 физических точек против браузера (поймано сравнением с Chrome).
-@@ -46,0 +146 @@
+@@ -46,0 +149 @@
 +            final_geometry: final_geometry::FinalGeometry::default(),
-@@ -49 +149,3 @@
+@@ -49 +152,3 @@
 -            absolute_outer_origins: FxHashMap::default(),
 +            absolute_unrounded: FxHashMap::default(),
 +            root_origins: FxHashMap::default(),
 +            placed_origins: FxHashMap::default(),
-@@ -51,0 +154,19 @@
+@@ -51,0 +157,19 @@
 +            frame_tree: false,
 +            retained: retained::Retained::default(),
 +            styles: Default::default(),
@@ -16450,7 +16565,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +            && self.taffy.total_node_count() >= RESERVE_FROM_NODES
 +        {
 +            self.taffy.reserve_nodes(expected());
-@@ -56 +177,9 @@
+@@ -56 +180,9 @@
 -        self.taffy.clear();
 +        self.final_geometry = final_geometry::FinalGeometry::default();
 +        if self.frame_tree {
@@ -16461,11 +16576,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +            self.styles.clear();
 +        }
 +        self.absolute_unrounded.clear();
-@@ -58 +187,2 @@
+@@ -58 +190,2 @@
 -        self.absolute_outer_origins.clear();
 +        self.root_origins.clear();
 +        self.placed_origins.clear();
-@@ -59,0 +190,37 @@
+@@ -59,0 +193,37 @@
 +    }
 +
 +    /// KaminIDE patch: поставить корень отдельного дерева (`layout_as_root`)
@@ -16503,19 +16618,54 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                    .map(Into::into),
 +            );
 +        }
-@@ -64 +231 @@
+@@ -64 +234 @@
 -        style: Style,
 +        style: &Style,
-@@ -69,3 +236,23 @@
+@@ -69,3 +239,58 @@
 -        let taffy_style = style.to_taffy(rem_size, scale_factor);
 -
 -        if children.is_empty() {
++        self.request_layout_from(style, None, rem_size, scale_factor, children)
++    }
++
++    /// KaminIDE patch: `request_layout` for a node whose `style` is `refinement` applied to the
++    /// default style alone: the taffy style converted for an earlier request with the same
++    /// refinement allocation is reused (`style_share`).
++    pub fn request_layout_refined(
++        &mut self,
++        style: &Style,
++        refinement: &std::rc::Rc<crate::StyleRefinement>,
++        rem_size: Pixels,
++        scale_factor: f32,
++        children: &[LayoutId],
++    ) -> LayoutId {
++        self.request_layout_from(style, Some(refinement), rem_size, scale_factor, children)
++    }
++
++    fn request_layout_from(
++        &mut self,
++        style: &Style,
++        refinement: Option<&std::rc::Rc<crate::StyleRefinement>>,
++        rem_size: Pixels,
++        scale_factor: f32,
++        children: &[LayoutId],
++    ) -> LayoutId {
 +        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
-+        let taffy_style = {
-+            let _calc = self.taffy.calc_scope();
++        let convert = |taffy: &TaffyTree<NodeContext>| {
++            let _calc = taffy.calc_scope();
 +            style.to_taffy(rem_size, scale_factor)
 +        };
-+        let taffy_style = self.styles.share(taffy_style);
++        let taffy_style = match refinement {
++            Some(refinement) => {
++                let taffy = &self.taffy;
++                self.styles
++                    .share_refinement(refinement, rem_size, scale_factor, || convert(taffy))
++            }
++            None => {
++                let taffy_style = convert(&self.taffy);
++                self.styles.share(taffy_style)
++            }
++        };
 +        crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +
 +        // KaminIDE patch: a node with the inputs of a previous one keeps it.
@@ -16533,7 +16683,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                .expect(EXPECT_MESSAGE);
 +            LayoutId(node)
 +        } else if children.is_empty() {
-@@ -82 +269,23 @@
+@@ -82 +307,23 @@
 -        }
 +        };
 +        self.created(id, None)
@@ -16558,10 +16708,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        self.forget();
 +        self.taffy.clear();
 +        self.styles.clear();
-@@ -90 +299 @@
+@@ -90 +337 @@
 -        measure: impl FnMut(
 +        mut measure: impl FnMut(
-@@ -98,9 +307,31 @@
+@@ -98,9 +345,31 @@
 -        let taffy_style = style.to_taffy(rem_size, scale_factor);
 -        let measure = Box::new(measure) as Box<MeasureFn>;
 -        #[cfg(feature = "stacker")]
@@ -16602,7 +16752,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                (size, first, None)
 +            },
 +        )
-@@ -185,0 +417,26 @@
+@@ -185,0 +455,26 @@
 +    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
 +    /// линии содержимого (`last baseline`, css-align-3 §9.1).
 +    pub fn request_measured_layout_with_baselines(
@@ -16629,10 +16779,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        )
 +    }
 +
-@@ -186,0 +444,2 @@
+@@ -186,0 +482,2 @@
 +    // KaminIDE patch: счётчики раскладки (`frame_perf`) — по ним видно, что
 +    // кадр дорог не рисованием, а числом узлов и замеров.
-@@ -194,35 +453,123 @@
+@@ -194,35 +491,123 @@
 -        // Leaving this here until we have a better instrumentation approach.
 -        // println!("Laying out {} children", self.count_all_children(id)?);
 -        // println!("Max layout depth: {}", self.max_depth(0, id)?);
@@ -16791,7 +16941,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        self.taffy.computed_layout_output(parent).ok()??;
 +        let taffy::DetailedLayoutInfo::Grid(info) = self.taffy.detailed_layout_info(parent) else {
 +            return None;
-@@ -230,38 +577,13 @@
+@@ -230,38 +615,13 @@
 -        let available_space = size(
 -            transform(available_space.width),
 -            transform(available_space.height),
@@ -16843,7 +16993,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +            .copied()
 +            .unwrap_or((0.0, 0.0));
 +        Some(((ax / scale_factor, ay / scale_factor), cols, rows))
-@@ -350,6 +672,28 @@
+@@ -350,6 +710,28 @@
 -        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
 -        let layout_location = layout.location;
 -        let layout_size = layout.size;
@@ -16878,7 +17028,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        // ошибка не копится по глубине. Размер считается как разность
 +        // округлённых краёв — иначе соседние блоки расходились бы щелью.
 +        let (parent_x, parent_y) = match self.taffy.parent(id.0) {
-@@ -357,7 +701,8 @@
+@@ -357,7 +739,8 @@
 -                let parent_id = LayoutId::from(parent_id);
 -                self.layout_bounds(parent_id, scale_factor);
 -                let parent_origin = *self
@@ -16894,11 +17044,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                // KaminIDE patch: content of a `vertical-align: baseline`
 +                // table cell sits lower than its box (taffy `content_shift`).
 +                (px, py + self.taffy.content_shift(parent_id))
-@@ -365 +710,2 @@
+@@ -365 +748,2 @@
 -            None => Point::from(layout_location),
 +            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
 +            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
-@@ -367,10 +713,15 @@
+@@ -367,10 +751,15 @@
 -        self.absolute_outer_origins
 -            .insert(id, absolute_outer_origin);
 -
@@ -16924,7 +17074,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                Pixels(((ay + layout.size.height).round() - ry) / scale_factor),
 +            ),
 +        };
-@@ -412,14 +763,12 @@
+@@ -412,14 +801,12 @@
 -fn snap_measured_size_to_device_pixels(size: Size<Pixels>, scale_factor: f32) -> Size<f32> {
 -    size.map(|d| ceil_to_device_pixel(d.0.max(0.0), scale_factor))
 -}
@@ -16951,7 +17101,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
 +    let Ok(child) = tree.child_at_index(parent, index) else {
 +        return false;
-@@ -427,6 +776,21 @@
+@@ -427,6 +814,21 @@
 -    TaffyRect {
 -        top: snap(&widths.top),
 -        right: snap(&widths.right),
@@ -16979,7 +17129,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +    }
 +    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
 +    tree.set_style(child, style).is_ok()
-@@ -448,0 +813,107 @@
+@@ -448,0 +851,107 @@
 +            }
 +        }
 +
@@ -17087,10 +17237,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +            match to_grid_track::<String>(track, scale_factor) {
 +                taffy::GridTemplateComponent::Single(one) => vec![one],
 +                _ => Default::default(),
-@@ -483 +954 @@
+@@ -483 +992 @@
 -        taffy::style::Style {
 +        let mut out = taffy::style::Style {
-@@ -484,0 +956,9 @@
+@@ -484,0 +994,9 @@
 +            block_flow: self
 +                .block_flow
 +                .map(
@@ -17100,12 +17250,12 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                        inline_reverse,
 +                    },
 +                ),
-@@ -492,0 +973,4 @@
+@@ -492,0 +1011,4 @@
 +            aspect_ratio_preferred_size: taffy::Size {
 +                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
 +                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
 +            },
-@@ -495,5 +979,22 @@
+@@ -495,5 +1017,22 @@
 -            border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
 -            align_items: self.align_items.map(|x| x.into()),
 -            align_self: self.align_self.map(|x| x.into()),
@@ -17133,7 +17283,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                self.safe_alignment.3,
 +            )
 +            .unwrap_or(taffy::JustifyContent::NORMAL),
-@@ -502 +1003,81 @@
+@@ -502 +1041,81 @@
 -            flex_wrap: self.flex_wrap.into(),
 +            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
 +            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
@@ -17216,10 +17366,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +            }),
 +            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
 +            subgrid: self.grid_subgrid,
-@@ -503,0 +1085,2 @@
+@@ -503,0 +1123,2 @@
 +            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
 +            item_is_table: self.item_is_table,
-@@ -506,2 +1089,70 @@
+@@ -506,2 +1127,70 @@
 -            grid_template_rows: to_grid_repeat(&self.grid_rows),
 -            grid_template_columns: to_grid_repeat(&self.grid_cols),
 +            // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -17292,7 +17442,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +                    .collect::<Vec<_>>()
 +                    .into()
 +            },
-@@ -519 +1170,132 @@
+@@ -519 +1208,132 @@
 -        }
 +        };
 +        if let Some(keyword) = self.sizing_keywords[0] {
@@ -17426,26 +17576,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        && auto(&out.grid_row.end)
 +    {
 +        out.grid_row.end = placement(p);
-@@ -525 +1307,5 @@
+@@ -525 +1345,5 @@
 -        round_to_device_pixel(self.to_pixels(rem_size).0, scale_factor)
 +        // KaminIDE patch: no pre-layout snapping of authored lengths (upstream
 +        // rounds them to device pixels here). CSS layout is fractional; edges
 +        // are snapped once, on absolute coordinates, in `layout_bounds`, and
 +        // border widths by the HTML painter (`border_snap`). See decisions.md.
 +        self.to_pixels(rem_size).0 * scale_factor
-@@ -557,0 +1344,3 @@
+@@ -557,0 +1382,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -568,0 +1358,3 @@
+@@ -568,0 +1396,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -577,0 +1370,3 @@
+@@ -577,0 +1408,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -745,17 +1540,7 @@
+@@ -745,17 +1578,7 @@
 -#[cfg(test)]
 -mod tests {
 -    use super::*;
@@ -17470,7 +17620,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..25b331013a5fbc7b12e3c733857a490e
 +        crate::frame_perf::MEASURE_US.fetch_add(
 +            self.0.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
-@@ -763,14 +1548,2 @@
+@@ -763,14 +1586,2 @@
 -        assert_eq!(
 -            taffy_border.right,
 -            taffy::style::LengthPercentage::length(1.0)
@@ -20426,6 +20576,152 @@ index 0000000000000000000000000000000000000000..fb19083af0f432d1dd961edd14fe95e5
 +        }
 +    }
 +}
+diff --git a/vendor/gpui/src/taffy/row_item.rs b/vendor/gpui/src/taffy/row_item.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..980deb4c2d0afdcd5f614aff207d1e9b97f8d1fd
+--- /dev/null
++++ b/vendor/gpui/src/taffy/row_item.rs
+@@ -0,0 +1,69 @@
++//! KaminIDE patch: the first baseline a laid-out row gives its single in-flow item, read from
++//! the item's stored layout output instead of a baseline probe sibling.
++
++use super::*;
++
++/// The item of a row as baseline alignment sees it (logical pixels).
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct RowItemBaseline {
++    /// Distance from the item's top margin edge to its first baseline, as Taffy's flexbox
++    /// computes it for a baseline participant (`calculate_children_base_lines`): the first
++    /// baseline of the item's output, clamped to the border box for a scroll container, else
++    /// the bottom margin edge (css-align-3 §9.1). `None` when the item does not take part in
++    /// first-baseline alignment (`align-self` other than `baseline`, or an auto cross margin).
++    pub baseline: Option<f32>,
++    /// Height of the item's margin box.
++    pub outer_height: f32,
++}
++
++impl TaffyLayoutEngine {
++    /// The first in-flow item of a laid-out row `row` and its baseline; `None` when the row has
++    /// no in-flow item.
++    pub fn row_item_baseline(&self, row: LayoutId, scale: f32) -> Option<RowItemBaseline> {
++        row_item(&self.taffy, row.into(), scale)
++    }
++}
++
++fn row_item(tree: &TaffyTree<NodeContext>, row: NodeId, scale: f32) -> Option<RowItemBaseline> {
++    let parent = tree.style(row).expect(EXPECT_MESSAGE);
++    let item = tree
++        .children(row)
++        .expect(EXPECT_MESSAGE)
++        .into_iter()
++        .find(|&child| {
++            let style = tree.style(child).expect(EXPECT_MESSAGE);
++            style.display != taffy::Display::None && style.position != taffy::Position::Absolute
++        })?;
++    let style = tree.style(item).expect(EXPECT_MESSAGE);
++    let layout = tree.layout(item).expect(EXPECT_MESSAGE);
++    let height = layout.size.height;
++    let outer_height = (height + layout.margin.top + layout.margin.bottom) / scale;
++    let align = style.align_self.unwrap_or(parent.align_items);
++    let participates = align.keyword == taffy::AlignItemsKeyword::Baseline
++        && !style.margin.top.is_auto()
++        && !style.margin.bottom.is_auto();
++    let baseline = participates.then(|| {
++        let first = tree
++            .computed_layout_output(item)
++            .expect(EXPECT_MESSAGE)
++            .and_then(|output| output.baselines.first);
++        let inner = first
++            .map(|b| {
++                if style.overflow.y.is_scroll_container() {
++                    b.min(height).max(0.0)
++                } else {
++                    b
++                }
++            })
++            .unwrap_or(height + layout.margin.bottom);
++        (inner + layout.margin.top) / scale
++    });
++    Some(RowItemBaseline {
++        baseline,
++        outer_height,
++    })
++}
++
++#[cfg(test)]
++#[path = "row_item_tests.rs"]
++mod tests;
+diff --git a/vendor/gpui/src/taffy/row_item_tests.rs b/vendor/gpui/src/taffy/row_item_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5477a97cd607cef80ed99d14de372f27ac70e02
+--- /dev/null
++++ b/vendor/gpui/src/taffy/row_item_tests.rs
+@@ -0,0 +1,65 @@
++//! Baseline of a row's single item: bottom margin edge without a content baseline, nothing for
++//! a non-participating or out-of-flow item.
++use super::*;
++use taffy::style_helpers::TaffyMaxContent;
++
++fn sized(height: f32, top: f32, bottom: f32, align_self: Option<taffy::AlignSelf>) -> taffy::Style {
++    taffy::Style {
++        size: taffy::Size {
++            width: taffy::Dimension::length(8.),
++            height: taffy::Dimension::length(height),
++        },
++        margin: taffy::Rect {
++            left: taffy::LengthPercentageAuto::length(0.),
++            right: taffy::LengthPercentageAuto::length(0.),
++            top: taffy::LengthPercentageAuto::length(top),
++            bottom: taffy::LengthPercentageAuto::length(bottom),
++        },
++        align_self,
++        ..Default::default()
++    }
++}
++
++fn laid_row(item: taffy::Style) -> (TaffyTree<NodeContext>, NodeId) {
++    let mut tree = TaffyTree::new();
++    tree.disable_rounding();
++    let item = tree.new_leaf(item).unwrap();
++    let row = tree
++        .new_with_children(
++            taffy::Style {
++                display: taffy::Display::Flex,
++                align_items: taffy::AlignItems::BASELINE,
++                ..Default::default()
++            },
++            &[item],
++        )
++        .unwrap();
++    tree.compute_layout(row, taffy::Size::MAX_CONTENT).unwrap();
++    (tree, row)
++}
++
++#[test]
++fn item_without_content_baseline_aligns_by_its_bottom_margin_edge() {
++    let (tree, row) = laid_row(sized(20., 3., 5., None));
++    let got = row_item(&tree, row, 2.).unwrap();
++    // Device pixels halve at scale 2: border box 20 plus both margins.
++    assert_eq!(got.outer_height, 14.);
++    assert_eq!(got.baseline, Some(14.));
++}
++
++#[test]
++fn item_aligned_otherwise_has_no_baseline_but_keeps_its_height() {
++    let (tree, row) = laid_row(sized(20., 0., 0., Some(taffy::AlignSelf::FLEX_START)));
++    let got = row_item(&tree, row, 1.).unwrap();
++    assert_eq!(got.outer_height, 20.);
++    assert_eq!(got.baseline, None);
++}
++
++#[test]
++fn row_without_in_flow_item_has_none() {
++    let (tree, row) = laid_row(taffy::Style {
++        position: taffy::Position::Absolute,
++        ..sized(20., 0., 0., None)
++    });
++    assert_eq!(row_item(&tree, row, 1.), None);
++}
 diff --git a/vendor/gpui/src/taffy/static_position_tests.rs b/vendor/gpui/src/taffy/static_position_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..e8bbbe7f0617c6adf091efe0ad4353a484b704a5
@@ -20514,10 +20810,10 @@ index 0000000000000000000000000000000000000000..e8bbbe7f0617c6adf091efe0ad4353a4
 +}
 diff --git a/vendor/gpui/src/taffy/style_share.rs b/vendor/gpui/src/taffy/style_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6ea20716c00bef8be0c7da284b2396c6437e30a3
+index 0000000000000000000000000000000000000000..0f896dcbeed344c8c20f492821c7b57404c01ec4
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/style_share.rs
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,184 @@
 +//! KaminIDE patch: equal node styles of one layout tree share one allocation.
 +//!
 +//! A taffy `Style` is about 1 KiB and every node of a frame tree used to own a copy, although
@@ -20526,7 +20822,17 @@ index 0000000000000000000000000000000000000000..6ea20716c00bef8be0c7da284b2396c6
 +//! style sharing cache (Stylo), the candidates are the most recently created distinct styles:
 +//! siblings and cousins are requested next to each other. A hit needs full equality, so the
 +//! shared style is the same value the node would have owned.
++//!
++//! The conversion itself is shared too. A `Div` whose layout style is its base refinement alone
++//! (no state styles applied) converts the same refinement allocation (`refinement_share`) to the
++//! same taffy style for a given rem size and scale factor, so the converted style is kept per
++//! recent refinement and a request with the same refinement skips `to_taffy` (Blink and Stylo
++//! keep the computed style object itself shared between elements in the same way). `calc()`
++//! handles in a converted style belong to this tree's registry, which lives as long as the
++//! candidates (`clear`).
 +
++use crate::{Pixels, StyleRefinement};
++use std::rc::Rc;
 +use taffy::{SharedStyle, Style};
 +
 +/// Distinct recent styles kept as sharing candidates.
@@ -20537,6 +20843,18 @@ index 0000000000000000000000000000000000000000..6ea20716c00bef8be0c7da284b2396c6
 +    recent: [Option<SharedStyle>; CANDIDATES],
 +    /// Slot of the next new candidate; the newest candidate sits just before it.
 +    next: usize,
++    converted: [Option<Converted>; CANDIDATES],
++    /// Slot of the next converted refinement.
++    next_converted: usize,
++}
++
++/// The taffy style a refinement converted to at one rem size and scale factor.
++struct Converted {
++    /// Held so the allocation, and with it the key, cannot be reused by another refinement.
++    refinement: Rc<StyleRefinement>,
++    rem_size: Pixels,
++    scale_factor: f32,
++    style: SharedStyle,
 +}
 +
 +impl StyleShare {
@@ -20555,6 +20873,35 @@ index 0000000000000000000000000000000000000000..6ea20716c00bef8be0c7da284b2396c6
 +        self.recent[self.next] = Some(shared.clone());
 +        self.next = (self.next + 1) % CANDIDATES;
 +        shared
++    }
++
++    /// The shared taffy style of a node whose style is `refinement` applied to the default
++    /// style alone: the conversion `convert` runs only for a refinement allocation not
++    /// converted recently at this rem size and scale factor.
++    pub(super) fn share_refinement(
++        &mut self,
++        refinement: &Rc<StyleRefinement>,
++        rem_size: Pixels,
++        scale_factor: f32,
++        convert: impl FnOnce() -> Style,
++    ) -> SharedStyle {
++        let hit = self.converted.iter().flatten().find(|c| {
++            Rc::ptr_eq(&c.refinement, refinement)
++                && c.rem_size == rem_size
++                && c.scale_factor.to_bits() == scale_factor.to_bits()
++        });
++        if let Some(hit) = hit {
++            return hit.style.clone();
++        }
++        let style = self.share(convert());
++        self.converted[self.next_converted] = Some(Converted {
++            refinement: refinement.clone(),
++            rem_size,
++            scale_factor,
++            style: style.clone(),
++        });
++        self.next_converted = (self.next_converted + 1) % CANDIDATES;
++        style
 +    }
 +
 +    /// Forget the candidates together with the tree they were made for.
@@ -20617,6 +20964,38 @@ index 0000000000000000000000000000000000000000..6ea20716c00bef8be0c7da284b2396c6
 +        share.clear();
 +        let cleared = share.share(sized(0.0));
 +        assert!(!SharedStyle::ptr_eq(&kept, &cleared));
++    }
++
++    #[test]
++    fn a_refinement_is_converted_once_per_rem_size_and_scale() {
++        let mut share = StyleShare::default();
++        let refinement = Rc::new(StyleRefinement::default());
++        let mut conversions = 0;
++        let mut convert = |width| {
++            conversions += 1;
++            sized(width)
++        };
++        let first = share.share_refinement(&refinement, Pixels(16.0), 1.0, || convert(1.0));
++        let again = share.share_refinement(&refinement, Pixels(16.0), 1.0, || convert(2.0));
++        assert!(SharedStyle::ptr_eq(&first, &again));
++        let scaled = share.share_refinement(&refinement, Pixels(16.0), 2.0, || convert(3.0));
++        let rem = share.share_refinement(&refinement, Pixels(20.0), 1.0, || convert(4.0));
++        assert_eq!(*scaled, sized(3.0));
++        assert_eq!(*rem, sized(4.0));
++        assert_eq!(conversions, 3);
++    }
++
++    #[test]
++    fn an_equal_refinement_in_another_allocation_is_converted_again() {
++        let mut share = StyleShare::default();
++        let a = Rc::new(StyleRefinement::default());
++        let b = Rc::new(StyleRefinement::default());
++        share.share_refinement(&a, Pixels(16.0), 1.0, || sized(1.0));
++        let other = share.share_refinement(&b, Pixels(16.0), 1.0, || sized(2.0));
++        assert_eq!(*other, sized(2.0));
++        share.clear();
++        let cleared = share.share_refinement(&a, Pixels(16.0), 1.0, || sized(5.0));
++        assert_eq!(*cleared, sized(5.0));
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy/visible_baselines.rs b/vendor/gpui/src/taffy/visible_baselines.rs
@@ -22668,7 +23047,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa124293aa3
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..730f9212a6b76ec77084c12f0b60381eefc138c3
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12,14 +12,15 @@
@@ -24169,7 +24548,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            .finish()
 +    }
 +
-@@ -5076,0 +5995,19 @@
+@@ -5076,0 +5995,22 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -24181,6 +24560,29 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
 +    }
 +
++    /// KaminIDE patch: `request_layout_ref` for a style that is `refinement` applied to the
++    /// default style alone; the layout engine reuses the conversion of an earlier request with
++    /// the same refinement allocation.
++    #[must_use]
++    pub fn request_layout_refined(
++        &mut self,
++        style: &Style,
++        refinement: &Rc<crate::StyleRefinement>,
++        children: impl IntoIterator<Item = LayoutId>,
++        cx: &mut App,
++    ) -> LayoutId {
+@@ -5082,0 +6023,26 @@
++        self.reserve_layout_nodes();
++
++        self.layout_engine.as_mut().unwrap().request_layout_refined(
++            style,
++            refinement,
++            rem_size,
++            scale_factor,
++            &cx.layout_id_buffer,
++        )
++    }
++
 +    /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
 +    #[must_use]
 +    pub fn request_layout_ref(
@@ -24189,9 +24591,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6020 @@
++        self.invalidator.debug_assert_prepaint();
++
++        cx.layout_id_buffer.clear();
++        cx.layout_id_buffer.extend(children);
++        let rem_size = self.rem_size();
++        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6028,39 @@
+@@ -5089,0 +6056,39 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -24231,10 +24638,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6086,2 @@
+@@ -5108,0 +6114,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6091,285 @@
+@@ -5112 +6119,285 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(
 +                style,
@@ -24521,7 +24928,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            cols,
 +            rows,
 +        ))
-@@ -5132,0 +6396,50 @@
+@@ -5132,0 +6424,50 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -24572,7 +24979,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6460,6 @@
+@@ -5147,2 +6488,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -24581,7 +24988,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6486,6 @@
+@@ -5169 +6514,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -24589,7 +24996,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6534,16 @@
+@@ -5211,0 +6562,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -24606,9 +25013,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6562 @@
+@@ -5223,0 +6590 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6564,6 @@
+@@ -5225,3 +6592,6 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
@@ -24618,9 +25025,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +            f,
 +        )
 +        .0
-@@ -5235,0 +6578 @@
+@@ -5235,0 +6606 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6580,6 @@
+@@ -5237,3 +6608,6 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
@@ -24630,37 +25037,37 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +                f,
 +            )
 +            .0
-@@ -5458,0 +6805,2 @@
+@@ -5458,0 +6833,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7141,5 @@
+@@ -5792,0 +7169,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -6132 +7485 @@
+@@ -6132 +7513 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7497 @@
+@@ -6144 +7525 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7517 @@
+@@ -6164 +7545 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +7749 @@
+@@ -6396 +7777 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +7772 @@
+@@ -6419 +7800 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +7951 @@
+@@ -6598 +7979 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8054 @@
+@@ -6701 +8082 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -7752,0 +9106,37 @@
+@@ -7752,0 +9134,37 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -24698,7 +25105,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2e64241a4adbc3151cd9f2141d52efa1
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -9528,0 +10919,2 @@
+@@ -9528,0 +10947,2 @@
 +
 +mod layout_async;
 diff --git a/vendor/gpui/src/window/absolute_transformation.rs b/vendor/gpui/src/window/absolute_transformation.rs
@@ -25591,10 +25998,10 @@ index 0000000000000000000000000000000000000000..17fa748198138cc0ffaff42257858357
 +}
 diff --git a/vendor/gpui/src/window/line_baselines.rs b/vendor/gpui/src/window/line_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..60986a7206e2fee7f2d392629f71f2bb68533b2a
+index 0000000000000000000000000000000000000000..24e56fea3e260af4d042e7a10763b851f3999574
 --- /dev/null
 +++ b/vendor/gpui/src/window/line_baselines.rs
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,89 @@
 +//! Detailed content baseline metadata for fragmentation without changing native first/last APIs.
 +
 +use super::*;
@@ -25603,6 +26010,13 @@ index 0000000000000000000000000000000000000000..60986a7206e2fee7f2d392629f71f2bb
 +    /// KaminIDE patch: первая baseline содержимого завершённого border box, без замера.
 +    pub fn first_content_baseline(&self, layout: LayoutId, axis: crate::Axis) -> Option<Pixels> {
 +        self.layout_engine.as_ref()?.first_content_baseline(layout, axis, self.scale_factor())
++    }
++
++    /// KaminIDE patch: the single in-flow item of a laid-out baseline row and the baseline the
++    /// row aligns it by, read from the item's stored layout output (no probe sibling, no extra
++    /// layout pass). `None` when the row has no in-flow item.
++    pub fn row_item_baseline(&self, row: LayoutId) -> Option<crate::RowItemBaseline> {
++        self.layout_engine.as_ref()?.row_item_baseline(row, self.scale_factor())
 +    }
 +
 +    /// Measure content with the actual containing block and native resolved padding/border.

@@ -19,7 +19,7 @@ impl Paragraph {
             .borrow_mut()
             .fit(avail, window, cx, stack)
             .await;
-        for &(k, w, _, _) in &fitted {
+        for &(k, w, _, _, _) in &fitted {
             let Some(slot) = self.atoms.get_mut(k) else {
                 continue;
             };
@@ -42,22 +42,21 @@ impl Paragraph {
         // Real geometry wins over the copy's for placement and painting.
         let fitted: Fitted = fitted
             .iter()
-            .map(|&(k, w, h, base)| {
-                let slot = &self.atoms[k];
-                let real_h = slot
-                    .root
-                    .get()
-                    .map_or(h, |id| f32::from(window.layout_exact(id).1.height));
-                let real_base = slot
-                    .probe
-                    .get()
-                    .map_or(base, |id| f32::from(window.layout_exact(id).0.y));
+            .map(|&(k, w, h, base, drop)| {
+                let root = self.atoms[k].root.get();
+                let (real_h, real_base, drop) = match root {
+                    Some(id) => {
+                        let row_h = f32::from(window.layout_exact(id).1.height);
+                        atoms::row_geometry::row_geometry(Some(id), row_h, window)
+                    }
+                    None => (h, base, drop),
+                };
                 let real_base = if real_base <= 0.0 && real_h > 0.0 {
                     real_h
                 } else {
                     real_base
                 };
-                (k, w, real_h, real_base)
+                (k, w, real_h, real_base, drop)
             })
             .collect();
         self.apply_atom_fit(&fitted);

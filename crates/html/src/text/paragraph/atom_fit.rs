@@ -25,6 +25,7 @@ pub(super) struct FitAtom {
     /// Margin-box max-content width and baseline of the real layout.
     max: f32,
     base: f32,
+    drop: f32,
     /// Copy of the atom wrapper tree and its max-content height/baseline.
     snap: gpui::LayoutMeasurement,
     snap_h: f32,
@@ -32,8 +33,8 @@ pub(super) struct FitAtom {
 }
 
 /// Resolved atom geometry for one available width: (index, width, height,
-/// baseline).
-pub(super) type Fitted = Vec<(usize, f32, f32, f32)>;
+/// baseline, downward shift in the wrapper row — AtomBox::drop).
+pub(super) type Fitted = Vec<(usize, f32, f32, f32, f32)>;
 
 #[derive(Default)]
 pub(super) struct AtomFit {
@@ -41,9 +42,9 @@ pub(super) struct AtomFit {
     cache: Vec<(f32, Fitted)>,
 }
 
-/// The wrapper (`Paragraph::atoms`) is a row of [probe, atom]: the atom is
-/// child 1.
-const ATOM_CHILD: usize = 1;
+/// The wrapper (`Paragraph::atoms`) is a baseline row whose only child is the
+/// atom.
+const ATOM_CHILD: usize = 0;
 
 impl AtomFit {
     pub(super) fn is_empty(&self) -> bool {
@@ -93,7 +94,7 @@ impl AtomFit {
                 (Some(b), Some(b0)) => a.base + (f32::from(b) - b0),
                 _ => a.base + (h - a.snap_h),
             };
-            out.push((a.k, w, h, base));
+            out.push((a.k, w, h, base, a.drop));
         }
         self.cache.push((avail, out.clone()));
         out
@@ -160,6 +161,7 @@ impl Paragraph {
                     min,
                     max,
                     base: b.base,
+                    drop: b.drop,
                     snap,
                     snap_h: f32::from(smax.height),
                     snap_base: sbase.map(f32::from),
@@ -176,13 +178,14 @@ impl Paragraph {
             let fit = self.atom_fit.borrow();
             fit.atoms.iter().map(|a| (a.k, a.at)).collect()
         };
-        for &(k, w, h, base) in fitted {
+        for &(k, w, h, base, drop) in fitted {
             let Some(&(_, at)) = ats.iter().find(|(i, _)| *i == k) else {
                 continue;
             };
             if let Some(b) = self.atom_boxes.get_mut(k) {
                 b.h = h;
                 b.base = base;
+                b.drop = drop;
             }
             let len = self.text[at..].chars().next().map_or(0, char::len_utf8);
             if let Some(span) = self

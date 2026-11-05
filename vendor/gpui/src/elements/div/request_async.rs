@@ -10,7 +10,13 @@ impl Interactivity {
         window: &mut Window,
         cx: &mut App,
         stack: &mut crate::PaintStack,
-        f: impl AsyncFnOnce(Box<Style>, &mut Window, &mut App, &mut crate::PaintStack) -> LayoutId,
+        f: impl AsyncFnOnce(
+            ComputedStyle,
+            Option<&Rc<StyleRefinement>>,
+            &mut Window,
+            &mut App,
+            &mut crate::PaintStack,
+        ) -> LayoutId,
     ) -> LayoutId {
         #[cfg(any(feature = "inspector", debug_assertions))]
         window.with_inspector_state(
@@ -94,7 +100,8 @@ impl Interactivity {
                     }
 
                     let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-                    let layout_id = f(style, window, cx, stack).await;
+                    let refinement = self.rare.is_none().then_some(&self.base_style);
+                    let layout_id = f(style, refinement, window, cx, stack).await;
                     (layout_id, element_state)
                 },
             )

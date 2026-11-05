@@ -6,7 +6,17 @@
 //! style sharing cache (Stylo), the candidates are the most recently created distinct styles:
 //! siblings and cousins are requested next to each other. A hit needs full equality, so the
 //! shared style is the same value the node would have owned.
+//!
+//! The conversion itself is shared too. A `Div` whose layout style is its base refinement alone
+//! (no state styles applied) converts the same refinement allocation (`refinement_share`) to the
+//! same taffy style for a given rem size and scale factor, so the converted style is kept per
+//! recent refinement and a request with the same refinement skips `to_taffy` (Blink and Stylo
+//! keep the computed style object itself shared between elements in the same way). `calc()`
+//! handles in a converted style belong to this tree's registry, which lives as long as the
+//! candidates (`clear`).
 
+use crate::{Pixels, StyleRefinement};
+use std::rc::Rc;
 use taffy::{SharedStyle, Style};
 
 /// Distinct recent styles kept as sharing candidates.
@@ -17,6 +27,18 @@ pub(super) struct StyleShare {
     recent: [Option<SharedStyle>; CANDIDATES],
     /// Slot of the next new candidate; the newest candidate sits just before it.
     next: usize,
+    converted: [Option<Converted>; CANDIDATES],
+    /// Slot of the next converted refinement.
+    next_converted: usize,
+}
+
+/// The taffy style a refinement converted to at one rem size and scale factor.
+struct Converted {
+    /// Held so the allocation, and with it the key, cannot be reused by another refinement.
+    refinement: Rc<StyleRefinement>,
+    rem_size: Pixels,
+    scale_factor: f32,
+    style: SharedStyle,
 }
 
 impl StyleShare {
@@ -35,6 +57,35 @@ impl StyleShare {
         self.recent[self.next] = Some(shared.clone());
         self.next = (self.next + 1) % CANDIDATES;
         shared
+    }
+
+    /// The shared taffy style of a node whose style is `refinement` applied to the default
+    /// style alone: the conversion `convert` runs only for a refinement allocation not
+    /// converted recently at this rem size and scale factor.
+    pub(super) fn share_refinement(
+        &mut self,
+        refinement: &Rc<StyleRefinement>,
+        rem_size: Pixels,
+        scale_factor: f32,
+        convert: impl FnOnce() -> Style,
+    ) -> SharedStyle {
+        let hit = self.converted.iter().flatten().find(|c| {
+            Rc::ptr_eq(&c.refinement, refinement)
+                && c.rem_size == rem_size
+                && c.scale_factor.to_bits() == scale_factor.to_bits()
+        });
+        if let Some(hit) = hit {
+            return hit.style.clone();
+        }
+        let style = self.share(convert());
+        self.converted[self.next_converted] = Some(Converted {
+            refinement: refinement.clone(),
+            rem_size,
+            scale_factor,
+            style: style.clone(),
+        });
+        self.next_converted = (self.next_converted + 1) % CANDIDATES;
+        style
     }
 
     /// Forget the candidates together with the tree they were made for.
@@ -97,5 +148,37 @@ mod tests {
         share.clear();
         let cleared = share.share(sized(0.0));
         assert!(!SharedStyle::ptr_eq(&kept, &cleared));
+    }
+
+    #[test]
+    fn a_refinement_is_converted_once_per_rem_size_and_scale() {
+        let mut share = StyleShare::default();
+        let refinement = Rc::new(StyleRefinement::default());
+        let mut conversions = 0;
+        let mut convert = |width| {
+            conversions += 1;
+            sized(width)
+        };
+        let first = share.share_refinement(&refinement, Pixels(16.0), 1.0, || convert(1.0));
+        let again = share.share_refinement(&refinement, Pixels(16.0), 1.0, || convert(2.0));
+        assert!(SharedStyle::ptr_eq(&first, &again));
+        let scaled = share.share_refinement(&refinement, Pixels(16.0), 2.0, || convert(3.0));
+        let rem = share.share_refinement(&refinement, Pixels(20.0), 1.0, || convert(4.0));
+        assert_eq!(*scaled, sized(3.0));
+        assert_eq!(*rem, sized(4.0));
+        assert_eq!(conversions, 3);
+    }
+
+    #[test]
+    fn an_equal_refinement_in_another_allocation_is_converted_again() {
+        let mut share = StyleShare::default();
+        let a = Rc::new(StyleRefinement::default());
+        let b = Rc::new(StyleRefinement::default());
+        share.share_refinement(&a, Pixels(16.0), 1.0, || sized(1.0));
+        let other = share.share_refinement(&b, Pixels(16.0), 1.0, || sized(2.0));
+        assert_eq!(*other, sized(2.0));
+        share.clear();
+        let cleared = share.share_refinement(&a, Pixels(16.0), 1.0, || sized(5.0));
+        assert_eq!(*cleared, sized(5.0));
     }
 }
