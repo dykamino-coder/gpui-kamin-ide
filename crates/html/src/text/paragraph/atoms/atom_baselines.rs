@@ -1,5 +1,5 @@
 //! Базовые линии атомов и строк (CSS 2.1 §10.8.1): регистрация атомов абзаца
-//! в обёртке со щупом базовой линии (`BaselineProbe`), верх атома от базовой
+//! в обёртке-ряде `align-items: baseline`, верх атома от базовой
 //! по `vertical-align`, протяжённость строки над и под базовой по строчным
 //! коробкам, базовая струта, подъём/спуск прогонов и базовая линия отрезка.
 
@@ -10,8 +10,9 @@ use gpui::{AnyElement, IntoElement, Window};
 impl Paragraph {
     /// Атомы в строке: место в тексте (байт распорки) → элемент и его
     /// `vertical-align`. Каждый заворачивается в ряд `align-items: baseline`
-    /// со щупом базовой линии (см. `BaselineProbe`): обёртка обтягивает
-    /// коробку полей атома, щуп отдаёт её базовую линию.
+    /// без щупа: обёртка обтягивает коробку полей атома, а базовую линию,
+    /// по которой ряд его ставит, отдаёт готовая раскладка самого атома
+    /// (`row_geometry`).
     pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents, bool)>) -> Self {
         self.invalidate_prepared();
         use gpui::{ParentElement, Styled};
@@ -21,18 +22,11 @@ impl Paragraph {
         self.atoms = atoms
             .into_iter()
             .map(|(at, el, align, extents, fixed_inline)| {
-                let probe = std::rc::Rc::new(std::cell::Cell::new(None));
                 let root = std::rc::Rc::new(std::cell::Cell::new(None));
                 let el = LayoutTap {
                     child: gpui::div()
                         .flex()
                         .items_baseline()
-                        .child(
-                            BaselineProbe {
-                                slot: probe.clone(),
-                            }
-                            .into_hooked(),
-                        )
                         .child(el)
                         .into_any_element(),
                     slot: root.clone(),
@@ -42,7 +36,6 @@ impl Paragraph {
                     at,
                     el,
                     align,
-                    probe,
                     root,
                     extents,
                     hidden: false,

@@ -1,9 +1,8 @@
 //! Пробы и записи раскладки: места атомов, экстенты руби, оформление, базовые линии, LayoutTap.
 
-mod baseline_probe;
+mod layout_tap;
 mod ruby_extents;
-pub(super) use crate::text::paragraph::probes::baseline_probe::BaselineProbe;
-pub(super) use crate::text::paragraph::probes::baseline_probe::LayoutTap;
+pub(super) use crate::text::paragraph::probes::layout_tap::LayoutTap;
 pub(crate) use crate::text::paragraph::probes::ruby_extents::RubyBaseOffer;
 pub use crate::text::paragraph::probes::ruby_extents::RubyExtents;
 pub use crate::text::paragraph::probes::ruby_extents::RubyOverhangInfo;
@@ -30,12 +29,11 @@ pub enum AtomAlign {
     Bottom,
 }
 
-/// Атом в строке: элемент-обёртка со щупом базовой линии.
+/// Атом в строке: элемент-обёртка (ряд lign-items: baseline).
 pub(super) struct AtomSlot {
     pub(crate) at: usize,
     pub(crate) el: AnyElement,
     pub(crate) align: AtomAlign,
-    pub(crate) probe: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
     /// Узел самой обёртки (см. `LayoutTap`).
     pub(crate) root: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
     /// Узлы уровней аннотаций руби (`ruby_extent`): `true` — под базой.
@@ -143,6 +141,9 @@ pub(crate) struct AtomBox {
     pub(crate) at: usize,
     pub(crate) h: f32,
     pub(crate) base: f32,
+    /// How far the row-wrapper moves the atom down to put a negative baseline on its own
+    /// (`row_geometry`): added to the atom's top at placement.
+    pub(crate) drop: f32,
     pub(crate) align: AtomAlign,
     /// Аннотации руби над и под коробкой (`ruby_extent`).
     pub(crate) over: f32,
