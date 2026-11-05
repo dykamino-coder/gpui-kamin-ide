@@ -76,7 +76,7 @@ impl RuleInput {
     }
 }
 
-struct Environment {
+pub(crate) struct Environment {
     root: RootMetrics,
     font_generation: u64,
     viewport: [u32; 2],
@@ -88,7 +88,7 @@ struct Environment {
 }
 
 impl Environment {
-    fn new(vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn new(vcx: ValueCx<'_>) -> Self {
         let media = vcx.doc.media.get();
         Self {
             root: vcx.doc.root.borrow().clone(),
@@ -107,7 +107,7 @@ impl Environment {
         }
     }
 
-    fn matches(&self, vcx: ValueCx<'_>) -> bool {
+    pub(crate) fn matches(&self, vcx: ValueCx<'_>) -> bool {
         let media = vcx.doc.media.get();
         self.font_generation == vcx.doc.font_generation()
             && self.viewport == [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()]
