@@ -323,7 +323,6 @@ impl TaffyLayoutEngine {
         }
     }
 
-
     /// KaminIDE patch: whether layout keys are honoured; returns the previous value.
     pub fn set_layout_keys(&mut self, enabled: bool) -> bool {
         std::mem::replace(&mut self.retained.keys_enabled, enabled && self.frame_tree)

@@ -9,7 +9,7 @@
 //! without layout stamps, overlays, ruby, fragments, clamps, fitting,
 //! vertical or rotated text) has no key and is measured in every frame.
 
-use crate::text::paragraph::Paragraph;
+use crate::text::paragraph::{AtomAlign, Paragraph};
 use std::hash::{Hash, Hasher};
 
 /// Formatter sink that feeds the hasher without building a string.
@@ -33,29 +33,48 @@ impl Paragraph {
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.text.as_ref().hash(&mut hasher);
-        if !self.atoms.is_empty() {
-            self.atom_stamps(window)?.hash(&mut hasher);
-            std::fmt::write(
-                &mut Sink(&mut hasher),
-                format_args!("{:?}", self.atom_boxes),
-            )
-            .ok()?;
+        // Lists that grow with the atoms (one spacer span and one box per
+        // atom) are hashed by their bits: formatting them made the key cost
+        // microseconds per atom on pages with tens of thousands of atoms.
+        for slot in &self.atoms {
+            window.layout_stamp(slot.root.get()?)?.hash(&mut hasher);
+        }
+        for b in &self.atom_boxes {
+            b.at.hash(&mut hasher);
+            for v in [b.h, b.base, b.drop, b.over, b.under, b.shift] {
+                v.to_bits().hash(&mut hasher);
+            }
+            match b.align {
+                AtomAlign::Shift(v) => (0u8, v.to_bits()).hash(&mut hasher),
+                AtomAlign::Middle => 1u8.hash(&mut hasher),
+                AtomAlign::TextTop => 2u8.hash(&mut hasher),
+                AtomAlign::TextBottom => 3u8.hash(&mut hasher),
+                AtomAlign::Top => 4u8.hash(&mut hasher),
+                AtomAlign::Bottom => 5u8.hash(&mut hasher),
+            }
+        }
+        for spans in [
+            &self.word_spans,
+            &self.letter_spans,
+            &self.shift_spans,
+            &self.lh_spans,
+        ] {
+            spans.len().hash(&mut hasher);
+            for (range, v) in spans {
+                (range.start, range.end, f32::from(*v).to_bits()).hash(&mut hasher);
+            }
         }
         // `Debug` of these values is exact (floats print round-trip).
         std::fmt::write(
             &mut Sink(&mut hasher),
             format_args!(
-                "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
+                "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
                 self.runs,
                 self.font_size,
                 self.line_height,
                 self.align,
                 self.wrap,
                 self.spans,
-                self.word_spans,
-                self.letter_spans,
-                self.shift_spans,
-                self.lh_spans,
                 self.clamp_force,
                 self.clamp_tag,
                 self.tab_stop,
@@ -70,15 +89,6 @@ impl Paragraph {
         )
         .ok()?;
         Some(hasher.finish())
-    }
-
-    /// Layout stamps of the atom wrappers (`gpui::Window::layout_stamp`), or
-    /// `None` if an atom has none.
-    fn atom_stamps(&self, window: &mut gpui::Window) -> Option<Vec<u64>> {
-        self.atoms
-            .iter()
-            .map(|slot| slot.root.get().and_then(|root| window.layout_stamp(root)))
-            .collect()
     }
 
     /// Whether the probe reads only the paragraph's own values and atoms.
