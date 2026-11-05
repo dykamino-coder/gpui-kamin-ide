@@ -17,8 +17,10 @@ mod form_appearance;
 
 mod animation_frames;
 mod details_content;
+mod element_sharing;
 mod finish_element;
 mod pseudo_styles;
+mod revalidation;
 mod style_normalization;
 mod visited_match;
 
