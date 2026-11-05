@@ -194,7 +194,7 @@ impl FlowCx {
         let element = || copy.get_or_init(|| Rc::new(e.clone())).clone();
         if self.settled
             && !edge
-            && super::plain::plain(e)
+            && mark.inert.of(e)
             && let Some(child) = out.pop()
         {
             let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));

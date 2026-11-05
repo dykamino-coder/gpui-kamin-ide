@@ -15,6 +15,8 @@ pub(crate) struct Mark {
     pub(super) late: bool,
     /// Чтения ширин снаружи сборкой ребёнка (`BoxConstraints::track_widths`).
     pub(super) widths: Option<Rc<std::cell::Cell<bool>>>,
+    /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
+    pub(super) inert: super::super::plain::Inert,
 }
 
 impl Mark {
@@ -34,6 +36,7 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         coordinates: paint.coordinates.borrow().len(),
         late: opts.cx.position.state.late_pending(),
         widths: None,
+        inert: Default::default(),
     }
 }
 
@@ -42,7 +45,7 @@ impl super::FlowCx {
     /// запись повтора может пригодиться (`replay_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if self.replay_worth_recording(e) {
+        if self.replay_worth_recording(e, &mark.inert) {
             mark.widths = Some(Rc::default());
         }
         mark
@@ -59,12 +62,12 @@ impl super::FlowCx {
     /// их пишет следующая, где дальние уже пропущены и собираются лишь
     /// ближние и изменённые. Так Blink `ShouldCreateSubsequence` кэширует
     /// подпоследовательность только там, где повтор вероятен.
-    fn replay_worth_recording(&self, e: &Element) -> bool {
+    fn replay_worth_recording(&self, e: &Element, inert: &super::super::plain::Inert) -> bool {
         self.settled_outside_widths
             && !self.floats.get()
             && match (self.settled, self.warm) {
                 (true, true) => true,
-                (true, false) => !super::super::plain::plain(e),
+                (true, false) => !inert.of(e),
                 (false, _) => {
                     !super::super::plain::fills_width(e)
                         && !self.reuse.store.reads_widths(e.node_id)
