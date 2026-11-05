@@ -144,3 +144,16 @@ fn of_equal_keys_the_leaf_nearest_its_position_is_kept() {
     assert_eq!(leaf(&mut engine, 20.), after);
     let _ = first;
 }
+#[test]
+fn a_new_plain_request_does_not_take_a_later_keyed_leaf() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let keyed = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 20.);
+    engine.clear();
+    // A new leaf before them sits at the keyed leaf's old position.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), keyed);
+    assert_eq!(leaf(&mut engine, 20.), after);
+}

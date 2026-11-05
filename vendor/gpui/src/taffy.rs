@@ -249,7 +249,7 @@ impl TaffyLayoutEngine {
         if let Some(id) = claimed {
             return id;
         }
-        let id = if let Some(node) = self.recycle() {
+        let id = if let Some(node) = self.recycle(false) {
             self.taffy
                 .reset_node(node, taffy_style, LayoutId::to_taffy_slice(children), None)
                 .expect(EXPECT_MESSAGE);

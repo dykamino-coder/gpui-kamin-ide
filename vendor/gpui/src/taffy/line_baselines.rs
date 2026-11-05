@@ -86,7 +86,7 @@ impl TaffyLayoutEngine {
             return id;
         }
         let context = context.expect("measured leaf context");
-        let id = if let Some(node) = self.recycle() {
+        let id = if let Some(node) = self.recycle(true) {
             self.taffy
                 .reset_node(node, taffy_style, &[], Some(context))
                 .expect(EXPECT_MESSAGE);

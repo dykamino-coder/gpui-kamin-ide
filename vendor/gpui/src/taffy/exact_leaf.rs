@@ -208,7 +208,7 @@ impl TaffyLayoutEngine {
         if let Some(id) = self.claim_leaf(&style) {
             return id;
         }
-        let id = match self.recycle() {
+        let id = match self.recycle(false) {
             Some(node) => {
                 self.taffy
                     .reset_node(node, style, &[], None)

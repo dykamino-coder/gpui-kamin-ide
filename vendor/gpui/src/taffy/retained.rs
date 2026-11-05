@@ -152,13 +152,19 @@ impl TaffyLayoutEngine {
 
     /// An unclaimed previous node at this request's position, whose storage a
     /// new node takes (TaffyTree::reset_node): a pass that claims little
-    /// then holds about one tree, not the previous and the new one.
-    pub(super) fn recycle(&mut self) -> Option<NodeId> {
+    /// then holds about one tree, not the previous and the new one. A keyed
+    /// leaf is taken only by a `measured` request: until the cursor is aligned
+    /// again the position may belong to a later request that would claim the
+    /// leaf by its key, and taking it would renew that request's ancestors too.
+    pub(super) fn recycle(&mut self, measured: bool) -> Option<NodeId> {
         if !self.frame_tree {
             return None;
         }
         let node = *self.retained.prev.get(self.retained.cursor)?;
         if self.retained.live.contains(&node) {
+            return None;
+        }
+        if !measured && self.retained.keys.contains_key(&node) {
             return None;
         }
         self.retained.keys.remove(&node);

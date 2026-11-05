@@ -14164,7 +14164,7 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..3b027e3c8a7da151d8657b399a1ab26357fa6219
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..5c9f09f037d1d9919708075ab84d4573c1dea8b8
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
 @@ -0,0 +1,46 @@
@@ -14401,7 +14401,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..3b027e3c8a7da151d8657b399a1ab263
 +        if let Some(id) = claimed {
 +            return id;
 +        }
-+        let id = if let Some(node) = self.recycle() {
++        let id = if let Some(node) = self.recycle(false) {
 +            self.taffy
 +                .reset_node(node, taffy_style, LayoutId::to_taffy_slice(children), None)
 +                .expect(EXPECT_MESSAGE);
@@ -15613,7 +15613,7 @@ index 0000000000000000000000000000000000000000..36d44568b6a7f06b8be83685b509b3a2
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..345a65fa97b270ce714391e4bab4716896163428
+index 0000000000000000000000000000000000000000..1190613205e29c27d9533757f818280b5dc0f9ae
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
 @@ -0,0 +1,222 @@
@@ -15827,7 +15827,7 @@ index 0000000000000000000000000000000000000000..345a65fa97b270ce714391e4bab47168
 +        if let Some(id) = self.claim_leaf(&style) {
 +            return id;
 +        }
-+        let id = match self.recycle() {
++        let id = match self.recycle(false) {
 +            Some(node) => {
 +                self.taffy
 +                    .reset_node(node, style, &[], None)
@@ -16666,7 +16666,7 @@ index 0000000000000000000000000000000000000000..8f296b54deb2cfacf0c94c9834f49134
 +}
 diff --git a/vendor/gpui/src/taffy/line_baselines.rs b/vendor/gpui/src/taffy/line_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8eb6f82cf0636cff8b4159608bd813a83f1108b5
+index 0000000000000000000000000000000000000000..106a828a3885351e0848d533d66aaede225034e1
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/line_baselines.rs
 @@ -0,0 +1,126 @@
@@ -16758,7 +16758,7 @@ index 0000000000000000000000000000000000000000..8eb6f82cf0636cff8b4159608bd813a8
 +            return id;
 +        }
 +        let context = context.expect("measured leaf context");
-+        let id = if let Some(node) = self.recycle() {
++        let id = if let Some(node) = self.recycle(true) {
 +            self.taffy
 +                .reset_node(node, taffy_style, &[], Some(context))
 +                .expect(EXPECT_MESSAGE);
@@ -17445,10 +17445,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1ea3479faf505c95ad965f46113ff7dcb75ba21
+index 0000000000000000000000000000000000000000..d6c5e565b867f9e99fbcb229bfd6833817a2c276
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,248 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17603,13 +17603,19 @@ index 0000000000000000000000000000000000000000..d1ea3479faf505c95ad965f46113ff7d
 +
 +    /// An unclaimed previous node at this request's position, whose storage a
 +    /// new node takes (TaffyTree::reset_node): a pass that claims little
-+    /// then holds about one tree, not the previous and the new one.
-+    pub(super) fn recycle(&mut self) -> Option<NodeId> {
++    /// then holds about one tree, not the previous and the new one. A keyed
++    /// leaf is taken only by a `measured` request: until the cursor is aligned
++    /// again the position may belong to a later request that would claim the
++    /// leaf by its key, and taking it would renew that request's ancestors too.
++    pub(super) fn recycle(&mut self, measured: bool) -> Option<NodeId> {
 +        if !self.frame_tree {
 +            return None;
 +        }
 +        let node = *self.retained.prev.get(self.retained.cursor)?;
 +        if self.retained.live.contains(&node) {
++            return None;
++        }
++        if !measured && self.retained.keys.contains_key(&node) {
 +            return None;
 +        }
 +        self.retained.keys.remove(&node);
@@ -17693,10 +17699,10 @@ index 0000000000000000000000000000000000000000..d1ea3479faf505c95ad965f46113ff7d
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ee4ebdd66ae953218caa2af970f01f7c8fe1ee8a
+index 0000000000000000000000000000000000000000..c85b144f54c5dc35fb0b714029f1e41958caff86
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,159 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -17842,6 +17848,19 @@ index 0000000000000000000000000000000000000000..ee4ebdd66ae953218caa2af970f01f7c
 +    assert_eq!(measured(&mut engine, Some(7)), second);
 +    assert_eq!(leaf(&mut engine, 20.), after);
 +    let _ = first;
++}
++#[test]
++fn a_new_plain_request_does_not_take_a_later_keyed_leaf() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let keyed = measured(&mut engine, Some(7));
++    let after = leaf(&mut engine, 20.);
++    engine.clear();
++    // A new leaf before them sits at the keyed leaf's old position.
++    engine.set_layout_keys(true);
++    let _ = leaf(&mut engine, 99.);
++    assert_eq!(measured(&mut engine, Some(7)), keyed);
++    assert_eq!(leaf(&mut engine, 20.), after);
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs
