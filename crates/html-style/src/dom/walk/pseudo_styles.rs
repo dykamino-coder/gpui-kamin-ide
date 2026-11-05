@@ -15,7 +15,7 @@ use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 use crate::values::ValueCx;
 
-type PseudoLayers = (
+pub(super) type PseudoLayers = (
     Option<Box<Computed>>,
     Option<Box<Computed>>,
     Option<Box<Computed>>,
