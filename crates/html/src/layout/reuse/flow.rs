@@ -92,6 +92,7 @@ impl FlowReuse {
         if !settled_outside_widths {
             self.store.replays.take();
             self.store.banned.take();
+            self.store.reads_widths.take();
         }
         Some(FlowCx {
             reuse: self.clone(),
@@ -179,8 +180,9 @@ impl FlowCx {
     /// Она стоит обёртки, копии элемента, снятия раскладки, prepaint, краски и
     /// заданий строк, а остаётся только у блока возле экрана. Годится она
     /// потоку того же ключа вне ширин, а блок, заполняющий ширину
-    /// (`plain::fills_width`), — ещё и тех же ширин: пока ширины меняются от
-    /// сборки к сборке, такой блок не пишется. Первая устоявшаяся сборка
+    /// (`plain::fills_width`) или прочитавший в прошлой записи ширину снаружи,
+    /// — ещё и тех же ширин: пока ширины меняются от сборки к сборке, такой
+    /// блок не пишется. Первая устоявшаяся сборка
     /// собирает весь поток; инертные блоки (`plain::plain`) она пишет для
     /// пропуска, а для повтора их пишет следующая, где дальние уже пропущены
     /// и собираются лишь ближние и изменённые. Так Blink
@@ -192,7 +194,9 @@ impl FlowCx {
             && match (self.settled, self.warm) {
                 (true, true) => true,
                 (true, false) => !super::plain::plain(e),
-                (false, _) => !super::plain::fills_width(e),
+                (false, _) => {
+                    !super::plain::fills_width(e) && !self.reuse.store.reads_widths(e.node_id)
+                }
             }
     }
 

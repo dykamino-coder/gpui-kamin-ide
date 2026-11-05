@@ -48,6 +48,9 @@ pub(crate) struct Store {
     /// Blocks whose replay failed the frame check (moved, or their layout
     /// needed a new measurement): they are built until the flow key changes.
     banned: RefCell<std::collections::HashSet<u64>>,
+    /// Blocks whose last replay recording read a width from outside: their
+    /// records fit only the same widths.
+    reads_widths: RefCell<std::collections::HashSet<u64>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
     last: RefCell<Option<Rc<FlowKey>>>,
@@ -66,6 +69,10 @@ impl Store {
 
     fn banned(&self, node: u64) -> bool {
         self.banned.borrow().contains(&node)
+    }
+
+    fn reads_widths(&self, node: u64) -> bool {
+        self.reads_widths.borrow().contains(&node)
     }
 }
 

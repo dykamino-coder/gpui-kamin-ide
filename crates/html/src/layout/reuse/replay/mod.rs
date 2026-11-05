@@ -203,11 +203,18 @@ impl super::FlowReuse {
     /// Записи повтора этого кадра: повторённые и завершённые у экрана `screen`.
     pub(super) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
         let mut replays = self.next_replays.take();
+        let mut reads = self.store.reads_widths.take();
         for (pending, element) in self.pending_replays.take() {
+            if pending.widths.get() {
+                reads.insert(element.node_id);
+            } else {
+                reads.remove(&element.node_id);
+            }
             if let Some(record) = pending.finish(element, screen) {
                 replays.insert(record.element.node_id, Rc::new(record));
             }
         }
+        self.store.reads_widths.replace(reads);
         self.store.replays.replace(replays);
     }
 }

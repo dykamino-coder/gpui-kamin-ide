@@ -54,11 +54,11 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
 }
 
 /// While the width changes, a block that fills it (`width: auto`) gets no
-/// replay record: it could not replay at another width. The definite-width
-/// table is recorded either way and replays at once. The first build at the
-/// settled width builds the whole flow and records the tail paragraph only
-/// for skipping; the second records it for replay, and it replays from the
-/// third.
+/// replay record: it could not replay at another width. Nor does the table,
+/// whose last record read the width. The first build at the settled width
+/// builds the whole flow: it records the table for replay and the tail
+/// paragraph only for skipping. The second records the tail too, and both
+/// replay from the third.
 #[gpui::test]
 fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     cx: &mut TestAppContext,
@@ -82,8 +82,38 @@ fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     }
     assert_eq!(
         steps,
-        [1, 1, 2],
-        "replays per build after the resize: the table at once, the tail from the third"
+        [0, 1, 2],
+        "replays per build after the resize: the table from the second, the tail from the third"
+    );
+}
+
+/// A block whose last replay record read the width from outside (a table of
+/// a percentage width) is not recorded again while the width keeps changing:
+/// such a record fits only the same widths. Once the width settles it is
+/// recorded by the first build and replays from the next one.
+#[gpui::test]
+fn blocks_that_read_the_width_are_not_recorded_while_it_changes(cx: &mut TestAppContext) {
+    let page = |text: &str| {
+        format!(
+            "<body style='margin:0'><table style='width:50%'><tr><td>a</td></tr></table>\
+             <p>{text}</p><p>tail</p></body>"
+        )
+    };
+    let (view, cx) = settled(cx, &page("one"), &page("two"));
+    let mut last = replayed(&view, cx);
+    let mut steps = Vec::new();
+    for width in [401., 402., 402., 402.] {
+        cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = width));
+        let text = if steps.len() % 2 == 0 { "one" } else { "two" };
+        update(&view, cx, &page(text));
+        let now = replayed(&view, cx);
+        steps.push(now - last);
+        last = now;
+    }
+    assert_eq!(
+        steps,
+        [0, 0, 0, 1],
+        "replays per build: the table is recorded only once the width settles"
     );
 }
 
