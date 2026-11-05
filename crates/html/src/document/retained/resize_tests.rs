@@ -205,6 +205,10 @@ fn a_settled_build_learns_the_wrapped_blocks(cx: &mut TestAppContext) {
     let page = text_rows("").replace("alpha beta", &"alpha beta ".repeat(6));
     let (view, cx) = open(cx, &page);
     frame(cx);
+    // An edit builds the frame again at the same width: a settled build.
+    let edited = page.replace("row 599 ", "row edited ");
+    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&edited, "").unwrap()));
+    frame(cx);
     let tracked = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
         cx.update(|_, cx| view.read(cx).doc.tracked_blocks())
     };
