@@ -390,6 +390,7 @@ impl TaffyLayoutEngine {
             return;
         }
         let mut style = style.clone();
+        self.keep_requested_style(id.0);
         if stretch_width {
             style.size.width =
                 taffy::style::Dimension::length(round_to_device_pixel(size.width.0, scale_factor));
@@ -617,11 +618,15 @@ impl TaffyLayoutEngine {
         width: Pixels,
         scale_factor: f32,
     ) -> bool {
+        if let Ok(child) = self.taffy.child_at_index(parent.into(), index) {
+            self.keep_requested_style(child);
+        }
         cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
     }
 
     /// Cap the margin-box width of an independently laid out atomic inline.
     pub fn cap_outer_width(&mut self, id: LayoutId, width: Pixels, scale: f32) -> bool {
+        self.keep_requested_style(id.into());
         cap_outer_width(&mut self.taffy, id.into(), width.0 * scale)
     }
 

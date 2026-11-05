@@ -107,14 +107,14 @@ pub(super) fn band_nest(
     let vcx = opts.cx.vcx();
     // The step-8 key of a paint group comes before its descendants' keys.
     let group_key = paint_group(&c.style.used()).then(|| opts.cx.next_paint_key());
-    let cb = opts.cx.constraints.cb_width;
+    let cb = opts.cx.constraints.cb_width();
     let inner_em = band_em(&c.style.used(), em)?;
     let mut merged = box_style(inherited, &c.style, vcx);
     let height = crate::layout::block::available_height::inner_with_dimensions(
         &merged,
         &BoxDimensions::for_element(c, &merged),
         opts.cx.constraints.avail_h,
-        opts.cx.constraints.avail_w,
+        opts.cx.constraints.avail_w(),
         opts.viewport.1,
     );
     if let Some(height) = height {

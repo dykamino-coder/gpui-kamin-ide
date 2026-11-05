@@ -22,11 +22,12 @@ fn cached_continuation_requires_the_complete_producing_inputs(cx: &mut gpui::Tes
             let inputs = Inputs {
                 constraints: FragmentConstraints {
                     area: (100., 200.),
-                    parent: BoxConstraints {
-                        cb_width: Some(100.),
-                        avail_w: Some(100.),
-                        avail_h: Some(300.),
-                        cell_bfc: false,
+                    parent: {
+                        let mut parent = BoxConstraints::default();
+                        parent.set_cb_width(Some(100.));
+                        parent.set_avail_w(Some(100.));
+                        parent.avail_h = Some(300.);
+                        parent
                     },
                 },
                 source: Some(node.read(window).unwrap().space),
@@ -52,7 +53,7 @@ fn cached_continuation_requires_the_complete_producing_inputs(cx: &mut gpui::Tes
             changed.constraints.parent.avail_h = Some(400.);
             assert!(!cached.reusable(&changed, 40.));
             changed = inputs.clone();
-            changed.constraints.parent.cb_width = Some(120.);
+            changed.constraints.parent.set_cb_width(Some(120.));
             assert!(!cached.reusable(&changed, 40.));
             changed = inputs.clone();
             changed.page = Some(crate::layout::fragment::token::space::PageIdentity {

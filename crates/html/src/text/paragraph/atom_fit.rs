@@ -14,22 +14,25 @@
 use super::*;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px, size};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+mod memo;
+use memo::AtomMemo;
 
 pub(super) struct FitAtom {
     /// Index into `atoms` / `atom_boxes`.
     k: usize,
     /// Spacer byte of the atom (`AtomBox::at`).
     at: usize,
-    /// Margin-box min-content width.
-    min: f32,
-    /// Margin-box max-content width and baseline of the real layout.
-    max: f32,
+    /// Baseline of the real max-content layout in this paragraph.
     base: f32,
+    /// Downward shift to the normalized IFC baseline (`AtomBox::drop`).
     drop: f32,
-    /// Copy of the atom subtree and its max-content height/baseline.
+    /// Measurements of the atom's subtree, shared with later frames.
+    memo: Rc<AtomMemo>,
+    /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
     snap: gpui::LayoutMeasurement,
-    snap_h: f32,
-    snap_base: Option<f32>,
 }
 
 /// Resolved atom geometry for one available width: (index, width, height,
@@ -59,26 +62,37 @@ impl AtomFit {
         }
         let mut out = Vec::new();
         for a in self.atoms.iter_mut() {
-            if avail >= a.max - COORD_EPS {
+            let memo = &*a.memo;
+            // `avail` at max-content or wider also gives `w` there.
+            let w = avail.max(memo.min);
+            if w >= memo.max - COORD_EPS {
                 continue;
             }
-            let w = avail.max(a.min);
-            if w >= a.max - COORD_EPS {
+            let Some((snap_h, snap_base)) = memo.snap else {
                 continue;
-            }
-            a.snap.cap_outer_width(px(w));
-            let (s, b, _) = a.snap.measure_inline(
-                size(
-                    gpui::AvailableSpace::Definite(px(w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
-            let h = f32::from(s.height);
-            let base = match (b, a.snap_base) {
-                (Some(b), Some(b0)) => a.base + (f32::from(b) - b0),
-                _ => a.base + (h - a.snap_h),
+            };
+            let mut seen = memo.at_width.take();
+            let (h, b) = match seen.iter().find(|m| m.0 == w) {
+                Some(&(_, h, b)) => (h, b),
+                None => {
+                    a.snap.cap_outer_width(px(w));
+                    let (s, b, _) = a.snap.measure_inline(
+                        size(
+                            gpui::AvailableSpace::Definite(px(w)),
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        cx,
+                    );
+                    let (h, b) = (f32::from(s.height), b.map(f32::from));
+                    seen.push((w, h, b));
+                    (h, b)
+                }
+            };
+            memo.at_width.set(seen);
+            let base = match (b, snap_base) {
+                (Some(b), Some(b0)) => a.base + (b - b0),
+                _ => a.base + (h - snap_h),
             };
             out.push((a.k, w, h, base, a.drop));
         }
@@ -105,45 +119,38 @@ impl Paragraph {
                     continue;
                 }
                 let max = f32::from(window.inline_geometry(root).0.width);
+                let kept = window
+                    .layout_memo(root)
+                    .and_then(|m| m.downcast::<AtomMemo>().ok())
+                    .filter(|m| m.max == max);
+                if kept.as_ref().is_some_and(|m| m.snap.is_none()) {
+                    continue;
+                }
                 let mut snap = window.snapshot_layout_measurement(root);
-                let (smin, _, _) = snap.measure_inline(
-                    size(
-                        gpui::AvailableSpace::MinContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
-                let min = f32::from(smin.width);
-                if min >= max - COORD_EPS {
+                let memo = kept.unwrap_or_else(|| {
+                    let memo = Rc::new(AtomMemo::measure(&mut snap, max, window, cx));
+                    window.set_layout_memo(root, memo.clone());
+                    memo
+                });
+                if memo.snap.is_none() {
                     continue;
                 }
                 debug_assert!(
                     !slot.fixed_inline,
-                    "style-fixed atom width must not depend on the containing block: min {min}, max {max}"
-                );
-                let (smax, sbase, _) = snap.measure_inline(
-                    size(
-                        gpui::AvailableSpace::MaxContent,
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
+                    "style-fixed atom width must not depend on the containing block: min {}, max {}",
+                    memo.min, memo.max
                 );
                 fit.atoms.push(FitAtom {
                     k,
                     at: b.at,
-                    min,
-                    max,
                     base: b.base,
                     drop: b.drop,
+                    memo,
                     snap,
-                    snap_h: f32::from(smax.height),
-                    snap_base: sbase.map(f32::from),
                 });
             }
         }
-        self.atom_fit = std::rc::Rc::new(std::cell::RefCell::new(fit));
+        self.atom_fit = Rc::new(RefCell::new(fit));
     }
 
     /// Put fitted atom sizes into the spacer advances and atom boxes.
@@ -179,8 +186,8 @@ impl Paragraph {
             return;
         }
         let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for &(k, w, _, _, _) in &fitted {
-            let Some(slot) = self.atoms.get_mut(k) else {
+        for (k, slot) in self.atoms.iter_mut().enumerate() {
+            let Some(&(_, w, _, _, _)) = fitted.iter().find(|f| f.0 == k) else {
                 continue;
             };
             let Some(root) = slot.root.get() else {
