@@ -771,8 +771,7 @@ impl AnyElement {
 
     /// Планирует ребёнка на heap-стеке; scopes родителя живут до завершения ребёнка.
     pub async fn paint_async(&mut self, window: &mut Window, cx: &mut App, stack: &mut PaintStack) {
-        stack
-            .run(|stack| async move {
+        child_traversal::run_child(stack, |stack| async move {
                 let traversal = window.render_context::<crate::PaintTraversal>();
                 let _boundary = if self.0.paint_boundary() {
                     traversal.map(|traversal| (traversal.enter_boundary)(window))
@@ -780,8 +779,8 @@ impl AnyElement {
                     None
                 };
                 self.0.paint_async(window, cx, stack).await;
-            })
-            .await;
+        })
+        .await;
     }
 
     /// Performs layout for this element within the given available space and returns its size.

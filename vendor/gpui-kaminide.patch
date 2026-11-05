@@ -7273,7 +7273,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..814d7fdb3ba3d3a8370b92655c0d6adcf74a4088
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..feaaa2f18b11ac362d19cb419a5867c1ebff2e37
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -33,0 +34,8 @@
@@ -7802,7 +7802,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..814d7fdb3ba3d3a8370b92655c0d6adc
 +        reblessive::Stack::new()
 +            .enter(|stack| self.prepaint_async(window, cx, stack))
 +            .finish()
-@@ -630 +767,18 @@
+@@ -630 +767,17 @@
 -        self.0.paint(window, cx);
 +        reblessive::Stack::new()
 +            .enter(|stack| self.paint_async(window, cx, stack))
@@ -7811,8 +7811,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..814d7fdb3ba3d3a8370b92655c0d6adc
 +
 +    /// Планирует ребёнка на heap-стеке; scopes родителя живут до завершения ребёнка.
 +    pub async fn paint_async(&mut self, window: &mut Window, cx: &mut App, stack: &mut PaintStack) {
-+        stack
-+            .run(|stack| async move {
++        child_traversal::run_child(stack, |stack| async move {
 +                let traversal = window.render_context::<crate::PaintTraversal>();
 +                let _boundary = if self.0.paint_boundary() {
 +                    traversal.map(|traversal| (traversal.enter_boundary)(window))
@@ -7820,9 +7819,9 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..814d7fdb3ba3d3a8370b92655c0d6adc
 +                    None
 +                };
 +                self.0.paint_async(window, cx, stack).await;
-+            })
-+            .await;
-@@ -670,0 +825,53 @@
++        })
++        .await;
+@@ -670,0 +824,53 @@
 +
 +    fn request_layout_async<'a>(
 +        &'a mut self,
@@ -7876,18 +7875,41 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..814d7fdb3ba3d3a8370b92655c0d6adc
 +    fn paint_metadata(&self) -> Option<&dyn Any> {
 +        self.0.paint_metadata()
 +    }
-@@ -813,0 +1021,2 @@
+@@ -813,0 +1020,2 @@
 +
 +mod layout_traversal;
 diff --git a/vendor/gpui/src/element/child_traversal.rs b/vendor/gpui/src/element/child_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a7effe8d056073e1a2ef1559e0a33a7a03556e98
+index 0000000000000000000000000000000000000000..adffb93aa690e603cd0a14ef7bcf389482871c82
 --- /dev/null
 +++ b/vendor/gpui/src/element/child_traversal.rs
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,104 @@
 +//! Потомки передают управление явному стеку между уровнями дерева.
 +
 +use super::*;
++use futures::FutureExt;
++use std::{future::Future, panic::AssertUnwindSafe};
++
++/// Forward an unwind through the suspended caller, just like a native call.
++/// The scheduler polls child tasks separately, outside the caller's catch_unwind.
++pub(super) async fn run_child<'a, F, Fut, R>(stack: &'a mut PaintStack, child: F) -> R
++where
++    F: FnOnce(&'a mut PaintStack) -> Fut + 'a,
++    Fut: Future<Output = R> + 'a,
++    R: 'a,
++{
++    let result = stack
++        .run(|stack| async move {
++            AssertUnwindSafe(async move { child(stack).await })
++                .catch_unwind()
++                .await
++        })
++        .await;
++    match result {
++        Ok(value) => value,
++        Err(payload) => panic::resume_unwind(payload),
++    }
++}
 +
 +impl AnyElement {
 +    /// Планирует запрос потомка, сохраняя native стек ограниченным.
@@ -7897,9 +7919,7 @@ index 0000000000000000000000000000000000000000..a7effe8d056073e1a2ef1559e0a33a7a
 +        cx: &mut App,
 +        stack: &mut PaintStack,
 +    ) -> LayoutId {
-+        stack
-+            .run(|stack| self.0.request_layout_async(window, cx, stack))
-+            .await
++        run_child(stack, |stack| self.0.request_layout_async(window, cx, stack)).await
 +    }
 +    /// Планирует prepaint потомка с сохранением focus-протокола.
 +    pub async fn prepaint_async(
@@ -7910,15 +7930,62 @@ index 0000000000000000000000000000000000000000..a7effe8d056073e1a2ef1559e0a33a7a
 +    ) -> Option<FocusHandle> {
 +        let focus_assigned = window.next_frame.focus.is_some();
 +
-+        stack
-+            .run(|stack| self.0.prepaint_async(window, cx, stack))
-+            .await;
++        run_child(stack, |stack| self.0.prepaint_async(window, cx, stack)).await;
 +
 +        if !focus_assigned && let Some(focus_id) = window.next_frame.focus {
 +            return FocusHandle::for_id(focus_id, &cx.focus_handles);
 +        }
 +
 +        None
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::{cell::RefCell, rc::Rc};
++
++    struct Scope(usize, Rc<RefCell<Vec<usize>>>);
++    impl Drop for Scope {
++        fn drop(&mut self) {
++            self.1.borrow_mut().push(self.0);
++        }
++    }
++
++    fn abort_at_leaf(
++        stack: &mut PaintStack,
++        depth: usize,
++        dropped: Rc<RefCell<Vec<usize>>>,
++    ) -> PaintFuture<'_> {
++        Box::pin(async move {
++            let _scope = Scope(depth, dropped.clone());
++            if depth == 0 {
++                panic::panic_any(42_u32);
++            }
++            run_child(stack, |stack| abort_at_leaf(stack, depth - 1, dropped)).await;
++        })
++    }
++
++    #[test]
++    fn deep_child_panic_reaches_caller_and_drops_scopes_in_order() {
++        std::thread::Builder::new()
++            .stack_size(512 * 1024)
++            .spawn(|| {
++                let dropped = Rc::new(RefCell::new(Vec::new()));
++                reblessive::Stack::new()
++                    .enter(|stack| async {
++                        let result = AssertUnwindSafe(abort_at_leaf(stack, 20_000, dropped.clone()))
++                            .catch_unwind()
++                            .await;
++                        assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 42);
++                        assert!(dropped.borrow().iter().copied().eq(0..=20_000));
++                        assert_eq!(run_child(stack, |_| async { 17 }).await, 17);
++                    })
++                    .finish();
++            })
++            .unwrap()
++            .join()
++            .unwrap();
 +    }
 +}
 diff --git a/vendor/gpui/src/element/layout_traversal.rs b/vendor/gpui/src/element/layout_traversal.rs
@@ -8209,10 +8276,10 @@ index 0000000000000000000000000000000000000000..d36ad958e7350e143ea660222c2f8c2a
 +}
 diff --git a/vendor/gpui/src/element/root_traversal.rs b/vendor/gpui/src/element/root_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d9cb589affc03385a0405bd70a1642d482da4faf
+index 0000000000000000000000000000000000000000..2aa3d2e78f0f17625ce33549d39cec22cad52655
 --- /dev/null
 +++ b/vendor/gpui/src/element/root_traversal.rs
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,113 @@
 +//! Подготовка самостоятельных корней использует общий стек запроса и prepaint.
 +
 +use super::*;
@@ -8229,12 +8296,11 @@ index 0000000000000000000000000000000000000000..d9cb589affc03385a0405bd70a1642d4
 +        if self.0.root_layout_id().is_none() {
 +            self.request_layout_async(window, cx, stack).await;
 +        }
-+        stack
-+            .run(|stack| {
++        child_traversal::run_child(stack, |stack| {
 +                self.0
 +                    .layout_as_root_async(available_space, window, cx, stack)
-+            })
-+            .await
++        })
++        .await
 +    }
 +
 +    /// Запрашивает измерительный корень через явный стек.

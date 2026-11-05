@@ -14,12 +14,11 @@ impl AnyElement {
         if self.0.root_layout_id().is_none() {
             self.request_layout_async(window, cx, stack).await;
         }
-        stack
-            .run(|stack| {
+        child_traversal::run_child(stack, |stack| {
                 self.0
                     .layout_as_root_async(available_space, window, cx, stack)
-            })
-            .await
+        })
+        .await
     }
 
     /// Запрашивает измерительный корень через явный стек.
