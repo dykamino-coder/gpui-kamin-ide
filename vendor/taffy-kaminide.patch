@@ -26222,7 +26222,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a7a44a2e424a4f7d2621f71347b37b7b
 +        }
 +        self.parents[key] = None;
 +        let data = &mut self.nodes[key];
-+        *data = NodeData::new(style.into());
++        *data = NodeData::new(style);
 +        data.has_context = context.is_some();
 +        match context {
 +            Some(context) => {

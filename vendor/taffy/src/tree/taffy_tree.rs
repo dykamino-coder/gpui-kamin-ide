@@ -1105,7 +1105,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         }
         self.parents[key] = None;
         let data = &mut self.nodes[key];
-        *data = NodeData::new(style.into());
+        *data = NodeData::new(style);
         data.has_context = context.is_some();
         match context {
             Some(context) => {
