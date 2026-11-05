@@ -142,6 +142,7 @@ FIXES = {
         "Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.",
     ],
     "html5ever": [
+        "Deep trees: retain one negative named-scope proof across non-matching pushes; validate the current scope barrier and invalidate on arbitrary stack edits, preserving canonical target-before-boundary matching without quadratic repeated negative scans or larger admission budgets.",
         "Admission: opt-in fallible driver and sink operation hooks stop canonical tokenization/tree repair immediately, including EOF recovery; preflight growable token and tree-builder buffers.",
         "Parse processing instructions into DOM nodes instead of bogus comments.",
         "Preserve the tokenizer/tree-builder state and insertion rules for those tokens.",

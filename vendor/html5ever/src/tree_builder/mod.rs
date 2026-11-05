@@ -19,6 +19,8 @@ use crate::admission::storage::Storage;
 use crate::admission::{Admission, Operation, Unbounded};
 mod admission_buffers;
 mod admission_sink;
+#[cfg(test)]
+mod scope_cache_tests;
 
 use crate::tendril::StrTendril;
 use crate::{ExpandedName, LocalName, Namespace, QualName};
@@ -115,6 +117,10 @@ pub struct TreeBuilder<Handle, Sink: TreeSink<Handle = Handle>, A: Admission<Sin
     /// Stack of open elements, most recently added at end.
     open_elems: RefCell<Storage<Handle>>,
 
+    // Named target absent from the suffix starting at this scope boundary.
+    // No Handles or dynamically growing cache storage are retained.
+    negative_scope: RefCell<Option<(LocalName, usize)>>,
+
     /// List of active formatting elements.
     active_formatting: RefCell<Storage<FormatEntry<Handle>>>,
 
@@ -191,6 +197,7 @@ where
             quirks_mode: Cell::new(opts.quirks_mode),
             doc_handle,
             open_elems: Default::default(),
+            negative_scope: Default::default(),
             active_formatting: Default::default(),
             head_elem: Default::default(),
             form_elem: RefCell::new(form_elem),
@@ -234,6 +241,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
             quirks_mode: Cell::new(opts.quirks_mode),
             doc_handle,
             open_elems: Default::default(),
+            negative_scope: Default::default(),
             active_formatting: Default::default(),
             head_elem: Default::default(),
             form_elem: Default::default(),
@@ -812,6 +820,7 @@ where
 
             let Some((furthest_block_index, furthest_block)) = maybe_furthest_block else {
                 // 10.
+                self.negative_scope.borrow_mut().take();
                 self.open_elems.borrow_mut().truncate(fmt_elem_stack_index);
                 self.remove_from(&self.active_formatting, fmt_elem_index)?;
                 return Ok(());
@@ -874,6 +883,7 @@ where
                     self.clone_attrs(&tag.attrs)?,
                     tag.had_duplicate_attributes,
                 )?;
+                self.negative_scope.borrow_mut().take();
                 self.open_elems.borrow_mut()[node_index] = new_element.clone();
                 self.active_formatting.borrow_mut()[node_formatting_index] =
                     FormatEntry::Element(new_element.clone(), tag);
@@ -952,10 +962,22 @@ where
     }
 
     fn push(&self, elem: &Handle) -> Result<(), A::Error> {
-        self.push_into(&self.open_elems, elem.clone())
+        if self
+            .negative_scope
+            .borrow()
+            .as_ref()
+            .is_some_and(|(name, _)| self.html_elem_named(elem, name.clone()))
+        {
+            self.negative_scope.borrow_mut().take();
+        }
+        let mut open = self.open_elems.borrow_mut();
+        self.admission.reserve(&mut open, 1)?;
+        open.push(elem.clone());
+        Ok(())
     }
 
     fn pop(&self) -> Result<Handle, A::Error> {
+        self.negative_scope.borrow_mut().take();
         let elem = self
             .open_elems
             .borrow_mut()
@@ -1124,19 +1146,28 @@ where
         TagSet: Fn(ExpandedName) -> bool,
         Pred: Fn(Handle) -> bool,
     {
-        for node in self.open_elems.borrow().iter().rev() {
+        Ok(self.scope_boundary(scope, pred)?.0)
+    }
+
+    fn scope_boundary<TagSet, Pred>(
+        &self,
+        scope: TagSet,
+        pred: Pred,
+    ) -> Result<(bool, Option<usize>), A::Error>
+    where
+        TagSet: Fn(ExpandedName) -> bool,
+        Pred: Fn(Handle) -> bool,
+    {
+        for (index, node) in self.open_elems.borrow().iter().enumerate().rev() {
             self.work(1)?;
             if pred(node.clone()) {
-                return Ok(true);
+                return Ok((true, None));
             }
             if scope(self.sink.elem_name(node).expanded()) {
-                return Ok(false);
+                return Ok((false, Some(index)));
             }
         }
-
-        // supposed to be impossible, because <html> is always in scope
-
-        Ok(false)
+        Ok((false, None))
     }
 
     fn elem_in<TagSet>(&self, elem: &Handle, set: TagSet) -> bool
@@ -1167,7 +1198,27 @@ where
     where
         TagSet: Fn(ExpandedName) -> bool,
     {
-        self.in_scope(scope, |elem| self.html_elem_named(&elem, name.clone()))
+        // Reuse a negative result only while its suffix is unchanged or has
+        // grown with non-matching elements, and the remembered boundary is
+        // also a barrier under THIS scope predicate. Target matching precedes
+        // barrier matching in the canonical search above.
+        self.work(1)?;
+        if let Some((target, index)) = &*self.negative_scope.borrow() {
+            let open = self.open_elems.borrow();
+            if *target == name
+                && open
+                    .get(*index)
+                    .is_some_and(|node| scope(self.sink.elem_name(node).expanded()))
+            {
+                return Ok(false);
+            }
+        }
+        let (found, boundary) =
+            self.scope_boundary(scope, |elem| self.html_elem_named(&elem, name.clone()))?;
+        if let Some(index) = boundary {
+            *self.negative_scope.borrow_mut() = Some((name, index));
+        }
+        Ok(found)
     }
 
     /// <https://html.spec.whatwg.org/#generate-implied-end-tags>
@@ -1210,6 +1261,7 @@ where
     {
         while !self.current_node_in(&tag_set) {
             self.admission.check(Operation::TreeStep)?;
+            self.negative_scope.borrow_mut().take();
             self.open_elems.borrow_mut().pop();
         }
         Ok(())
@@ -1226,6 +1278,7 @@ where
             self.work(1)?;
             self.admission.check(Operation::TreeStep)?;
             n += 1;
+            self.negative_scope.borrow_mut().take();
             match self.open_elems.borrow_mut().pop() {
                 None => break,
                 Some(elem) => {
@@ -1675,6 +1728,7 @@ where
             // mis-nested tags
             self.unexpected(&tag)?;
         }
+        self.negative_scope.borrow_mut().take();
         self.open_elems.borrow_mut().truncate(match_idx);
         Ok(())
     }
@@ -2072,6 +2126,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
         self.process_to_completion(token)
     }
     fn end_admitted(&self) -> Result<(), A::Error> {
+        self.negative_scope.borrow_mut().take();
         for elem in self.open_elems.borrow_mut().drain(..).rev() {
             self.checked_pop(&elem)?;
         }

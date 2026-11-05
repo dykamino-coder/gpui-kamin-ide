@@ -33,11 +33,24 @@ impl ClipIds {
 }
 
 fn mentions(e: &Element, needle: &str) -> bool {
-    e.attrs.iter().any(|(_, v)| v.contains(needle))
-        || e.children.iter().any(|n| match n {
-            Node::Text(t) => t.contains(needle),
-            Node::Element(c) => mentions(c, needle),
-        })
+    let mut pending = vec![e];
+    while let Some(element) = pending.pop() {
+        if element
+            .attrs
+            .iter()
+            .any(|(_, value)| value.contains(needle))
+        {
+            return true;
+        }
+        for node in &element.children {
+            match node {
+                Node::Text(text) if text.contains(needle) => return true,
+                Node::Element(child) => pending.push(child),
+                Node::Text(_) => {}
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

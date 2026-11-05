@@ -51,6 +51,7 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<S>> TreeBuilder<H, S, A> {
         values: &std::cell::RefCell<Storage<T>>,
         value: T,
     ) -> Result<(), A::Error> {
+        self.negative_scope.borrow_mut().take();
         let mut values = values.borrow_mut();
         self.admission.reserve(&mut values, 1)?;
         values.push(value);
@@ -63,6 +64,7 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<S>> TreeBuilder<H, S, A> {
         index: usize,
         value: T,
     ) -> Result<(), A::Error> {
+        self.negative_scope.borrow_mut().take();
         let mut values = values.borrow_mut();
         self.admission.reserve(&mut values, 1)?;
         self.work(values.len() - index)?;
@@ -84,6 +86,7 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<S>> TreeBuilder<H, S, A> {
         values: &std::cell::RefCell<Storage<T>>,
         index: usize,
     ) -> Result<T, A::Error> {
+        self.negative_scope.borrow_mut().take();
         let mut values = values.borrow_mut();
         self.work(values.len() - index - 1)?;
         Ok(values.remove(index))

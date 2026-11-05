@@ -9,11 +9,17 @@ use crate::dom::{Element, Node};
 /// `</svg>` ничего не меняет — одной подстановки определения мало, единицы
 /// фильтра считаются от чужого вьюпорта (`svg-filter-primitive-units-user-space`).
 pub(super) fn subtree_has(e: &Element, tag: &str) -> bool {
-    e.tag.eq_ignore_ascii_case(tag)
-        || e.children.iter().any(|n| match n {
-            Node::Element(c) => subtree_has(c, tag),
-            _ => false,
-        })
+    let mut pending = vec![e];
+    while let Some(element) = pending.pop() {
+        if element.tag.eq_ignore_ascii_case(tag) {
+            return true;
+        }
+        pending.extend(element.children.iter().filter_map(|node| match node {
+            Node::Element(child) => Some(child),
+            Node::Text(_) => None,
+        }));
+    }
+    false
 }
 
 /// filter-effects-1 «Restrictions on filter primitives»: примитив, чей цвет
@@ -22,7 +28,15 @@ pub(super) fn subtree_has(e: &Element, tag: &str) -> bool {
 /// работать сквозным проходом. resvg о загрязнении не знает — такой примитив
 /// заменяется на `feOffset dx=0 dy=0` до сериализации (WPT tainting-*).
 pub(super) fn untaint_filters(e: &mut Element) {
-    if e.tag == "filter" {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if e.tag != "filter" {
+            pending.extend(e.children.iter_mut().filter_map(|node| match node {
+                Node::Element(child) => Some(child),
+                Node::Text(_) => None,
+            }));
+            continue;
+        }
         let mut tainted: std::collections::HashSet<String> = Default::default();
         let mut prev = false;
         for child in e.children.iter_mut() {
@@ -76,12 +90,6 @@ pub(super) fn untaint_filters(e: &mut Element) {
                 tainted.insert(r);
             }
             prev = dirty;
-        }
-        return;
-    }
-    for child in e.children.iter_mut() {
-        if let Node::Element(c) = child {
-            untaint_filters(c);
         }
     }
 }

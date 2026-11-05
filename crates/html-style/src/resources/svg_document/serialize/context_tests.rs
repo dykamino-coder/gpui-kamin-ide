@@ -52,3 +52,39 @@ fn nested_viewport_does_not_change_following_sibling() {
     assert_eq!(out.matches("translate(100 50)").count(), 2, "{out}");
     assert_eq!(out.matches("translate(40 20)").count(), 1, "{out}");
 }
+
+#[test]
+fn twenty_thousand_svg_levels_serialize_filters_and_ids_on_a_small_stack() {
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(|| {
+            let doc = DocumentValues::detached(Default::default());
+            let mut root = find(&parse("<svg><g/></svg>", ""), "g").expect("g");
+            let mut flood = root.clone();
+            flood.tag = "feFlood".into();
+            flood.attrs = vec![
+                ("flood-color".into(), "currentColor".into()),
+                ("result".into(), "map".into()),
+            ];
+            let mut map = root.clone();
+            map.tag = "feDisplacementMap".into();
+            map.attrs = vec![("in2".into(), "map".into())];
+            let mut filter = root.clone();
+            filter.tag = "filter".into();
+            filter.children = vec![Node::Element(flood), Node::Element(map)].into();
+            root.children = vec![Node::Text("kamin-clip & <".into()), Node::Element(filter)].into();
+            for _ in 0..20_000 {
+                let mut parent = root.clone();
+                parent.children = vec![Node::Element(root)].into();
+                root = parent;
+            }
+            let out = serialize(&root, doc.values());
+            assert_eq!(out.matches("</g>").count(), 20_001);
+            assert!(out.contains("kamin-clip &amp; &lt;"));
+            assert!(out.contains("<feOffset"));
+            assert!(!out.contains("<feDisplacementMap"));
+        })
+        .expect("spawn")
+        .join()
+        .expect("deep SVG");
+}

@@ -574,6 +574,7 @@ where
 
                 // FIXME: can we get here in the fragment case?
                 // What to do with the first element then?
+                self.negative_scope.borrow_mut().take();
                 self.open_elems.borrow_mut().truncate(1);
                 self.insert_element_for(tag)?;
                 self.mode.set(InsertionMode::InFrameset);
@@ -1760,6 +1761,7 @@ where
                     }
 
                     if eq {
+                        self.negative_scope.borrow_mut().take();
                         self.open_elems.borrow_mut().truncate(stack_idx);
                         return Ok(ProcessResult::Done);
                     }
