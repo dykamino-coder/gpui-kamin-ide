@@ -33,9 +33,10 @@ impl Paragraph {
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.text.as_ref().hash(&mut hasher);
-        // Lists that grow with the atoms (one spacer span and one box per
-        // atom) are hashed by their bits: formatting them made the key cost
-        // microseconds per atom on pages with tens of thousands of atoms.
+        // Lists that grow with the atoms (one spacer span, one box and style
+        // runs per atom) are hashed by their bits: formatting them made the
+        // key cost microseconds per atom on pages with tens of thousands of
+        // atoms. Float bits are at least as exact as round-trip `Debug`.
         for slot in &self.atoms {
             window.layout_stamp(slot.root.get()?)?.hash(&mut hasher);
         }
@@ -64,17 +65,50 @@ impl Paragraph {
                 (range.start, range.end, f32::from(*v).to_bits()).hash(&mut hasher);
             }
         }
+        // Style runs split at every atom spacer as well.
+        self.runs.len().hash(&mut hasher);
+        let px = |v: gpui::Pixels| f32::from(v).to_bits();
+        for run in &self.runs {
+            // Exhaustive: a new run field must be added to the key.
+            let gpui::TextRun {
+                len,
+                font,
+                color,
+                background_color,
+                font_size,
+                background_pad,
+                background_radius,
+                background_border,
+                background_line_gap,
+                underline,
+                strikethrough,
+            } = run;
+            (len, font, color, background_color).hash(&mut hasher);
+            (
+                font_size.map(px),
+                background_pad.map(px),
+                px(*background_radius),
+            )
+                .hash(&mut hasher);
+            background_border
+                .map(|(color, widths)| (color, widths.map(px)))
+                .hash(&mut hasher);
+            (background_line_gap, underline, strikethrough).hash(&mut hasher);
+        }
+        self.run_metrics.len().hash(&mut hasher);
+        for &(a, b) in &self.run_metrics {
+            (a.to_bits(), b.to_bits()).hash(&mut hasher);
+        }
+        self.spans.hash(&mut hasher);
         // `Debug` of these values is exact (floats print round-trip).
         std::fmt::write(
             &mut Sink(&mut hasher),
             format_args!(
-                "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
-                self.runs,
+                "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
                 self.font_size,
                 self.line_height,
                 self.align,
                 self.wrap,
-                self.spans,
                 self.clamp_force,
                 self.clamp_tag,
                 self.tab_stop,
@@ -82,7 +116,6 @@ impl Paragraph {
                 self.hanging,
                 self.flow,
                 self.first_strut,
-                self.run_metrics,
                 (self.strut, self.strut_box),
                 (self.lines_reversed, self.ruby_trim),
             ),
