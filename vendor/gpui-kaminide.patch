@@ -17676,7 +17676,7 @@ index 0000000000000000000000000000000000000000..d13d375c15faff747805f0136f4dfee1
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cfce956339545783bf073dc67ff9d646d62484ab
+index 0000000000000000000000000000000000000000..30ae8d0ef2663ebf04847b616ad0eb471e8df896
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
 @@ -0,0 +1,113 @@
@@ -17769,7 +17769,7 @@ index 0000000000000000000000000000000000000000..cfce956339545783bf073dc67ff9d646
 +    let mut engine = TaffyLayoutEngine::new();
 +    // More distinct styles than sharing candidates: the first one is forgotten.
 +    let first = leaf(&mut engine, 0.);
-+    for width in 1..=9 {
++    for width in 1..=super::style_share::CANDIDATES {
 +        leaf(&mut engine, width as f32);
 +    }
 +    let old = engine.taffy.shared_style(first.0).unwrap();
@@ -18199,7 +18199,7 @@ index 0000000000000000000000000000000000000000..e8bbbe7f0617c6adf091efe0ad4353a4
 +}
 diff --git a/vendor/gpui/src/taffy/style_share.rs b/vendor/gpui/src/taffy/style_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4a8ccd8b3434e4ad6d705bc2fc1e61b4da63d37e
+index 0000000000000000000000000000000000000000..b916c17719e47aa5a2127e5edbeef1df524e734e
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/style_share.rs
 @@ -0,0 +1,202 @@
@@ -18226,7 +18226,7 @@ index 0000000000000000000000000000000000000000..4a8ccd8b3434e4ad6d705bc2fc1e61b4
 +
 +/// Distinct recent styles kept as sharing candidates; as many as the refinement candidates
 +/// (`refinement_share`), so a converted refinement stays until its refinement is replaced.
-+const CANDIDATES: usize = 32;
++pub(super) const CANDIDATES: usize = 32;
 +
 +#[derive(Default)]
 +pub(super) struct StyleShare {

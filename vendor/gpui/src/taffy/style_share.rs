@@ -21,7 +21,7 @@ use taffy::{SharedStyle, Style};
 
 /// Distinct recent styles kept as sharing candidates; as many as the refinement candidates
 /// (`refinement_share`), so a converted refinement stays until its refinement is replaced.
-const CANDIDATES: usize = 32;
+pub(super) const CANDIDATES: usize = 32;
 
 #[derive(Default)]
 pub(super) struct StyleShare {
