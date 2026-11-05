@@ -108,7 +108,7 @@ impl PageStack {
         let mut streams = Streams::new(inputs)?;
         let mut index = 0;
         while index < context.count || streams.needs_space() {
-            self.refresh_fixed_async(&sources, context, index, &mut streams, window, cx, stack)
+            self.refresh_fixed_async(&sources, context, (index, &mut streams), window, cx, stack)
                 .await?;
             let batch = streams.resume(
                 index,

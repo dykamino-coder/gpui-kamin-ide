@@ -50,8 +50,7 @@ pub(crate) async fn collect_async(
     collect_in(
         Children::Elements(kids),
         parent,
-        width,
-        None,
+        (width, None),
         opts,
         window,
         cx,
@@ -72,8 +71,7 @@ pub(crate) async fn collect_paged_async(
     collect_in(
         Children::Nodes(kids),
         parent,
-        page.0.0,
-        Some((page.0.1, page.1)),
+        (page.0.0, Some((page.0.1, page.1))),
         opts,
         window,
         cx,
@@ -108,11 +106,12 @@ impl Children<'_> {
     }
 }
 
+type SourceSpace<'a> = (f32, Option<(f32, &'a dyn Fn() -> Div)>);
+
 async fn collect_in(
     kids: Children<'_>,
     parent: &BoxStyle,
-    width: f32,
-    page: Option<(f32, &dyn Fn() -> Div)>,
+    (width, page): SourceSpace<'_>,
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,

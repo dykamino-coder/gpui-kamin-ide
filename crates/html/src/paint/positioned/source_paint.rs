@@ -42,6 +42,10 @@ impl Hooks for SourcePaint {
     type Layout = ();
     type Prepaint = ();
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     async fn request_layout_async(
         &mut self,
         window: &mut Window,
@@ -59,6 +63,10 @@ impl Hooks for SourcePaint {
         (layout, ())
     }
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     async fn prepaint_async(
         &mut self,
         _: Bounds<Pixels>,
@@ -94,6 +102,10 @@ impl Hooks for SourcePaint {
         crate::hooks::paint_on_stack(self, bounds, layout, prepaint, window, cx);
     }
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     fn paint_async<'a>(
         &'a mut self,
         _bounds: Bounds<Pixels>,

@@ -5,11 +5,13 @@ use crate::layout::layout_state::LayoutState;
 use gpui::{Bounds, Pixels, px};
 use std::rc::Rc;
 
+type TransformStack = Vec<(u32, [[f32; 3]; 2])>;
+
 /// Окружение исходного слоя для работы, завершённой у ICB в том же кадре.
 #[derive(Clone)]
 pub(crate) struct TransformContext {
     layout: Rc<LayoutState>,
-    stack: Vec<(u32, [[f32; 3]; 2])>,
+    stack: TransformStack,
 }
 
 impl TransformContext {
@@ -20,10 +22,7 @@ impl TransformContext {
 
     pub(crate) async fn enter_async<R>(&self, f: impl AsyncFnOnce() -> R) -> R {
         let tf = &self.layout.anchors.tf;
-        struct Restore<'a>(
-            &'a std::cell::RefCell<Vec<(u32, [[f32; 3]; 2])>>,
-            Vec<(u32, [[f32; 3]; 2])>,
-        );
+        struct Restore<'a>(&'a std::cell::RefCell<TransformStack>, TransformStack);
         impl Drop for Restore<'_> {
             fn drop(&mut self) {
                 self.0.replace(std::mem::take(&mut self.1));

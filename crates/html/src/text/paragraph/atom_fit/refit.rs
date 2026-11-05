@@ -4,6 +4,10 @@ use super::*;
 
 impl Paragraph {
     /// Prepaint: lay the real atoms out at the width the measurement used.
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     pub(in crate::text::paragraph) async fn refit_atoms(
         &mut self,
         avail: f32,

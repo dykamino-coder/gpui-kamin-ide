@@ -9,11 +9,14 @@
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
 
+#[expect(
+    clippy::await_holding_refcell_ref,
+    reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+)]
 pub(crate) async fn measured_layout(
     probe: &mut Paragraph,
     atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
-    known: gpui::Size<Option<Pixels>>,
-    available: gpui::Size<gpui::AvailableSpace>,
+    (known, available): (gpui::Size<Option<Pixels>>, gpui::Size<gpui::AvailableSpace>),
     normal_static: &super::normal_static::NormalStatic,
     window: &mut Window,
     _cx: &mut App,

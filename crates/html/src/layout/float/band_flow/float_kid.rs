@@ -80,7 +80,7 @@ pub(super) async fn place_float(
         let walls = bands.set_walls(x0, x1);
         let shapes = bands.shapes(y);
         bands.set_walls(walls.0, walls.1);
-        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), None, p, stack)
+        probe_of(Kind::Flow, b, (cbw, cbw), Some(shapes), None, p, stack)
             .await
             .1
     };

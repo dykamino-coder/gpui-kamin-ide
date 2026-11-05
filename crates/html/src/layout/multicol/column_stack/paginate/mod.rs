@@ -65,7 +65,7 @@ impl ColumnStack {
         let mut struts: Struts = Struts::new();
         let ok = 'solve: {
             let Some(geoms) = self
-                .lay_out_async(i, &p, n, &struts, window, cx, stack)
+                .lay_out_async(i, &p, (n, &struts), window, cx, stack)
                 .await
             else {
                 break 'solve false;
@@ -116,7 +116,7 @@ impl ColumnStack {
                 let mut shortage = f32::MAX;
                 for _ in 0..INNER {
                     let Some(geoms) = self
-                        .lay_out_async(i, &p, n, &struts, window, cx, stack)
+                        .lay_out_async(i, &p, (n, &struts), window, cx, stack)
                         .await
                     else {
                         break 'solve false;

@@ -1,15 +1,10 @@
 //! `prepaint` абзаца: округление, подбор кегля, атомы, строки, куски вне потока, выделение.
 
 use crate::text::paragraph::*;
-use gpui::{
-    App, Bounds, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, point, px,
-};
+use gpui::{App, Bounds, Hitbox, HitboxBehavior, IntoElement, LayoutId, Pixels, Window, point, px};
 impl Paragraph {
     pub(crate) async fn prepaint_impl(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         state: &mut LayoutId,
         window: &mut Window,

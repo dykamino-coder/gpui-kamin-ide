@@ -129,8 +129,7 @@ mod tests {
                             super::super::probe_of(
                                 super::super::Kind::Flow,
                                 &build,
-                                100.,
-                                100.,
+                                (100., 100.),
                                 None,
                                 None,
                                 &mut probe,

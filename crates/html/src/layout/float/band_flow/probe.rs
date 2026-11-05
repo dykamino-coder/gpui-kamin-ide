@@ -26,8 +26,7 @@ pub(super) async fn probe(
     let size = probe_of(
         kid.kind,
         &kid.build,
-        cb,
-        avail,
+        (cb, avail),
         shapes,
         kid.watched.as_deref(),
         p,
@@ -44,8 +43,7 @@ pub(super) async fn probe(
 pub(super) async fn probe_of(
     kind: Kind,
     build: &Build,
-    cb: f32,
-    avail: f32,
+    (cb, avail): (f32, f32),
     shapes: Option<Shapes>,
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
     p: &mut Probe<'_>,
@@ -54,11 +52,11 @@ pub(super) async fn probe_of(
     // Готовое дерево плана живёт до paint; только числовая проба может
     // освобождать свои элементы сразу после измерения.
     if p.engine.is_some() {
-        probe_layout(kind, build, cb, avail, shapes, watched, p, stack).await
+        probe_layout(kind, build, (cb, avail), shapes, watched, p, stack).await
     } else {
         p.temporary_layout(stack, async |p, stack| {
             stack
-                .run(|stack| probe_layout(kind, build, cb, avail, shapes, watched, p, stack))
+                .run(|stack| probe_layout(kind, build, (cb, avail), shapes, watched, p, stack))
                 .await
         })
         .await
@@ -68,8 +66,7 @@ pub(super) async fn probe_of(
 async fn probe_layout(
     kind: Kind,
     build: &Build,
-    cb: f32,
-    avail: f32,
+    (cb, avail): (f32, f32),
     shapes: Option<Shapes>,
     watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
     p: &mut Probe<'_>,

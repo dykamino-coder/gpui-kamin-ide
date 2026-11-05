@@ -44,6 +44,10 @@ impl Native {
             .finish()
     }
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     pub(crate) async fn prepaint_async(
         &self,
         segments: Rc<[PaintSegment]>,
@@ -90,6 +94,10 @@ impl Native {
             .finish()
     }
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     pub(crate) async fn record_async(
         &self,
         window: &mut Window,

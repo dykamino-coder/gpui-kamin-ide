@@ -28,8 +28,6 @@ impl Resizable {
     }
     pub(super) async fn prepaint_on_stack(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         child: &mut AnyElement,
         window: &mut Window,

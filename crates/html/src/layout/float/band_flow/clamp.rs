@@ -50,6 +50,6 @@ pub(super) async fn nest(
     let build = kid.build.clone();
     let build: super::Build =
         Rc::new(move |cb, avail, shapes, _, inline| build(cb, avail, shapes, Some(h), inline));
-    super::probe_of(kid.kind, &build, cb, avail, None, None, p, stack).await;
+    super::probe_of(kid.kind, &build, (cb, avail), None, None, p, stack).await;
     (p.last_clamp.clone(), p.last_prepared.clone())
 }

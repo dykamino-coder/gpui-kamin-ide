@@ -46,9 +46,7 @@ impl Element for Paragraph {
         _cx: &mut App,
     ) -> Option<Hitbox> {
         reblessive::Stack::new()
-            .enter(|stack| {
-                self.prepaint_impl(_id, _inspector_id, bounds, state, window, _cx, stack)
-            })
+            .enter(|stack| self.prepaint_impl(bounds, state, window, _cx, stack))
             .finish()
     }
 
@@ -65,15 +63,15 @@ impl Element for Paragraph {
 
     fn prepaint_async<'a>(
         &'a mut self,
-        id: Option<&'a GlobalElementId>,
-        inspector: Option<&'a InspectorElementId>,
+        _id: Option<&'a GlobalElementId>,
+        _inspector: Option<&'a InspectorElementId>,
         bounds: Bounds<Pixels>,
         state: &'a mut LayoutId,
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a, Option<Hitbox>> {
-        Box::pin(self.prepaint_impl(id, inspector, bounds, state, window, cx, stack))
+        Box::pin(self.prepaint_impl(bounds, state, window, cx, stack))
     }
 
     fn paint(

@@ -208,8 +208,7 @@ impl Paragraph {
                 measured_layout(
                     probe,
                     atom_fit.clone(),
-                    known,
-                    available,
+                    (known, available),
                     &normal_static,
                     window,
                     _cx,

@@ -101,7 +101,7 @@ impl Element for Selectable {
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a, Hitbox> {
-        Box::pin(self.prepaint_on_stack(_id, _inspector_id, bounds, child, window, cx, stack))
+        Box::pin(self.prepaint_on_stack(bounds, child, window, cx, stack))
     }
 
     fn paint(

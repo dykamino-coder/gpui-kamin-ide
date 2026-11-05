@@ -17,6 +17,10 @@ struct Layer(Rc<RefCell<AnyElement>>);
 impl Hooks for Layer {
     type Layout = ();
     type Prepaint = ();
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     async fn request_layout_async(
         &mut self,
         window: &mut Window,
@@ -31,6 +35,10 @@ impl Hooks for Layer {
             (),
         )
     }
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     async fn prepaint_async(
         &mut self,
         _: Bounds<Pixels>,
@@ -52,6 +60,10 @@ impl Hooks for Layer {
         crate::hooks::paint_on_stack(self, _bounds, _layout, _prepaint, window, cx);
     }
 
+    #[expect(
+        clippy::await_holding_refcell_ref,
+        reason = "exclusive slot access spans same-thread PaintStack child polls; no executor yield"
+    )]
     fn paint_async<'a>(
         &'a mut self,
         _bounds: Bounds<Pixels>,
