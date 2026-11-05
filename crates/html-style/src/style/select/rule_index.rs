@@ -6,7 +6,9 @@ use crate::style::css::{Rule, Selector};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+mod sharing_facts;
 mod storage;
+pub use sharing_facts::{SharingFacts, positional_text};
 
 struct Candidates {
     rules: Vec<usize>,
@@ -81,6 +83,8 @@ pub struct RuleIndex {
     universal: Bucket,
     ancestors: Vec<Bloom>,
     pub link_state: Vec<bool>,
+    /// Решения правил для разделения стиля между элементами.
+    pub sharing: Vec<SharingFacts>,
     _lease: Option<crate::budget::LiveReservation>,
 }
 
@@ -101,12 +105,16 @@ impl RuleIndex {
             universal: Bucket::default(),
             ancestors: Vec::new(),
             link_state: Vec::new(),
+            sharing: Vec::new(),
             _lease: admission.storage(bytes)?,
         };
         out.ancestors
             .try_reserve_exact(rules.len())
             .map_err(|_| Error::Allocation)?;
         out.link_state
+            .try_reserve_exact(rules.len())
+            .map_err(|_| Error::Allocation)?;
+        out.sharing
             .try_reserve_exact(rules.len())
             .map_err(|_| Error::Allocation)?;
         for (i, rule) in rules.iter().enumerate() {
@@ -127,6 +135,7 @@ impl RuleIndex {
             bucket.rules.push(i);
             out.ancestors.push(Bloom::requirements(&rule.sel));
             out.link_state.push(mentions_link_state(&rule.sel));
+            out.sharing.push(SharingFacts::of(rule));
         }
         Ok(out)
     }
