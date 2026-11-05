@@ -6099,6 +6099,16 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: the next measured leaf request has a constant measure
+    /// of `class`: a function that reads nothing, the same for every leaf of
+    /// the class. Such a leaf keeps the previous leaf of its class and style at
+    /// its request position, without a key or any side table.
+    pub fn set_next_layout_constant(&mut self, class: std::num::NonZeroU16) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_next_layout_constant(class);
+        }
+    }
+
     /// KaminIDE patch: layout nodes the frame tree kept from previous passes.
     pub fn claimed_layout_nodes(&self) -> u64 {
         self.layout_engine

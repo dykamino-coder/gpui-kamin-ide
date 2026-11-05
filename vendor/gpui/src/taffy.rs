@@ -86,7 +86,21 @@ struct NodeContext {
     layout_lines: Option<Vec<Pixels>>,
     layout_lines_x: Option<Vec<Pixels>>,
     layout_lines_x_from_right: bool,
+    /// KaminIDE patch: index of this keyed leaf in its key's candidate list
+    /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
+    key_slot: u32,
+    /// KaminIDE patch: class of a constant measure (`set_next_layout_constant`),
+    /// 0 for any other leaf. Lives in the struct's padding.
+    constant: u16,
 }
+
+// The retained-tree fields above fill padding: every node of the frame tree has
+// a context slot (a dense secondary map), so a larger context costs every node.
+const _: () = assert!(
+    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
+        || std::mem::size_of::<usize>() != 8
+);
+
 pub struct TaffyLayoutEngine {
     final_geometry: final_geometry::FinalGeometry,
     taffy: TaffyTree<NodeContext>,
@@ -270,7 +284,16 @@ impl TaffyLayoutEngine {
     /// must cover everything the leaf's measure function reads (`retained`).
     pub fn set_next_layout_key(&mut self, key: u64) {
         if self.retained.keys_enabled {
-            self.retained.next_key = Some(key);
+            self.retained.next_key = Some(retained::LeafKey::Key(key));
+        }
+    }
+
+    /// KaminIDE patch: the next measured leaf request has a constant measure of
+    /// `class`: its outputs depend on nothing but the class and the style, so
+    /// it keeps the previous leaf of that class at its request position.
+    pub fn set_next_layout_constant(&mut self, class: std::num::NonZeroU16) {
+        if self.retained.keys_enabled {
+            self.retained.next_key = Some(retained::LeafKey::Constant(class));
         }
     }
 
