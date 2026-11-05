@@ -3,18 +3,20 @@
 //!
 //! A record used to keep a copy of the block's element: its tag, attribute
 //! strings and marks per block, thousands of copies on a long page of
-//! paragraphs of a few classes. Boxes with equal values share one shell
-//! instead (an element without children and node id), so a record holds its
-//! node id and two pointers into data the frame tree shares anyway: the shell
-//! and the child list snapshot.
+//! paragraphs of a few classes. Boxes of one kind share one shell instead (an
+//! element without children and node id, `dom::same_shell`); the style stages
+//! are the box's own (a computed style knows its node), so a record holds its
+//! node id and pointers into data the frame tree shares anyway: the shell,
+//! the style stages and the child list snapshot.
 
-use crate::dom::{Children, Element};
+use crate::dom::{BoxStyles, Children, Element};
 use std::rc::Rc;
 
 /// The comparison input of one block record.
 pub(crate) struct Source {
     id: u64,
     shell: Rc<Element>,
+    styles: BoxStyles,
     children: Children,
 }
 
@@ -25,7 +27,8 @@ impl Source {
 
     /// The subtree of `e` carries the recorded values throughout.
     pub(super) fn same(&self, e: &Element) -> bool {
-        self.id == e.node_id && crate::dom::same_tree_as(&self.shell, &self.children, e)
+        self.id == e.node_id
+            && crate::dom::same_tree_as(&self.shell, &self.styles, &self.children, e)
     }
 
     /// The recorded element, for tests.
@@ -34,7 +37,7 @@ impl Source {
         Element {
             node_id: self.id,
             children: self.children.clone(),
-            ..(*self.shell).clone()
+            ..self.styles.apply(&self.shell)
         }
     }
 }
@@ -51,7 +54,7 @@ impl Shells {
     pub(super) fn source(&self, e: &Element) -> Source {
         // Shells hold styles: the list changes whole, without a `&mut` on them.
         let mut recent = self.0.take();
-        let shell = match recent.iter().find(|s| crate::dom::same_values(s, e)) {
+        let shell = match recent.iter().find(|s| crate::dom::same_shell(s, e)) {
             Some(shell) => shell.clone(),
             None => {
                 let shell = Rc::new(Element {
@@ -70,6 +73,7 @@ impl Shells {
         Source {
             id: e.node_id,
             shell,
+            styles: BoxStyles::of(e),
             children: e.children.clone(),
         }
     }
@@ -105,5 +109,20 @@ mod tests {
         assert!(!sb.same(&para(2, "t1", "twp")), "changed text");
         assert!(!sc.same(&para(3, "t1", "one")), "changed attribute");
         assert!(crate::dom::same_tree(&sb.element(), &b));
+        // A style knows its node: boxes of one kind share the shell anyway.
+        let mut d = para(4, "t1", "one");
+        d.style = Computed {
+            decor_box: 4,
+            ..Computed::default()
+        }
+        .into();
+        let sd = shells.source(&d);
+        assert!(Rc::ptr_eq(&sa.shell, &sd.shell), "own styles, same shell");
+        let restyled = Element {
+            style: a.style.clone(),
+            ..d.clone()
+        };
+        assert!(sd.same(&d) && !sd.same(&restyled), "changed style");
+        assert!(crate::dom::same_tree(&sd.element(), &d));
     }
 }
