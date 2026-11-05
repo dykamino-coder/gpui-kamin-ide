@@ -64,3 +64,12 @@ pub(super) async fn fill_pieces_async(
     .await?;
     Ok(())
 }
+
+/// Повторяемый подвал занимает остаток фрагмента, когда подвал зарезервирован.
+pub(super) fn foot_height(room_all: f32, height: f32, reserved: f32) -> f32 {
+    if reserved > 0.0 {
+        (room_all - height).max(reserved)
+    } else {
+        0.0
+    }
+}

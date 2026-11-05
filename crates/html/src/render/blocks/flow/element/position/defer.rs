@@ -167,17 +167,7 @@ pub(super) fn defer(
             child
         }
     };
-    let vcx = opts.cx.vcx();
-    let mut dependency_style = box_style(&base_inherited, &e.style, vcx);
-    dependency_style.self_node = e.node_id;
-    dependency_style.anchor_key = key_of(e);
-    dependency_style.anchor_seq = base_opts.cx.anchor_seq_for(e);
-    let dependencies = crate::layout::positioned::anchor::Dependencies::of(
-        &dependency_style,
-        &base_inherited,
-        vcx,
-        opts.cx.layout(),
-    );
+    let dependencies = dependencies::of(e, &base_inherited, &base_opts, opts);
     let kid = if no_fallbacks {
         OofKid::Deferred(
             Box::new(move |bounds, window, _cx| {
@@ -249,3 +239,5 @@ pub(super) fn defer(
     }
     true
 }
+
+mod dependencies;

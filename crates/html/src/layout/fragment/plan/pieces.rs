@@ -77,13 +77,7 @@ pub(super) async fn fill_pieces_inner_async(
         let rf = rg.foot_for(from, room);
         let (room_all, room) = (room, room - rf);
         // Непоследний фрагмент тянется до края (css-break-3 §box-splitting).
-        let ft = |h: f32| {
-            if rf > 0.0 {
-                (room_all - h).max(rf)
-            } else {
-                0.0
-            }
-        };
+        let ft = |h: f32| super::piece::foot_height(room_all, h, rf);
         // Forced перед коробкой, включая нулевую в конце (`BlockBreaks::finish`),
         // выигрывает у любого непринудительного кандидата.
         let forced = k
