@@ -171,7 +171,6 @@ impl FlowCx {
             return None;
         }
         record.end.write(&opts.cx);
-        record.refresh(self.reuse.shells.source(e));
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
