@@ -15053,7 +15053,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..84536b82961e1f7f7ca6be3f377a83cbcfc400ff
+index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d639fda269
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15259,7 +15259,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..84536b82961e1f7f7ca6be3f377a83cb
 +    #[cfg(feature = "block_layout")]
 +    let flow = style.block_flow();
 +    #[cfg(feature = "block_layout")]
-+    let inline_space = if flow.is_some_and(|flow| flow.vertical) {
++    let inline_space = if !inline && flow.is_some_and(|flow| flow.vertical) {
 +        available_space.height
 +    } else {
 +        available_space.width
@@ -22539,10 +22539,10 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/inline_layout_tests.rs b/vendor/taffy/src/tree/inline_layout_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b92486139b8e4e5fb935b52cd50f27c1c5bc342b
+index 0000000000000000000000000000000000000000..32b5417f99a3ef5660a96666468767ee09245e9b
 --- /dev/null
 +++ b/vendor/taffy/src/tree/inline_layout_tests.rs
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,102 @@
 +//! Контракт атомарной коробки: реальные поля, ограничения и baseline без flex-родителя.
 +
 +use super::*;
@@ -22624,6 +22624,26 @@ index 0000000000000000000000000000000000000000..b92486139b8e4e5fb935b52cd50f27c1
 +    // A repeated performed pass must retain descendant geometry and output.
 +    tree.compute_inline_with_measure(node, available, |_, _, _, _| panic!("performed layout should be cached")).unwrap();
 +    assert_eq!(tree.layout(node).unwrap().size.width, 36.0);
++}
++
++#[cfg(feature = "block_layout")]
++#[test]
++fn orthogonal_atomic_edges_keep_the_containing_blocks_percentage_basis() {
++    let mut tree = TaffyTree::<()>::new();
++    tree.disable_rounding();
++    let node = tree.new_leaf(Style {
++        block_flow: Some(crate::BlockFlow { vertical: true, ..Default::default() }),
++        margin: percent(0.1),
++        padding: percent(0.02),
++        ..Default::default()
++    }).unwrap();
++    let available = Size { width: AvailableSpace::Definite(100.0), height: AvailableSpace::MaxContent };
++    tree.compute_inline_with_measure(node, available, |inputs, _, _, style| measured(inputs, style)).unwrap();
++    let layout = tree.layout(node).unwrap();
++    assert_eq!(layout.margin, Rect { left: 10.0, right: 10.0, top: 10.0, bottom: 10.0 });
++    assert_eq!(layout.padding, Rect { left: 2.0, right: 2.0, top: 2.0, bottom: 2.0 });
++    assert_eq!(layout.location, Point { x: 10.0, y: 10.0 });
++    assert_eq!(layout.size, Size { width: 64.0, height: 24.0 });
 +}
 diff --git a/vendor/taffy/src/tree/kamin_calc.rs b/vendor/taffy/src/tree/kamin_calc.rs
 new file mode 100644

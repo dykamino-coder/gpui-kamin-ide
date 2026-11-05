@@ -80,3 +80,23 @@ fn shrink_to_fit_relayout_keeps_box_sizing_and_baselines() {
     tree.compute_inline_with_measure(node, available, |_, _, _, _| panic!("performed layout should be cached")).unwrap();
     assert_eq!(tree.layout(node).unwrap().size.width, 36.0);
 }
+
+#[cfg(feature = "block_layout")]
+#[test]
+fn orthogonal_atomic_edges_keep_the_containing_blocks_percentage_basis() {
+    let mut tree = TaffyTree::<()>::new();
+    tree.disable_rounding();
+    let node = tree.new_leaf(Style {
+        block_flow: Some(crate::BlockFlow { vertical: true, ..Default::default() }),
+        margin: percent(0.1),
+        padding: percent(0.02),
+        ..Default::default()
+    }).unwrap();
+    let available = Size { width: AvailableSpace::Definite(100.0), height: AvailableSpace::MaxContent };
+    tree.compute_inline_with_measure(node, available, |inputs, _, _, style| measured(inputs, style)).unwrap();
+    let layout = tree.layout(node).unwrap();
+    assert_eq!(layout.margin, Rect { left: 10.0, right: 10.0, top: 10.0, bottom: 10.0 });
+    assert_eq!(layout.padding, Rect { left: 2.0, right: 2.0, top: 2.0, bottom: 2.0 });
+    assert_eq!(layout.location, Point { x: 10.0, y: 10.0 });
+    assert_eq!(layout.size, Size { width: 64.0, height: 24.0 });
+}

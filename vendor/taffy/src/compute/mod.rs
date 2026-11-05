@@ -207,7 +207,7 @@ fn compute_in_flow_root_layout(
     #[cfg(feature = "block_layout")]
     let flow = style.block_flow();
     #[cfg(feature = "block_layout")]
-    let inline_space = if flow.is_some_and(|flow| flow.vertical) {
+    let inline_space = if !inline && flow.is_some_and(|flow| flow.vertical) {
         available_space.height
     } else {
         available_space.width
