@@ -119,7 +119,7 @@ mod tests {
         let sd = shells.source(&d);
         assert!(Rc::ptr_eq(&sa.shell, &sd.shell), "own styles, same shell");
         let restyled = Element {
-            style: a.style.clone(),
+            style: a.style,
             ..d.clone()
         };
         assert!(sd.same(&d) && !sd.same(&restyled), "changed style");
