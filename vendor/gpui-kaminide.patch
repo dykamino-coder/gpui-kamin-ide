@@ -15542,10 +15542,10 @@ index 0000000000000000000000000000000000000000..89000146dbb60f38d82c29c3230d4f1b
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/content_line/tests.rs b/vendor/gpui/src/taffy/content_line/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..36d44568b6a7f06b8be83685b509b3a2d8c6c0c2
+index 0000000000000000000000000000000000000000..eaa10fc42aebe370dd41c6bc768dc79aa45ad1ee
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/content_line/tests.rs
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,94 @@
 +//! Запрос готового дерева пропускает пустой блок и внепоточных детей.
 +use super::*;
 +use std::{cell::RefCell, rc::Rc};
@@ -15563,6 +15563,8 @@ index 0000000000000000000000000000000000000000..36d44568b6a7f06b8be83685b509b3a2
 +        layout_lines: None,
 +        layout_lines_x: None,
 +        layout_lines_x_from_right: false,
++        key_slot: crate::taffy::retained::NO_SLOT,
++        constant: 0,
 +    };
 +    let empty = tree
 +        .new_leaf(taffy::Style {
@@ -17667,10 +17669,10 @@ index 0000000000000000000000000000000000000000..7359e84deacacebd6ec4a7dcd621574e
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..91a07c71c85dc5ac6c70355321ba51cc1c058b4a
+index 0000000000000000000000000000000000000000..b6865d19c93782c10fabf7016430d4686e695402
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,248 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -17899,18 +17901,23 @@ index 0000000000000000000000000000000000000000..91a07c71c85dc5ac6c70355321ba51cc
 +    let a = leaf(&mut engine, 10.);
 +    let p = parent(&mut engine, &[a]);
 +    let stamp = engine.layout_stamp(p);
-+    let plain = parent(&mut engine, &[leaf(&mut engine, 5.)]);
++    let l = leaf(&mut engine, 5.);
++    let plain = parent(&mut engine, &[l]);
 +    engine.clear();
 +    // Changed subtrees: the stamped parent is not recycled, the plain one is.
-+    let p2 = parent(&mut engine, &[leaf(&mut engine, 30.)]);
-+    let q2 = parent(&mut engine, &[leaf(&mut engine, 6.)]);
++    let l = leaf(&mut engine, 30.);
++    let p2 = parent(&mut engine, &[l]);
++    let l = leaf(&mut engine, 6.);
++    let q2 = parent(&mut engine, &[l]);
 +    assert_ne!(p2, p);
 +    assert_eq!(q2, plain);
 +    assert_ne!(engine.layout_stamp(p2), stamp);
 +    engine.clear();
 +    // The swept stamped node's id never comes back.
 +    for _ in 0..4 {
-+        let n = parent(&mut engine, &[leaf(&mut engine, 7.)]);
++        let l = leaf(&mut engine, 7.);
++        let n = parent(&mut engine, &[l]);
++        engine.clear();
 +        assert_ne!(engine.layout_stamp(n), stamp);
 +    }
 +}

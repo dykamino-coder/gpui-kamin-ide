@@ -226,18 +226,23 @@ fn a_stamped_node_is_never_reused_for_another_subtree() {
     let a = leaf(&mut engine, 10.);
     let p = parent(&mut engine, &[a]);
     let stamp = engine.layout_stamp(p);
-    let plain = parent(&mut engine, &[leaf(&mut engine, 5.)]);
+    let l = leaf(&mut engine, 5.);
+    let plain = parent(&mut engine, &[l]);
     engine.clear();
     // Changed subtrees: the stamped parent is not recycled, the plain one is.
-    let p2 = parent(&mut engine, &[leaf(&mut engine, 30.)]);
-    let q2 = parent(&mut engine, &[leaf(&mut engine, 6.)]);
+    let l = leaf(&mut engine, 30.);
+    let p2 = parent(&mut engine, &[l]);
+    let l = leaf(&mut engine, 6.);
+    let q2 = parent(&mut engine, &[l]);
     assert_ne!(p2, p);
     assert_eq!(q2, plain);
     assert_ne!(engine.layout_stamp(p2), stamp);
     engine.clear();
     // The swept stamped node's id never comes back.
     for _ in 0..4 {
-        let n = parent(&mut engine, &[leaf(&mut engine, 7.)]);
+        let l = leaf(&mut engine, 7.);
+        let n = parent(&mut engine, &[l]);
+        engine.clear();
         assert_ne!(engine.layout_stamp(n), stamp);
     }
 }
