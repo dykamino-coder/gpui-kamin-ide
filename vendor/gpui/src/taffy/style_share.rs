@@ -19,15 +19,21 @@ use crate::{Pixels, StyleRefinement};
 use std::rc::Rc;
 use taffy::{SharedStyle, Style};
 
-/// Distinct recent styles kept as sharing candidates.
-const CANDIDATES: usize = 8;
+/// Distinct recent styles kept as sharing candidates. A miss compares the 1 KiB style with
+/// every candidate, so this ring stays short: equal styles mostly arrive through the
+/// conversion share below, which compares pointers only.
+pub(super) const CANDIDATES: usize = 8;
+
+/// Converted refinements kept, as many as the refinement candidates (`refinement_share`), so
+/// a converted refinement stays until its refinement is replaced. A lookup compares pointers.
+const CONVERTED: usize = 32;
 
 #[derive(Default)]
 pub(super) struct StyleShare {
     recent: [Option<SharedStyle>; CANDIDATES],
     /// Slot of the next new candidate; the newest candidate sits just before it.
     next: usize,
-    converted: [Option<Converted>; CANDIDATES],
+    converted: [Option<Converted>; CONVERTED],
     /// Slot of the next converted refinement.
     next_converted: usize,
 }
@@ -84,7 +90,7 @@ impl StyleShare {
             scale_factor,
             style: style.clone(),
         });
-        self.next_converted = (self.next_converted + 1) % CANDIDATES;
+        self.next_converted = (self.next_converted + 1) % CONVERTED;
         style
     }
 
@@ -167,6 +173,23 @@ mod tests {
         assert_eq!(*scaled, sized(3.0));
         assert_eq!(*rem, sized(4.0));
         assert_eq!(conversions, 3);
+    }
+
+    #[test]
+    fn a_row_of_24_refinements_is_converted_once() {
+        // Rows of 24 paint variants (selectors-3200) repeat: the second row converts nothing.
+        let mut share = StyleShare::default();
+        let row: Vec<_> = (0..24).map(|_| Rc::new(StyleRefinement::default())).collect();
+        let mut conversions = 0;
+        for _ in 0..2 {
+            for refinement in &row {
+                share.share_refinement(refinement, Pixels(16.0), 1.0, || {
+                    conversions += 1;
+                    sized(1.0)
+                });
+            }
+        }
+        assert_eq!(conversions, 24);
     }
 
     #[test]

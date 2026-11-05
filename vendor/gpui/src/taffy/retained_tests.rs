@@ -87,7 +87,7 @@ fn a_kept_node_takes_the_shared_style_of_its_pass() {
     let mut engine = TaffyLayoutEngine::new();
     // More distinct styles than sharing candidates: the first one is forgotten.
     let first = leaf(&mut engine, 0.);
-    for width in 1..=9 {
+    for width in 1..=super::style_share::CANDIDATES {
         leaf(&mut engine, width as f32);
     }
     let old = engine.taffy.shared_style(first.0).unwrap();
