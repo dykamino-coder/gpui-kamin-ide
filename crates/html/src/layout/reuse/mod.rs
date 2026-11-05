@@ -35,7 +35,7 @@ mod width;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
-use frame::{SNAP, placed, scaled};
+use frame::{placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
 pub(crate) use placeholder::Replay;
