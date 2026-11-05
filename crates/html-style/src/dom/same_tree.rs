@@ -27,7 +27,10 @@ fn same_shape(a: &Element, b: &Element) -> bool {
         (Some(x), Some(y)) => Rc::ptr_eq(x, y),
         _ => false,
     };
-    anim && a.list_item == b.list_item && a.inline == b.inline && a.tag == b.tag && a.attrs == b.attrs
+    anim && a.list_item == b.list_item
+        && a.inline == b.inline
+        && a.tag == b.tag
+        && a.attrs == b.attrs
 }
 
 /// Marks and style stages, which may compare field by field.
@@ -140,7 +143,11 @@ mod tests {
         let mut shell = a.clone();
         shell.node_id = 0;
         assert!(same_tree_as(&shell, &a.children, &a));
-        assert!(!same_tree_as(&shell, &block(vec![text("onf")]).children, &a));
+        assert!(!same_tree_as(
+            &shell,
+            &block(vec![text("onf")]).children,
+            &a
+        ));
         let mut other = a.clone();
         other.tag = "p".into();
         assert!(!same_tree_as(&other, &a.children, &a));

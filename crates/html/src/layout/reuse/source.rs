@@ -92,7 +92,11 @@ mod tests {
     #[test]
     fn equal_boxes_share_one_shell_and_each_source_matches_only_its_block() {
         let shells = Shells::default();
-        let (a, b, c) = (para(1, "t1", "one"), para(2, "t1", "two"), para(3, "t2", "one"));
+        let (a, b, c) = (
+            para(1, "t1", "one"),
+            para(2, "t1", "two"),
+            para(3, "t2", "one"),
+        );
         let (sa, sb, sc) = (shells.source(&a), shells.source(&b), shells.source(&c));
         assert!(Rc::ptr_eq(&sa.shell, &sb.shell), "same class, same shell");
         assert!(!Rc::ptr_eq(&sa.shell, &sc.shell), "another class");
