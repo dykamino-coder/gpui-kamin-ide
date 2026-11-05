@@ -36,6 +36,8 @@ pub struct DiagnosticLog {
     delivered: usize,
     suppressed: u64,
     suppressed_delivered: u64,
+    /// Всего учтённых наблюдений: растёт с каждой записью.
+    observed: u64,
 }
 
 impl Default for DiagnosticLog {
@@ -46,6 +48,7 @@ impl Default for DiagnosticLog {
             delivered: 0,
             suppressed: 0,
             suppressed_delivered: 0,
+            observed: 0,
         }
     }
 }
@@ -53,6 +56,9 @@ impl Default for DiagnosticLog {
 impl DiagnosticLog {
     /// Учесть `diagnostic.occurrences` наблюдений его ключа.
     pub fn record(&mut self, diagnostic: Diagnostic) {
+        self.observed = self
+            .observed
+            .saturating_add(u64::from(diagnostic.occurrences).max(1));
         if let Some(known) = self.records.iter_mut().find(|r| r.same_key(&diagnostic)) {
             known.occurrences = known.occurrences.saturating_add(diagnostic.occurrences);
         } else if self.records.len() < MAX_RECORDS {
@@ -62,6 +68,12 @@ impl DiagnosticLog {
                 .suppressed
                 .saturating_add(u64::from(diagnostic.occurrences));
         }
+    }
+
+    /// Счётчик учтённых наблюдений: неизменный между двумя чтениями значит, что
+    /// работа между ними ничего не записала.
+    pub fn observed(&self) -> u64 {
+        self.observed
     }
 
     /// Подавленные наблюдения вложенного журнала остаются подавленными.

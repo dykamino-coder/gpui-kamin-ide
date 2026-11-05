@@ -33,6 +33,8 @@ pub(super) struct Visit<'a> {
     pub preserve: bool,
     pub depth: usize,
     pub vcx: ValueCx<'a>,
+    /// Номер разделения стиля родителя (`element_sharing`); 0 — без разделения.
+    pub parent_share: u64,
 }
 impl Visit<'_> {
     pub fn handle(&self) -> &Handle {

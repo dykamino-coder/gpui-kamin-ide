@@ -24,6 +24,7 @@ fn visits<'a>(
     preserve: bool,
     depth: usize,
     vcx: ValueCx<'a>,
+    parent_share: u64,
 ) -> Result<Buffer<Visit<'a>>, Error> {
     let mut jobs = Buffer::default();
     let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
@@ -38,6 +39,7 @@ fn visits<'a>(
             preserve,
             depth,
             vcx,
+            parent_share,
         };
         pos += usize::from(survey.spots[index].index != 0);
         jobs.push(visit, &admission)?;
@@ -71,6 +73,7 @@ fn descend<'a>(
                     keep,
                     p.visit.depth + 1,
                     p.visit.vcx,
+                    0,
                 )?,
                 Restore::Replace(old),
             ));
@@ -97,6 +100,7 @@ fn descend<'a>(
                         preserve: keep,
                         depth: p.visit.depth + 1,
                         vcx: p.visit.vcx,
+                        parent_share: 0,
                     },
                     &admission,
                 )?;
@@ -113,6 +117,7 @@ fn descend<'a>(
             keep,
             p.visit.depth + 1,
             p.visit.vcx,
+            p.share,
         )?,
         restore,
     ))
@@ -138,7 +143,9 @@ pub fn walk_children(
         preserve,
         1,
         vcx,
+        0,
     )?;
+    let sharing = super::element_sharing::ElementSharing::default();
     let mut work = Buffer::default();
     while let Some(job) = jobs.pop() {
         work.push(Work::Visit(job), &admission)?;
@@ -188,6 +195,7 @@ pub fn walk_children(
                         if let Some(mut p) = enter(
                             v,
                             tree,
+                            &sharing,
                             counter,
                             counters,
                             path,
@@ -209,6 +217,7 @@ pub fn walk_children(
                             v.preserve,
                             v.depth,
                             v.vcx,
+                            0,
                         )?;
                         while let Some(job) = jobs.pop() {
                             work.push(Work::Visit(job), &admission)?;
