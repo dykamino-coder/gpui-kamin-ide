@@ -25663,7 +25663,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a7a44a2e424a4f7d2621f71347b37b7bbd79e7c5
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ca8ee6600ceb9fc35bf77eca05d2fddf2b30307d
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
