@@ -37,6 +37,7 @@ fn paragraph(text: &str, atoms: &[AtomAt]) -> Paragraph {
             at,
             h: 8.,
             base: 8.,
+            drop: 0.0,
             align: AtomAlign::Shift(0.),
             over: 0.,
             under: 0.,
