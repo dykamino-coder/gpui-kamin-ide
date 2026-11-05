@@ -754,7 +754,7 @@ pub(super) async fn compute_grid_lanes_layout_async<Tree: LayoutGridContainer>(
         let mut seen: Vec<NodeId> = Vec::new();
         let mut spread: Vec<GridItem> = Vec::new();
         items.retain(|it| {
-            if it.subgrid_root.map_or(true, |r| !auto_roots.contains(&r)) {
+            if it.subgrid_root.is_none_or(|r| !auto_roots.contains(&r)) {
                 return true;
             }
             if !seen.contains(&it.node) {

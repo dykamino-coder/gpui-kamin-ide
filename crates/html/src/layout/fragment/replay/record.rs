@@ -26,18 +26,24 @@ impl Routes {
         let recorded = match owner {
             Some(owner) => {
                 pieces::with_async(owner, fx.clone(), async || {
-                    self.record_scopes_async(records, window, async |w| {
-                        self.paint_into_async(el, w, cx, stack).await
-                    })
-                    .await
+                    stack
+                        .run(|stack| {
+                            self.record_scopes_async(records, window, stack, async |w, stack| {
+                                self.paint_into_async(el, w, cx, stack).await
+                            })
+                        })
+                        .await
                 })
                 .await
             }
             None => {
-                self.record_scopes_async(records, window, async |w| {
-                    self.paint_into_async(el, w, cx, stack).await
-                })
-                .await
+                stack
+                    .run(|stack| {
+                        self.record_scopes_async(records, window, stack, async |w, stack| {
+                            self.paint_into_async(el, w, cx, stack).await
+                        })
+                    })
+                    .await
             }
         };
         drop(admission);

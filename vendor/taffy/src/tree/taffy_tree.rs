@@ -851,25 +851,23 @@ where
             .finish()
     }
     /// KaminIDE patch: Suspend a descendant without consuming a native frame.
-    fn compute_child_layout_async<'a>(
+    async fn compute_child_layout_async<'a>(
         &'a mut self,
         node: NodeId,
         inputs: LayoutInput,
         stack: &'a mut reblessive::Stk,
-    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
-        async move {
-            stack
-                .run(|stack| {
-                    self.compute_child_layout_on_stack(
-                        node,
-                        inputs,
-                        #[cfg(feature = "block_layout")]
-                        None,
-                        stack,
-                    )
-                })
-                .await
-        }
+    ) -> LayoutOutput {
+        stack
+            .run(|stack| {
+                self.compute_child_layout_on_stack(
+                    node,
+                    inputs,
+                    #[cfg(feature = "block_layout")]
+                    None,
+                    stack,
+                )
+            })
+            .await
     }
 }
 
@@ -962,18 +960,16 @@ where
             .finish()
     }
     /// KaminIDE patch: Suspend a descendant without consuming a native frame.
-    fn compute_block_child_layout_async<'a, 'ctx: 'a>(
+    async fn compute_block_child_layout_async<'a, 'ctx: 'a>(
         &'a mut self,
         node: NodeId,
         inputs: LayoutInput,
         context: Option<&'a mut BlockContext<'ctx>>,
         stack: &'a mut reblessive::Stk,
-    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
-        async move {
-            stack
-                .run(|stack| self.compute_child_layout_on_stack(node, inputs, context, stack))
-                .await
-        }
+    ) -> LayoutOutput {
+        stack
+            .run(|stack| self.compute_child_layout_on_stack(node, inputs, context, stack))
+            .await
     }
 }
 

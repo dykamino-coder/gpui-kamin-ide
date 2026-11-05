@@ -1,5 +1,6 @@
 //! Кэш раскладки завершает запись после всех продолжений потомка.
 use super::*;
+/// Reuse a cached result, or commit layout after the descendant continuation completes.
 pub(crate) async fn compute_cached_layout_async<Tree: CacheTree + ?Sized>(
     tree: &mut Tree,
     node: NodeId,

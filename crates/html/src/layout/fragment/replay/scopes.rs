@@ -17,7 +17,8 @@ impl Routes {
         &self,
         records: Option<BareRecords>,
         window: &mut Window,
-        record: impl AsyncFnOnce(&mut Window) -> R,
+        stack: &mut gpui::PaintStack,
+        record: impl AsyncFnOnce(&mut Window, &mut gpui::PaintStack) -> R,
     ) -> (R, Rc<Lines>) {
         let slots = Rc::new(ReplayPieces {
             records,
@@ -30,7 +31,10 @@ impl Routes {
             crate::hooks::with_late_jobs_async(late, window, async |window| {
                 let hidden: std::collections::HashSet<u64> = self.clone_root.into_iter().collect();
                 crate::hooks::with_clone_hidden_async(Rc::new(hidden), window, async |window| {
-                    line_admission::with_async(lines.clone(), window, record).await
+                    line_admission::with_async(lines.clone(), window, async |window| {
+                        stack.run(|stack| record(window, stack)).await
+                    })
+                    .await
                 })
                 .await
             })

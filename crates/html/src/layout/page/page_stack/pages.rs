@@ -85,29 +85,32 @@ impl PageStack {
             let replay = self.page_routes(f.kid, plan, bounds, window);
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
-                r.place_bands_async(f, async |el, at| {
-                    el.layout_as_root_async(
-                        size(
-                            gpui::AvailableSpace::Definite(px(w)),
-                            gpui::AvailableSpace::Definite(px(h)),
-                        ),
-                        window,
-                        cx,
-                        stack,
-                    )
+                stack
+                    .run(|stack| {
+                        r.place_bands_async(f, async |el, at| {
+                            el.layout_as_root_async(
+                                size(
+                                    gpui::AvailableSpace::Definite(px(w)),
+                                    gpui::AvailableSpace::Definite(px(h)),
+                                ),
+                                window,
+                                cx,
+                                stack,
+                            )
+                            .await;
+                            el.prepaint_at_async(
+                                point(
+                                    bounds.origin.x + px(sx + ax),
+                                    bounds.origin.y + px(sy + ay + f.y + at - inner_top),
+                                ),
+                                window,
+                                cx,
+                                stack,
+                            )
+                            .await;
+                        })
+                    })
                     .await;
-                    el.prepaint_at_async(
-                        point(
-                            bounds.origin.x + px(sx + ax),
-                            bounds.origin.y + px(sy + ay + f.y + at - inner_top),
-                        ),
-                        window,
-                        cx,
-                        stack,
-                    )
-                    .await;
-                })
-                .await;
             }
             if replay.is_some() && f.copy != 0 {
                 continue;
@@ -133,9 +136,16 @@ impl PageStack {
                         let at = point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y));
                         match &replay {
                             Some(routes) => {
-                                let _ = routes
-                                    .prepaint_async(window, cx, stack, async |window, cx, stack| {
-                                        el.prepaint_at_async(at, window, cx, stack).await;
+                                let _ = stack
+                                    .run(|stack| {
+                                        routes.prepaint_async(
+                                            window,
+                                            cx,
+                                            stack,
+                                            async |window, cx, stack| {
+                                                el.prepaint_at_async(at, window, cx, stack).await;
+                                            },
+                                        )
                                     })
                                     .await;
                             }

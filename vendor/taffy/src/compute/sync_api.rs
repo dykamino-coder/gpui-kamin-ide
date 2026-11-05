@@ -38,7 +38,6 @@ pub fn compute_oof_layout_for_area(
 }
 
 #[cfg(feature = "block_layout")]
-
 /// KaminIDE patch: Drive the bounded native-stack layout traversal.
 pub fn compute_block_layout(
     tree: &mut impl LayoutBlockContainer,
@@ -54,7 +53,6 @@ pub fn compute_block_layout(
 }
 
 #[cfg(feature = "flexbox")]
-
 /// KaminIDE patch: Drive the bounded native-stack layout traversal.
 pub fn compute_flexbox_layout(
     tree: &mut impl LayoutFlexboxContainer,
@@ -67,7 +65,6 @@ pub fn compute_flexbox_layout(
 }
 
 #[cfg(feature = "grid")]
-
 /// KaminIDE patch: Drive the bounded native-stack layout traversal.
 pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     tree: &mut Tree,

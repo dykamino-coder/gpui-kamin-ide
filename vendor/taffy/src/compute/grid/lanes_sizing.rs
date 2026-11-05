@@ -9,6 +9,8 @@ use crate::tree::{
 };
 
 /// KaminIDE patch: Resolve intrinsic lane sizing keywords against available space.
+// Keep the synchronous layout inputs explicit; the caller lends the continuation stack.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn resolve_lane_sizing_keywords_async(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,

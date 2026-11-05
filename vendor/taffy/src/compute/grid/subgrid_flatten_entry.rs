@@ -18,6 +18,8 @@ use crate::LayoutGridContainer;
 /// контейнер вообще связывает подсетки (у лунок — только ось решётки,
 /// css-grid-3 Overview.bs:502-519). Возвращает края всех подсеток дерева —
 /// для пола дорожек (`apply_subgrid_floors`).
+// Keep the synchronous layout inputs explicit; the caller lends the continuation stack.
+#[allow(clippy::too_many_arguments)]
 pub(in super::super) async fn flatten_subgrid_items_async<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     items: &mut Vec<GridItem>,

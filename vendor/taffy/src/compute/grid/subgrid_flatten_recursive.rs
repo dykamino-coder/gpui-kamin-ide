@@ -119,12 +119,12 @@ pub(in super::super) async fn flatten_into_async<Tree: LayoutGridContainer>(
     let implicit_auto = |columns: bool| {
         let (template, auto) = if columns {
             (
-                style.grid_template_columns().map_or(true, |t| t.len() == 0),
+                style.grid_template_columns().is_none_or(|t| t.len() == 0),
                 style.grid_auto_columns().len() == 0,
             )
         } else {
             (
-                style.grid_template_rows().map_or(true, |t| t.len() == 0),
+                style.grid_template_rows().is_none_or(|t| t.len() == 0),
                 style.grid_auto_rows().len() == 0,
             )
         };

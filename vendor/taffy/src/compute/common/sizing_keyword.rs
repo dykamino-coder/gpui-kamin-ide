@@ -68,6 +68,8 @@ pub(crate) fn resolve_sizing_keyword(
 /// - `stretch_size` is the stretch-fit size in each axis: the inset-modified containing block
 ///   (which uses the static position when both insets are auto) minus the item's non-auto margins
 ///   <https://www.w3.org/TR/css-position-3/#abspos-auto-size>.
+// Keep the synchronous layout inputs explicit; the caller lends the continuation stack.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn resolve_absolute_sizing_keywords_async(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,

@@ -37,7 +37,7 @@ fn identity(tree: &impl LayoutBlockContainer, node: NodeId, flow: BlockFlow) -> 
     tree.child_ids(node).all(|child| {
         let style = tree.get_core_container_style(child);
         style.direction() == crate::Direction::Ltr
-            && style.block_flow().map_or(true, |child_flow| {
+            && style.block_flow().is_none_or(|child_flow| {
                 !child_flow.vertical && !child_flow.block_reverse
             })
     })

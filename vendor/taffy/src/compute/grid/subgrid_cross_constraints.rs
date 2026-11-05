@@ -19,14 +19,14 @@ pub(super) fn own_tracks(
         let (size, template_empty, auto_empty, gap) = if columns {
             (
                 known.width,
-                style.grid_template_columns().map_or(true, |t| t.len() == 0),
+                style.grid_template_columns().is_none_or(|t| t.len() == 0),
                 style.grid_auto_columns().len() == 0,
                 style.gap().width,
             )
         } else {
             (
                 known.height,
-                style.grid_template_rows().map_or(true, |t| t.len() == 0),
+                style.grid_template_rows().is_none_or(|t| t.len() == 0),
                 style.grid_auto_rows().len() == 0,
                 style.gap().height,
             )

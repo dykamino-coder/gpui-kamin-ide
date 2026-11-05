@@ -90,19 +90,17 @@ impl<T: LayoutBlockContainer> LayoutPartialTree for FlowTree<'_, T> {
         self.flow.logical_output(output)
     }
     /// KaminIDE patch: Suspend a descendant without consuming a native frame.
-    fn compute_child_layout_async<'a>(
+    async fn compute_child_layout_async<'a>(
         &'a mut self,
         node: NodeId,
         inputs: LayoutInput,
         stack: &'a mut reblessive::Stk,
-    ) -> impl core::future::Future<Output = LayoutOutput> + 'a {
-        async move {
-            let output = self
-                .tree
-                .compute_child_layout_async(node, self.flow.input(inputs), stack)
-                .await;
-            self.flow.logical_output(output)
-        }
+    ) -> LayoutOutput {
+        let output = self
+            .tree
+            .compute_child_layout_async(node, self.flow.input(inputs), stack)
+            .await;
+        self.flow.logical_output(output)
     }
 }
 

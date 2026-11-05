@@ -84,10 +84,10 @@ fn columns(items: &[Candidate], tracks: usize) -> Baselines {
                 continue;
             }
             // Dense placement may fill an earlier opening after this track was occupied.
-            if item.first.is_some() && first.map_or(true, |old| item.placement < old.placement) {
+            if item.first.is_some() && first.is_none_or(|old| item.placement < old.placement) {
                 first = Some(item);
             }
-            if item.last.or(item.first).is_some() && last.map_or(true, |old| item.placement >= old.placement) {
+            if item.last.or(item.first).is_some() && last.is_none_or(|old| item.placement >= old.placement) {
                 last = Some(item);
             }
         }

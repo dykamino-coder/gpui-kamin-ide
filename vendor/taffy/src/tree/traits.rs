@@ -584,6 +584,8 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
 
     /// Perform a full layout on the node given the specified constraints
     #[inline(always)]
+    // Keep the synchronous layout inputs explicit; the caller lends the continuation stack.
+    #[allow(clippy::too_many_arguments)]
     async fn perform_child_layout_async(
         &mut self,
         node_id: NodeId,

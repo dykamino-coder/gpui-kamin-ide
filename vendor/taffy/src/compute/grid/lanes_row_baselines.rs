@@ -82,7 +82,7 @@ fn select(
 ) -> Option<&Candidate> {
     let mut selected: Option<&Candidate> = None;
     for item in items.iter().filter(|item| accepts(item)) {
-        if selected.map_or(true, |old| {
+        if selected.is_none_or(|old| {
             if last {
                 item.start > old.start
                     || (item.start == old.start && item.placement >= old.placement)
