@@ -1,17 +1,19 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges.
-# 2. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
-# 3. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
-# 4. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
-# 5. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
-# 6. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 7. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 8. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 9. Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.
-# 10. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 11. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 12. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 1. GPU readback: lazily retain one staging texture, replacing it on size/format/device changes and clearing it on resize/recovery/capture detach; exact capture and offscreen images still copy/map/unmap every frame.
+# 2. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+# 3. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges.
+# 4. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
+# 5. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
+# 6. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
+# 7. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
+# 8. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
+# 9. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 10. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 11. Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.
+# 12. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 13. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 14. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -6567,7 +6569,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa818517f04e6f
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..6154d1a4d6dc3ad7915caf94124a11c393886fd6
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6575,18 +6577,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,8 @@
+@@ -38,0 +42,9 @@
 +mod scene_capture;
 +mod frame_capture;
++mod readback;
 +mod group_region;
 +mod group_stage;
 +mod texture_pool;
 +mod shader_identity;
 +use group_region::Region;
 +
-@@ -46,0 +58 @@
+@@ -46,0 +59 @@
 +    disable_direct_composition: bool,
-@@ -47,0 +60,19 @@
+@@ -47,0 +61,19 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -6606,11 +6609,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
 +    /// смешивание с кадром посчитано в шейдере.
 +    blend_replace: Option<ID3D11BlendState>,
-@@ -50,0 +82,3 @@
+@@ -50,0 +83,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +91,270 @@
+@@ -56,0 +92,270 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -6881,10 +6884,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +366,2 @@
+@@ -61,0 +367,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +376,11 @@
+@@ -69,0 +377,11 @@
 +/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
 +/// закрывается при пересоздании ресурсов (device lost).
 +struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
@@ -6896,29 +6899,37 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    }
 +}
 +
-@@ -72,0 +390,2 @@
+@@ -72,0 +391,4 @@
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +414,2 @@
++    /// KaminIDE patch: один ленивый staging-буфер живёт не дольше устройства.
++    readback: readback::Readback,
+@@ -94,0 +417,2 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +422,2 @@
+@@ -100,0 +425,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +445 @@
+@@ -121,0 +448 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +458 @@
+@@ -133,0 +461 @@
 +            ..
-@@ -142,0 +468 @@
+@@ -142,0 +471 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +480,4 @@
+@@ -153,0 +483,10 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
++        // KaminIDE patch: отключение capture освобождает его staging-буфер.
++        if sink.is_none()
++            && let Some(resources) = &mut self.resources
++        {
++            resources.readback = Default::default();
++        }
 +        self.capture = sink;
 +    }
 +
-@@ -192,0 +523 @@
+@@ -192,0 +532 @@
 +            disable_direct_composition,
-@@ -193,0 +525,8 @@
+@@ -193,0 +534,8 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -6927,9 +6938,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
-@@ -195,0 +535 @@
+@@ -195,0 +544 @@
 +            backdrop: None,
-@@ -199,0 +540,34 @@
+@@ -199,0 +549,34 @@
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
 +    /// общий handle текстуры от CEF.
 +    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -6964,13 +6975,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        self.atlas.unregister_external(id);
 +    }
 +
-@@ -204,0 +579 @@
+@@ -204,0 +588 @@
 +        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +595,2 @@
+@@ -220 +604,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -245,0 +622,7 @@
+@@ -245,0 +631,7 @@
 +        // KaminIDE patch (#76): БЕЗ dcomp-Commit и без ожиданий. dcomp-дерево
 +        // статично после set_swap_chain (underlay-эпоха WebView2 удалена как
 +        // мёртвая), а прежний пер-кадровый commit() делал
@@ -6978,7 +6989,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
 +        // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
 +        // ввода ~1.5с на слабой машине.
-@@ -263,65 +646,33 @@
+@@ -263,65 +655,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7077,7 +7088,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -339,0 +691,25 @@
+@@ -339,0 +700,25 @@
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
 +        // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -7103,16 +7114,16 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                return Ok(());
 +            }
 +        }
-@@ -340,0 +717,5 @@
+@@ -340,0 +726,5 @@
 +        if self.capture.is_some() {
 +            if let Err(e) = self.capture_frame() {
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -353,0 +735,2 @@
+@@ -353,0 +744,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +741,33 @@
+@@ -357,0 +750,33 @@
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7146,9 +7157,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +782 @@
+@@ -365,0 +791 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +820,350 @@
+@@ -402,0 +829,350 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7499,13 +7510,64 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1178,0 @@
+@@ -412 +1187,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1254,2 @@
+@@ -426,0 +1202 @@
++        // KaminIDE patch: общий staging-путь сохраняет синхронный GPU readback.
+@@ -428,3 +1204 @@
+-        let device = &devices.device;
+-        let context = &devices.device_context;
+-        let resources = self.resources.as_ref().context("resources missing")?;
++        let resources = self.resources.as_mut().context("resources missing")?;
+@@ -435,2 +1208,0 @@
+-
+-        // A CPU-readable copy of the render target.
+@@ -439,38 +1211,2 @@
+-        let width = desc.Width;
+-        let height = desc.Height;
+-        let staging_desc = D3D11_TEXTURE2D_DESC {
+-            Usage: D3D11_USAGE_STAGING,
+-            BindFlags: 0,
+-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+-            MiscFlags: 0,
+-            MipLevels: 1,
+-            ArraySize: 1,
+-            SampleDesc: DXGI_SAMPLE_DESC {
+-                Count: 1,
+-                Quality: 0,
+-            },
+-            ..desc
+-        };
+-        let mut staging: Option<ID3D11Texture2D> = None;
+-        unsafe { device.CreateTexture2D(&staging_desc, None, Some(&mut staging))? };
+-        let staging = staging.context("creating staging texture")?;
+-        unsafe { context.CopyResource(&staging, render_target) };
+-
+-        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+-        unsafe { context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+-        let row_bytes = (width as usize) * 4;
+-        let mut pixels = vec![0u8; row_bytes * height as usize];
+-        // SAFETY: `Map` succeeded, so `pData` points at `RowPitch * height`
+-        // readable bytes for as long as the mapping is held, and `RowPitch >=
+-        // row_bytes` (it only ever adds trailing padding). `pixels` is sized
+-        // `row_bytes * height`, so every copy stays in bounds on both sides,
+-        // and the regions cannot overlap (`pixels` is a fresh allocation).
+-        unsafe {
+-            let src = mapped.pData as *const u8;
+-            for row in 0..height as usize {
+-                let s = src.add(row * mapped.RowPitch as usize);
+-                let d = pixels.as_mut_ptr().add(row * row_bytes);
+-                std::ptr::copy_nonoverlapping(s, d, row_bytes);
+-            }
+-            context.Unmap(&staging, 0);
+-        }
++        let (width, height) = (desc.Width, desc.Height);
++        let mut pixels = resources.readback.read(devices, render_target)?;
+@@ -488 +1224,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1261,21 @@
+@@ -494 +1231,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7528,7 +7590,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1287 @@
+@@ -497,0 +1255,2 @@
++        // KaminIDE patch: прежний размер не удерживается после resize.
++        resources.readback = Default::default();
+@@ -500,19 +1259 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7549,7 +7614,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1369,7 @@
+@@ -599,0 +1341,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7557,28 +7622,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        } else {
 +            (start, len)
 +        };
-@@ -621,0 +1398,6 @@
+@@ -621,0 +1370,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1426,2 @@
+@@ -643,0 +1398,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1456,4 @@
+@@ -672 +1428,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1603,4 @@
+@@ -815,0 +1575,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1611,23 @@
+@@ -819,0 +1583,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7602,7 +7667,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1635,376 @@
+@@ -820,0 +1607,376 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7979,10 +8044,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2030 @@
+@@ -840 +2002 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2081,12 @@
+@@ -890,0 +2053,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7995,9 +8060,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2107 @@
+@@ -904,0 +2079,2 @@
 +            frame_gate,
-@@ -999,0 +2203,7 @@
++            readback: Default::default(),
+@@ -999,0 +2176,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -8005,22 +8071,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2220 @@
+@@ -1009,0 +2193 @@
 +            blur_pipeline,
-@@ -1018,0 +2230,4 @@
+@@ -1018,0 +2203,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2239 @@
+@@ -1023,0 +2212 @@
 +            comp_root,
-@@ -1030 +2246,2 @@
+@@ -1030 +2219,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2281 @@
+@@ -1063,0 +2254 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2294,16 @@
+@@ -1076 +2267,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -8038,10 +8104,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2323,2 @@
+@@ -1089,0 +2296,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2334,0 @@
+@@ -1100,30 +2307,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -8072,7 +8138,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 -        })
 -    }
 -
-@@ -1190,0 +2396,45 @@
+@@ -1190,0 +2369,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8118,21 +8184,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2447 @@
+@@ -1197 +2420 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2526,2 @@
+@@ -1275,0 +2499,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2571,2 @@
+@@ -1319 +2544,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2600,2 @@
+@@ -1347 +2573,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2747,33 @@
+@@ -1492,0 +2720,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8166,17 +8232,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    }
 +}
 +
-@@ -1719,0 +3007,2 @@
+@@ -1719,0 +2980,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3086,4 @@
+@@ -1796,0 +3059,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3177 @@
+@@ -1883,0 +3150 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3348,33 @@
+@@ -2054,17 +3321,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -8634,10 +8700,10 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5de355d6005d778face12c81c32e9e25d174f901
+index 0000000000000000000000000000000000000000..a1e774c88a93da45a2292ec0e72da5f5e35b7f40
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,46 @@
 +//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 +
 +use super::*;
@@ -8647,53 +8713,14 @@ index 0000000000000000000000000000000000000000..5de355d6005d778face12c81c32e9e25
 +    pub(super) fn capture_frame(&mut self) -> Result<()> {
 +        let started = std::time::Instant::now();
 +        let (w, h) = (self.width, self.height);
-+        let desc = D3D11_TEXTURE2D_DESC {
-+            Width: w,
-+            Height: h,
-+            MipLevels: 1,
-+            ArraySize: 1,
-+            Format: RENDER_TARGET_FORMAT,
-+            SampleDesc: DXGI_SAMPLE_DESC {
-+                Count: 1,
-+                Quality: 0,
-+            },
-+            Usage: D3D11_USAGE_STAGING,
-+            BindFlags: 0,
-+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-+            MiscFlags: 0,
-+        };
-+        let devices = self.dev();
-+        let render_target = self
-+            .res()
++        // KaminIDE patch: общий staging-путь сохраняет синхронный GPU readback.
++        let devices = self.devices.as_ref().context("devices missing")?;
++        let resources = self.resources.as_mut().context("resources missing")?;
++        let render_target = resources
 +            .render_target
 +            .as_ref()
 +            .context("render target missing")?;
-+        let mut staging: Option<ID3D11Texture2D> = None;
-+        unsafe {
-+            devices
-+                .device
-+                .CreateTexture2D(&desc, None, Some(&mut staging))?
-+        };
-+        let staging = staging.context("staging texture")?;
-+        let ctx = &devices.device_context;
-+        unsafe { ctx.CopyResource(&staging, render_target) };
-+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-+        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-+        let row = (w * 4) as usize;
-+        let mut bgra = vec![0u8; row * h as usize];
-+        for y in 0..h as usize {
-+            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
-+            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
-+            // bytes until Unmap below.
-+            let src = unsafe {
-+                std::slice::from_raw_parts(
-+                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
-+                    row,
-+                )
-+            };
-+            bgra[y * row..(y + 1) * row].copy_from_slice(src);
-+        }
-+        unsafe { ctx.Unmap(&staging, 0) };
++        let bgra = resources.readback.read(devices, render_target)?;
 +        // KaminIDE patch: capture retains the device generation used by this target.
 +        let mut target_desc = D3D11_TEXTURE2D_DESC::default();
 +        unsafe { render_target.GetDesc(&mut target_desc) };
@@ -9129,6 +9156,209 @@ index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e
 +        unsafe { dc.RSGetScissorRects(&mut count, Some(restored.as_mut_ptr())) };
 +        assert_eq!(&restored[..count as usize], &original);
 +        Ok(())
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/readback.rs b/vendor/gpui-windows/src/directx_renderer/readback.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..498892862cb5a9260dce276e81feb7cc92dc73a1
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/readback.rs
+@@ -0,0 +1,197 @@
++//! Один ленивый staging-буфер: размер, формат и устройство ограничивают повторное использование.
++
++use super::*;
++
++#[derive(Default)]
++pub(super) struct Readback {
++    entry: Option<Staging>,
++}
++
++struct Staging {
++    device: ID3D11Device,
++    width: u32,
++    height: u32,
++    format: DXGI_FORMAT,
++    texture: ID3D11Texture2D,
++}
++
++impl Readback {
++    pub(super) fn read(
++        &mut self,
++        devices: &DirectXRendererDevices,
++        target: &ID3D11Texture2D,
++    ) -> Result<Vec<u8>> {
++        let mut desc = D3D11_TEXTURE2D_DESC::default();
++        unsafe { target.GetDesc(&mut desc) };
++        anyhow::ensure!(
++            desc.Format == RENDER_TARGET_FORMAT
++                && desc.MipLevels == 1
++                && desc.ArraySize == 1
++                && desc.SampleDesc.Count == 1
++                && desc.SampleDesc.Quality == 0,
++            "readback requires a single-sample, single-layer BGRA8 target",
++        );
++        let reuse = self.entry.as_ref().is_some_and(|entry| {
++            entry.device == devices.device
++                && entry.width == desc.Width
++                && entry.height == desc.Height
++                && entry.format == desc.Format
++        });
++        if !reuse {
++            // Старый размер не остаётся в пуле: одновременно хранится один буфер.
++            self.entry = None;
++            let staging_desc = D3D11_TEXTURE2D_DESC {
++                Usage: D3D11_USAGE_STAGING,
++                BindFlags: 0,
++                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
++                MiscFlags: 0,
++                ..desc
++            };
++            let mut texture = None;
++            unsafe {
++                devices
++                    .device
++                    .CreateTexture2D(&staging_desc, None, Some(&mut texture))?
++            };
++            self.entry = Some(Staging {
++                device: devices.device.clone(),
++                width: desc.Width,
++                height: desc.Height,
++                format: desc.Format,
++                texture: texture.context("staging texture")?,
++            });
++        }
++        let staging = &self
++            .entry
++            .as_ref()
++            .context("staging texture missing")?
++            .texture;
++        let context = &devices.device_context;
++        unsafe { context.CopyResource(staging, target) };
++        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
++        unsafe { context.Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
++        let row_bytes = desc.Width as usize * 4;
++        let mut pixels = vec![0; row_bytes * desc.Height as usize];
++        // SAFETY: Map завершён, формат цели BGRA8; каждая строка содержит
++        // row_bytes доступных байтов до Unmap. Буфер pixels отдельный.
++        unsafe {
++            for row in 0..desc.Height as usize {
++                std::ptr::copy_nonoverlapping(
++                    (mapped.pData as *const u8).add(row * mapped.RowPitch as usize),
++                    pixels.as_mut_ptr().add(row * row_bytes),
++                    row_bytes,
++                );
++            }
++            context.Unmap(staging, 0);
++        }
++        Ok(pixels)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{
++        D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE2D_DESC, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
++        DirectXDevices, DirectXRendererDevices, ID3D11Texture2D, RENDER_TARGET_FORMAT, Readback,
++    };
++
++    fn target(
++        devices: &DirectXRendererDevices,
++        width: u32,
++        height: u32,
++        byte: u8,
++    ) -> ID3D11Texture2D {
++        let desc = D3D11_TEXTURE2D_DESC {
++            Width: width,
++            Height: height,
++            MipLevels: 1,
++            ArraySize: 1,
++            Format: RENDER_TARGET_FORMAT,
++            SampleDesc: DXGI_SAMPLE_DESC {
++                Count: 1,
++                Quality: 0,
++            },
++            ..Default::default()
++        };
++        let bytes = vec![byte; width as usize * height as usize * 4];
++        let initial = D3D11_SUBRESOURCE_DATA {
++            pSysMem: bytes.as_ptr().cast(),
++            SysMemPitch: width * 4,
++            SysMemSlicePitch: 0,
++        };
++        let mut texture = None;
++        unsafe {
++            devices
++                .device
++                .CreateTexture2D(&desc, Some(&initial), Some(&mut texture))
++        }
++        .unwrap();
++        texture.unwrap()
++    }
++
++    #[test]
++    fn same_size_reuses_staging_but_reads_each_new_target_at_odd_width() {
++        let device = DirectXDevices::new().unwrap();
++        let devices = DirectXRendererDevices::new(&device, false).unwrap();
++        let mut readback = Readback::default();
++        assert!(readback.entry.is_none());
++        assert_eq!(
++            readback
++                .read(&devices, &target(&devices, 3, 2, 17))
++                .unwrap(),
++            vec![17; 24]
++        );
++        let first = readback.entry.as_ref().unwrap().texture.clone();
++        assert_eq!(
++            readback
++                .read(&devices, &target(&devices, 3, 2, 93))
++                .unwrap(),
++            vec![93; 24]
++        );
++        assert_eq!(readback.entry.as_ref().unwrap().texture, first);
++    }
++
++    #[test]
++    fn unsupported_format_is_rejected_before_staging_allocation() {
++        let device = DirectXDevices::new().unwrap();
++        let devices = DirectXRendererDevices::new(&device, false).unwrap();
++        let source = target(&devices, 3, 2, 0);
++        let mut desc = D3D11_TEXTURE2D_DESC::default();
++        unsafe { source.GetDesc(&mut desc) };
++        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
++        let mut unsupported = None;
++        unsafe {
++            devices
++                .device
++                .CreateTexture2D(&desc, None, Some(&mut unsupported))
++        }
++        .unwrap();
++        let mut readback = Readback::default();
++        assert!(readback.read(&devices, &unsupported.unwrap()).is_err());
++        assert!(readback.entry.is_none());
++    }
++
++    #[test]
++    fn resize_and_device_change_replace_the_single_staging_slot() {
++        let a = DirectXDevices::new().unwrap();
++        let b = DirectXDevices::new().unwrap();
++        let a = DirectXRendererDevices::new(&a, false).unwrap();
++        let b = DirectXRendererDevices::new(&b, false).unwrap();
++        let mut readback = Readback::default();
++        readback.read(&a, &target(&a, 3, 2, 1)).unwrap();
++        let first = readback.entry.as_ref().unwrap().texture.clone();
++        assert_eq!(
++            readback.read(&a, &target(&a, 5, 4, 2)).unwrap(),
++            vec![2; 80]
++        );
++        assert_ne!(readback.entry.as_ref().unwrap().texture, first);
++        let resized = readback.entry.as_ref().unwrap().texture.clone();
++        assert_eq!(
++            readback.read(&b, &target(&b, 5, 4, 3)).unwrap(),
++            vec![3; 80]
++        );
++        let entry = readback.entry.as_ref().unwrap();
++        assert_ne!(entry.texture, resized);
++        assert_eq!(unsafe { entry.texture.GetDevice() }.unwrap(), b.device);
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery.rs b/vendor/gpui-windows/src/directx_renderer/recovery.rs
@@ -9576,10 +9806,10 @@ index 0000000000000000000000000000000000000000..bf086ac8d5c2765afd2ce3517c6feeca
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/scene_capture.rs b/vendor/gpui-windows/src/directx_renderer/scene_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..df52ae90a966bdbec6383a2aec716ca908f415c3
+index 0000000000000000000000000000000000000000..90778371464982685f22c4b267c67a5fc4b3a04a
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/scene_capture.rs
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,55 @@
 +//! Transparent offscreen targets for embedded document scenes.
 +use super::*;
 +
@@ -9606,6 +9836,8 @@ index 0000000000000000000000000000000000000000..df52ae90a966bdbec6383a2aec716ca9
 +        let isolated = DirectXResources {
 +            swap_chain: resources.swap_chain.clone(),
 +            frame_gate: None,
++            // KaminIDE patch: изолированная сцена не удерживает readback окна.
++            readback: Default::default(),
 +            render_target: Some(texture),
 +            render_target_view: view,
 +            path_intermediate_texture: path,
@@ -9814,11 +10046,26 @@ index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf16015
 +    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 +}
 diff --git a/vendor/gpui-windows/src/events.rs b/vendor/gpui-windows/src/events.rs
-index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241f1aff7c3
+index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..49362af46bcae0a6e67845d8c1da33d117c659ce
 --- a/vendor/gpui-windows/src/events.rs
 +++ b/vendor/gpui-windows/src/events.rs
-@@ -33,0 +34,30 @@
-+
+@@ -35,16 +35,23 @@
+-/// Coordinates window draws on the UI thread. Owned by the platform and
+-/// shared with every window (like `WindowsPlatformState::cursor_visible`),
+-/// because the coordination is inherently cross-window: while window A is
+-/// drawing, a re-entrant paint request for window B must be deferred.
+-pub(crate) struct DrawCoordinator {
+-    /// Whether some window is currently inside `draw_window`. Win32 can
+-    /// re-enter the window procedure while a draw is in progress (e.g.
+-    /// cross-thread `SendMessage` dispatch during message pumping, or modal
+-    /// message loops entered by COM calls), and drawing re-entrantly would
+-    /// nest GPUI draws. Nested draws are wasted work whose output is
+-    /// immediately redrawn, so we defer them instead.
+-    drawing: Cell<bool>,
+-}
+-
+-impl DrawCoordinator {
+-    pub(crate) fn new() -> Self {
 +/// KaminIDE patch: a forced callback also consumes a deferred forced draw.
 +fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
 +    let deferred = pending.take();
@@ -9842,18 +10089,42 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +    /// unfocused window, wait out the 30 fps inactive limit (up to 33 ms per
 +    /// frame for 600 ms after every WM_SIZE, window creation included).
 +    fn paint(boosted: bool) -> Self {
-+        Self {
+@@ -52,26 +59,3 @@
+-            drawing: Cell::new(false),
+-        }
+-    }
+-
+-    fn try_begin_draw(&self) -> Option<DrawWindowGuard<'_>> {
+-        // This only covers the `draw_window` span (which extends past the GPUI
+-        // draw, through presentation and IME updates). Requests that arrive
+-        // re-entrantly during GPUI-initiated draws (e.g. key dispatch or
+-        // opening a window draws synchronously) are deferred by GPUI's
+-        // `on_request_frame` callback itself, which no-ops in that case.
+-        if self.drawing.get() {
+-            None
+-        } else {
+-            self.drawing.set(true);
+-            Some(DrawWindowGuard { coordinator: self })
+-        }
+-    }
+-}
+-
+-struct DrawWindowGuard<'a> {
+-    coordinator: &'a DrawCoordinator,
+-}
+-
+-impl Drop for DrawWindowGuard<'_> {
+-    fn drop(&mut self) {
+-        self.coordinator.drawing.set(false);
 +            force_render: false,
 +            require_presentation: boosted,
 +        }
-+    }
-+}
-@@ -107,0 +138,4 @@
+@@ -107,0 +92,4 @@
 +            // KaminIDE patch: не стирать фон — заливка (чёрным) давала полосы
 +            // по краям при ресайзе blit-окна; кадр рисуется синхронно в
 +            // WM_SIZE, стирание только мерцает.
 +            WM_ERASEBKGND => Some(1),
-@@ -163 +197,7 @@
+@@ -163 +151,7 @@
 -            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
 +            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(
 +                handle,
@@ -9862,9 +10133,9 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                    require_presentation: false,
 +                },
 +            ),
-@@ -213,0 +254 @@
+@@ -213,0 +208 @@
 +                    self.state.display.get().forced_scale,
-@@ -268,0 +310,21 @@
+@@ -268,0 +264,21 @@
 +        // KaminIDE patch: кадр рисуем СИНХРОННО внутри WM_SIZE — окно меняет
 +        // размер уже с готовым содержимым, как нативные приложения. Ожидание
 +        // WM_PAINT из очереди оставляло растянутый старый кадр на глазах
@@ -9886,7 +10157,7 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                require_presentation: true,
 +            },
 +        );
-@@ -333 +395,8 @@
+@@ -333 +349,8 @@
 -        self.draw_window(handle, false)
 +        // KaminIDE patch: см. resize_boost_until — после смены размера каждый
 +        // кадр презентуется, пока системная анимация не кончилась.
@@ -9896,28 +10167,28 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +            .get()
 +            .is_some_and(|t| std::time::Instant::now() < t);
 +        self.draw_window(handle, NativeDraw::paint(boosted))
-@@ -887 +956 @@
+@@ -887 +910 @@
 -        let new_scale_factor = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
 +        let new_scale_factor = self.state.display.get().forced_scale.unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
-@@ -958 +1027 @@
+@@ -958 +981 @@
 -        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor))?;
 +        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
-@@ -1275 +1344 @@
+@@ -1275 +1298 @@
 -            self.draw_window(handle, false);
 +            self.draw_window(handle, NativeDraw::paint(false));
-@@ -1329 +1398,4 @@
+@@ -1329 +1352,4 @@
 -    fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
 +    fn draw_window(&self, handle: HWND, draw: NativeDraw) -> Option<isize> {
 +        let NativeDraw { force_render, require_presentation } = draw;
 +        log::debug!(target: "gpui::frame", "native force={} present={} pending={}",
 +            force_render, require_presentation, self.state.force_render_pending.get());
-@@ -1358 +1430 @@
+@@ -1358 +1384 @@
 -        let force_render = force_render || self.state.force_render_pending.take();
 +        let force_render = consume_force_render(force_render, &self.state.force_render_pending);
-@@ -1369 +1441 @@
+@@ -1369 +1395 @@
 -            require_presentation: false,
 +            require_presentation,
-@@ -1812,0 +1885,34 @@
+@@ -1812,0 +1839,34 @@
 +
 +#[cfg(test)]
 +mod forced_frame_tests {
@@ -9950,6 +10221,118 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                assert!(!consume_force_render(false, &pending));
 +            }
 +        }
++    }
++}
+diff --git a/vendor/gpui-windows/src/frame_request.rs b/vendor/gpui-windows/src/frame_request.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab3b8ee9df5816475c96f1c4eac8e24bfa846465
+--- /dev/null
++++ b/vendor/gpui-windows/src/frame_request.rs
+@@ -0,0 +1,106 @@
++//! Спрос на кадр Windows и защита общего UI-потока от вложенной отрисовки.
++
++use std::{cell::Cell, rc::Rc};
++use gpui_util::ResultExt;
++use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
++use crate::WindowsWindowInner;
++
++/// Coordinates window draws on the UI thread. Owned by the platform and
++/// shared with every window (like `WindowsPlatformState::cursor_visible`),
++/// because the coordination is inherently cross-window: while window A is
++/// drawing, a re-entrant paint request for window B must be deferred.
++pub(crate) struct DrawCoordinator {
++    /// Whether some window is currently inside `draw_window`. Win32 can
++    /// re-enter the window procedure while a draw is in progress (e.g.
++    /// cross-thread `SendMessage` dispatch during message pumping, or modal
++    /// message loops entered by COM calls), and drawing re-entrantly would
++    /// nest GPUI draws. Nested draws are wasted work whose output is
++    /// immediately redrawn, so we defer them instead.
++    drawing: Cell<bool>,
++}
++
++impl DrawCoordinator {
++    pub(crate) fn new() -> Self {
++        Self {
++            drawing: Cell::new(false),
++        }
++    }
++
++    pub(crate) fn try_begin_draw(&self) -> Option<DrawWindowGuard<'_>> {
++        // This only covers the `draw_window` span (which extends past the GPUI
++        // draw, through presentation and IME updates). Requests that arrive
++        // re-entrantly during GPUI-initiated draws (e.g. key dispatch or
++        // opening a window draws synchronously) are deferred by GPUI's
++        // `on_request_frame` callback itself, which no-ops in that case.
++        if self.drawing.get() {
++            None
++        } else {
++            self.drawing.set(true);
++            Some(DrawWindowGuard { coordinator: self })
++        }
++    }
++}
++
++pub(crate) struct DrawWindowGuard<'a> {
++    coordinator: &'a DrawCoordinator,
++}
++
++impl Drop for DrawWindowGuard<'_> {
++    fn drop(&mut self) {
++        self.coordinator.drawing.set(false);
++    }
++}
++
++impl DrawCoordinator {
++    // Запрос из отрисовки обслуживает vsync: немедленный повтор обходил бы
++    // ограничение частоты анимаций и создавал цикл при throttling.
++    fn wake_if_idle(&self, wake: impl FnOnce()) {
++        if !self.drawing.get() {
++            wake();
++        }
++    }
++}
++
++impl WindowsWindowInner {
++    pub(crate) fn frame_waker(self: &Rc<Self>) -> Rc<dyn Fn()> {
++        let window = Rc::downgrade(self);
++        Rc::new(move || {
++            if let Some(window) = window.upgrade() {
++                window.state.draw_coordinator.wake_if_idle(|| {
++                    // Без UPDATENOW: WM_PAINT объединяет запросы и не входит в App
++                    // синхронно из invalidate_view/set_dirty.
++                    unsafe { RedrawWindow(Some(window.hwnd), None, None, RDW_INVALIDATE) }
++                        .ok().log_err();
++                });
++            }
++        })
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn idle_demand_wakes_without_entering_a_draw() {
++        let coordinator = DrawCoordinator::new();
++        let wakes = Cell::new(0);
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 1);
++        assert!(coordinator.try_begin_draw().is_some());
++    }
++
++    #[test]
++    fn nested_demand_waits_for_vsync_and_guard_restores_idle_waking() {
++        let coordinator = DrawCoordinator::new();
++        let wakes = Cell::new(0);
++        let guard = coordinator.try_begin_draw().unwrap();
++        assert!(coordinator.try_begin_draw().is_none());
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 0);
++        drop(guard);
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 1);
++        assert!(coordinator.try_begin_draw().is_some());
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/gpu_adapter.rs b/vendor/gpui-windows/src/gpu_adapter.rs
@@ -10225,17 +10608,20 @@ index 0000000000000000000000000000000000000000..a227477d1c916cdd02c6f97d80118fab
 +
 +}
 diff --git a/vendor/gpui-windows/src/gpui_windows.rs b/vendor/gpui-windows/src/gpui_windows.rs
-index e7a45a034dc235dab7bc49cad209f9cdef143802..7d66fefb43e07d433cf846ad63286674758ca92c
+index e7a45a034dc235dab7bc49cad209f9cdef143802..2cb30a2013c8036b461385066b00e2719e5d9b97
 --- a/vendor/gpui-windows/src/gpui_windows.rs
 +++ b/vendor/gpui-windows/src/gpui_windows.rs
-@@ -13,0 +14,3 @@
+@@ -13,0 +14,4 @@
++mod frame_request;
 +// KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 +mod gpu_adapter;
 +mod gpu_context;
-@@ -14,0 +18,2 @@
+@@ -14,0 +19,2 @@
 +#[cfg(test)]
 +mod ligature_tests;
-@@ -41,0 +47 @@
+@@ -31,0 +38 @@
++pub(crate) use frame_request::DrawCoordinator;
+@@ -41,0 +49 @@
 +pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 diff --git a/vendor/gpui-windows/src/ligature_tests.rs b/vendor/gpui-windows/src/ligature_tests.rs
 new file mode 100644
@@ -11371,7 +11757,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..239382c370c48956c1989c4fb9a329fd
 +    return c;
 +}
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
-index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe385ec34e
+index 8a5327d1a88477e1b0fed913046d34cd29754174..0ba77c62f358591e4eb4a4829089a1a3667c6cd1
 --- a/vendor/gpui-windows/src/window.rs
 +++ b/vendor/gpui-windows/src/window.rs
 @@ -54,0 +55,5 @@
@@ -11420,7 +11806,20 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe
 +        Ok(())
 +    }
 +
-@@ -1046,0 +1071,52 @@
+@@ -969,0 +994,3 @@
++    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
++        Some(self.0.frame_waker())
++    }
+@@ -979,5 +1006 @@
+-        self.0
+-            .state
+-            .callbacks
+-            .active_status_change
+-            .set(Some(callback));
++        self.state.callbacks.active_status_change.set(Some(callback));
+@@ -1044,0 +1068,52 @@
++    }
++
 +    fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
 +        self.state.renderer.borrow_mut().rasterize_scene(scene, size)
 +    }
@@ -11471,9 +11870,7 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe
 +            .renderer
 +            .borrow()
 +            .unregister_external_texture(id);
-+    }
-+
-@@ -1430 +1506,4 @@
+@@ -1430 +1505,4 @@
 -            hbrBackground: unsafe { CreateSolidBrush(COLORREF(0x00000000)) },
 +            // KaminIDE patch: БЕЗ кисти фона — чёрная заливала непокрытую
 +            // область при ресайзе (blit) чёрными полосами по краям.

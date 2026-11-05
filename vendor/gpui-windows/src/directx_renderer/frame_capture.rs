@@ -7,53 +7,14 @@ impl DirectXRenderer {
     pub(super) fn capture_frame(&mut self) -> Result<()> {
         let started = std::time::Instant::now();
         let (w, h) = (self.width, self.height);
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: w,
-            Height: h,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-        };
-        let devices = self.dev();
-        let render_target = self
-            .res()
+        // KaminIDE patch: общий staging-путь сохраняет синхронный GPU readback.
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_mut().context("resources missing")?;
+        let render_target = resources
             .render_target
             .as_ref()
             .context("render target missing")?;
-        let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe {
-            devices
-                .device
-                .CreateTexture2D(&desc, None, Some(&mut staging))?
-        };
-        let staging = staging.context("staging texture")?;
-        let ctx = &devices.device_context;
-        unsafe { ctx.CopyResource(&staging, render_target) };
-        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-        let row = (w * 4) as usize;
-        let mut bgra = vec![0u8; row * h as usize];
-        for y in 0..h as usize {
-            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
-            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
-            // bytes until Unmap below.
-            let src = unsafe {
-                std::slice::from_raw_parts(
-                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
-                    row,
-                )
-            };
-            bgra[y * row..(y + 1) * row].copy_from_slice(src);
-        }
-        unsafe { ctx.Unmap(&staging, 0) };
+        let bgra = resources.readback.read(devices, render_target)?;
         // KaminIDE patch: capture retains the device generation used by this target.
         let mut target_desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { render_target.GetDesc(&mut target_desc) };

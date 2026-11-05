@@ -41,6 +41,7 @@ pub(crate) struct FontInfo {
 
 mod scene_capture;
 mod frame_capture;
+mod readback;
 mod group_region;
 mod group_stage;
 mod texture_pool;
@@ -389,6 +390,8 @@ struct DirectXResources {
     swap_chain: IDXGISwapChain1,
     /// KaminIDE patch (#76): см. FrameLatencyGate.
     frame_gate: Option<FrameLatencyGate>,
+    /// KaminIDE patch: один ленивый staging-буфер живёт не дольше устройства.
+    readback: readback::Readback,
     render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
 
@@ -478,6 +481,12 @@ impl DirectXRendererDevices {
 
 impl DirectXRenderer {
     pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
+        // KaminIDE patch: отключение capture освобождает его staging-буфер.
+        if sink.is_none()
+            && let Some(resources) = &mut self.resources
+        {
+            resources.readback = Default::default();
+        }
         self.capture = sink;
     }
 
@@ -1190,56 +1199,17 @@ impl DirectXRenderer {
         );
         self.render(scene, background_appearance)?;
 
+        // KaminIDE patch: общий staging-путь сохраняет синхронный GPU readback.
         let devices = self.devices.as_ref().context("devices missing")?;
-        let device = &devices.device;
-        let context = &devices.device_context;
-        let resources = self.resources.as_ref().context("resources missing")?;
+        let resources = self.resources.as_mut().context("resources missing")?;
         let render_target = resources
             .render_target
             .as_ref()
             .context("render target missing")?;
-
-        // A CPU-readable copy of the render target.
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { render_target.GetDesc(&mut desc) };
-        let width = desc.Width;
-        let height = desc.Height;
-        let staging_desc = D3D11_TEXTURE2D_DESC {
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-            MipLevels: 1,
-            ArraySize: 1,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            ..desc
-        };
-        let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe { device.CreateTexture2D(&staging_desc, None, Some(&mut staging))? };
-        let staging = staging.context("creating staging texture")?;
-        unsafe { context.CopyResource(&staging, render_target) };
-
-        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        unsafe { context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-        let row_bytes = (width as usize) * 4;
-        let mut pixels = vec![0u8; row_bytes * height as usize];
-        // SAFETY: `Map` succeeded, so `pData` points at `RowPitch * height`
-        // readable bytes for as long as the mapping is held, and `RowPitch >=
-        // row_bytes` (it only ever adds trailing padding). `pixels` is sized
-        // `row_bytes * height`, so every copy stays in bounds on both sides,
-        // and the regions cannot overlap (`pixels` is a fresh allocation).
-        unsafe {
-            let src = mapped.pData as *const u8;
-            for row in 0..height as usize {
-                let s = src.add(row * mapped.RowPitch as usize);
-                let d = pixels.as_mut_ptr().add(row * row_bytes);
-                std::ptr::copy_nonoverlapping(s, d, row_bytes);
-            }
-            context.Unmap(&staging, 0);
-        }
+        let (width, height) = (desc.Width, desc.Height);
+        let mut pixels = resources.readback.read(devices, render_target)?;
         // The render target is BGRA; image::RgbaImage expects RGBA.
         for px in pixels.chunks_exact_mut(4) {
             px.swap(0, 2);
@@ -1282,6 +1252,8 @@ impl DirectXRenderer {
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
+        // KaminIDE patch: прежний размер не удерживается после resize.
+        resources.readback = Default::default();
         resources.render_target.take();
         resources.render_target_view.take();
         recreate(resources, devices)?;
@@ -2105,6 +2077,7 @@ impl DirectXResources {
         Ok(Self {
             swap_chain,
             frame_gate,
+            readback: Default::default(),
             render_target: Some(render_target),
             render_target_view,
             path_intermediate_texture,
