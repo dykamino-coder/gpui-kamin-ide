@@ -75,7 +75,6 @@ fn available_space_excludes_margins_but_percentage_basis_does_not() {
             called = true;
             assert_eq!(inputs.parent_size.width, Some(100.0));
             assert_eq!(inputs.available_space.width, AvailableSpace::Definite(70.0));
-            assert_eq!(inputs.known_dimensions, Size::NONE);
             assert_eq!(inputs.vertical_margins_are_collapsible, crate::geometry::Line::FALSE);
             measured(inputs, style)
         },

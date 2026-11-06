@@ -1649,6 +1649,10 @@ impl<NodeContext> TaffyTree<NodeContext> {
 mod inline_layout_tests;
 
 #[cfg(test)]
+#[path = "inline_constraint_tests.rs"]
+mod inline_constraint_tests;
+
+#[cfg(test)]
 mod tests {
 
     use super::*;

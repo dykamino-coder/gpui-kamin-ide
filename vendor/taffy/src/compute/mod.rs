@@ -27,6 +27,7 @@ pub(crate) mod common;
 mod content_size_limits;
 pub(crate) mod leaf;
 pub(crate) mod oof;
+mod inline_constraints;
 
 #[cfg(feature = "block_layout")]
 pub(crate) mod block;
@@ -211,6 +212,7 @@ fn compute_in_flow_root_layout(
         run_mode: RunMode::PerformLayout,
         vertical_margins_are_collapsible: Line::FALSE,
     };
+    let inputs = if inline { inline_constraints::resolve(tree, root, inputs) } else { inputs };
     *root_is_cached = tree.cache_get(root, &inputs).is_some();
 
     // Recursively compute node layout
