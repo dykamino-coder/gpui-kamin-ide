@@ -105,3 +105,64 @@ fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
         Lookup::Hit(_)
     ));
 }
+
+#[test]
+fn the_memory_works_only_inside_a_document_build_and_is_emptied_by_it() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let (input, dimensions) = sized(10.0);
+    assert!(with(|memo| memo.is_none()));
+    {
+        let _outer = build();
+        with(|memo| {
+            memo.unwrap()
+                .record(&input, dimensions, vcx, refinement(10.0))
+        });
+        assert!(with(|memo| memo
+            .unwrap()
+            .find(&input, &dimensions, vcx)
+            .is_some()));
+        {
+            // A nested document's build starts and ends empty.
+            let _inner = build();
+            assert!(with(|memo| memo
+                .unwrap()
+                .find(&input, &dimensions, vcx)
+                .is_none()));
+        }
+        assert!(with(|memo| memo.is_some()));
+    }
+    assert!(with(|memo| memo.is_none()));
+    let _again = build();
+    assert!(with(|memo| memo
+        .unwrap()
+        .find(&input, &dimensions, vcx)
+        .is_none()));
+}
+
+#[test]
+fn a_dropped_candidate_nothing_holds_is_the_next_blank_allocation() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    assert!(memo.blank().is_none());
+    let held = refinement(0.0);
+    let (input, dimensions) = sized(0.0);
+    memo.record(&input, dimensions, vcx, held.clone());
+    for width in 1..CANDIDATES {
+        let (input, dimensions) = sized(width as f32);
+        memo.record(&input, dimensions, vcx, refinement(width as f32));
+    }
+    // The oldest candidate is still held by its box: it is not recycled.
+    let (input, dimensions) = sized(100.0);
+    memo.record(&input, dimensions, vcx, refinement(100.0));
+    assert!(memo.blank().is_none());
+    // The next oldest is held by nothing: its allocation comes back empty, once.
+    let (input, dimensions) = sized(101.0);
+    memo.record(&input, dimensions, vcx, refinement(101.0));
+    let blank = memo.blank().unwrap();
+    assert_eq!(*blank, StyleRefinement::default());
+    assert_eq!(Rc::strong_count(&blank), 1);
+    assert!(memo.blank().is_none());
+    assert_eq!(held.size.width, Some(gpui::px(0.0).into()));
+}

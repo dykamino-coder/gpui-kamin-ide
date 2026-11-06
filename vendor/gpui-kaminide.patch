@@ -7215,7 +7215,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228d523b2b2
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f198422ee32445e45c6f52708923266912d90561
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -7679,12 +7679,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    // (`refinement_share`); later writes copy it.
 +    fn into_element(mut self) -> Self::Element {
 +        super::refinement_share::share(&mut self.interactivity.base_style);
-@@ -2133,0 +2302 @@
+@@ -2132 +2299,0 @@
+-#[derive(Default)]
+@@ -2133,0 +2301 @@
 +    pub(crate) box_painter: Option<crate::BoxPainter>,
-@@ -2150,0 +2320,2 @@
+@@ -2150,0 +2319,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,
-@@ -2153,8 +2324,27 @@
+@@ -2153,8 +2323,64 @@
 -    pub base_style: Box<StyleRefinement>,
 -    pub(crate) focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
@@ -7713,6 +7715,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    pub(crate) debug_selector: Option<String>,
 +}
 +
++/// KaminIDE patch: a new element shares its thread's empty base style
++/// ([`super::refinement_share::empty`]); the first write copies it
++/// ([`Interactivity::base_style_mut`]). An element that takes a whole, already shared style
++/// allocates no style of its own.
++impl Default for Interactivity {
++    fn default() -> Self {
++        Self {
++            box_painter: None,
++            element_id: None,
++            active: None,
++            hovered: None,
++            tooltip_id: None,
++            content_size: Size::default(),
++            key_context: None,
++            focusable: false,
++            tracked_focus_handle: None,
++            tracked_scroll_handle: None,
++            scroll_anchor: None,
++            scroll_offset: None,
++            ongoing_scroll: None,
++            group: None,
++            listeners: None,
++            base_style: super::refinement_share::empty(),
++            rare: None,
++            hitbox_behavior: HitboxBehavior::default(),
++            tab_index: None,
++            tab_group: false,
++            tab_stop: false,
++            report_active_descendant_focus: false,
++            #[cfg(any(feature = "inspector", debug_assertions))]
++            source_location: None,
++            #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
++            debug_selector: None,
++        }
++    }
++}
++
 +/// KaminIDE patch: the listener and drag-style lists of an [`Interactivity`].
 +///
 +/// Twenty lists inline were about half of every `Div`, and most boxes of a rendered document
@@ -7720,9 +7759,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +/// registration; a box without listeners keeps a single null pointer.
 +#[derive(Default)]
 +pub(crate) struct InteractivityListeners {
-@@ -2179 +2368,0 @@
+@@ -2179 +2404,0 @@
 -    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2181,0 +2371,21 @@
+@@ -2181,0 +2407,21 @@
 +    pub(crate) a11y_action_listeners:
 +        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 +}
@@ -7744,7 +7783,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    pub(crate) active_style: Option<Box<StyleRefinement>>,
 +    pub(crate) group_active_style: Option<GroupStyle>,
 +    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2188,7 +2397,0 @@
+@@ -2188,7 +2433,0 @@
 -    pub(crate) hitbox_behavior: HitboxBehavior,
 -    pub(crate) tab_index: Option<isize>,
 -    pub(crate) tab_group: bool,
@@ -7752,16 +7791,16 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -
 -    pub(crate) a11y_action_listeners:
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-@@ -2196 +2398,0 @@
+@@ -2196 +2434,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2400,0 @@
+@@ -2199,6 +2436,0 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
 -
 -    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
 -    pub(crate) debug_selector: Option<String>,
-@@ -2206,0 +2403,56 @@
+@@ -2206,0 +2439,56 @@
 +impl InteractivityRare {
 +    /// Whether a rare field needs the element's hitbox.
 +    fn need_hitbox(&self) -> bool {
@@ -7818,7 +7857,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        }
 +    }
 +}
-@@ -2216,0 +2469,16 @@
+@@ -2216,0 +2505,16 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, _, window, cx| {
 +            f(style.into_owned(), window, cx)
 +        })
@@ -7835,13 +7874,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        cx: &mut App,
 +        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2223 +2491 @@
+@@ -2223 +2527 @@
 -                    self.base_style = inspector_state.base_style.clone();
 +                    self.base_style = Rc::from(inspector_state.base_style.clone());
-@@ -2226 +2494 @@
+@@ -2226 +2530 @@
 -                        base_style: self.base_style.clone(),
 +                        base_style: Box::new((*self.base_style).clone()),
-@@ -2294,2 +2562,5 @@
+@@ -2294,2 +2598,5 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 -                let layout_id = f(style, window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
@@ -7849,7 +7888,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                // refinement on the default style (`compute_style_internal`).
 +                let refinement = self.rare.is_none().then_some(&self.base_style);
 +                let layout_id = f(style, refinement, window, cx);
-@@ -2354,11 +2625,56 @@
+@@ -2354,11 +2661,56 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -7917,7 +7956,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2682 @@
+@@ -2366,18 +2718 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -7937,7 +7976,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2684,12 @@
+@@ -2385,20 +2720,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -7970,9 +8009,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2409 +2699,0 @@
+@@ -2409 +2735,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2704,2 @@
+@@ -2414,17 +2740,2 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -7992,7 +8031,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2793,109 @@
+@@ -2518,113 +2829,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8215,7 +8254,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2903,28 @@
+@@ -2632,2 +2939,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -8246,54 +8285,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2932,2 @@
+@@ -2635,4 +2968,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3084,3 @@
+@@ -2789 +3120,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3093 @@
+@@ -2796 +3129 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3100 @@
+@@ -2803 +3136 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3107 @@
+@@ -2810 +3143 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3114 @@
+@@ -2817 +3150 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3121 @@
+@@ -2824 +3157 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3128 @@
+@@ -2831 +3164 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3135 @@
+@@ -2838 +3171 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3142,2 @@
+@@ -2845 +3178,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3145,2 @@
+@@ -2847 +3181,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3149 @@
+@@ -2850 +3185 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3171 @@
+@@ -2872 +3207 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3196,5 @@
+@@ -2897,5 +3232,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -8304,25 +8343,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3432 @@
+@@ -3133 +3468 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3451 @@
+@@ -3152 +3487 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3486 @@
+@@ -3187 +3522 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3527 @@
+@@ -3228 +3563 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3551,3 @@
+@@ -3252,2 +3587,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3575,4 @@
+@@ -3275,4 +3611,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -8331,12 +8370,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3308,2 +3608,2 @@
+@@ -3308,2 +3644,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3705,28 @@
+@@ -3404,0 +3741,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -8365,43 +8404,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        )))
 +    }
 +
-@@ -3414,0 +3743 @@
+@@ -3414,0 +3779 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3746 @@
+@@ -3417 +3782 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3752 @@
+@@ -3423 +3788 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3758 @@
+@@ -3429 +3794 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3767 @@
+@@ -3438 +3803 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3787 @@
+@@ -3458 +3823 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3810 @@
+@@ -3481 +3846 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3815 @@
+@@ -3486 +3851 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3825 @@
+@@ -3496 +3861 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3828,2 @@
+@@ -3499 +3864,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3845 @@
+@@ -3515 +3881 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3850 @@
+@@ -3520 +3886 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3861,66 @@
+@@ -3531,64 +3897,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -8532,14 +8571,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +3932 @@
+@@ -3600 +3968 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4435,3 @@
+@@ -4102,0 +4471,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4448,0 +4784,21 @@
+@@ -4448,0 +4820,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -8561,7 +8600,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5624,8 @@
+@@ -5268,8 +5660,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -9131,10 +9170,10 @@ index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b17dfd5c2f00c8512990e93e48e6ebbf
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e75b832121
+index 0000000000000000000000000000000000000000..99af2967b8bb558208f019a7cb834d68f8602280
 --- /dev/null
 +++ b/vendor/gpui/src/elements/refinement_share.rs
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,277 @@
 +//! KaminIDE patch: equal div base style refinements share one allocation.
 +//!
 +//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
@@ -9160,6 +9199,13 @@ index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e7
 +
 +thread_local! {
 +    static RECENT: RefCell<RefinementShare> = RefCell::default();
++    static EMPTY: Rc<StyleRefinement> = Rc::default();
++}
++
++/// The empty refinement every new element of this thread starts from. Shared, so a write
++/// copies it; an element whose style is replaced whole (a reused conversion) never allocates.
++pub(crate) fn empty() -> Rc<StyleRefinement> {
++    EMPTY.with(Rc::clone)
 +}
 +
 +/// Point `style` at an equal recent refinement of this thread, or make it a candidate.
@@ -9377,6 +9423,21 @@ index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e7
 +        assert!(!Rc::ptr_eq(&first, &other));
 +        assert_eq!(format!("{:?}", *other), format!("{expected:?}"));
 +    }
++    #[test]
++    fn new_divs_share_the_empty_style_until_written() {
++        use crate::{InteractiveElement, Styled, div};
++        let mut a = div();
++        let mut b = div();
++        let empty = b.interactivity().base_style.clone();
++        assert!(Rc::ptr_eq(&a.interactivity().base_style, &empty));
++        assert_eq!(*empty, StyleRefinement::default());
++        a.style().size.width = Some(px(5.).into());
++        assert!(!Rc::ptr_eq(&a.interactivity().base_style, &empty));
++        assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
++        assert_eq!(*super::empty(), StyleRefinement::default());
++        assert_eq!(a.interactivity().base_style.size.width, Some(px(5.).into()));
++    }
++
 +    #[test]
 +    fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
 +        use crate::{InteractiveElement, IntoElement, Styled, div};

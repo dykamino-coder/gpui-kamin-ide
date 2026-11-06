@@ -51,8 +51,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
             crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
         ));
-        cx.contracts.conversions = Default::default();
     });
+    // Переводы стилей коробок — общие в пределах этой сборки (`layout::cx::conversions`).
+    let _conversions = crate::layout::cx::conversions::build();
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
@@ -116,7 +117,6 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
         cx.constraints
             .set_avail_w(Some(opts.viewport.0).filter(|w| *w > 0.0));
         cx.position.state = Default::default();
-        cx.contracts.conversions = Default::default();
         if !cx.contracts.in_render {
             cx.deferred.vertical_paint = Default::default();
             cx.deferred.paint = Default::default();
@@ -124,7 +124,9 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     });
     let icb_layer =
         crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+    let conversions = crate::layout::cx::conversions::build();
     let out = blocks(std::slice::from_ref(node), &root, opts);
+    drop(conversions);
     let layer = icb_layer.finish();
     let first = out.into_iter().next()?;
     if layer.is_empty() {

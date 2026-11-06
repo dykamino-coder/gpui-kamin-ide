@@ -23,6 +23,13 @@ const CANDIDATES: usize = 32;
 
 thread_local! {
     static RECENT: RefCell<RefinementShare> = RefCell::default();
+    static EMPTY: Rc<StyleRefinement> = Rc::default();
+}
+
+/// The empty refinement every new element of this thread starts from. Shared, so a write
+/// copies it; an element whose style is replaced whole (a reused conversion) never allocates.
+pub(crate) fn empty() -> Rc<StyleRefinement> {
+    EMPTY.with(Rc::clone)
 }
 
 /// Point `style` at an equal recent refinement of this thread, or make it a candidate.
@@ -240,6 +247,21 @@ mod tests {
         assert!(!Rc::ptr_eq(&first, &other));
         assert_eq!(format!("{:?}", *other), format!("{expected:?}"));
     }
+    #[test]
+    fn new_divs_share_the_empty_style_until_written() {
+        use crate::{InteractiveElement, Styled, div};
+        let mut a = div();
+        let mut b = div();
+        let empty = b.interactivity().base_style.clone();
+        assert!(Rc::ptr_eq(&a.interactivity().base_style, &empty));
+        assert_eq!(*empty, StyleRefinement::default());
+        a.style().size.width = Some(px(5.).into());
+        assert!(!Rc::ptr_eq(&a.interactivity().base_style, &empty));
+        assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
+        assert_eq!(*super::empty(), StyleRefinement::default());
+        assert_eq!(a.interactivity().base_style.size.width, Some(px(5.).into()));
+    }
+
     #[test]
     fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
         use crate::{InteractiveElement, IntoElement, Styled, div};

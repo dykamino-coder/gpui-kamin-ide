@@ -2297,7 +2297,6 @@ pub(crate) struct AriaProperties {
 
 /// The interactivity struct. Powers all of the general-purpose
 /// interactivity in the `Div` element.
-#[derive(Default)]
 pub struct Interactivity {
     pub(crate) box_painter: Option<crate::BoxPainter>,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
@@ -2339,6 +2338,43 @@ pub struct Interactivity {
 
     #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
     pub(crate) debug_selector: Option<String>,
+}
+
+/// KaminIDE patch: a new element shares its thread's empty base style
+/// ([`super::refinement_share::empty`]); the first write copies it
+/// ([`Interactivity::base_style_mut`]). An element that takes a whole, already shared style
+/// allocates no style of its own.
+impl Default for Interactivity {
+    fn default() -> Self {
+        Self {
+            box_painter: None,
+            element_id: None,
+            active: None,
+            hovered: None,
+            tooltip_id: None,
+            content_size: Size::default(),
+            key_context: None,
+            focusable: false,
+            tracked_focus_handle: None,
+            tracked_scroll_handle: None,
+            scroll_anchor: None,
+            scroll_offset: None,
+            ongoing_scroll: None,
+            group: None,
+            listeners: None,
+            base_style: super::refinement_share::empty(),
+            rare: None,
+            hitbox_behavior: HitboxBehavior::default(),
+            tab_index: None,
+            tab_group: false,
+            tab_stop: false,
+            report_active_descendant_focus: false,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            source_location: None,
+            #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
+            debug_selector: None,
+        }
+    }
 }
 
 /// KaminIDE patch: the listener and drag-style lists of an [`Interactivity`].
