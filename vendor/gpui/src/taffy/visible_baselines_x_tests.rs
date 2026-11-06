@@ -17,6 +17,7 @@ fn clipped_right_origin_lines_include_final_width_insets_and_scrollbar_gutter() 
             layout_lines: None,
             layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)]),
             layout_lines_x_from_right: true,
+            key_slot: crate::taffy::retained::NO_SLOT,
         };
         let mut style: Style = Style::DEFAULT;
         style.size = taffy::Size {
