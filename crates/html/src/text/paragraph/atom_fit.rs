@@ -85,7 +85,7 @@ impl AtomFit {
                         cx,
                     );
                     let (h, b) = (f32::from(s.height), b.map(f32::from));
-                    seen.push((w, h, b));
+                    AtomMemo::remember(&mut seen, (w, h, b));
                     (h, b)
                 }
             };
@@ -186,8 +186,8 @@ impl Paragraph {
             return;
         }
         let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for (k, slot) in self.atoms.iter_mut().enumerate() {
-            let Some(&(_, w, _, _, _)) = fitted.iter().find(|f| f.0 == k) else {
+        for &(k, w, _, _, _) in &fitted {
+            let Some(slot) = self.atoms.get_mut(k) else {
                 continue;
             };
             let Some(root) = slot.root.get() else {
