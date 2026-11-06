@@ -9,7 +9,7 @@ pub(super) fn zero_width_cols(
     cols: u16,
     grid: &TableGrid<'_>,
     from_cols: &[Option<f32>],
-    cb_px: Option<f32>,
+    cb_px: impl Fn() -> Option<f32>,
 ) -> Vec<bool> {
     let vertical = e.style.used().wm().vertical();
     let axes = super::axes::Axes::new(&e.style.used());
@@ -23,7 +23,7 @@ pub(super) fn zero_width_cols(
             e.style.used().reset_box_layout.width
         } {
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) if !vertical => cb_px.filter(|v| *v > 0.0).map(|cb| cb * k),
+            Some(Len::Pct(k)) if !vertical => cb_px().filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         };
         match (

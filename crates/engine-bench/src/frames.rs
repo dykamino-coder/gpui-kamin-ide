@@ -2,14 +2,26 @@
 
 use super::{
     args::{Args, Mode},
-    pixels::Recorder,
+    pixels::{Recorder, detail, differing},
+    run::{Step, sample},
     view::View,
 };
 use gpui::{AsyncApp, WindowHandle};
-use kamin_html::host::capture::Frame;
+use kamin_html::host::capture::{CaptureSession, Frame};
+use kamin_html::metrics::FontContext;
 use serde_json::{Value, json};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// Окно и входы прогона для проверок после замеров.
+pub(super) type Run<'a, 'b> = (
+    &'a mut AsyncApp,
+    WindowHandle<View>,
+    &'b FontContext,
+    &'b Args,
+    &'b CaptureSession,
+    (i32, u32),
+);
 
 fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
     if alternate {
@@ -113,6 +125,52 @@ impl Frames {
         out["document_frame_samples"] = json!(self.samples);
         out["warm_scope"] = json!("unchanged document: may replay without element build/layout");
         out
+    }
+
+    /// После чтения пика памяти и вне замеров: проверка relayout по свежему
+    /// документу (`fresh`) и аудит устойчивой памяти (`memory::finish`).
+    pub(super) async fn finish(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        let (cx, window, fonts, args, capture, luid) = run;
+        self.fresh(report, (&mut *cx, window, fonts, args, capture, luid))
+            .await?;
+        if args.memory_settle_ms > 0 {
+            if report["frame_pixels_changed"] != false {
+                return Err("memory audit requires an unchanged RGB frame sequence".into());
+            }
+            report["memory_audit"] =
+                super::memory::finish(cx, window, fonts, args, capture, luid).await?;
+        }
+        Ok(())
+    }
+
+    /// Relayout: кадр каждой ширины (все кадры группы равны первому, иначе
+    /// `frame_pixels_changed`) совпадает по пикселям со свежим документом той
+    /// же ширины.
+    async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        let (cx, window, fonts, args, capture, luid) = run;
+        if !self.relayout {
+            return Ok(());
+        }
+        let mut checks = Vec::new();
+        for (group, pixels) in self.pixels.iter().enumerate() {
+            let Some(incremental) = pixels.first() else {
+                continue;
+            };
+            let css = viewport(self.base, group == 1);
+            window.update(cx, |view, _, _| view.viewport = Some(css))?;
+            let (_, fresh, _) =
+                sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
+            let different = differing(incremental, &fresh.pixels)?;
+            let mut check = json!({"css_viewport": css, "different_rgb_pixels": different});
+            if different != 0 {
+                check["detail"] = detail(incremental, &fresh.pixels);
+            }
+            checks.push(check);
+        }
+        let mode = &mut report["modes"]["relayout"];
+        mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
+        mode["fresh_checks"] = json!(checks);
+        Ok(())
     }
 }
 

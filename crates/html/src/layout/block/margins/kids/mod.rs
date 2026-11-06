@@ -18,7 +18,7 @@ pub(super) use struts::emit_margin_struts;
 
 pub(super) fn collapse_kid_margins(
     out: &mut [Node],
-    cb: Option<f32>,
+    cb: crate::layout::cx::WidthBasis<'_>,
     vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     for node in out.iter_mut() {

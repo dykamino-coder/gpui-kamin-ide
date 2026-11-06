@@ -100,7 +100,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     );
     if in_flow
         && let Some(Len::Pct(k)) = resolved.style.used().reset_box_layout.width
-        && let Some(width) = opts.cx.constraints.avail_w
+        && let Some(width) = opts.cx.constraints.avail_w()
     {
         resolved.style.used_mut().reset_box_layout.width = Some(Len::Px(k * width));
     }
