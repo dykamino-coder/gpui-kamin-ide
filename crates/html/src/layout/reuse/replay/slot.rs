@@ -21,7 +21,7 @@ impl ReplaySlot {
 
     /// DOM node of the replayed block.
     pub(in crate::layout::reuse) fn node(&self) -> u64 {
-        self.record.element.node_id
+        self.record.source.id()
     }
 
     /// Повтор этого кадра точен: узлы заняты, ни одна мера не понадобилась,
@@ -42,11 +42,11 @@ impl ReplaySlot {
             window.content_mask(),
         );
         fresh
-            && self.record.jobs.iter().all(|job| job.ready())
             && self
                 .record
                 .ranges(|r| {
                     r.serial + 1 == serial
+                        && r.lines.complete()
                         && r.scale == scale
                         && r.mask == mask
                         && r.origin == origin

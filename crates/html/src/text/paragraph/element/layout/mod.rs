@@ -76,6 +76,7 @@ impl Paragraph {
         // Ширина известна только раскладке, поэтому строки считаются в замере:
         // сколько дали места — столько строк и получилось.
         let text = self.text.clone();
+        let text_hash = self.text_hash();
         let runs = self.runs.clone();
         let font_size = self.font_size;
         let line_height = self.line_height;
@@ -133,6 +134,7 @@ impl Paragraph {
                 wrap,
             )
             .ortho_limit(ortho_limit);
+            probe.prepared.seed_text_hash(text_hash);
             probe.clamp_rows = clamp_rows.clone();
             probe.clamp_tag = clamp_tag;
             probe.measures = measures.clone();

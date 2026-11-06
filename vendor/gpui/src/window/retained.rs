@@ -28,6 +28,19 @@ impl RetainedPaint {
     pub fn replayable(&self) -> bool {
         self.replayable
     }
+
+    /// Extend this output by `next`, recorded right after it in the same
+    /// frame: one replay of the joined range copies exactly the commands of
+    /// both, in order. `false` leaves this output unchanged when `next` does
+    /// not start where this one ends.
+    pub fn append(&mut self, next: &RetainedPaint) -> bool {
+        if self.range.end != next.range.start {
+            return false;
+        }
+        self.range.end = next.range.end.clone();
+        self.replayable &= next.replayable;
+        true
+    }
 }
 
 impl Window {
@@ -263,6 +276,20 @@ impl LayoutSnapshot {
     pub fn scale(&self) -> f32 {
         self.scale
     }
+
+    /// Border-box width of the snapshot leaf, in logical pixels; for an
+    /// unpainted box ([`Window::layout_snapshot_unpainted`]) at least the
+    /// width of its content.
+    pub fn width(&self) -> f32 {
+        self.leaf.width() / self.scale
+    }
+
+    /// The same leaf with its width left to the parent: the stretch-fit
+    /// width of a block-level box (CSS2 §10.3.3), for a host that knows the
+    /// subtree's height and overflow do not depend on that width.
+    pub fn stretched(self) -> Self {
+        Self { leaf: self.leaf.stretched(), ..self }
+    }
 }
 
 impl Window {
@@ -310,6 +337,18 @@ impl Window {
     /// qualify. The snapshot is a few numbers (`Copy`).
     pub fn layout_snapshot(&self, id: LayoutId) -> Option<LayoutSnapshot> {
         let leaf = self.layout_engine.as_ref()?.exact_leaf(id)?;
+        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
+    }
+
+    /// The exact leaf of a laid out node that paints nothing of its own and
+    /// holds its content at its inline-start edge whatever its width (an
+    /// anonymous wrapper box; the caller guarantees both). Unlike
+    /// [`Self::layout_snapshot`] its content may overflow its inline-end edge:
+    /// the leaf takes the parent's stretch fit, at least the content's width
+    /// ([`LayoutSnapshot::width`]), which the parent places and unions into
+    /// its scrollable overflow exactly like the node with its content.
+    pub fn layout_snapshot_unpainted(&self, id: LayoutId) -> Option<LayoutSnapshot> {
+        let leaf = self.layout_engine.as_ref()?.unpainted_leaf(id)?;
         Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
     }
 

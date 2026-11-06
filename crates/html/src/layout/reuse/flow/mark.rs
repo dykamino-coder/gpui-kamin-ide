@@ -45,7 +45,7 @@ impl super::FlowCx {
     /// запись повтора может пригодиться (`replay_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if self.replay_worth_recording(e, &mark.inert) {
+        if self.replay_worth_recording(e) {
             mark.widths = Some(Rc::default());
         }
         mark
@@ -58,20 +58,15 @@ impl super::FlowCx {
     /// (`plain::fills_width`) или прочитавший в прошлой записи ширину снаружи,
     /// — ещё и тех же ширин: пока ширины меняются от сборки к сборке, такой
     /// блок не пишется. Первая устоявшаяся сборка собирает весь поток;
-    /// инертные блоки (`plain::plain`) она пишет для пропуска, а для повтора
-    /// их пишет следующая, где дальние уже пропущены и собираются лишь
-    /// ближние и изменённые. Так Blink `ShouldCreateSubsequence` кэширует
+    /// блоки, которые она пишет для пропуска (`FlowCx::record`), для повтора
+    /// пишет следующая, где дальние уже пропущены и собираются лишь ближние и
+    /// изменённые. Так Blink `ShouldCreateSubsequence` кэширует
     /// подпоследовательность только там, где повтор вероятен.
-    fn replay_worth_recording(&self, e: &Element, inert: &super::super::plain::Inert) -> bool {
+    fn replay_worth_recording(&self, e: &Element) -> bool {
         self.settled_outside_widths
             && !self.floats.get()
-            && match (self.settled, self.warm) {
-                (true, true) => true,
-                (true, false) => !inert.of(e),
-                (false, _) => {
-                    !super::super::plain::fills_width(e)
-                        && !self.reuse.store.reads_widths(e.node_id)
-                }
-            }
+            && (self.settled
+                || !super::super::plain::fills_width(e)
+                    && !self.reuse.store.reads_widths(e.node_id))
     }
 }

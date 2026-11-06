@@ -1,7 +1,8 @@
 //! Очереди конечных CSS-заданий: FIFO строк и стабильные ключи документа.
 
+use super::capture::LineCapture;
 use super::*;
-use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx};
+use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx, RetainedPaint};
 use std::collections::{BTreeMap, VecDeque};
 
 pub(super) struct Positioned {
@@ -11,16 +12,19 @@ pub(super) struct Positioned {
 }
 
 pub(super) struct Inline {
-    pub job: Job,
+    pub paint: InlinePaint,
     pub context: RasterPaintCtx,
-    /// Снятие команд задания для повтора блока на экране (`tap`).
-    pub tap: Option<Rc<super::tap::JobSlot>>,
+    /// Записи блоков, из вывода которых ушло это задание (`capture`).
+    /// Почти всегда пусто: пустой срез не выделяет памяти и на слово уже
+    /// вектора, а заданий в кадре стопки тысячи.
+    pub captures: Box<[Rc<LineCapture>]>,
 }
 
-/// Задание строк: элемент или повтор команд прошлого кадра.
-pub(super) enum Job {
-    Paint(AnyElement),
-    Replay(Rc<super::tap::JobSlot>),
+/// Строки элемента либо их вывод прошлого кадра (повтор записи блока).
+/// Вывод — в куче: заданий в кадре стопки тысячи, а повторов среди них мало.
+pub(super) enum InlinePaint {
+    Element(AnyElement),
+    Replay(Box<RetainedPaint>),
 }
 
 pub(super) struct Frame {
@@ -30,6 +34,9 @@ pub(super) struct Frame {
     // Новые задания во время replay входят в ту же CSS-фазу; одинаковые
     // ключи сохраняют приход. Каждый AnyElement изымается ровно один раз.
     pub positioned: BTreeMap<u64, VecDeque<Positioned>>,
+    /// Заданий, принятых кадром: запись блока под ним видит, ушли ли её
+    /// задания за её вывод (`capture`).
+    pub admitted: u64,
 }
 
 impl Frame {
@@ -38,11 +45,18 @@ impl Frame {
             scope,
             inline: VecDeque::new(),
             positioned: BTreeMap::new(),
+            admitted: 0,
         }
     }
 
     pub fn push(&mut self, job: Positioned) {
+        self.admitted += 1;
         self.positioned.entry(job.key).or_default().push_back(job);
+    }
+
+    pub fn push_inline(&mut self, job: Inline) {
+        self.admitted += 1;
+        self.inline.push_back(job);
     }
 
     pub(super) fn next(&mut self) -> Option<Positioned> {
@@ -60,9 +74,9 @@ impl CssPaintPass {
         loop {
             let next = self.jobs.pop_inline(depth);
             let Some(Inline {
-                job,
+                paint,
                 mut context,
-                tap,
+                captures,
             }) = next
             else {
                 break;
@@ -70,7 +84,24 @@ impl CssPaintPass {
             // Строки сохраняют glyph/background origin, заливка наследуется
             // от текущего места flush, как и в исходном CSS consumer.
             context.set_fill_transform(window.raster_frame().fill_transform);
-            super::tap::paint_inline(job, tap, context, window, cx);
+            let admitted = self.jobs.admitted_below(depth + 1);
+            let range = window
+                .with_raster_paint_ctx(context, |window| {
+                    window
+                        .record_retained_paint(|window| match paint {
+                            InlinePaint::Element(mut child) => child.paint(window, cx),
+                            InlinePaint::Replay(record) => {
+                                window.replay_retained_paint(&record);
+                            }
+                        })
+                        .1
+                })
+                .expect("CSS inline job stays in its live GPUI scope");
+            // Задание, отдавшее свои задания, рисуется не только своим выводом.
+            let own = self.jobs.admitted_below(depth + 1) == admitted;
+            for capture in captures.iter() {
+                capture.painted(range.clone(), own);
+            }
         }
     }
 
