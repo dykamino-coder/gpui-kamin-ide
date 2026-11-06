@@ -18210,10 +18210,10 @@ index 0000000000000000000000000000000000000000..b14064ab561e9ff3bbbb0cd3721db9e7
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ea922f99e97b5c6f7ad273e57e216ef1bb1caa8
+index 0000000000000000000000000000000000000000..ca67e8a785b30a614846473224a52035cfb3b63c
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,182 @@
 +//! KaminIDE patch: an exact leaf standing in for a laid out subtree.
 +//!
 +//! A host that skips building a settled subtree still needs its parent to
@@ -18321,63 +18321,171 @@ index 0000000000000000000000000000000000000000..4ea922f99e97b5c6f7ad273e57e216ef
 +            && style.overflow.y == Overflow::Visible
 +            && (block || style.flex_grow == 0.0 && style.flex_shrink == 0.0)
 +            && margins.iter().all(|m| !m.into_raw().has_calc());
-+        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| ExactLeaf {
-+            display: style.display,
-+            direction: style.direction,
-+            block_flow: style.block_flow,
-+            size,
-+            margin: style.margin,
-+            align_self: style.align_self,
-+            justify_self: style.justify_self,
++        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| {
++            ExactLeaf {
++                display: style.display,
++                direction: style.direction,
++                block_flow: style.block_flow,
++                size,
++                margin: style.margin,
++                align_self: style.align_self,
++                justify_self: style.justify_self,
++            }
 +        })
 +    }
 +
 +    /// Whether no descendant margin adjoins the top (`top`) or bottom edge of
 +    /// `node`: a border or padding separates them, or the first (last)
 +    /// in-flow child has a zero margin there, cannot collapse through and
-+    /// recursively has the same property.
-+    fn own_margins(&self, node: NodeId, top: bool) -> bool {
-+        let Ok(layout) = self.taffy.layout(node) else {
-+            return false;
-+        };
-+        let edge = if top {
-+            layout.border.top + layout.padding.top
-+        } else {
-+            layout.border.bottom + layout.padding.bottom
-+        };
-+        if edge > 0.0 {
-+            return true;
++    /// has the same property. Only one edge child is relevant at each level,
++    /// so follow that chain with a cursor rather than native recursion.
++    fn own_margins(&self, mut node: NodeId, top: bool) -> bool {
++        loop {
++            let Ok(layout) = self.taffy.layout(node) else {
++                return false;
++            };
++            let edge = if top {
++                layout.border.top + layout.padding.top
++            } else {
++                layout.border.bottom + layout.padding.bottom
++            };
++            if edge > 0.0 {
++                return true;
++            }
++            let children = self.taffy.children_slice(node);
++            let in_flow = |child: &NodeId| {
++                self.taffy.style(*child).is_ok_and(|style| {
++                    style.display != Display::None && style.position != Position::Absolute
++                })
++            };
++            let child = if top {
++                children.iter().find(|c| in_flow(c))
++            } else {
++                children.iter().rev().find(|c| in_flow(c))
++            };
++            let Some(&child) = child else {
++                return layout.size.height > 0.0;
++            };
++            let (Ok(style), Ok(child_layout)) = (self.taffy.style(child), self.taffy.layout(child))
++            else {
++                return false;
++            };
++            let margin = if top {
++                style.margin.top
++            } else {
++                style.margin.bottom
++            };
++            let zero = margin.is_auto() || margin == LengthPercentageAuto::length(0.0);
++            if !(zero && child_layout.size.height > 0.0) {
++                return false;
++            }
++            node = child;
 +        }
-+        let Ok(children) = self.taffy.children(node) else {
-+            return false;
-+        };
-+        let in_flow = |child: &NodeId| {
-+            self.taffy.style(*child).is_ok_and(|style| {
-+                style.display != Display::None && style.position != Position::Absolute
-+            })
-+        };
-+        let child = if top {
-+            children.iter().find(|c| in_flow(c))
-+        } else {
-+            children.iter().rev().find(|c| in_flow(c))
-+        };
-+        let Some(&child) = child else {
-+            return layout.size.height > 0.0;
-+        };
-+        let (Ok(style), Ok(child_layout)) = (self.taffy.style(child), self.taffy.layout(child)) else {
-+            return false;
-+        };
-+        let margin = if top { style.margin.top } else { style.margin.bottom };
-+        let zero = margin.is_auto() || margin == LengthPercentageAuto::length(0.0);
-+        zero && child_layout.size.height > 0.0 && self.own_margins(child, top)
 +    }
 +
 +    /// Add an exact leaf made by `exact_leaf` to this frame's tree.
 +    pub(crate) fn request_exact_leaf(&mut self, leaf: &ExactLeaf) -> LayoutId {
 +        crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +        let style = self.styles.share(leaf.style());
-+        self.taffy.new_leaf(style).expect(super::EXPECT_MESSAGE).into()
++        self.taffy
++            .new_leaf(style)
++            .expect(super::EXPECT_MESSAGE)
++            .into()
 +    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/vendor/gpui/src/taffy/exact_leaf/tests.rs b/vendor/gpui/src/taffy/exact_leaf/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e41e5d99cfbb420f359abc6839bd9eaf0298e81
+--- /dev/null
++++ b/vendor/gpui/src/taffy/exact_leaf/tests.rs
+@@ -0,0 +1,85 @@
++//! Проверка полей заместителя идёт по краям дерева без роста native-стека.
++
++use super::*;
++
++fn node(engine: &mut TaffyLayoutEngine, style: Style, children: &[NodeId]) -> NodeId {
++    engine.taffy.new_with_children(style, children).unwrap()
++}
++
++fn block() -> Style {
++    Style {
++        display: Display::Block,
++        size: Size {
++            width: Dimension::length(10.0),
++            height: Dimension::length(10.0),
++        },
++        ..Style::default()
++    }
++}
++
++fn layout(engine: &mut TaffyLayoutEngine, root: NodeId) {
++    engine
++        .taffy
++        .compute_layout(root, Size::MAX_CONTENT)
++        .unwrap();
++}
++
++#[test]
++fn deep_margin_edges_use_a_constant_native_stack() {
++    std::thread::Builder::new()
++        .stack_size(512 * 1024)
++        .spawn(|| {
++            let mut engine = TaffyLayoutEngine::new();
++            let mut root = node(&mut engine, block(), &[]);
++            for _ in 0..20_000 {
++                root = node(&mut engine, block(), &[root]);
++            }
++            layout(&mut engine, root);
++            assert!(engine.own_margins(root, true));
++            assert!(engine.own_margins(root, false));
++        })
++        .unwrap()
++        .join()
++        .unwrap();
++}
++
++#[test]
++fn only_the_first_and_last_in_flow_edges_are_followed() {
++    let mut engine = TaffyLayoutEngine::new();
++    let mut margin = block();
++    margin.margin.bottom = LengthPercentageAuto::length(2.0);
++    let first = node(&mut engine, block(), &[]);
++    let last = node(&mut engine, margin.clone(), &[]);
++    margin.position = Position::Absolute;
++    margin.margin.top = LengthPercentageAuto::length(2.0);
++    let absolute = node(&mut engine, margin.clone(), &[]);
++    margin.display = Display::None;
++    let hidden = node(&mut engine, margin, &[]);
++    let root = node(&mut engine, block(), &[hidden, first, last, absolute]);
++    layout(&mut engine, root);
++    assert!(engine.own_margins(root, true));
++    assert!(!engine.own_margins(root, false));
++}
++
++#[test]
++fn separating_edges_stop_before_a_descendant_margin() {
++    let mut engine = TaffyLayoutEngine::new();
++    let mut margin = block();
++    margin.margin.top = LengthPercentageAuto::length(2.0);
++    margin.margin.bottom = LengthPercentageAuto::length(2.0);
++    let child = node(&mut engine, margin, &[]);
++    let mut separated = block();
++    separated.padding.top = LengthPercentage::length(1.0);
++    separated.border.bottom = LengthPercentage::length(1.0);
++    let root = node(&mut engine, separated, &[child]);
++    layout(&mut engine, root);
++    assert!(engine.own_margins(root, true));
++    assert!(engine.own_margins(root, false));
++    let mut empty = block();
++    empty.size.height = Dimension::length(0.0);
++    let empty = node(&mut engine, empty, &[]);
++    let root = node(&mut engine, block(), &[empty]);
++    layout(&mut engine, root);
++    assert!(!engine.own_margins(root, true));
++    assert!(!engine.own_margins(root, false));
 +}
 diff --git a/vendor/gpui/src/taffy/final_geometry.rs b/vendor/gpui/src/taffy/final_geometry.rs
 new file mode 100644

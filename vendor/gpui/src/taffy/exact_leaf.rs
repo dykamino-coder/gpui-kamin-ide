@@ -105,61 +105,78 @@ impl TaffyLayoutEngine {
             && style.overflow.y == Overflow::Visible
             && (block || style.flex_grow == 0.0 && style.flex_shrink == 0.0)
             && margins.iter().all(|m| !m.into_raw().has_calc());
-        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| ExactLeaf {
-            display: style.display,
-            direction: style.direction,
-            block_flow: style.block_flow,
-            size,
-            margin: style.margin,
-            align_self: style.align_self,
-            justify_self: style.justify_self,
+        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| {
+            ExactLeaf {
+                display: style.display,
+                direction: style.direction,
+                block_flow: style.block_flow,
+                size,
+                margin: style.margin,
+                align_self: style.align_self,
+                justify_self: style.justify_self,
+            }
         })
     }
 
     /// Whether no descendant margin adjoins the top (`top`) or bottom edge of
     /// `node`: a border or padding separates them, or the first (last)
     /// in-flow child has a zero margin there, cannot collapse through and
-    /// recursively has the same property.
-    fn own_margins(&self, node: NodeId, top: bool) -> bool {
-        let Ok(layout) = self.taffy.layout(node) else {
-            return false;
-        };
-        let edge = if top {
-            layout.border.top + layout.padding.top
-        } else {
-            layout.border.bottom + layout.padding.bottom
-        };
-        if edge > 0.0 {
-            return true;
+    /// has the same property. Only one edge child is relevant at each level,
+    /// so follow that chain with a cursor rather than native recursion.
+    fn own_margins(&self, mut node: NodeId, top: bool) -> bool {
+        loop {
+            let Ok(layout) = self.taffy.layout(node) else {
+                return false;
+            };
+            let edge = if top {
+                layout.border.top + layout.padding.top
+            } else {
+                layout.border.bottom + layout.padding.bottom
+            };
+            if edge > 0.0 {
+                return true;
+            }
+            let children = self.taffy.children_slice(node);
+            let in_flow = |child: &NodeId| {
+                self.taffy.style(*child).is_ok_and(|style| {
+                    style.display != Display::None && style.position != Position::Absolute
+                })
+            };
+            let child = if top {
+                children.iter().find(|c| in_flow(c))
+            } else {
+                children.iter().rev().find(|c| in_flow(c))
+            };
+            let Some(&child) = child else {
+                return layout.size.height > 0.0;
+            };
+            let (Ok(style), Ok(child_layout)) = (self.taffy.style(child), self.taffy.layout(child))
+            else {
+                return false;
+            };
+            let margin = if top {
+                style.margin.top
+            } else {
+                style.margin.bottom
+            };
+            let zero = margin.is_auto() || margin == LengthPercentageAuto::length(0.0);
+            if !(zero && child_layout.size.height > 0.0) {
+                return false;
+            }
+            node = child;
         }
-        let Ok(children) = self.taffy.children(node) else {
-            return false;
-        };
-        let in_flow = |child: &NodeId| {
-            self.taffy.style(*child).is_ok_and(|style| {
-                style.display != Display::None && style.position != Position::Absolute
-            })
-        };
-        let child = if top {
-            children.iter().find(|c| in_flow(c))
-        } else {
-            children.iter().rev().find(|c| in_flow(c))
-        };
-        let Some(&child) = child else {
-            return layout.size.height > 0.0;
-        };
-        let (Ok(style), Ok(child_layout)) = (self.taffy.style(child), self.taffy.layout(child)) else {
-            return false;
-        };
-        let margin = if top { style.margin.top } else { style.margin.bottom };
-        let zero = margin.is_auto() || margin == LengthPercentageAuto::length(0.0);
-        zero && child_layout.size.height > 0.0 && self.own_margins(child, top)
     }
 
     /// Add an exact leaf made by `exact_leaf` to this frame's tree.
     pub(crate) fn request_exact_leaf(&mut self, leaf: &ExactLeaf) -> LayoutId {
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let style = self.styles.share(leaf.style());
-        self.taffy.new_leaf(style).expect(super::EXPECT_MESSAGE).into()
+        self.taffy
+            .new_leaf(style)
+            .expect(super::EXPECT_MESSAGE)
+            .into()
     }
 }
+
+#[cfg(test)]
+mod tests;
