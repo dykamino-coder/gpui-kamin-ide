@@ -11,6 +11,7 @@ mod directx_renderer;
 mod dispatcher;
 mod display;
 mod events;
+mod frame_request;
 // KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 mod gpu_adapter;
 mod gpu_context;
@@ -34,6 +35,7 @@ pub(crate) use directx_renderer::*;
 pub(crate) use dispatcher::*;
 pub(crate) use display::*;
 pub(crate) use events::*;
+pub(crate) use frame_request::DrawCoordinator;
 pub(crate) use keyboard::*;
 pub(crate) use platform::*;
 pub(crate) use system_notifications::*;
