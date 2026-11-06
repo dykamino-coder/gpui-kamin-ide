@@ -212,22 +212,29 @@ mod tests {
                         .find(|s| if after { s.end + 1 == i } else { i <= s.end })
                         .or_else(|| segs.last())
                         .unwrap();
-                    let mut expected = if i >= seg.end {
+                    let glyph = if i >= seg.end {
                         seg.layout.width
                     } else if i <= seg.start {
                         px(0.)
                     } else {
                         seg.layout.x_for_index(i - seg.start)
                     } + seg.offset;
+                    // Трекинг кусков — точная сумма, округлённая один раз.
+                    let mut tracking = 0f64;
                     for (at, _) in text[seg.start..i.min(seg.end)].char_indices() {
                         if let Some((_, v)) = p
                             .letter_spans
                             .iter()
                             .find(|(r, _)| r.contains(&(seg.start + at)))
                         {
-                            expected += *v - p.letter_spacing;
+                            tracking += f64::from(f32::from(*v - p.letter_spacing));
                         }
                     }
+                    let expected = if tracking == 0.0 {
+                        glyph
+                    } else {
+                        px((f64::from(f32::from(glyph)) + tracking) as f32)
+                    };
                     assert_eq!(p.x_at(&segs, i, edge), expected, "{i}, after={after}");
                 }
             }
