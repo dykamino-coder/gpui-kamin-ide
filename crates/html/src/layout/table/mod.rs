@@ -38,6 +38,7 @@ use setup::{border_spacing_of, cell_paints_over, table_rows_fixed};
 
 mod builder;
 pub(crate) use builder::table_stack;
+pub(crate) use finish::StartWrapper;
 
 mod entry;
 pub(super) use entry::is_cell;

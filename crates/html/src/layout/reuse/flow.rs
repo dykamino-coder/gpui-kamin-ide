@@ -1,8 +1,7 @@
 //! Корневой поток с повтором: заместители и записи его блочных детей.
 
 use super::placeholder::{Placeholder, Slot};
-use super::recorder::{Pending, Recorder};
-use super::replay::{PendingReplay, Replay, ReplayRecorder, ReplaySlot};
+use super::plain::edges_free;
 use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -12,6 +11,8 @@ use gpui::AnyElement;
 use std::rc::Rc;
 
 mod mark;
+mod replay;
+mod skip;
 use mark::{Mark, mark_of};
 
 /// Поток `body`, занятый повтором в этой сборке.
@@ -21,9 +22,17 @@ pub(crate) struct FlowCx {
     /// Уже собранный ребёнок потока содержит флоат: он может вдаваться в
     /// следующих детей, их раскладка тогда зависит не только от ключа.
     floats: std::cell::Cell<bool>,
-    /// Ключ равен ключу прошлой сборки: записывать детей для пропуска.
+    /// Ключ равен ключу прошлой сборки: записывать детей.
     settled: bool,
-    /// Ключ прошлой сборки тот же вне ширин: записывать детей для повтора.
+    /// Ключ отличается от прошлого только шириной потока (`FlowKey::
+    /// same_except_width`) слева направо: записывать и замещать детей,
+    /// чья раскладка от ширины не зависит (`width`).
+    resized: bool,
+    /// Первый и последний ребёнок потока замещаемы: базовые линии потока
+    /// никто не читает (`edges_free`).
+    edges: bool,
+    /// Ключ прошлой сборки тот же вне ширин: записывать детей для повтора
+    /// с их поддеревом раскладки (`replay`).
     settled_outside_widths: bool,
     /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны для
     /// пропуска, собираются лишь ближние и изменённые.
@@ -79,31 +88,59 @@ impl FlowReuse {
         // Первая сборка документа ничего не пишет: её кадр и так самый дорогой
         // (каскад, шейпинг), а устоявшийся поток видно только со второй сборки
         // с тем же ключом.
-        let last = self.store.last.replace(Some(key.clone()));
-        let (settled, settled_outside_widths) = match last {
-            Some(last) => (last.same(&key), last.same_outside_widths(&key)),
-            None => (false, false),
+        let last = if self.again {
+            self.store.prev.borrow().clone()
+        } else {
+            let last = self.store.last.replace(Some(key.clone()));
+            self.store.prev.replace(last.clone());
+            last
         };
-        let warm = self.store.settled.replace(settled) && settled;
-        if !settled {
-            // Записи другого ключа не подойдут, а держат стили кадра записи.
-            self.store.records.take();
-        }
-        if !settled_outside_widths {
-            self.store.replays.take();
-            self.store.banned.take();
-            self.store.reads_widths.take();
-        }
+        let (settled, resized, settled_outside_widths) = match last {
+            Some(last) => (
+                last.same(&key),
+                last.same_except_width(&key),
+                last.same_outside_widths(&key),
+            ),
+            None => (false, false, false),
+        };
+        let wm = inherited.wm();
+        let resized = !settled && resized && !wm.rtl() && !wm.vertical();
+        let warm = if self.again {
+            // Записи уже сверены первой сборкой кадра.
+            self.store.warm.get()
+        } else {
+            if resized {
+                // Записи, чья раскладка от ширины не зависит, годны и при новой.
+                self.store.keep_width_independent(&key);
+            } else if !settled {
+                // Записи другого ключа не подойдут, а держат стили кадра записи.
+                self.store.reset();
+            }
+            if !settled_outside_widths {
+                self.store.reset_replays();
+            }
+            let warm = self.store.settled.replace(settled) && settled;
+            self.store.warm.set(warm);
+            warm
+        };
+        self.resized.set(resized);
+        let edges = match self.root {
+            Root::Body { .. } => edges_free(key.html.as_ref()) && edges_free(key.body.as_ref()),
+            Root::TopLevel => false,
+        };
         Some(FlowCx {
             reuse: self.clone(),
             key,
             settled,
+            resized,
+            edges,
             settled_outside_widths,
             warm,
             floats: std::cell::Cell::new(false),
         })
     }
 }
+
 impl FlowCx {
     /// Заместитель ребёнка `e`, если его запись (блока, бывшего далеко от
     /// экрана) подходит.
@@ -115,13 +152,28 @@ impl FlowCx {
         edge: bool,
         opts: &RenderOpts,
     ) -> Option<AnyElement> {
-        if !self.reuse.allow || edge || e.node_id == 0 || self.floats.get() {
+        if !self.reuse.allow || edge && !self.edges || e.node_id == 0 || self.floats.get() {
             return None;
         }
-        let record = self.reuse.store.records.borrow().get(&e.node_id).cloned()?;
-        let fits = record.key.same(&self.key)
-            && Counters::read(&opts.cx) == record.start
-            && crate::dom::same_tree(&record.element, e);
+        if self.reuse.store.refused.borrow().contains(&e.node_id) {
+            return None;
+        }
+        let record = self.reuse.store.same_tree(e)?;
+        let width = || {
+            self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
+        };
+        let same = record.key.same(&self.key);
+        // Растянутый блок при другой ширине — та же раскладка в коробке
+        // другой ширины: лист по потоку, краска записи не годна.
+        let stretched = !same && record.stretch;
+        // Ближний блок без свежего повтора почти наверняка попадёт на экран,
+        // а отказ заместителя на экране собирает кадр второй раз. Растянутый
+        // блок не повторяется никогда, поэтому заменяется только далёкий.
+        // Блок, уже отказанный на экране при этом ключе (`Store::banned`),
+        // замещается только далёким: повтор на месте его снова сдвинул бы.
+        let paintable = record.far
+            || (!stretched && !self.reuse.store.banned(e.node_id) && record.current(&self.reuse));
+        let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
         if !fits {
             return None;
         }
@@ -129,31 +181,9 @@ impl FlowCx {
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
-        let slot = Rc::new(Slot::new(record));
+        let slot = Rc::new(Slot::new(record, stretched));
         super::push(&self.reuse.placeholders, slot.clone());
         Some(Placeholder::new(slot).hooked())
-    }
-
-    /// Повтор ребёнка `e` на экране, если его запись подходит (`replay`).
-    pub(crate) fn replay(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-        if !self.reuse.allow
-            || e.node_id == 0
-            || self.floats.get()
-            || self.reuse.store.banned(e.node_id)
-        {
-            return None;
-        }
-        let record = self.reuse.store.replays.borrow().get(&e.node_id).cloned()?;
-        if !record.fits(&self.key, Counters::read(&opts.cx), e) {
-            return None;
-        }
-        record.end.write(&opts.cx);
-        let mut next = self.reuse.next_replays.take();
-        next.insert(e.node_id, record.clone());
-        self.reuse.next_replays.replace(next);
-        let slot = Rc::new(ReplaySlot::new(record));
-        super::push(&self.reuse.replay_slots, slot.clone());
-        Some(Replay::new(slot).hooked())
     }
 
     /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить его флоаты.
@@ -166,8 +196,10 @@ impl FlowCx {
         }
     }
 
-    /// Обернуть только что собранный элемент ребёнка `e` записью, если его
-    /// сборка инертна: для пропуска вне экрана и (снаружи) для повтора.
+    /// Обернуть только что собранный элемент ребёнка `e` записями, если его
+    /// сборка дала ровно один элемент: записью пропуска и повтора на месте
+    /// (`recorder`), если сборка инертна, и записью повтора с поддеревом
+    /// раскладки (`replay`), если она может пригодиться.
     pub(crate) fn record(
         &self,
         e: &Element,
@@ -187,33 +219,32 @@ impl FlowCx {
         if !single {
             return;
         }
-        // One copy of the block's element serves both records: a block ends
-        // up near the screen (replay) or far from it (skip), and the copy is
-        // all either keeps of the build input.
-        let copy = std::cell::OnceCell::new();
-        let element = || copy.get_or_init(|| Rc::new(e.clone())).clone();
-        if self.settled
-            && !edge
+        let skip = (self.settled || self.resized)
+            && (!edge || self.edges)
             && mark.inert.of(e)
-            && let Some(child) = out.pop()
-        {
-            let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
-            super::push(&self.reuse.pending, (pending.clone(), element()));
-            out.push(Recorder::new(child, pending).hooked());
-        }
-        if let Some(widths) = mark.widths
-            && !self.reuse.store.banned(e.node_id)
-            && super::plain::replayable(e, opts.cx.vcx())
-            && let Some(child) = out.pop()
-        {
-            let pending = Rc::new(PendingReplay::new(
-                self.key.clone(),
-                mark.start,
-                now.start,
-                widths,
-            ));
-            super::push(&self.reuse.pending_replays, (pending.clone(), element()));
-            out.push(ReplayRecorder::new(child, pending).hooked());
+            && self.record_skip(e, &mark, now.start, opts, out);
+        // Блок, обёрнутый для пропуска, не пишется для повтора:
+        // - первой устоявшейся сборкой: она собирает весь поток, а ближние
+        //   блоки для повтора запишет следующая (`mark::replay_worth_recording`);
+        // - сборкой при новой ширине: она оборачивает лишь блоки фиксированной
+        //   ширины или растянутые (`width_recordable`); первых при любой
+        //   ширине заменит заместитель, вторых повтор не пишет
+        //   (`plain::fills_width`);
+        // - тёплой устоявшейся сборкой, если блок заполняет ширину или его
+        //   прошлая запись повтора читала её снаружи: такая запись годна
+        //   лишь при тех же ширинах, где блок заменит заместитель. Иначе она
+        //   нужна первому кадру другой ширины, если `width::independent` не
+        //   доказал независимость.
+        // Исключение в двух последних случаях — блок, прошлая обёртка
+        // которого записи пропуска не дала (`Store::unrecorded`).
+        let store = &self.reuse.store;
+        let same_widths_only = || super::plain::fills_width(e) || store.reads_widths(e.node_id);
+        let skipped = skip
+            && (self.settled && !self.warm
+                || !store.unrecorded(e.node_id)
+                    && (self.resized || self.settled && same_widths_only()));
+        if !skipped {
+            self.record_replay(e, mark, now.start, opts, out);
         }
     }
 }

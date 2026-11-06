@@ -18,6 +18,8 @@ mod record;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
+mod resize_tests;
+#[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
 mod tests;
@@ -71,6 +73,9 @@ struct Builder {
     nodes: Rc<Vec<Node>>,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
+    /// Счётчики сборки до первой сборки кадра: повторная (после отказа
+    /// заместителей) начинает с них, как первая.
+    counters: Cell<Option<crate::layout::reuse::Counters>>,
     /// No resource changed since the previous frame: the window's frame tree
     /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
     layout_keys: bool,
@@ -81,9 +86,17 @@ impl Builder {
     /// блок точного размера, белый холст UA и текст окна из опций хоста.
     /// Блоки корневого потока записываются для следующих кадров, а при
     /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
-    fn build(&self, allow: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
+    /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
+    fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
         let (w, h) = self.opts.viewport;
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow);
+        let again = self.counters.get().is_some();
+        match self.counters.get() {
+            Some(counters) => counters.write(&self.opts.cx),
+            None => self
+                .counters
+                .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
+        }
+        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
         let mut opts = self.opts.clone();
         opts.cx.contracts.reuse = flow.clone();
         let tree = div()
@@ -111,6 +124,7 @@ impl Document {
             nodes: self.nodes.clone(),
             opts: opts.clone(),
             store: self.reuse.clone(),
+            counters: Cell::new(None),
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),
         };
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
@@ -128,8 +142,26 @@ impl Document {
         (stats.recorded, stats.skipped, stats.rebuilt_frames)
     }
 
+    /// Blocks wrapped for recording so far (`layout::reuse::recorder`).
+    #[cfg(test)]
+    pub(crate) fn tracked_blocks(&self) -> u64 {
+        self.reuse.stats.get().tracked
+    }
+
     /// Blocks of the root flow replayed on screen without a build.
     pub fn replayed_blocks(&self) -> u64 {
         self.reuse.stats.get().replayed
+    }
+
+    /// Blocks wrapped for a subtree replay record so far (`layout::reuse::replay`).
+    #[cfg(test)]
+    pub(crate) fn replay_tracked_blocks(&self) -> u64 {
+        self.reuse.stats.get().replay_tracked
+    }
+
+    /// Of `replayed_blocks`, those whose layout subtree was claimed whole.
+    #[cfg(test)]
+    pub(crate) fn replayed_subtrees(&self) -> u64 {
+        self.reuse.stats.get().subtrees
     }
 }

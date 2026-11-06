@@ -509,7 +509,7 @@ struct FrameCache {
     used_wrapped_lines_by_hash: Vec<Arc<HashedCacheKey>>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub(crate) struct LineLayoutIndex {
     font_generation: usize,
     lines_index: usize,

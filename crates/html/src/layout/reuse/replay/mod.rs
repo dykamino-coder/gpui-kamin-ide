@@ -1,6 +1,6 @@
 //! Повтор блока корневого потока НА ЭКРАНЕ без сборки его элементов.
 //!
-//! Блок, чьё поддерево равно записанному (`dom::same_tree`), чей поток имеет
+//! Блок, чьё поддерево равно записанному (`Source::same`), чей поток имеет
 //! тот же ключ вне ширин (`FlowKey::same_outside_widths`) и чья сборка не
 //! прочла ни одной ширины снаружи (`BoxConstraints::track_widths`), строит те
 //! же элементы, что в кадре записи: его узлы раскладки в дереве кадра GPUI
@@ -19,9 +19,9 @@ mod slot;
 pub(super) use element::{Replay, ReplayRecorder};
 pub(super) use slot::ReplaySlot;
 
-use super::{Counters, FlowKey};
+use super::{Counters, FlowKey, Source};
 use crate::dom::Element;
-use crate::paint::coordinator::{JobSlot, JobTap};
+use crate::hooks::LineCapture;
 use gpui::{
     Bounds, ContentMask, InkSink, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
     RetainedSubtree, ScaledPixels, Size, Window, point, px,
@@ -40,11 +40,14 @@ pub(super) struct Ranges {
     mask: ContentMask<Pixels>,
     scale: f32,
     serial: u64,
+    /// Строки блока в фазе строк контекста (`paint::coordinator::capture`).
+    lines: Rc<LineCapture>,
 }
 
 /// Запись повтора: вход сборки блока и диапазоны его последнего кадра.
 pub(crate) struct ReplayRecord {
-    pub(super) element: Rc<Element>,
+    /// С чем сравнивается следующая сборка блока (`source`).
+    pub(super) source: Source,
     pub(super) key: Rc<FlowKey>,
     /// Сборка прочла ширину снаружи: запись годится только при тех же ширинах.
     pub(super) widths: bool,
@@ -53,8 +56,6 @@ pub(crate) struct ReplayRecord {
     fills: bool,
     pub(super) start: Counters,
     pub(super) end: Counters,
-    /// Задания строк блока в фазе строк контекста (`paint::coordinator::tap_jobs`).
-    jobs: Rc<[Rc<JobSlot>]>,
     /// Диапазоны последнего кадра; `None` только на время их правки.
     ranges: Cell<Option<Ranges>>,
 }
@@ -73,7 +74,7 @@ impl ReplayRecord {
         self.key.same_outside_widths(key)
             && (!(self.widths || self.fills) || self.key.same_widths(key))
             && self.start == start
-            && crate::dom::same_tree(&self.element, e)
+            && self.source.same(e)
     }
 }
 
@@ -87,12 +88,14 @@ pub(super) struct PendingReplay {
     end: Counters,
     /// Чтения ширин снаружи за сборку и меры кадра записи.
     pub(super) widths: Rc<Cell<bool>>,
+    /// Блок заполняет ширину потока (`plain::fills_width`).
+    fills: bool,
     layout: RefCell<Option<(RetainedSubtree, LayoutId)>>,
     prepaint: RefCell<Option<PlacedPrepaint>>,
     paint: RefCell<Option<RetainedPaint>>,
     env: Cell<Option<(f32, u64)>>,
     mask: RefCell<Option<ContentMask<Pixels>>>,
-    jobs: RefCell<Option<Rc<JobTap>>>,
+    lines: RefCell<Option<Rc<LineCapture>>>,
     sink: Rc<InkSink>,
 }
 
@@ -102,28 +105,30 @@ impl PendingReplay {
         start: Counters,
         end: Counters,
         widths: Rc<Cell<bool>>,
+        fills: bool,
     ) -> Self {
         Self {
             key,
             start,
             end,
             widths,
+            fills,
             layout: RefCell::new(None),
             prepaint: RefCell::new(None),
             paint: RefCell::new(None),
             env: Cell::new(None),
             mask: RefCell::new(None),
-            jobs: RefCell::new(None),
+            lines: RefCell::new(None),
             sink: Rc::default(),
         }
     }
 
-    /// Готовая запись блока `element`, если его prepaint и краска переносимы
+    /// Готовая запись блока `source`, если его prepaint и краска переносимы
     /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
     /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
     pub(super) fn finish(
         &self,
-        element: Rc<Element>,
+        source: Source,
         screen: Bounds<ScaledPixels>,
     ) -> Option<ReplayRecord> {
         if self.sink.tainted() {
@@ -141,11 +146,10 @@ impl PendingReplay {
             return None;
         }
         let mask = self.mask.take()?;
-        let jobs = self.jobs.take()?.finish()?;
+        let lines = self.lines.take().filter(|lines| lines.complete())?;
         Some(ReplayRecord {
-            jobs,
-            fills: super::plain::fills_width(&element),
-            element,
+            fills: self.fills,
+            source,
             key: self.key.clone(),
             widths: self.widths.get(),
             start: self.start,
@@ -159,6 +163,7 @@ impl PendingReplay {
                 mask,
                 scale,
                 serial,
+                lines,
             })),
         })
     }
@@ -195,6 +200,7 @@ impl super::FlowReuse {
         if !slots.is_empty() {
             let mut stats = self.store.stats.get();
             stats.replayed += slots.len() as u64;
+            stats.subtrees += slots.len() as u64;
             self.store.stats.set(stats);
         }
         true
@@ -204,14 +210,19 @@ impl super::FlowReuse {
     pub(super) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
         let mut replays = self.next_replays.take();
         let mut reads = self.store.reads_widths.take();
-        for (pending, element) in self.pending_replays.take() {
+        let pending = self.pending_replays.take();
+        let mut stats = self.store.stats.get();
+        stats.replay_tracked += pending.len() as u64;
+        self.store.stats.set(stats);
+        for (pending, source) in pending {
+            let node = source.id();
             if pending.widths.get() {
-                reads.insert(element.node_id);
+                reads.insert(node);
             } else {
-                reads.remove(&element.node_id);
+                reads.remove(&node);
             }
-            if let Some(record) = pending.finish(element, screen) {
-                replays.insert(record.element.node_id, Rc::new(record));
+            if let Some(record) = pending.finish(source, screen) {
+                replays.insert(node, Rc::new(record));
             }
         }
         self.store.reads_widths.replace(reads);
