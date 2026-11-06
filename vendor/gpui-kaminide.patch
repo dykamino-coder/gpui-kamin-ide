@@ -20314,7 +20314,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_line_gap: false,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1cf5f4de42
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..7ea868bccee81bda1519db0c0457fa16e925a5dd
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -20355,7 +20355,138 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +            }
 +
 +            if width - trailing_space > wrap_width && boundary > last_boundary {
-@@ -602 +627,7 @@
+@@ -486,0 +512,36 @@
++impl FrameCache {
++    /// KaminIDE patch: nothing laid out in this frame yet.
++    fn is_empty(&self) -> bool {
++        self.lines.is_empty()
++            && self.wrapped_lines.is_empty()
++            && self.used_lines.is_empty()
++            && self.used_wrapped_lines.is_empty()
++            && self.lines_by_hash.is_empty()
++            && self.wrapped_lines_by_hash.is_empty()
++            && self.used_lines_by_hash.is_empty()
++            && self.used_wrapped_lines_by_hash.is_empty()
++    }
++
++    /// KaminIDE patch: `range` covers every layout this frame used, and the
++    /// frame caches as many layouts as it used, so reusing the range moves
++    /// every entry. (Equal counts can still hide a layout cached without a
++    /// use, after `truncate_layouts`, next to one used twice: the swap then
++    /// keeps that layout one frame longer. The cache is keyed by every input
++    /// of a layout, so that changes only what a later frame finds cached.)
++    fn used_whole(&self, range: &Range<LineLayoutIndex>) -> bool {
++        let (start, end) = (&range.start, &range.end);
++        start.lines_index == 0
++            && start.wrapped_lines_index == 0
++            && start.lines_by_hash_index == 0
++            && start.wrapped_lines_by_hash_index == 0
++            && end.lines_index == self.used_lines.len()
++            && end.wrapped_lines_index == self.used_wrapped_lines.len()
++            && end.lines_by_hash_index == self.used_lines_by_hash.len()
++            && end.wrapped_lines_by_hash_index == self.used_wrapped_lines_by_hash.len()
++            && self.lines.len() == self.used_lines.len()
++            && self.wrapped_lines.len() == self.used_wrapped_lines.len()
++            && self.lines_by_hash.len() == self.used_lines_by_hash.len()
++            && self.wrapped_lines_by_hash.len() == self.used_wrapped_lines_by_hash.len()
++    }
++}
++
+@@ -530,12 +591,18 @@
+-        let mut current_frame = &mut *self.current_frame.write();
+-        let mut previous_frame = &mut *self.previous_frame.lock();
+-
+-        for key in &previous_frame.used_lines[range.start.lines_index..range.end.lines_index] {
+-            if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
+-                current_frame.lines.insert(key, line);
+-            }
+-            current_frame.used_lines.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_wrapped_lines
+-            [range.start.wrapped_lines_index..range.end.wrapped_lines_index]
++        let current_frame = &mut *self.current_frame.write();
++        let previous_frame = &mut *self.previous_frame.lock();
++
++        // KaminIDE patch: a subtree that replays everything the previous frame
++        // laid out, before this frame laid out anything (a retained document
++        // replayed whole), moves every entry of the previous frame into this
++        // one in the same order: that is a swap of the frames, O(1) instead of
++        // two hash-map operations per line.
++        if previous_frame.used_whole(&range) && current_frame.is_empty() {
++            std::mem::swap(current_frame, previous_frame);
++            return;
++        }
++
++        // KaminIDE patch: a range past the previous frame's lists (they went
++        // to this frame whole above) has nothing left to reuse.
++        if let Some(keys) = previous_frame
++            .used_lines
++            .get(range.start.lines_index..range.end.lines_index)
+@@ -543,8 +610,11 @@
+-            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
+-                current_frame.wrapped_lines.insert(key, line);
+-            }
+-            current_frame.used_wrapped_lines.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_lines_by_hash
+-            [range.start.lines_by_hash_index..range.end.lines_by_hash_index]
++            for key in keys {
++                if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
++                    current_frame.lines.insert(key, line);
++                }
++                current_frame.used_lines.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_wrapped_lines
++            .get(range.start.wrapped_lines_index..range.end.wrapped_lines_index)
+@@ -552,8 +622,11 @@
+-            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
+-                current_frame.lines_by_hash.insert(key, line);
+-            }
+-            current_frame.used_lines_by_hash.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_wrapped_lines_by_hash
+-            [range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index]
++            for key in keys {
++                if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
++                    current_frame.wrapped_lines.insert(key, line);
++                }
++                current_frame.used_wrapped_lines.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_lines_by_hash
++            .get(range.start.lines_by_hash_index..range.end.lines_by_hash_index)
+@@ -561,4 +634,18 @@
+-            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
+-                current_frame.wrapped_lines_by_hash.insert(key, line);
+-            }
+-            current_frame.used_wrapped_lines_by_hash.push(key.clone());
++            for key in keys {
++                if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
++                    current_frame.lines_by_hash.insert(key, line);
++                }
++                current_frame.used_lines_by_hash.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_wrapped_lines_by_hash
++            .get(range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index)
++        {
++            for key in keys {
++                if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
++                    current_frame.wrapped_lines_by_hash.insert(key, line);
++                }
++                current_frame.used_wrapped_lines_by_hash.push(key.clone());
++            }
+@@ -602 +689,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -20364,17 +20495,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +640 @@
+@@ -608,0 +702 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +646,5 @@
+@@ -613,0 +708,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +658 @@
+@@ -620,0 +720 @@
 +            letter_spacing,
-@@ -639 +677,7 @@
+@@ -639 +739,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -20383,9 +20514,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +                None,
 +                letter_spacing,
 +            );
-@@ -655,0 +700 @@
+@@ -655,0 +762 @@
 +                letter_spacing,
-@@ -673,0 +719,18 @@
+@@ -673,0 +781,18 @@
 +    ) -> Arc<LineLayout>
 +    where
 +        Text: AsRef<str>,
@@ -20404,23 +20535,23 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +        runs: &[FontRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -685,0 +749 @@
+@@ -685,0 +811 @@
 +            letter_spacing,
-@@ -689,0 +754,2 @@
+@@ -689,0 +816,2 @@
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -694,0 +761 @@
+@@ -694,0 +823 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -698,0 +766,3 @@
+@@ -698,0 +828,3 @@
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -702,0 +773,4 @@
+@@ -702,0 +835,4 @@
 +            crate::frame_perf::SHAPE_US.fetch_add(
 +                shape_started.elapsed().as_micros() as u32,
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
-@@ -705,0 +780,39 @@
+@@ -705,0 +842,39 @@
 +            }
 +
 +            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
@@ -20460,13 +20591,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +                if i == 0 {
 +                    layout.width += letter_spacing * (text.chars().count() as f32);
 +                }
-@@ -713,0 +827 @@
+@@ -713,0 +889 @@
 +                letter_spacing,
-@@ -927,0 +1042,3 @@
+@@ -927,0 +1104,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1047,7 @@
+@@ -929,0 +1109,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -20474,17 +20605,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1067,3 @@
+@@ -942,0 +1129,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1079,2 @@
+@@ -951,0 +1141,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1173 @@
+@@ -1043,0 +1235 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1069,0 +1200,8 @@
-+}
+@@ -1070,0 +1263,11 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -20492,8 +20622,128 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 +    matches!(c as u32,
 +        0x0600..=0x08FF | 0x1800..=0x18AF
 +        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
-@@ -1094,0 +1233 @@
++}
++
++#[cfg(test)]
++mod reuse_tests;
+@@ -1094,0 +1298 @@
 +                font_size: px(16.),
+diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..437f10f63fc906cb4659a0053e19a58be4986a02
+--- /dev/null
++++ b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
+@@ -0,0 +1,110 @@
++//! KaminIDE patch: reusing a frame's line layouts whole equals reusing them
++//! one by one, and a range past a frame reused whole reuses nothing.
++
++use super::*;
++use crate::NoopTextSystem;
++
++fn cache() -> LineLayoutCache {
++    LineLayoutCache::new(Arc::new(NoopTextSystem), Arc::new(AtomicUsize::new(0)))
++}
++
++fn line(cache: &LineLayoutCache, text: &'static str) -> Arc<LineLayout> {
++    let run = FontRun {
++        break_ligatures: true,
++        len: text.len(),
++        font_id: FontId(0),
++        font_size: px(0.),
++    };
++    cache.layout_line(text, px(16.), &[run], None)
++}
++
++fn used(frame: &FrameCache) -> Vec<String> {
++    frame.used_lines.iter().map(|key| key.text.to_string()).collect()
++}
++
++fn cached(frame: &FrameCache) -> Vec<String> {
++    let mut texts: Vec<String> = frame.lines.keys().map(|key| key.text.to_string()).collect();
++    texts.sort();
++    texts
++}
++
++/// Lays out `texts` in a frame and finishes it; returns the frame's range.
++fn frame(cache: &LineLayoutCache, texts: &[&'static str]) -> Range<LineLayoutIndex> {
++    let start = cache.layout_index();
++    for text in texts {
++        line(cache, text);
++    }
++    let end = cache.layout_index();
++    cache.finish_frame();
++    start..end
++}
++
++#[test]
++fn reusing_a_whole_frame_keeps_every_layout_in_its_order() {
++    let cache = cache();
++    let start = cache.layout_index();
++    let first = line(&cache, "a");
++    line(&cache, "b");
++    let range = start..cache.layout_index();
++    cache.finish_frame();
++    cache.reuse_layouts(range.clone());
++    {
++        let current = cache.current_frame.read();
++        assert_eq!(used(&current), ["a", "b"]);
++        assert_eq!(cached(&current), ["a", "b"]);
++        assert!(cache.previous_frame.lock().lines.is_empty());
++    }
++    // The paint range after it is past the previous frame's lists now.
++    cache.reuse_layouts(range.end.clone()..range.end.clone());
++    // Reused layouts are the same allocations, found without shaping again.
++    assert!(Arc::ptr_eq(&line(&cache, "a"), &first));
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++    // The next frame replays the same range again.
++    cache.finish_frame();
++    cache.reuse_layouts(range);
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++}
++
++#[test]
++fn reusing_part_of_a_frame_moves_only_that_part() {
++    let cache = cache();
++    let start = cache.layout_index();
++    line(&cache, "a");
++    let middle = cache.layout_index();
++    line(&cache, "b");
++    let end = cache.layout_index();
++    cache.finish_frame();
++    cache.reuse_layouts(middle.clone()..end.clone());
++    assert_eq!(used(&cache.current_frame.read()), ["b"]);
++    assert_eq!(cached(&cache.previous_frame.lock()), ["a"]);
++    cache.reuse_layouts(start..middle);
++    assert_eq!(used(&cache.current_frame.read()), ["b", "a"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a", "b"]);
++}
++
++#[test]
++fn a_frame_that_laid_out_lines_already_reuses_one_by_one() {
++    let cache = cache();
++    let range = frame(&cache, &["a", "b"]);
++    line(&cache, "c");
++    cache.reuse_layouts(range);
++    assert_eq!(used(&cache.current_frame.read()), ["c", "a", "b"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a", "b", "c"]);
++}
++
++#[test]
++fn a_frame_with_a_layout_cached_twice_is_not_swapped() {
++    let cache = cache();
++    let start = cache.layout_index();
++    line(&cache, "a");
++    line(&cache, "b");
++    // A truncated tail leaves "b" cached without a use.
++    let mut index = cache.layout_index();
++    index.lines_index = 1;
++    cache.truncate_layouts(index.clone());
++    cache.finish_frame();
++    cache.reuse_layouts(start..index);
++    assert_eq!(used(&cache.current_frame.read()), ["a"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a"]);
++    assert_eq!(cached(&cache.previous_frame.lock()), ["b"]);
++}
 diff --git a/vendor/gpui/src/text_system/line_wrapper.rs b/vendor/gpui/src/text_system/line_wrapper.rs
 index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb6bd59522
 --- a/vendor/gpui/src/text_system/line_wrapper.rs

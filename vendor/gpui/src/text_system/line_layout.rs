@@ -509,6 +509,42 @@ struct FrameCache {
     used_wrapped_lines_by_hash: Vec<Arc<HashedCacheKey>>,
 }
 
+impl FrameCache {
+    /// KaminIDE patch: nothing laid out in this frame yet.
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+            && self.wrapped_lines.is_empty()
+            && self.used_lines.is_empty()
+            && self.used_wrapped_lines.is_empty()
+            && self.lines_by_hash.is_empty()
+            && self.wrapped_lines_by_hash.is_empty()
+            && self.used_lines_by_hash.is_empty()
+            && self.used_wrapped_lines_by_hash.is_empty()
+    }
+
+    /// KaminIDE patch: `range` covers every layout this frame used, and the
+    /// frame caches as many layouts as it used, so reusing the range moves
+    /// every entry. (Equal counts can still hide a layout cached without a
+    /// use, after `truncate_layouts`, next to one used twice: the swap then
+    /// keeps that layout one frame longer. The cache is keyed by every input
+    /// of a layout, so that changes only what a later frame finds cached.)
+    fn used_whole(&self, range: &Range<LineLayoutIndex>) -> bool {
+        let (start, end) = (&range.start, &range.end);
+        start.lines_index == 0
+            && start.wrapped_lines_index == 0
+            && start.lines_by_hash_index == 0
+            && start.wrapped_lines_by_hash_index == 0
+            && end.lines_index == self.used_lines.len()
+            && end.wrapped_lines_index == self.used_wrapped_lines.len()
+            && end.lines_by_hash_index == self.used_lines_by_hash.len()
+            && end.wrapped_lines_by_hash_index == self.used_wrapped_lines_by_hash.len()
+            && self.lines.len() == self.used_lines.len()
+            && self.wrapped_lines.len() == self.used_wrapped_lines.len()
+            && self.lines_by_hash.len() == self.used_lines_by_hash.len()
+            && self.wrapped_lines_by_hash.len() == self.used_wrapped_lines_by_hash.len()
+    }
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct LineLayoutIndex {
     font_generation: usize,
@@ -552,41 +588,67 @@ impl LineLayoutCache {
         {
             return;
         }
-        let mut current_frame = &mut *self.current_frame.write();
-        let mut previous_frame = &mut *self.previous_frame.lock();
+        let current_frame = &mut *self.current_frame.write();
+        let previous_frame = &mut *self.previous_frame.lock();
 
-        for key in &previous_frame.used_lines[range.start.lines_index..range.end.lines_index] {
-            if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
-                current_frame.lines.insert(key, line);
-            }
-            current_frame.used_lines.push(key.clone());
+        // KaminIDE patch: a subtree that replays everything the previous frame
+        // laid out, before this frame laid out anything (a retained document
+        // replayed whole), moves every entry of the previous frame into this
+        // one in the same order: that is a swap of the frames, O(1) instead of
+        // two hash-map operations per line.
+        if previous_frame.used_whole(&range) && current_frame.is_empty() {
+            std::mem::swap(current_frame, previous_frame);
+            return;
         }
 
-        for key in &previous_frame.used_wrapped_lines
-            [range.start.wrapped_lines_index..range.end.wrapped_lines_index]
+        // KaminIDE patch: a range past the previous frame's lists (they went
+        // to this frame whole above) has nothing left to reuse.
+        if let Some(keys) = previous_frame
+            .used_lines
+            .get(range.start.lines_index..range.end.lines_index)
         {
-            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
-                current_frame.wrapped_lines.insert(key, line);
+            for key in keys {
+                if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
+                    current_frame.lines.insert(key, line);
+                }
+                current_frame.used_lines.push(key.clone());
             }
-            current_frame.used_wrapped_lines.push(key.clone());
         }
 
-        for key in &previous_frame.used_lines_by_hash
-            [range.start.lines_by_hash_index..range.end.lines_by_hash_index]
+        if let Some(keys) = previous_frame
+            .used_wrapped_lines
+            .get(range.start.wrapped_lines_index..range.end.wrapped_lines_index)
         {
-            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
-                current_frame.lines_by_hash.insert(key, line);
+            for key in keys {
+                if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
+                    current_frame.wrapped_lines.insert(key, line);
+                }
+                current_frame.used_wrapped_lines.push(key.clone());
             }
-            current_frame.used_lines_by_hash.push(key.clone());
         }
 
-        for key in &previous_frame.used_wrapped_lines_by_hash
-            [range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index]
+        if let Some(keys) = previous_frame
+            .used_lines_by_hash
+            .get(range.start.lines_by_hash_index..range.end.lines_by_hash_index)
         {
-            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
-                current_frame.wrapped_lines_by_hash.insert(key, line);
+            for key in keys {
+                if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
+                    current_frame.lines_by_hash.insert(key, line);
+                }
+                current_frame.used_lines_by_hash.push(key.clone());
             }
-            current_frame.used_wrapped_lines_by_hash.push(key.clone());
+        }
+
+        if let Some(keys) = previous_frame
+            .used_wrapped_lines_by_hash
+            .get(range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index)
+        {
+            for key in keys {
+                if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
+                    current_frame.wrapped_lines_by_hash.insert(key, line);
+                }
+                current_frame.used_wrapped_lines_by_hash.push(key.clone());
+            }
         }
     }
 
@@ -1206,6 +1268,9 @@ fn cursive_script(c: char) -> bool {
         0x0600..=0x08FF | 0x1800..=0x18AF
         | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 }
+
+#[cfg(test)]
+mod reuse_tests;
 
 #[cfg(test)]
 mod tests {
