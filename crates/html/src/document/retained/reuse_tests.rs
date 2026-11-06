@@ -77,13 +77,16 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     let grown = format!("{}x", "x ".repeat(300));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
-    // The onscreen rows below the grown one move: their on-screen replay
-    // (`layout::reuse::replay`) fails the frame check once and the frame is
-    // built without replays and skips; they are built from then on while the
-    // flow key stays. The second settled build records them for replay.
+    // The grown block moves the visible blocks below it: their replay is
+    // refused, and one more build of the same frame builds just them.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
-    assert_eq!(reused(&view, cx).2, 1);
+    assert_eq!(reused(&view, cx).2, 1, "moved visible blocks were replayed");
+    // An update adopts a new tree, and its frame counters start anew.
+    let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
+    assert_eq!(builds, 2, "the refused frame was built more than twice");
+    // The refused blocks are built from then on while the flow key stays
+    // (`Store::banned`): moving them again builds no frame twice.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
@@ -91,7 +94,7 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    assert_eq!(rebuilt, 1);
+    assert_eq!(rebuilt, 1, "a refused block was replayed again");
 }
 
 #[gpui::test]
@@ -102,11 +105,20 @@ fn blocks_after_a_float_are_always_built(cx: &mut TestAppContext) {
     let (view, cx) = settled(cx, &page("row 300"), &page("row edited"));
     update(&view, cx, &page("row 300"));
     let (_, skipped, _) = reused(&view, cx);
-    assert_eq!(skipped, 0, "a float may reach into the blocks after it");
+    // Only the two rows before the float are skipped (replayed on screen).
+    assert!(
+        skipped <= 2,
+        "a float may reach into the blocks after it: {skipped}"
+    );
 }
 
 #[gpui::test]
 fn a_flow_resized_every_frame_records_nothing_and_drops_its_records(cx: &mut TestAppContext) {
+    // Centred rows depend on the flow width (one-line rows at the start
+    // edge would not: `one_line_text_blocks_are_reused_across_a_width_change`).
+    let rows = |edit: usize, text: &str| {
+        rows(edit, text).replace("height:20px'", "height:20px;text-align:center'")
+    };
     let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
     let (recorded, _, _) = reused(&view, cx);
     for width in [401., 400.] {
@@ -126,21 +138,21 @@ fn a_flow_resized_every_frame_records_nothing_and_drops_its_records(cx: &mut Tes
     assert!(skipped > 300 && rebuilt == 0, "{skipped} {rebuilt}");
 }
 
+/// Blocks near the screen are recorded with their frame output and replayed
+/// in place by the next frame, the visible ones included.
 #[gpui::test]
-fn blocks_near_the_screen_are_not_recorded(cx: &mut TestAppContext) {
+fn blocks_on_the_screen_are_replayed_from_the_previous_frame(cx: &mut TestAppContext) {
     let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
     let (recorded, _, _) = reused(&view, cx);
-    // 600 rows of 20px in a 1920x1080 test window: the 150 rows within one
-    // screen size of it (y < 3000) could never be skipped by their record.
-    assert!(
-        (400..=600 - 2 - 140).contains(&recorded),
-        "near blocks were recorded: {recorded}"
-    );
+    assert!(recorded > 590, "near blocks were not recorded: {recorded}");
+    update(&view, cx, &rows(300, "row 300"));
+    let (_, skipped, rebuilt) = reused(&view, cx);
+    let replayed = replayed(&view, cx);
+    // 600 rows of 20px in a 1920x1080 test window: 54 rows are visible.
+    assert!(replayed > 50, "visible blocks were rebuilt: {replayed}");
+    assert!(skipped > 590 && rebuilt == 0, "{skipped} {rebuilt}");
 }
 
-/// A standards document without box styles on its wrappers loses both
-/// (`document::embedded::unwrap_document`): its top-level blocks are the root
-/// flow, laid out by a block container. With a padded `body` only `html` goes.
 #[gpui::test]
 fn blocks_of_unwrapped_documents_are_skipped(cx: &mut TestAppContext) {
     for body in ["", " style='padding:3px'"] {
@@ -181,4 +193,34 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
         "right-to-left blocks were rebuilt: {skipped}"
     );
     assert_eq!(rebuilt, 0);
+}
+
+fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
+    cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
+}
+
+#[gpui::test]
+fn a_changed_block_releases_its_record_before_it_is_built(cx: &mut TestAppContext) {
+    let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    let recorded = store.recorded();
+    assert!(recorded.len() > 400, "settled blocks were not recorded");
+    let block = recorded.into_iter().find(|e| e.tag == "div").unwrap();
+    assert!(
+        store.same_tree(&block).is_some(),
+        "an unchanged block lost its record"
+    );
+    // The same block after `Document::update` lost its text: the record can
+    // never fit it, so it must not keep the previous subtree alive while the
+    // new one is built.
+    let mut changed = block.clone();
+    changed.children = Vec::new().into();
+    assert!(
+        store.same_tree(&changed).is_none(),
+        "a changed block fit its record"
+    );
+    assert!(
+        store.same_tree(&block).is_none(),
+        "the record of a changed block stayed in the store"
+    );
 }

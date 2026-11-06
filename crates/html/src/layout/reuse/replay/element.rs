@@ -2,8 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::{PendingReplay, ReplaySlot, plain_environment};
-use crate::hooks::{Hooks, Wrap};
-use crate::paint::coordinator::{replay_jobs, tap_jobs};
+use crate::hooks::{Hooks, Wrap, paint_capturing_async, replay_deferred};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
@@ -79,9 +78,9 @@ impl Wrap for ReplayRecorder {
     ) {
         let sink = self.pending.sink.clone();
         let callbacks = window.next_frame_callback_count();
-        let ((_, paint), jobs) = window
+        let ((_, paint), lines) = window
             .with_ink_sink_async(sink, async |window| {
-                tap_jobs(window, async |window| {
+                paint_capturing_async(window, async |window| {
                     window
                         .record_retained_paint_async(async |window| {
                             self.child.paint_async(window, cx, stack).await
@@ -102,7 +101,7 @@ impl Wrap for ReplayRecorder {
             && callbacks == window.next_frame_callback_count();
         if replayable {
             self.pending.paint.replace(Some(paint));
-            self.pending.jobs.replace(Some(jobs));
+            self.pending.lines.replace(Some(lines));
             self.pending
                 .env
                 .set(Some((window.scale_factor(), window.frame_serial())));
@@ -168,9 +167,14 @@ impl Hooks for Replay {
         _: &mut App,
     ) {
         self.slot.record.ranges(|r| {
-            r.paint = window.replay_retained_paint(&r.paint);
+            // Строки вне открытого кадра рисуются на месте: в выводе блока.
+            let (lines, paint) = window.record_retained_paint(|window| {
+                window.replay_retained_paint(&r.paint);
+                replay_deferred(window, &r.lines)
+            });
+            r.paint = paint;
+            r.lines = lines;
             r.serial = window.frame_serial();
         });
-        replay_jobs(window, &self.slot.record.jobs);
     }
 }

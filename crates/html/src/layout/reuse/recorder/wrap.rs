@@ -1,0 +1,151 @@
+//! Обёртка записи в дереве GPUI: снимает лист, начало коробки, инертность
+//! prepaint и чернила краски блока в его `Pending`.
+
+use super::{Output, Pending, far};
+use crate::hooks::Wrap;
+use crate::layout::reuse::{lines::with_sink_async, scaled};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, ScaledPixels, Window, point, px, size};
+use std::rc::Rc;
+
+pub(in crate::layout::reuse) struct Recorder {
+    child: AnyElement,
+    pending: Rc<Pending>,
+}
+
+impl Recorder {
+    pub(in crate::layout::reuse) fn new(child: AnyElement, pending: Rc<Pending>) -> Self {
+        Self { child, pending }
+    }
+}
+
+impl Wrap for Recorder {
+    fn paint_boundary(&self) -> bool {
+        false
+    }
+
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
+    }
+
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
+        let id = self.child.request_layout_async(window, cx, stack).await;
+        self.pending.layout.set(Some(id));
+        id
+    }
+
+    async fn prepaint_async(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        self.pending.border.set(bounds.size.width.as_f32());
+        let callbacks = window.next_frame_callback_count();
+        let root = window.retained_root_environment()
+            && window.element_offset() == point(px(0.0), px(0.0));
+        let lines = self.pending.lines.clone();
+        let (_, range) = window
+            .record_retained_prepaint_async(async |window| {
+                with_sink_async(lines, window, async |window| {
+                    self.child.prepaint_async(window, cx, stack).await
+                })
+                .await;
+            })
+            .await;
+        let hits = range
+            .quiet(window)
+            .filter(|_| root && callbacks == window.next_frame_callback_count());
+        let (Some(id), Some(hits)) = (self.pending.layout.get(), hits) else {
+            return;
+        };
+        let scale = window.scale_factor();
+        self.pending.hits.set(hits.map(|b| Bounds {
+            origin: scaled(b.origin, scale),
+            size: size(
+                ScaledPixels(b.size.width.as_f32() * scale),
+                ScaledPixels(b.size.height.as_f32() * scale),
+            ),
+        }));
+        let snapshot = match self.pending.unpainted {
+            true => window.layout_snapshot_unpainted(id),
+            false => window.layout_snapshot(id),
+        };
+        if self.pending.unpainted
+            && let Some(snapshot) = &snapshot
+        {
+            // Переполненная таблица держит свою ширину полом сама: для
+            // `width::reusable_range` блок так же широк, как она.
+            self.pending.border.set(snapshot.width());
+        }
+        let origin = scaled(window.layout_origin_unrounded(id), scale);
+        self.pending.quiet.set(snapshot.is_some());
+        self.pending.snapshot.replace(snapshot);
+        self.pending.origin.set(Some(origin));
+        // Коробка далеко от экрана: блок, скорее всего, далёкий, и повтор ему
+        // не нужен. Чернила шире коробки лишь лишат блок записи (`finish`).
+        let mask = window.content_mask().bounds;
+        let screen = Bounds {
+            origin: scaled(mask.origin, scale),
+            size: size(
+                ScaledPixels(mask.size.width.as_f32() * scale),
+                ScaledPixels(mask.size.height.as_f32() * scale),
+            ),
+        };
+        let own = Bounds {
+            origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+            size: size(
+                ScaledPixels(bounds.size.width.as_f32() * scale),
+                ScaledPixels(bounds.size.height.as_f32() * scale),
+            ),
+        };
+        if !far(Some(own), origin, screen) {
+            self.pending.output.replace(Some(Box::new(Output {
+                prepaint: range,
+                paint: None,
+            })));
+        }
+    }
+
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
+        let sink = self.pending.sink.clone();
+        // Вывод вынимается на время краски: ячейка не остаётся занятой.
+        let Some(mut output) = self.pending.output.take() else {
+            window
+                .with_ink_sink_async(sink, async |window| {
+                    self.child.paint_async(window, cx, stack).await
+                })
+                .await;
+            self.pending.painted.set(true);
+            return;
+        };
+        let mask = window.content_mask().bounds;
+        // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
+        let ((_, paint), deferred) = crate::hooks::paint_capturing_async(window, async |window| {
+            window
+                .with_ink_sink_async(sink, async |window| {
+                    window
+                        .record_retained_paint_async(async |window| {
+                            self.child.paint_async(window, cx, stack).await
+                        })
+                        .await
+                })
+                .await
+        })
+        .await;
+        output.paint = Some((paint, deferred, mask));
+        self.pending.output.replace(Some(output));
+        self.pending.painted.set(true);
+    }
+}

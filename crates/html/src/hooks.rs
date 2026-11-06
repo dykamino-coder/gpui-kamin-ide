@@ -15,6 +15,7 @@ pub(crate) use paint::{paint_collect, paint_inline, paint_reopen};
 mod painter;
 mod traversal;
 pub(crate) use paint::BareRecords;
+pub(crate) use paint::{LineCapture, paint_capturing_async, replay_deferred};
 pub(crate) use paint::{Replay, SlotScopes, presented_hit_scopes};
 pub(crate) use paint::{
     SourceSlices, paint_source_node_async, paint_source_record_async, prepaint_source_record_async,

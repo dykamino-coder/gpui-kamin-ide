@@ -1097,7 +1097,7 @@ pub(crate) struct PrepaintStateIndex {
     line_layout_index: LineLayoutIndex,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub(crate) struct PaintIndex {
     scene_index: usize,
     #[cfg(any(test, feature = "test-support"))]

@@ -3,6 +3,7 @@
 
 mod admission;
 mod capture;
+mod deferred;
 mod hit_transform;
 mod interaction;
 mod order;

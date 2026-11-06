@@ -29,26 +29,62 @@ pub(crate) struct ExactLeaf {
     margin: Rect<LengthPercentageAuto>,
     align_self: Option<AlignSelf>,
     justify_self: Option<AlignSelf>,
+    /// The width is the parent's stretch fit, not `size.width`.
+    stretch: bool,
+    /// Lower bound of a stretched width: the inline-end edge of the content
+    /// of a box that paints nothing (`TaffyLayoutEngine::unpainted_leaf`).
+    min_width: f32,
 }
 
 impl ExactLeaf {
+    /// The border-box width, or for a box whose content overflows its
+    /// inline-end edge (`unpainted_leaf`) the width up to that edge.
+    pub(crate) fn width(&self) -> f32 {
+        self.size.width.max(self.min_width)
+    }
+
+    pub(crate) fn stretched(self) -> Self {
+        Self {
+            stretch: true,
+            ..self
+        }
+    }
+
     fn style(&self) -> Style {
         let size = self.size;
+        let width = |definite: Dimension| {
+            if self.stretch {
+                Dimension::auto()
+            } else {
+                definite
+            }
+        };
+        let limit = |definite: LengthPercentageAuto| {
+            if self.stretch {
+                LengthPercentageAuto::auto()
+            } else {
+                definite
+            }
+        };
+        let floor = match self.stretch && self.min_width > 0.0 {
+            true => LengthPercentageAuto::length(self.min_width),
+            false => limit(LengthPercentageAuto::length(size.width)),
+        };
         Style {
             display: self.display,
             box_sizing: BoxSizing::BorderBox,
             direction: self.direction,
             block_flow: self.block_flow,
             size: Size {
-                width: Dimension::length(size.width),
+                width: width(Dimension::length(size.width)),
                 height: Dimension::length(size.height),
             },
             min_size: Size {
-                width: LengthPercentageAuto::length(size.width),
+                width: floor,
                 height: LengthPercentageAuto::length(size.height),
             },
             max_size: Size {
-                width: LengthPercentageAuto::length(size.width),
+                width: limit(LengthPercentageAuto::length(size.width)),
                 height: LengthPercentageAuto::length(size.height),
             },
             margin: self.margin,
@@ -64,6 +100,23 @@ impl ExactLeaf {
 impl TaffyLayoutEngine {
     /// The exact leaf of the laid out node `id`, if it qualifies.
     pub(crate) fn exact_leaf(&self, id: LayoutId) -> Option<ExactLeaf> {
+        self.leaf(id, false)
+    }
+
+    /// The exact leaf of the laid out node `id` that paints nothing of its
+    /// own and whose content stays where it is at any width of the node (the
+    /// caller's guarantee: an anonymous wrapper around content placed at its
+    /// inline-start edge), if it qualifies. Its content may overflow its
+    /// inline-end edge. Such a node is observable to its parent only through
+    /// its place and its scrollable overflow, the union of its border box and
+    /// its content (CSS Overflow 3 §2.2): a stretched leaf at least as wide as
+    /// the content has the same place and the same union at every parent
+    /// width at which the content is laid out the same.
+    pub(crate) fn unpainted_leaf(&self, id: LayoutId) -> Option<ExactLeaf> {
+        self.leaf(id, true)
+    }
+
+    fn leaf(&self, id: LayoutId, unpainted: bool) -> Option<ExactLeaf> {
         let node: NodeId = id.into();
         let layout = self.taffy.layout(node).ok()?;
         let style = self.taffy.style(node).ok()?;
@@ -87,9 +140,10 @@ impl TaffyLayoutEngine {
         };
         let size = layout.size;
         let overflow = layout.scrollable_overflow_rect;
+        let content_right = layout.border.left + overflow.right;
         let inside = overflow.left >= 0.0
             && overflow.top >= 0.0
-            && layout.border.left + overflow.right <= size.width
+            && (unpainted || content_right <= size.width)
             && layout.border.top + overflow.bottom <= size.height;
         let margins = [
             style.margin.left,
@@ -114,6 +168,12 @@ impl TaffyLayoutEngine {
                 margin: style.margin,
                 align_self: style.align_self,
                 justify_self: style.justify_self,
+                stretch: unpainted,
+                min_width: if unpainted {
+                    content_right.max(0.0)
+                } else {
+                    0.0
+                },
             }
         })
     }
@@ -167,14 +227,29 @@ impl TaffyLayoutEngine {
         }
     }
 
-    /// Add an exact leaf made by `exact_leaf` to this frame's tree.
+    /// Add an exact leaf made by `exact_leaf` to this frame's tree. It is a
+    /// plain leaf of the frame tree (`retained`): a leaf of an equal style at
+    /// the same request position keeps its node and cache.
     pub(crate) fn request_exact_leaf(&mut self, leaf: &ExactLeaf) -> LayoutId {
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let style = self.styles.share(leaf.style());
-        self.taffy
-            .new_leaf(style)
-            .expect(super::EXPECT_MESSAGE)
-            .into()
+        if let Some(id) = self.claim_leaf(&style) {
+            return id;
+        }
+        let id = match self.recycle(false) {
+            Some(node) => {
+                self.taffy
+                    .reset_node(node, style, &[], None)
+                    .expect(super::EXPECT_MESSAGE);
+                LayoutId(node)
+            }
+            None => self
+                .taffy
+                .new_leaf(style)
+                .expect(super::EXPECT_MESSAGE)
+                .into(),
+        };
+        self.created(id, None)
     }
 }
 

@@ -2,6 +2,7 @@
 
 use super::wrap_with_captions;
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::build_contracts::Styling;
 use crate::layout::cx::LayoutCx;
 use crate::layout::fragment::paginate::watch::TablePart;
@@ -109,6 +110,7 @@ pub(super) fn finish_table_outer(
     cx: &LayoutCx,
 ) -> AnyElement {
     let mut outer = outer;
+    let fit_wrapper = !root_table && caps_top.is_empty() && caps_bot.is_empty() && wrapper_fits(e);
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
     // §17.5.2.2: «the used width is the greater of W and MIN» при W =
     // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
@@ -155,9 +157,56 @@ pub(super) fn finish_table_outer(
         let mut wrap = div().flex().flex_row();
         if root_table {
             wrap = wrap.w_full();
+        } else if fit_wrapper {
+            // Блок потока по блочной оси не сжимается (CSS 2.1 §10.6.3), как
+            // и прочие блоки нашей гибкой колонки потока.
+            wrap = wrap.flex_shrink_0();
         }
         wrap.style().no_inline_block_baseline = Some(true);
-        return wrap.child(outer).into_any_element();
+        let wrap = wrap.child(outer).into_any_element();
+        if fit_wrapper {
+            return StartWrapper(wrap).hooked();
+        }
+        return wrap;
     }
     outer.into_any_element()
+}
+
+/// Обёртка таблицы, которая ничего не рисует сама и держит таблицу у своего
+/// начального края при любой своей ширине (`wrapper_fits`). Её ширина по
+/// css-tables-3 (Fixup Algorithm: «The width of the table-wrapper box is the
+/// border-edge width of the table grid box inside it») — ширина рамки
+/// таблицы, у нас же она растянута по потоку: сжатие по содержимому стоило
+/// бы ещё двух внутренних раскладок всей таблицы (min- и max-content), а
+/// видна ширина обёртки только в переполнении родителя — объединении её
+/// коробки с таблицей, — и оно одинаково. Метка типа говорит повтору потока
+/// (`layout::reuse`), что лист обёртки можно снять сквозь неё
+/// (`gpui::Window::layout_snapshot_unpainted`).
+pub(crate) struct StartWrapper(AnyElement);
+
+impl crate::hooks::Wrap for StartWrapper {
+    fn paint_boundary(&self) -> bool {
+        false
+    }
+
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.0
+    }
+}
+
+/// Таблица стоит у начального края обёртки при любой её ширине: поля
+/// таблицы стоят на её внешней коробке внутри обёртки, и только поля без
+/// `auto` и процентов (их база — ширина обёртки, а ставят они таблицу по
+/// ширине потока) кладутся одинаково в обёртке любой ширины. Подписи
+/// шире таблицы раздвинули бы её коробку подписей, а справа налево и в
+/// вертикальном письме таблицу ставит у начального края поток, а не обёртка.
+fn wrapper_fits(e: &Element) -> bool {
+    let style = e.style.used();
+    let m = &style.reset_box_layout.margin;
+    let wm = style.wm();
+    !wm.vertical()
+        && !wm.rtl()
+        && [m.left, m.right]
+            .into_iter()
+            .all(|m| matches!(m, None | Some(Len::Px(_))))
 }

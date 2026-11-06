@@ -63,6 +63,12 @@ impl Paragraph {
             self.refit_atoms(avail, window, _cx, stack).await;
         }
         self.lines = self.split(Some(limit), window);
+        crate::layout::reuse::lines::report(
+            window,
+            f32::from(bounds.size.width),
+            self.vertical,
+            self.lines.iter().map(|l| f32::from(l.width + l.indent)),
+        );
         self.publish_scroll_overflow(bounds, *state, window);
         self.place_atoms(*state, window, _cx, stack).await;
         // Куски вне потока встают на своё место в строке: раскладываются

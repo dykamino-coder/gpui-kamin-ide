@@ -3,7 +3,7 @@
 use super::*;
 use crate::hooks::{Hooked, Hooks, IntoHooked};
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels};
-use queue::{Inline, Positioned};
+use queue::{Inline, InlinePaint, Positioned};
 
 pub(super) struct PositionedTag;
 static POSITIONED: PositionedTag = PositionedTag;
@@ -129,7 +129,6 @@ deferred!(
     PaintLast,
     Some(&POSITIONED),
     |this: &PaintLast, child, pass: &CssPaintPass, window: &Window| {
-        super::tap::positioned_escape(window);
         let job = Positioned {
             key: this.key,
             child,
@@ -146,7 +145,6 @@ deferred!(
         let Some(pass) = current(window).filter(|_| replayed) else {
             return Some(child);
         };
-        super::tap::positioned_escape(window);
         let job = Positioned {
             key: this.key,
             child,
@@ -162,9 +160,9 @@ deferred!(
     None,
     |_: &PaintInline, child, pass: &CssPaintPass, window: &Window| {
         let job = Inline {
-            tap: super::tap::inline_slot(window, pass),
-            job: queue::Job::Paint(child),
+            paint: InlinePaint::Element(child),
             context: window.raster_paint_ctx(),
+            captures: capture::claim(window, pass),
         };
         pass.jobs.admit_inline(job);
     },
