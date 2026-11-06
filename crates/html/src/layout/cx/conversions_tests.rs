@@ -86,7 +86,7 @@ fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
         }
         lookup
     };
-    for width in 0..PAUSE_AFTER_MISSES {
+    for width in 0..-PAUSE_AT {
         assert!(matches!(miss(&memo, width as f32), Lookup::Miss));
     }
     let (repeated, dimensions) = sized(1000.0);

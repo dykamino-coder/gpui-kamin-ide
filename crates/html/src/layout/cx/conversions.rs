@@ -17,10 +17,18 @@ use std::rc::Rc;
 /// and Stylo's sharing cache, a bounded set of the newest distinct inputs.
 const CANDIDATES: usize = 32;
 
-/// Consecutive misses after which lookups pause. A miss compares the box with every
-/// candidate by value and then copies it into the memory; on a run of distinct styles (flex
-/// items with their own `flex` each) that costs more than the conversions it never saves.
-const PAUSE_AFTER_MISSES: u32 = 64;
+/// Balance of lookups at which they pause: a miss takes one from it, a hit adds `HIT_WORTH`.
+/// A miss compares the box with every candidate by value and then copies it into the memory;
+/// on distinct styles (flex items with their own `flex` each) that costs more than the
+/// conversions it saves, and a rare hit among them (p03: 338 hits and 1 047 misses when every
+/// hit restarted lookups) must not restart full lookups. The balance never falls below this
+/// threshold, so a run of hits resumes reuse after a few probes.
+const PAUSE_AT: i32 = -64;
+
+/// What a hit adds to the balance, and the most the balance keeps: a page of repeated styles
+/// that turns to distinct ones pauses after at most `BALANCE_CAP - PAUSE_AT` misses.
+const HIT_WORTH: i32 = 2;
+const BALANCE_CAP: i32 = 64;
 
 /// While paused, every this many boxes one is still looked up and remembered, so that a
 /// later run of repeated styles resumes reuse.
@@ -32,8 +40,8 @@ pub(crate) struct StyleConversions {
     recent: Cell<Vec<Conversion>>,
     /// Slot of the next new entry once `recent` is full.
     next: Cell<usize>,
-    /// Lookups since the last hit that found nothing.
-    misses: Cell<u32>,
+    /// Hits and misses so far, weighed by `HIT_WORTH` (see `PAUSE_AT`).
+    balance: Cell<i32>,
     /// Boxes passed over since lookups paused.
     passed: Cell<u32>,
 }
@@ -78,14 +86,14 @@ impl Values {
 }
 
 impl StyleConversions {
-    /// Look a box up unless reuse is paused, counting the run of misses that pauses it.
+    /// Look a box up unless reuse is paused, keeping the balance that pauses it.
     pub(crate) fn lookup(
         &self,
         input: &BoxStyle,
         dimensions: &BoxDimensions,
         vcx: ValueCx<'_>,
     ) -> Lookup {
-        if self.misses.get() >= PAUSE_AFTER_MISSES {
+        if self.balance.get() <= PAUSE_AT {
             self.passed.set(self.passed.get() + 1);
             if !self.passed.get().is_multiple_of(PROBE_EVERY) {
                 return Lookup::Pass;
@@ -93,12 +101,13 @@ impl StyleConversions {
         }
         match self.find(input, dimensions, vcx) {
             Some(style) => {
-                self.misses.set(0);
+                self.balance
+                    .set((self.balance.get() + HIT_WORTH).min(BALANCE_CAP));
                 self.passed.set(0);
                 Lookup::Hit(style)
             }
             None => {
-                self.misses.set(self.misses.get().saturating_add(1));
+                self.balance.set((self.balance.get() - 1).max(PAUSE_AT));
                 Lookup::Miss
             }
         }

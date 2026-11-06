@@ -103,15 +103,18 @@ fn same_values(a: &Computed, b: &Computed) -> bool {
         reset_transforms,
         inh,
     } = a;
+    // Item placement groups first: siblings of one container (flex items with their own
+    // `flex`, grid items with their own area) differ there, and a miss compares every
+    // candidate, so it should stop before walking the large box layout group.
     *block_tag == b.block_tag
         && *plain_block_box == b.plain_block_box
+        && *reset_flex == b.reset_flex
+        && *reset_grid == b.reset_grid
+        && *reset_positioned == b.reset_positioned
         && *reset_box_layout == b.reset_box_layout
         && *reset_border == b.reset_border
         && *reset_background == b.reset_background
         && *reset_context == b.reset_context
-        && *reset_flex == b.reset_flex
-        && *reset_grid == b.reset_grid
-        && *reset_positioned == b.reset_positioned
         && *reset_text_box == b.reset_text_box
         && *reset_cascade == b.reset_cascade
         && *reset_generated == b.reset_generated
