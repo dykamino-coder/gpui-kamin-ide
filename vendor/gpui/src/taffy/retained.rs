@@ -20,6 +20,22 @@
 //!   and style (equal keys mean interchangeable measurements), the one at the
 //!   same request position first.
 //!
+//! Positions are aligned, not absolute: a claimed measured leaf moves the
+//! cursor into the previous sequence to the position after its own, so a
+//! subtree of another size before it (a block replaced by one leaf, a
+//! paragraph that gained a node) shifts only the requests up to the next
+//! keyed leaf. A position is only a guess at identity: whatever node it
+//! finds is claimed only when it is a childless plain leaf of an equal style,
+//! whose layout depends on nothing else.
+//!
+//! Equal keys repeat (equal texts), so a keyed leaf moves the cursor only
+//! while the cursor may be off (`astray`: a node was created since the last
+//! anchor, or a parent was claimed away from the cursor). While the cursor
+//! is aligned, a keyed request takes the leaf at the cursor or one left
+//! behind it, never one ahead: that one belongs to a later request (a cell
+//! whose text became that of a later cell), and taking it would move the
+//! cursor there and set every later request against the wrong nodes.
+//!
 //! Styles are compared by value (shared allocation first, `style_share`); a
 //! claimed node takes this pass's shared allocation of its equal style.
 //!
@@ -41,6 +57,30 @@ use taffy::tree::NodeId;
 /// `NodeContext::key_slot` of a leaf that is in no candidate list.
 pub(super) const NO_SLOT: u32 = u32::MAX;
 
+/// Mark of a position whose leaf left its candidate list (`Candidates`).
+const GONE: u32 = 1 << 31;
+
+/// Previous-pass positions of the measured leaves of one layout key,
+/// ascending, so the one nearest the cursor is found by bisection. A leaf
+/// that is claimed (by its request or with a whole subtree) or recycled leaves
+/// its list in O(1): its entry, found through `NodeContext::key_slot`, keeps
+/// its position for the bisection and gets the `GONE` mark, and `head` skips
+/// the marked entries at the front. Requests mostly claim in order, so a key
+/// shared by many leaves does not make a request scan the claimed ones.
+#[derive(Default)]
+pub(super) struct Candidates {
+    pub(super) positions: Vec<u32>,
+    head: usize,
+}
+
+#[cfg(test)]
+impl Candidates {
+    /// No unclaimed leaf is left.
+    pub(super) fn is_empty(&self) -> bool {
+        self.positions[self.head..].iter().all(|p| p & GONE != 0)
+    }
+}
+
 /// Request history of the frame tree across passes.
 #[derive(Default)]
 pub(super) struct Retained {
@@ -48,15 +88,18 @@ pub(super) struct Retained {
     prev: Vec<NodeId>,
     /// Nodes in request order of this pass.
     seq: Vec<NodeId>,
+    /// Position in `prev` that corresponds to the next request of this pass.
+    cursor: usize,
+    /// The cursor may be off: a node was created since it was last confirmed
+    /// (a keyed leaf claimed at the cursor, a parent claimed at the cursor).
+    astray: bool,
     /// Nodes requested (claimed or created) in this pass.
     live: FxHashSet<NodeId>,
     /// Layout keys of the keyed measured leaves in the tree.
     keys: FxHashMap<NodeId, u64>,
-    /// Unclaimed measured leaves of the previous pass by layout key. Each
-    /// leaf's index in its list is `NodeContext::key_slot`, so a claimed or
-    /// recycled leaf leaves its list in O(1) and a key shared by many leaves
-    /// never makes a request scan the leaves already claimed.
-    pub(super) by_key: FxHashMap<u64, Vec<NodeId>>,
+    /// Positions in `prev` of the previous pass's measured leaves by layout
+    /// key (`Candidates`).
+    pub(super) by_key: FxHashMap<u64, Candidates>,
     /// Layout key for the next measured leaf request.
     pub(super) next_key: Option<u64>,
     /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
@@ -82,6 +125,7 @@ impl Retained {
     fn note(&mut self, node: NodeId) {
         self.live.insert(node);
         self.seq.push(node);
+        self.cursor += 1;
     }
 }
 
@@ -105,6 +149,11 @@ impl TaffyLayoutEngine {
                 .iter()
                 .all(|child| self.taffy.parent(child.0) == Some(parent))
             && self.taffy.style_equals(parent, style);
+        if found {
+            // A parent is known by its children: claimed at the cursor, it
+            // confirms the alignment; elsewhere, it shows the cursor is off.
+            self.retained.astray = self.retained.prev.get(self.retained.cursor) != Some(&parent);
+        }
         found.then(|| self.claim(parent, style))
     }
 
@@ -113,7 +162,7 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
-        let node = *self.retained.prev.get(self.retained.seq.len())?;
+        let node = *self.retained.prev.get(self.retained.cursor)?;
         let found = !self.retained.live.contains(&node)
             && self.taffy.style_equals(node, style)
             && self.taffy.children_slice(node).is_empty()
@@ -133,32 +182,46 @@ impl TaffyLayoutEngine {
         if !self.frame_tree {
             return None;
         }
-        let live = &self.retained.live;
-        let taffy = &self.taffy;
-        let fits = |node: &NodeId| {
-            !live.contains(node)
-                && taffy.style_equals(*node, style)
-                && taffy.children_slice(*node).is_empty()
+        let cursor = self.retained.cursor;
+        let candidates = self.retained.by_key.get(&key)?;
+        let (prev, live) = (&self.retained.prev, &self.retained.live);
+        let fits = |position: &u32| {
+            let node = prev[(*position & !GONE) as usize];
+            *position & GONE == 0
+                && !live.contains(&node)
+                && self.taffy.style_equals(node, style)
+                && self.taffy.children_slice(node).is_empty()
         };
-        // The leaf at the same request position first: leaves of one key are
-        // interchangeable, but keeping each at its place keeps its parent.
-        let at_position = self
-            .retained
-            .prev
-            .get(self.retained.seq.len())
-            .copied()
-            .filter(|node| self.retained.keys.get(node) == Some(&key) && fits(node));
-        let node = match at_position {
-            Some(node) => node,
-            None => {
-                let candidates = self.retained.by_key.get(&key)?;
-                candidates[candidates.iter().rposition(fits)?]
-            }
+        // Equal keys are interchangeable, but the one nearest the cursor keeps
+        // the requests after it aligned (equal texts repeat in a document).
+        let positions = &candidates.positions;
+        let head = candidates.head;
+        let start =
+            head + positions[head..].partition_point(|&position| (position & !GONE) < cursor as u32);
+        let after = (start..positions.len()).find(|&at| fits(&positions[at]));
+        let before = (head..start).rev().find(|&at| fits(&positions[at]));
+        let distance = |at: usize| ((positions[at] & !GONE) as usize).abs_diff(cursor);
+        let astray = self.retained.astray;
+        let at = match (before, after) {
+            (_, Some(a)) if distance(a) == 0 => a,
+            // An aligned cursor: a leaf ahead is a later request's.
+            (b, _) if !astray => b?,
+            (Some(b), Some(a)) if distance(b) < distance(a) => b,
+            (_, Some(a)) => a,
+            (b, None) => b?,
         };
+        let position = positions[at] as usize;
+        let node = prev[position];
         self.unlist(key, node);
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
+        }
+        // The requests after this leaf follow the ones after it last pass; a
+        // leaf left behind an aligned cursor is new content, the cursor stays.
+        if astray || position == cursor {
+            self.retained.cursor = position;
+            self.retained.astray = false;
         }
         Some(self.claim(node, style))
     }
@@ -168,32 +231,38 @@ impl TaffyLayoutEngine {
         let Some(context) = self.taffy.get_node_context_mut(node) else {
             return;
         };
-        let at = std::mem::replace(&mut context.key_slot, NO_SLOT);
+        let at = std::mem::replace(&mut context.key_slot, NO_SLOT) as usize;
+        let prev = &self.retained.prev;
         let Some(list) = self.retained.by_key.get_mut(&key) else {
             return;
         };
-        let at = at as usize;
-        if list.get(at) == Some(&node) {
-            list.swap_remove(at);
-            if let Some(&moved) = list.get(at)
-                && let Some(context) = self.taffy.get_node_context_mut(moved)
-            {
-                context.key_slot = at as u32;
-            }
+        if let Some(position) = list.positions.get_mut(at)
+            && prev.get((*position & !GONE) as usize) == Some(&node)
+        {
+            *position |= GONE;
+        }
+        while list.positions.get(list.head).is_some_and(|p| p & GONE != 0) {
+            list.head += 1;
         }
     }
 
     /// An unclaimed previous node at this request's position, whose storage a
     /// new node takes (TaffyTree::reset_node): a pass that claims little
-    /// then holds about one tree, not the previous and the new one. A node
-    /// with a pinned identity (`layout_stamp`) is never reused: its id must
-    /// not name another subtree.
-    pub(super) fn recycle(&mut self) -> Option<NodeId> {
+    /// then holds about one tree, not the previous and the new one. A keyed
+    /// leaf is taken only by a `measured` request: until the cursor is aligned
+    /// again the position may belong to a later request that would claim the
+    /// leaf by its key, and taking it would renew that request's ancestors too.
+    /// A node with a pinned identity (`layout_stamp`) is never reused: its id
+    /// must not name another subtree.
+    pub(super) fn recycle(&mut self, measured: bool) -> Option<NodeId> {
         if !self.frame_tree {
             return None;
         }
-        let node = *self.retained.prev.get(self.retained.seq.len())?;
+        let node = *self.retained.prev.get(self.retained.cursor)?;
         if self.retained.live.contains(&node) || self.taffy.identity_pinned(node) {
+            return None;
+        }
+        if !measured && self.retained.keys.contains_key(&node) {
             return None;
         }
         if let Some(key) = self.retained.keys.remove(&node) {
@@ -216,6 +285,7 @@ impl TaffyLayoutEngine {
     /// Register a node created in this pass; `key` is its layout key.
     pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
         if self.frame_tree {
+            self.retained.astray = true;
             self.retained.note(node.0);
             debug_assert!(
                 !self.retained.memos.contains_key(&node.0),
@@ -259,14 +329,18 @@ impl TaffyLayoutEngine {
         }
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
-        for (node, key) in &retained.keys {
-            let list = retained.by_key.entry(*key).or_default();
-            if let Some(context) = self.taffy.get_node_context_mut(*node) {
-                context.key_slot = list.len() as u32;
+        for (position, node) in retained.seq.iter().enumerate() {
+            if let Some(key) = retained.keys.get(node) {
+                let list = &mut retained.by_key.entry(*key).or_default().positions;
+                if let Some(context) = self.taffy.get_node_context_mut(*node) {
+                    context.key_slot = list.len() as u32;
+                }
+                list.push(position as u32);
             }
-            list.push(*node);
         }
         retained.prev = std::mem::take(&mut retained.seq);
+        retained.cursor = 0;
+        retained.astray = false;
         retained.next_key = None;
         retained.keys_enabled = false;
         retained.live = live;
