@@ -144,17 +144,16 @@ impl Paragraph {
         crate::work::add!(TextPositionQueries, 1);
         let i = i.min(self.text.len());
         let after_break = edge == Edge::End && i > 0 && self.text.as_bytes()[i - 1] == b'\n';
-        let index = if after_break {
-            segs.partition_point(|s| {
-                crate::work::add!(TextPositionSteps, 1);
-                s.end + 1 < i
-            })
-        } else {
-            segs.partition_point(|s| {
-                crate::work::add!(TextPositionSteps, 1);
-                s.end < i
-            })
-        };
+        // Шаги поиска копятся локально и сдаются одним вызовом: наблюдение
+        // на каждом шаге стоило дороже самого поиска.
+        #[cfg(feature = "work-counters")]
+        let steps = std::cell::Cell::new(0u64);
+        let index = segs.partition_point(|s| {
+            #[cfg(feature = "work-counters")]
+            steps.set(steps.get() + 1);
+            if after_break { s.end + 1 < i } else { s.end < i }
+        });
+        crate::work::add!(TextPositionSteps, steps.get());
         let Some(seg) = segs.get(index).or_else(|| segs.last()) else {
             return px(0.);
         };
