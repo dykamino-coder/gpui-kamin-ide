@@ -48,7 +48,7 @@ fn clamped_atomic_height_is_the_percentage_containing_block() {
 
 #[test]
 fn orthogonal_text_measure_receives_its_definite_inline_extent() {
-    let mut tree = TaffyTree::new();
+    let mut tree = TaffyTree::<()>::new();
     let node = tree.new_leaf(Style {
         size: Size { width: auto(), height: length(120.0) },
         ..Style::DEFAULT

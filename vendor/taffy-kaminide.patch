@@ -22631,7 +22631,7 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/inline_constraint_tests.rs b/vendor/taffy/src/tree/inline_constraint_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8535ae48b8cb4b7a6e299a7f6ce77d81ce736564
+index 0000000000000000000000000000000000000000..137a6da346c6a41b85a1c49fd34bbaa915247fb7
 --- /dev/null
 +++ b/vendor/taffy/src/tree/inline_constraint_tests.rs
 @@ -0,0 +1,118 @@
@@ -22685,7 +22685,7 @@ index 0000000000000000000000000000000000000000..8535ae48b8cb4b7a6e299a7f6ce77d81
 +
 +#[test]
 +fn orthogonal_text_measure_receives_its_definite_inline_extent() {
-+    let mut tree = TaffyTree::new();
++    let mut tree = TaffyTree::<()>::new();
 +    let node = tree.new_leaf(Style {
 +        size: Size { width: auto(), height: length(120.0) },
 +        ..Style::DEFAULT
