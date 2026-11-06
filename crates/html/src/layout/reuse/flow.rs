@@ -2,6 +2,7 @@
 
 use super::placeholder::{Placeholder, Slot};
 use super::recorder::{Pending, Recorder};
+use super::replay::{PendingReplay, Replay, ReplayRecorder, ReplaySlot};
 use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -10,6 +11,9 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
+mod mark;
+use mark::{Mark, mark_of};
+
 /// Поток `body`, занятый повтором в этой сборке.
 pub(crate) struct FlowCx {
     reuse: Rc<FlowReuse>,
@@ -17,29 +21,13 @@ pub(crate) struct FlowCx {
     /// Уже собранный ребёнок потока содержит флоат: он может вдаваться в
     /// следующих детей, их раскладка тогда зависит не только от ключа.
     floats: std::cell::Cell<bool>,
-    /// Ключ равен ключу прошлой сборки: записывать детей.
+    /// Ключ равен ключу прошлой сборки: записывать детей для пропуска.
     settled: bool,
-}
-
-/// Состояние сборки до блочного ребёнка: его сборка должна изменить только
-/// счётчики и добавить ровно один элемент.
-pub(crate) struct Mark {
-    start: Counters,
-    out: usize,
-    outlines: usize,
-    coordinates: usize,
-    late: bool,
-}
-
-fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
-    let paint = &opts.cx.deferred.paint;
-    Mark {
-        start: Counters::read(&opts.cx),
-        out,
-        outlines: paint.outlines.borrow().len(),
-        coordinates: paint.coordinates.borrow().len(),
-        late: opts.cx.position.state.late_pending(),
-    }
+    /// Ключ прошлой сборки тот же вне ширин: записывать детей для повтора.
+    settled_outside_widths: bool,
+    /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны для
+    /// пропуска, собираются лишь ближние и изменённые.
+    warm: bool,
 }
 
 impl FlowReuse {
@@ -92,18 +80,26 @@ impl FlowReuse {
         // (каскад, шейпинг), а устоявшийся поток видно только со второй сборки
         // с тем же ключом.
         let last = self.store.last.replace(Some(key.clone()));
-        let settled = match last {
-            Some(last) => last.same(&key),
-            None => false,
+        let (settled, settled_outside_widths) = match last {
+            Some(last) => (last.same(&key), last.same_outside_widths(&key)),
+            None => (false, false),
         };
+        let warm = self.store.settled.replace(settled) && settled;
         if !settled {
             // Записи другого ключа не подойдут, а держат стили кадра записи.
             self.store.records.take();
+        }
+        if !settled_outside_widths {
+            self.store.replays.take();
+            self.store.banned.take();
+            self.store.reads_widths.take();
         }
         Some(FlowCx {
             reuse: self.clone(),
             key,
             settled,
+            settled_outside_widths,
+            warm,
             floats: std::cell::Cell::new(false),
         })
     }
@@ -138,6 +134,28 @@ impl FlowCx {
         Some(Placeholder::new(slot).hooked())
     }
 
+    /// Повтор ребёнка `e` на экране, если его запись подходит (`replay`).
+    pub(crate) fn replay(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+        if !self.reuse.allow
+            || e.node_id == 0
+            || self.floats.get()
+            || self.reuse.store.banned(e.node_id)
+        {
+            return None;
+        }
+        let record = self.reuse.store.replays.borrow().get(&e.node_id).cloned()?;
+        if !record.fits(&self.key, Counters::read(&opts.cx), e) {
+            return None;
+        }
+        record.end.write(&opts.cx);
+        let mut next = self.reuse.next_replays.take();
+        next.insert(e.node_id, record.clone());
+        self.reuse.next_replays.replace(next);
+        let slot = Rc::new(ReplaySlot::new(record));
+        super::push(&self.reuse.replay_slots, slot.clone());
+        Some(Replay::new(slot).hooked())
+    }
+
     /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить его флоаты.
     pub(crate) fn built(&self, n: &crate::dom::Node) {
         if let crate::dom::Node::Element(e) = n
@@ -148,12 +166,8 @@ impl FlowCx {
         }
     }
 
-    pub(crate) fn mark(&self, opts: &RenderOpts, out: usize) -> Mark {
-        mark_of(opts, out)
-    }
-
     /// Обернуть только что собранный элемент ребёнка `e` записью, если его
-    /// сборка инертна.
+    /// сборка инертна: для пропуска вне экрана и (снаружи) для повтора.
     pub(crate) fn record(
         &self,
         e: &Element,
@@ -163,22 +177,43 @@ impl FlowCx {
         out: &mut Vec<AnyElement>,
     ) {
         let now = mark_of(opts, out.len());
-        let inert = self.settled
-            && !edge
-            && !self.floats.get()
+        let single = !self.floats.get()
             && e.node_id != 0
             && now.out == mark.out + 1
             && now.outlines == mark.outlines
             && now.coordinates == mark.coordinates
             && now.late == mark.late
-            && out.last().is_some_and(|el| el.paint_metadata().is_none())
-            && super::plain::plain(e);
-        if !inert {
+            && out.last().is_some_and(|el| el.paint_metadata().is_none());
+        if !single {
             return;
         }
-        let Some(child) = out.pop() else { return };
-        let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
-        super::push(&self.reuse.pending, (pending.clone(), Box::new(e.clone())));
-        out.push(Recorder::new(child, pending).hooked());
+        // One copy of the block's element serves both records: a block ends
+        // up near the screen (replay) or far from it (skip), and the copy is
+        // all either keeps of the build input.
+        let copy = std::cell::OnceCell::new();
+        let element = || copy.get_or_init(|| Rc::new(e.clone())).clone();
+        if self.settled
+            && !edge
+            && mark.inert.of(e)
+            && let Some(child) = out.pop()
+        {
+            let pending = Rc::new(Pending::new(self.key.clone(), mark.start, now.start));
+            super::push(&self.reuse.pending, (pending.clone(), element()));
+            out.push(Recorder::new(child, pending).hooked());
+        }
+        if let Some(widths) = mark.widths
+            && !self.reuse.store.banned(e.node_id)
+            && super::plain::replayable(e, opts.cx.vcx())
+            && let Some(child) = out.pop()
+        {
+            let pending = Rc::new(PendingReplay::new(
+                self.key.clone(),
+                mark.start,
+                now.start,
+                widths,
+            ));
+            super::push(&self.reuse.pending_replays, (pending.clone(), element()));
+            out.push(ReplayRecorder::new(child, pending).hooked());
+        }
     }
 }

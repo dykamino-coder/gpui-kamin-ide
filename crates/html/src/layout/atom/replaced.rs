@@ -76,7 +76,7 @@ pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> 
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
     replaced_used_style::inline_percentage_width(
         copy.style.used_mut(),
-        opts.cx.constraints.avail_w,
+        opts.cx.constraints.avail_w(),
     );
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
@@ -120,7 +120,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // картинки с одним соотношением в `image_with`).
     let cb_w = match inherited.reset_box_layout.width {
         Some(Len::Px(v)) if v > 0.0 => Some(v),
-        _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
+        _ => opts.cx.constraints.cb_width().filter(|v| *v > 0.0),
     };
     // Размер в единицах шрифта (`svg { width: 10ch }`) решается тем же
     // шагом, что у картинки (`image_with` → `resolve_em`): сырой стиль

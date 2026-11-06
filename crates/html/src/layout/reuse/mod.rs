@@ -24,44 +24,27 @@ mod key;
 mod placeholder;
 mod plain;
 mod recorder;
+mod replay;
+mod store;
 #[cfg(test)]
 mod tests;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
-use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
+use gpui::{Bounds, LayoutSnapshot, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
+use recorder::{SNAP, placed, scaled};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// Записи блоков одного документа между кадрами; переживают `update`.
-#[derive(Default)]
-pub(crate) struct Store {
-    /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
-    /// ключа их сбрасывает, а не держит устаревшие стили.
-    records: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
-    /// иначе (ширина меняется каждый кадр) запись не окупается.
-    last: RefCell<Option<Rc<FlowKey>>>,
-    /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
-    pub(crate) stats: Cell<ReuseStats>,
-}
-
-/// Счётчики наблюдения повтора блоков.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ReuseStats {
-    pub recorded: u64,
-    pub skipped: u64,
-    pub rebuilt_frames: u64,
-}
+pub(crate) use store::Store;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 /// Пишется только для блока, бывшего далеко от экрана (`recorder::far`):
 /// запись ближнего блока не подошла бы ни одному кадру.
 pub(crate) struct Record {
-    /// Вход сборки блока; в куче, чтобы переходить из ожидания без копии.
-    element: Box<Element>,
+    /// Вход сборки блока; одна копия на блок, общая с записью повтора.
+    element: Rc<Element>,
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
@@ -69,34 +52,6 @@ pub(crate) struct Record {
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
     ink: Option<Bounds<ScaledPixels>>,
 }
-
-fn scaled(p: Point<Pixels>, scale: f32) -> Point<ScaledPixels> {
-    point(
-        ScaledPixels(p.x.as_f32() * scale),
-        ScaledPixels(p.y.as_f32() * scale),
-    )
-}
-
-/// Чернила записи, поставленные в начало `origin` и расширенные на `margin`.
-fn placed(
-    ink: Bounds<ScaledPixels>,
-    origin: Point<ScaledPixels>,
-    margin: f32,
-) -> Bounds<ScaledPixels> {
-    Bounds {
-        origin: point(
-            ScaledPixels(ink.origin.x.0 + origin.x.0 - margin),
-            ScaledPixels(ink.origin.y.0 + origin.y.0 - margin),
-        ),
-        size: size(
-            ScaledPixels(ink.size.width.0 + 2.0 * margin),
-            ScaledPixels(ink.size.height.0 + 2.0 * margin),
-        ),
-    }
-}
-
-/// Запас проверки экрана на округление краёв, в точках устройства.
-const SNAP: f32 = 2.0;
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -116,8 +71,11 @@ pub(crate) struct FlowReuse {
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
     /// Ожидающие записи с элементами своих блоков.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Box<Element>)>>,
+    pending: RefCell<Vec<(Rc<recorder::Pending>, Rc<Element>)>>,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
+    next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
+    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Rc<Element>)>>,
+    replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
 }
 
@@ -155,6 +113,9 @@ impl FlowReuse {
             next: Default::default(),
             pending: Default::default(),
             placeholders: Default::default(),
+            next_replays: Default::default(),
+            pending_replays: Default::default(),
+            replay_slots: Default::default(),
             screen: Cell::new(None),
         }))
     }
@@ -189,6 +150,9 @@ impl FlowReuse {
         };
         self.screen.set(Some(screen));
         let offset = window.element_offset() == point(px(0.0), px(0.0));
+        if !self.validate_replays(window) {
+            return false;
+        }
         let placeholders = self.placeholders.borrow();
         placeholders.is_empty()
             || offset
@@ -222,6 +186,7 @@ impl FlowReuse {
         if recorded > 0 || skipped > 0 {
             self.store.records.replace(next);
         }
+        self.finish_replays(screen);
         let mut stats = self.store.stats.get();
         stats.recorded += recorded;
         stats.skipped += skipped;

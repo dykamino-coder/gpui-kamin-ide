@@ -46,6 +46,11 @@ impl PaintJobQueue {
         })
     }
 
+    /// Число открытых кадров: глубина, в которую встаёт следующее задание.
+    pub fn depth(&self) -> usize {
+        self.0.borrow().frames.len()
+    }
+
     pub fn clear(&self) {
         let abandoned = self.update(std::mem::take);
         drop(abandoned);

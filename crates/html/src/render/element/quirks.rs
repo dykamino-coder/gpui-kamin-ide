@@ -37,7 +37,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
     let basis = if parent.wm().vertical() {
         parent.inline_definite
     } else {
-        opts.cx.constraints.avail_w
+        opts.cx.constraints.avail_w()
     };
     let px = |value: Option<Len>, style: &Computed| match value {
         None | Some(Len::Auto) => 0.0,
