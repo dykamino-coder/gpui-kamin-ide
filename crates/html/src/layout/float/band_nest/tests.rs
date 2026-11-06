@@ -86,9 +86,10 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
             viewport: (800., 600.),
             normal_line_height: 1.2,
             cx: crate::layout::cx::LayoutCx {
-                constraints: crate::layout::cx::BoxConstraints {
-                    avail_h: basis,
-                    ..Default::default()
+                constraints: {
+                    let mut constraints = crate::layout::cx::BoxConstraints::default();
+                    constraints.avail_h = basis;
+                    constraints
                 },
                 ..Default::default()
             },

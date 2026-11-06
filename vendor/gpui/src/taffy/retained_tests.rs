@@ -83,6 +83,81 @@ fn a_parent_with_other_children_is_not_kept() {
 }
 
 #[test]
+fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    let stamp = engine.layout_stamp(p);
+    assert!(stamp.is_some());
+    engine.set_layout_memo(p, std::rc::Rc::new(5u32));
+    engine.clear();
+    let a2 = leaf(&mut engine, 10.);
+    let p2 = parent(&mut engine, &[a2]);
+    assert_eq!((p2, engine.layout_stamp(p2)), (p, stamp));
+    let memo = engine.layout_memo(p2).expect("memo of a kept node");
+    assert_eq!(memo.downcast_ref::<u32>(), Some(&5));
+    engine.clear();
+    let b = leaf(&mut engine, 30.);
+    let p3 = parent(&mut engine, &[b]);
+    assert_ne!(engine.layout_stamp(p3), stamp);
+    assert!(engine.layout_memo(p3).is_none());
+}
+
+#[test]
+fn a_capped_child_is_restored_and_kept_by_the_next_equal_request() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    assert!(engine.cap_child_outer_width(p, 0, px(4.), 1.0));
+    engine.clear();
+    let a2 = leaf(&mut engine, 10.);
+    assert_eq!(parent(&mut engine, &[a2]), p);
+    assert_eq!(engine.claimed_nodes(), 2);
+}
+#[test]
+fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let mut parents = Vec::new();
+    for width in [10., 20., 30., 40.] {
+        let probe = measured(&mut engine, Some(1));
+        let a = leaf(&mut engine, width);
+        parents.push(parent(&mut engine, &[probe, a]));
+    }
+    engine.clear();
+    engine.set_layout_keys(true);
+    for (width, old) in [10., 20., 30., 40.].into_iter().zip(parents) {
+        let probe = measured(&mut engine, Some(1));
+        let a = leaf(&mut engine, width);
+        assert_eq!(parent(&mut engine, &[probe, a]), old);
+    }
+    assert_eq!(engine.claimed_nodes(), 12);
+}
+#[test]
+fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
+    let mut engine = TaffyLayoutEngine::new();
+    let start = engine.request_position();
+    let (a, b) = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let p = parent(&mut engine, &[a, b]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    assert_eq!(&*nodes, &[a.0, b.0, p.0]);
+    let root = parent(&mut engine, &[p]);
+    engine.clear();
+    // Claimed whole: no requests for its nodes, the next pass keeps them.
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None, "claimed once per pass");
+    assert_eq!(parent(&mut engine, &[p]), root);
+    assert!(!engine.layout_stale());
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 4);
+    // A pass that renews the subtree drops the stamp: the capture is void.
+    let (a2, c) = (leaf(&mut engine, 10.), leaf(&mut engine, 30.));
+    let _ = parent(&mut engine, &[a2, c]);
+    engine.clear();
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None);
+}
+
+#[test]
 fn a_kept_node_takes_the_shared_style_of_its_pass() {
     let mut engine = TaffyLayoutEngine::new();
     // More distinct styles than sharing candidates: the first one is forgotten.

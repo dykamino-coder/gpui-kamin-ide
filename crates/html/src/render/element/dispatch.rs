@@ -78,7 +78,7 @@ pub(crate) async fn dispatch_element(
             let context = BoxStyle::shared(copy.style.used()).context;
             let used = copy.style.used_mut();
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
+                replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w());
             }
             used.inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
             let context = inherit_item_metadata(used, context, &merged, inherited);
@@ -164,7 +164,7 @@ pub(crate) async fn dispatch_element(
             // уже собственный стиль рисунка.
             let cb_w = match cb.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
-                _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
+                _ => opts.cx.constraints.cb_width().filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
             svg_replaced(e, &svg_size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(|| {

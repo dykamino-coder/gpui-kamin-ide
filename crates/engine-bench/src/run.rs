@@ -263,14 +263,8 @@ pub(super) async fn run(
             report[key] = value.clone();
         }
     }
-    drop(frames);
-    if args.memory_settle_ms > 0 {
-        if report["frame_pixels_changed"] != false {
-            return Err("memory audit requires an unchanged RGB frame sequence".into());
-        }
-        report["memory_audit"] =
-            super::memory::finish(cx, window, fonts, args, capture, luid).await?;
-    }
+    let run = (cx, window, fonts, args, capture, luid);
+    frames.finish(&mut report, run).await?;
     report::print(&report, args.json)?;
     Ok(())
 }

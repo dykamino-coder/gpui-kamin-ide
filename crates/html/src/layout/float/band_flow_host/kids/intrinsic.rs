@@ -18,7 +18,7 @@ pub(super) fn sizes(
     node.children.intrinsic_sizes(IntrinsicInput {
         styles,
         viewport: vcx.viewport,
-        containing: (opts.cx.constraints.cb_width, opts.cx.constraints.avail_h),
+        containing: (opts.cx.constraints.cb_width(), opts.cx.constraints.avail_h),
         em,
         fonts: vcx.doc.font_generation(),
         images: vcx.doc.images.borrow().snapshot().revision(),

@@ -59,7 +59,8 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // `BoxConstraints::avail_w` вычитает поля/рамки/отступы `html` и `body`.
     // Слои содержащих блоков — свои у каждой сборки документа.
     let opts = &*opts.inner(|cx| {
-        cx.constraints.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.constraints
+            .set_avail_w(Some(opts.viewport.0).filter(|w| *w > 0.0));
         cx.position.state = Default::default();
         if !cx.contracts.in_render {
             cx.deferred.vertical_paint = Default::default();
@@ -112,7 +113,8 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     let opts = &*opts.inner(|cx| {
-        cx.constraints.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.constraints
+            .set_avail_w(Some(opts.viewport.0).filter(|w| *w > 0.0));
         cx.position.state = Default::default();
         cx.contracts.conversions = Default::default();
         if !cx.contracts.in_render {

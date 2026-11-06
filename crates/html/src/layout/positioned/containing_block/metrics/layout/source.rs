@@ -193,7 +193,7 @@ fn build(
     opts.cx.deferred = Default::default();
     opts.cx.position.geometry_record = Some(recorder.clone());
     opts.cx.position.geometry = None;
-    opts.cx.constraints.avail_w = Some(width);
+    opts.cx.constraints.set_avail_w(Some(width));
     opts.frag = Default::default();
     // Начальная page area — настоящий ICB; normal потомки остаются overflow.
     let icb = page.as_ref().map(|_| {

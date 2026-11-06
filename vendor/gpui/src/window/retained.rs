@@ -57,6 +57,13 @@ impl Window {
         self.next_frame_callbacks.borrow().len()
     }
 
+    /// Number of frames this window has drawn. A record made while drawing
+    /// frame `n` replays only while `frame_serial() == n + 1`, i.e. while the
+    /// frame it was made in is the rendered one.
+    pub fn frame_serial(&self) -> u64 {
+        self.frame_serial
+    }
+
     /// Run the prepaint of a subtree and return its range in this frame.
     pub fn record_retained_prepaint<R>(
         &mut self,
@@ -221,6 +228,28 @@ impl RetainedPrepaint {
     }
 }
 
+/// KaminIDE patch: the layout nodes one subtree requested in a pass
+/// (`Window::capture_layout`). A later pass that keeps the root's stamp can
+/// claim them whole (`Window::request_retained_layout`) instead of requesting
+/// every node again: the subtree's elements need not be built.
+#[derive(Clone)]
+pub struct RetainedSubtree {
+    stamp: u64,
+    nodes: Rc<[::taffy::tree::NodeId]>,
+}
+
+impl RetainedSubtree {
+    /// Number of layout nodes in the subtree.
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Whether the subtree has no nodes (never: the root is one).
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+}
+
 /// KaminIDE patch: an exact layout leaf standing in for a laid out subtree
 /// (`Window::layout_snapshot`), valid at the device scale it was taken at.
 #[derive(Clone, Copy)]
@@ -282,6 +311,40 @@ impl Window {
     pub fn layout_snapshot(&self, id: LayoutId) -> Option<LayoutSnapshot> {
         let leaf = self.layout_engine.as_ref()?.exact_leaf(id)?;
         Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
+    }
+
+    /// Position in this pass's layout requests; pass it to `capture_layout`
+    /// after requesting a subtree.
+    pub fn layout_request_position(&self) -> usize {
+        self.layout_engine
+            .as_ref()
+            .map_or(0, |engine| engine.request_position())
+    }
+
+    /// The nodes of the subtree `root` requested since `start`, when the frame
+    /// tree keeps them (`None` otherwise).
+    pub fn capture_layout(&mut self, start: usize, root: LayoutId) -> Option<RetainedSubtree> {
+        let (stamp, nodes) = self.layout_engine.as_mut()?.capture_subtree(start, root)?;
+        Some(RetainedSubtree { stamp, nodes })
+    }
+
+    /// Claim a subtree captured in the previous pass whole. `None` when a node
+    /// of it changed or was dropped. Its leaves are not measured again: if the
+    /// layout needs a new measurement, `layout_stale` reports it after
+    /// `compute_layout`, and the caller must discard this layout (the frame
+    /// tree drops itself at the end of such a pass).
+    pub fn request_retained_layout(&mut self, layout: &RetainedSubtree) -> Option<LayoutId> {
+        self.invalidator.debug_assert_prepaint();
+        self.layout_engine
+            .as_mut()?
+            .claim_subtree(layout.stamp, &layout.nodes)
+    }
+
+    /// Whether this pass measured a leaf of a subtree claimed whole.
+    pub fn layout_stale(&self) -> bool {
+        self.layout_engine
+            .as_ref()
+            .is_some_and(|engine| engine.layout_stale())
     }
 
     /// Request the leaf of `snapshot` in this frame's layout. The caller

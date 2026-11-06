@@ -148,7 +148,7 @@ impl Context {
     /// css-break-3 §5.1: новый лист меняет размеры, но не исходную цепочку CB.
     fn resolved(&self, space: Space, opts: &RenderOpts) -> (Computed, Option<f32>) {
         let viewport = (space.inline_size.unwrap(), space.block_size.unwrap());
-        let (mut width, mut height) = (opts.cx.constraints.avail_w, opts.cx.constraints.avail_h);
+        let (mut width, mut height) = (opts.cx.constraints.avail_w(), opts.cx.constraints.avail_h);
         for parent in &self.parents {
             let mut parent = (**parent).clone();
             parent.resolve_viewport(opts.viewport, opts.cx.vcx());
