@@ -1,0 +1,70 @@
+use super::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+
+fn state() -> std::rc::Rc<crate::document::state::DocState> {
+    crate::document::state::DocState::new(crate::style::css::Media::default())
+}
+
+fn sized(width: f32) -> (BoxStyle, BoxDimensions) {
+    let mut style = Computed::default();
+    style.reset_box_layout.width = Some(Len::Px(width));
+    let input = BoxStyle::new(style);
+    let dimensions = BoxDimensions::from_computed(&input);
+    (input, dimensions)
+}
+
+fn refinement(width: f32) -> Rc<StyleRefinement> {
+    let mut style = StyleRefinement::default();
+    style.size.width = Some(gpui::px(width).into());
+    Rc::new(style)
+}
+
+#[test]
+fn an_equal_box_reuses_the_conversion_whatever_its_registry_keys() {
+    let doc = state();
+    let vcx = doc.frame_values().with_viewport((800.0, 600.0));
+    let mut memo = StyleConversions::default();
+    let (input, dimensions) = sized(10.0);
+    let converted = refinement(10.0);
+    memo.record(&input, dimensions, vcx, converted.clone());
+    let mut twin = input.clone();
+    (twin.self_node, twin.anchor_seq, twin.anchor_key) = (41, 5, 99);
+    let found = memo.find(&twin, &dimensions, vcx).unwrap();
+    assert!(Rc::ptr_eq(&found, &converted));
+}
+
+#[test]
+fn another_value_size_or_viewport_converts_anew() {
+    let doc = state();
+    let vcx = doc.frame_values().with_viewport((800.0, 600.0));
+    let mut memo = StyleConversions::default();
+    let (input, dimensions) = sized(10.0);
+    memo.record(&input, dimensions, vcx, refinement(10.0));
+    let (other, other_dimensions) = sized(11.0);
+    assert!(memo.find(&other, &other_dimensions, vcx).is_none());
+    assert!(memo.find(&input, &other_dimensions, vcx).is_none());
+    let wider = doc.frame_values().with_viewport((1024.0, 600.0));
+    assert!(memo.find(&input, &dimensions, wider).is_none());
+    let mut stretched = input.clone();
+    stretched.stretched = true;
+    assert!(memo.find(&stretched, &dimensions, vcx).is_none());
+}
+
+#[test]
+fn the_newest_distinct_inputs_stay_candidates() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let mut memo = StyleConversions::default();
+    for width in 0..=CANDIDATES {
+        let (input, dimensions) = sized(width as f32);
+        memo.record(&input, dimensions, vcx, refinement(width as f32));
+    }
+    let (oldest, oldest_dimensions) = sized(0.0);
+    assert!(memo.find(&oldest, &oldest_dimensions, vcx).is_none());
+    for width in 1..=CANDIDATES {
+        let (input, dimensions) = sized(width as f32);
+        let found = memo.find(&input, &dimensions, vcx).unwrap();
+        assert_eq!(found.size.width, Some(gpui::px(width as f32).into()));
+    }
+}

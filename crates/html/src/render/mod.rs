@@ -51,6 +51,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
             crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
         ));
+        cx.contracts.conversions = Default::default();
     });
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
@@ -113,6 +114,7 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     let opts = &*opts.inner(|cx| {
         cx.constraints.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.position.state = Default::default();
+        cx.contracts.conversions = Default::default();
         if !cx.contracts.in_render {
             cx.deferred.vertical_paint = Default::default();
             cx.deferred.paint = Default::default();
