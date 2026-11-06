@@ -4,8 +4,33 @@ use super::{
     report::{Sample, ms},
     view::Phases,
 };
+use gpui::frame_perf;
 use kamin_html::BuildTimings;
-use std::{collections::BTreeMap, time::Duration};
+use kamin_html::host::capture::CaptureSession;
+use std::{collections::BTreeMap, sync::atomic::Ordering::Relaxed, time::Duration};
+
+pub(super) struct Counters {
+    pub(super) draw: u32,
+    pub(super) present: u32,
+    pub(super) layout: u32,
+    pub(super) frames: u32,
+    pub(super) readback: Duration,
+}
+
+impl Counters {
+    pub(super) fn read(capture: &CaptureSession) -> Self {
+        Self {
+            draw: frame_perf::DRAW_US.load(Relaxed),
+            present: frame_perf::PRESENT_US.load(Relaxed),
+            layout: frame_perf::TAFFY_US.load(Relaxed),
+            frames: frame_perf::FRAMES.load(Relaxed),
+            readback: capture.readback_time(),
+        }
+    }
+    pub(super) fn delta(current: u32, previous: u32) -> Duration {
+        Duration::from_micros(u64::from(current.wrapping_sub(previous)))
+    }
+}
 
 pub(super) struct Measured {
     pub(super) phases: Sample,
@@ -41,6 +66,8 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
     };
     intervals.insert("document_other", document_other);
     let diagnostics = Sample::from([
+        ("observer_setup", Some(ms(phases.observer_setup))),
+        ("request_to_render", phases.request_to_render.map(ms)),
         ("document_build_total", input.document.map(ms)),
         ("cpu_draw_total", Some(ms(input.draw))),
         ("gpu_readback", Some(ms(input.readback))),
