@@ -39,7 +39,7 @@ impl Recipe {
             dimensions.percentage_height(
                 &style,
                 opts.cx.constraints.avail_h,
-                opts.cx.constraints.avail_w,
+                opts.cx.constraints.avail_w(),
                 opts.viewport.1,
             ),
             Some(width),

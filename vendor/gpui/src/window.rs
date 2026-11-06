@@ -76,7 +76,7 @@ mod prompts;
 mod retained;
 mod scene_capture;
 pub(crate) mod vector_transform;
-pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedPrepaint};
+pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedPrepaint, RetainedSubtree};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{
@@ -1364,6 +1364,8 @@ pub struct Window {
     pub(crate) focus_generation: u64,
     /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
     interaction_epoch: u64,
+    /// KaminIDE patch: frames drawn so far (Window::frame_serial).
+    pub(crate) frame_serial: u64,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -2289,6 +2291,7 @@ impl Window {
             focus_enabled: true,
             focus_generation: 0,
             interaction_epoch: 0,
+            frame_serial: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -3701,6 +3704,7 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
+        self.frame_serial += 1;
         self.next_frame.clear();
         let current_focus_path = self.rendered_frame.focus_path();
         let current_window_active = self.rendered_frame.window_active;
@@ -6072,6 +6076,33 @@ impl Window {
         self.layout_engine
             .as_ref()
             .map_or(0, |engine| engine.claimed_nodes())
+    }
+
+    /// KaminIDE patch: the stamp of a layout node of this pass. The frame tree
+    /// issues a stamp at the first request after it creates a node and keeps
+    /// it while later passes claim the node, so an equal stamp means the
+    /// node's whole subtree has the same inputs (styles, children, keyed
+    /// measurements) as then.
+    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
+        self.layout_engine
+            .as_mut()
+            .and_then(|engine| engine.layout_stamp(id))
+    }
+
+    /// KaminIDE patch: a host value attached to a layout node by
+    /// `set_layout_memo`, while the node keeps its stamp.
+    pub fn layout_memo(&self, id: LayoutId) -> Option<std::rc::Rc<dyn std::any::Any>> {
+        self.layout_engine
+            .as_ref()
+            .and_then(|engine| engine.layout_memo(id))
+    }
+
+    /// KaminIDE patch: attach a value that the host derived only from the
+    /// node's subtree inputs. It is dropped when a pass does not claim the node.
+    pub fn set_layout_memo(&mut self, id: LayoutId, memo: std::rc::Rc<dyn std::any::Any>) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_layout_memo(id, memo);
+        }
     }
 
     /// KaminIDE patch: honour layout keys (`set_next_layout_key`) inside `f`

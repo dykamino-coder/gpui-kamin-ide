@@ -35,7 +35,7 @@ pub(crate) fn wrap_floats(
     cell_bfc: bool,
     // Ширина содержащего блока в точках (`BoxConstraints::cb_width`) — для
     // `bfc_no_fit`.
-    cb_px: Option<f32>,
+    cb_px: impl Fn() -> Option<f32>,
     cb_height: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
@@ -43,6 +43,7 @@ pub(crate) fn wrap_floats(
     if !vcx.clearance_possible {
         return nodes;
     }
+    let cb_px = cb_px();
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть

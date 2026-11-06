@@ -3857,6 +3857,7 @@ name = "kamin-html"
 version = "1.0.86"
 dependencies = [
  "encoding_rs",
+ "foldhash 0.2.0",
  "futures",
  "gpui-pre",
  "gpui-pre-platform",

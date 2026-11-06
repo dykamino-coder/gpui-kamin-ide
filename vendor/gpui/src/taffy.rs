@@ -93,7 +93,18 @@ struct NodeContext {
     layout_lines: Option<Vec<Pixels>>,
     layout_lines_x: Option<Vec<Pixels>>,
     layout_lines_x_from_right: bool,
+    /// KaminIDE patch: index of this keyed leaf in its key's candidate list
+    /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
+    key_slot: u32,
 }
+
+// The retained-tree field above fills padding: every node of the frame tree has
+// a context slot (a dense secondary map), so a larger context costs every node.
+const _: () = assert!(
+    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
+        || std::mem::size_of::<usize>() != 8
+);
+
 pub struct TaffyLayoutEngine {
     final_geometry: final_geometry::FinalGeometry,
     taffy: TaffyTree<NodeContext>,
@@ -394,6 +405,7 @@ impl TaffyLayoutEngine {
             return;
         }
         let mut style = style.clone();
+        self.keep_requested_style(id.0);
         if stretch_width {
             style.size.width =
                 taffy::style::Dimension::length(round_to_device_pixel(size.width.0, scale_factor));
@@ -548,12 +560,10 @@ impl TaffyLayoutEngine {
         width: Pixels,
         scale_factor: f32,
     ) -> bool {
-        cap_child_outer_width(
-            &mut self.taffy,
-            parent.into(),
-            index,
-            width.0 * scale_factor,
-        )
+        if let Ok(child) = self.taffy.child_at_index(parent.into(), index) {
+            self.keep_requested_style(child);
+        }
+        cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
     }
 
     /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической

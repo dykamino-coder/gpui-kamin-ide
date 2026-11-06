@@ -139,6 +139,11 @@ struct NodeData {
     /// Whether the node has context data associated with it or not
     pub(crate) has_context: bool,
 
+    /// KaminIDE patch: the host relies on this node's id as the identity of
+    /// its subtree (`pin_identity`), so the node must not be reset into another
+    /// node. Sits in the padding after `has_context`: no node grows.
+    pub(crate) identity_pinned: bool,
+
     /// Out-of-flow (absolute/fixed) boxes whose containing block is this node,
     /// as recorded by the out-of-flow positioning pass
     pub(crate) hoisted_children: ChildrenVec<NodeId>,
@@ -232,6 +237,7 @@ impl NodeData {
             unrounded_layout: Layout::new(),
             final_layout: None,
             has_context: false,
+            identity_pinned: false,
             hoisted_children: new_const_children_vec(),
             detailed_layout_info: DetailedLayoutInfo::None,
             #[cfg(feature = "grid")]
@@ -1332,6 +1338,21 @@ impl<NodeContext> TaffyTree<NodeContext> {
             .is_some_and(|data| data.has_context)
     }
 
+    /// KaminIDE patch: pin the id of `node` as the identity of its subtree: the
+    /// host may keep it across passes, so `reset_node` must not reuse the node.
+    /// The pin lives as long as the node; a removed node's id never returns
+    /// (the slot's version changes).
+    pub fn pin_identity(&mut self, node: NodeId) {
+        if let Some(data) = self.nodes.get_mut(node.into()) {
+            data.identity_pinned = true;
+        }
+    }
+
+    /// KaminIDE patch: whether `pin_identity` was called for `node`.
+    pub fn identity_pinned(&self, node: NodeId) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| data.identity_pinned)
+    }
+
     /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
     /// `context`, reusing its storage. The node leaves its previous parent
     /// (it becomes a root, the parent's list is left as is), its previous
@@ -1347,6 +1368,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     ) -> TaffyResult<()> {
         let style = style.into();
         let key = node.into();
+        debug_assert!(!self.nodes[key].identity_pinned, "a pinned node keeps its identity");
         for child in self.children[key].iter() {
             if self.parents[(*child).into()] == Some(node) {
                 self.parents[(*child).into()] = None;

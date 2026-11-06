@@ -36,7 +36,7 @@ impl BandFlow {
             kids: Rc::new(kids),
             plan: Default::default(),
             intrinsic: Default::default(),
-            fill_inline: cx.constraints.avail_w.is_some(),
+            fill_inline: cx.constraints.avail_w().is_some(),
             built: Vec::new(),
             vert: None,
             inline_up: false,

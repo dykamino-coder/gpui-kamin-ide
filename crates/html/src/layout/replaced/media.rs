@@ -35,7 +35,7 @@ pub(crate) fn sized<'a>(
 ) -> std::borrow::Cow<'a, Element> {
     use std::borrow::Cow;
     let svg = super::svg_percentage_size::resolve(e, inherited);
-    let avail_w = opts.cx.constraints.avail_w;
+    let avail_w = opts.cx.constraints.avail_w();
     let media = resolve(
         svg.as_ref().unwrap_or(e),
         inherited,

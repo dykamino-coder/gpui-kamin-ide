@@ -65,6 +65,7 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
         layout_lines: None,
         layout_lines_x: None,
         layout_lines_x_from_right: false,
+        key_slot: crate::taffy::retained::NO_SLOT,
     };
     let callback = Rc::downgrade(&context.measure);
     let root = source

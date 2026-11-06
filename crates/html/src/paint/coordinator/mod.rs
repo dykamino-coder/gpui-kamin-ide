@@ -9,12 +9,14 @@ mod recording;
 mod root;
 pub(crate) mod segments;
 mod state;
+mod tap;
 
 pub(crate) use children::{atomic, box_policy};
 pub(crate) use collector::PaintCollect;
 pub(crate) use deferred::{PaintInline, PaintLast, REPLAY};
 pub(crate) use recording::with_late_jobs_async;
 pub(crate) use root::roots;
+pub(crate) use tap::{JobSlot, JobTap, replay_jobs, tap_jobs};
 
 use gpui::{PaintPassId, Window};
 use recording::recording;

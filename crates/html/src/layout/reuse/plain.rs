@@ -37,6 +37,19 @@ const TAGS: &[&str] = &[
     "blockquote",
 ];
 
+/// Вердикт `plain` одного блочного ребёнка на время его сборки: решение о
+/// записи повтора (`FlowCx::mark`) и запись пропуска (`FlowCx::record`)
+/// спрашивают его оба, а обход поддерева выполняется один раз.
+#[derive(Default)]
+pub(super) struct Inert(std::cell::OnceCell<bool>);
+
+impl Inert {
+    /// `plain(e)` для ребёнка, ради которого создан вердикт.
+    pub(super) fn of(&self, e: &Element) -> bool {
+        *self.0.get_or_init(|| plain(e))
+    }
+}
+
 /// Каждый элемент поддерева `e` инертен (см. модуль).
 pub(super) fn plain(e: &Element) -> bool {
     let mut pending = vec![e];
@@ -67,6 +80,70 @@ pub(super) fn plain(e: &Element) -> bool {
         }));
     }
     true
+}
+
+/// Теги таблиц: их коробки строит построитель таблицы из того же поддерева.
+const TABLE_TAGS: &[&str] = &[
+    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
+];
+
+/// Поддерево `e` можно повторить на экране (`replay`): инертно как `plain`
+/// (таблицы тоже), без единиц области просмотра в стилях и без вертикального
+/// письма, гибких и сеточных коробок: их сборка читает размеры окна напрямую,
+/// а не через ограничения, чьи чтения записываются.
+pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    use crate::style::computed::Display;
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        let style = e.style.used();
+        let tag = e.tag.as_str();
+        let own = (TAGS.contains(&tag) || TABLE_TAGS.contains(&tag))
+            && e.hover.is_none()
+            && e.anim.is_none()
+            && e.first_letter.is_none()
+            && e.first_line.is_none()
+            && e.list_item.is_none()
+            && !style.wm().vertical()
+            && !style.has_viewport_lengths(vcx)
+            && !matches!(
+                style.reset_box_layout.display,
+                Some(Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid)
+            )
+            && matches!(
+                style.reset_positioned.position,
+                None | Some(Position::Static)
+            )
+            && style.reset_positioned.z_index.is_none()
+            && style.reset_box_layout.float.is_none_or(|f| f == 0)
+            && style.reset_transforms.transform.is_none()
+            && style.reset_transforms.translate.is_none()
+            && style.reset_effects.opacity.is_none_or(|o| o >= 1.0)
+            && style.reset_effects.blend.is_none_or(|b| b == 0);
+        if !own {
+            return false;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(child) => Some(child),
+            Node::Text(_) => None,
+        }));
+    }
+    true
+}
+
+/// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без
+/// `max-width`, не таблица (её авто-ширина — css-tables-3 §3.9.4). Его
+/// ширина меняется с каждой шириной потока, повтор там не встанет на место.
+pub(super) fn fills_width(e: &Element) -> bool {
+    use crate::style::computed::Display;
+    let layout = &e.style.used().reset_box_layout;
+    let table = e.tag.as_str() == "table"
+        || matches!(layout.display, Some(Display::Table | Display::InlineTable));
+    !table
+        && layout
+            .width
+            .as_ref()
+            .is_none_or(|w| matches!(w, crate::style::values::value::Len::Auto))
+        && layout.max_width.is_none()
 }
 
 /// В поддереве `e` есть флоат.
@@ -114,5 +191,14 @@ mod tests {
         let mut floated = el("span", vec![]);
         floated.style.used_mut().reset_box_layout.float = Some(1);
         assert!(floats(&el("div", vec![Node::Element(floated)])));
+    }
+
+    #[test]
+    fn inert_verdict_is_computed_once_per_child_build() {
+        let inert = Inert::default();
+        assert!(inert.of(&el("p", vec![])));
+        // The second question is answered from the first walk, not a new one.
+        assert!(inert.of(&el("img", vec![])));
+        assert!(!Inert::default().of(&el("img", vec![])));
     }
 }

@@ -111,3 +111,146 @@ fn a_leaf_whose_style_changed_is_not_kept() {
     assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
     let _ = a;
 }
+
+#[test]
+fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    let stamp = engine.layout_stamp(p);
+    assert!(stamp.is_some());
+    engine.set_layout_memo(p, std::rc::Rc::new(5u32));
+    engine.clear();
+    let a2 = leaf(&mut engine, 10.);
+    let p2 = parent(&mut engine, &[a2]);
+    assert_eq!((p2, engine.layout_stamp(p2)), (p, stamp));
+    let memo = engine.layout_memo(p2).expect("memo of a kept node");
+    assert_eq!(memo.downcast_ref::<u32>(), Some(&5));
+    engine.clear();
+    let b = leaf(&mut engine, 30.);
+    let p3 = parent(&mut engine, &[b]);
+    assert_ne!(engine.layout_stamp(p3), stamp);
+    assert!(engine.layout_memo(p3).is_none());
+}
+
+#[test]
+fn a_capped_child_is_restored_and_kept_by_the_next_equal_request() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    assert!(engine.cap_child_outer_width(p, 0, px(4.), 1.0));
+    engine.clear();
+    let a2 = leaf(&mut engine, 10.);
+    assert_eq!(parent(&mut engine, &[a2]), p);
+    assert_eq!(engine.claimed_nodes(), 2);
+}
+
+#[test]
+fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let mut parents = Vec::new();
+    for width in [10., 20., 30., 40.] {
+        let probe = measured(&mut engine, Some(1));
+        let a = leaf(&mut engine, width);
+        parents.push(parent(&mut engine, &[probe, a]));
+    }
+    engine.clear();
+    engine.set_layout_keys(true);
+    for (width, old) in [10., 20., 30., 40.].into_iter().zip(parents) {
+        let probe = measured(&mut engine, Some(1));
+        let a = leaf(&mut engine, width);
+        assert_eq!(parent(&mut engine, &[probe, a]), old);
+    }
+    assert_eq!(engine.claimed_nodes(), 12);
+}
+#[test]
+fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
+    let mut engine = TaffyLayoutEngine::new();
+    let start = engine.request_position();
+    let (a, b) = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let p = parent(&mut engine, &[a, b]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    assert_eq!(&*nodes, &[a.0, b.0, p.0]);
+    let root = parent(&mut engine, &[p]);
+    engine.clear();
+    // Claimed whole: no requests for its nodes, the next pass keeps them.
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None, "claimed once per pass");
+    assert_eq!(parent(&mut engine, &[p]), root);
+    assert!(!engine.layout_stale());
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 4);
+    // A pass that renews the subtree drops the stamp: the capture is void.
+    let (a2, c) = (leaf(&mut engine, 10.), leaf(&mut engine, 30.));
+    let _ = parent(&mut engine, &[a2, c]);
+    engine.clear();
+    assert_eq!(engine.claim_subtree(stamp, &nodes), None);
+}
+
+#[test]
+fn a_keyed_leaf_of_a_subtree_claimed_whole_leaves_the_candidates_of_its_key() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let start = engine.request_position();
+    let m = measured(&mut engine, Some(1));
+    let p = parent(&mut engine, &[m]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    engine.clear();
+    engine.set_layout_keys(true);
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    let context = engine.taffy.get_node_context(m.0).expect("measured leaf");
+    assert_eq!(context.key_slot, super::retained::NO_SLOT);
+    // A request of the same key does not take the claimed leaf again.
+    assert_ne!(measured(&mut engine, Some(1)), m);
+}
+
+#[test]
+fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let a = measured(&mut engine, Some(1));
+    let _ = leaf(&mut engine, 10.);
+    let b = measured(&mut engine, Some(1));
+    engine.clear();
+    engine.set_layout_keys(true);
+    // `a` at its position, `b` from the candidates (its position holds the plain leaf).
+    assert_eq!(measured(&mut engine, Some(1)), a);
+    assert_eq!(measured(&mut engine, Some(1)), b);
+    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    for leaf in [a, b] {
+        let context = engine.taffy.get_node_context(leaf.0).expect("measured leaf");
+        assert_eq!(context.key_slot, super::retained::NO_SLOT);
+    }
+    // A third request of the key finds no claimed leaf to take again.
+    let c = measured(&mut engine, Some(1));
+    assert!(c != a && c != b);
+    assert_eq!(engine.claimed_nodes(), 2);
+}
+#[test]
+fn a_stamped_node_is_never_reused_for_another_subtree() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    let stamp = engine.layout_stamp(p);
+    let l = leaf(&mut engine, 5.);
+    let plain = parent(&mut engine, &[l]);
+    engine.clear();
+    // Changed subtrees: the stamped parent is not recycled, the plain one is.
+    let l = leaf(&mut engine, 30.);
+    let p2 = parent(&mut engine, &[l]);
+    let l = leaf(&mut engine, 6.);
+    let q2 = parent(&mut engine, &[l]);
+    assert_ne!(p2, p);
+    assert_eq!(q2, plain);
+    assert_ne!(engine.layout_stamp(p2), stamp);
+    engine.clear();
+    // The swept stamped node's id never comes back.
+    for _ in 0..4 {
+        let l = leaf(&mut engine, 7.);
+        let n = parent(&mut engine, &[l]);
+        engine.clear();
+        assert_ne!(engine.layout_stamp(n), stamp);
+    }
+}
