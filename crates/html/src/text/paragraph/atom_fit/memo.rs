@@ -25,11 +25,12 @@ impl AtomMemo {
         cx: &mut App,
     ) -> Self {
         let content = |w| size(w, gpui::AvailableSpace::MaxContent);
-        let (smin, _, _) = snap.measure_inline(content(gpui::AvailableSpace::MinContent), window, cx);
+        let (smin, _, _) =
+            snap.measure_inline(content(gpui::AvailableSpace::MinContent), None, window, cx);
         let min = f32::from(smin.width);
         let snap = (min < max - COORD_EPS).then(|| {
             let (smax, sbase, _) =
-                snap.measure_inline(content(gpui::AvailableSpace::MaxContent), window, cx);
+                snap.measure_inline(content(gpui::AvailableSpace::MaxContent), None, window, cx);
             (f32::from(smax.height), sbase.map(f32::from))
         });
         Self {

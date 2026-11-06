@@ -1525,7 +1525,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     where
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
-        self.compute_detached_with_measure(node_id, available_space, measure_function, false)
+        self.compute_detached_with_measure(node_id, available_space, measure_function, false, None)
     }
 
     /// KaminIDE patch: perform layout of an atomic inline directly, without a wrapper root.
@@ -1533,12 +1533,13 @@ impl<NodeContext> TaffyTree<NodeContext> {
         &mut self,
         node_id: NodeId,
         available_space: Size<AvailableSpace>,
+        outer_width: Option<f32>,
         measure_function: MeasureFunction,
     ) -> Result<(), TaffyError>
     where
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
-        self.compute_detached_with_measure(node_id, available_space, measure_function, true)
+        self.compute_detached_with_measure(node_id, available_space, measure_function, true, outer_width)
     }
 
     fn compute_detached_with_measure<MeasureFunction>(
@@ -1547,6 +1548,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         available_space: Size<AvailableSpace>,
         measure_function: MeasureFunction,
         inline: bool,
+        outer_width: Option<f32>,
     ) -> Result<(), TaffyError>
     where
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
@@ -1559,7 +1561,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             measure_function,
         };
         if inline {
-            crate::compute::compute_inline_layout(&mut taffy_view, node_id, available_space);
+            crate::compute::compute_inline_layout(&mut taffy_view, node_id, available_space, outer_width);
         } else {
             compute_root_layout(&mut taffy_view, node_id, available_space);
         }

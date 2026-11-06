@@ -75,12 +75,12 @@ impl AtomFit {
             let (h, b) = match seen.iter().find(|m| m.0 == w) {
                 Some(&(_, h, b)) => (h, b),
                 None => {
-                    a.snap.cap_outer_width(px(w));
                     let (s, b, _) = a.snap.measure_inline(
                         size(
                             gpui::AvailableSpace::Definite(px(w)),
                             gpui::AvailableSpace::MaxContent,
                         ),
+                        Some(px(w)),
                         window,
                         cx,
                     );
@@ -193,13 +193,13 @@ impl Paragraph {
             let Some(root) = slot.root.get() else {
                 continue;
             };
-            window.cap_layout_outer_width(root, px(w));
             window.compute_inline_layout(
                 root,
                 size(
                     gpui::AvailableSpace::Definite(px(w)),
                     gpui::AvailableSpace::MaxContent,
                 ),
+                Some(px(w)),
                 cx,
             );
         }

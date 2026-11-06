@@ -69,7 +69,7 @@ fn atomic_inline_geometry_needs_no_row_and_keeps_margin_box_at_fractional_scale(
     let mut tree = TaffyTree::<NodeContext>::new();
     tree.disable_rounding();
     let item = tree.new_leaf(sized(20., 3., 5., None)).unwrap();
-    tree.compute_inline_with_measure(item, taffy::Size::MAX_CONTENT, |inputs, _, _, style| {
+    tree.compute_inline_with_measure(item, taffy::Size::MAX_CONTENT, None, |inputs, _, _, style| {
         taffy::compute_leaf_layout(inputs, style, taffy::tree::calc_value, |_, _| taffy::Size::ZERO)
     }).unwrap();
     let (size, baseline) = inline_geometry(&tree, item, 1.25);

@@ -61,7 +61,7 @@ pub use self::block::FloatMark;
 #[cfg(feature = "float_layout")]
 pub use self::float::{BfcSlot, ContentSlot, FloatContext, FloatIntrinsicWidthCalculator};
 
-use crate::geometry::{Line, Point, Size};
+use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
 use crate::tree::{
     Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
@@ -85,19 +85,21 @@ pub fn compute_root_layout(
     root: NodeId,
     available_space: Size<AvailableSpace>,
 ) {
-    compute_detached_layout(tree, root, available_space, false);
+    compute_detached_layout(tree, root, available_space, false, None);
 }
 
 /// Lay out an atomic inline's independent formatting context. The caller owns
 /// line breaking and positions its margin box; no synthetic flex parent is needed.
 /// Resolve overconstrained relative insets in the containing block's writing mode
 /// before calling this entry point; the atom's own direction does not select them.
+/// `outer_width` is the IFC-selected margin-box width, or `None` for intrinsic sizing.
 pub fn compute_inline_layout(
     tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
     node: NodeId,
     available_space: Size<AvailableSpace>,
+    outer_width: Option<f32>,
 ) {
-    compute_detached_layout(tree, node, available_space, true);
+    compute_detached_layout(tree, node, available_space, true, outer_width);
 }
 
 fn compute_detached_layout(
@@ -105,6 +107,7 @@ fn compute_detached_layout(
     root: NodeId,
     available_space: Size<AvailableSpace>,
     inline: bool,
+    outer_width: Option<f32>,
 ) {
     let direction = tree.get_core_container_style(root).direction();
     let icb_size = available_space.into_options();
@@ -115,7 +118,7 @@ fn compute_detached_layout(
     let mut root_is_cached = false;
 
     let (layout, candidates) =
-        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline);
+        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline, outer_width);
 
     // Final positioning pass for out-of-flow boxes with no nearer containing block: the initial
     // containing block is the containing block for `position: fixed` boxes and for
@@ -177,23 +180,30 @@ fn compute_in_flow_root_layout(
     available_space: Size<AvailableSpace>,
     root_is_cached: &mut bool,
     inline: bool,
+    outer_width: Option<f32>,
 ) -> (Layout, OofCandidates) {
     #[cfg(feature = "block_layout")]
     let known_dimensions = if inline { Size::NONE } else { root_block_constraints::known(tree, root, available_space) };
     #[cfg(not(feature = "block_layout"))]
     let known_dimensions = Size::NONE;
 
+    let margin = if inline {
+        tree.get_core_container_style(root).margin().resolve_or_zero(available_space.width.into_option(), |v, basis| tree.calc(v, basis))
+    } else { Rect::ZERO };
     let child_space = if inline {
-        let style = tree.get_core_container_style(root);
-        let margin = style.margin().resolve_or_zero(available_space.width.into_option(), |v, basis| tree.calc(v, basis));
         Size {
             width: available_space.width.map_definite_value(|v| (v - margin.horizontal_axis_sum()).max(0.0)),
             height: available_space.height.map_definite_value(|v| (v - margin.vertical_axis_sum()).max(0.0)),
         }
     } else { available_space };
+    // The IFC has already selected shrink-to-fit width. A maximum alone would
+    // let wrapped text shrink again to its longest line (CSS 2.1 §10.3.9).
+    let known_dimensions = if inline {
+        Size { width: outer_width.map(|w| (w - margin.horizontal_axis_sum()).max(0.0)), height: None }
+    } else { known_dimensions };
     let inputs = LayoutInput {
         known_dimensions,
-        known_dimensions_are_definite: Size { width: !inline, height: !inline },
+        known_dimensions_are_definite: Size { width: !inline || outer_width.is_some(), height: !inline },
         parent_size: available_space.into_options(),
         available_space: child_space,
         sizing_mode: SizingMode::InherentSize,

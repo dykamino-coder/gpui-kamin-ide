@@ -46,6 +46,7 @@ impl Paragraph {
                     gpui::AvailableSpace::MaxContent,
                     gpui::AvailableSpace::MaxContent,
                 ),
+                None,
                 cx,
             );
             // IFC продвигается на точную ширину коробки полей;

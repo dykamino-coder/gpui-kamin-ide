@@ -480,19 +480,21 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.compute_detached(id, available_space, window, cx, false);
+        self.compute_detached(id, available_space, window, cx, false, None);
     }
 
     /// Perform the independent formatting context of an atomic inline directly.
+    /// The optional outer width is a layout constraint, leaving style unchanged.
     #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     pub fn compute_inline_layout(
         &mut self,
         id: LayoutId,
         available_space: Size<AvailableSpace>,
+        outer_width: Option<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.compute_detached(id, available_space, window, cx, true);
+        self.compute_detached(id, available_space, window, cx, true, outer_width);
     }
 
     fn compute_detached(
@@ -502,6 +504,7 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
         inline: bool,
+        outer_width: Option<Pixels>,
     ) {
         // Leaving this here until we have a better instrumentation approach.
         // println!("Laying out {} children", self.count_all_children(id)?);
@@ -552,7 +555,7 @@ impl TaffyLayoutEngine {
             measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
         };
         if inline {
-            self.taffy.compute_inline_with_measure(id.into(), available_space.into(), measure)
+            self.taffy.compute_inline_with_measure(id.into(), available_space.into(), outer_width.map(|w| w.0 * scale_factor), measure)
         } else {
             self.taffy.compute_layout_with_measure(id.into(), available_space.into(), measure)
         }.expect(EXPECT_MESSAGE);
@@ -622,12 +625,6 @@ impl TaffyLayoutEngine {
             self.keep_requested_style(child);
         }
         cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
-    }
-
-    /// Cap the margin-box width of an independently laid out atomic inline.
-    pub fn cap_outer_width(&mut self, id: LayoutId, width: Pixels, scale: f32) -> bool {
-        self.keep_requested_style(id.into());
-        cap_outer_width(&mut self.taffy, id.into(), width.0 * scale)
     }
 
     /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
@@ -862,14 +859,10 @@ fn cap_child_outer_width(
     index: usize,
     outer: f32,
 ) -> bool {
+    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
     let Ok(child) = tree.child_at_index(parent, index) else {
         return false;
     };
-    cap_outer_width(tree, child, outer)
-}
-
-fn cap_outer_width(tree: &mut TaffyTree<NodeContext>, child: NodeId, outer: f32) -> bool {
-    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
     let Ok(style) = tree.style(child) else {
         return false;
     };
