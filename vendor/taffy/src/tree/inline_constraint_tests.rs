@@ -102,17 +102,20 @@ fn fractional_atomic_grid_keeps_content_sized_block_axis_indefinite() {
     assert_eq!(tree.layout(abs).unwrap().size, Size { width: 100.0, height: 100.0 });
 }
 
-#[cfg(feature = "flexbox")]
 #[test]
 fn atomic_table_preserves_its_own_minimum_width_algorithm() {
-    let mut tree = TaffyTree::new();
-    let child = tree.new_leaf(Style { size: length(100.0), ..Style::DEFAULT }).unwrap();
-    let node = tree.new_with_children(Style {
-        display: Display::Flex,
+    let mut tree = TaffyTree::<()>::new();
+    let node = tree.new_leaf(Style {
         item_is_table: true,
         size: Size { width: length(20.0), height: auto() },
         ..Style::DEFAULT
-    }, &[child]).unwrap();
-    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, None, empty).unwrap();
+    }).unwrap();
+    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, None, |inputs, _, _, _| {
+        // The host's table algorithm owns the content minimum, even when it
+        // exceeds the preferred width (CSS 2 section 17.5.2).
+        assert_eq!(inputs.known_dimensions, Size::NONE);
+        assert_eq!(inputs.run_mode, crate::RunMode::PerformLayout);
+        LayoutOutput { size: Size { width: 100.0, height: 100.0 }, ..LayoutOutput::DEFAULT }
+    }).unwrap();
     assert_eq!(tree.layout(node).unwrap().size.width, 100.0);
 }

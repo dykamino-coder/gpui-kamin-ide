@@ -22631,10 +22631,10 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/inline_constraint_tests.rs b/vendor/taffy/src/tree/inline_constraint_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4877f844c9c1178aa762e7bf619f0a778e9b834c
+index 0000000000000000000000000000000000000000..060ec721a0fbb8fed9963cc4979447fa8449c2a2
 --- /dev/null
 +++ b/vendor/taffy/src/tree/inline_constraint_tests.rs
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,121 @@
 +//! Used atomic sizes constrain descendants before their independent layout.
 +use super::*;
 +use crate::{style_helpers::*, Display, MeasureOutput, Position, Rect};
@@ -22739,18 +22739,21 @@ index 0000000000000000000000000000000000000000..4877f844c9c1178aa762e7bf619f0a77
 +    assert_eq!(tree.layout(abs).unwrap().size, Size { width: 100.0, height: 100.0 });
 +}
 +
-+#[cfg(feature = "flexbox")]
 +#[test]
 +fn atomic_table_preserves_its_own_minimum_width_algorithm() {
-+    let mut tree = TaffyTree::new();
-+    let child = tree.new_leaf(Style { size: length(100.0), ..Style::DEFAULT }).unwrap();
-+    let node = tree.new_with_children(Style {
-+        display: Display::Flex,
++    let mut tree = TaffyTree::<()>::new();
++    let node = tree.new_leaf(Style {
 +        item_is_table: true,
 +        size: Size { width: length(20.0), height: auto() },
 +        ..Style::DEFAULT
-+    }, &[child]).unwrap();
-+    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, None, empty).unwrap();
++    }).unwrap();
++    tree.compute_inline_with_measure(node, Size::MAX_CONTENT, None, |inputs, _, _, _| {
++        // The host's table algorithm owns the content minimum, even when it
++        // exceeds the preferred width (CSS 2 section 17.5.2).
++        assert_eq!(inputs.known_dimensions, Size::NONE);
++        assert_eq!(inputs.run_mode, crate::RunMode::PerformLayout);
++        LayoutOutput { size: Size { width: 100.0, height: 100.0 }, ..LayoutOutput::DEFAULT }
++    }).unwrap();
 +    assert_eq!(tree.layout(node).unwrap().size.width, 100.0);
 +}
 diff --git a/vendor/taffy/src/tree/inline_layout_tests.rs b/vendor/taffy/src/tree/inline_layout_tests.rs
