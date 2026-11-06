@@ -22631,7 +22631,7 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/inline_constraint_tests.rs b/vendor/taffy/src/tree/inline_constraint_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..137a6da346c6a41b85a1c49fd34bbaa915247fb7
+index 0000000000000000000000000000000000000000..4877f844c9c1178aa762e7bf619f0a778e9b834c
 --- /dev/null
 +++ b/vendor/taffy/src/tree/inline_constraint_tests.rs
 @@ -0,0 +1,118 @@
@@ -22694,7 +22694,7 @@ index 0000000000000000000000000000000000000000..137a6da346c6a41b85a1c49fd34bbaa9
 +        // A vertical text fitter needs the used inline extent before measuring
 +        // its content-dependent physical width.
 +        assert_eq!(inputs.known_dimensions.height, Some(120.0));
-+        compute_leaf_layout(inputs, style, calc_value, |_, _| Size { width: 40.0, height: 120.0 }.into())
++        compute_leaf_layout(inputs, style, calc_value, |_, _| MeasureOutput::from(Size { width: 40.0, height: 120.0 }))
 +    }).unwrap();
 +    assert_eq!(tree.layout(node).unwrap().size, Size { width: 40.0, height: 120.0 });
 +}

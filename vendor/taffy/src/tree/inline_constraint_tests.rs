@@ -57,7 +57,7 @@ fn orthogonal_text_measure_receives_its_definite_inline_extent() {
         // A vertical text fitter needs the used inline extent before measuring
         // its content-dependent physical width.
         assert_eq!(inputs.known_dimensions.height, Some(120.0));
-        compute_leaf_layout(inputs, style, calc_value, |_, _| Size { width: 40.0, height: 120.0 }.into())
+        compute_leaf_layout(inputs, style, calc_value, |_, _| MeasureOutput::from(Size { width: 40.0, height: 120.0 }))
     }).unwrap();
     assert_eq!(tree.layout(node).unwrap().size, Size { width: 40.0, height: 120.0 });
 }
