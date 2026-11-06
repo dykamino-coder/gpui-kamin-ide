@@ -1,12 +1,9 @@
-//! Спрос на кадр Windows, приём сигналов readback и защита общего UI-потока
-//! от вложенной отрисовки.
+//! Спрос на кадр Windows и защита общего UI-потока от вложенной отрисовки.
 
 use std::{cell::Cell, rc::Rc};
 use gpui_util::ResultExt;
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
-use crate::{WM_GPUI_FRAME_READBACK, WindowsWindowInner};
+use crate::WindowsWindowInner;
 
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
@@ -77,22 +74,6 @@ impl WindowsWindowInner {
                 });
             }
         })
-    }
-}
-
-impl WindowsWindowInner {
-    /// Сигнал GPU о копии кадра: забрать пиксели вне отрисовки. Если рендерер
-    /// сейчас занят (вложенная обработка сообщений), сигнал откладывается в
-    /// очередь окна; новый кадр сам заберёт копию прежде своей.
-    pub(crate) fn handle_frame_readback(&self, hwnd: HWND, wparam: WPARAM) -> Option<isize> {
-        match self.state.renderer.try_borrow_mut() {
-            Ok(mut renderer) => renderer.finish_frame_readback(Some(wparam.0)),
-            Err(_) => unsafe {
-                PostMessageW(Some(hwnd), WM_GPUI_FRAME_READBACK, wparam, LPARAM(0))
-                    .log_err();
-            },
-        }
-        Some(0)
     }
 }
 

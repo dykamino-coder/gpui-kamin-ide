@@ -1961,9 +1961,7 @@ impl Window {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
                                     DRAW_US.fetch_add((t1 - t0).as_micros() as u32, Relaxed);
-                                    let t2 = std::time::Instant::now();
-                                    PRESENT_US.fetch_add((t2 - t1).as_micros() as u32, Relaxed);
-                                    mark_present_end(t2);
+                                    PRESENT_US.fetch_add(t1.elapsed().as_micros() as u32, Relaxed);
                                     FRAMES.fetch_add(1, Relaxed);
                                 }
                                 // drop the arena elements after present to reduce latency

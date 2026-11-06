@@ -7,11 +7,7 @@ use super::{
 use gpui::frame_perf;
 use kamin_html::BuildTimings;
 use kamin_html::host::capture::CaptureSession;
-use std::{
-    collections::BTreeMap,
-    sync::atomic::Ordering::Relaxed,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, sync::atomic::Ordering::Relaxed, time::Duration};
 
 pub(super) struct Counters {
     pub(super) draw: u32,
@@ -49,26 +45,7 @@ pub(super) struct Input {
     pub(super) draw: Duration,
     pub(super) present: Duration,
     pub(super) readback: Duration,
-    /// UI-поток закончил present, пиксели ещё не в памяти CPU.
-    pub(super) gpu_completion: Duration,
-    /// Запрос кадра → UI-поток закончил present (кадр готов, как в trace браузеров).
-    pub(super) frame_ready: Duration,
     pub(super) total: Duration,
-}
-
-/// Кадр готов, когда UI-поток закончил present (как trace-фазы браузеров:
-/// главный поток и отправка растра). Остаток до пикселей в памяти CPU —
-/// выполнение на GPU, очередь компоновщика и асинхронная копия кадра.
-/// Возвращает (готовность кадра, ожидание GPU после неё).
-pub(super) fn completion(
-    started: Instant,
-    delivered: Instant,
-) -> Result<(Duration, Duration), &'static str> {
-    let ready = frame_perf::present_end()
-        .filter(|end| *end >= started)
-        .ok_or("captured frame has no present on the UI thread after the request")?;
-    // Синхронная копия доставляется до конца present: ожидания GPU после него нет.
-    Ok((ready - started, delivered.saturating_duration_since(ready)))
 }
 
 fn subtract(parent: Duration, child: Duration) -> Result<Duration, &'static str> {
@@ -94,7 +71,6 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         ("document_build_total", input.document.map(ms)),
         ("cpu_draw_total", Some(ms(input.draw))),
         ("gpu_readback", Some(ms(input.readback))),
-        ("frame_ready", Some(ms(input.frame_ready))),
         ("taffy_inclusive", Some(ms(input.layout))),
     ]);
     for (name, scope) in [
@@ -105,6 +81,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
     ] {
         intervals.insert(name, Some(*scope));
     }
+    subtract(input.present, input.readback)?;
     intervals.insert(
         "layout",
         Some(
@@ -113,10 +90,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
                 .ok_or("missing root request/prepaint boundary")?,
         ),
     );
-    // UI-поток внутри present: кодирование кадра, постановка копии и Present.
-    // Сама копия кадра забирается после сигнала GPU и входит в gpu_completion.
     intervals.insert("raster_gpu_readback", Some(input.present));
-    intervals.insert("gpu_completion", Some(input.gpu_completion));
     let measured: Duration = intervals.values().flatten().copied().sum();
     intervals.insert("pipeline_other", Some(subtract(input.total, measured)?));
     intervals.insert("first_frame_total", Some(input.total));
@@ -146,8 +120,6 @@ mod tests {
             draw: us(30),
             present: us(10),
             readback: us(4),
-            gpu_completion: us(3),
-            frame_ready: us(50),
             total: us(60),
         }
     }
@@ -182,19 +154,6 @@ mod tests {
         let mut document = input();
         document.document = Some(us(4));
         assert!(partition(document, &phases).is_err());
-    }
-
-    #[test]
-    fn asynchronous_readback_is_a_separate_interval_after_present() {
-        let mut input = input();
-        input.readback = us(40);
-        let mut phases = Phases::default();
-        phases.layout = Some(us(6));
-        let result = partition(input, &phases).expect("readback outlives present");
-        assert_eq!(result.phases["raster_gpu_readback"], Some(0.010));
-        assert_eq!(result.phases["gpu_completion"], Some(0.003));
-        assert_eq!(result.diagnostics["frame_ready"], Some(0.050));
-        assert_eq!(result.diagnostics["gpu_readback"], Some(0.040));
     }
 
     #[test]

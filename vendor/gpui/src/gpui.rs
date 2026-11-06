@@ -98,25 +98,6 @@ pub mod frame_perf {
     pub static CACHED_LINES: AtomicU32 = AtomicU32::new(0);
     /// Время шейпинга (промахов), мкс.
     pub static SHAPE_US: AtomicU32 = AtomicU32::new(0);
-
-    /// KaminIDE patch: момент, когда UI-поток закончил последний `present`
-    /// (кадр отправлен на GPU), в наносекундах от `EPOCH`; 0 — ещё не было.
-    static PRESENT_END_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-
-    /// Отметить окончание `present` на UI-потоке.
-    pub fn mark_present_end(at: std::time::Instant) {
-        let epoch = *EPOCH.get_or_init(|| at);
-        let ns = at.saturating_duration_since(epoch).as_nanos() as u64;
-        PRESENT_END_NS.store(ns.max(1), std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Когда UI-поток закончил последний `present`.
-    pub fn present_end() -> Option<std::time::Instant> {
-        let ns = PRESENT_END_NS.load(std::sync::atomic::Ordering::Relaxed);
-        let epoch = *EPOCH.get()?;
-        (ns != 0).then(|| epoch + std::time::Duration::from_nanos(ns))
-    }
 }
 // KaminIDE patch (#76): наружу для диаг-строки шелла.
 pub mod prepaint_prof;

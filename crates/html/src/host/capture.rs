@@ -6,30 +6,19 @@ mod tests;
 
 pub use completion::{CaptureClosed, Completion};
 use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 /// Кадр с номером завершения внутри этой сессии.
 #[derive(Clone)]
 pub struct Frame {
     pub seq: u64,
     pub pixels: CapturedFrame,
-    /// Когда пиксели этого кадра дошли до сессии (в памяти CPU).
-    pub delivered: Instant,
 }
 
 #[derive(Default)]
 struct State {
     closed: bool,
-    /// Номер последнего доставленного (или потерянного) кадра.
     seq: u64,
-    /// Номер последнего отправленного на асинхронный readback кадра.
-    submitted: u64,
-    /// `first` берётся только из кадров, отправленных после `arm_first`.
-    armed_after: u64,
     readback_us: u64,
     latest: Option<Frame>,
     first: Option<Frame>,
@@ -49,11 +38,8 @@ impl CaptureSession {
         (session, Box::new(endpoint))
     }
 
-    /// Граница запроса: все кадры, уже отправленные или доставленные.
-    /// `after(sequence())` ждёт кадр, отправленный позже, даже если более
-    /// ранний ещё в пути (асинхронный readback доставляет их по порядку).
     pub fn sequence(&self) -> u64 {
-        self.0.borrow().fence()
+        self.0.borrow().seq
     }
 
     pub fn readback_time(&self) -> Duration {
@@ -78,7 +64,6 @@ impl CaptureSession {
         let mut state = self.0.borrow_mut();
         state.first = None;
         state.armed = !state.closed;
-        state.armed_after = state.fence();
     }
 
     pub fn take_first(&self) -> Option<Frame> {
@@ -101,35 +86,21 @@ impl CaptureSession {
     }
 }
 
-impl State {
-    fn fence(&self) -> u64 {
-        self.seq.max(self.submitted)
-    }
-}
-
 // Endpoint владеет состоянием окна напрямую; потребительская сессия ему не нужна.
 struct Endpoint(Rc<RefCell<State>>);
 
-impl Endpoint {
-    /// Закрыть очередной номер: с пикселями либо как потерянный кадр.
-    fn finish(&mut self, pixels: Option<(CapturedFrame, Duration)>) {
+impl FrameCaptureSink for Endpoint {
+    fn completed(&mut self, pixels: CapturedFrame, readback: Duration) {
         let mut state = self.0.borrow_mut();
         state.seq += 1;
+        state.readback_us += readback.as_micros() as u64;
         let seq = state.seq;
-        if let Some((pixels, readback)) = pixels {
-            state.readback_us += readback.as_micros() as u64;
-            let delivered = Instant::now();
-            let frame = Frame {
-                seq,
-                pixels,
-                delivered,
-            };
-            if state.armed && seq > state.armed_after {
-                state.first = Some(frame.clone());
-                state.armed = false;
-            }
-            state.latest = Some(frame);
+        let frame = Frame { seq, pixels };
+        if state.armed {
+            state.first = Some(frame.clone());
+            state.armed = false;
         }
+        state.latest = Some(frame);
         let mut wakes = Vec::new();
         state
             .waiters
@@ -138,21 +109,6 @@ impl Endpoint {
         for waker in wakes {
             waker.wake();
         }
-    }
-}
-
-impl FrameCaptureSink for Endpoint {
-    fn completed(&mut self, pixels: CapturedFrame, readback: Duration) {
-        self.finish(Some((pixels, readback)));
-    }
-
-    fn submitted(&mut self) {
-        let mut state = self.0.borrow_mut();
-        state.submitted = state.fence() + 1;
-    }
-
-    fn discarded(&mut self) {
-        self.finish(None);
     }
 }
 

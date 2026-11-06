@@ -43,41 +43,6 @@ fn first_latest_rearm_and_completion_preserve_the_document_fence() {
 }
 
 #[test]
-fn each_frame_keeps_its_own_delivery_instant() {
-    let (session, mut sink) = CaptureSession::open();
-    session.arm_first();
-    let before = Instant::now();
-    store(&mut *sink, 1);
-    store(&mut *sink, 2);
-    let first = session.take_first().unwrap().delivered;
-    assert!(first >= before);
-    assert!(session.latest().unwrap().delivered >= first);
-}
-
-#[test]
-fn frame_submitted_before_the_request_is_neither_first_nor_its_completion() {
-    let (session, mut sink) = CaptureSession::open();
-    sink.submitted();
-    let fence = session.sequence();
-    assert_eq!(fence, 1);
-    session.arm_first();
-    let mut next = session.after(fence);
-    sink.submitted();
-    store(&mut *sink, 1);
-    let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
-    assert_eq!(Pin::new(&mut next).poll(&mut cx), Poll::Pending);
-    assert!(session.take_latest_after(fence).is_none());
-    sink.discarded();
-    assert_eq!(Pin::new(&mut next).poll(&mut cx), Poll::Ready(Ok(2)));
-    assert!(session.take_first().is_none());
-    sink.submitted();
-    assert_eq!(session.sequence(), 3);
-    store(&mut *sink, 3);
-    assert_eq!(session.take_first().unwrap().pixels.bgra, [3; 4]);
-}
-
-#[test]
 fn two_windows_never_share_frames_sequences_timing_or_waiters() {
     let (a, mut sink_a) = CaptureSession::open();
     let (b, mut sink_b) = CaptureSession::open();

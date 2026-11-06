@@ -119,15 +119,6 @@ impl FrameCaptureSink for Endpoint {
         drop(value);
         self.inner.completed(frame, readback);
     }
-
-    // Граница «до запроса» нужна сессии, а не аудиту: передать как есть.
-    fn submitted(&mut self) {
-        self.inner.submitted();
-    }
-
-    fn discarded(&mut self) {
-        self.inner.discarded();
-    }
 }
 
 #[cfg(test)]

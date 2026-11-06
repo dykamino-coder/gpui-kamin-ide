@@ -622,8 +622,12 @@ impl Platform for WindowsPlatform {
         }
         on_finish_launching();
 
-        // KaminIDE patch: цикл ждёт и очередь, и сигналы GPU (readback кадров).
-        crate::gpu_waits::run_message_loop(shutdown::dispatch_message);
+        let mut msg = MSG::default();
+        unsafe {
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                shutdown::dispatch_message(&msg);
+            }
+        }
 
         let mut did_shutdown = false;
         self.inner.with_callback(

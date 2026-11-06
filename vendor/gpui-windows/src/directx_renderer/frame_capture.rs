@@ -1,127 +1,60 @@
-//! KaminIDE patch: асинхронный readback нарисованных кадров для `frame_capture`.
-//!
-//! Копия цели ставится в очередь GPU сразу за командами кадра, до Present;
-//! пиксели забираются по сигналу GPU (`gpu_signal`), поэтому UI-поток не ждёт
-//! ни выполнения кадра, ни компоновщика. Кадры доставляются sink строго по
-//! порядку: новая копия сначала забирает незавершённую предыдущую.
+//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 
-use super::{gpu_signal::GpuSignal, *};
-use std::time::Instant;
-
-/// Копия кадра в очереди GPU вместе с неизменяемым контекстом его устройства.
-pub(super) struct PendingReadback {
-    token: usize,
-    staging: ID3D11Texture2D,
-    width: u32,
-    height: u32,
-    submitted: Instant,
-    context: gpui::frame_capture::FrameContext,
-    /// `None`: сигнал недоступен, копия забирается синхронно.
-    _signal: Option<GpuSignal>,
-}
+use super::*;
 
 impl DirectXRenderer {
-    /// Поставить копию только что нарисованного кадра в очередь GPU.
-    pub(super) fn queue_frame_readback(&mut self) -> Result<()> {
-        self.finish_frame_readback(None);
-        let submitted = Instant::now();
-        let devices = self.devices.as_ref().context("devices missing")?;
+    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
+    pub(super) fn capture_frame(&mut self) -> Result<()> {
+        let started = std::time::Instant::now();
+        let (w, h) = (self.width, self.height);
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: w,
+            Height: h,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: RENDER_TARGET_FORMAT,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_STAGING,
+            BindFlags: 0,
+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+            MiscFlags: 0,
+        };
+        let devices = self.dev();
         let render_target = self
-            .resources
-            .as_ref()
-            .context("resources missing")?
+            .res()
             .render_target
             .as_ref()
             .context("render target missing")?;
-        let (staging, width, height) = readback::copy_to_staging(devices, render_target)?;
-        let context = self.frame_context(render_target);
-        self.readback_token = self.readback_token.wrapping_add(1);
-        let token = self.readback_token;
-        let signal = GpuSignal::new(&devices.device, self.hwnd, token).log_err();
-        let synchronous = signal.is_none();
-        self.pending_readback = Some(PendingReadback {
-            token,
-            staging,
-            width,
-            height,
-            submitted,
-            context,
-            _signal: signal,
-        });
-        if let Some(sink) = &mut self.capture {
-            sink.submitted();
-        }
-        if synchronous {
-            self.finish_frame_readback(None);
-        }
-        Ok(())
-    }
-
-    /// Забрать пиксели копии `token` (`None` — любой незавершённой) и отдать
-    /// их sink. Чужой или устаревший `token` ничего не делает.
-    pub(crate) fn finish_frame_readback(&mut self, token: Option<usize>) {
-        if token.is_some_and(|token| {
-            self.pending_readback
-                .as_ref()
-                .is_none_or(|pending| pending.token != token)
-        }) {
-            return;
-        }
-        let Some(pending) = self.pending_readback.take() else {
-            return;
+        let mut staging: Option<ID3D11Texture2D> = None;
+        unsafe {
+            devices
+                .device
+                .CreateTexture2D(&desc, None, Some(&mut staging))?
         };
-        let PendingReadback {
-            staging,
-            width,
-            height,
-            submitted,
-            context,
-            ..
-        } = pending;
-        let read = match self.devices.as_ref() {
-            Some(devices) => {
-                let read = readback::read_staging(&devices.device_context, &staging, width, height);
-                // Отпущенную копию runtime уничтожает в ближайшей точке flush;
-                // без неё staging доживал бы до следующего кадра, а между
-                // кадрами, как и при синхронном readback, копий быть не должно.
-                drop(staging);
-                unsafe { devices.device_context.Flush() };
-                read
-            }
-            None => Err(anyhow::anyhow!("devices missing")),
-        };
-        let Some(sink) = &mut self.capture else {
-            return;
-        };
-        match read {
-            Ok(bgra) => {
-                let frame = gpui::frame_capture::CapturedFrame {
-                    width,
-                    height,
-                    bgra,
-                    context: Some(context),
-                };
-                sink.completed(frame, submitted.elapsed());
-            }
-            Err(error) => {
-                log::warn!("frame capture failed: {error}");
-                sink.discarded();
-            }
+        let staging = staging.context("staging texture")?;
+        let ctx = &devices.device_context;
+        unsafe { ctx.CopyResource(&staging, render_target) };
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+        let row = (w * 4) as usize;
+        let mut bgra = vec![0u8; row * h as usize];
+        for y in 0..h as usize {
+            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
+            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
+            // bytes until Unmap below.
+            let src = unsafe {
+                std::slice::from_raw_parts(
+                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
+                    row,
+                )
+            };
+            bgra[y * row..(y + 1) * row].copy_from_slice(src);
         }
-    }
-
-    /// Сбросить незавершённую копию без доставки (устройство потеряно или
-    /// capture отключён); sink узнаёт, что отправленный кадр не придёт.
-    pub(super) fn discard_frame_readback(&mut self) {
-        if self.pending_readback.take().is_some()
-            && let Some(sink) = &mut self.capture
-        {
-            sink.discarded();
-        }
-    }
-
-    /// Устройство, формат цели и исполняемые шейдеры, которыми нарисован кадр.
-    fn frame_context(&self, render_target: &ID3D11Texture2D) -> gpui::frame_capture::FrameContext {
+        unsafe { ctx.Unmap(&staging, 0) };
+        // KaminIDE patch: capture retains the device generation used by this target.
         let mut target_desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { render_target.GetDesc(&mut target_desc) };
         let mut shader_executables: Vec<_> = [
@@ -134,21 +67,19 @@ impl DirectXRenderer {
             &self.pipelines.subpixel_sprites.shader_executables,
             &self.pipelines.poly_sprites.shader_executables,
             &self.pipelines.blur_pipeline.shader_executables,
-        ]
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
+        ].into_iter().flatten().cloned().collect();
         shader_executables.sort();
         shader_executables.dedup();
-        gpui::frame_capture::FrameContext {
-            device: self.dev().context.clone(),
-            shader_executables,
-            target_format: target_desc.Format.0,
-            sample_count: target_desc.SampleDesc.Count,
-            sample_quality: target_desc.SampleDesc.Quality,
+        let context = Some(gpui::frame_capture::FrameContext {
+            device: devices.context.clone(), shader_executables, target_format: target_desc.Format.0,
+            sample_count: target_desc.SampleDesc.Count, sample_quality: target_desc.SampleDesc.Quality,
             gamma_ratios: self.font_info.gamma_ratios,
             grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+        });
+        if let Some(sink) = &mut self.capture {
+            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra, context }, started.elapsed());
         }
+        Ok(())
     }
+
 }
