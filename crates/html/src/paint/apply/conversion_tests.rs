@@ -1,8 +1,11 @@
+//! Перевод стиля коробки через память сборки: попадание равно свежему переводу.
+
 use super::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Color, Len};
 use std::rc::Rc;
 
+#[cfg(test)]
 fn styles() -> Vec<BoxStyle> {
     let mut sized = Computed::default();
     sized.reset_box_layout.width = Some(Len::Px(40.0));
@@ -28,7 +31,7 @@ fn styles() -> Vec<BoxStyle> {
 fn a_reused_conversion_equals_a_fresh_one_and_is_shared() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.frame_values().with_viewport((800.0, 600.0));
-    let memo = RefCell::new(StyleConversions::default());
+    let memo = StyleConversions::default();
     for style in styles() {
         let dimensions = BoxDimensions::from_computed(&style);
         let mut first = converted_div(&style, dimensions, vcx, &memo);

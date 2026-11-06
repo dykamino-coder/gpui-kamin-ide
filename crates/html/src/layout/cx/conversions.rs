@@ -9,6 +9,7 @@ use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::StyleRefinement;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Distinct recent inputs kept for reuse. Boxes of a page repeat a few styles, often
@@ -27,13 +28,14 @@ const PROBE_EVERY: u32 = 16;
 
 #[derive(Default)]
 pub(crate) struct StyleConversions {
-    recent: Vec<Conversion>,
+    /// Taken out while read or written: the memory never lends itself across a call.
+    recent: Cell<Vec<Conversion>>,
     /// Slot of the next new entry once `recent` is full.
-    next: usize,
+    next: Cell<usize>,
     /// Lookups since the last hit that found nothing.
-    misses: u32,
+    misses: Cell<u32>,
     /// Boxes passed over since lookups paused.
-    passed: u32,
+    passed: Cell<u32>,
 }
 
 /// What the memory says about a box about to be converted.
@@ -78,24 +80,25 @@ impl Values {
 impl StyleConversions {
     /// Look a box up unless reuse is paused, counting the run of misses that pauses it.
     pub(crate) fn lookup(
-        &mut self,
+        &self,
         input: &BoxStyle,
         dimensions: &BoxDimensions,
         vcx: ValueCx<'_>,
     ) -> Lookup {
-        if self.misses >= PAUSE_AFTER_MISSES {
-            self.passed += 1;
-            if !self.passed.is_multiple_of(PROBE_EVERY) {
+        if self.misses.get() >= PAUSE_AFTER_MISSES {
+            self.passed.set(self.passed.get() + 1);
+            if !self.passed.get().is_multiple_of(PROBE_EVERY) {
                 return Lookup::Pass;
             }
         }
         match self.find(input, dimensions, vcx) {
             Some(style) => {
-                (self.misses, self.passed) = (0, 0);
+                self.misses.set(0);
+                self.passed.set(0);
                 Lookup::Hit(style)
             }
             None => {
-                self.misses = self.misses.saturating_add(1);
+                self.misses.set(self.misses.get().saturating_add(1));
                 Lookup::Miss
             }
         }
@@ -109,18 +112,21 @@ impl StyleConversions {
         vcx: ValueCx<'_>,
     ) -> Option<Rc<StyleRefinement>> {
         let values = Values::of(vcx);
-        let len = self.recent.len();
-        (1..=len)
-            .map(|back| &self.recent[(self.next + len - back) % len])
+        let recent = self.recent.take();
+        let (len, next) = (recent.len(), self.next.get());
+        let found = (1..=len)
+            .map(|back| &recent[(next + len - back) % len])
             .find(|c| {
                 c.values == values && c.dimensions == *dimensions && c.input.same_box_values(input)
             })
-            .map(|c| c.style.clone())
+            .map(|c| c.style.clone());
+        self.recent.set(recent);
+        found
     }
 
     /// Remember the element style converted from `input`.
     pub(crate) fn record(
-        &mut self,
+        &self,
         input: &BoxStyle,
         dimensions: BoxDimensions,
         vcx: ValueCx<'_>,
@@ -132,13 +138,16 @@ impl StyleConversions {
             values: Values::of(vcx),
             style,
         };
-        if self.recent.len() < CANDIDATES {
-            self.recent.push(entry);
-            self.next = self.recent.len() % CANDIDATES;
+        let mut recent = self.recent.take();
+        let next = self.next.get();
+        if recent.len() < CANDIDATES {
+            recent.push(entry);
+            self.next.set(recent.len() % CANDIDATES);
         } else {
-            self.recent[self.next] = entry;
-            self.next = (self.next + 1) % CANDIDATES;
+            recent[next] = entry;
+            self.next.set((next + 1) % CANDIDATES);
         }
+        self.recent.set(recent);
     }
 }
 

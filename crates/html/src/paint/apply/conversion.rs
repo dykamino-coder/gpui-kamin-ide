@@ -8,7 +8,6 @@ use crate::layout::cx::conversions::{Lookup, StyleConversions};
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{Div, InteractiveElement, div};
-use std::cell::RefCell;
 
 /// `apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx)` through the build's
 /// memory of converted styles. The conversion writes only the element's style and its child
@@ -17,12 +16,12 @@ pub(crate) fn converted_div(
     c: &BoxStyle,
     dimensions: BoxDimensions,
     vcx: ValueCx<'_>,
-    memo: &RefCell<StyleConversions>,
+    memo: &StyleConversions,
 ) -> Div {
-    let lookup = memo.borrow_mut().lookup(c, &dimensions, vcx);
+    let lookup = memo.lookup(c, &dimensions, vcx);
     match lookup {
         Lookup::Hit(style) => {
-            #[cfg(debug_assertions)]
+            #[cfg(test)]
             verify(&style, c, dimensions, vcx);
             let mut d = div();
             d.interactivity().base_style = style;
@@ -31,7 +30,7 @@ pub(crate) fn converted_div(
         Lookup::Miss => {
             let mut d = apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
             let style = d.interactivity().base_style.clone();
-            memo.borrow_mut().record(c, dimensions, vcx, style);
+            memo.record(c, dimensions, vcx, style);
             d
         }
         Lookup::Pass => apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx),
@@ -39,7 +38,7 @@ pub(crate) fn converted_div(
 }
 
 /// A reused style equals a fresh conversion of the same box.
-#[cfg(debug_assertions)]
+#[cfg(test)]
 fn verify(
     style: &gpui::StyleRefinement,
     c: &BoxStyle,

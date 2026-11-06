@@ -21,8 +21,7 @@ pub(crate) struct BuildContext {
     pub(crate) lengths:
         std::rc::Rc<std::cell::RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
     /// Стили элементов, уже переведённые из равных стилей коробок этой сборки.
-    pub(crate) conversions:
-        std::rc::Rc<std::cell::RefCell<crate::layout::cx::conversions::StyleConversions>>,
+    pub(crate) conversions: std::rc::Rc<crate::layout::cx::conversions::StyleConversions>,
     /// Повтор устоявшихся блоков корневого потока этой сборки (layout::reuse).
     pub(crate) reuse: Option<std::rc::Rc<crate::layout::reuse::FlowReuse>>,
 }
