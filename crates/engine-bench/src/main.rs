@@ -31,6 +31,8 @@ mod report;
 mod resources;
 #[cfg(windows)]
 mod run;
+#[cfg(windows)]
+mod startup;
 mod stylesheet;
 #[cfg(all(windows, feature = "work-counters"))]
 mod usage;

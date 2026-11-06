@@ -1,21 +1,20 @@
 //! Один замер на один завершённый кадр; ошибки и лишние кадры не скрываются.
 
 use super::{
-    accounting::{self, Input, Measured},
+    accounting::{self, Counters, Input, Measured},
     args::{Args, Mode},
     frames::Frames,
     host, pixels, report, resources,
     view::{Phases, View},
     work,
 };
-use gpui::{AsyncApp, WindowHandle, frame_perf};
+use gpui::{AsyncApp, WindowHandle};
 use kamin_html::host::capture::CaptureSession;
 use kamin_html::{BROWSER_CSS, Document, metrics::FontContext};
 use serde_json::json;
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::atomic::Ordering::Relaxed,
     time::{Duration, Instant},
 };
 
@@ -30,35 +29,6 @@ pub(super) enum Step<'a> {
     Warm,
     /// `Document::update` данной разметкой (локальная правка).
     Update(&'a str),
-}
-
-impl Step<'_> {
-    fn cold(self) -> bool {
-        matches!(self, Self::Cold(_))
-    }
-}
-
-struct Counters {
-    draw: u32,
-    present: u32,
-    layout: u32,
-    frames: u32,
-    readback: Duration,
-}
-
-impl Counters {
-    fn read(capture: &CaptureSession) -> Self {
-        Self {
-            draw: frame_perf::DRAW_US.load(Relaxed),
-            present: frame_perf::PRESENT_US.load(Relaxed),
-            layout: frame_perf::TAFFY_US.load(Relaxed),
-            frames: frame_perf::FRAMES.load(Relaxed),
-            readback: capture.readback_time(),
-        }
-    }
-    fn delta(current: u32, previous: u32) -> Duration {
-        Duration::from_micros(u64::from(current.wrapping_sub(previous)))
-    }
 }
 
 async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
@@ -88,6 +58,7 @@ pub(super) async fn sample(
         .update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
             let work = work::Capture::begin(luid)?;
+            let observer_setup = started.elapsed();
             let before = Counters::read(capture);
             let seq = capture.sequence();
             let mut resources_time = None;
@@ -123,7 +94,7 @@ pub(super) async fn sample(
                 timings = Some(doc.build_timings());
                 view.doc = doc;
             }
-            view.phases = Rc::new(RefCell::new(Phases::default()));
+            view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
             cx.notify();
             window.refresh();
@@ -140,7 +111,9 @@ pub(super) async fn sample(
         })??;
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let work = window.read_with(cx, |view, _| work.finish(step.cold(), &view.doc))?;
+    let work = window.read_with(cx, |view, _| {
+        work.finish(matches!(step, Step::Cold(_)), &view.doc)
+    })?;
     let after = Counters::read(capture);
     let frame = capture
         .take_first()
@@ -196,11 +169,14 @@ pub(super) async fn run(
     args: &Args,
     platform: &gpui_windows::WindowsPlatform,
     capture: &CaptureSession,
+    startup_timings: &mut super::startup::Startup,
 ) -> Result<()> {
+    startup_timings.mark("async_entry");
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
     let seq = capture.sequence();
     window.update(cx, |_, window, _| window.refresh())?;
     wait(cx, seq, capture).await?;
+    startup_timings.mark("initial_empty_gpu_frame");
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let luid = (identity.luid_high_part, identity.luid_low_part);
@@ -255,7 +231,7 @@ pub(super) async fn run(
         "runs_per_mode": args.runs,
         "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
-        "startup_process_memory": startup.json(),
+        "startup_process_memory": startup.json(), "startup_timings": startup_timings.report(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
     if let Some(fields) = frames.report().as_object() {

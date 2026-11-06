@@ -991,6 +991,9 @@ impl PlatformWindow for WindowsWindow {
         self.state.is_fullscreen()
     }
 
+    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
+        Some(self.0.frame_waker())
+    }
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
         self.state.callbacks.request_frame.set(Some(callback));
     }
@@ -1000,11 +1003,7 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>) {
-        self.0
-            .state
-            .callbacks
-            .active_status_change
-            .set(Some(callback));
+        self.state.callbacks.active_status_change.set(Some(callback));
     }
 
     fn on_visibility_change(&self, callback: Box<dyn FnMut(WindowVisibility)>) {
