@@ -19,7 +19,20 @@ pub(super) struct Phases {
     pub(super) prepaint: Duration,
     pub(super) paint: Duration,
     pub(super) renders: usize,
+    pub(super) observer_setup: Duration,
+    requested: Option<Instant>,
+    pub(super) request_to_render: Option<Duration>,
     request_finished: Option<Instant>,
+}
+
+impl Phases {
+    pub(super) fn requested(observer_setup: Duration) -> Self {
+        Self {
+            observer_setup,
+            requested: Some(Instant::now()),
+            ..Default::default()
+        }
+    }
 }
 
 pub(super) struct View {
@@ -32,6 +45,11 @@ impl Render for View {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         kamin_html::work::phase!(_work, BuildElements);
         let started = Instant::now();
+        let mut phases = self.phases.borrow_mut();
+        phases.request_to_render = phases
+            .requested
+            .map(|request| started.duration_since(request));
+        drop(phases);
         let mut text = window.text_style();
         text.color = rgb(0).into();
         text.font_family = "Times New Roman".into();

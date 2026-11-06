@@ -1,7 +1,7 @@
 //! Один замер на один завершённый кадр; ошибки и лишние кадры не скрываются.
 
 use super::{
-    accounting::{self, Input, Measured},
+    accounting::{self, Counters, Input, Measured},
     args::{Args, Mode},
     frames::Frames,
     host, pixels, report, resources,
@@ -20,9 +20,7 @@ use std::{
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-mod counters;
 mod step;
-use counters::Counters;
 pub(super) use step::Step;
 
 async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
@@ -52,6 +50,7 @@ pub(super) async fn sample(
         .update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
             let work = work::Capture::begin(luid)?;
+            let observer_setup = started.elapsed();
             let before = Counters::read(capture);
             let seq = capture.sequence();
             let mut resources_time = None;
@@ -87,7 +86,7 @@ pub(super) async fn sample(
                 timings = Some(doc.build_timings());
                 view.doc = doc;
             }
-            view.phases = Rc::new(RefCell::new(Phases::default()));
+            view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
             cx.notify();
             window.refresh();
@@ -160,11 +159,14 @@ pub(super) async fn run(
     args: &Args,
     platform: &gpui_windows::WindowsPlatform,
     capture: &CaptureSession,
+    startup_timings: &mut super::startup::Startup,
 ) -> Result<()> {
+    startup_timings.mark("async_entry");
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
     let seq = capture.sequence();
     window.update(cx, |_, window, _| window.refresh())?;
     wait(cx, seq, capture).await?;
+    startup_timings.mark("initial_empty_gpu_frame");
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let luid = (identity.luid_high_part, identity.luid_low_part);
@@ -217,7 +219,7 @@ pub(super) async fn run(
         "runs_per_mode": args.runs,
         "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
-        "startup_process_memory": startup.json(),
+        "startup_process_memory": startup.json(), "startup_timings": startup_timings.report(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
     if let Some(fields) = frames.report().as_object() {
