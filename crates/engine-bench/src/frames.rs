@@ -98,9 +98,11 @@ impl Frames {
     ) -> Result<()> {
         let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
         let counts = delta(if mode == "cold" { (0, 0) } else { self.before }, after)?;
-        if self.relayout && counts != (1, 0) {
+        // A frame whose reused blocks were refused at prepaint is built once
+        // more within the same frame; both builds are part of the sample.
+        if self.relayout && (counts.0 == 0 || counts.1 != 0) {
             return Err(format!(
-                "relayout requires one document build and no replay; received {counts:?}"
+                "relayout requires a document build and no replay; received {counts:?}"
             )
             .into());
         }

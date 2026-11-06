@@ -77,7 +77,6 @@ impl Paragraph {
         {
             end = self
                 .opportunities()
-                .iter()
                 .map(|s| s.at)
                 .filter(|at| *at > head && *at <= end)
                 .map(trim)

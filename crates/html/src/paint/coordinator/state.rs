@@ -46,11 +46,6 @@ impl PaintJobQueue {
         })
     }
 
-    /// Число открытых кадров: глубина, в которую встаёт следующее задание.
-    pub fn depth(&self) -> usize {
-        self.0.borrow().frames.len()
-    }
-
     pub fn clear(&self) {
         let abandoned = self.update(std::mem::take);
         drop(abandoned);
@@ -117,9 +112,23 @@ impl PaintJobQueue {
                 .frames
                 .last_mut()
                 .expect("open CSS frame")
-                .inline
-                .push_back(job);
+                .push_inline(job);
         });
+    }
+
+    /// Заданий, принятых кадрами ниже глубины `depth`.
+    pub fn admitted_below(&self, depth: usize) -> u64 {
+        let state = self.0.borrow();
+        state
+            .frames
+            .iter()
+            .take(depth)
+            .map(|frame| frame.admitted)
+            .sum()
+    }
+
+    pub fn depth(&self) -> usize {
+        self.0.borrow().frames.len()
     }
 
     pub fn pop_inline(&self, depth: usize) -> Option<Inline> {
