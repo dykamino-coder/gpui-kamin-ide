@@ -15,6 +15,8 @@ mod frame_request;
 // KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 mod gpu_adapter;
 mod gpu_context;
+// KaminIDE patch: сигналы GPU в цикле сообщений UI-потока.
+mod gpu_waits;
 mod keyboard;
 #[cfg(test)]
 mod ligature_tests;

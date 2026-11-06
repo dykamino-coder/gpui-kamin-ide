@@ -1,47 +1,22 @@
 //! KaminIDE patch: сигнал «GPU выполнил поставленную работу» как сообщение окну.
 //!
 //! `IDXGIDevice2::EnqueueSetEvent` отправляет накопленные команды и взводит
-//! событие, когда GPU их выполнит (или устройство будет удалено). Ожидание
-//! события ведёт пул потоков ОС; его callback только кладёт сообщение в
-//! очередь окна, поэтому UI-поток не блокируется и не опрашивает GPU.
+//! событие, когда GPU их выполнит (или устройство будет удалено). Событие ждёт
+//! цикл сообщений UI-потока (`gpu_waits`) вместе с очередью окна и по сигналу
+//! передаёт окну `WM_GPUI_FRAME_READBACK`; UI-поток не блокируется на GPU и не
+//! опрашивает его, а между сигналом и обработкой нет промежуточного потока.
 
 use super::*;
+use crate::gpu_waits::{self, GpuWait};
 use windows::Win32::{
-    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, LPARAM, WPARAM},
-    System::Threading::{
-        CreateEventW, INFINITE, RegisterWaitForSingleObject, UnregisterWaitEx, WT_EXECUTEINWAITTHREAD,
-        WT_EXECUTEONLYONCE,
-    },
-    UI::WindowsAndMessaging::PostMessageW,
+    Foundation::{CloseHandle, HANDLE},
+    System::Threading::CreateEventW,
 };
 
-/// Адресат сигнала. Живёт в куче, пока зарегистрировано ожидание пула.
-struct Target {
-    hwnd: HWND,
-    token: usize,
-}
-
 /// Одноразовый сигнал о завершении работы GPU, поставленной до его создания.
-/// Drop снимает ожидание (дожидаясь уже начатого callback) и закрывает событие.
+/// Drop снимает ожидание с цикла сообщений и закрывает событие.
 pub(super) struct GpuSignal {
     event: HANDLE,
-    wait: HANDLE,
-    target: *mut Target,
-}
-
-unsafe extern "system" fn signalled(context: *mut core::ffi::c_void, _timed_out: bool) {
-    // SAFETY: context — Box<Target>, который освобождается только после
-    // UnregisterWaitEx(INVALID_HANDLE_VALUE), то есть после этого callback.
-    let target = unsafe { &*(context as *const Target) };
-    // Окно могло закрыться: тогда сообщение просто не доставляется.
-    let _ = unsafe {
-        PostMessageW(
-            Some(target.hwnd),
-            WM_GPUI_FRAME_READBACK,
-            WPARAM(target.token),
-            LPARAM(0),
-        )
-    };
 }
 
 impl GpuSignal {
@@ -49,36 +24,11 @@ impl GpuSignal {
     /// с `token` в WPARAM, когда GPU их выполнит.
     pub(super) fn new(device: &ID3D11Device, hwnd: HWND, token: usize) -> Result<Self> {
         let dxgi: IDXGIDevice2 = device.cast()?;
-        // Ручной сброс: событие видят и пул, и прямое ожидание в тестах.
+        // Ручной сброс: событие остаётся взведённым и для прямого ожидания в тестах.
         let event = unsafe { CreateEventW(None, true, false, windows::core::PCWSTR::null())? };
-        let target = Box::into_raw(Box::new(Target { hwnd, token }));
-        let mut wait = HANDLE::default();
-        let registered = unsafe {
-            RegisterWaitForSingleObject(
-                &mut wait,
-                event,
-                Some(signalled),
-                Some(target as *const _),
-                INFINITE,
-                // Callback только кладёт сообщение (не блокирует): выполнять его
-                // в потоке ожидания и не будить рабочий поток пула.
-                WT_EXECUTEONLYONCE | WT_EXECUTEINWAITTHREAD,
-            )
-        };
-        if let Err(error) = registered {
-            // SAFETY: ожидание не зарегистрировано, callback не получит target.
-            unsafe {
-                drop(Box::from_raw(target));
-                let _ = CloseHandle(event);
-            }
-            return Err(error.into());
-        }
-        let signal = Self {
-            event,
-            wait,
-            target,
-        };
+        let signal = Self { event };
         unsafe { dxgi.EnqueueSetEvent(event)? };
+        gpu_waits::register(GpuWait { event, hwnd, token });
         Ok(signal)
     }
 
@@ -91,13 +41,10 @@ impl GpuSignal {
 
 impl Drop for GpuSignal {
     fn drop(&mut self) {
-        // SAFETY: INVALID_HANDLE_VALUE ждёт завершения начатого callback, после
-        // чего target больше никто не читает; событие закрывается последним.
-        unsafe {
-            let _ = UnregisterWaitEx(self.wait, Some(INVALID_HANDLE_VALUE));
-            drop(Box::from_raw(self.target));
-            let _ = CloseHandle(self.event);
-        }
+        // Ожидание снимается до закрытия: цикл сообщений того же потока больше
+        // не получит этот HANDLE.
+        gpu_waits::unregister(self.event);
+        let _ = unsafe { CloseHandle(self.event) };
     }
 }
 

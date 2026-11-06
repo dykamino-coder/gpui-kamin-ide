@@ -8855,54 +8855,29 @@ index 0000000000000000000000000000000000000000..ab84144a30feb7f27960340a6d766931
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/gpu_signal.rs b/vendor/gpui-windows/src/directx_renderer/gpu_signal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..71f4699b6916819a814a3a573453398062f30ce2
+index 0000000000000000000000000000000000000000..cc1f7d54f27e04a7ca03a823cce0b6b8b46a39b0
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/gpu_signal.rs
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,79 @@
 +//! KaminIDE patch: сигнал «GPU выполнил поставленную работу» как сообщение окну.
 +//!
 +//! `IDXGIDevice2::EnqueueSetEvent` отправляет накопленные команды и взводит
-+//! событие, когда GPU их выполнит (или устройство будет удалено). Ожидание
-+//! события ведёт пул потоков ОС; его callback только кладёт сообщение в
-+//! очередь окна, поэтому UI-поток не блокируется и не опрашивает GPU.
++//! событие, когда GPU их выполнит (или устройство будет удалено). Событие ждёт
++//! цикл сообщений UI-потока (`gpu_waits`) вместе с очередью окна и по сигналу
++//! передаёт окну `WM_GPUI_FRAME_READBACK`; UI-поток не блокируется на GPU и не
++//! опрашивает его, а между сигналом и обработкой нет промежуточного потока.
 +
 +use super::*;
++use crate::gpu_waits::{self, GpuWait};
 +use windows::Win32::{
-+    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, LPARAM, WPARAM},
-+    System::Threading::{
-+        CreateEventW, INFINITE, RegisterWaitForSingleObject, UnregisterWaitEx, WT_EXECUTEINWAITTHREAD,
-+        WT_EXECUTEONLYONCE,
-+    },
-+    UI::WindowsAndMessaging::PostMessageW,
++    Foundation::{CloseHandle, HANDLE},
++    System::Threading::CreateEventW,
 +};
 +
-+/// Адресат сигнала. Живёт в куче, пока зарегистрировано ожидание пула.
-+struct Target {
-+    hwnd: HWND,
-+    token: usize,
-+}
-+
 +/// Одноразовый сигнал о завершении работы GPU, поставленной до его создания.
-+/// Drop снимает ожидание (дожидаясь уже начатого callback) и закрывает событие.
++/// Drop снимает ожидание с цикла сообщений и закрывает событие.
 +pub(super) struct GpuSignal {
 +    event: HANDLE,
-+    wait: HANDLE,
-+    target: *mut Target,
-+}
-+
-+unsafe extern "system" fn signalled(context: *mut core::ffi::c_void, _timed_out: bool) {
-+    // SAFETY: context — Box<Target>, который освобождается только после
-+    // UnregisterWaitEx(INVALID_HANDLE_VALUE), то есть после этого callback.
-+    let target = unsafe { &*(context as *const Target) };
-+    // Окно могло закрыться: тогда сообщение просто не доставляется.
-+    let _ = unsafe {
-+        PostMessageW(
-+            Some(target.hwnd),
-+            WM_GPUI_FRAME_READBACK,
-+            WPARAM(target.token),
-+            LPARAM(0),
-+        )
-+    };
 +}
 +
 +impl GpuSignal {
@@ -8910,36 +8885,11 @@ index 0000000000000000000000000000000000000000..71f4699b6916819a814a3a5734533980
 +    /// с `token` в WPARAM, когда GPU их выполнит.
 +    pub(super) fn new(device: &ID3D11Device, hwnd: HWND, token: usize) -> Result<Self> {
 +        let dxgi: IDXGIDevice2 = device.cast()?;
-+        // Ручной сброс: событие видят и пул, и прямое ожидание в тестах.
++        // Ручной сброс: событие остаётся взведённым и для прямого ожидания в тестах.
 +        let event = unsafe { CreateEventW(None, true, false, windows::core::PCWSTR::null())? };
-+        let target = Box::into_raw(Box::new(Target { hwnd, token }));
-+        let mut wait = HANDLE::default();
-+        let registered = unsafe {
-+            RegisterWaitForSingleObject(
-+                &mut wait,
-+                event,
-+                Some(signalled),
-+                Some(target as *const _),
-+                INFINITE,
-+                // Callback только кладёт сообщение (не блокирует): выполнять его
-+                // в потоке ожидания и не будить рабочий поток пула.
-+                WT_EXECUTEONLYONCE | WT_EXECUTEINWAITTHREAD,
-+            )
-+        };
-+        if let Err(error) = registered {
-+            // SAFETY: ожидание не зарегистрировано, callback не получит target.
-+            unsafe {
-+                drop(Box::from_raw(target));
-+                let _ = CloseHandle(event);
-+            }
-+            return Err(error.into());
-+        }
-+        let signal = Self {
-+            event,
-+            wait,
-+            target,
-+        };
++        let signal = Self { event };
 +        unsafe { dxgi.EnqueueSetEvent(event)? };
++        gpu_waits::register(GpuWait { event, hwnd, token });
 +        Ok(signal)
 +    }
 +
@@ -8952,13 +8902,10 @@ index 0000000000000000000000000000000000000000..71f4699b6916819a814a3a5734533980
 +
 +impl Drop for GpuSignal {
 +    fn drop(&mut self) {
-+        // SAFETY: INVALID_HANDLE_VALUE ждёт завершения начатого callback, после
-+        // чего target больше никто не читает; событие закрывается последним.
-+        unsafe {
-+            let _ = UnregisterWaitEx(self.wait, Some(INVALID_HANDLE_VALUE));
-+            drop(Box::from_raw(self.target));
-+            let _ = CloseHandle(self.event);
-+        }
++        // Ожидание снимается до закрытия: цикл сообщений того же потока больше
++        // не получит этот HANDLE.
++        gpu_waits::unregister(self.event);
++        let _ = unsafe { CloseHandle(self.event) };
 +    }
 +}
 +
@@ -10822,21 +10769,206 @@ index 0000000000000000000000000000000000000000..a227477d1c916cdd02c6f97d80118fab
 +    }
 +
 +}
+diff --git a/vendor/gpui-windows/src/gpu_waits.rs b/vendor/gpui-windows/src/gpu_waits.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d63a87af6ed3f9cc4ac112f1d7c545e95ff9262
+--- /dev/null
++++ b/vendor/gpui-windows/src/gpu_waits.rs
+@@ -0,0 +1,177 @@
++//! KaminIDE patch: ожидание сигналов GPU прямо в цикле сообщений UI-потока.
++//!
++//! Событие `EnqueueSetEvent` (см. `directx_renderer::gpu_signal`) ждёт сам
++//! UI-поток вместе с очередью сообщений (`MsgWaitForMultipleObjectsEx`), как
++//! блокирующий `Map` ждал его раньше: ядро будит один поток напрямую, без
++//! промежуточного потока пула и `PostMessage`. На двух загруженных ядрах лишний
++//! переход стоил кванта планировщика на кадр. Ожидания не опрашиваются: цикл
++//! спит, пока нет ни сообщения, ни сигнала.
++
++use std::cell::RefCell;
++use windows::Win32::{
++    Foundation::{HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WPARAM},
++    System::Threading::INFINITE,
++    UI::WindowsAndMessaging::{
++        MSG, MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, PM_REMOVE, PeekMessageW,
++        QS_ALLINPUT, SendMessageW, WM_QUIT,
++    },
++};
++
++use crate::WM_GPUI_FRAME_READBACK;
++
++/// Предел `MsgWaitForMultipleObjectsEx`: `MAXIMUM_WAIT_OBJECTS - 1`.
++const MAX_WAITS: usize = 63;
++
++/// Зарегистрированный сигнал: окно получит `WM_GPUI_FRAME_READBACK(token)`.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) struct GpuWait {
++    pub(crate) event: HANDLE,
++    pub(crate) hwnd: HWND,
++    pub(crate) token: usize,
++}
++
++thread_local! {
++    // Рендереры живут на UI-потоке; регистрирует и ждёт один и тот же поток.
++    static WAITS: RefCell<Vec<GpuWait>> = const { RefCell::new(Vec::new()) };
++}
++
++/// Ждать `event` в цикле сообщений этого потока.
++pub(crate) fn register(wait: GpuWait) {
++    WAITS.with_borrow_mut(|waits| waits.push(wait));
++}
++
++/// Снять ожидание (событие ещё не закрыто вызывающим).
++pub(crate) fn unregister(event: HANDLE) {
++    WAITS.with_borrow_mut(|waits| waits.retain(|wait| wait.event != event));
++}
++
++/// Что разбудило цикл сообщений.
++#[derive(Debug, PartialEq, Eq)]
++pub(crate) enum Wake {
++    /// Сработал сигнал GPU; он уже снят с ожидания.
++    Gpu(GpuWait),
++    /// В очереди есть сообщение (или ожидание не удалось — тогда очередь
++    /// обрабатывается как раньше, блокирующим чтением).
++    Message,
++}
++
++/// Уснуть до сообщения или сигнала GPU; сигналы имеют приоритет (младшие
++/// индексы `MsgWaitForMultipleObjectsEx`).
++pub(crate) fn wait(timeout_ms: u32) -> Wake {
++    let waits: Vec<GpuWait> =
++        WAITS.with_borrow(|waits| waits.iter().take(MAX_WAITS).copied().collect());
++    let handles: Vec<HANDLE> = waits.iter().map(|wait| wait.event).collect();
++    // SAFETY: события закрываются только в Drop сигнала на этом же потоке,
++    // который сейчас спит здесь, поэтому все handles живы до возврата.
++    let result = unsafe {
++        MsgWaitForMultipleObjectsEx(
++            (!handles.is_empty()).then_some(handles.as_slice()),
++            timeout_ms,
++            QS_ALLINPUT,
++            MWMO_INPUTAVAILABLE,
++        )
++    };
++    if result == WAIT_FAILED {
++        log::error!(
++            "waiting for messages and GPU signals failed: {}",
++            windows::core::Error::from_thread()
++        );
++        return Wake::Message;
++    }
++    let index = result.0.wrapping_sub(WAIT_OBJECT_0.0) as usize;
++    match waits.get(index) {
++        Some(&wait) => {
++            unregister(wait.event);
++            Wake::Gpu(wait)
++        }
++        None => Wake::Message,
++    }
++}
++
++/// Главный цикл сообщений UI-потока (замена `while GetMessageW`), который
++/// заодно доставляет сигналы GPU окнам. Возвращает после `WM_QUIT`.
++pub(crate) fn run_message_loop(mut dispatch: impl FnMut(&MSG)) {
++    let mut msg = MSG::default();
++    loop {
++        match wait(INFINITE) {
++            // Тот же поток: SendMessageW вызывает оконную процедуру напрямую.
++            Wake::Gpu(wait) => unsafe {
++                SendMessageW(
++                    wait.hwnd,
++                    WM_GPUI_FRAME_READBACK,
++                    Some(WPARAM(wait.token)),
++                    Some(LPARAM(0)),
++                );
++            },
++            Wake::Message => {
++                // По одному сообщению: следующий сигнал GPU не ждёт всю очередь.
++                if unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE) }.as_bool() {
++                    if msg.message == WM_QUIT {
++                        return;
++                    }
++                    dispatch(&msg);
++                }
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use windows::Win32::{
++        Foundation::CloseHandle,
++        System::Threading::{CreateEventW, SetEvent},
++    };
++
++    fn event() -> HANDLE {
++        unsafe { CreateEventW(None, true, false, windows::core::PCWSTR::null()) }.unwrap()
++    }
++
++    #[test]
++    fn signalled_event_wakes_once_and_is_unregistered() {
++        let (quiet, ready) = (event(), event());
++        let hwnd = HWND::default();
++        register(GpuWait {
++            event: quiet,
++            hwnd,
++            token: 1,
++        });
++        register(GpuWait {
++            event: ready,
++            hwnd,
++            token: 2,
++        });
++        unsafe { SetEvent(ready) }.unwrap();
++        assert_eq!(
++            wait(0),
++            Wake::Gpu(GpuWait {
++                event: ready,
++                hwnd,
++                token: 2
++            })
++        );
++        // Снятый сигнал больше не будит, хотя событие осталось взведённым.
++        assert_eq!(wait(0), Wake::Message);
++        unregister(quiet);
++        assert!(WAITS.with_borrow(Vec::is_empty));
++        unsafe {
++            CloseHandle(quiet).unwrap();
++            CloseHandle(ready).unwrap();
++        }
++    }
++
++    #[test]
++    fn unregistered_event_never_wakes_the_loop() {
++        let ready = event();
++        register(GpuWait {
++            event: ready,
++            hwnd: HWND::default(),
++            token: 3,
++        });
++        unregister(ready);
++        unsafe { SetEvent(ready) }.unwrap();
++        assert_eq!(wait(0), Wake::Message);
++        unsafe { CloseHandle(ready) }.unwrap();
++    }
++}
 diff --git a/vendor/gpui-windows/src/gpui_windows.rs b/vendor/gpui-windows/src/gpui_windows.rs
-index e7a45a034dc235dab7bc49cad209f9cdef143802..2cb30a2013c8036b461385066b00e2719e5d9b97
+index e7a45a034dc235dab7bc49cad209f9cdef143802..4e9e399d75972d4a54b25ba4ffddc10534b9aa9b
 --- a/vendor/gpui-windows/src/gpui_windows.rs
 +++ b/vendor/gpui-windows/src/gpui_windows.rs
-@@ -13,0 +14,4 @@
+@@ -13,0 +14,6 @@
 +mod frame_request;
 +// KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 +mod gpu_adapter;
 +mod gpu_context;
-@@ -14,0 +19,2 @@
++// KaminIDE patch: сигналы GPU в цикле сообщений UI-потока.
++mod gpu_waits;
+@@ -14,0 +21,2 @@
 +#[cfg(test)]
 +mod ligature_tests;
-@@ -31,0 +38 @@
+@@ -31,0 +40 @@
 +pub(crate) use frame_request::DrawCoordinator;
-@@ -41,0 +49 @@
+@@ -41,0 +51 @@
 +pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 diff --git a/vendor/gpui-windows/src/ligature_tests.rs b/vendor/gpui-windows/src/ligature_tests.rs
 new file mode 100644
@@ -11032,7 +11164,7 @@ index 0000000000000000000000000000000000000000..8a8b152eaf796fb87479f85c87f7860c
 +        .collect()
 +}
 diff --git a/vendor/gpui-windows/src/platform.rs b/vendor/gpui-windows/src/platform.rs
-index 995017faedb322d4051084e9ab38edf0071edeca..628d5934ad7c365edae25e84d5f1c6bfe5da6a3c
+index 995017faedb322d4051084e9ab38edf0071edeca..e0a57b42ee9ca6c75489b553606c38f9ccefb8fa
 --- a/vendor/gpui-windows/src/platform.rs
 +++ b/vendor/gpui-windows/src/platform.rs
 @@ -0,0 +1 @@
@@ -11079,7 +11211,10 @@ index 995017faedb322d4051084e9ab38edf0071edeca..628d5934ad7c365edae25e84d5f1c6bf
 +        *self.inner.state.instrumentation.borrow_mut() = instrumentation;
 +    }
 +
-@@ -602,7 +628,5 @@
+@@ -599,10 +625,4 @@
+-        let mut msg = MSG::default();
+-        unsafe {
+-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
 -                if translate_accelerator(&msg).is_none() {
 -                    _ = TranslateMessage(&msg);
 -                    DispatchMessageW(&msg);
@@ -11087,34 +11222,33 @@ index 995017faedb322d4051084e9ab38edf0071edeca..628d5934ad7c365edae25e84d5f1c6bf
 -            }
 -        }
 -
-+                shutdown::dispatch_message(&msg);
-+            }
-+        }
++        // KaminIDE patch: цикл ждёт и очередь, и сигналы GPU (readback кадров).
++        crate::gpu_waits::run_message_loop(shutdown::dispatch_message);
 +
 +        let mut did_shutdown = false;
-@@ -612 +636 @@
+@@ -612 +632 @@
 -                callback();
 +                did_shutdown = callback();
-@@ -614,0 +639,3 @@
+@@ -614,0 +635,3 @@
 +        if did_shutdown {
 +            self.finish_shutdown().log_err();
 +        }
-@@ -727 +754 @@
+@@ -727 +750 @@
 -        WindowsDisplay::displays()
 +        WindowsDisplay::displays(self.inner.state.instrumentation.borrow().config().scale_factor)
-@@ -731 +758 @@
+@@ -731 +754 @@
 -        WindowsDisplay::primary_monitor().map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
 +        WindowsDisplay::primary_monitor(self.inner.state.instrumentation.borrow().config().scale_factor).map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
-@@ -1386,0 +1414 @@
+@@ -1386,0 +1410 @@
 +    pub(crate) live_windows: Rc<Cell<usize>>,
-@@ -1681,0 +1710,3 @@
+@@ -1681,0 +1706,3 @@
 +    let preference = directx_devices.adapter_preference.clone();
 +    let generation = directx_devices.context.generation.checked_add(1).context("GPU generation overflow")?;
 +    let instrumentation = directx_devices.instrumentation.clone();
-@@ -1683 +1714 @@
+@@ -1683 +1710 @@
 -        DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
 +        DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone()).context("Failed to recreate new DirectX devices after device lost")
-@@ -1684,0 +1716 @@
+@@ -1684,0 +1712 @@
 +    directx_devices.context.generation = generation;
 diff --git a/vendor/gpui-windows/src/platform/gpu.rs b/vendor/gpui-windows/src/platform/gpu.rs
 new file mode 100644
