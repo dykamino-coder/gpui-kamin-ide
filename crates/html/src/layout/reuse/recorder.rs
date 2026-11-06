@@ -114,7 +114,7 @@ impl Pending {
     ) -> Finished {
         // A block whose text wrapped here wraps at any narrower flow, where
         // a record made while the width changes would be refused (`narrow`).
-        let flow = self.key.constraints.avail_w;
+        let flow = self.key.flow_width();
         let wrapped = self.width == Width::Stretch
             && self.tracks_flow
             && self.lines.broken()
@@ -176,7 +176,7 @@ impl Pending {
         let resizable = reusable_range(
             self.width,
             self.border.get(),
-            self.key.constraints.avail_w,
+            self.key.flow_width(),
             self.lines.slack(),
         );
         if !self.settled && resizable.is_none() {
@@ -195,8 +195,7 @@ impl Pending {
             stretch: self.width == Width::Stretch
                 && self
                     .key
-                    .constraints
-                    .avail_w
+                    .flow_width()
                     .is_some_and(|flow| self.border.get() <= flow + 0.5),
             far,
             replay: RefCell::new(replay),

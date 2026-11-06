@@ -11,6 +11,10 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
+mod mark;
+mod replay;
+use mark::{Mark, mark_of};
+
 /// Поток `body`, занятый повтором в этой сборке.
 pub(crate) struct FlowCx {
     reuse: Rc<FlowReuse>,
@@ -27,27 +31,12 @@ pub(crate) struct FlowCx {
     /// Первый и последний ребёнок потока замещаемы: базовые линии потока
     /// никто не читает (`edges_free`).
     edges: bool,
-}
-
-/// Состояние сборки до блочного ребёнка: его сборка должна изменить только
-/// счётчики и добавить ровно один элемент.
-pub(crate) struct Mark {
-    start: Counters,
-    out: usize,
-    outlines: usize,
-    coordinates: usize,
-    late: bool,
-}
-
-fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
-    let paint = &opts.cx.deferred.paint;
-    Mark {
-        start: Counters::read(&opts.cx),
-        out,
-        outlines: paint.outlines.borrow().len(),
-        coordinates: paint.coordinates.borrow().len(),
-        late: opts.cx.position.state.late_pending(),
-    }
+    /// Ключ прошлой сборки тот же вне ширин: записывать детей для повтора
+    /// с их поддеревом раскладки (`replay`).
+    settled_outside_widths: bool,
+    /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны для
+    /// пропуска, собираются лишь ближние и изменённые.
+    warm: bool,
 }
 
 impl FlowReuse {
@@ -106,21 +95,34 @@ impl FlowReuse {
             self.store.prev.replace(last.clone());
             last
         };
-        let (settled, resized) = match last {
-            Some(last) => (last.same(&key), last.same_except_width(&key)),
-            None => (false, false),
+        let (settled, resized, settled_outside_widths) = match last {
+            Some(last) => (
+                last.same(&key),
+                last.same_except_width(&key),
+                last.same_outside_widths(&key),
+            ),
+            None => (false, false, false),
         };
         let wm = inherited.wm();
         let resized = !settled && resized && !wm.rtl() && !wm.vertical();
-        if self.again {
+        let warm = if self.again {
             // Записи уже сверены первой сборкой кадра.
-        } else if resized {
-            // Записи, чья раскладка от ширины не зависит, годны и при новой.
-            self.store.keep_width_independent(&key);
-        } else if !settled {
-            // Записи другого ключа не подойдут, а держат стили кадра записи.
-            self.store.reset();
-        }
+            self.store.warm.get()
+        } else {
+            if resized {
+                // Записи, чья раскладка от ширины не зависит, годны и при новой.
+                self.store.keep_width_independent(&key);
+            } else if !settled {
+                // Записи другого ключа не подойдут, а держат стили кадра записи.
+                self.store.reset();
+            }
+            if !settled_outside_widths {
+                self.store.reset_replays();
+            }
+            let warm = self.store.settled.replace(settled) && settled;
+            self.store.warm.set(warm);
+            warm
+        };
         self.resized.set(resized);
         let edges = match self.root {
             Root::Body { .. } => edges_free(key.html.as_ref()) && edges_free(key.body.as_ref()),
@@ -132,6 +134,8 @@ impl FlowReuse {
             settled,
             resized,
             edges,
+            settled_outside_widths,
+            warm,
             floats: std::cell::Cell::new(false),
         })
     }
@@ -190,12 +194,10 @@ impl FlowCx {
         }
     }
 
-    pub(crate) fn mark(&self, opts: &RenderOpts, out: usize) -> Mark {
-        mark_of(opts, out)
-    }
-
-    /// Обернуть только что собранный элемент ребёнка `e` записью, если его
-    /// сборка инертна.
+    /// Обернуть только что собранный элемент ребёнка `e` записями, если его
+    /// сборка дала ровно один элемент: записью пропуска и повтора на месте
+    /// (`recorder`), если сборка инертна, и записью повтора с поддеревом
+    /// раскладки (`replay`), если она может пригодиться.
     pub(crate) fn record(
         &self,
         e: &Element,
@@ -205,22 +207,34 @@ impl FlowCx {
         out: &mut Vec<AnyElement>,
     ) {
         let now = mark_of(opts, out.len());
-        let inert = (self.settled || self.resized)
-            && (!edge || self.edges)
-            && !self.floats.get()
+        let single = !self.floats.get()
             && e.node_id != 0
             && now.out == mark.out + 1
             && now.outlines == mark.outlines
             && now.coordinates == mark.coordinates
             && now.late == mark.late
-            && out.last().is_some_and(|el| el.paint_metadata().is_none())
-            && super::plain::plain(e);
-        if !inert {
+            && out.last().is_some_and(|el| el.paint_metadata().is_none());
+        if !single {
             return;
         }
+        if (self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e) {
+            self.record_skip(e, &mark, now.start, opts, out);
+        }
+        self.record_replay(e, mark, now.start, opts, out);
+    }
+
+    /// Запись пропуска и повтора на месте (`recorder`) инертного ребёнка `e`.
+    fn record_skip(
+        &self,
+        e: &Element,
+        mark: &Mark,
+        end: Counters,
+        opts: &RenderOpts,
+        out: &mut Vec<AnyElement>,
+    ) {
         // Запись при другой ширине потока годна лишь независимому от неё блоку.
         let width = super::width::independent(e, opts.cx.vcx());
-        let flow = self.key.constraints.avail_w;
+        let flow = self.key.flow_width();
         if !self.settled && !self.reuse.width_recordable(e, width, flow) {
             return;
         }
@@ -232,7 +246,7 @@ impl FlowCx {
         let pending = Rc::new(Pending::new(
             self.key.clone(),
             mark.start,
-            now.start,
+            end,
             width,
             self.settled,
             unpainted,

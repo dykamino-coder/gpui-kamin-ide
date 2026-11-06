@@ -133,7 +133,7 @@ pub(super) fn copy_whole_box(
         tc.children = std::mem::take(kids).into();
         // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
         // от её ширины и доли размеров содержимого, а не от многоколоночника.
-        let col = line_col_w.map(|w| opts.inner(|cx| cx.constraints.avail_w = Some(w)));
+        let col = line_col_w.map(|w| opts.inner(|cx| cx.constraints.set_avail_w(Some(w))));
         let opts = col.as_deref().unwrap_or(opts);
         return Some(opts.cx.contracts.build.effects(
             table(&tc, inner, opts),

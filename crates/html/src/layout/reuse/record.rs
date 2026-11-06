@@ -32,7 +32,7 @@ impl Record {
     pub(super) fn fits_width(&self, key: &FlowKey) -> bool {
         match self.resizable {
             Some((lo, hi)) if lo <= 0.0 && hi.is_infinite() => true,
-            Some((lo, hi)) => key.constraints.avail_w.is_some_and(|w| lo <= w && w <= hi),
+            Some((lo, hi)) => key.flow_width().is_some_and(|w| lo <= w && w <= hi),
             None => false,
         }
     }

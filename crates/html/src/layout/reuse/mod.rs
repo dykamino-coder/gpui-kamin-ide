@@ -28,7 +28,9 @@ mod placeholder;
 mod plain;
 mod record;
 mod recorder;
+mod replay;
 mod source;
+mod store;
 #[cfg(test)]
 mod tests;
 mod width;
@@ -44,90 +46,7 @@ use source::{Shells, Source};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// Записи блоков одного документа между кадрами; переживают `update`.
-#[derive(Default)]
-pub(crate) struct Store {
-    /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
-    /// ключа их сбрасывает, а не держит устаревшие стили.
-    records: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
-    /// иначе (ширина меняется каждый кадр) запись не окупается.
-    last: RefCell<Option<Rc<FlowKey>>>,
-    /// Ключ кадра до `last`: повторная сборка того же кадра сравнивает с
-    /// ним, как первая (`FlowReuse::again`).
-    prev: RefCell<Option<Rc<FlowKey>>>,
-    /// Blocks whose text wrapped: not recorded in a flow no wider (`narrow`).
-    narrow: narrow::Wraps,
-    /// Блоки, отказанные `FlowReuse::validate`: пересборка кадра их собирает.
-    refused: RefCell<std::collections::HashSet<u64>>,
-    /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
-    /// годны только в кадре сразу после своего.
-    epoch: Cell<u64>,
-    /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
-    pub(crate) stats: Cell<ReuseStats>,
-}
-
-impl Store {
-    /// Начался prepaint документа; `continued` — его состояние элемента было
-    /// в прошлом кадре окна, то есть прошлый кадр рисовал этот документ.
-    /// Иначе цепочка кадров рвётся, и ни один диапазон повтора не годен.
-    pub(crate) fn draw(&self, continued: bool) {
-        self.epoch
-            .set(self.epoch.get() + if continued { 1 } else { 2 });
-    }
-
-    /// Запись блока `e`, если его поддерево то же, что при записи. Запись
-    /// изменённого блока (`Document::update`) не подойдёт ему никогда, а держит
-    /// прежнее поддерево (узлы, стили) всю сборку нового: она удаляется сразу,
-    /// до сборки блока, а не в конце кадра.
-    pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
-        let record = self.records.borrow().get(&e.node_id).cloned()?;
-        if record.source.same(e) {
-            return Some(record);
-        }
-        // Записи держат стили: карта меняется целиком, без `&mut` на них.
-        let mut records = self.records.take();
-        records.remove(&e.node_id);
-        self.records.replace(records);
-        None
-    }
-
-    /// Build inputs of the kept records, for tests.
-    #[cfg(test)]
-    pub(crate) fn recorded(&self) -> Vec<Element> {
-        let records = self.records.borrow();
-        records.values().map(|r| r.source.element()).collect()
-    }
-
-    /// Ширина потока сменилась: годны только записи, чья раскладка от неё
-    /// не зависит.
-    fn keep_width_independent(&self, key: &FlowKey) {
-        // Записи держат стили: карта меняется целиком, без `&mut` на них.
-        let mut records = self.records.take();
-        records.retain(|_, r| r.fits_width(key));
-        self.records.replace(records);
-    }
-
-    /// The flow key changed in more than its width: no record or wrap of
-    /// the last key holds.
-    fn reset(&self) {
-        self.records.take();
-        self.narrow.reset();
-    }
-}
-
-/// Счётчики наблюдения повтора блоков.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ReuseStats {
-    /// Blocks wrapped for recording (`recorder::Pending`).
-    pub tracked: u64,
-    pub recorded: u64,
-    pub skipped: u64,
-    pub rebuilt_frames: u64,
-    /// Из пропущенных — повторены из прошлого кадра (видимые).
-    pub replayed: u64,
-}
+pub(crate) use store::Store;
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -160,6 +79,9 @@ pub(crate) struct FlowReuse {
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
+    next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
+    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
+    replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
@@ -211,6 +133,9 @@ impl FlowReuse {
             pending: Default::default(),
             shells: Shells::default(),
             placeholders: Default::default(),
+            next_replays: Default::default(),
+            pending_replays: Default::default(),
+            replay_slots: Default::default(),
             screen: Cell::new(None),
             mask: Cell::new(None),
         }))

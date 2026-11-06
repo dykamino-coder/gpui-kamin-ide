@@ -9,7 +9,8 @@ impl FlowReuse {
     /// (тогда он помечается к повтору). `false` — кадр нужно собрать заново:
     /// негодные заместители отказаны (`Store::refused`) и будут собраны, а
     /// годные остаются. Отказанный лист имеет точный размер собранного блока,
-    /// поэтому новая раскладка ставит остальные на те же места.
+    /// поэтому новая раскладка ставит остальные на те же места. Повторы с
+    /// поддеревом раскладки проверяются тоже (`validate_replays`).
     pub(crate) fn validate(&self, window: &mut Window) -> bool {
         let scale = window.scale_factor();
         let mask = window.content_mask().bounds;
@@ -59,8 +60,9 @@ impl FlowReuse {
         }
         let ok = refused.is_empty();
         self.store.refused.borrow_mut().extend(refused);
-        ok
+        self.validate_replays(window) && ok
     }
+
     /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
     /// записи отдают записи вход сравнения и освобождаются.
     pub(crate) fn finish(&self) {
@@ -91,6 +93,7 @@ impl FlowReuse {
             }
         }
         self.learn_wraps();
+        self.finish_replays(screen);
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {

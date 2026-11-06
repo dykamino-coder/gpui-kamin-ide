@@ -45,6 +45,8 @@
 
 use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 use collections::{FxHashMap, FxHashSet};
+use std::any::Any;
+use std::rc::Rc;
 use taffy::tree::NodeId;
 
 /// Request history of the frame tree across passes.
@@ -72,6 +74,25 @@ pub(super) struct Retained {
     pub(super) keys_enabled: bool,
     /// Nodes claimed from a previous pass, for counters and tests.
     pub(super) claimed: u64,
+    /// Stamps of the nodes the host asked about: issued at the first request
+    /// after the node was created, kept while passes claim it. A claimed parent
+    /// has only claimed children, so an equal stamp means the whole subtree has
+    /// the inputs it had when it was stamped. Only asked nodes have an entry.
+    stamps: FxHashMap<NodeId, u64>,
+    last_stamp: u64,
+    /// Host values derived from a node's subtree (`Window::set_layout_memo`),
+    /// valid while the node keeps its stamp.
+    memos: FxHashMap<NodeId, Rc<dyn Any>>,
+    /// Requested styles of nodes a pass overrode in place (shrink-to-fit caps,
+    /// root stretch): restored at the end of the pass, so the next request
+    /// with the same style claims the node again.
+    overrides: FxHashMap<NodeId, taffy::Style>,
+    /// A measure function of a kept leaf ran in this pass. Only a leaf of a
+    /// subtree claimed whole (`claim_subtree`) keeps the retired function, so
+    /// its constraints changed and the caches of this pass's ancestors hold
+    /// results computed from a stub: the host rebuilds the frame and the tree
+    /// is dropped at the end of the pass.
+    stale: Rc<std::cell::Cell<bool>>,
 }
 
 impl Retained {
@@ -211,6 +232,11 @@ impl TaffyLayoutEngine {
         if self.frame_tree {
             self.retained.astray = true;
             self.retained.note(node.0);
+            // A recycled node starts a new subtree: its stamp and memo go.
+            if !self.retained.stamps.is_empty() {
+                self.retained.stamps.remove(&node.0);
+                self.retained.memos.remove(&node.0);
+            }
             if let Some(key) = key {
                 self.retained.keys.insert(node.0, key);
             }
@@ -221,13 +247,25 @@ impl TaffyLayoutEngine {
     /// End a pass of the frame tree: drop the nodes this pass did not request
     /// and make its requests the candidates of the next pass.
     pub(super) fn retire(&mut self) {
+        if self.retained.stale.get() {
+            self.forget();
+            self.taffy.clear();
+            return;
+        }
         let retained = &mut self.retained;
         let live = std::mem::take(&mut retained.live);
+        for (node, style) in retained.overrides.drain() {
+            if live.contains(&node) {
+                let _ = self.taffy.set_style(node, style);
+            }
+        }
         self.taffy.retain_nodes(|node| live.contains(&node));
+        retained.stamps.retain(|node, _| live.contains(node));
+        retained.memos.retain(|node, _| live.contains(node));
         // A kept leaf is measured again only by the function of the request
         // that claims it, so the old function and everything it captured (a
         // whole paragraph probe) need not outlive the frame.
-        let stub = retired_measure();
+        let stub = retired_measure(retained.stale.clone());
         for node in &live {
             if self.taffy.has_node_context(*node)
                 && let Some(context) = self.taffy.get_node_context_mut(*node)
@@ -256,17 +294,105 @@ impl TaffyLayoutEngine {
         self.retained = Retained::default();
     }
 
+    /// Remember the requested style of `node` before the pass overrides it.
+    pub(super) fn keep_requested_style(&mut self, node: NodeId) {
+        if self.frame_tree
+            && !self.retained.overrides.contains_key(&node)
+            && let Ok(style) = self.taffy.style(node)
+        {
+            self.retained.overrides.insert(node, style.clone());
+        }
+    }
+
+    /// The stamp of a node of this pass (see `Retained::stamps`).
+    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
+        let retained = &mut self.retained;
+        if !self.frame_tree {
+            return None;
+        }
+        if let Some(&stamp) = retained.stamps.get(&id.0) {
+            return Some(stamp);
+        }
+        if !retained.live.contains(&id.0) {
+            return None;
+        }
+        retained.last_stamp += 1;
+        retained.stamps.insert(id.0, retained.last_stamp);
+        Some(retained.last_stamp)
+    }
+
+    /// The host memo of a node, if the node kept its stamp since it was set.
+    pub fn layout_memo(&self, id: LayoutId) -> Option<Rc<dyn Any>> {
+        self.retained.memos.get(&id.0).cloned()
+    }
+
+    /// Attach a host value derived only from the node's subtree inputs; it
+    /// lives while the node is claimed and is dropped with the node.
+    pub fn set_layout_memo(&mut self, id: LayoutId, memo: Rc<dyn Any>) {
+        if self.layout_stamp(id).is_some() {
+            self.retained.memos.insert(id.0, memo);
+        }
+    }
+
+    /// Request position of this pass: a subtree requested from here on is
+    /// captured by `capture_subtree`.
+    pub fn request_position(&self) -> usize {
+        self.retained.seq.len()
+    }
+
+    /// The nodes requested since `start` when they form the subtree of `root`
+    /// (requested last), with the stamp of `root`. A later pass that keeps the
+    /// stamp may claim the subtree whole (`claim_subtree`).
+    pub fn capture_subtree(&mut self, start: usize, root: LayoutId) -> Option<(u64, Rc<[NodeId]>)> {
+        let nodes = self.retained.seq.get(start..)?;
+        if nodes.last() != Some(&root.0) {
+            return None;
+        }
+        let nodes: Rc<[NodeId]> = nodes.into();
+        let stamp = self.layout_stamp(root)?;
+        Some((stamp, nodes))
+    }
+
+    /// Claim a subtree captured in a previous pass without its requests. The
+    /// stamp of the root proves that every node of the subtree was kept with
+    /// its inputs; the leaves keep the retired measure function, so a layout
+    /// that needs a new measurement marks the pass stale (`layout_stale`).
+    pub fn claim_subtree(&mut self, stamp: u64, nodes: &[NodeId]) -> Option<LayoutId> {
+        let root = *nodes.last()?;
+        let retained = &mut self.retained;
+        if !self.frame_tree
+            || retained.stamps.get(&root) != Some(&stamp)
+            || nodes.iter().any(|node| retained.live.contains(node))
+        {
+            return None;
+        }
+        for node in nodes {
+            retained.note(*node);
+        }
+        retained.claimed += nodes.len() as u64;
+        Some(LayoutId(root))
+    }
+
+    /// Whether a leaf of a subtree claimed whole was measured in this pass.
+    pub fn layout_stale(&self) -> bool {
+        self.retained.stale.get()
+    }
+
     /// Nodes claimed from previous passes since the engine was created.
     pub fn claimed_nodes(&self) -> u64 {
         self.retained.claimed
     }
 }
 
-/// The measure function of a leaf between passes: a kept leaf gets the function
-/// of the request that claims it before any layout, so this one never measures.
-fn retired_measure() -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
+/// The measure function of a leaf between passes: a leaf claimed by its request
+/// gets that request's function before any layout, so this one measures only a
+/// leaf of a subtree claimed whole whose constraints changed; it marks the pass.
+fn retired_measure(
+    stale: Rc<std::cell::Cell<bool>>,
+) -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
     std::rc::Rc::new(std::cell::RefCell::new(node_measure(Box::new(
-        |_, _, _, _: &mut crate::Window, _: &mut crate::App| {
+        move |_, _, _, _: &mut crate::Window, _: &mut crate::App| {
+            stale.set(true);
             let none = crate::size(crate::Pixels(0.), crate::Pixels(0.));
             crate::MeasuredContent::from((none, None, None, None))
         },

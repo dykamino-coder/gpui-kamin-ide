@@ -181,7 +181,7 @@ impl Paragraph {
         };
         // Узел раскладки держит замер до конца кадра: готовый щуп и поля для
         // его пересборки не хранятся вместе, место берёт только один из них.
-        if let Some(key) = self.layout_key(rebuild) {
+        if let Some(key) = self.layout_key(window) {
             window.set_next_layout_key(key);
         }
         let mut source = if rebuild {

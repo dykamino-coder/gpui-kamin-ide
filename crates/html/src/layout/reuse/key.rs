@@ -58,26 +58,47 @@ fn same_boxes(a: &Option<Element>, b: &Option<Element>) -> bool {
 
 impl FlowKey {
     pub(super) fn same(&self, other: &Self) -> bool {
-        self.same_except_width(other)
-            && self.constraints == other.constraints
-            && self.viewport == other.viewport
+        self.same_outside_widths(other) && self.same_widths(other)
     }
 
-    /// Тот же поток, кроме инлайн-размера окна и содержащего блока: так
-    /// меняется ключ при смене ширины окна (Blink `ConstraintSpace` с другим
-    /// `AvailableSize().inline_size`). Ребёнку такого потока подходит запись,
-    /// только если его раскладка от этой ширины не зависит (`Width`).
-    pub(super) fn same_except_width(&self, other: &Self) -> bool {
+    /// Everything but the widths of the flow: the containing-block and
+    /// available widths of its children and the viewport width.
+    pub(super) fn same_outside_widths(&self, other: &Self) -> bool {
+        let (a, b) = (&self.constraints, &other.constraints);
         *self.root == *other.root
             && same_boxes(&self.html, &other.html)
             && same_boxes(&self.body, &other.body)
-            && self.constraints.avail_h == other.constraints.avail_h
-            && self.constraints.cell_bfc == other.constraints.cell_bfc
-            && self.constraints.cb_width.is_some() == other.constraints.cb_width.is_some()
-            && self.constraints.avail_w.is_some() == other.constraints.avail_w.is_some()
+            && a.avail_h == b.avail_h
+            && a.cell_bfc == b.cell_bfc
             && self.viewport.1 == other.viewport.1
             && self.text == other.text
             && self.normal_line_height == other.normal_line_height
             && self.fonts == other.fonts
+    }
+
+    /// The widths of the flow (see `same_outside_widths`).
+    pub(super) fn same_widths(&self, other: &Self) -> bool {
+        self.constraints.key_widths() == other.constraints.key_widths()
+            && self.viewport.0 == other.viewport.0
+    }
+
+    /// Тот же поток, кроме инлайн-размера окна и содержащего блока, оба
+    /// по-прежнему известны: так меняется ключ при смене ширины окна (Blink
+    /// `ConstraintSpace` с другим `AvailableSize().inline_size`). Ребёнку
+    /// такого потока подходит запись, только если его раскладка от этой
+    /// ширины не зависит (`Width`).
+    pub(super) fn same_except_width(&self, other: &Self) -> bool {
+        let (a, b) = (
+            self.constraints.key_widths(),
+            other.constraints.key_widths(),
+        );
+        self.same_outside_widths(other)
+            && a.0.is_some() == b.0.is_some()
+            && a.1.is_some() == b.1.is_some()
+    }
+
+    /// Ширина потока: доступная ширина его блоков `width: auto`.
+    pub(super) fn flow_width(&self) -> Option<f32> {
+        self.constraints.key_widths().1
     }
 }

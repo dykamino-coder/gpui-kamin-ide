@@ -16,6 +16,8 @@
 mod element;
 mod record;
 #[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
 mod resize_tests;
 #[cfg(test)]
 mod reuse_tests;
@@ -146,7 +148,7 @@ impl Document {
         self.reuse.stats.get().tracked
     }
 
-    /// Из пропущенных блоков — повторены из прошлого кадра на экране.
+    /// Blocks of the root flow replayed on screen without a build.
     pub fn replayed_blocks(&self) -> u64 {
         self.reuse.stats.get().replayed
     }

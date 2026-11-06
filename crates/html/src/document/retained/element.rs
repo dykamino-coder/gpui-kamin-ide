@@ -175,6 +175,7 @@ impl Element for Retained {
                 && let Some(record) = record
             {
                 self.replay = true;
+                self.builder.store.forget_replays();
                 self.slot.replays.set(self.slot.replays.get() + 1);
                 let prepaint = window.replay_retained_prepaint(&record.prepaint);
                 return ((), Record { prepaint, ..record });
