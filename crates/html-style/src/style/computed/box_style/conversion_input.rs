@@ -7,7 +7,7 @@ impl BoxStyle {
     /// Equal box values apart from the box's own identity: its registry keys (`self_node`,
     /// `cb_node`, `fixed_cb_node`, `anchor_seq`, `anchor_key`) and the link to its element's
     /// style stages (`element_style`, read only by `@position-try` resolution and cascade
-    /// publication). Two boxes for which this holds style an element identically. As Stylo's sharing cache and Blink's matched properties cache do,
+    /// publication) and the decorating box of its computed style (`same_values`). Two boxes for which this holds style an element identically. As Stylo's sharing cache and Blink's matched properties cache do,
     /// it compares inputs, not element identity: the shared computed style by allocation first,
     /// then by value. The destructuring is exhaustive, so a new field has to be classified here.
     pub fn same_box_values(&self, other: &Self) -> bool {
@@ -50,9 +50,57 @@ impl BoxStyle {
             && *canvas_background == other.canvas_background
             && try_style.is_none()
             && other.try_style.is_none()
-            && (Rc::ptr_eq(style, &other.style) || **style == *other.style)
+            && (Rc::ptr_eq(style, &other.style) || same_values(style, &other.style))
             && same_rc(paint, &other.paint)
     }
+}
+
+/// Equal computed values apart from `decor_box`: the identity of the box whose text
+/// decorations the element propagates (css-text-decor-3 §2.1), read only by the cascade
+/// that propagates them. Exhaustive, like `same_box_values`.
+fn same_values(a: &Computed, b: &Computed) -> bool {
+    let Computed {
+        decor_box: _,
+        block_tag,
+        plain_block_box,
+        clone_audit: _,
+        reset_text_box,
+        reset_cascade,
+        reset_box_layout,
+        reset_flex,
+        reset_border,
+        reset_grid,
+        reset_context,
+        reset_generated,
+        reset_svg_math,
+        reset_positioned,
+        reset_effects,
+        reset_background,
+        reset_mask,
+        reset_shapes,
+        reset_fragmentation,
+        reset_transforms,
+        inh,
+    } = a;
+    *block_tag == b.block_tag
+        && *plain_block_box == b.plain_block_box
+        && *reset_box_layout == b.reset_box_layout
+        && *reset_border == b.reset_border
+        && *reset_background == b.reset_background
+        && *reset_context == b.reset_context
+        && *reset_flex == b.reset_flex
+        && *reset_grid == b.reset_grid
+        && *reset_positioned == b.reset_positioned
+        && *reset_text_box == b.reset_text_box
+        && *reset_cascade == b.reset_cascade
+        && *reset_generated == b.reset_generated
+        && *reset_svg_math == b.reset_svg_math
+        && *reset_effects == b.reset_effects
+        && *reset_mask == b.reset_mask
+        && *reset_shapes == b.reset_shapes
+        && *reset_fragmentation == b.reset_fragmentation
+        && *reset_transforms == b.reset_transforms
+        && *inh == b.inh
 }
 
 fn same_rc<T: PartialEq>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
@@ -103,7 +151,10 @@ mod tests {
     #[test]
     fn equal_styles_in_two_allocations_match() {
         let a = BoxStyle::new(Computed::default());
-        let b = BoxStyle::new(Computed::default());
+        let b = BoxStyle::new(Computed {
+            decor_box: 12,
+            ..Default::default()
+        });
         assert!(a.same_box_values(&b));
         let mut other = Computed::default();
         other.block_tag = true;
