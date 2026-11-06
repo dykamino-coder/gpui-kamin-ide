@@ -86,15 +86,18 @@ impl AtomFit {
                 Some(&(_, h, b)) => (h, b),
                 None => {
                     a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
-                    let (s, b, _) = a.snap.measure_async(
-                        size(
-                            gpui::AvailableSpace::Definite(px(w)),
-                            gpui::AvailableSpace::MaxContent,
-                        ),
-                        window,
-                        cx,
-                        stack,
-                    ).await;
+                    let (s, b, _) = a
+                        .snap
+                        .measure_async(
+                            size(
+                                gpui::AvailableSpace::Definite(px(w)),
+                                gpui::AvailableSpace::MaxContent,
+                            ),
+                            window,
+                            cx,
+                            stack,
+                        )
+                        .await;
                     let (h, b) = (f32::from(s.height), b.map(f32::from));
                     AtomMemo::remember(&mut seen, (w, h, b));
                     (h, b)

@@ -119,7 +119,11 @@ pub(super) async fn paint_inline(
         .with_raster_paint_ctx_async(context, async |window| match job {
             queue::Job::Paint(mut child) => match tap {
                 Some(slot) => {
-                    let ((), paint) = window.record_retained_paint_async(async |w| child.paint_async(w, cx, stack).await).await;
+                    let ((), paint) = window
+                        .record_retained_paint_async(async |w| {
+                            child.paint_async(w, cx, stack).await
+                        })
+                        .await;
                     slot.0.replace(Some(paint));
                 }
                 None => child.paint_async(window, cx, stack).await,

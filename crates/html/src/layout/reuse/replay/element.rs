@@ -28,7 +28,12 @@ impl Wrap for ReplayRecorder {
         &mut self.child
     }
 
-    async fn request_layout_async(&mut self, window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack) -> LayoutId {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) -> LayoutId {
         let start = window.layout_request_position();
         let id = self.child.request_layout_async(window, cx, stack).await;
         let layout = window.capture_layout(start, id);
@@ -38,12 +43,20 @@ impl Wrap for ReplayRecorder {
         id
     }
 
-    async fn prepaint_async(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let callbacks = window.next_frame_callback_count();
         let plain = plain_environment(window);
-        let (_, range) = window.record_retained_prepaint_async(async |window| {
-            let _ = self.child.prepaint_async(window, cx, stack).await;
-        }).await;
+        let (_, range) = window
+            .record_retained_prepaint_async(async |window| {
+                let _ = self.child.prepaint_async(window, cx, stack).await;
+            })
+            .await;
         let quiet =
             range.quiet(window).is_some() && callbacks == window.next_frame_callback_count();
         let Some(id) = self.pending.layout.borrow().as_ref().map(|(_, id)| *id) else {
@@ -57,14 +70,27 @@ impl Wrap for ReplayRecorder {
         }
     }
 
-    async fn paint_async(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App, stack: &mut gpui::PaintStack) {
+    async fn paint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        stack: &mut gpui::PaintStack,
+    ) {
         let sink = self.pending.sink.clone();
         let callbacks = window.next_frame_callback_count();
-        let ((_, paint), jobs) = window.with_ink_sink_async(sink, async |window| {
-            tap_jobs(window, async |window| {
-                window.record_retained_paint_async(async |window| self.child.paint_async(window, cx, stack).await).await
-            }).await
-        }).await;
+        let ((_, paint), jobs) = window
+            .with_ink_sink_async(sink, async |window| {
+                tap_jobs(window, async |window| {
+                    window
+                        .record_retained_paint_async(async |window| {
+                            self.child.paint_async(window, cx, stack).await
+                        })
+                        .await
+                })
+                .await
+            })
+            .await;
         let prepaint = self
             .pending
             .prepaint
@@ -103,7 +129,12 @@ impl Hooks for Replay {
     type Layout = ();
     type Prepaint = ();
 
-    async fn request_layout_async(&mut self, window: &mut Window, cx: &mut App, _stack: &mut gpui::PaintStack) -> (LayoutId, ()) {
+    async fn request_layout_async(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) -> (LayoutId, ()) {
         let layout = self.slot.record.ranges(|r| r.layout.clone());
         match layout.and_then(|layout| window.request_retained_layout(&layout)) {
             Some(id) => {
@@ -115,7 +146,14 @@ impl Hooks for Replay {
         }
     }
 
-    async fn prepaint_async(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, _: &mut App, _stack: &mut gpui::PaintStack) {
+    async fn prepaint_async(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        _: &mut App,
+        _stack: &mut gpui::PaintStack,
+    ) {
         self.slot
             .record
             .ranges(|r| r.prepaint = window.replay_retained_prepaint(&r.prepaint));

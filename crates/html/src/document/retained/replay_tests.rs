@@ -146,23 +146,28 @@ fn a_replayed_frame_paints_the_line_phase_of_a_fresh_build(cx: &mut TestAppConte
 /// build; subsequent edits claim its layout whole and replay its line jobs.
 #[test]
 fn deep_recording_and_replay_keep_the_line_phase_on_a_small_stack() {
-    std::thread::Builder::new().stack_size(512 * 1024).spawn(|| {
-        let mut app = TestAppContext::single();
-        let head = format!(
-            "{}<span style='background:lime;text-decoration:underline'>leaf</span>{}",
-            "<div>".repeat(5000),
-            "</div>".repeat(5000),
-        );
-        let page = |text: &str| {
-            format!("<body style='margin:0'>{head}<p>{text}</p><p>tail</p></body>")
-        };
-        let (view, cx) = settled(&mut app, &page("two"), &page("one"));
-        update(&view, cx, &page("two"));
-        update(&view, cx, &page("one"));
-        assert_eq!(replayed(&view, cx), 2, "the deep block or tail was rebuilt");
-        let replay = scene(cx);
-        let (_, fresh) = open(cx, &page("one"));
-        frame(fresh);
-        assert_eq!(replay, scene(fresh), "deep replay changed the line phase");
-    }).unwrap().join().unwrap();
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(|| {
+            let mut app = TestAppContext::single();
+            let head = format!(
+                "{}<span style='background:lime;text-decoration:underline'>leaf</span>{}",
+                "<div>".repeat(5000),
+                "</div>".repeat(5000),
+            );
+            let page = |text: &str| {
+                format!("<body style='margin:0'>{head}<p>{text}</p><p>tail</p></body>")
+            };
+            let (view, cx) = settled(&mut app, &page("two"), &page("one"));
+            update(&view, cx, &page("two"));
+            update(&view, cx, &page("one"));
+            assert_eq!(replayed(&view, cx), 2, "the deep block or tail was rebuilt");
+            let replay = scene(cx);
+            let (_, fresh) = open(cx, &page("one"));
+            frame(fresh);
+            assert_eq!(replay, scene(fresh), "deep replay changed the line phase");
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

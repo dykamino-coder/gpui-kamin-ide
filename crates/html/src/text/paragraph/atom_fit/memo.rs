@@ -39,13 +39,18 @@ impl AtomMemo {
         stack: &mut gpui::PaintStack,
     ) -> Self {
         let content = |w| size(w, gpui::AvailableSpace::MaxContent);
-        let (smin, _, _) = snap.measure_async(content(gpui::AvailableSpace::MinContent), window, cx, stack).await;
+        let (smin, _, _) = snap
+            .measure_async(content(gpui::AvailableSpace::MinContent), window, cx, stack)
+            .await;
         let min = f32::from(smin.width);
         let snap = if min < max - COORD_EPS {
-            let (smax, sbase, _) =
-                snap.measure_async(content(gpui::AvailableSpace::MaxContent), window, cx, stack).await;
+            let (smax, sbase, _) = snap
+                .measure_async(content(gpui::AvailableSpace::MaxContent), window, cx, stack)
+                .await;
             Some((f32::from(smax.height), sbase.map(f32::from)))
-        } else { None };
+        } else {
+            None
+        };
         Self {
             min,
             max,
