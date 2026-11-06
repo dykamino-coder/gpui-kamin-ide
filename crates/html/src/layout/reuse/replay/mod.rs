@@ -210,7 +210,11 @@ impl super::FlowReuse {
     pub(super) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
         let mut replays = self.next_replays.take();
         let mut reads = self.store.reads_widths.take();
-        for (pending, source) in self.pending_replays.take() {
+        let pending = self.pending_replays.take();
+        let mut stats = self.store.stats.get();
+        stats.replay_tracked += pending.len() as u64;
+        self.store.stats.set(stats);
+        for (pending, source) in pending {
             let node = source.id();
             if pending.widths.get() {
                 reads.insert(node);

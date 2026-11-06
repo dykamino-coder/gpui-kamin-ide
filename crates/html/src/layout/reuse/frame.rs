@@ -90,16 +90,22 @@ impl FlowReuse {
         let epoch = self.store.epoch.get();
         let pending = self.pending.take();
         let tracked = pending.len() as u64;
+        let mut unrecorded = self.store.unrecorded.take();
         for (pending, source) in pending {
+            let node = source.id();
             let finished = pending.finish(source, screen, mask, epoch);
             if let Some(narrow) = finished.narrow {
                 self.narrowed.add(narrow);
             }
             if let Some(record) = finished.record {
-                next.insert(record.source.id(), Rc::new(record));
+                next.insert(node, Rc::new(record));
+                unrecorded.remove(&node);
                 recorded += 1;
+            } else {
+                unrecorded.insert(node);
             }
         }
+        self.store.unrecorded.replace(unrecorded);
         self.learn_wraps();
         self.finish_replays(screen);
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:

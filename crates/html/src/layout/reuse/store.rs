@@ -21,6 +21,9 @@ pub(crate) struct Store {
     /// Blocks whose last replay recording read a width from outside: their
     /// records fit only the same widths.
     pub(super) reads_widths: RefCell<HashSet<u64>>,
+    /// Blocks whose last skip wrap (`recorder::Pending`) ended without a
+    /// record: a build at a changed width wraps them for subtree replay too.
+    pub(super) unrecorded: RefCell<HashSet<u64>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
     pub(super) last: RefCell<Option<Rc<FlowKey>>>,
@@ -111,6 +114,10 @@ impl Store {
     pub(super) fn reads_widths(&self, node: u64) -> bool {
         self.reads_widths.borrow().contains(&node)
     }
+
+    pub(super) fn unrecorded(&self, node: u64) -> bool {
+        self.unrecorded.borrow().contains(&node)
+    }
 }
 
 /// Счётчики наблюдения повтора блоков.
@@ -127,4 +134,6 @@ pub struct ReuseStats {
     pub replayed: u64,
     /// Of `replayed`, blocks whose layout subtree was claimed whole.
     pub subtrees: u64,
+    /// Blocks wrapped for a subtree replay record (`replay::PendingReplay`).
+    pub replay_tracked: u64,
 }

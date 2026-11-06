@@ -224,9 +224,27 @@ impl FlowCx {
             && (!edge || self.edges)
             && mark.inert.of(e)
             && self.record_skip(e, &mark, now.start, opts, out);
-        // Первая устоявшаяся сборка пишет для повтора лишь блоки, не
-        // записанные для пропуска (`mark::replay_worth_recording`).
-        if !(skip && self.settled && !self.warm) {
+        // Блок, обёрнутый для пропуска, не пишется для повтора:
+        // - первой устоявшейся сборкой: она собирает весь поток, а ближние
+        //   блоки для повтора запишет следующая (`mark::replay_worth_recording`);
+        // - сборкой при новой ширине: она оборачивает лишь блоки фиксированной
+        //   ширины или растянутые (`width_recordable`); первых при любой
+        //   ширине заменит заместитель, вторых повтор не пишет
+        //   (`plain::fills_width`);
+        // - тёплой устоявшейся сборкой, если блок заполняет ширину или его
+        //   прошлая запись повтора читала её снаружи: такая запись годна
+        //   лишь при тех же ширинах, где блок заменит заместитель. Иначе она
+        //   нужна первому кадру другой ширины, если `width::independent` не
+        //   доказал независимость.
+        // Исключение в двух последних случаях — блок, прошлая обёртка
+        // которого записи пропуска не дала (`Store::unrecorded`).
+        let store = &self.reuse.store;
+        let same_widths_only = || super::plain::fills_width(e) || store.reads_widths(e.node_id);
+        let skipped = skip
+            && (self.settled && !self.warm
+                || !store.unrecorded(e.node_id)
+                    && (self.resized || self.settled && same_widths_only()));
+        if !skipped {
             self.record_replay(e, mark, now.start, opts, out);
         }
     }

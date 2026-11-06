@@ -153,6 +153,12 @@ impl Document {
         self.reuse.stats.get().replayed
     }
 
+    /// Blocks wrapped for a subtree replay record so far (`layout::reuse::replay`).
+    #[cfg(test)]
+    pub(crate) fn replay_tracked_blocks(&self) -> u64 {
+        self.reuse.stats.get().replay_tracked
+    }
+
     /// Of `replayed_blocks`, those whose layout subtree was claimed whole.
     #[cfg(test)]
     pub(crate) fn replayed_subtrees(&self) -> u64 {
