@@ -14346,7 +14346,7 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d54ec4202c
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..08d6f4f4967fd890069dcb652316d15f19f59842
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
 @@ -0,0 +1,46 @@
@@ -14424,17 +14424,30 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +}
 +
 +#[derive(Clone)]
-@@ -29 +86,6 @@
+@@ -29,2 +86,18 @@
 -    measure: NodeMeasureFn,
+-}
 +    // KaminIDE patch: intrinsic callbacks cannot overwrite performed static rects.
 +    static_positions: Vec<MeasuredStaticPosition>,
 +    measure: std::rc::Rc<std::cell::RefCell<NodeMeasureFn>>,
 +    layout_lines: Option<Vec<Pixels>>,
 +    layout_lines_x: Option<Vec<Pixels>>,
 +    layout_lines_x_from_right: bool,
-@@ -31,0 +94 @@
++    /// KaminIDE patch: index of this keyed leaf in its key's candidate list
++    /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
++    key_slot: u32,
++}
++
++// The retained-tree field above fills padding: every node of the frame tree has
++// a context slot (a dense secondary map), so a larger context costs every node.
++const _: () = assert!(
++    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
++        || std::mem::size_of::<usize>() != 8
++);
++
+@@ -31,0 +105 @@
 +    final_geometry: final_geometry::FinalGeometry,
-@@ -34,2 +97,9 @@
+@@ -34,2 +108,9 @@
 -    /// Unrounded absolute border-box top-left per-node coordinate in device pixels.
 -    absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
 +    /// KaminIDE patch: абсолютная позиция узла в физических точках БЕЗ
@@ -14446,7 +14459,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +    root_origins: FxHashMap<LayoutId, (f32, f32)>,
 +    /// Paint placement of a subtree, applied before device-pixel rounding.
 +    placed_origins: FxHashMap<LayoutId, (f32, f32)>,
-@@ -37,0 +108,7 @@
+@@ -37,0 +119,7 @@
 +    /// KaminIDE patch: the window's frame tree, sized by the frame's elements;
 +    /// independent subtrees hold only their own nodes.
 +    frame_tree: bool,
@@ -14454,11 +14467,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +    retained: retained::Retained,
 +    /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
 +    styles: style_share::StyleShare,
-@@ -40,0 +118,3 @@
+@@ -40,0 +129,3 @@
 +
 +/// KaminIDE patch: node count from which a full frame tree grows to the frame's hint.
 +const RESERVE_FROM_NODES: usize = 4096;
-@@ -44 +124,19 @@
+@@ -44 +135,19 @@
 -        let mut taffy = TaffyTree::new();
 +        Self {
 +            frame_tree: true,
@@ -14479,14 +14492,14 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        // (6 точек = 7.5 физических) округлялась вверх на каждом уровне, и
 +        // ошибка копилась вглубь вложенности: на 11 уровнях блок уезжал на
 +        // 5 физических точек против браузера (поймано сравнением с Chrome).
-@@ -46,0 +145 @@
+@@ -46,0 +156 @@
 +            final_geometry: final_geometry::FinalGeometry::default(),
-@@ -49 +148,3 @@
+@@ -49 +159,3 @@
 -            absolute_outer_origins: FxHashMap::default(),
 +            absolute_unrounded: FxHashMap::default(),
 +            root_origins: FxHashMap::default(),
 +            placed_origins: FxHashMap::default(),
-@@ -51,0 +153,19 @@
+@@ -51,0 +164,19 @@
 +            frame_tree: false,
 +            retained: retained::Retained::default(),
 +            styles: Default::default(),
@@ -14506,7 +14519,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +            && self.taffy.total_node_count() >= RESERVE_FROM_NODES
 +        {
 +            self.taffy.reserve_nodes(expected());
-@@ -56 +176,9 @@
+@@ -56 +187,9 @@
 -        self.taffy.clear();
 +        self.final_geometry = final_geometry::FinalGeometry::default();
 +        if self.frame_tree {
@@ -14517,11 +14530,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +            self.styles.clear();
 +        }
 +        self.absolute_unrounded.clear();
-@@ -58 +186,2 @@
+@@ -58 +197,2 @@
 -        self.absolute_outer_origins.clear();
 +        self.root_origins.clear();
 +        self.placed_origins.clear();
-@@ -59,0 +189,37 @@
+@@ -59,0 +200,37 @@
 +    }
 +
 +    /// KaminIDE patch: поставить корень отдельного дерева (`layout_as_root`)
@@ -14559,10 +14572,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                    .map(Into::into),
 +            );
 +        }
-@@ -64 +230 @@
+@@ -64 +241 @@
 -        style: Style,
 +        style: &Style,
-@@ -69,3 +235,58 @@
+@@ -69,3 +246,58 @@
 -        let taffy_style = style.to_taffy(rem_size, scale_factor);
 -
 -        if children.is_empty() {
@@ -14624,7 +14637,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                .expect(EXPECT_MESSAGE);
 +            LayoutId(node)
 +        } else if children.is_empty() {
-@@ -82 +303,23 @@
+@@ -82 +314,23 @@
 -        }
 +        };
 +        self.created(id, None)
@@ -14649,10 +14662,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        self.forget();
 +        self.taffy.clear();
 +        self.styles.clear();
-@@ -90 +333 @@
+@@ -90 +344 @@
 -        measure: impl FnMut(
 +        mut measure: impl FnMut(
-@@ -98,9 +341,31 @@
+@@ -98,9 +352,31 @@
 -        let taffy_style = style.to_taffy(rem_size, scale_factor);
 -        let measure = Box::new(measure) as Box<MeasureFn>;
 -        #[cfg(feature = "stacker")]
@@ -14693,9 +14706,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                (size, first, None)
 +            },
 +        )
-@@ -127,0 +393 @@
+@@ -127,0 +404 @@
 +        self.keep_requested_style(id.0);
-@@ -185,0 +452,21 @@
+@@ -185,0 +463,21 @@
 +    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
 +    /// линии содержимого (`last baseline`, css-align-3 §9.1).
 +    pub fn request_measured_layout_with_baselines(
@@ -14717,20 +14730,20 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        })
 +    }
 +
-@@ -186,0 +474,2 @@
+@@ -186,0 +485,2 @@
 +    // KaminIDE patch: счётчики раскладки (`frame_perf`) — по ним видно, что
 +    // кадр дорог не рисованием, а числом узлов и замеров.
-@@ -204,0 +494 @@
+@@ -204,0 +505 @@
 +        crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -210 +500 @@
+@@ -210 +511 @@
 -                self.absolute_outer_origins.remove(&id);
 +                self.absolute_unrounded.remove(&id);
-@@ -229,0 +520,2 @@
+@@ -229,0 +531,2 @@
 +        self.begin_geometry(id);
 +        let logical_space = available_space;
-@@ -234,0 +527 @@
+@@ -234,0 +538 @@
 +        let _taffy_started = std::time::Instant::now();
-@@ -239,26 +532,2 @@
+@@ -239,26 +543,2 @@
 -                |known_dimensions, available_space, _id, node_context, _style| {
 -                    let Some(node_context) = node_context else {
 -                        return taffy::geometry::Size::default();
@@ -14759,7 +14772,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 -                    snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
 +                |inputs, _id, node_context, style| {
 +                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
-@@ -267,0 +537,137 @@
+@@ -267,0 +548,137 @@
 +        self.finish_geometry(id, logical_space, scale_factor);
 +        crate::frame_perf::TAFFY_US.fetch_add(
 +            _taffy_started.elapsed().as_micros() as u32,
@@ -14897,7 +14910,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +            .copied()
 +            .unwrap_or((0.0, 0.0));
 +        Some(((ax / scale_factor, ay / scale_factor), cols, rows))
-@@ -350,6 +756,8 @@
+@@ -350,6 +767,8 @@
 -        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
 -        let layout_location = layout.location;
 -        let layout_size = layout.size;
@@ -14912,7 +14925,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        // ошибка не копится по глубине. Размер считается как разность
 +        // округлённых краёв — иначе соседние блоки расходились бы щелью.
 +        let (parent_x, parent_y) = match self.taffy.parent(id.0) {
-@@ -357,7 +765,9 @@
+@@ -357,7 +776,9 @@
 -                let parent_id = LayoutId::from(parent_id);
 -                self.layout_bounds(parent_id, scale_factor);
 -                let parent_origin = *self
@@ -14929,11 +14942,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                // KaminIDE patch: content of a `vertical-align: baseline`
 +                // table cell sits lower than its box (taffy `content_shift`).
 +                (px, py + self.taffy.content_shift(parent_id))
-@@ -365 +775,2 @@
+@@ -365 +786,2 @@
 -            None => Point::from(layout_location),
 +            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
 +            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
-@@ -367,10 +778,15 @@
+@@ -367,10 +789,15 @@
 -        self.absolute_outer_origins
 -            .insert(id, absolute_outer_origin);
 -
@@ -14959,7 +14972,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                Pixels(((ay + layout.size.height).round() - ry) / scale_factor),
 +            ),
 +        };
-@@ -412,14 +828,12 @@
+@@ -412,14 +839,12 @@
 -fn snap_measured_size_to_device_pixels(size: Size<Pixels>, scale_factor: f32) -> Size<f32> {
 -    size.map(|d| ceil_to_device_pixel(d.0.max(0.0), scale_factor))
 -}
@@ -14986,7 +14999,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
 +    let Ok(child) = tree.child_at_index(parent, index) else {
 +        return false;
-@@ -427,6 +841,21 @@
+@@ -427,6 +852,21 @@
 -    TaffyRect {
 -        top: snap(&widths.top),
 -        right: snap(&widths.right),
@@ -15014,7 +15027,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +    }
 +    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
 +    tree.set_style(child, style).is_ok()
-@@ -448,0 +878,105 @@
+@@ -448,0 +889,105 @@
 +            }
 +        }
 +
@@ -15120,19 +15133,19 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +            match to_grid_track::<String>(track, scale_factor) {
 +                taffy::GridTemplateComponent::Single(one) => vec![one],
 +                _ => Default::default(),
-@@ -483 +1017 @@
+@@ -483 +1028 @@
 -        taffy::style::Style {
 +        let mut out = taffy::style::Style {
-@@ -484,0 +1019,3 @@
+@@ -484,0 +1030,3 @@
 +            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
 +                vertical, block_reverse, inline_reverse,
 +            }),
-@@ -492,0 +1030,4 @@
+@@ -492,0 +1041,4 @@
 +            aspect_ratio_preferred_size: taffy::Size {
 +                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
 +                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
 +            },
-@@ -495,5 +1036,22 @@
+@@ -495,5 +1047,22 @@
 -            border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
 -            align_items: self.align_items.map(|x| x.into()),
 -            align_self: self.align_self.map(|x| x.into()),
@@ -15160,7 +15173,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                self.safe_alignment.3,
 +            )
 +            .unwrap_or(taffy::JustifyContent::NORMAL),
-@@ -502 +1060,68 @@
+@@ -502 +1071,68 @@
 -            flex_wrap: self.flex_wrap.into(),
 +            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
 +            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
@@ -15230,10 +15243,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +            }),
 +            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
 +            subgrid: self.grid_subgrid,
-@@ -503,0 +1129,2 @@
+@@ -503,0 +1140,2 @@
 +            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
 +            item_is_table: self.item_is_table,
-@@ -506,2 +1133,70 @@
+@@ -506,2 +1144,70 @@
 -            grid_template_rows: to_grid_repeat(&self.grid_rows),
 -            grid_template_columns: to_grid_repeat(&self.grid_cols),
 +            // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -15306,7 +15319,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +                    .collect::<Vec<_>>()
 +                    .into()
 +            },
-@@ -519 +1214,132 @@
+@@ -519 +1225,132 @@
 -        }
 +        };
 +        if let Some(keyword) = self.sizing_keywords[0] {
@@ -15440,26 +15453,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        && auto(&out.grid_row.end)
 +    {
 +        out.grid_row.end = placement(p);
-@@ -525 +1351,5 @@
+@@ -525 +1362,5 @@
 -        round_to_device_pixel(self.to_pixels(rem_size).0, scale_factor)
 +        // KaminIDE patch: no pre-layout snapping of authored lengths (upstream
 +        // rounds them to device pixels here). CSS layout is fractional; edges
 +        // are snapped once, on absolute coordinates, in `layout_bounds`, and
 +        // border widths by the HTML painter (`border_snap`). See decisions.md.
 +        self.to_pixels(rem_size).0 * scale_factor
-@@ -557,0 +1388,3 @@
+@@ -557,0 +1399,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -568,0 +1402,3 @@
+@@ -568,0 +1413,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -577,0 +1414,3 @@
+@@ -577,0 +1425,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -745,17 +1584,7 @@
+@@ -745,17 +1595,7 @@
 -#[cfg(test)]
 -mod tests {
 -    use super::*;
@@ -15484,7 +15497,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..945c6597ee09b8642afe11bacf0f67d5
 +        crate::frame_perf::MEASURE_US.fetch_add(
 +            self.0.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
-@@ -763,14 +1592,2 @@
+@@ -763,14 +1603,2 @@
 -        assert_eq!(
 -            taffy_border.right,
 -            taffy::style::LengthPercentage::length(1.0)
@@ -15737,10 +15750,10 @@ index 0000000000000000000000000000000000000000..89000146dbb60f38d82c29c3230d4f1b
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/content_line/tests.rs b/vendor/gpui/src/taffy/content_line/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..36d44568b6a7f06b8be83685b509b3a2d8c6c0c2
+index 0000000000000000000000000000000000000000..00078f209abfc921f7023eec5b257d8eb17732bd
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/content_line/tests.rs
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,93 @@
 +//! Запрос готового дерева пропускает пустой блок и внепоточных детей.
 +use super::*;
 +use std::{cell::RefCell, rc::Rc};
@@ -15758,6 +15771,7 @@ index 0000000000000000000000000000000000000000..36d44568b6a7f06b8be83685b509b3a2
 +        layout_lines: None,
 +        layout_lines_x: None,
 +        layout_lines_x_from_right: false,
++        key_slot: crate::taffy::retained::NO_SLOT,
 +    };
 +    let empty = tree
 +        .new_leaf(taffy::Style {
@@ -16726,10 +16740,10 @@ index 0000000000000000000000000000000000000000..8f296b54deb2cfacf0c94c9834f49134
 +}
 diff --git a/vendor/gpui/src/taffy/line_baselines.rs b/vendor/gpui/src/taffy/line_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8eb6f82cf0636cff8b4159608bd813a83f1108b5
+index 0000000000000000000000000000000000000000..5b17de42f8afd80149e56b6b615e6c1a6ed1a086
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/line_baselines.rs
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,127 @@
 +//! Keep complete content line baselines alongside the matching performed native layout.
 +
 +use super::*;
@@ -16811,6 +16825,7 @@ index 0000000000000000000000000000000000000000..8eb6f82cf0636cff8b4159608bd813a8
 +            layout_lines: None,
 +            layout_lines_x: None,
 +            layout_lines_x_from_right: false,
++            key_slot: crate::taffy::retained::NO_SLOT,
 +        });
 +        // KaminIDE patch: a keyed leaf keeps a previous leaf of the same key.
 +        let key = self.retained.next_key.take();
@@ -17282,10 +17297,10 @@ index 0000000000000000000000000000000000000000..c02b87ba851186e3728cf786b8534bff
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/measurement_tests.rs b/vendor/gpui/src/taffy/measurement_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b30618d71f9b078436f214df9673307790df4e0f
+index 0000000000000000000000000000000000000000..41ce8cd6b207628062fbe6d4818abb7716aa05d3
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement_tests.rs
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,84 @@
 +//! Independent subtree measurement keeps native layout caches and callbacks separate.
 +
 +use super::*;
@@ -17353,6 +17368,7 @@ index 0000000000000000000000000000000000000000..b30618d71f9b078436f214df96733077
 +        layout_lines: None,
 +        layout_lines_x: None,
 +        layout_lines_x_from_right: false,
++        key_slot: crate::taffy::retained::NO_SLOT,
 +    };
 +    let callback = Rc::downgrade(&context.measure);
 +    let root = source
@@ -17505,10 +17521,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8c681c727
+index 0000000000000000000000000000000000000000..66a9b19a5ecdeed72b1aef0bc21697def4a215cc
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,356 @@
+@@ -0,0 +1,391 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17528,7 +17544,8 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +//! - a plain leaf is the node at the same position of the previous pass's
 +//!   request sequence, when it is still a childless plain leaf of that style;
 +//! - a measured leaf is any unclaimed previous leaf with the same layout key
-+//!   and style (equal keys mean interchangeable measurements).
++//!   and style (equal keys mean interchangeable measurements), the one at the
++//!   same request position first.
 +//!
 +//! Styles are compared by value (shared allocation first, `style_share`); a
 +//! claimed node takes this pass's shared allocation of its equal style.
@@ -17537,12 +17554,19 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +//! its ancestors are new nodes as well, and new nodes start with empty caches.
 +//! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
 +//! were not claimed are dropped in one sweep (`TaffyTree::retain_nodes`).
++//!
++//! The bookkeeping lives on the nodes where it can: a key's candidate slot in
++//! the measured leaf's context, the pinned identity of a stamped node in its
++//! Taffy node; only keys and memos are side tables.
 +
 +use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
 +use collections::{FxHashMap, FxHashSet};
 +use std::any::Any;
 +use std::rc::Rc;
 +use taffy::tree::NodeId;
++
++/// `NodeContext::key_slot` of a leaf that is in no candidate list.
++pub(super) const NO_SLOT: u32 = u32::MAX;
 +
 +/// Request history of the frame tree across passes.
 +#[derive(Default)]
@@ -17553,29 +17577,26 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +    seq: Vec<NodeId>,
 +    /// Nodes requested (claimed or created) in this pass.
 +    live: FxHashSet<NodeId>,
-+    /// Layout keys of the measured leaves in the tree.
++    /// Layout keys of the keyed measured leaves in the tree.
 +    keys: FxHashMap<NodeId, u64>,
-+    /// Unclaimed measured leaves of the previous pass by layout key.
-+    by_key: FxHashMap<u64, Vec<NodeId>>,
++    /// Unclaimed measured leaves of the previous pass by layout key. Each
++    /// leaf's index in its list is `NodeContext::key_slot`, so a claimed or
++    /// recycled leaf leaves its list in O(1) and a key shared by many leaves
++    /// never makes a request scan the leaves already claimed.
++    pub(super) by_key: FxHashMap<u64, Vec<NodeId>>,
 +    /// Layout key for the next measured leaf request.
 +    pub(super) next_key: Option<u64>,
 +    /// Whether the host vouches for its layout keys now (Window::with_layout_keys).
 +    pub(super) keys_enabled: bool,
 +    /// Nodes claimed from a previous pass, for counters and tests.
 +    pub(super) claimed: u64,
-+    /// Stamps of the nodes the host asked about: issued at the first request
-+    /// after the node was created, kept while passes claim it. A claimed parent
-+    /// has only claimed children, so an equal stamp means the whole subtree has
-+    /// the inputs it had when it was stamped. Only asked nodes have an entry.
-+    stamps: FxHashMap<NodeId, u64>,
-+    last_stamp: u64,
 +    /// Host values derived from a node's subtree (`Window::set_layout_memo`),
 +    /// valid while the node keeps its stamp.
 +    memos: FxHashMap<NodeId, Rc<dyn Any>>,
 +    /// Requested styles of nodes a pass overrode in place (shrink-to-fit caps,
 +    /// root stretch): restored at the end of the pass, so the next request
 +    /// with the same style claims the node again.
-+    overrides: FxHashMap<NodeId, taffy::Style>,
++    overrides: FxHashMap<NodeId, taffy::SharedStyle>,
 +    /// A measure function of a kept leaf ran in this pass. Only a leaf of a
 +    /// subtree claimed whole (`claim_subtree`) keeps the retired function, so
 +    /// its constraints changed and the caches of this pass's ancestors hold
@@ -17657,15 +17678,11 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +        let node = match at_position {
 +            Some(node) => node,
 +            None => {
-+                let candidates = self.retained.by_key.get_mut(&key)?;
-+                // Leaves claimed at their positions stay listed; drop them lazily.
-+                while candidates.last().is_some_and(|node| live.contains(node)) {
-+                    candidates.pop();
-+                }
-+                let at = candidates.iter().rposition(fits)?;
-+                candidates.swap_remove(at)
++                let candidates = self.retained.by_key.get(&key)?;
++                candidates[candidates.iter().rposition(fits)?]
 +            }
 +        };
++        self.unlist(key, node);
 +        let fresh = context.take()?;
 +        if let Some(old) = self.taffy.get_node_context_mut(node) {
 +            old.measure = fresh.measure;
@@ -17673,18 +17690,42 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +        Some(self.claim(node, style))
 +    }
 +
++    /// Take the previous measured leaf `node` out of the candidates of `key`.
++    fn unlist(&mut self, key: u64, node: NodeId) {
++        let Some(context) = self.taffy.get_node_context_mut(node) else {
++            return;
++        };
++        let at = std::mem::replace(&mut context.key_slot, NO_SLOT);
++        let Some(list) = self.retained.by_key.get_mut(&key) else {
++            return;
++        };
++        let at = at as usize;
++        if list.get(at) == Some(&node) {
++            list.swap_remove(at);
++            if let Some(&moved) = list.get(at)
++                && let Some(context) = self.taffy.get_node_context_mut(moved)
++            {
++                context.key_slot = at as u32;
++            }
++        }
++    }
++
 +    /// An unclaimed previous node at this request's position, whose storage a
 +    /// new node takes (TaffyTree::reset_node): a pass that claims little
-+    /// then holds about one tree, not the previous and the new one.
++    /// then holds about one tree, not the previous and the new one. A node
++    /// with a pinned identity (`layout_stamp`) is never reused: its id must
++    /// not name another subtree.
 +    pub(super) fn recycle(&mut self) -> Option<NodeId> {
 +        if !self.frame_tree {
 +            return None;
 +        }
 +        let node = *self.retained.prev.get(self.retained.seq.len())?;
-+        if self.retained.live.contains(&node) {
++        if self.retained.live.contains(&node) || self.taffy.identity_pinned(node) {
 +            return None;
 +        }
-+        self.retained.keys.remove(&node);
++        if let Some(key) = self.retained.keys.remove(&node) {
++            self.unlist(key, node);
++        }
 +        Some(node)
 +    }
 +
@@ -17703,11 +17744,10 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +    pub(super) fn created(&mut self, node: LayoutId, key: Option<u64>) -> LayoutId {
 +        if self.frame_tree {
 +            self.retained.note(node.0);
-+            // A recycled node starts a new subtree: its stamp and memo go.
-+            if !self.retained.stamps.is_empty() {
-+                self.retained.stamps.remove(&node.0);
-+                self.retained.memos.remove(&node.0);
-+            }
++            debug_assert!(
++                !self.retained.memos.contains_key(&node.0),
++                "a reused node never had a stamp, so it has no memo"
++            );
 +            if let Some(key) = key {
 +                self.retained.keys.insert(node.0, key);
 +            }
@@ -17725,13 +17765,13 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +        }
 +        let retained = &mut self.retained;
 +        let live = std::mem::take(&mut retained.live);
-+        for (node, style) in retained.overrides.drain() {
++        // Taken, not drained: the table is freed between passes.
++        for (node, style) in std::mem::take(&mut retained.overrides) {
 +            if live.contains(&node) {
 +                let _ = self.taffy.set_style(node, style);
 +            }
 +        }
 +        self.taffy.retain_nodes(|node| live.contains(&node));
-+        retained.stamps.retain(|node, _| live.contains(node));
 +        retained.memos.retain(|node, _| live.contains(node));
 +        // A kept leaf is measured again only by the function of the request
 +        // that claims it, so the old function and everything it captured (a
@@ -17747,7 +17787,11 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +        retained.keys.retain(|node, _| live.contains(node));
 +        retained.by_key.clear();
 +        for (node, key) in &retained.keys {
-+            retained.by_key.entry(*key).or_default().push(*node);
++            let list = retained.by_key.entry(*key).or_default();
++            if let Some(context) = self.taffy.get_node_context_mut(*node) {
++                context.key_slot = list.len() as u32;
++            }
++            list.push(*node);
 +        }
 +        retained.prev = std::mem::take(&mut retained.seq);
 +        retained.next_key = None;
@@ -17765,27 +17809,22 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +    pub(super) fn keep_requested_style(&mut self, node: NodeId) {
 +        if self.frame_tree
 +            && !self.retained.overrides.contains_key(&node)
-+            && let Ok(style) = self.taffy.style(node)
++            && let Ok(style) = self.taffy.shared_style(node)
 +        {
-+            self.retained.overrides.insert(node, style.clone());
++            self.retained.overrides.insert(node, style);
 +        }
 +    }
 +
-+    /// The stamp of a node of this pass (see `Retained::stamps`).
++    /// The stamp of a node of this pass: its id, pinned so that no other
++    /// subtree takes it over (`recycle`). A node keeps its id while passes
++    /// claim it, and a claimed parent has only claimed children, so an equal
++    /// stamp means the whole subtree has the inputs it had when it was stamped.
 +    pub fn layout_stamp(&mut self, id: LayoutId) -> Option<u64> {
-+        let retained = &mut self.retained;
-+        if !self.frame_tree {
++        if !self.frame_tree || !self.retained.live.contains(&id.0) {
 +            return None;
 +        }
-+        if let Some(&stamp) = retained.stamps.get(&id.0) {
-+            return Some(stamp);
-+        }
-+        if !retained.live.contains(&id.0) {
-+            return None;
-+        }
-+        retained.last_stamp += 1;
-+        retained.stamps.insert(id.0, retained.last_stamp);
-+        Some(retained.last_stamp)
++        self.taffy.pin_identity(id.0);
++        Some(u64::from(id.0))
 +    }
 +
 +    /// The host memo of a node, if the node kept its stamp since it was set.
@@ -17824,19 +17863,31 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +    /// stamp of the root proves that every node of the subtree was kept with
 +    /// its inputs; the leaves keep the retired measure function, so a layout
 +    /// that needs a new measurement marks the pass stale (`layout_stale`).
++    /// The root's id is its stamp: a pinned node is never recycled and a swept
++    /// one leaves its slot with a new version, so a live pinned root with that
++    /// id is the stamped node.
 +    pub fn claim_subtree(&mut self, stamp: u64, nodes: &[NodeId]) -> Option<LayoutId> {
 +        let root = *nodes.last()?;
-+        let retained = &mut self.retained;
 +        if !self.frame_tree
-+            || retained.stamps.get(&root) != Some(&stamp)
-+            || nodes.iter().any(|node| retained.live.contains(node))
++            || u64::from(root) != stamp
++            || !self.taffy.identity_pinned(root)
++            || nodes.iter().any(|node| self.retained.live.contains(node))
 +        {
 +            return None;
 +        }
-+        for node in nodes {
-+            retained.note(*node);
++        for &node in nodes {
++            // A keyed leaf leaves its candidate list, as when its request claims it.
++            if self
++                .taffy
++                .get_node_context(node)
++                .is_some_and(|context| context.key_slot != NO_SLOT)
++                && let Some(&key) = self.retained.keys.get(&node)
++            {
++                self.unlist(key, node);
++            }
++            self.retained.note(node);
 +        }
-+        retained.claimed += nodes.len() as u64;
++        self.retained.claimed += nodes.len() as u64;
 +        Some(LayoutId(root))
 +    }
 +
@@ -17867,10 +17918,10 @@ index 0000000000000000000000000000000000000000..55db314bd88ac19c37916b294ca1d0d8
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..227f9fbb27e9cc7b25277870b7fa84d37c474bf4
+index 0000000000000000000000000000000000000000..b8c24c2a06cfb1d264e21d2c829d715e22f53213
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,256 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -17956,6 +18007,36 @@ index 0000000000000000000000000000000000000000..227f9fbb27e9cc7b25277870b7fa84d3
 +}
 +
 +#[test]
++fn a_kept_node_takes_the_shared_style_of_its_pass() {
++    let mut engine = TaffyLayoutEngine::new();
++    // More distinct styles than sharing candidates: the first one is forgotten.
++    let first = leaf(&mut engine, 0.);
++    for width in 1..=super::style_share::CANDIDATES {
++        leaf(&mut engine, width as f32);
++    }
++    let old = engine.taffy.shared_style(first.0).unwrap();
++    engine.clear();
++    assert_eq!(leaf(&mut engine, 0.), first);
++    let twin = leaf(&mut engine, 0.);
++    assert_ne!(twin, first);
++    let kept = engine.taffy.shared_style(first.0).unwrap();
++    assert!(taffy::SharedStyle::ptr_eq(&kept, &engine.taffy.shared_style(twin.0).unwrap()));
++    assert!(!taffy::SharedStyle::ptr_eq(&kept, &old));
++    assert_eq!(*kept, *old);
++}
++
++#[test]
++fn a_leaf_whose_style_changed_is_not_kept() {
++    let mut engine = TaffyLayoutEngine::new();
++    let a = leaf(&mut engine, 10.);
++    engine.clear();
++    let a2 = leaf(&mut engine, 11.);
++    assert_eq!(engine.claimed_nodes(), 0);
++    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
++    let _ = a;
++}
++
++#[test]
 +fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
 +    let mut engine = TaffyLayoutEngine::new();
 +    let a = leaf(&mut engine, 10.);
@@ -17987,6 +18068,7 @@ index 0000000000000000000000000000000000000000..227f9fbb27e9cc7b25277870b7fa84d3
 +    assert_eq!(parent(&mut engine, &[a2]), p);
 +    assert_eq!(engine.claimed_nodes(), 2);
 +}
++
 +#[test]
 +fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
 +    let mut engine = TaffyLayoutEngine::new();
@@ -18031,33 +18113,70 @@ index 0000000000000000000000000000000000000000..227f9fbb27e9cc7b25277870b7fa84d3
 +}
 +
 +#[test]
-+fn a_kept_node_takes_the_shared_style_of_its_pass() {
++fn a_keyed_leaf_of_a_subtree_claimed_whole_leaves_the_candidates_of_its_key() {
 +    let mut engine = TaffyLayoutEngine::new();
-+    // More distinct styles than sharing candidates: the first one is forgotten.
-+    let first = leaf(&mut engine, 0.);
-+    for width in 1..=super::style_share::CANDIDATES {
-+        leaf(&mut engine, width as f32);
-+    }
-+    let old = engine.taffy.shared_style(first.0).unwrap();
++    engine.set_layout_keys(true);
++    let start = engine.request_position();
++    let m = measured(&mut engine, Some(1));
++    let p = parent(&mut engine, &[m]);
++    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
 +    engine.clear();
-+    assert_eq!(leaf(&mut engine, 0.), first);
-+    let twin = leaf(&mut engine, 0.);
-+    assert_ne!(twin, first);
-+    let kept = engine.taffy.shared_style(first.0).unwrap();
-+    assert!(taffy::SharedStyle::ptr_eq(&kept, &engine.taffy.shared_style(twin.0).unwrap()));
-+    assert!(!taffy::SharedStyle::ptr_eq(&kept, &old));
-+    assert_eq!(*kept, *old);
++    engine.set_layout_keys(true);
++    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
++    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
++    let context = engine.taffy.get_node_context(m.0).expect("measured leaf");
++    assert_eq!(context.key_slot, super::retained::NO_SLOT);
++    // A request of the same key does not take the claimed leaf again.
++    assert_ne!(measured(&mut engine, Some(1)), m);
 +}
 +
 +#[test]
-+fn a_leaf_whose_style_changed_is_not_kept() {
++fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
++    let mut engine = TaffyLayoutEngine::new();
++    engine.set_layout_keys(true);
++    let a = measured(&mut engine, Some(1));
++    let _ = leaf(&mut engine, 10.);
++    let b = measured(&mut engine, Some(1));
++    engine.clear();
++    engine.set_layout_keys(true);
++    // `a` at its position, `b` from the candidates (its position holds the plain leaf).
++    assert_eq!(measured(&mut engine, Some(1)), a);
++    assert_eq!(measured(&mut engine, Some(1)), b);
++    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
++    for leaf in [a, b] {
++        let context = engine.taffy.get_node_context(leaf.0).expect("measured leaf");
++        assert_eq!(context.key_slot, super::retained::NO_SLOT);
++    }
++    // A third request of the key finds no claimed leaf to take again.
++    let c = measured(&mut engine, Some(1));
++    assert!(c != a && c != b);
++    assert_eq!(engine.claimed_nodes(), 2);
++}
++#[test]
++fn a_stamped_node_is_never_reused_for_another_subtree() {
 +    let mut engine = TaffyLayoutEngine::new();
 +    let a = leaf(&mut engine, 10.);
++    let p = parent(&mut engine, &[a]);
++    let stamp = engine.layout_stamp(p);
++    let l = leaf(&mut engine, 5.);
++    let plain = parent(&mut engine, &[l]);
 +    engine.clear();
-+    let a2 = leaf(&mut engine, 11.);
-+    assert_eq!(engine.claimed_nodes(), 0);
-+    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
-+    let _ = a;
++    // Changed subtrees: the stamped parent is not recycled, the plain one is.
++    let l = leaf(&mut engine, 30.);
++    let p2 = parent(&mut engine, &[l]);
++    let l = leaf(&mut engine, 6.);
++    let q2 = parent(&mut engine, &[l]);
++    assert_ne!(p2, p);
++    assert_eq!(q2, plain);
++    assert_ne!(engine.layout_stamp(p2), stamp);
++    engine.clear();
++    // The swept stamped node's id never comes back.
++    for _ in 0..4 {
++        let l = leaf(&mut engine, 7.);
++        let n = parent(&mut engine, &[l]);
++        engine.clear();
++        assert_ne!(engine.layout_stamp(n), stamp);
++    }
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs
@@ -18767,10 +18886,10 @@ index 0000000000000000000000000000000000000000..9daa38b229041534580f63205b2b4ae4
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/visible_baselines_tests.rs b/vendor/gpui/src/taffy/visible_baselines_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..adecd631428d34f28ddf230a261e86fb4286e43f
+index 0000000000000000000000000000000000000000..76ad391710fa16f42ea9b5d0a6315f4090fe658a
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/visible_baselines_tests.rs
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,143 @@
 +//! Intermediate lines are extracted from completed native leaf geometry with actual insets.
 +
 +use super::*;
@@ -18791,6 +18910,7 @@ index 0000000000000000000000000000000000000000..adecd631428d34f28ddf230a261e86fb
 +        layout_lines: Some(vec![px(5.0), px(15.0), px(25.0)]),
 +        layout_lines_x: None,
 +        layout_lines_x_from_right: false,
++        key_slot: crate::taffy::retained::NO_SLOT,
 +    };
 +    let child = tree
 +        .new_leaf_with_context(
@@ -18847,6 +18967,7 @@ index 0000000000000000000000000000000000000000..adecd631428d34f28ddf230a261e86fb
 +                layout_lines: Some(vec![px(22.0)]),
 +                layout_lines_x: None,
 +                layout_lines_x_from_right: false,
++                key_slot: crate::taffy::retained::NO_SLOT,
 +            },
 +        )
 +        .unwrap();
@@ -18903,6 +19024,7 @@ index 0000000000000000000000000000000000000000..adecd631428d34f28ddf230a261e86fb
 +        layout_lines: Some(vec![px(5.0), px(15.0)]),
 +        layout_lines_x: Some(vec![px(23.0), px(11.0)]),
 +        layout_lines_x_from_right: false,
++        key_slot: crate::taffy::retained::NO_SLOT,
 +    };
 +    let mut copy = original.clone();
 +    copy.layout_lines.as_mut().unwrap()[0] = px(7.0);
@@ -19018,10 +19140,10 @@ index 0000000000000000000000000000000000000000..71aa28ef6f271de310c6ee53b564a686
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/visible_baselines_x_tests.rs b/vendor/gpui/src/taffy/visible_baselines_x_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0cf5c5a29d460f8d5a4b2b57a0d000f4ff2a7d27
+index 0000000000000000000000000000000000000000..c7192dafd55b740b61081d8f06a45ba49fa6eb30
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/visible_baselines_x_tests.rs
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,74 @@
 +//! The middle visible X line comes from scaled final geometry, not endpoint interpolation.
 +
 +use super::*;
@@ -19041,6 +19163,7 @@ index 0000000000000000000000000000000000000000..0cf5c5a29d460f8d5a4b2b57a0d000f4
 +            layout_lines: None,
 +            layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)]),
 +            layout_lines_x_from_right: true,
++            key_slot: crate::taffy::retained::NO_SLOT,
 +        };
 +        let mut style: Style = Style::DEFAULT;
 +        style.size = taffy::Size {

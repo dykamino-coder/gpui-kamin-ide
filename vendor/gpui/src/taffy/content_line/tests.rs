@@ -15,6 +15,7 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
         layout_lines: None,
         layout_lines_x: None,
         layout_lines_x_from_right: false,
+        key_slot: crate::taffy::retained::NO_SLOT,
     };
     let empty = tree
         .new_leaf(taffy::Style {

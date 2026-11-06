@@ -44,6 +44,8 @@ xml-rs = "0.8.29"
 svgtypes = "0.16.1"
 kurbo = "0.13"
 ryu = "1"
+# Deterministic fast hasher of paragraph layout keys (already in the tree via hashbrown).
+foldhash = "0.2"
 # Read OpenType MATH variants and assemblies without native dependencies.
 ttf-parser = "0.25.1"
 # Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
