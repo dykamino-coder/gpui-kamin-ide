@@ -36,7 +36,11 @@ impl Paragraph {
         }
         crate::work::add!(
             TextPositionSteps,
-            seg.layout.runs.iter().map(|r| r.glyphs.len()).sum::<usize>()
+            seg.layout
+                .runs
+                .iter()
+                .map(|r| r.glyphs.len())
+                .sum::<usize>()
         );
         positions[0] = px(0.);
         positions[len] = seg.layout.width;
@@ -96,10 +100,14 @@ mod tests {
             for base in [0.0, -0.0, 15.125, 2047.9, 16_383.999, 16_777_216., -100.1] {
                 let mut sum = 0f64;
                 for end in 0..=deltas.len() {
-                    let exact: f64 = f64::from(base)
-                        + deltas[..end].iter().map(|d| f64::from(*d)).sum::<f64>();
+                    let exact: f64 =
+                        f64::from(base) + deltas[..end].iter().map(|d| f64::from(*d)).sum::<f64>();
                     let expected = if end == 0 { base } else { exact as f32 };
-                    assert_eq!(tracked(base, sum).to_bits(), expected.to_bits(), "{base} {end}");
+                    assert_eq!(
+                        tracked(base, sum).to_bits(),
+                        expected.to_bits(),
+                        "{base} {end}"
+                    );
                     if end < deltas.len() {
                         sum += f64::from(deltas[end]);
                     }

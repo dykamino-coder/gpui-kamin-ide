@@ -151,7 +151,11 @@ impl Paragraph {
         let index = segs.partition_point(|s| {
             #[cfg(feature = "work-counters")]
             steps.set(steps.get() + 1);
-            if after_break { s.end + 1 < i } else { s.end < i }
+            if after_break {
+                s.end + 1 < i
+            } else {
+                s.end < i
+            }
         });
         crate::work::add!(TextPositionSteps, steps.get());
         let Some(seg) = segs.get(index).or_else(|| segs.last()) else {
