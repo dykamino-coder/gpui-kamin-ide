@@ -6,6 +6,7 @@ use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, Styled};
 mod outer;
+pub(crate) use outer::StartWrapper;
 use outer::{finish_table_outer, table_outer_box};
 mod tracks;
 use tracks::table_tracks;

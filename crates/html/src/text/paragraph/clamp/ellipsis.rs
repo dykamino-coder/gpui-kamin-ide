@@ -49,7 +49,6 @@ impl Paragraph {
         if self.span(segs, head, end) > room {
             let by_break = self
                 .opportunities()
-                .iter()
                 .map(|s| s.at)
                 .filter(|at| *at > head && *at <= end)
                 .map(|at| head + trim_hanging(&self.text[head..at]))

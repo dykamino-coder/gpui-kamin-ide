@@ -545,7 +545,7 @@ impl FrameCache {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub(crate) struct LineLayoutIndex {
     font_generation: usize,
     lines_index: usize,

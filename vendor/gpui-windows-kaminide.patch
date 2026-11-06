@@ -1,7 +1,7 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
-# 2. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges.
+# 2. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
 # 3. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
 # 4. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
 # 5. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
@@ -6568,7 +6568,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa818517f04e6f
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bdc4b0c242
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6576,18 +6576,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,8 @@
+@@ -38,0 +42,9 @@
 +mod scene_capture;
 +mod frame_capture;
 +mod group_region;
 +mod group_stage;
++mod gaussian;
 +mod texture_pool;
 +mod shader_identity;
 +use group_region::Region;
 +
-@@ -46,0 +58 @@
+@@ -46,0 +59 @@
 +    disable_direct_composition: bool,
-@@ -47,0 +60,19 @@
+@@ -47,0 +61,19 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -6607,11 +6608,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
 +    /// смешивание с кадром посчитано в шейдере.
 +    blend_replace: Option<ID3D11BlendState>,
-@@ -50,0 +82,3 @@
+@@ -50,0 +83,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +91,270 @@
+@@ -56,0 +92,272 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -6631,6 +6632,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    copy: Option<BlurTexture>,
 +    blend_copy: Option<BlurTexture>,
 +    down: Vec<BlurTexture>,
++    /// KaminIDE patch: half-float intermediate of the separable Gaussian (grow-only).
++    gauss: Option<BlurTexture>,
 +    globals: [Option<ID3D11Buffer>; 1],
 +    /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
 +    /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
@@ -6882,10 +6885,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +366,2 @@
+@@ -61,0 +369,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +376,11 @@
+@@ -69,0 +379,11 @@
 +/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
 +/// закрывается при пересоздании ресурсов (device lost).
 +struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
@@ -6897,29 +6900,29 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    }
 +}
 +
-@@ -72,0 +390,2 @@
+@@ -72,0 +393,2 @@
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +414,2 @@
+@@ -94,0 +417,2 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +422,2 @@
+@@ -100,0 +425,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +445 @@
+@@ -121,0 +448 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +458 @@
+@@ -133,0 +461 @@
 +            ..
-@@ -142,0 +468 @@
+@@ -142,0 +471 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +480,4 @@
+@@ -153,0 +483,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -192,0 +523 @@
+@@ -192,0 +526 @@
 +            disable_direct_composition,
-@@ -193,0 +525,8 @@
+@@ -193,0 +528,8 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -6928,9 +6931,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
-@@ -195,0 +535 @@
+@@ -195,0 +538 @@
 +            backdrop: None,
-@@ -199,0 +540,34 @@
+@@ -199,0 +543,34 @@
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
 +    /// общий handle текстуры от CEF.
 +    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -6965,13 +6968,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        self.atlas.unregister_external(id);
 +    }
 +
-@@ -204,0 +579 @@
+@@ -204,0 +582 @@
 +        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +595,2 @@
+@@ -220 +598,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -245,0 +622,7 @@
+@@ -245,0 +625,7 @@
 +        // KaminIDE patch (#76): БЕЗ dcomp-Commit и без ожиданий. dcomp-дерево
 +        // статично после set_swap_chain (underlay-эпоха WebView2 удалена как
 +        // мёртвая), а прежний пер-кадровый commit() делал
@@ -6979,7 +6982,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
 +        // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
 +        // ввода ~1.5с на слабой машине.
-@@ -263,65 +646,33 @@
+@@ -263,65 +649,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7078,7 +7081,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -339,0 +691,25 @@
+@@ -339,0 +694,25 @@
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
 +        // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -7104,16 +7107,16 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                return Ok(());
 +            }
 +        }
-@@ -340,0 +717,5 @@
+@@ -340,0 +720,5 @@
 +        if self.capture.is_some() {
 +            if let Err(e) = self.capture_frame() {
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -353,0 +735,2 @@
+@@ -353,0 +738,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +741,33 @@
+@@ -357,0 +744,33 @@
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7147,9 +7150,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +782 @@
+@@ -365,0 +785 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +820,350 @@
+@@ -402,0 +823,356 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7208,10 +7211,16 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            self.group_target_tex = None;
 +            drawn?;
 +
-+            if group.blur_radius > 0.0 {
-+                self.blur_group(i, group)?;
++            // KaminIDE patch: a direct Gaussian writes the retained texture itself.
++            match gaussian::direct_radius(group.blur_radius) {
++                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
++                None => {
++                    if group.blur_radius > 0.0 {
++                        self.blur_group(i, group)?;
++                    }
++                    self.save_group_stage(i);
++                }
 +            }
-+            self.save_group_stage(i);
 +            self.blur.group_slots.push(i);
 +            self.blur.group_blend.push(group.blend);
 +            let mut poly = [[0.0f32; 4]; 4];
@@ -7500,13 +7509,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1178,0 @@
+@@ -412 +1187,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1254,2 @@
+@@ -488 +1263,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1261,21 @@
+@@ -494 +1270,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7529,7 +7538,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1287 @@
+@@ -500,19 +1296 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7550,7 +7559,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1369,7 @@
+@@ -599,0 +1378,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7558,28 +7567,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        } else {
 +            (start, len)
 +        };
-@@ -621,0 +1398,6 @@
+@@ -621,0 +1407,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1426,2 @@
+@@ -643,0 +1435,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1456,4 @@
+@@ -672 +1465,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1603,4 @@
+@@ -815,0 +1612,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1611,23 @@
+@@ -819,0 +1620,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7603,7 +7612,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1635,376 @@
+@@ -820,0 +1644,376 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7980,10 +7989,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2030 @@
+@@ -840 +2039 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2081,12 @@
+@@ -890,0 +2090,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7996,9 +8005,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2107 @@
+@@ -904,0 +2116 @@
 +            frame_gate,
-@@ -999,0 +2203,7 @@
+@@ -999,0 +2212,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -8006,22 +8015,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2220 @@
+@@ -1009,0 +2229 @@
 +            blur_pipeline,
-@@ -1018,0 +2230,4 @@
+@@ -1018,0 +2239,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2239 @@
+@@ -1023,0 +2248 @@
 +            comp_root,
-@@ -1030 +2246,2 @@
+@@ -1030 +2255,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2281 @@
+@@ -1063,0 +2290 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2294,16 @@
+@@ -1076 +2303,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -8039,10 +8048,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2323,2 @@
+@@ -1089,0 +2332,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2334,0 @@
+@@ -1100,30 +2343,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -8073,7 +8082,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 -        })
 -    }
 -
-@@ -1190,0 +2396,45 @@
+@@ -1190,0 +2405,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8119,21 +8128,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2447 @@
+@@ -1197 +2456 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2526,2 @@
+@@ -1275,0 +2535,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2571,2 @@
+@@ -1319 +2580,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2600,2 @@
+@@ -1347 +2609,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2747,33 @@
+@@ -1492,0 +2756,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8167,17 +8176,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d38b4bf385ceba71be5842e789aa8185
 +    }
 +}
 +
-@@ -1719,0 +3007,2 @@
+@@ -1719,0 +3016,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3086,4 @@
+@@ -1796,0 +3095,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3177 @@
+@@ -1883,0 +3186 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3348,33 @@
+@@ -2054,17 +3357,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -8724,9 +8733,281 @@ index 0000000000000000000000000000000000000000..5de355d6005d778face12c81c32e9e25
 +    }
 +
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/gaussian.rs b/vendor/gpui-windows/src/directx_renderer/gaussian.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9195f557a
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/gaussian.rs
+@@ -0,0 +1,266 @@
++//! KaminIDE patch: separable Gaussian for a group's `filter: blur(σ)` with a small σ.
++//!
++//! Filter Effects 1 §blur(): the standard deviation of the Gaussian is the given length.
++//! The downsampling cascade below clamps its step to 1/5 of a pixel, so every σ under
++//! ~2.8 px rendered as the same σ ≈ 1.6 px blur and paid for a 2.5× supersampled
++//! first level (6.25× the group's pixels, nine taps each). Like WebRender
++//! (`MAX_BLUR_STD_DEVIATION`: downscale only while σ > 4) and Skia (direct kernels for
++//! small σ), a σ ≤ 4 device px is convolved exactly at full resolution, straight into the
++//! retained group texture: radius ≤ `MAX_SINGLE_PASS_RADIUS` as one 2D pass, larger radii
++//! as a horizontal pass into a half-float intermediate plus a vertical pass. Taps are
++//! integer texel loads; texels outside the source are transparent black (the filter
++//! input outside the group).
++
++use super::*;
++
++/// Largest σ (device px) convolved directly; above it the cascade downsamples.
++pub(super) const MAX_DIRECT_SIGMA: f32 = 4.0;
++/// Taps per side carried in `BlurQuad::poly` (16 floats).
++const MAX_TAPS: usize = 16;
++/// Largest kernel radius convolved in one 2D pass ((2r+1)² ≤ 81 loads per pixel). A second
++/// pass costs a render-target switch and a read-after-write barrier per group, which on the
++/// measured GPU outweighs the extra taps for these radii.
++pub(super) const MAX_SINGLE_PASS_RADIUS: usize = 4;
++
++/// Kernel half-width for a direct blur of `sigma`, or `None` when the cascade applies.
++pub(super) fn direct_radius(sigma: f32) -> Option<usize> {
++    (sigma.is_finite() && sigma > 0.0 && sigma <= MAX_DIRECT_SIGMA)
++        .then(|| ((3.0 * sigma).ceil() as usize).clamp(1, MAX_TAPS - 1))
++}
++
++/// Margin (device px) the blurred image spreads beyond the group bounds.
++pub(super) fn margin(sigma: f32) -> f32 {
++    match direct_radius(sigma) {
++        Some(r) => r as f32,
++        None => (24.0 * (sigma / 14.0).clamp(0.2, 6.0)).min(96.0),
++    }
++}
++
++/// Normalized one-sided weights w[0..=r] of the sampled Gaussian (w[k] for ±k).
++pub(super) fn weights(sigma: f32, r: usize) -> [f32; MAX_TAPS] {
++    let mut raw = [0f64; MAX_TAPS];
++    let two_var = 2.0 * f64::from(sigma) * f64::from(sigma);
++    let mut sum = 0.0;
++    for (k, w) in raw.iter_mut().enumerate().take(r + 1) {
++        *w = (-((k * k) as f64) / two_var).exp();
++        sum += if k == 0 { *w } else { 2.0 * *w };
++    }
++    let mut out = [0f32; MAX_TAPS];
++    for (o, w) in out.iter_mut().zip(raw) {
++        *o = (w / sum) as f32;
++    }
++    out
++}
++
++fn create_half_float_target(device: &ID3D11Device, width: u32, height: u32) -> Result<BlurTexture> {
++    let desc = D3D11_TEXTURE2D_DESC {
++        Width: width,
++        Height: height,
++        MipLevels: 1,
++        ArraySize: 1,
++        Format: DXGI_FORMAT_R16G16B16A16_FLOAT,
++        SampleDesc: DXGI_SAMPLE_DESC {
++            Count: 1,
++            Quality: 0,
++        },
++        Usage: D3D11_USAGE_DEFAULT,
++        BindFlags: (D3D11_BIND_SHADER_RESOURCE.0 | D3D11_BIND_RENDER_TARGET.0) as u32,
++        CPUAccessFlags: 0,
++        MiscFlags: 0,
++    };
++    let mut texture: Option<ID3D11Texture2D> = None;
++    unsafe { device.CreateTexture2D(&desc, None, Some(&mut texture))? };
++    let texture = texture.context("half-float blur target missing")?;
++    let (mut srv, mut rtv) = (None, None);
++    unsafe {
++        device.CreateShaderResourceView(&texture, None, Some(&mut srv))?;
++        device.CreateRenderTargetView(&texture, None, Some(&mut rtv))?;
++    }
++    Ok(BlurTexture {
++        width,
++        height,
++        texture,
++        rtv: [rtv],
++        srv: [srv],
++    })
++}
++
++impl DirectXRenderer {
++    /// Blur group `index` (raw image in the stage) into its retained texture.
++    pub(super) fn gaussian_group(&mut self, index: usize, sigma: f32, r: usize) -> Result<()> {
++        let region = self.blur.group_regions[index];
++        let (w, h) = (region.width, region.height);
++        self.ensure_blur_globals(&self.dev().device.clone())?;
++        let taps = weights(sigma, r);
++        let poly = [
++            [taps[0], taps[1], taps[2], taps[3]],
++            [taps[4], taps[5], taps[6], taps[7]],
++            [taps[8], taps[9], taps[10], taps[11]],
++            [taps[12], taps[13], taps[14], taps[15]],
++        ];
++        let stage = self
++            .blur
++            .stage
++            .as_ref()
++            .context("group stage missing")?
++            .srv
++            .clone();
++        let target = self.blur.groups[index].rtv.clone();
++        let frame = [0.0, 0.0, self.width as f32, self.height as f32];
++        let origin = [region.x as f32, region.y as f32];
++        if r <= MAX_SINGLE_PASS_RADIUS {
++            // Whole kernel: frame-domain stage → retained group texture.
++            return self.gaussian_pass(
++                &stage,
++                &target,
++                (w, h),
++                origin,
++                frame,
++                6.0,
++                [0.0; 2],
++                r,
++                poly,
++            );
++        }
++        if self
++            .blur
++            .gauss
++            .as_ref()
++            .is_none_or(|t| t.width < w || t.height < h)
++        {
++            // Grow-only, rounded up: group sizes vary by a few pixels between groups.
++            let old = self
++                .blur
++                .gauss
++                .as_ref()
++                .map_or((0, 0), |t| (t.width, t.height));
++            let (gw, gh) = (
++                w.max(old.0).next_multiple_of(64),
++                h.max(old.1).next_multiple_of(64),
++            );
++            self.blur.gauss = Some(create_half_float_target(
++                &self.dev().device.clone(),
++                gw,
++                gh,
++            )?);
++        }
++        let gauss = self.blur.gauss.as_ref().unwrap();
++        let (gauss_srv, gauss_rtv) = (gauss.srv.clone(), gauss.rtv.clone());
++        // Horizontal: frame-domain stage → intermediate (local coordinates).
++        self.gaussian_pass(
++            &stage,
++            &gauss_rtv,
++            (w, h),
++            origin,
++            frame,
++            5.0,
++            [1.0, 0.0],
++            r,
++            poly,
++        )?;
++        // Vertical: intermediate → retained group texture.
++        self.gaussian_pass(
++            &gauss_srv,
++            &target,
++            (w, h),
++            [0.0, 0.0],
++            [0.0, 0.0, w as f32, h as f32],
++            5.0,
++            [0.0, 1.0],
++            r,
++            poly,
++        )
++    }
++    #[allow(clippy::too_many_arguments)]
++    fn gaussian_pass(
++        &mut self,
++        src: &[Option<ID3D11ShaderResourceView>; 1],
++        dst: &[Option<ID3D11RenderTargetView>; 1],
++        (w, h): (u32, u32),
++        origin: [f32; 2],
++        valid: [f32; 4],
++        pass: f32,
++        direction: [f32; 2],
++        r: usize,
++        poly: [[f32; 4]; 4],
++    ) -> Result<()> {
++        let device = self.dev().device.clone();
++        let dc = self.dev().device_context.clone();
++        let (fw, fh) = (w as f32, h as f32);
++        update_buffer(
++            &dc,
++            self.blur.globals[0].as_ref().unwrap(),
++            &[global_params(self.font_info, [fw, fh])],
++        )?;
++        let quad = BlurQuad {
++            bounds: [0.0, 0.0, fw, fh],
++            content_mask: [0.0, 0.0, fw, fh],
++            src_origin: origin,
++            blur_pass: pass,
++            pad: r as f32,
++            pad2: direction,
++            poly,
++            source_rect: valid,
++            ..Default::default()
++        };
++        self.pipelines
++            .blur_pipeline
++            .update_buffer(&device, &dc, &[quad])?;
++        let viewport = [D3D11_VIEWPORT {
++            TopLeftX: 0.0,
++            TopLeftY: 0.0,
++            Width: fw,
++            Height: fh,
++            MinDepth: 0.0,
++            MaxDepth: 1.0,
++        }];
++        let blend = self.replace_blend()?;
++        unsafe { dc.OMSetRenderTargets(Some(dst), None) };
++        let pipeline = &self.pipelines.blur_pipeline;
++        let (globals, sampler) = (&self.blur.globals, &self.globals.sampler);
++        group_stage::downsample_clip(&dc, w, h, || {
++            pipeline.draw_with_texture_blended(
++                &dc,
++                src,
++                &viewport,
++                globals,
++                slice::from_ref(sampler),
++                1,
++                Some(&blend),
++            )
++        })
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{MAX_DIRECT_SIGMA, direct_radius, margin, weights};
++
++    #[test]
++    fn small_sigmas_convolve_directly_with_three_sigma_support() {
++        assert_eq!(direct_radius(0.6), Some(2));
++        assert_eq!(direct_radius(1.0), Some(3));
++        assert_eq!(direct_radius(MAX_DIRECT_SIGMA), Some(12));
++        assert_eq!(direct_radius(4.01), None);
++        assert_eq!(direct_radius(0.0), None);
++        assert_eq!(direct_radius(f32::NAN), None);
++        assert_eq!(margin(0.6), 2.0);
++        // The cascade keeps its own spread for large radii.
++        assert_eq!(margin(28.0), 48.0);
++    }
++
++    #[test]
++    fn weights_are_a_normalized_symmetric_gaussian() {
++        for sigma in [0.3f32, 0.6, 1.0, 2.5, 4.0] {
++            let r = direct_radius(sigma).unwrap();
++            let w = weights(sigma, r);
++            let sum: f32 = w[0] + 2.0 * w[1..=r].iter().sum::<f32>();
++            assert!((sum - 1.0).abs() < 1e-6, "σ {sigma}: {sum}");
++            assert!(w[1..=r].windows(2).all(|p| p[0] > p[1]));
++            assert!(w[r + 1..].iter().all(|v| *v == 0.0));
++            // Ratio of neighbours is the Gaussian's exp(-(2k+1)/(2σ²)).
++            let expect = (-1.0 / (2.0 * sigma * sigma)).exp();
++            assert!((w[1] / w[0] - expect).abs() < 1e-5);
++        }
++    }
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_region.rs b/vendor/gpui-windows/src/directx_renderer/group_region.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a7343a7b2a54daf05c0562a4a0a8c2f44861f2f5
+index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83fcd80ea36
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_region.rs
 @@ -0,0 +1,200 @@
@@ -8790,7 +9071,7 @@ index 0000000000000000000000000000000000000000..a7343a7b2a54daf05c0562a4a0a8c2f4
 +
 +    pub(super) fn for_group(group: &gpui::PaintGroup, width: u32, height: u32) -> [Self; 2] {
 +        let margin = if group.blur_radius > 0.0 {
-+            (24.0 * (group.blur_radius / 14.0).clamp(0.2, 6.0)).min(96.0)
++            gaussian::margin(group.blur_radius)
 +        } else {
 +            0.0
 +        };
@@ -10795,7 +11076,7 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..239382c370c48956c1989c4fb9a329fdaeac8a85
+index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f673349019a197a30
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -11158,7 +11439,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..239382c370c48956c1989c4fb9a329fd
 +        sample = t_sprite.Load(int3(texel, 0));
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1447,366 @@
+@@ -1268,0 +1447,406 @@
 +
 +/*
 +**
@@ -11368,6 +11649,46 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..239382c370c48956c1989c4fb9a329fd
 +    input.position.xy += global_origin;
 +    BlurQuad q = blur_quads[input.quad_id];
 +    float2 t = q.texel;
++    // KaminIDE patch: Gaussian of a group: filter-effects-1 blur() with standard
++    // deviation σ ≤ 4 px. poly holds the one-sided weights w[0..15]; outside
++    // source_rect the filter input is transparent black. blur_pass 6: the whole
++    // (2r+1)² kernel in one pass (small r, no intermediate target);
++    // blur_pass 5: one separable pass along pad2.
++    if (q.blur_pass > 5.5) {
++        int2 p = int2(floor(input.position.xy)) + int2(q.src_origin);
++        int r = int(q.pad);
++        int2 lo = int2(q.source_rect.xy);
++        int2 hi = lo + int2(q.source_rect.zw);
++        float4 g = float4(0.0, 0.0, 0.0, 0.0);
++        for (int j = -r; j <= r; j++) {
++            uint b = uint(abs(j));
++            float wj = q.poly[b >> 2u][b & 3u];
++            for (int k = -r; k <= r; k++) {
++                int2 s = p + int2(k, j);
++                uint a = uint(abs(k));
++                if (all(s >= lo) && all(s < hi)) {
++                    g += (q.poly[a >> 2u][a & 3u] * wj) * t_sprite.Load(int3(s, 0));
++                }
++            }
++        }
++        return g;
++    }
++    if (q.blur_pass > 4.5) {
++        int2 p = int2(floor(input.position.xy)) + int2(q.src_origin);
++        int2 dir = int2(q.pad2);
++        int r = int(q.pad);
++        int2 lo = int2(q.source_rect.xy);
++        int2 hi = lo + int2(q.source_rect.zw);
++        float4 g = float4(0.0, 0.0, 0.0, 0.0);
++        for (int k = -r; k <= r; k++) {
++            int2 s = p + dir * k;
++            uint a = uint(abs(k));
++            if (all(s >= lo) && all(s < hi)) {
++                g += q.poly[a >> 2u][a & 3u] * t_sprite.Load(int3(s, 0));
++            }
++        }
++        return g;
++    }
 +    // KaminIDE patch: подложка без размытия (blur_pass 4) — копия кадра
 +    // один в один, матрица, маска скруглений и прозрачность элемента (pad).
 +    // Стоит ДО ветки групп (blur_pass > 2.5).

@@ -89,7 +89,7 @@ mod tests {
     }
 
     fn stops(p: &Paragraph) -> Vec<usize> {
-        p.opportunities().into_iter().map(|s| s.at).collect()
+        p.opportunities().map(|s| s.at).collect()
     }
 
     #[test]
@@ -146,10 +146,6 @@ mod tests {
         p.wrap.break_all = false;
         p.wrap.auto_phrase = true;
         assert!(stops(&p).is_empty());
-        assert!(
-            p.opportunities_with_fallback(true)
-                .iter()
-                .any(|s| s.at == 4)
-        );
+        assert!(p.opportunities_with_fallback(true).any(|s| s.at == 4));
     }
 }

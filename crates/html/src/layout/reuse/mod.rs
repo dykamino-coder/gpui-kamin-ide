@@ -20,38 +20,33 @@
 //! и стили с деревом кадра, а лист — несколько чисел.
 
 mod flow;
+mod frame;
 mod key;
+pub(crate) mod lines;
+mod narrow;
 mod placeholder;
 mod plain;
+mod record;
 mod recorder;
 mod replay;
+mod source;
 mod store;
 #[cfg(test)]
 mod tests;
+mod width;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
-use gpui::{Bounds, LayoutSnapshot, ScaledPixels, Window, point, px, size};
+use frame::{placed, scaled};
+use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
-use recorder::{SNAP, placed, scaled};
+pub(crate) use placeholder::Replay;
+pub(crate) use record::Record;
+use source::{Shells, Source};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 pub(crate) use store::Store;
-
-/// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
-/// Пишется только для блока, бывшего далеко от экрана (`recorder::far`):
-/// запись ближнего блока не подошла бы ни одному кадру.
-pub(crate) struct Record {
-    /// Вход сборки блока; одна копия на блок, общая с записью повтора.
-    element: Rc<Element>,
-    key: Rc<FlowKey>,
-    start: Counters,
-    end: Counters,
-    snapshot: LayoutSnapshot,
-    /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
-    ink: Option<Bounds<ScaledPixels>>,
-}
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,18 +60,31 @@ pub(crate) struct FlowReuse {
     store: Rc<Store>,
     /// Заместители разрешены; иначе только запись.
     allow: bool,
+    /// Сборка внутри prepaint: номер кадра уже продвинут.
+    drawn: bool,
+    /// Не первая сборка кадра (после отказа заместителей): ключ потока и
+    /// записи первая уже сверила и обновила.
+    again: bool,
     doc: (usize, usize),
     root: Root,
     seen: (OnceCell<Element>, OnceCell<Element>),
     claimed: Cell<bool>,
     next: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Ожидающие записи с элементами своих блоков.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Rc<Element>)>>,
+    /// The flow width changes in this build (`narrow`).
+    resized: Cell<bool>,
+    /// Wraps of this build's blocks (`narrow`).
+    narrowed: narrow::Wraps,
+    /// Pending records with the comparison inputs of their blocks.
+    pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
+    /// Shells the sources of this build share (`source`).
+    shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
-    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Rc<Element>)>>,
+    pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
     replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
+    /// Маска содержимого корня кадра: повтор краски годен только под ней.
+    mask: Cell<Option<Bounds<Pixels>>>,
 }
 
 fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Element> {
@@ -89,7 +97,14 @@ fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Elem
 impl FlowReuse {
     /// Повтор для сборки дерева `nodes`: корень `html` с `body`, `body` без
     /// снятого `html` или блоки снятых обёрток.
-    pub(crate) fn new(store: Rc<Store>, nodes: &[Node], allow: bool) -> Option<Rc<Self>> {
+    /// `drawn` — prepaint кадра уже начат (`Store::draw`).
+    pub(crate) fn new(
+        store: Rc<Store>,
+        nodes: &[Node],
+        allow: bool,
+        drawn: bool,
+        again: bool,
+    ) -> Option<Rc<Self>> {
         let root = match find(nodes.iter(), "html") {
             Some(html) => Root::Body {
                 html: Some(html.node_id),
@@ -106,17 +121,23 @@ impl FlowReuse {
         Some(Rc::new(Self {
             store,
             allow,
+            drawn,
+            again,
             doc: (nodes.as_ptr() as usize, nodes.len()),
             root,
             seen: Default::default(),
             claimed: Cell::new(false),
             next: Default::default(),
+            resized: Cell::new(false),
+            narrowed: Default::default(),
             pending: Default::default(),
+            shells: Shells::default(),
             placeholders: Default::default(),
             next_replays: Default::default(),
             pending_replays: Default::default(),
             replay_slots: Default::default(),
             screen: Cell::new(None),
+            mask: Cell::new(None),
         }))
     }
 
@@ -134,70 +155,6 @@ impl FlowReuse {
         } else if e.node_id == body && self.seen.1.get().is_none() {
             let _ = self.seen.1.set(key::box_only(e));
         }
-    }
-
-    /// Окно перед prepaint дерева: запомнить экран и проверить заместителей.
-    /// `false` — кадр нужно собрать заново без них.
-    pub(crate) fn validate(&self, window: &mut Window) -> bool {
-        let scale = window.scale_factor();
-        let mask = window.content_mask().bounds;
-        let screen = Bounds {
-            origin: scaled(mask.origin, scale),
-            size: size(
-                ScaledPixels(mask.size.width.as_f32() * scale),
-                ScaledPixels(mask.size.height.as_f32() * scale),
-            ),
-        };
-        self.screen.set(Some(screen));
-        let offset = window.element_offset() == point(px(0.0), px(0.0));
-        if !self.validate_replays(window) {
-            return false;
-        }
-        let placeholders = self.placeholders.borrow();
-        placeholders.is_empty()
-            || offset
-                && placeholders.iter().all(|slot| {
-                    slot.layout().is_some_and(|id| {
-                        let origin = scaled(window.layout_origin_unrounded(id), scale);
-                        slot.record()
-                            .ink
-                            .is_none_or(|ink| !placed(ink, origin, SNAP).intersects(&screen))
-                    })
-                })
-    }
-
-    /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
-    /// записи отдают элемент записи и освобождаются.
-    pub(crate) fn finish(&self) {
-        let Some(screen) = self.screen.get() else {
-            return;
-        };
-        let mut next = self.next.take();
-        let skipped = next.len() as u64;
-        let mut recorded = 0;
-        for (pending, element) in self.pending.take() {
-            if let Some(record) = pending.finish(element, screen) {
-                next.insert(record.element.node_id, Rc::new(record));
-                recorded += 1;
-            }
-        }
-        // Кадр без записей и пропусков под тем же ключом оставляет прежние:
-        // они подойдут следующему кадру, а их сброс стоил бы этому.
-        if recorded > 0 || skipped > 0 {
-            self.store.records.replace(next);
-        }
-        self.finish_replays(screen);
-        let mut stats = self.store.stats.get();
-        stats.recorded += recorded;
-        stats.skipped += skipped;
-        self.store.stats.set(stats);
-    }
-
-    /// Кадр собран заново без заместителей (`validate`).
-    pub(crate) fn note_rebuild(&self) {
-        let mut stats = self.store.stats.get();
-        stats.rebuilt_frames += 1;
-        self.store.stats.set(stats);
     }
 }
 
