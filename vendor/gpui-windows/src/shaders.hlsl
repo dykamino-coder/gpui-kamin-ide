@@ -1653,6 +1653,46 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     input.position.xy += global_origin;
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
+    // KaminIDE patch: Gaussian of a group: filter-effects-1 blur() with standard
+    // deviation σ ≤ 4 px. poly holds the one-sided weights w[0..15]; outside
+    // source_rect the filter input is transparent black. blur_pass 6: the whole
+    // (2r+1)² kernel in one pass (small r, no intermediate target);
+    // blur_pass 5: one separable pass along pad2.
+    if (q.blur_pass > 5.5) {
+        int2 p = int2(floor(input.position.xy)) + int2(q.src_origin);
+        int r = int(q.pad);
+        int2 lo = int2(q.source_rect.xy);
+        int2 hi = lo + int2(q.source_rect.zw);
+        float4 g = float4(0.0, 0.0, 0.0, 0.0);
+        for (int j = -r; j <= r; j++) {
+            uint b = uint(abs(j));
+            float wj = q.poly[b >> 2u][b & 3u];
+            for (int k = -r; k <= r; k++) {
+                int2 s = p + int2(k, j);
+                uint a = uint(abs(k));
+                if (all(s >= lo) && all(s < hi)) {
+                    g += (q.poly[a >> 2u][a & 3u] * wj) * t_sprite.Load(int3(s, 0));
+                }
+            }
+        }
+        return g;
+    }
+    if (q.blur_pass > 4.5) {
+        int2 p = int2(floor(input.position.xy)) + int2(q.src_origin);
+        int2 dir = int2(q.pad2);
+        int r = int(q.pad);
+        int2 lo = int2(q.source_rect.xy);
+        int2 hi = lo + int2(q.source_rect.zw);
+        float4 g = float4(0.0, 0.0, 0.0, 0.0);
+        for (int k = -r; k <= r; k++) {
+            int2 s = p + dir * k;
+            uint a = uint(abs(k));
+            if (all(s >= lo) && all(s < hi)) {
+                g += q.poly[a >> 2u][a & 3u] * t_sprite.Load(int3(s, 0));
+            }
+        }
+        return g;
+    }
     // KaminIDE patch: подложка без размытия (blur_pass 4) — копия кадра
     // один в один, матрица, маска скруглений и прозрачность элемента (pad).
     // Стоит ДО ветки групп (blur_pass > 2.5).
