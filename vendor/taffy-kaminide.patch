@@ -15053,7 +15053,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d639fda269
+index 1366d8349f1668c19f04bd2d85e88422918b6604..7a6c4ee6d01faa8ae37285c0da7959b780464254
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15095,7 +15095,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +88,20 @@
+@@ -82,5 +88,22 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
@@ -15106,6 +15106,8 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +
 +/// Lay out an atomic inline's independent formatting context. The caller owns
 +/// line breaking and positions its margin box; no synthetic flex parent is needed.
++/// Resolve overconstrained relative insets in the containing block's writing mode
++/// before calling this entry point; the atom's own direction does not select them.
 +pub fn compute_inline_layout(
 +    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
 +    node: NodeId,
@@ -15121,12 +15123,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +    inline: bool,
 +) {
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +108,0 @@
+@@ -88,4 +110,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +115,2 @@
+@@ -98,35 +117,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15164,12 +15166,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline);
-@@ -168 +152 @@
+@@ -168 +154 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -192,0 +177 @@
+@@ -192,0 +179 @@
 +    inline: bool,
-@@ -194,4 +179,6 @@
+@@ -194,4 +181,6 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -15180,7 +15182,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +    let known_dimensions = Size::NONE;
 +
 +    let child_space = if inline {
-@@ -199,54 +186,4 @@
+@@ -199,54 +188,4 @@
 -        let margin =
 -            style.margin().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
@@ -15239,17 +15241,17 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +        Size {
 +            width: available_space.width.map_definite_value(|v| (v - margin.horizontal_axis_sum()).max(0.0)),
 +            height: available_space.height.map_definite_value(|v| (v - margin.vertical_axis_sum()).max(0.0)),
-@@ -254,2 +191 @@
+@@ -254,2 +193 @@
 -    }
 -
 +    } else { available_space };
-@@ -258 +194 @@
+@@ -258 +196 @@
 -        known_dimensions_are_definite: Size { width: true, height: true },
 +        known_dimensions_are_definite: Size { width: !inline, height: !inline },
-@@ -260 +196 @@
+@@ -260 +198 @@
 -        available_space: root_available_space,
 +        available_space: child_space,
-@@ -271,6 +207,25 @@
+@@ -271,6 +209,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15281,7 +15283,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,3 +236,20 @@
+@@ -281,3 +238,20 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -15305,7 +15307,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +        width: style.direction().is_rtl(),
 +        height: false,
 +    };
-@@ -285,3 +257,7 @@
+@@ -285,3 +259,7 @@
 -        x: match (is_rtl, available_space.width.into_option()) {
 -            (true, Some(available_width)) => available_width - output.size.width - margin.right,
 -            _ => margin.left,
@@ -15316,7 +15318,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +                .map_or(0.0, |available_width| available_width - output.size.width)
 +        } else {
 +            0.0
-@@ -289,13 +265,5 @@
+@@ -289,13 +267,5 @@
 -        y: margin.top,
 -    };
 -
@@ -15335,11 +15337,11 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +                .height
 +                .into_option()
 +                .map_or(0.0, |height| height - output.size.height)
-@@ -303 +271,2 @@
+@@ -303 +273,2 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
-@@ -305 +274,19 @@
+@@ -305 +276,18 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 +
 +    let mut relative_offset = Point::ZERO;
@@ -15353,19 +15355,18 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..55f8a3f5aa71f5d599b8ee365ed947d6
 +                v.maybe_resolve(basis, |value, basis| tree.calc(value, basis))
 +            });
 +            relative_offset = Point {
-+                x: if style.direction().is_rtl() { inset.right.map(|v| -v).or(inset.left) }
-+                    else { inset.left.or(inset.right.map(|v| -v)) }.unwrap_or(0.0),
++                x: inset.left.or(inset.right.map(|v| -v)).unwrap_or(0.0),
 +                y: inset.top.or(inset.bottom.map(|v| -v)).unwrap_or(0.0),
 +            };
 +            location.x += relative_offset.x;
 +            location.y += relative_offset.y;
 +        }
-@@ -311,0 +299 @@
+@@ -311,0 +300 @@
 +        relative_offset,
-@@ -355 +343 @@
+@@ -355 +344 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +349,13 @@
+@@ -360,0 +350,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
@@ -22539,10 +22540,10 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/inline_layout_tests.rs b/vendor/taffy/src/tree/inline_layout_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..32b5417f99a3ef5660a96666468767ee09245e9b
+index 0000000000000000000000000000000000000000..c6d350e3e238cf9edcd717bc6144f046bcfe488e
 --- /dev/null
 +++ b/vendor/taffy/src/tree/inline_layout_tests.rs
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,123 @@
 +//! Контракт атомарной коробки: реальные поля, ограничения и baseline без flex-родителя.
 +
 +use super::*;
@@ -22576,6 +22577,27 @@ index 0000000000000000000000000000000000000000..32b5417f99a3ef5660a96666468767ee
 +    assert_eq!(layout.relative_offset, Point { x: 2.0, y: -4.0 });
 +    let output = tree.computed_layout_output(node).unwrap().unwrap();
 +    assert_eq!(output.baselines, Baselines { first: Some(12.0), last: Some(16.0) });
++}
++
++#[test]
++fn relative_insets_use_the_hosts_projection_instead_of_the_atoms_direction() {
++    for (direction, left, expected) in [
++        // LTR containing block: its left inset wins even for an RTL atom.
++        (crate::Direction::Rtl, length(2.0), 2.0),
++        // RTL containing block: the host has removed the losing left inset.
++        (crate::Direction::Ltr, auto(), -7.0),
++    ] {
++        let mut tree = TaffyTree::<()>::new();
++        let node = tree.new_leaf(Style {
++            direction,
++            inset: Rect { left, right: length(7.0), ..auto() },
++            position: crate::Position::Relative,
++            ..Default::default()
++        }).unwrap();
++        tree.compute_inline_with_measure(node, Size::MAX_CONTENT, |inputs, _, _, style| measured(inputs, style)).unwrap();
++        assert_eq!(tree.layout(node).unwrap().relative_offset.x, expected);
++        assert_eq!(tree.layout(node).unwrap().location.x, expected);
++    }
 +}
 +
 +#[test]

@@ -34,6 +34,27 @@ fn atomic_inline_uses_its_own_node_and_border_box_coordinates() {
 }
 
 #[test]
+fn relative_insets_use_the_hosts_projection_instead_of_the_atoms_direction() {
+    for (direction, left, expected) in [
+        // LTR containing block: its left inset wins even for an RTL atom.
+        (crate::Direction::Rtl, length(2.0), 2.0),
+        // RTL containing block: the host has removed the losing left inset.
+        (crate::Direction::Ltr, auto(), -7.0),
+    ] {
+        let mut tree = TaffyTree::<()>::new();
+        let node = tree.new_leaf(Style {
+            direction,
+            inset: Rect { left, right: length(7.0), ..auto() },
+            position: crate::Position::Relative,
+            ..Default::default()
+        }).unwrap();
+        tree.compute_inline_with_measure(node, Size::MAX_CONTENT, |inputs, _, _, style| measured(inputs, style)).unwrap();
+        assert_eq!(tree.layout(node).unwrap().relative_offset.x, expected);
+        assert_eq!(tree.layout(node).unwrap().location.x, expected);
+    }
+}
+
+#[test]
 fn available_space_excludes_margins_but_percentage_basis_does_not() {
     let mut tree = TaffyTree::<()>::new();
     let node = tree.new_leaf(Style {

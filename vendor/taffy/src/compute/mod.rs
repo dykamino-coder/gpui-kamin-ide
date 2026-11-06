@@ -90,6 +90,8 @@ pub fn compute_root_layout(
 
 /// Lay out an atomic inline's independent formatting context. The caller owns
 /// line breaking and positions its margin box; no synthetic flex parent is needed.
+/// Resolve overconstrained relative insets in the containing block's writing mode
+/// before calling this entry point; the atom's own direction does not select them.
 pub fn compute_inline_layout(
     tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
     node: NodeId,
@@ -283,8 +285,7 @@ fn compute_in_flow_root_layout(
                 v.maybe_resolve(basis, |value, basis| tree.calc(value, basis))
             });
             relative_offset = Point {
-                x: if style.direction().is_rtl() { inset.right.map(|v| -v).or(inset.left) }
-                    else { inset.left.or(inset.right.map(|v| -v)) }.unwrap_or(0.0),
+                x: inset.left.or(inset.right.map(|v| -v)).unwrap_or(0.0),
                 y: inset.top.or(inset.bottom.map(|v| -v)).unwrap_or(0.0),
             };
             location.x += relative_offset.x;
