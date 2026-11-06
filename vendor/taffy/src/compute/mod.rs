@@ -103,6 +103,7 @@ pub fn compute_inline_layout(
     compute_detached_layout(tree, node, available_space, true, outer_width);
 }
 
+/// Lay out an independent root and position any remaining out-of-flow descendants.
 fn compute_detached_layout(
     tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
     root: NodeId,

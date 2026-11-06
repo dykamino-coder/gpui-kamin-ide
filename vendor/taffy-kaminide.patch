@@ -1342,24 +1342,32 @@ index 0000000000000000000000000000000000000000..47ffd3caaa551c252207a25b66c99c4d
 +}
 diff --git a/vendor/taffy/src/compute/common/box_constraints.rs b/vendor/taffy/src/compute/common/box_constraints.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8c73681517a501863043db51e4947897dbc1bc07
+index 0000000000000000000000000000000000000000..b5114dd401bc66098085fcd12f92d7f2ab8a2e5f
 --- /dev/null
 +++ b/vendor/taffy/src/compute/common/box_constraints.rs
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,59 @@
 +//! Resolve a box's physical preferred size and ratio-transferred bounds once.
 +use crate::tree::LayoutPartialTreeExt;
 +use crate::{BoxSizing, CoreStyle, LayoutPartialTree, MaybeMath, MaybeResolve, NodeId, ResolveOrZero, Size};
 +
++/// Resolved physical border-box constraints shared by root and atomic layout.
 +pub(crate) struct BoxConstraints {
++    /// Preferred border-box size after aspect-ratio transfer.
 +    pub preferred: Size<Option<f32>>,
++    /// Resolved minimum border-box size.
 +    pub minimum: Size<Option<f32>>,
++    /// Resolved maximum border-box size.
 +    pub maximum: Size<Option<f32>>,
++    /// Combined padding and border on each physical axis.
 +    pub padding_border: Size<f32>,
++    /// Padding and border added to content-box size declarations.
 +    pub adjustment: Size<f32>,
++    /// Preferred width-to-height ratio, if specified.
 +    pub aspect_ratio: Option<f32>,
 +}
 +
 +impl BoxConstraints {
++    /// Return dimensions fixed by preferred sizes or coincident min/max bounds.
 +    pub fn known(&self) -> Size<Option<f32>> {
 +        let bounded = self.minimum.zip_map(self.maximum, |min, max| match (min, max) {
 +            (Some(min), Some(max)) if max <= min => Some(min),
@@ -1369,6 +1377,7 @@ index 0000000000000000000000000000000000000000..8c73681517a501863043db51e4947897
 +    }
 +}
 +
++/// Resolve sizes against the parent and percentage edges against its inline basis.
 +pub(crate) fn resolve(
 +    tree: &impl LayoutPartialTree,
 +    node: NodeId,
@@ -15169,7 +15178,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d06a7b75c
+index 1366d8349f1668c19f04bd2d85e88422918b6604..2cc872e15e1a90f3224decfa92a704d30975a553
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15215,7 +15224,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +89,25 @@
+@@ -82,5 +89,26 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
@@ -15238,6 +15247,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +    compute_detached_layout(tree, node, available_space, true, outer_width);
 +}
 +
++/// Lay out an independent root and position any remaining out-of-flow descendants.
 +fn compute_detached_layout(
 +    tree: &mut (impl crate::tree::LayoutContainingBlock + CacheTree),
 +    root: NodeId,
@@ -15246,12 +15256,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +    outer_width: Option<f32>,
 +) {
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +114,0 @@
+@@ -88,4 +115,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +121,2 @@
+@@ -98,35 +122,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15289,13 +15299,13 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached, inline, outer_width);
-@@ -168 +158 @@
+@@ -168 +159 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -192,0 +183,2 @@
+@@ -192,0 +184,2 @@
 +    inline: bool,
 +    outer_width: Option<f32>,
-@@ -194,10 +185,0 @@
+@@ -194,10 +186,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -15306,7 +15316,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,48 +187,11 @@
+@@ -205,48 +188,11 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -15366,7 +15376,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +        Size {
 +            width: available_space.width.map_definite_value(|v| (v - margin.horizontal_axis_sum()).max(0.0)),
 +            height: available_space.height.map_definite_value(|v| (v - margin.vertical_axis_sum()).max(0.0)),
-@@ -254,2 +199,6 @@
+@@ -254,2 +200,6 @@
 -    }
 -
 +    } else { available_space };
@@ -15375,15 +15385,15 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +    let known_dimensions = if inline {
 +        Size { width: outer_width.map(|w| (w - margin.horizontal_axis_sum()).max(0.0)), height: None }
 +    } else { known_dimensions };
-@@ -258 +207 @@
+@@ -258 +208 @@
 -        known_dimensions_are_definite: Size { width: true, height: true },
 +        known_dimensions_are_definite: Size { width: !inline || outer_width.is_some(), height: !inline },
-@@ -260 +209 @@
+@@ -260 +210 @@
 -        available_space: root_available_space,
 +        available_space: child_space,
-@@ -265,0 +215 @@
+@@ -265,0 +216 @@
 +    let inputs = if inline { inline_constraints::resolve(tree, root, inputs) } else { inputs };
-@@ -271,6 +221,25 @@
+@@ -271,6 +222,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15415,7 +15425,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,3 +250,20 @@
+@@ -281,3 +251,20 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -15439,7 +15449,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +        width: style.direction().is_rtl(),
 +        height: false,
 +    };
-@@ -285,3 +271,7 @@
+@@ -285,3 +272,7 @@
 -        x: match (is_rtl, available_space.width.into_option()) {
 -            (true, Some(available_width)) => available_width - output.size.width - margin.right,
 -            _ => margin.left,
@@ -15450,7 +15460,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +                .map_or(0.0, |available_width| available_width - output.size.width)
 +        } else {
 +            0.0
-@@ -289,13 +279,5 @@
+@@ -289,13 +280,5 @@
 -        y: margin.top,
 -    };
 -
@@ -15469,11 +15479,11 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +                .height
 +                .into_option()
 +                .map_or(0.0, |height| height - output.size.height)
-@@ -303 +285,2 @@
+@@ -303 +286,2 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
-@@ -305 +288,18 @@
+@@ -305 +289,18 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 +
 +    let mut relative_offset = Point::ZERO;
@@ -15493,12 +15503,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..9d0ebc231431eee200fc348f2470454d
 +            location.x += relative_offset.x;
 +            location.y += relative_offset.y;
 +        }
-@@ -311,0 +312 @@
+@@ -311,0 +313 @@
 +        relative_offset,
-@@ -355 +356 @@
+@@ -355 +357 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +362,13 @@
+@@ -360,0 +363,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
@@ -26114,7 +26124,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb7f5fc336
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..712b661319cfa16b76fb4b242b0a10847a73c498
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -26819,7 +26829,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -975,0 +1550,28 @@
+@@ -975,0 +1550,29 @@
 +        self.compute_detached_with_measure(node_id, available_space, measure_function, false, None)
 +    }
 +
@@ -26837,6 +26847,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +        self.compute_detached_with_measure(node_id, available_space, measure_function, true, outer_width)
 +    }
 +
++    /// Dispatch root or atomic-inline layout with the caller's measurement callback.
 +    fn compute_detached_with_measure<MeasureFunction>(
 +        &mut self,
 +        node_id: NodeId,
@@ -26848,7 +26859,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +    where
 +        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    {
-@@ -977,2 +1579,11 @@
+@@ -977,2 +1580,11 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 -        compute_root_layout(&mut taffy_view, node_id, available_space);
 +        #[cfg(feature = "std")]
@@ -26862,7 +26873,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +        } else {
 +            compute_root_layout(&mut taffy_view, node_id, available_space);
 +        }
-@@ -982,0 +1594,26 @@
+@@ -982,0 +1595,26 @@
 +    }
 +
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
@@ -26889,10 +26900,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +            available_space,
 +            vertical_margins_are_collapsible: crate::geometry::Line::FALSE,
 +        }, #[cfg(feature = "block_layout")] None)
-@@ -988 +1625 @@
+@@ -988 +1626 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003,4 +1640,14 @@
+@@ -1003,4 +1641,14 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 -        }
 -    }
@@ -26911,7 +26922,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +#[cfg(test)]
 +#[path = "inline_constraint_tests.rs"]
 +mod inline_constraint_tests;
-@@ -1029,0 +1677,54 @@
+@@ -1029,0 +1678,54 @@
 +    }
 +
 +    #[test]
@@ -26966,7 +26977,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..82df5c1867e41ff46a0cb9bf913f4edb
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2244,81 @@
+@@ -1543 +2245,81 @@
 -}
 +
 +    #[test]

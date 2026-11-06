@@ -2,16 +2,24 @@
 use crate::tree::LayoutPartialTreeExt;
 use crate::{BoxSizing, CoreStyle, LayoutPartialTree, MaybeMath, MaybeResolve, NodeId, ResolveOrZero, Size};
 
+/// Resolved physical border-box constraints shared by root and atomic layout.
 pub(crate) struct BoxConstraints {
+    /// Preferred border-box size after aspect-ratio transfer.
     pub preferred: Size<Option<f32>>,
+    /// Resolved minimum border-box size.
     pub minimum: Size<Option<f32>>,
+    /// Resolved maximum border-box size.
     pub maximum: Size<Option<f32>>,
+    /// Combined padding and border on each physical axis.
     pub padding_border: Size<f32>,
+    /// Padding and border added to content-box size declarations.
     pub adjustment: Size<f32>,
+    /// Preferred width-to-height ratio, if specified.
     pub aspect_ratio: Option<f32>,
 }
 
 impl BoxConstraints {
+    /// Return dimensions fixed by preferred sizes or coincident min/max bounds.
     pub fn known(&self) -> Size<Option<f32>> {
         let bounded = self.minimum.zip_map(self.maximum, |min, max| match (min, max) {
             (Some(min), Some(max)) if max <= min => Some(min),
@@ -21,6 +29,7 @@ impl BoxConstraints {
     }
 }
 
+/// Resolve sizes against the parent and percentage edges against its inline basis.
 pub(crate) fn resolve(
     tree: &impl LayoutPartialTree,
     node: NodeId,

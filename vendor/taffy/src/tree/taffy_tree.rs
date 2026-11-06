@@ -1564,6 +1564,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.compute_detached_with_measure(node_id, available_space, measure_function, true, outer_width)
     }
 
+    /// Dispatch root or atomic-inline layout with the caller's measurement callback.
     fn compute_detached_with_measure<MeasureFunction>(
         &mut self,
         node_id: NodeId,
