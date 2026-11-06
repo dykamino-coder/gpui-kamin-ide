@@ -4,7 +4,7 @@
 
 use super::reuse_tests::{reused, settled, update};
 use super::tests::{View, frame, open};
-use gpui::{TestAppContext, VisualTestContext};
+use gpui::{Modifiers, TestAppContext, VisualTestContext, point, px};
 
 fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
@@ -159,15 +159,40 @@ fn deep_recording_and_replay_keep_the_line_phase_on_a_small_stack() {
                 format!("<body style='margin:0'>{head}<p>{text}</p><p>tail</p></body>")
             };
             let (view, cx) = settled(&mut app, &page("two"), &page("one"));
+            // The default mouse at (0, 0) hovers the leaf: selection tracking
+            // correctly prevents recording it. Exercise inert replay here.
+            cx.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
             update(&view, cx, &page("two"));
             update(&view, cx, &page("one"));
             assert_eq!(replayed(&view, cx), 2, "the deep block or tail was rebuilt");
             let replay = scene(cx);
             let (_, fresh) = open(cx, &page("one"));
+            fresh.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
             frame(fresh);
             assert_eq!(replay, scene(fresh), "deep replay changed the line phase");
         })
         .unwrap()
         .join()
         .unwrap();
+}
+
+/// A hovered leaf installs live selection handlers and a cursor: its block
+/// must be rebuilt, while the inert tail can replay in the same frame.
+#[gpui::test]
+fn hovered_line_content_is_rebuilt_instead_of_replayed(cx: &mut TestAppContext) {
+    let page = |text: &str| {
+        format!(
+            "<body style='margin:0'><div><span style='background:lime;text-decoration:underline'>leaf</span></div><p>{text}</p><p>tail</p></body>"
+        )
+    };
+    let (view, cx) = settled(cx, &page("two"), &page("one"));
+    cx.simulate_mouse_move(point(px(0.), px(0.)), None, Modifiers::default());
+    update(&view, cx, &page("two"));
+    update(&view, cx, &page("one"));
+    assert_eq!(replayed(&view, cx), 1, "the hovered block was replayed");
+    let replay = scene(cx);
+    let (_, fresh) = open(cx, &page("one"));
+    fresh.simulate_mouse_move(point(px(0.), px(0.)), None, Modifiers::default());
+    frame(fresh);
+    assert_eq!(replay, scene(fresh), "hovered line content changed");
 }
