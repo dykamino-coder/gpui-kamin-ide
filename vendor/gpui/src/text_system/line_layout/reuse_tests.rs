@@ -70,6 +70,32 @@ fn reusing_a_whole_frame_keeps_every_layout_in_its_order() {
 }
 
 #[test]
+fn reusing_a_frame_from_its_start_then_the_rest_keeps_it_whole() {
+    // A replayed retained document reuses its prepaint lines, then its paint
+    // lines; the swap on the first range brings both along in place.
+    let cache = cache();
+    let start = cache.layout_index();
+    let first = line(&cache, "a");
+    let middle = cache.layout_index();
+    line(&cache, "b");
+    let end = cache.layout_index();
+    cache.finish_frame();
+    cache.reuse_layouts(start.clone()..middle.clone());
+    let after_prepaint = cache.layout_index();
+    cache.reuse_layouts(middle..end.clone());
+    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
+    assert_eq!(cached(&cache.current_frame.read()), ["a", "b"]);
+    assert!(cache.previous_frame.lock().lines.is_empty());
+    assert!(Arc::ptr_eq(&line(&cache, "a"), &first));
+    // The next frame records the whole frame under the prepaint range.
+    cache.truncate_layouts(end.clone());
+    cache.finish_frame();
+    cache.reuse_layouts(start..after_prepaint.clone());
+    assert_eq!(after_prepaint.lines_index, end.lines_index);
+    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
+}
+
+#[test]
 fn reusing_part_of_a_frame_moves_only_that_part() {
     let cache = cache();
     let start = cache.layout_index();

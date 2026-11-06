@@ -522,22 +522,22 @@ impl FrameCache {
             && self.used_wrapped_lines_by_hash.is_empty()
     }
 
-    /// KaminIDE patch: `range` covers every layout this frame used, and the
-    /// frame caches as many layouts as it used, so reusing the range moves
-    /// every entry. (Equal counts can still hide a layout cached without a
-    /// use, after `truncate_layouts`, next to one used twice: the swap then
-    /// keeps that layout one frame longer. The cache is keyed by every input
-    /// of a layout, so that changes only what a later frame finds cached.)
-    fn used_whole(&self, range: &Range<LineLayoutIndex>) -> bool {
+    /// KaminIDE patch: `range` starts this frame's uses, and the frame caches
+    /// as many layouts as it used, so every cached layout is in a use. (Equal
+    /// counts can still hide a layout cached without a use, after
+    /// `truncate_layouts`, next to one used twice: a swap then keeps that
+    /// layout one frame longer. The cache is keyed by every input of a
+    /// layout, so that changes only what a later frame finds cached.)
+    fn used_from_start(&self, range: &Range<LineLayoutIndex>) -> bool {
         let (start, end) = (&range.start, &range.end);
         start.lines_index == 0
             && start.wrapped_lines_index == 0
             && start.lines_by_hash_index == 0
             && start.wrapped_lines_by_hash_index == 0
-            && end.lines_index == self.used_lines.len()
-            && end.wrapped_lines_index == self.used_wrapped_lines.len()
-            && end.lines_by_hash_index == self.used_lines_by_hash.len()
-            && end.wrapped_lines_by_hash_index == self.used_wrapped_lines_by_hash.len()
+            && end.lines_index <= self.used_lines.len()
+            && end.wrapped_lines_index <= self.used_wrapped_lines.len()
+            && end.lines_by_hash_index <= self.used_lines_by_hash.len()
+            && end.wrapped_lines_by_hash_index <= self.used_wrapped_lines_by_hash.len()
             && self.lines.len() == self.used_lines.len()
             && self.wrapped_lines.len() == self.used_wrapped_lines.len()
             && self.lines_by_hash.len() == self.used_lines_by_hash.len()
@@ -591,18 +591,21 @@ impl LineLayoutCache {
         let current_frame = &mut *self.current_frame.write();
         let previous_frame = &mut *self.previous_frame.lock();
 
-        // KaminIDE patch: a subtree that replays everything the previous frame
-        // laid out, before this frame laid out anything (a retained document
-        // replayed whole), moves every entry of the previous frame into this
-        // one in the same order: that is a swap of the frames, O(1) instead of
-        // two hash-map operations per line.
-        if previous_frame.used_whole(&range) && current_frame.is_empty() {
+        // KaminIDE patch: a subtree that replays the previous frame's layouts
+        // from its first one, before this frame laid out anything (a retained
+        // document replayed whole: its prepaint, then its paint), takes the
+        // whole previous frame in the same order: a swap of the frames, O(1)
+        // instead of two hash-map operations per line. Uses after `range`
+        // come along at the same positions, so the replay that follows reuses
+        // them in place; a frame that does not replay them only keeps them
+        // cached one frame longer.
+        if previous_frame.used_from_start(&range) && current_frame.is_empty() {
             std::mem::swap(current_frame, previous_frame);
             return;
         }
 
-        // KaminIDE patch: a range past the previous frame's lists (they went
-        // to this frame whole above) has nothing left to reuse.
+        // KaminIDE patch: a range the swap above already brought into this
+        // frame is past the previous frame's lists: nothing is left to reuse.
         if let Some(keys) = previous_frame
             .used_lines
             .get(range.start.lines_index..range.end.lines_index)
