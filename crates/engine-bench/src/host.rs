@@ -71,6 +71,7 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
 }
 
 pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    let mut startup = super::startup::Startup::new();
     let preference = gpui_windows::GpuAdapterPreference::parse(&args.gpu)?;
     // Ошибки имени возвращаем до входа в событийный цикл платформы.
     if matches!(preference, gpui_windows::GpuAdapterPreference::ByName(_)) {
@@ -88,61 +89,69 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
         false, preference,
     )?);
-    gpui::Application::with_platform(platform.clone())
-        .with_instrumentation(instrumentation)
-        .run(move |cx| {
-            let setup = || -> Result<_, Box<dyn std::error::Error>> {
-                cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-                let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
-                let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
-                let window = cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(Bounds {
-                            origin: point(px(40.), px(40.)),
-                            size: size(px(args.viewport.0 as f32), px(args.viewport.1 as f32)),
-                        })),
-                        titlebar: Some(TitlebarOptions {
-                            appears_transparent: true,
-                            ..Default::default()
-                        }),
-                        window_decorations: Some(WindowDecorations::Client),
-                        window_background: WindowBackgroundAppearance::Opaque,
-                        is_resizable: false,
-                        is_minimizable: false,
-                        focus: false,
+    startup.mark("platform_device_text_and_host_setup");
+    let application =
+        gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);
+    startup.mark("gpui_application");
+    application.run(move |cx| {
+        startup.mark("event_loop_entry");
+        let setup = || -> Result<_, Box<dyn std::error::Error>> {
+            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
+            startup.mark("font_context");
+            let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
+            startup.mark("empty_document");
+            let window = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: point(px(40.), px(40.)),
+                        size: size(px(args.viewport.0 as f32), px(args.viewport.1 as f32)),
+                    })),
+                    titlebar: Some(TitlebarOptions {
+                        appears_transparent: true,
                         ..Default::default()
-                    },
-                    |window, cx| {
-                        window
-                            .set_frame_capture(Some(sink))
-                            .expect("Windows GPU readback");
-                        cx.new(|_| View {
-                            doc: empty,
-                            phases: Rc::new(RefCell::new(Phases::default())),
-                            viewport: None,
-                        })
-                    },
-                )?;
-                window.update(cx, |_, window, _| park(window))??;
-                Ok((window, fonts))
-            };
-            match setup() {
-                Ok((window, fonts)) => {
-                    cx.spawn(async move |cx| {
-                        let value = run::run(cx, window, &fonts, &args, &platform, &capture)
+                    }),
+                    window_decorations: Some(WindowDecorations::Client),
+                    window_background: WindowBackgroundAppearance::Opaque,
+                    is_resizable: false,
+                    is_minimizable: false,
+                    focus: false,
+                    ..Default::default()
+                },
+                |window, cx| {
+                    window
+                        .set_frame_capture(Some(sink))
+                        .expect("Windows GPU readback");
+                    cx.new(|_| View {
+                        doc: empty,
+                        phases: Rc::new(RefCell::new(Phases::default())),
+                        viewport: None,
+                    })
+                },
+            )?;
+            startup.mark("window_surface_pipeline");
+            window.update(cx, |_, window, _| park(window))??;
+            startup.mark("offscreen_placement");
+            Ok((window, fonts))
+        };
+        match setup() {
+            Ok((window, fonts)) => {
+                cx.spawn(async move |cx| {
+                    let value =
+                        run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup)
                             .await
                             .map_err(|e| e.to_string());
-                        *result.borrow_mut() = Some(value);
-                        let _ = cx.update(|cx| cx.quit());
-                    })
-                    .detach();
-                }
-                Err(error) => {
-                    *result.borrow_mut() = Some(Err(error.to_string()));
-                    cx.quit();
-                }
+                    *result.borrow_mut() = Some(value);
+                    let _ = cx.update(|cx| cx.quit());
+                })
+                .detach();
             }
-        });
+            Err(error) => {
+                *result.borrow_mut() = Some(Err(error.to_string()));
+                cx.quit();
+            }
+        }
+    });
     outcome
         .borrow_mut()
         .take()

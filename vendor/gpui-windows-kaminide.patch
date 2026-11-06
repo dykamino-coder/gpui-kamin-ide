@@ -1,17 +1,18 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 2. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
-# 3. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
-# 4. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
-# 5. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
-# 6. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 7. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 8. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 9. Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.
-# 10. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 11. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 12. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 1. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+# 2. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 3. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
+# 4. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
+# 5. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
+# 6. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
+# 7. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
+# 8. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 9. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 10. Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.
+# 11. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 12. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 13. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -9814,11 +9815,26 @@ index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf16015
 +    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 +}
 diff --git a/vendor/gpui-windows/src/events.rs b/vendor/gpui-windows/src/events.rs
-index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241f1aff7c3
+index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..49362af46bcae0a6e67845d8c1da33d117c659ce
 --- a/vendor/gpui-windows/src/events.rs
 +++ b/vendor/gpui-windows/src/events.rs
-@@ -33,0 +34,30 @@
-+
+@@ -35,16 +35,23 @@
+-/// Coordinates window draws on the UI thread. Owned by the platform and
+-/// shared with every window (like `WindowsPlatformState::cursor_visible`),
+-/// because the coordination is inherently cross-window: while window A is
+-/// drawing, a re-entrant paint request for window B must be deferred.
+-pub(crate) struct DrawCoordinator {
+-    /// Whether some window is currently inside `draw_window`. Win32 can
+-    /// re-enter the window procedure while a draw is in progress (e.g.
+-    /// cross-thread `SendMessage` dispatch during message pumping, or modal
+-    /// message loops entered by COM calls), and drawing re-entrantly would
+-    /// nest GPUI draws. Nested draws are wasted work whose output is
+-    /// immediately redrawn, so we defer them instead.
+-    drawing: Cell<bool>,
+-}
+-
+-impl DrawCoordinator {
+-    pub(crate) fn new() -> Self {
 +/// KaminIDE patch: a forced callback also consumes a deferred forced draw.
 +fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
 +    let deferred = pending.take();
@@ -9842,18 +9858,42 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +    /// unfocused window, wait out the 30 fps inactive limit (up to 33 ms per
 +    /// frame for 600 ms after every WM_SIZE, window creation included).
 +    fn paint(boosted: bool) -> Self {
-+        Self {
+@@ -52,26 +59,3 @@
+-            drawing: Cell::new(false),
+-        }
+-    }
+-
+-    fn try_begin_draw(&self) -> Option<DrawWindowGuard<'_>> {
+-        // This only covers the `draw_window` span (which extends past the GPUI
+-        // draw, through presentation and IME updates). Requests that arrive
+-        // re-entrantly during GPUI-initiated draws (e.g. key dispatch or
+-        // opening a window draws synchronously) are deferred by GPUI's
+-        // `on_request_frame` callback itself, which no-ops in that case.
+-        if self.drawing.get() {
+-            None
+-        } else {
+-            self.drawing.set(true);
+-            Some(DrawWindowGuard { coordinator: self })
+-        }
+-    }
+-}
+-
+-struct DrawWindowGuard<'a> {
+-    coordinator: &'a DrawCoordinator,
+-}
+-
+-impl Drop for DrawWindowGuard<'_> {
+-    fn drop(&mut self) {
+-        self.coordinator.drawing.set(false);
 +            force_render: false,
 +            require_presentation: boosted,
 +        }
-+    }
-+}
-@@ -107,0 +138,4 @@
+@@ -107,0 +92,4 @@
 +            // KaminIDE patch: не стирать фон — заливка (чёрным) давала полосы
 +            // по краям при ресайзе blit-окна; кадр рисуется синхронно в
 +            // WM_SIZE, стирание только мерцает.
 +            WM_ERASEBKGND => Some(1),
-@@ -163 +197,7 @@
+@@ -163 +151,7 @@
 -            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
 +            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(
 +                handle,
@@ -9862,9 +9902,9 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                    require_presentation: false,
 +                },
 +            ),
-@@ -213,0 +254 @@
+@@ -213,0 +208 @@
 +                    self.state.display.get().forced_scale,
-@@ -268,0 +310,21 @@
+@@ -268,0 +264,21 @@
 +        // KaminIDE patch: кадр рисуем СИНХРОННО внутри WM_SIZE — окно меняет
 +        // размер уже с готовым содержимым, как нативные приложения. Ожидание
 +        // WM_PAINT из очереди оставляло растянутый старый кадр на глазах
@@ -9886,7 +9926,7 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                require_presentation: true,
 +            },
 +        );
-@@ -333 +395,8 @@
+@@ -333 +349,8 @@
 -        self.draw_window(handle, false)
 +        // KaminIDE patch: см. resize_boost_until — после смены размера каждый
 +        // кадр презентуется, пока системная анимация не кончилась.
@@ -9896,28 +9936,28 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +            .get()
 +            .is_some_and(|t| std::time::Instant::now() < t);
 +        self.draw_window(handle, NativeDraw::paint(boosted))
-@@ -887 +956 @@
+@@ -887 +910 @@
 -        let new_scale_factor = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
 +        let new_scale_factor = self.state.display.get().forced_scale.unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
-@@ -958 +1027 @@
+@@ -958 +981 @@
 -        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor))?;
 +        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
-@@ -1275 +1344 @@
+@@ -1275 +1298 @@
 -            self.draw_window(handle, false);
 +            self.draw_window(handle, NativeDraw::paint(false));
-@@ -1329 +1398,4 @@
+@@ -1329 +1352,4 @@
 -    fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
 +    fn draw_window(&self, handle: HWND, draw: NativeDraw) -> Option<isize> {
 +        let NativeDraw { force_render, require_presentation } = draw;
 +        log::debug!(target: "gpui::frame", "native force={} present={} pending={}",
 +            force_render, require_presentation, self.state.force_render_pending.get());
-@@ -1358 +1430 @@
+@@ -1358 +1384 @@
 -        let force_render = force_render || self.state.force_render_pending.take();
 +        let force_render = consume_force_render(force_render, &self.state.force_render_pending);
-@@ -1369 +1441 @@
+@@ -1369 +1395 @@
 -            require_presentation: false,
 +            require_presentation,
-@@ -1812,0 +1885,34 @@
+@@ -1812,0 +1839,34 @@
 +
 +#[cfg(test)]
 +mod forced_frame_tests {
@@ -9950,6 +9990,118 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..802ed061438b04f086d16b97f27d8241
 +                assert!(!consume_force_render(false, &pending));
 +            }
 +        }
++    }
++}
+diff --git a/vendor/gpui-windows/src/frame_request.rs b/vendor/gpui-windows/src/frame_request.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab3b8ee9df5816475c96f1c4eac8e24bfa846465
+--- /dev/null
++++ b/vendor/gpui-windows/src/frame_request.rs
+@@ -0,0 +1,106 @@
++//! Спрос на кадр Windows и защита общего UI-потока от вложенной отрисовки.
++
++use std::{cell::Cell, rc::Rc};
++use gpui_util::ResultExt;
++use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
++use crate::WindowsWindowInner;
++
++/// Coordinates window draws on the UI thread. Owned by the platform and
++/// shared with every window (like `WindowsPlatformState::cursor_visible`),
++/// because the coordination is inherently cross-window: while window A is
++/// drawing, a re-entrant paint request for window B must be deferred.
++pub(crate) struct DrawCoordinator {
++    /// Whether some window is currently inside `draw_window`. Win32 can
++    /// re-enter the window procedure while a draw is in progress (e.g.
++    /// cross-thread `SendMessage` dispatch during message pumping, or modal
++    /// message loops entered by COM calls), and drawing re-entrantly would
++    /// nest GPUI draws. Nested draws are wasted work whose output is
++    /// immediately redrawn, so we defer them instead.
++    drawing: Cell<bool>,
++}
++
++impl DrawCoordinator {
++    pub(crate) fn new() -> Self {
++        Self {
++            drawing: Cell::new(false),
++        }
++    }
++
++    pub(crate) fn try_begin_draw(&self) -> Option<DrawWindowGuard<'_>> {
++        // This only covers the `draw_window` span (which extends past the GPUI
++        // draw, through presentation and IME updates). Requests that arrive
++        // re-entrantly during GPUI-initiated draws (e.g. key dispatch or
++        // opening a window draws synchronously) are deferred by GPUI's
++        // `on_request_frame` callback itself, which no-ops in that case.
++        if self.drawing.get() {
++            None
++        } else {
++            self.drawing.set(true);
++            Some(DrawWindowGuard { coordinator: self })
++        }
++    }
++}
++
++pub(crate) struct DrawWindowGuard<'a> {
++    coordinator: &'a DrawCoordinator,
++}
++
++impl Drop for DrawWindowGuard<'_> {
++    fn drop(&mut self) {
++        self.coordinator.drawing.set(false);
++    }
++}
++
++impl DrawCoordinator {
++    // Запрос из отрисовки обслуживает vsync: немедленный повтор обходил бы
++    // ограничение частоты анимаций и создавал цикл при throttling.
++    fn wake_if_idle(&self, wake: impl FnOnce()) {
++        if !self.drawing.get() {
++            wake();
++        }
++    }
++}
++
++impl WindowsWindowInner {
++    pub(crate) fn frame_waker(self: &Rc<Self>) -> Rc<dyn Fn()> {
++        let window = Rc::downgrade(self);
++        Rc::new(move || {
++            if let Some(window) = window.upgrade() {
++                window.state.draw_coordinator.wake_if_idle(|| {
++                    // Без UPDATENOW: WM_PAINT объединяет запросы и не входит в App
++                    // синхронно из invalidate_view/set_dirty.
++                    unsafe { RedrawWindow(Some(window.hwnd), None, None, RDW_INVALIDATE) }
++                        .ok().log_err();
++                });
++            }
++        })
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn idle_demand_wakes_without_entering_a_draw() {
++        let coordinator = DrawCoordinator::new();
++        let wakes = Cell::new(0);
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 1);
++        assert!(coordinator.try_begin_draw().is_some());
++    }
++
++    #[test]
++    fn nested_demand_waits_for_vsync_and_guard_restores_idle_waking() {
++        let coordinator = DrawCoordinator::new();
++        let wakes = Cell::new(0);
++        let guard = coordinator.try_begin_draw().unwrap();
++        assert!(coordinator.try_begin_draw().is_none());
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 0);
++        drop(guard);
++        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
++        assert_eq!(wakes.get(), 1);
++        assert!(coordinator.try_begin_draw().is_some());
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/gpu_adapter.rs b/vendor/gpui-windows/src/gpu_adapter.rs
@@ -10225,17 +10377,20 @@ index 0000000000000000000000000000000000000000..a227477d1c916cdd02c6f97d80118fab
 +
 +}
 diff --git a/vendor/gpui-windows/src/gpui_windows.rs b/vendor/gpui-windows/src/gpui_windows.rs
-index e7a45a034dc235dab7bc49cad209f9cdef143802..7d66fefb43e07d433cf846ad63286674758ca92c
+index e7a45a034dc235dab7bc49cad209f9cdef143802..2cb30a2013c8036b461385066b00e2719e5d9b97
 --- a/vendor/gpui-windows/src/gpui_windows.rs
 +++ b/vendor/gpui-windows/src/gpui_windows.rs
-@@ -13,0 +14,3 @@
+@@ -13,0 +14,4 @@
++mod frame_request;
 +// KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 +mod gpu_adapter;
 +mod gpu_context;
-@@ -14,0 +18,2 @@
+@@ -14,0 +19,2 @@
 +#[cfg(test)]
 +mod ligature_tests;
-@@ -41,0 +47 @@
+@@ -31,0 +38 @@
++pub(crate) use frame_request::DrawCoordinator;
+@@ -41,0 +49 @@
 +pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 diff --git a/vendor/gpui-windows/src/ligature_tests.rs b/vendor/gpui-windows/src/ligature_tests.rs
 new file mode 100644
@@ -11371,7 +11526,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..239382c370c48956c1989c4fb9a329fd
 +    return c;
 +}
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
-index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe385ec34e
+index 8a5327d1a88477e1b0fed913046d34cd29754174..0ba77c62f358591e4eb4a4829089a1a3667c6cd1
 --- a/vendor/gpui-windows/src/window.rs
 +++ b/vendor/gpui-windows/src/window.rs
 @@ -54,0 +55,5 @@
@@ -11420,7 +11575,20 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe
 +        Ok(())
 +    }
 +
-@@ -1046,0 +1071,52 @@
+@@ -969,0 +994,3 @@
++    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
++        Some(self.0.frame_waker())
++    }
+@@ -979,5 +1006 @@
+-        self.0
+-            .state
+-            .callbacks
+-            .active_status_change
+-            .set(Some(callback));
++        self.state.callbacks.active_status_change.set(Some(callback));
+@@ -1044,0 +1068,52 @@
++    }
++
 +    fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
 +        self.state.renderer.borrow_mut().rasterize_scene(scene, size)
 +    }
@@ -11471,9 +11639,7 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..2994113550a4b50d2567a834c5174ebe
 +            .renderer
 +            .borrow()
 +            .unregister_external_texture(id);
-+    }
-+
-@@ -1430 +1506,4 @@
+@@ -1430 +1505,4 @@
 -            hbrBackground: unsafe { CreateSolidBrush(COLORREF(0x00000000)) },
 +            // KaminIDE patch: БЕЗ кисти фона — чёрная заливала непокрытую
 +            // область при ресайзе (blit) чёрными полосами по краям.

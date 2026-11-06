@@ -80,6 +80,7 @@ FIXES = {
         "Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).",
     ],
     "gpui-windows": [
+        "Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.",
         "Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.",
         "Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.",
         "Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.",
