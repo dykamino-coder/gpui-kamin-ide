@@ -1,5 +1,4 @@
-//! Intrinsic measurements of one atomic inline's subtree (`AtomMemo`), kept on
-//! the atom's layout root while the frame tree keeps that subtree.
+//! Замеры поддерева атома, общие для кадров (`AtomMemo`).
 
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, size};

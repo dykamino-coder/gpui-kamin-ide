@@ -27,12 +27,11 @@ pub(super) struct FitAtom {
     at: usize,
     /// Baseline of the real max-content layout in this paragraph.
     base: f32,
-    /// Downward shift of the atom in its wrapper row (AtomBox::drop).
+    /// Downward shift of the atom in the wrapper row (`AtomBox::drop`).
     drop: f32,
     /// Measurements of the atom's subtree, shared with later frames.
     memo: Rc<AtomMemo>,
-    /// Copy of the atom wrapper tree for unseen widths (this frame's measures:
-    /// not kept).
+    /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
     snap: gpui::LayoutMeasurement,
 }
 
@@ -142,8 +141,8 @@ impl Paragraph {
                 }
                 debug_assert!(
                     !slot.fixed_inline,
-                    "style-fixed atom width must not depend on the containing block: min {}, max {max}",
-                    memo.min
+                    "style-fixed atom width must not depend on the containing block: min {}, max {}",
+                    memo.min, memo.max
                 );
                 fit.atoms.push(FitAtom {
                     k,
