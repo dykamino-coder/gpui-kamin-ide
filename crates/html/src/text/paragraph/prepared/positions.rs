@@ -194,9 +194,10 @@ mod tests {
             vec![],
             px(16.),
             px(20.),
-            Align::Left,
+            Align::Justify,
             Wrap::default(),
         )
+        // Выключка: трекинг прибавляется по знакам, а не общим путём.
         .letter_spans(vec![(0..n, px(0.25))]);
         let seg = Seg {
             start: 0,
