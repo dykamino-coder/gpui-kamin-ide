@@ -68,3 +68,36 @@ fn the_newest_distinct_inputs_stay_candidates() {
         assert_eq!(found.size.width, Some(gpui::px(width as f32).into()));
     }
 }
+
+#[test]
+fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let mut memo = StyleConversions::default();
+    let miss = |memo: &mut StyleConversions, width: f32| {
+        let (input, dimensions) = sized(width);
+        let lookup = memo.lookup(&input, &dimensions, vcx);
+        if matches!(lookup, Lookup::Miss) {
+            memo.record(&input, dimensions, vcx, refinement(width));
+        }
+        lookup
+    };
+    for width in 0..PAUSE_AFTER_MISSES {
+        assert!(matches!(miss(&mut memo, width as f32), Lookup::Miss));
+    }
+    let (repeated, dimensions) = sized(1000.0);
+    memo.record(&repeated, dimensions, vcx, refinement(1000.0));
+    let looks: Vec<_> = (0..PROBE_EVERY)
+        .map(|_| memo.lookup(&repeated, &dimensions, vcx))
+        .collect();
+    assert!(
+        looks[..looks.len() - 1]
+            .iter()
+            .all(|l| matches!(l, Lookup::Pass))
+    );
+    assert!(matches!(looks.last(), Some(Lookup::Hit(_))));
+    assert!(matches!(
+        memo.lookup(&repeated, &dimensions, vcx),
+        Lookup::Hit(_)
+    ));
+}

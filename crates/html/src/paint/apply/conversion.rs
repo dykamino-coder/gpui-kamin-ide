@@ -4,7 +4,7 @@
 
 use super::{apply_for_decorations_with_dimensions, child_paint_policy};
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::cx::conversions::StyleConversions;
+use crate::layout::cx::conversions::{Lookup, StyleConversions};
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{Div, InteractiveElement, div};
@@ -19,18 +19,23 @@ pub(crate) fn converted_div(
     vcx: ValueCx<'_>,
     memo: &RefCell<StyleConversions>,
 ) -> Div {
-    let found = memo.borrow().find(c, &dimensions, vcx);
-    if let Some(style) = found {
-        #[cfg(debug_assertions)]
-        verify(&style, c, dimensions, vcx);
-        let mut d = div();
-        d.interactivity().base_style = style;
-        return child_paint_policy(d, c);
+    let lookup = memo.borrow_mut().lookup(c, &dimensions, vcx);
+    match lookup {
+        Lookup::Hit(style) => {
+            #[cfg(debug_assertions)]
+            verify(&style, c, dimensions, vcx);
+            let mut d = div();
+            d.interactivity().base_style = style;
+            child_paint_policy(d, c)
+        }
+        Lookup::Miss => {
+            let mut d = apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
+            let style = d.interactivity().base_style.clone();
+            memo.borrow_mut().record(c, dimensions, vcx, style);
+            d
+        }
+        Lookup::Pass => apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx),
     }
-    let mut d = apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
-    let style = d.interactivity().base_style.clone();
-    memo.borrow_mut().record(c, dimensions, vcx, style);
-    d
 }
 
 /// A reused style equals a fresh conversion of the same box.

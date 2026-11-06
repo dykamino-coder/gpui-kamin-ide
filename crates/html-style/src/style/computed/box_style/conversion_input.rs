@@ -5,20 +5,28 @@ use super::*;
 
 impl BoxStyle {
     /// Equal box values apart from the box's own identity: its registry keys (`self_node`,
-    /// `cb_node`, `fixed_cb_node`, `anchor_seq`, `anchor_key`) and the link to its element's
+    /// `cb_node`, `fixed_cb_node`, `anchor_seq`, `anchor_key`), the link to its element's
     /// style stages (`element_style`, read only by `@position-try` resolution and cascade
-    /// publication) and the decorating box of its computed style (`same_values`). Two boxes for which this holds style an element identically. As Stylo's sharing cache and Blink's matched properties cache do,
-    /// it compares inputs, not element identity: the shared computed style by allocation first,
-    /// then by value. The destructuring is exhaustive, so a new field has to be classified here.
+    /// publication) and the decorating box of its computed style (`same_values`). Two boxes
+    /// for which this holds style an element identically. As Stylo's sharing cache and
+    /// Blink's matched properties cache do, it compares inputs, not element identity.
     pub fn same_box_values(&self, other: &Self) -> bool {
+        self.same_box_context(other)
+            && (self.same_style_allocation(other) || self.same_style_values(other))
+    }
+
+    /// Equal values of the box context: every field but the computed style and the
+    /// decoration paint. The destructuring is exhaustive, so a new field has to be
+    /// classified here.
+    fn same_box_context(&self, other: &Self) -> bool {
         let Self {
-            paint,
+            paint: _,
             context,
             canvas_background,
             background_paint,
             inline_format,
             inline_decoration,
-            style,
+            style: _,
             element_style: _,
             try_style,
             self_node: _,
@@ -50,8 +58,21 @@ impl BoxStyle {
             && *canvas_background == other.canvas_background
             && try_style.is_none()
             && other.try_style.is_none()
-            && (Rc::ptr_eq(style, &other.style) || same_values(style, &other.style))
-            && same_rc(paint, &other.paint)
+    }
+
+    /// The same computed style and decoration paint allocations: equal without reading them.
+    fn same_style_allocation(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.style, &other.style)
+            && match (&self.paint, &other.paint) {
+                (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                (a, b) => a.is_none() && b.is_none(),
+            }
+    }
+
+    /// Equal computed style and decoration paint values.
+    fn same_style_values(&self, other: &Self) -> bool {
+        (Rc::ptr_eq(&self.style, &other.style) || same_values(&self.style, &other.style))
+            && same_rc(&self.paint, &other.paint)
     }
 }
 
@@ -119,7 +140,13 @@ mod tests {
         let shared = Rc::new(Computed::default());
         let a = BoxStyle::shared(shared.clone());
         let mut b = BoxStyle::shared(shared);
-        (b.self_node, b.cb_node, b.fixed_cb_node, b.anchor_seq, b.anchor_key) = (7, 3, 2, 9, 11);
+        (
+            b.self_node,
+            b.cb_node,
+            b.fixed_cb_node,
+            b.anchor_seq,
+            b.anchor_key,
+        ) = (7, 3, 2, 9, 11);
         assert!(a.same_box_values(&b));
     }
 

@@ -16,11 +16,34 @@ use std::rc::Rc;
 /// and Stylo's sharing cache, a bounded set of the newest distinct inputs.
 const CANDIDATES: usize = 32;
 
+/// Consecutive misses after which lookups pause. A miss compares the box with every
+/// candidate by value and then copies it into the memory; on a run of distinct styles (flex
+/// items with their own `flex` each) that costs more than the conversions it never saves.
+const PAUSE_AFTER_MISSES: u32 = 64;
+
+/// While paused, every this many boxes one is still looked up and remembered, so that a
+/// later run of repeated styles resumes reuse.
+const PROBE_EVERY: u32 = 16;
+
 #[derive(Default)]
 pub(crate) struct StyleConversions {
     recent: Vec<Conversion>,
     /// Slot of the next new entry once `recent` is full.
     next: usize,
+    /// Lookups since the last hit that found nothing.
+    misses: u32,
+    /// Boxes passed over since lookups paused.
+    passed: u32,
+}
+
+/// What the memory says about a box about to be converted.
+pub(crate) enum Lookup {
+    /// An equal box was converted earlier in this build.
+    Hit(Rc<StyleRefinement>),
+    /// Convert and `record` the result.
+    Miss,
+    /// Convert without recording: reuse is paused on a run of distinct styles.
+    Pass,
 }
 
 struct Conversion {
@@ -53,6 +76,31 @@ impl Values {
 }
 
 impl StyleConversions {
+    /// Look a box up unless reuse is paused, counting the run of misses that pauses it.
+    pub(crate) fn lookup(
+        &mut self,
+        input: &BoxStyle,
+        dimensions: &BoxDimensions,
+        vcx: ValueCx<'_>,
+    ) -> Lookup {
+        if self.misses >= PAUSE_AFTER_MISSES {
+            self.passed += 1;
+            if !self.passed.is_multiple_of(PROBE_EVERY) {
+                return Lookup::Pass;
+            }
+        }
+        match self.find(input, dimensions, vcx) {
+            Some(style) => {
+                (self.misses, self.passed) = (0, 0);
+                Lookup::Hit(style)
+            }
+            None => {
+                self.misses = self.misses.saturating_add(1);
+                Lookup::Miss
+            }
+        }
+    }
+
     /// The element style converted earlier in this build from an equal input.
     pub(crate) fn find(
         &self,
