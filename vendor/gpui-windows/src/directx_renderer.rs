@@ -41,6 +41,7 @@ pub(crate) struct FontInfo {
 
 mod scene_capture;
 mod frame_capture;
+mod gpu_signal;
 mod readback;
 mod group_region;
 mod group_stage;
@@ -92,6 +93,10 @@ pub(crate) struct DirectXRenderer {
     /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
     gpu_timer: batch_cost::GpuTimer,
     capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
+    /// KaminIDE patch: копия кадра для capture, ещё не забранная с GPU.
+    pending_readback: Option<frame_capture::PendingReadback>,
+    /// KaminIDE patch: номер последней копии; сигнал GPU с другим номером устарел.
+    readback_token: usize,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
 }
@@ -390,8 +395,6 @@ struct DirectXResources {
     swap_chain: IDXGISwapChain1,
     /// KaminIDE patch (#76): см. FrameLatencyGate.
     frame_gate: Option<FrameLatencyGate>,
-    /// KaminIDE patch: один ленивый staging-буфер живёт не дольше устройства.
-    readback: readback::Readback,
     render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
 
@@ -481,12 +484,8 @@ impl DirectXRendererDevices {
 
 impl DirectXRenderer {
     pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
-        // KaminIDE patch: отключение capture освобождает его staging-буфер.
-        if sink.is_none()
-            && let Some(resources) = &mut self.resources
-        {
-            resources.readback = Default::default();
-        }
+        // KaminIDE patch: незавершённая копия принадлежит прежнему sink.
+        self.discard_frame_readback();
         self.capture = sink;
     }
 
@@ -534,6 +533,8 @@ impl DirectXRenderer {
             blur: BlurScratch::default(),
             gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
             capture: None,
+            pending_readback: None,
+            readback_token: 0,
             timing_main: false,
             group_target: None,
             group_target_tex: None,
@@ -724,7 +725,7 @@ impl DirectXRenderer {
         }
         self.render(scene, background_appearance)?;
         if self.capture.is_some() {
-            if let Err(e) = self.capture_frame() {
+            if let Err(e) = self.queue_frame_readback() {
                 log::warn!("frame capture failed: {e}");
             }
         }
@@ -1201,7 +1202,7 @@ impl DirectXRenderer {
 
         // KaminIDE patch: общий staging-путь сохраняет синхронный GPU readback.
         let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_mut().context("resources missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
         let render_target = resources
             .render_target
             .as_ref()
@@ -1209,7 +1210,7 @@ impl DirectXRenderer {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { render_target.GetDesc(&mut desc) };
         let (width, height) = (desc.Width, desc.Height);
-        let mut pixels = resources.readback.read(devices, render_target)?;
+        let mut pixels = readback::read(devices, render_target)?;
         // The render target is BGRA; image::RgbaImage expects RGBA.
         for px in pixels.chunks_exact_mut(4) {
             px.swap(0, 2);
@@ -1252,8 +1253,6 @@ impl DirectXRenderer {
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
-        // KaminIDE patch: прежний размер не удерживается после resize.
-        resources.readback = Default::default();
         resources.render_target.take();
         resources.render_target_view.take();
         recreate(resources, devices)?;
@@ -2077,7 +2076,6 @@ impl DirectXResources {
         Ok(Self {
             swap_chain,
             frame_gate,
-            readback: Default::default(),
             render_target: Some(render_target),
             render_target_view,
             path_intermediate_texture,

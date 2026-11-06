@@ -61,6 +61,8 @@ impl DirectXRenderer {
     ) -> Result<()> {
         // Failed allocation must leave drawing disabled, including after retry exhaustion.
         self.skip_draws = true;
+        // KaminIDE patch: копия кадра принадлежит потерянному устройству.
+        self.discard_frame_readback();
         self.clear_effect_resources();
         unsafe {
             #[cfg(debug_assertions)]

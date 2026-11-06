@@ -24,8 +24,6 @@ impl DirectXRenderer {
         let isolated = DirectXResources {
             swap_chain: resources.swap_chain.clone(),
             frame_gate: None,
-            // KaminIDE patch: изолированная сцена не удерживает readback окна.
-            readback: Default::default(),
             render_target: Some(texture),
             render_target_view: view,
             path_intermediate_texture: path,

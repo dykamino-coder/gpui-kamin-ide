@@ -77,4 +77,13 @@ pub struct FrameContext {
 pub trait FrameCaptureSink {
     /// Доставить завершённый readback и его длительность.
     fn completed(&mut self, frame: CapturedFrame, readback: Duration);
+
+    /// Кадр отправлен на readback внутри present; его `completed` (или
+    /// `discarded`) придёт позже, строго в порядке отправки. Потребитель по
+    /// нему отделяет кадры, отправленные до своего запроса. Backend с
+    /// синхронным readback может не вызывать.
+    fn submitted(&mut self) {}
+
+    /// Отправленный кадр не будет доставлен (устройство потеряно, ошибка копии).
+    fn discarded(&mut self) {}
 }

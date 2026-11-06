@@ -118,6 +118,7 @@ pub(super) async fn sample(
     let frame = capture
         .take_first()
         .ok_or("armed first frame was not captured")?;
+    let (frame_ready, gpu_completion) = accounting::completion(started, frame.delivered)?;
     if completed != seq + 1
         || frame.seq != seq + 1
         || after.frames.wrapping_sub(before.frames) != 1
@@ -155,6 +156,8 @@ pub(super) async fn sample(
                 .readback
                 .checked_sub(before.readback)
                 .ok_or("readback counter regressed")?,
+            gpu_completion,
+            frame_ready,
             total,
         },
         &phases.borrow(),
