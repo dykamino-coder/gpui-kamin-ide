@@ -42,7 +42,7 @@ impl Retained {
             (None, None)
         } else {
             slot.builds.set(slot.builds.get() + 1);
-            let (tree, flow) = builder.build(true);
+            let (tree, flow) = builder.build(true, false);
             (Some(tree), flow)
         };
         Self {
@@ -71,25 +71,31 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> RetainedPrepaint {
-        self.slot.builds.set(self.slot.builds.get() + 1);
-        let (mut tree, flow) = self.builder.build(false);
+        let space = size(
+            AvailableSpace::Definite(bounds.size.width),
+            AvailableSpace::Definite(bounds.size.height),
+        );
         let (_, prepaint) = window.record_retained_prepaint(|window| {
-            tree.layout_as_root(
-                size(
-                    AvailableSpace::Definite(bounds.size.width),
-                    AvailableSpace::Definite(bounds.size.height),
-                ),
-                window,
-                cx,
-            );
-            // Без заместителей проверка только запоминает экран кадра.
-            if let Some(flow) = &flow {
-                flow.validate(window);
+            // Заместители, отказанные проверкой прошлой сборки, собираются;
+            // если и эта не прошла (другое место корня), то без заместителей.
+            let mut allow = true;
+            loop {
+                self.slot.builds.set(self.slot.builds.get() + 1);
+                let (mut tree, flow) = self.builder.build(allow, true);
+                tree.layout_as_root(space, window, cx);
+                let fits = flow.as_ref().is_none_or(|flow| flow.validate(window));
+                if fits || !allow {
+                    tree.prepaint_at(bounds.origin, window, cx);
+                    self.tree = Some(tree);
+                    self.flow = flow;
+                    return;
+                }
+                if let Some(flow) = &flow {
+                    flow.note_rebuild();
+                }
+                allow = false;
             }
-            tree.prepaint_at(bounds.origin, window, cx);
         });
-        self.tree = Some(tree);
-        self.flow = flow;
         prepaint
     }
 }
@@ -105,10 +111,14 @@ impl Element for Retained {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
+    /// Ключ — записи блоков документа: они переживают правки (новый `Slot`),
+    /// и состояние элемента должно пережить их тоже, чтобы видимые блоки
+    /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
+    /// `Slot` отсеивает `Record::reusable`.
     fn id(&self) -> Option<ElementId> {
         Some(ElementId::NamedInteger(
             "retained-document".into(),
-            Rc::as_ptr(&self.slot) as usize as u64,
+            Rc::as_ptr(&self.builder.store) as usize as u64,
         ))
     }
 
@@ -149,6 +159,9 @@ impl Element for Retained {
         let root = window.retained_root_environment();
         window.with_element_state::<Record, _>(id, |record, window| {
             let before = window.next_frame_callback_count();
+            // Состояние элемента живёт кадр: без него прошлый кадр окна не
+            // рисовал документ, и повтор блоков из него невозможен.
+            self.builder.store.draw(record.is_some());
             let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
             if let Some(r) = &record
                 && !window.retained_replayable(&r.prepaint, &r.paint)

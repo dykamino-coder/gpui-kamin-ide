@@ -21,7 +21,7 @@ impl Paragraph {
     fn measure_key_uncached(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.text.hash(&mut h);
+        self.text_hash().hash(&mut h);
         f32::from(self.font_size).to_bits().hash(&mut h);
         f32::from(self.letter_spacing).to_bits().hash(&mut h);
         f32::from(self.word_spacing).to_bits().hash(&mut h);

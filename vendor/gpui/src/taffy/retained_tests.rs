@@ -215,9 +215,11 @@ fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
     let b = measured(&mut engine, Some(1));
     engine.clear();
     engine.set_layout_keys(true);
-    // `a` at its position, `b` from the candidates (its position holds the plain leaf).
-    assert_eq!(measured(&mut engine, Some(1)), a);
+    // A new leaf first: the cursor is astray, so the requests take the
+    // nearest candidates, `b` ahead and then `a` behind.
+    let _ = leaf(&mut engine, 99.);
     assert_eq!(measured(&mut engine, Some(1)), b);
+    assert_eq!(measured(&mut engine, Some(1)), a);
     assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
     for leaf in [a, b] {
         let context = engine.taffy.get_node_context(leaf.0).expect("measured leaf");
@@ -253,4 +255,72 @@ fn a_stamped_node_is_never_reused_for_another_subtree() {
         engine.clear();
         assert_ne!(engine.layout_stamp(n), stamp);
     }
+}
+
+fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let _ = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
+    let keyed = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 30.);
+    engine.clear();
+    // Two leaves become one: the plain leaf after the keyed one keeps its
+    // node although its position in the request sequence moved.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), keyed);
+    assert_eq!(leaf(&mut engine, 30.), after);
+    assert_eq!(engine.claimed_nodes(), 2);
+}
+
+fn of_equal_keys_the_leaf_nearest_its_position_is_kept() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let first = measured(&mut engine, Some(7));
+    let _ = leaf(&mut engine, 10.);
+    let second = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 20.);
+    engine.clear();
+    // The first subtree became one leaf: the second keyed leaf is nearer its
+    // previous position than the first one, and the leaf after it follows.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), second);
+    assert_eq!(leaf(&mut engine, 20.), after);
+    let _ = first;
+}
+
+fn a_new_plain_request_does_not_take_a_later_keyed_leaf() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let keyed = measured(&mut engine, Some(7));
+    let after = leaf(&mut engine, 20.);
+    engine.clear();
+    // A new leaf before them sits at the keyed leaf's old position.
+    engine.set_layout_keys(true);
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(7)), keyed);
+    assert_eq!(leaf(&mut engine, 20.), after);
+}
+
+fn cell(engine: &mut TaffyLayoutEngine, key: u64) -> [LayoutId; 3] {
+    let plain = leaf(engine, 10.);
+    let keyed = measured(engine, Some(key));
+    [plain, keyed, parent(engine, &[plain, keyed])]
+}
+
+fn a_leaf_whose_new_key_a_later_leaf_has_takes_no_node_of_a_later_request() {
+    let mut engine = TaffyLayoutEngine::new();
+    engine.set_layout_keys(true);
+    let before = [1, 2, 3, 4].map(|key| cell(&mut engine, key));
+    parent(&mut engine, &before.map(|c| c[2]));
+    engine.clear();
+    // The second cell's text became the fourth one's: the second cell is new,
+    // and the cells after it keep their nodes, the fourth its own leaf.
+    engine.set_layout_keys(true);
+    let after = [1, 4, 3, 4].map(|key| cell(&mut engine, key));
+    parent(&mut engine, &after.map(|c| c[2]));
+    assert_eq!([after[0], after[2], after[3]], [before[0], before[2], before[3]]);
+    assert_eq!(after[1][0], before[1][0]);
+    assert_eq!(engine.claimed_nodes(), 10);
 }

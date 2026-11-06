@@ -90,7 +90,6 @@ impl Paragraph {
             }
             let hard: std::collections::HashSet<_> = self
                 .opportunities()
-                .into_iter()
                 .filter(|stop| stop.mandatory)
                 .map(|stop| stop.at)
                 .collect();

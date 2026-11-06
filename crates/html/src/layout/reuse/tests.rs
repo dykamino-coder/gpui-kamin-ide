@@ -1,5 +1,6 @@
 //! Проверка экрана: чернила записи на новом месте с запасом округления.
 
+use super::frame::SNAP;
 use super::*;
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {

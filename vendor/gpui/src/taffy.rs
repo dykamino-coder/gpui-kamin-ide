@@ -42,6 +42,9 @@ mod grid_tracks_tests;
 mod node_reserve_tests;
 
 #[cfg(test)]
+mod exact_leaf_tests;
+
+#[cfg(test)]
 mod retained_tests;
 
 use crate::{
@@ -295,7 +298,7 @@ impl TaffyLayoutEngine {
         if let Some(id) = claimed {
             return id;
         }
-        let id = if let Some(node) = self.recycle() {
+        let id = if let Some(node) = self.recycle(false) {
             self.taffy
                 .reset_node(node, taffy_style, LayoutId::to_taffy_slice(children), None)
                 .expect(EXPECT_MESSAGE);

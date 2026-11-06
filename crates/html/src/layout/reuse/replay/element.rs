@@ -2,8 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::{PendingReplay, ReplaySlot, plain_environment};
-use crate::hooks::{Hooks, Wrap};
-use crate::paint::coordinator::{replay_jobs, tap_jobs};
+use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
@@ -60,8 +59,9 @@ impl Wrap for ReplayRecorder {
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let sink = self.pending.sink.clone();
         let callbacks = window.next_frame_callback_count();
-        let ((_, paint), jobs) = window.with_ink_sink(sink, |window| {
-            tap_jobs(window, |window| {
+        // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
+        let ((_, paint), lines) = window.with_ink_sink(sink, |window| {
+            paint_capturing(window, |window| {
                 window.record_retained_paint(|window| self.child.paint(window, cx))
             })
         });
@@ -76,7 +76,7 @@ impl Wrap for ReplayRecorder {
             && callbacks == window.next_frame_callback_count();
         if replayable {
             self.pending.paint.replace(Some(paint));
-            self.pending.jobs.replace(Some(jobs));
+            self.pending.lines.replace(Some(lines));
             self.pending
                 .env
                 .set(Some((window.scale_factor(), window.frame_serial())));
@@ -130,9 +130,14 @@ impl Hooks for Replay {
         _: &mut App,
     ) {
         self.slot.record.ranges(|r| {
-            r.paint = window.replay_retained_paint(&r.paint);
+            // Строки вне открытого кадра рисуются на месте: в выводе блока.
+            let (lines, paint) = window.record_retained_paint(|window| {
+                window.replay_retained_paint(&r.paint);
+                replay_deferred(window, &r.lines)
+            });
+            r.paint = paint;
+            r.lines = lines;
             r.serial = window.frame_serial();
         });
-        replay_jobs(window, &self.slot.record.jobs);
     }
 }

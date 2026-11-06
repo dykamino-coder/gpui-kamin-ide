@@ -1,13 +1,26 @@
 //! Повтор блоков корневого потока на экране (`layout::reuse::replay`): блок,
 //! чьё поддерево и место не изменились, не собирается, а кадр с повтором
 //! рисует те же команды, что свежая сборка, вместе с заданиями фазы строк.
+//! Тело страниц — `display: flow-root`: записи пропуска (`recorder`) его
+//! детям не остаются, и повтор здесь — только повтор с поддеревом раскладки.
+//! Первая устоявшаяся сборка всё равно оборачивает их для пропуска, поэтому
+//! для повтора их пишет лишь следующая (`mark::replay_worth_recording`).
 
 use super::reuse_tests::{reused, settled, update};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
+/// Blocks replayed with their layout subtree claimed whole.
 fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
-    cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
+    cx.update(|_, cx| {
+        let doc = &view.read(cx).doc;
+        assert_eq!(
+            doc.replayed_blocks(),
+            doc.replayed_subtrees(),
+            "a child of a flow-root body was replayed from a skip record"
+        );
+        doc.replayed_subtrees()
+    })
 }
 
 /// Quads and underlines of the shown frame in paint order.
@@ -26,7 +39,7 @@ fn scene(cx: &mut VisualTestContext) -> Vec<String> {
 fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
+            "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
              <p>{text}</p><p>tail</p></body>"
         )
     };
@@ -36,16 +49,17 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
         0,
         "the recording build replays nothing"
     );
-    // The first settled build builds every block: it records the paragraphs
-    // only for skipping, and the next build records the ones it still builds.
+    // The first settled build wraps every block only for skipping, and the
+    // next build records the ones it still builds for replay.
     update(&view, cx, &page("one"));
-    assert_eq!(replayed(&view, cx), 1, "the table was rebuilt");
+    assert_eq!(replayed(&view, cx), 0, "a block replayed a skip wrapper");
     update(&view, cx, &page("two"));
     assert_eq!(
         replayed(&view, cx),
-        3,
+        2,
         "the table and the tail were rebuilt"
     );
+    assert_eq!(reused(&view, cx).2, 0, "an unmoved replay was refused");
     // A taller paragraph moves the tail: its replay fails the frame check and
     // the frame is built again; the tail is then built until the key changes.
     update(&view, cx, &page(&"word ".repeat(400)));
@@ -54,18 +68,18 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
 }
 
 /// While the width changes, a block that fills it (`width: auto`) gets no
-/// replay record: it could not replay at another width. Nor does the table,
-/// whose last record read the width. The first build at the settled width
-/// builds the whole flow: it records the table for replay and the tail
-/// paragraph only for skipping. The second records the tail too, and both
-/// replay from the third.
+/// replay record: it could not replay at another width. The table of a fixed
+/// width, never recorded for replay before, is recorded by the resized build
+/// and replays at that width from the next one. The first build at the
+/// settled width wraps the tail paragraph only for skipping; the second
+/// records it for replay, and it replays from the third.
 #[gpui::test]
 fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     cx: &mut TestAppContext,
 ) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0'><table style='width:300px'><tr><td>a</td></tr></table>\
+            "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td></tr></table>\
              <p>{text}</p><p>tail</p></body>"
         )
     };
@@ -82,27 +96,28 @@ fn width_filling_blocks_are_recorded_for_replay_only_once_the_width_settles(
     }
     assert_eq!(
         steps,
-        [0, 1, 2],
-        "replays per build after the resize: the table from the second, the tail from the third"
+        [1, 1, 2],
+        "replays per build after the resize: the table from the first, the tail from the third"
     );
 }
 
 /// A block whose last replay record read the width from outside (a table of
 /// a percentage width) is not recorded again while the width keeps changing:
-/// such a record fits only the same widths. Once the width settles it is
-/// recorded by the first build and replays from the next one.
+/// such a record fits only the same widths. Once the width settles, the
+/// first build wraps it (and the width-filling tail) only for skipping, the
+/// second records both for replay, and they replay from the third.
 #[gpui::test]
 fn blocks_that_read_the_width_are_not_recorded_while_it_changes(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0'><table style='width:50%'><tr><td>a</td></tr></table>\
+            "<body style='margin:0;display:flow-root'><table style='width:50%'><tr><td>a</td></tr></table>\
              <p>{text}</p><p>tail</p></body>"
         )
     };
     let (view, cx) = settled(cx, &page("one"), &page("two"));
     let mut last = replayed(&view, cx);
     let mut steps = Vec::new();
-    for width in [401., 402., 402., 402.] {
+    for width in [401., 402., 402., 402., 402.] {
         cx.update(|_, cx| view.update(cx, |v, _| v.viewport.0 = width));
         let text = if steps.len() % 2 == 0 { "one" } else { "two" };
         update(&view, cx, &page(text));
@@ -112,8 +127,8 @@ fn blocks_that_read_the_width_are_not_recorded_while_it_changes(cx: &mut TestApp
     }
     assert_eq!(
         steps,
-        [0, 0, 0, 1],
-        "replays per build: the table is recorded only once the width settles"
+        [0, 0, 0, 0, 2],
+        "replays per build: the table and the tail are recorded only once the width settles"
     );
 }
 
@@ -124,7 +139,7 @@ fn blocks_that_read_the_width_are_not_recorded_while_it_changes(cx: &mut TestApp
 fn a_replayed_frame_paints_the_line_phase_of_a_fresh_build(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0'>\
+            "<body style='margin:0;display:flow-root'>\
              <p><span style='background:lime;text-decoration:underline'>head</span> h</p>\
              <p>{text}</p>\
              <p style='background:silver;margin-top:-30px'>\
