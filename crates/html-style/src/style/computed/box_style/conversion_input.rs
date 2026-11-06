@@ -1,12 +1,13 @@
-//! Равенство стилей коробок как входа перевода в стиль элемента: все значения, кроме ключей
-//! коробки в реестрах кадра.
+//! Равенство стилей коробок как входа перевода в стиль элемента: все значения, кроме
+//! идентичности коробки (ключи реестров кадра, ссылка на стадии стиля элемента).
 
 use super::*;
 
 impl BoxStyle {
-    /// Equal box values apart from the box's own registry keys (`self_node`, `cb_node`,
-    /// `fixed_cb_node`, `anchor_seq`, `anchor_key`): two boxes for which this holds style an
-    /// element identically. As Stylo's sharing cache and Blink's matched properties cache do,
+    /// Equal box values apart from the box's own identity: its registry keys (`self_node`,
+    /// `cb_node`, `fixed_cb_node`, `anchor_seq`, `anchor_key`) and the link to its element's
+    /// style stages (`element_style`, read only by `@position-try` resolution and cascade
+    /// publication). Two boxes for which this holds style an element identically. As Stylo's sharing cache and Blink's matched properties cache do,
     /// it compares inputs, not element identity: the shared computed style by allocation first,
     /// then by value. The destructuring is exhaustive, so a new field has to be classified here.
     pub fn same_box_values(&self, other: &Self) -> bool {
@@ -18,7 +19,7 @@ impl BoxStyle {
             inline_format,
             inline_decoration,
             style,
-            element_style,
+            element_style: _,
             try_style,
             self_node: _,
             cb_node: _,
@@ -47,11 +48,10 @@ impl BoxStyle {
             && *inline_decoration == other.inline_decoration
             && *context == other.context
             && *canvas_background == other.canvas_background
-            && same_rc(paint, &other.paint)
-            && element_style.as_ref().map(identity) == other.element_style.as_ref().map(identity)
             && try_style.is_none()
             && other.try_style.is_none()
             && (Rc::ptr_eq(style, &other.style) || **style == *other.style)
+            && same_rc(paint, &other.paint)
     }
 }
 
@@ -60,15 +60,6 @@ fn same_rc<T: PartialEq>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
         (Some(a), Some(b)) => Rc::ptr_eq(a, b) || **a == **b,
         (a, b) => a.is_none() && b.is_none(),
     }
-}
-
-/// The element-stage styles of a box by allocation: the variant chain is identity data.
-fn identity(e: &ElementStyle) -> (*const Computed, *const Computed, Option<*const ElementStyle>) {
-    (
-        Rc::as_ptr(&e.original),
-        Rc::as_ptr(&e.computed),
-        e.parent.as_ref().map(Rc::as_ptr),
-    )
 }
 
 #[cfg(test)]
@@ -81,6 +72,19 @@ mod tests {
         let a = BoxStyle::shared(shared.clone());
         let mut b = BoxStyle::shared(shared);
         (b.self_node, b.cb_node, b.fixed_cb_node, b.anchor_seq, b.anchor_key) = (7, 3, 2, 9, 11);
+        assert!(a.same_box_values(&b));
+    }
+
+    #[test]
+    fn element_stage_links_do_not_separate_boxes() {
+        let shared = Rc::new(Computed::default());
+        let a = BoxStyle::shared(shared.clone());
+        let mut b = BoxStyle::shared(shared.clone());
+        b.element_style = Some(ElementStyle {
+            original: Rc::new(Computed::default()),
+            computed: shared,
+            parent: None,
+        });
         assert!(a.same_box_values(&b));
     }
 
