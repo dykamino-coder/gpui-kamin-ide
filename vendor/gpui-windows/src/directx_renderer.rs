@@ -43,6 +43,7 @@ mod scene_capture;
 mod frame_capture;
 mod group_region;
 mod group_stage;
+mod gaussian;
 mod texture_pool;
 mod shader_identity;
 use group_region::Region;
@@ -107,6 +108,8 @@ struct BlurScratch {
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
+    /// KaminIDE patch: half-float intermediate of the separable Gaussian (grow-only).
+    gauss: Option<BlurTexture>,
     globals: [Option<ID3D11Buffer>; 1],
     /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
     /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
@@ -875,10 +878,16 @@ impl DirectXRenderer {
             self.group_target_tex = None;
             drawn?;
 
-            if group.blur_radius > 0.0 {
-                self.blur_group(i, group)?;
+            // KaminIDE patch: a direct Gaussian writes the retained texture itself.
+            match gaussian::direct_radius(group.blur_radius) {
+                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
+                None => {
+                    if group.blur_radius > 0.0 {
+                        self.blur_group(i, group)?;
+                    }
+                    self.save_group_stage(i);
+                }
             }
-            self.save_group_stage(i);
             self.blur.group_slots.push(i);
             self.blur.group_blend.push(group.blend);
             let mut poly = [[0.0f32; 4]; 4];
