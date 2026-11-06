@@ -92,7 +92,18 @@ struct NodeContext {
     layout_lines: Option<Vec<Pixels>>,
     layout_lines_x: Option<Vec<Pixels>>,
     layout_lines_x_from_right: bool,
+    /// KaminIDE patch: index of this keyed leaf in its key's candidate list
+    /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
+    key_slot: u32,
 }
+
+// The retained-tree field above fills padding: every node of the frame tree has
+// a context slot (a dense secondary map), so a larger context costs every node.
+const _: () = assert!(
+    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
+        || std::mem::size_of::<usize>() != 8
+);
+
 pub struct TaffyLayoutEngine {
     final_geometry: final_geometry::FinalGeometry,
     taffy: TaffyTree<NodeContext>,

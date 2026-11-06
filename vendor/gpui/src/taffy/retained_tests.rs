@@ -83,6 +83,36 @@ fn a_parent_with_other_children_is_not_kept() {
 }
 
 #[test]
+fn a_kept_node_takes_the_shared_style_of_its_pass() {
+    let mut engine = TaffyLayoutEngine::new();
+    // More distinct styles than sharing candidates: the first one is forgotten.
+    let first = leaf(&mut engine, 0.);
+    for width in 1..=super::style_share::CANDIDATES {
+        leaf(&mut engine, width as f32);
+    }
+    let old = engine.taffy.shared_style(first.0).unwrap();
+    engine.clear();
+    assert_eq!(leaf(&mut engine, 0.), first);
+    let twin = leaf(&mut engine, 0.);
+    assert_ne!(twin, first);
+    let kept = engine.taffy.shared_style(first.0).unwrap();
+    assert!(taffy::SharedStyle::ptr_eq(&kept, &engine.taffy.shared_style(twin.0).unwrap()));
+    assert!(!taffy::SharedStyle::ptr_eq(&kept, &old));
+    assert_eq!(*kept, *old);
+}
+
+#[test]
+fn a_leaf_whose_style_changed_is_not_kept() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    engine.clear();
+    let a2 = leaf(&mut engine, 11.);
+    assert_eq!(engine.claimed_nodes(), 0);
+    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
+    let _ = a;
+}
+
+#[test]
 fn a_kept_subtree_keeps_its_stamp_and_memo_and_a_renewed_one_loses_them() {
     let mut engine = TaffyLayoutEngine::new();
     let a = leaf(&mut engine, 10.);
@@ -114,6 +144,7 @@ fn a_capped_child_is_restored_and_kept_by_the_next_equal_request() {
     assert_eq!(parent(&mut engine, &[a2]), p);
     assert_eq!(engine.claimed_nodes(), 2);
 }
+
 #[test]
 fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
     let mut engine = TaffyLayoutEngine::new();
@@ -158,35 +189,74 @@ fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
 }
 
 #[test]
-fn a_kept_node_takes_the_shared_style_of_its_pass() {
+fn a_keyed_leaf_of_a_subtree_claimed_whole_leaves_the_candidates_of_its_key() {
     let mut engine = TaffyLayoutEngine::new();
-    // More distinct styles than sharing candidates: the first one is forgotten.
-    let first = leaf(&mut engine, 0.);
-    for width in 1..=super::style_share::CANDIDATES {
-        leaf(&mut engine, width as f32);
-    }
-    let old = engine.taffy.shared_style(first.0).unwrap();
+    engine.set_layout_keys(true);
+    let start = engine.request_position();
+    let m = measured(&mut engine, Some(1));
+    let p = parent(&mut engine, &[m]);
+    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
     engine.clear();
-    assert_eq!(leaf(&mut engine, 0.), first);
-    let twin = leaf(&mut engine, 0.);
-    assert_ne!(twin, first);
-    let kept = engine.taffy.shared_style(first.0).unwrap();
-    assert!(taffy::SharedStyle::ptr_eq(&kept, &engine.taffy.shared_style(twin.0).unwrap()));
-    assert!(!taffy::SharedStyle::ptr_eq(&kept, &old));
-    assert_eq!(*kept, *old);
+    engine.set_layout_keys(true);
+    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    let context = engine.taffy.get_node_context(m.0).expect("measured leaf");
+    assert_eq!(context.key_slot, super::retained::NO_SLOT);
+    // A request of the same key does not take the claimed leaf again.
+    assert_ne!(measured(&mut engine, Some(1)), m);
 }
 
 #[test]
-fn a_leaf_whose_style_changed_is_not_kept() {
+fn a_claimed_leaf_leaves_the_candidates_of_its_key() {
     let mut engine = TaffyLayoutEngine::new();
-    let a = leaf(&mut engine, 10.);
+    engine.set_layout_keys(true);
+    let a = measured(&mut engine, Some(1));
+    let _ = leaf(&mut engine, 10.);
+    let b = measured(&mut engine, Some(1));
     engine.clear();
-    let a2 = leaf(&mut engine, 11.);
-    assert_eq!(engine.claimed_nodes(), 0);
-    assert_eq!(engine.taffy.style(a2.0).unwrap().size.width, taffy::Dimension::length(11.));
-    let _ = a;
+    engine.set_layout_keys(true);
+    // A new leaf first: the cursor is astray, so the requests take the
+    // nearest candidates, `b` ahead and then `a` behind.
+    let _ = leaf(&mut engine, 99.);
+    assert_eq!(measured(&mut engine, Some(1)), b);
+    assert_eq!(measured(&mut engine, Some(1)), a);
+    assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
+    for leaf in [a, b] {
+        let context = engine.taffy.get_node_context(leaf.0).expect("measured leaf");
+        assert_eq!(context.key_slot, super::retained::NO_SLOT);
+    }
+    // A third request of the key finds no claimed leaf to take again.
+    let c = measured(&mut engine, Some(1));
+    assert!(c != a && c != b);
+    assert_eq!(engine.claimed_nodes(), 2);
 }
 #[test]
+fn a_stamped_node_is_never_reused_for_another_subtree() {
+    let mut engine = TaffyLayoutEngine::new();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    let stamp = engine.layout_stamp(p);
+    let l = leaf(&mut engine, 5.);
+    let plain = parent(&mut engine, &[l]);
+    engine.clear();
+    // Changed subtrees: the stamped parent is not recycled, the plain one is.
+    let l = leaf(&mut engine, 30.);
+    let p2 = parent(&mut engine, &[l]);
+    let l = leaf(&mut engine, 6.);
+    let q2 = parent(&mut engine, &[l]);
+    assert_ne!(p2, p);
+    assert_eq!(q2, plain);
+    assert_ne!(engine.layout_stamp(p2), stamp);
+    engine.clear();
+    // The swept stamped node's id never comes back.
+    for _ in 0..4 {
+        let l = leaf(&mut engine, 7.);
+        let n = parent(&mut engine, &[l]);
+        engine.clear();
+        assert_ne!(engine.layout_stamp(n), stamp);
+    }
+}
+
 fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
     let mut engine = TaffyLayoutEngine::new();
     engine.set_layout_keys(true);
@@ -202,7 +272,7 @@ fn a_subtree_of_another_size_before_a_keyed_leaf_shifts_no_later_leaf() {
     assert_eq!(leaf(&mut engine, 30.), after);
     assert_eq!(engine.claimed_nodes(), 2);
 }
-#[test]
+
 fn of_equal_keys_the_leaf_nearest_its_position_is_kept() {
     let mut engine = TaffyLayoutEngine::new();
     engine.set_layout_keys(true);
@@ -219,7 +289,7 @@ fn of_equal_keys_the_leaf_nearest_its_position_is_kept() {
     assert_eq!(leaf(&mut engine, 20.), after);
     let _ = first;
 }
-#[test]
+
 fn a_new_plain_request_does_not_take_a_later_keyed_leaf() {
     let mut engine = TaffyLayoutEngine::new();
     engine.set_layout_keys(true);
@@ -232,14 +302,13 @@ fn a_new_plain_request_does_not_take_a_later_keyed_leaf() {
     assert_eq!(measured(&mut engine, Some(7)), keyed);
     assert_eq!(leaf(&mut engine, 20.), after);
 }
-/// A table cell: a plain leaf, a keyed text leaf and their parent.
+
 fn cell(engine: &mut TaffyLayoutEngine, key: u64) -> [LayoutId; 3] {
     let plain = leaf(engine, 10.);
     let keyed = measured(engine, Some(key));
     [plain, keyed, parent(engine, &[plain, keyed])]
 }
 
-#[test]
 fn a_leaf_whose_new_key_a_later_leaf_has_takes_no_node_of_a_later_request() {
     let mut engine = TaffyLayoutEngine::new();
     engine.set_layout_keys(true);
