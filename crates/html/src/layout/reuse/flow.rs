@@ -159,7 +159,6 @@ impl FlowCx {
             return None;
         }
         let record = self.reuse.store.same_tree(e)?;
-
         let width = || {
             self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
         };
