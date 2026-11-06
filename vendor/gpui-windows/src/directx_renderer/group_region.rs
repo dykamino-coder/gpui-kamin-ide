@@ -58,7 +58,7 @@ impl Region {
 
     pub(super) fn for_group(group: &gpui::PaintGroup, width: u32, height: u32) -> [Self; 2] {
         let margin = if group.blur_radius > 0.0 {
-            (24.0 * (group.blur_radius / 14.0).clamp(0.2, 6.0)).min(96.0)
+            gaussian::margin(group.blur_radius)
         } else {
             0.0
         };
