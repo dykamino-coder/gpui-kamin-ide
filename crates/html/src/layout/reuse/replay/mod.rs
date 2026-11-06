@@ -200,6 +200,7 @@ impl super::FlowReuse {
         if !slots.is_empty() {
             let mut stats = self.store.stats.get();
             stats.replayed += slots.len() as u64;
+            stats.subtrees += slots.len() as u64;
             self.store.stats.set(stats);
         }
         true

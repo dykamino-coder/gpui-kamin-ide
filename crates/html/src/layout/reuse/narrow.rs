@@ -58,7 +58,9 @@ pub(super) struct Wraps(RefCell<HashMap<u64, Narrow>>);
 
 impl Wraps {
     pub(super) fn add(&self, narrow: Narrow) {
-        self.0.borrow_mut().insert(narrow.id, narrow);
+        let mut wraps = self.0.take();
+        wraps.insert(narrow.id, narrow);
+        self.0.replace(wraps);
     }
 
     /// The flow key changed in more than its width: no wrap holds.
@@ -92,10 +94,12 @@ impl FlowReuse {
     /// it recorded, so the first build at a narrower width already skips them.
     pub(super) fn learn_wraps(&self) {
         let narrowed = self.narrowed.0.take();
-        if self.resized.get() {
-            self.store.narrow.0.replace(narrowed);
-        } else {
-            self.store.narrow.0.borrow_mut().extend(narrowed);
-        }
+        // Карта меняется целиком: свежие переносы заменяют прежние того же блока.
+        let mut kept = match self.resized.get() {
+            true => Default::default(),
+            false => self.store.narrow.0.take(),
+        };
+        kept.extend(narrowed);
+        self.store.narrow.0.replace(kept);
     }
 }

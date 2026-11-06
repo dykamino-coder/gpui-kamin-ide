@@ -2,7 +2,6 @@
 
 use super::placeholder::{Placeholder, Slot};
 use super::plain::edges_free;
-use super::recorder::{Pending, Recorder};
 use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -13,6 +12,7 @@ use std::rc::Rc;
 
 mod mark;
 mod replay;
+mod skip;
 use mark::{Mark, mark_of};
 
 /// Поток `body`, занятый повтором в этой сборке.
@@ -170,7 +170,10 @@ impl FlowCx {
         // Ближний блок без свежего повтора почти наверняка попадёт на экран,
         // а отказ заместителя на экране собирает кадр второй раз. Растянутый
         // блок не повторяется никогда, поэтому заменяется только далёкий.
-        let paintable = record.far || (!stretched && record.current(&self.reuse));
+        // Блок, уже отказанный на экране при этом ключе (`Store::banned`),
+        // замещается только далёким: повтор на месте его снова сдвинул бы.
+        let paintable = record.far
+            || (!stretched && !self.reuse.store.banned(e.node_id) && record.current(&self.reuse));
         let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
         if !fits {
             return None;
@@ -217,43 +220,14 @@ impl FlowCx {
         if !single {
             return;
         }
-        if (self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e) {
-            self.record_skip(e, &mark, now.start, opts, out);
+        let skip = (self.settled || self.resized)
+            && (!edge || self.edges)
+            && mark.inert.of(e)
+            && self.record_skip(e, &mark, now.start, opts, out);
+        // Первая устоявшаяся сборка пишет для повтора лишь блоки, не
+        // записанные для пропуска (`mark::replay_worth_recording`).
+        if !(skip && self.settled && !self.warm) {
+            self.record_replay(e, mark, now.start, opts, out);
         }
-        self.record_replay(e, mark, now.start, opts, out);
-    }
-
-    /// Запись пропуска и повтора на месте (`recorder`) инертного ребёнка `e`.
-    fn record_skip(
-        &self,
-        e: &Element,
-        mark: &Mark,
-        end: Counters,
-        opts: &RenderOpts,
-        out: &mut Vec<AnyElement>,
-    ) {
-        // Запись при другой ширине потока годна лишь независимому от неё блоку.
-        let width = super::width::independent(e, opts.cx.vcx());
-        let flow = self.key.flow_width();
-        if !self.settled && !self.reuse.width_recordable(e, width, flow) {
-            return;
-        }
-        let Some(mut child) = out.pop() else { return };
-        // Обёртка таблицы у начального края: лист снимается сквозь неё.
-        let unpainted = child
-            .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
-            .is_some();
-        let pending = Rc::new(Pending::new(
-            self.key.clone(),
-            mark.start,
-            end,
-            width,
-            self.settled,
-            unpainted,
-            super::width::tracks_flow(e),
-        ));
-        let source = self.reuse.shells.source(e);
-        super::push(&self.reuse.pending, (pending.clone(), source));
-        out.push(Recorder::new(child, pending).hooked());
     }
 }

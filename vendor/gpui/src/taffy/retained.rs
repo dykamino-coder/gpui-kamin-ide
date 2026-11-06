@@ -73,6 +73,7 @@ pub(super) struct Candidates {
     head: usize,
 }
 
+#[cfg(test)]
 impl Candidates {
     /// No unclaimed leaf is left.
     pub(super) fn is_empty(&self) -> bool {

@@ -12,10 +12,14 @@ use std::rc::Rc;
 impl FlowCx {
     /// Повтор ребёнка `e` на экране, если его запись подходит (`replay`).
     /// Блок, отказанный проверкой заместителей этого кадра, собирается: его
-    /// запись повтора не подошла бы на том же новом месте.
+    /// запись повтора не подошла бы на том же новом месте. Повторная сборка
+    /// кадра (`FlowReuse::again`) не повторяет: она в том же проходе дерева
+    /// раскладки, где первая уже заняла поддеревья записей, а занятые узлы
+    /// поддерево не отдаёт (`Window::request_retained_layout`).
     pub(crate) fn replay(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         let store = &self.reuse.store;
         if !self.reuse.allow
+            || self.reuse.again
             || e.node_id == 0
             || self.floats.get()
             || store.banned(e.node_id)

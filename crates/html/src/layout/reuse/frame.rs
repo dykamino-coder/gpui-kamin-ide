@@ -59,7 +59,15 @@ impl FlowReuse {
             }
         }
         let ok = refused.is_empty();
-        self.store.refused.borrow_mut().extend(refused);
+        // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
+        // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).
+        let mut banned = self.store.banned.take();
+        banned.extend(refused.iter().copied());
+        self.store.banned.replace(banned);
+        // Повторная сборка кадра проверяется снова: отказы копятся до `finish`.
+        let mut all = self.store.refused.take();
+        all.extend(refused);
+        self.store.refused.replace(all);
         self.validate_replays(window) && ok
     }
 

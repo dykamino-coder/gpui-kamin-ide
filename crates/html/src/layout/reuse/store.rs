@@ -125,4 +125,6 @@ pub struct ReuseStats {
     /// blocks whose output of the last frame was replayed, and blocks whose
     /// layout subtree was claimed whole (`replay`).
     pub replayed: u64,
+    /// Of `replayed`, blocks whose layout subtree was claimed whole.
+    pub subtrees: u64,
 }

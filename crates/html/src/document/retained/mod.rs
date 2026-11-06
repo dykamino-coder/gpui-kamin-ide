@@ -152,4 +152,10 @@ impl Document {
     pub fn replayed_blocks(&self) -> u64 {
         self.reuse.stats.get().replayed
     }
+
+    /// Of `replayed_blocks`, those whose layout subtree was claimed whole.
+    #[cfg(test)]
+    pub(crate) fn replayed_subtrees(&self) -> u64 {
+        self.reuse.stats.get().subtrees
+    }
 }

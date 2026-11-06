@@ -17686,10 +17686,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e690b4999395daf86be9c3721cae96ee8c63c7f1
+index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea737ec14335
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,464 @@
+@@ -0,0 +1,465 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17765,6 +17765,7 @@ index 0000000000000000000000000000000000000000..e690b4999395daf86be9c3721cae96ee
 +    head: usize,
 +}
 +
++#[cfg(test)]
 +impl Candidates {
 +    /// No unclaimed leaf is left.
 +    pub(super) fn is_empty(&self) -> bool {

@@ -77,13 +77,16 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     let grown = format!("{}x", "x ".repeat(300));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
-    // The onscreen rows below the grown one move: their on-screen replay
-    // (`layout::reuse::replay`) fails the frame check once and the frame is
-    // built without replays and skips; they are built from then on while the
-    // flow key stays. The second settled build records them for replay.
+    // The grown block moves the visible blocks below it: their replay is
+    // refused, and one more build of the same frame builds just them.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
-    assert_eq!(reused(&view, cx).2, 1);
+    assert_eq!(reused(&view, cx).2, 1, "moved visible blocks were replayed");
+    // An update adopts a new tree, and its frame counters start anew.
+    let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
+    assert_eq!(builds, 2, "the refused frame was built more than twice");
+    // The refused blocks are built from then on while the flow key stays
+    // (`Store::banned`): moving them again builds no frame twice.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
@@ -91,12 +94,7 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    // The grown block moves the visible blocks below it: their replay is
-    // refused, and one more build of the same frame builds just them.
-    assert_eq!(rebuilt, 1, "moved visible blocks were replayed");
-    // An update adopts a new tree, and its frame counters start anew.
-    let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
-    assert_eq!(builds, 2, "the refused frame was built more than twice");
+    assert_eq!(rebuilt, 1, "a refused block was replayed again");
 }
 
 #[gpui::test]
