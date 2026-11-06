@@ -18,6 +18,7 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
         layout_lines: Some(vec![px(5.0), px(15.0), px(25.0)]),
         layout_lines_x: None,
         layout_lines_x_from_right: false,
+        key_slot: crate::taffy::retained::NO_SLOT,
     };
     let child = tree
         .new_leaf_with_context(
@@ -74,6 +75,7 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
                 layout_lines: Some(vec![px(22.0)]),
                 layout_lines_x: None,
                 layout_lines_x_from_right: false,
+                key_slot: crate::taffy::retained::NO_SLOT,
             },
         )
         .unwrap();
@@ -130,6 +132,7 @@ fn copied_line_metadata_is_independent_while_callbacks_are_shared() {
         layout_lines: Some(vec![px(5.0), px(15.0)]),
         layout_lines_x: Some(vec![px(23.0), px(11.0)]),
         layout_lines_x_from_right: false,
+        key_slot: crate::taffy::retained::NO_SLOT,
     };
     let mut copy = original.clone();
     copy.layout_lines.as_mut().unwrap()[0] = px(7.0);
