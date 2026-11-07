@@ -14,6 +14,8 @@
 //! Иначе кадр собирается заново, как `Document::render`.
 
 mod element;
+#[cfg(test)]
+mod far_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;
@@ -163,5 +165,11 @@ impl Document {
     #[cfg(test)]
     pub(crate) fn replayed_subtrees(&self) -> u64 {
         self.reuse.stats.get().subtrees
+    }
+
+    /// Far blocks laid out from their kept layout subtree (`layout::reuse::far`).
+    #[cfg(test)]
+    pub(crate) fn far_blocks(&self) -> u64 {
+        self.reuse.stats.get().far
     }
 }

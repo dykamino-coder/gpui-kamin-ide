@@ -379,6 +379,35 @@ impl Window {
             .claim_subtree(layout.stamp, &layout.nodes)
     }
 
+    /// Keep the measure functions of the leaves of `layout` (requested or
+    /// claimed in this pass) for the next pass: claimed whole there, the
+    /// subtree is laid out at new constraints by those functions instead of
+    /// going stale. The caller vouches that they read nothing else that
+    /// changes between the passes, and keeps them pass by pass.
+    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.keep_measures(&layout.nodes);
+        }
+    }
+
+    /// Union of the layout bounds of every node of `layout` in this pass,
+    /// relative to the window like [`Self::layout_bounds`].
+    pub fn retained_layout_bounds(&mut self, layout: &RetainedSubtree) -> Option<Bounds<Pixels>> {
+        self.invalidator.debug_assert_prepaint();
+        let scale_factor = self.scale_factor();
+        let mut bounds = self
+            .layout_engine
+            .as_mut()?
+            .nodes_layout_bounds(&layout.nodes, scale_factor)?;
+        let offset = if self.exact_element_offset_depth > 0 {
+            self.element_offset()
+        } else {
+            self.pixel_snap_point(self.element_offset())
+        };
+        bounds.origin += offset;
+        Some(bounds)
+    }
+
     /// Whether this pass measured a leaf of a subtree claimed whole.
     pub fn layout_stale(&self) -> bool {
         self.layout_engine

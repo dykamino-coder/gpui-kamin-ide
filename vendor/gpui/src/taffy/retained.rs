@@ -44,6 +44,10 @@
 //! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
 //! were not claimed are dropped in one sweep (`TaffyTree::retain_nodes`).
 //!
+//! A host may keep the measure functions of a subtree's leaves for the next
+//! pass (`keep_measures`): that pass can claim the subtree whole and lay it
+//! out at new constraints (another available width) without its requests.
+//!
 //! The bookkeeping lives on the nodes where it can: a key's candidate slot in
 //! the measured leaf's context, the pinned identity of a stamped node in its
 //! Taffy node; only keys and memos are side tables.
@@ -119,6 +123,9 @@ pub(super) struct Retained {
     /// results computed from a stub: the host rebuilds the frame and the tree
     /// is dropped at the end of the pass.
     stale: Rc<std::cell::Cell<bool>>,
+    /// Leaves of this pass whose measure functions the next pass keeps
+    /// (`keep_measures`); emptied at the end of every pass, capacity kept.
+    keep: FxHashSet<NodeId>,
 }
 
 impl Retained {
@@ -318,15 +325,20 @@ impl TaffyLayoutEngine {
         retained.memos.retain(|node, _| live.contains(node));
         // A kept leaf is measured again only by the function of the request
         // that claims it, so the old function and everything it captured (a
-        // whole paragraph probe) need not outlive the frame.
+        // whole paragraph probe) need not outlive the frame. Leaves the host
+        // keeps (`keep_measures`) keep their functions for one more pass.
         let stub = retired_measure(retained.stale.clone());
+        let mut keep = std::mem::take(&mut retained.keep);
         for node in &live {
-            if self.taffy.has_node_context(*node)
+            if !keep.contains(node)
+                && self.taffy.has_node_context(*node)
                 && let Some(context) = self.taffy.get_node_context_mut(*node)
             {
                 context.measure = stub.clone();
             }
         }
+        keep.clear();
+        retained.keep = keep;
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
         for (position, node) in retained.seq.iter().enumerate() {
@@ -436,6 +448,36 @@ impl TaffyLayoutEngine {
         }
         self.retained.claimed += nodes.len() as u64;
         Some(LayoutId(root))
+    }
+
+    /// Keep the measure functions of the measured leaves among `nodes`
+    /// (requested in this pass) for the next pass, instead of retiring them:
+    /// a subtree the next pass claims whole (`claim_subtree`) is then laid
+    /// out at any new constraints by the functions of its own requests, like
+    /// a fresh request of the same subtree, and the pass does not go stale.
+    /// The host vouches that the functions read nothing that changes between
+    /// the passes; it keeps them pass by pass, as long as it claims them.
+    pub fn keep_measures(&mut self, nodes: &[NodeId]) {
+        if !self.frame_tree {
+            return;
+        }
+        for &node in nodes {
+            if self.retained.live.contains(&node) && self.taffy.has_node_context(node) {
+                self.retained.keep.insert(node);
+            }
+        }
+    }
+
+    /// Union of the absolute layout bounds of `nodes` in this pass.
+    pub fn nodes_layout_bounds(
+        &mut self,
+        nodes: &[NodeId],
+        scale_factor: f32,
+    ) -> Option<crate::Bounds<crate::Pixels>> {
+        nodes
+            .iter()
+            .map(|&node| self.layout_bounds(LayoutId(node), scale_factor))
+            .reduce(|a, b| a.union(&b))
     }
 
     /// Whether a leaf of a subtree claimed whole was measured in this pass.

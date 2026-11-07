@@ -27,10 +27,10 @@ impl FlowCx {
         {
             return None;
         }
-        let record = store.replays.borrow().get(&e.node_id).cloned()?;
-        if !record.fits(&self.key, Counters::read(&opts.cx), e) {
-            return None;
-        }
+        let record = store.replays.borrow().get(&e.node_id).cloned();
+        let Some(record) = record.filter(|r| r.fits(&self.key, Counters::read(&opts.cx), e)) else {
+            return self.far(e, opts);
+        };
         record.end.write(&opts.cx);
         let mut next = self.reuse.next_replays.take();
         next.insert(e.node_id, record.clone());
@@ -50,7 +50,9 @@ impl FlowCx {
         opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
     ) {
-        let Some(widths) = mark.widths else { return };
+        let Some(widths) = mark.widths.filter(|_| mark.replay) else {
+            return;
+        };
         if self.reuse.store.banned(e.node_id) || !super::super::plain::replayable(e, opts.cx.vcx())
         {
             return;

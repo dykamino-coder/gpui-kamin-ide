@@ -1,6 +1,6 @@
 //! Записи блоков одного документа между кадрами (`Store`).
 
-use super::{FlowKey, Record, narrow, replay::ReplayRecord};
+use super::{FlowKey, Record, far::FarRecord, narrow, replay::ReplayRecord};
 use crate::dom::Element;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -15,6 +15,9 @@ pub(crate) struct Store {
     /// Records of blocks replayed on screen with their layout subtree
     /// (`replay`), by node id.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
+    /// Records of far blocks laid out from their kept layout subtree
+    /// (`far`), by node id.
+    pub(super) far: RefCell<HashMap<u64, Rc<FarRecord>>>,
     /// Blocks whose replay failed the frame check (moved, or their layout
     /// needed a new measurement): they are built until the flow key changes.
     pub(super) banned: RefCell<HashSet<u64>>,
@@ -57,8 +60,11 @@ impl Store {
 
     /// Кадр документа повторён целиком: диапазоны записей повтора блоков
     /// указывают в кадр до него и больше не годятся.
+    /// The layout pass of the replayed frame did not request the document's
+    /// nodes either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {
         self.replays.take();
+        self.far.take();
     }
 
     /// Запись блока `e`, если его поддерево то же, что при записи. Запись
@@ -103,6 +109,7 @@ impl Store {
     /// The flow key changed outside its widths: no replay record holds.
     pub(super) fn reset_replays(&self) {
         self.replays.take();
+        self.far.take();
         self.banned.take();
         self.reads_widths.take();
     }
@@ -136,4 +143,7 @@ pub struct ReuseStats {
     pub subtrees: u64,
     /// Blocks wrapped for a subtree replay record (`replay::PendingReplay`).
     pub replay_tracked: u64,
+    /// Far blocks laid out from their kept layout subtree without a build
+    /// (`far`).
+    pub far: u64,
 }

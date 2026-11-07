@@ -15,6 +15,8 @@ pub(crate) struct Mark {
     pub(super) late: bool,
     /// Чтения ширин снаружи сборкой ребёнка (`BoxConstraints::track_widths`).
     pub(super) widths: Option<Rc<std::cell::Cell<bool>>>,
+    /// The child's subtree replay record may pay off (`replay_worth_recording`).
+    pub(super) replay: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
 }
@@ -36,19 +38,29 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         coordinates: paint.coordinates.borrow().len(),
         late: opts.cx.position.state.late_pending(),
         widths: None,
+        replay: false,
         inert: Default::default(),
     }
 }
 
 impl super::FlowCx {
     /// Состояние до сборки ребёнка `e`; с записью чтений ширин, если его
-    /// запись повтора может пригодиться (`replay_worth_recording`).
+    /// запись повтора может пригодиться (`replay_worth_recording`) или он
+    /// может оказаться далёким блоком (`far_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if self.replay_worth_recording(e) {
+        mark.replay = self.replay_worth_recording(e);
+        if mark.replay || self.far_worth_recording(e) {
             mark.widths = Some(Rc::default());
         }
         mark
+    }
+
+    /// A far record of child `e` may serve a later build of the same flow
+    /// outside the widths (`far`). Whether the block is far is known only
+    /// after its paint; a near one costs the wrapper and a node list.
+    pub(super) fn far_worth_recording(&self, e: &Element) -> bool {
+        self.settled_outside_widths && !self.floats.get() && !self.reuse.store.banned(e.node_id)
     }
 
     /// Запись повтора ребёнка `e` может подойти следующей сборке и окупиться.

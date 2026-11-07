@@ -17686,10 +17686,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea737ec14335
+index 0000000000000000000000000000000000000000..c186d8f02f623622a0909398e906fc3a9d9cc55f
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,465 @@
+@@ -0,0 +1,507 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -17735,6 +17735,10 @@ index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea73
 +//! its ancestors are new nodes as well, and new nodes start with empty caches.
 +//! At the end of a pass (`TaffyLayoutEngine::clear`) the previous nodes that
 +//! were not claimed are dropped in one sweep (`TaffyTree::retain_nodes`).
++//!
++//! A host may keep the measure functions of a subtree's leaves for the next
++//! pass (`keep_measures`): that pass can claim the subtree whole and lay it
++//! out at new constraints (another available width) without its requests.
 +//!
 +//! The bookkeeping lives on the nodes where it can: a key's candidate slot in
 +//! the measured leaf's context, the pinned identity of a stamped node in its
@@ -17811,6 +17815,9 @@ index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea73
 +    /// results computed from a stub: the host rebuilds the frame and the tree
 +    /// is dropped at the end of the pass.
 +    stale: Rc<std::cell::Cell<bool>>,
++    /// Leaves of this pass whose measure functions the next pass keeps
++    /// (`keep_measures`); emptied at the end of every pass, capacity kept.
++    keep: FxHashSet<NodeId>,
 +}
 +
 +impl Retained {
@@ -18010,15 +18017,20 @@ index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea73
 +        retained.memos.retain(|node, _| live.contains(node));
 +        // A kept leaf is measured again only by the function of the request
 +        // that claims it, so the old function and everything it captured (a
-+        // whole paragraph probe) need not outlive the frame.
++        // whole paragraph probe) need not outlive the frame. Leaves the host
++        // keeps (`keep_measures`) keep their functions for one more pass.
 +        let stub = retired_measure(retained.stale.clone());
++        let mut keep = std::mem::take(&mut retained.keep);
 +        for node in &live {
-+            if self.taffy.has_node_context(*node)
++            if !keep.contains(node)
++                && self.taffy.has_node_context(*node)
 +                && let Some(context) = self.taffy.get_node_context_mut(*node)
 +            {
 +                context.measure = stub.clone();
 +            }
 +        }
++        keep.clear();
++        retained.keep = keep;
 +        retained.keys.retain(|node, _| live.contains(node));
 +        retained.by_key.clear();
 +        for (position, node) in retained.seq.iter().enumerate() {
@@ -18128,6 +18140,36 @@ index 0000000000000000000000000000000000000000..3f3a5586b8728d3be38d522408c7ea73
 +        }
 +        self.retained.claimed += nodes.len() as u64;
 +        Some(LayoutId(root))
++    }
++
++    /// Keep the measure functions of the measured leaves among `nodes`
++    /// (requested in this pass) for the next pass, instead of retiring them:
++    /// a subtree the next pass claims whole (`claim_subtree`) is then laid
++    /// out at any new constraints by the functions of its own requests, like
++    /// a fresh request of the same subtree, and the pass does not go stale.
++    /// The host vouches that the functions read nothing that changes between
++    /// the passes; it keeps them pass by pass, as long as it claims them.
++    pub fn keep_measures(&mut self, nodes: &[NodeId]) {
++        if !self.frame_tree {
++            return;
++        }
++        for &node in nodes {
++            if self.retained.live.contains(&node) && self.taffy.has_node_context(node) {
++                self.retained.keep.insert(node);
++            }
++        }
++    }
++
++    /// Union of the absolute layout bounds of `nodes` in this pass.
++    pub fn nodes_layout_bounds(
++        &mut self,
++        nodes: &[NodeId],
++        scale_factor: f32,
++    ) -> Option<crate::Bounds<crate::Pixels>> {
++        nodes
++            .iter()
++            .map(|&node| self.layout_bounds(LayoutId(node), scale_factor))
++            .reduce(|a, b| a.union(&b))
 +    }
 +
 +    /// Whether a leaf of a subtree claimed whole was measured in this pass.
@@ -25772,10 +25814,10 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f681f803659
+index 0000000000000000000000000000000000000000..0fc8aaccf9028da131350dfc08d5937599feda00
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,427 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -26155,6 +26197,35 @@ index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f68
 +        self.layout_engine
 +            .as_mut()?
 +            .claim_subtree(layout.stamp, &layout.nodes)
++    }
++
++    /// Keep the measure functions of the leaves of `layout` (requested or
++    /// claimed in this pass) for the next pass: claimed whole there, the
++    /// subtree is laid out at new constraints by those functions instead of
++    /// going stale. The caller vouches that they read nothing else that
++    /// changes between the passes, and keeps them pass by pass.
++    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree) {
++        if let Some(engine) = self.layout_engine.as_mut() {
++            engine.keep_measures(&layout.nodes);
++        }
++    }
++
++    /// Union of the layout bounds of every node of `layout` in this pass,
++    /// relative to the window like [`Self::layout_bounds`].
++    pub fn retained_layout_bounds(&mut self, layout: &RetainedSubtree) -> Option<Bounds<Pixels>> {
++        self.invalidator.debug_assert_prepaint();
++        let scale_factor = self.scale_factor();
++        let mut bounds = self
++            .layout_engine
++            .as_mut()?
++            .nodes_layout_bounds(&layout.nodes, scale_factor)?;
++        let offset = if self.exact_element_offset_depth > 0 {
++            self.element_offset()
++        } else {
++            self.pixel_snap_point(self.element_offset())
++        };
++        bounds.origin += offset;
++        Some(bounds)
 +    }
 +
 +    /// Whether this pass measured a leaf of a subtree claimed whole.

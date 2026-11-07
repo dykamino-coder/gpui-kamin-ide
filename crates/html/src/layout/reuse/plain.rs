@@ -101,6 +101,23 @@ pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     })
 }
 
+/// The subtree of `e` can be laid out again at another width from its kept
+/// layout nodes (`far`): replayable, and only block and inline boxes, which
+/// Taffy's block layout and the paragraph's measure function lay out. Tables
+/// and inline-level boxes with their own layout (inline-block) are not
+/// admitted until their layout at a new width is shown to need no build.
+pub(super) fn far_replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    use crate::style::computed::Display;
+    replayable(e, vcx)
+        && all_elements(e, |e| {
+            !TABLE.contains(&e.tag.as_str())
+                && matches!(
+                    e.style.used().reset_box_layout.display,
+                    None | Some(Display::Block)
+                )
+        })
+}
+
 /// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без
 /// `max-width`, не таблица (её авто-ширина — css-tables-3 §3.9.4). Его
 /// ширина меняется с каждой шириной потока, повтор там не встанет на место.
