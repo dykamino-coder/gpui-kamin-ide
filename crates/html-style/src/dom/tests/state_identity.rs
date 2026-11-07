@@ -23,7 +23,7 @@ fn generated_scroll_boxes_have_distinct_stable_state_ids() {
                     assert_eq!(element.node_id, 0);
                     assert!(element.marks.state_id.get().is_some());
                     out.push((
-                        element.tag.clone(),
+                        element.tag.to_string(),
                         element.state_id("html-scroll-area", vcx),
                     ));
                 }

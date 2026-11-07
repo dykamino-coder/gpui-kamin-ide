@@ -197,13 +197,13 @@ pub(super) fn scroll_marker_pass(
         node_id: 0,
         anim: None,
         inline: false,
-        tag: "::scroll-marker-group".to_string(),
+        tag: "::scroll-marker-group".into(),
         style: gstyle.into(),
         hover: None,
         first_letter: None,
         first_line: None,
         children: (markers.into_iter().map(Node::Element).collect::<Vec<_>>()).into(),
-        attrs: vec![],
+        attrs: Default::default(),
     };
     if before {
         out.group_before = Some(group);

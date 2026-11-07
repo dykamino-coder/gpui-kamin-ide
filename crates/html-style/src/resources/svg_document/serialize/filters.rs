@@ -57,7 +57,7 @@ pub(super) fn untaint_filters(e: &mut Element) {
             }
             if p.tag == "feDisplacementMap" && dirty_ref(&in2, prev) {
                 // Сквозной проход: сохранить in/result, снять карту.
-                p.tag = "feOffset".to_string();
+                p.tag = "feOffset".into();
                 p.attrs.retain(|(k, _)| {
                     !matches!(
                         k.as_str(),

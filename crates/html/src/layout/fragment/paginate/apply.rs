@@ -157,7 +157,7 @@ fn spacer_box(id: u64, h: f32) -> Element {
         list_item: None,
         node_id: id ^ 0x5041_4749_4E41_5445,
         anim: None,
-        tag: "div".to_string(),
+        tag: "div".into(),
         style: crate::style::computed::Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetBoxLayout {
@@ -173,7 +173,7 @@ fn spacer_box(id: u64, h: f32) -> Element {
         first_letter: None,
         first_line: None,
         children: (Vec::new()).into(),
-        attrs: Vec::new(),
+        attrs: Default::default(),
         inline: false,
     }
 }

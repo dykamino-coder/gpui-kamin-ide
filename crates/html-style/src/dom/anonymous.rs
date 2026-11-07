@@ -20,7 +20,7 @@ impl Element {
             marks,
             list_item: None,
             node_id: 0,
-            attrs: Vec::new(),
+            attrs: Default::default(),
             anim: None,
             hover: None,
             first_letter: None,

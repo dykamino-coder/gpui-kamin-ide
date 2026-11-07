@@ -28,7 +28,7 @@ pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bo
     }
     for (path, id) in paths {
         match (apply(nodes, &path), targets.get(&id)) {
-            (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
+            (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone().into(),
             _ => return false,
         }
     }
@@ -54,7 +54,7 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
 /// Пути ко всем коробкам адресуемых элементов.
 fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u64)>) -> bool {
     elements(nodes, |e, path| match targets.get(&e.node_id) {
-        Some(target) if e.tag == target.tag && e.attrs == target.old => {
+        Some(target) if e.tag == target.tag && *e.attrs == target.old => {
             paths.push((path.to_vec(), e.node_id));
             true
         }

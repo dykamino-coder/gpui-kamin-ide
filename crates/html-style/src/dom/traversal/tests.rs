@@ -64,7 +64,7 @@ fn pruning_visits_the_next_sibling_and_postorder_sees_restored_children() {
     ];
     let mut events = Vec::new();
     preorder(&Admission::default(), &mut tree, (), |e, _| {
-        events.push(e.tag.clone());
+        events.push(e.tag.to_string());
         None
     })
     .unwrap();

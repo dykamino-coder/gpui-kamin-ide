@@ -17,7 +17,7 @@ fn element(style: Computed, children: Vec<Element>) -> Element {
         first_letter: None,
         first_line: None,
         children: (children.into_iter().map(Node::Element).collect::<Vec<_>>()).into(),
-        attrs: Vec::new(),
+        attrs: Default::default(),
         inline: false,
     }
 }

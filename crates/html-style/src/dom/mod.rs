@@ -9,6 +9,8 @@
 mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
+mod shared;
+pub use shared::Shared;
 mod children;
 mod same_tree;
 pub use same_tree::{BoxStyles, same_box, same_shell, same_tree, same_tree_as, same_values};
@@ -130,7 +132,7 @@ pub struct Element {
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
     pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
-    pub tag: String,
+    pub tag: Shared<String>,
     pub style: SharedStyle,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
@@ -142,7 +144,7 @@ pub struct Element {
     pub first_line: Option<SharedStyle>,
     pub children: Children,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
-    pub attrs: Vec<(String, String)>,
+    pub attrs: Shared<Vec<(String, String)>>,
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
     /// этого зависит, попадёт ли он в строку текста или станет блоком.
     pub inline: bool,
@@ -164,7 +166,7 @@ impl Element {
             first_letter: None,
             first_line: None,
             children: children.into(),
-            attrs: Vec::new(),
+            attrs: Default::default(),
             inline: false,
             marks,
         }

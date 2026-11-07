@@ -159,7 +159,7 @@ pub(super) fn enter<'a>(
     if hidden && tag == "html" {
         out.push(Node::Element(Element {
             marks: Default::default(),
-            tag,
+            tag: tag.into(),
             inline: false,
             node_id: 0,
             style: style.into(),
@@ -167,7 +167,7 @@ pub(super) fn enter<'a>(
             first_letter: None,
             first_line: None,
             children: (vec![]).into(),
-            attrs: vec![],
+            attrs: Default::default(),
             anim: None,
             list_item: None,
         }));
@@ -231,7 +231,7 @@ pub(super) fn enter<'a>(
         visit,
         candidates,
         me,
-        tag,
+        tag: tag.into(),
         attrs,
         style,
         vars: own_vars,

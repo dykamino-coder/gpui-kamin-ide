@@ -135,7 +135,7 @@ pub fn anon_element(tag: &str, children: Vec<Node>) -> Element {
         first_letter: None,
         first_line: None,
         children: children.into(),
-        attrs: Vec::new(),
+        attrs: Default::default(),
         inline: false,
     }
 }

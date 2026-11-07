@@ -58,13 +58,13 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         list_item: None,
         node_id: cell.node_id ^ 0x0CE1_1C01_0000_0001,
         anim: None,
-        tag: "div".to_string(),
+        tag: "div".into(),
         style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,
         children: cell.children.clone(),
-        attrs: Vec::new(),
+        attrs: Default::default(),
         inline: false,
     };
     Some(vec![Node::Element(flow)])

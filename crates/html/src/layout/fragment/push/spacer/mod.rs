@@ -93,13 +93,13 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
                 // коробкой, перед которой она стоит.
                 node_id: id ^ crate::layout::fragment::flow::blocks::STRUT_ID,
                 anim: None,
-                tag: "div".to_string(),
+                tag: "div".into(),
                 style: style.into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,
                 children: (Vec::new()).into(),
-                attrs: Vec::new(),
+                attrs: Default::default(),
                 inline: false,
             }),
         );

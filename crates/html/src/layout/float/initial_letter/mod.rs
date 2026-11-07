@@ -224,7 +224,7 @@ pub(crate) fn initial_letter_float(
             first_letter: None,
             first_line: None,
             children: children.into(),
-            attrs: vec![],
+            attrs: Default::default(),
             inline,
         })
     };

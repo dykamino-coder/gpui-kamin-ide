@@ -129,13 +129,13 @@ pub(super) fn finish_element(
         node_id: node_id,
         anim: anim.map(std::rc::Rc::new),
         inline,
-        tag,
+        tag: tag.into(),
         style: style.into(),
         hover: hover.map(Into::into),
         first_letter: first_letter.map(Into::into),
         first_line: first_line.map(Into::into),
         children: children.into(),
-        attrs,
+        attrs: attrs.into(),
     }));
     out.extend(sp.buttons.into_iter().map(Node::Element));
     if let Some(g) = sp.group_after {

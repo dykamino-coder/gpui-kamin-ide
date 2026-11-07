@@ -57,7 +57,7 @@ pub(crate) fn builder(layers: Computed, root: BoxStyle, opts: RenderOpts) -> Can
         }
         let el = Element {
             marks: Default::default(),
-            tag: "div".to_string(),
+            tag: "div".into(),
             inline: false,
             node_id: 0,
             style: st.into(),
@@ -65,7 +65,7 @@ pub(crate) fn builder(layers: Computed, root: BoxStyle, opts: RenderOpts) -> Can
             first_letter: None,
             first_line: None,
             children: (vec![]).into(),
-            attrs: vec![],
+            attrs: Default::default(),
             anim: Default::default(),
             list_item: None,
         };

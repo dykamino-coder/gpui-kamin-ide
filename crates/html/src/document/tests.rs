@@ -13,7 +13,7 @@ fn html_after_survives_unwrap() {
         .nodes()
         .iter()
         .map(|n| match n {
-            Node::Element(e) => e.tag.clone(),
+            Node::Element(e) => e.tag.to_string(),
             Node::Text(t) => format!("txt[{t}]"),
         })
         .collect();

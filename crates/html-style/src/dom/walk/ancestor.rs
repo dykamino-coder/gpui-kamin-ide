@@ -64,11 +64,11 @@ pub(super) fn element_ancestor(
         counter_context: Default::default(),
         content_style: None,
         content_none: None,
-        tag: tag.to_string(),
+        tag: tag.to_string().into(),
         html_attrs,
         id,
         classes,
-        attrs: attrs.clone(),
+        attrs: attrs.clone().into(),
         spot,
         href: attrs
             .iter()

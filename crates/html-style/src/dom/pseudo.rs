@@ -162,7 +162,7 @@ pub(super) fn pseudo_box_named(
                     first_letter: None,
                     first_line: None,
                     children: (vec![]).into(),
-                    attrs: vec![("src".into(), src)],
+                    attrs: vec![("src".into(), src)].into(),
                     inline: true,
                 }));
             }
@@ -192,13 +192,13 @@ pub(super) fn pseudo_box_named(
         // anchor pass shifts the laid-out box, and an inline placeholder put
         // it one device row off (`position-anchor-*-pseudo-element-*`).
         inline: !anchor_positioned(&style),
-        tag: format!("::{tag}"),
+        tag: format!("::{tag}").into(),
         style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,
         children: children.into(),
-        attrs: vec![],
+        attrs: Default::default(),
     })
 }
 

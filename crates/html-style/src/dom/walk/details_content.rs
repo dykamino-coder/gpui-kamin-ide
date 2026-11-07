@@ -101,7 +101,7 @@ pub(super) fn wrap(
         first_letter: None,
         first_line: None,
         children: (slot).into(),
-        attrs: vec![],
+        attrs: Default::default(),
         inline: false,
     }));
     out.extend(tail);

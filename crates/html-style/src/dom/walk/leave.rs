@@ -33,13 +33,13 @@ pub(super) fn leave(
             node_id: *counter,
             anim: None,
             inline: false,
-            tag: p.tag,
+            tag: p.tag.into(),
             style: p.style.into(),
             hover: None,
             first_letter: None,
             first_line: None,
             children: children.into(),
-            attrs: p.attrs,
+            attrs: p.attrs.into(),
         }));
         return Ok(());
     }

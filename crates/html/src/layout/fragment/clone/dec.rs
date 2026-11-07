@@ -132,7 +132,7 @@ pub(crate) fn clone_fragment(
         list_item: None,
         node_id: c.node_id ^ 0x0BDB_C10E_0000_0001,
         anim: None,
-        tag: "div".to_string(),
+        tag: "div".into(),
         style: Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetBoxLayout {
@@ -149,7 +149,7 @@ pub(crate) fn clone_fragment(
         first_letter: None,
         first_line: None,
         children: (vec![Node::Element(body)]).into(),
-        attrs: Vec::new(),
+        attrs: Default::default(),
         inline: false,
     };
     let mut deco = c.clone();
