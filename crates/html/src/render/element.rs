@@ -66,14 +66,15 @@ async fn element_inner(
     opts: &RenderOpts,
 ) -> AnyElement {
     // The context usually carries this viewport already (`render`/`render_block` set it): a
-    // copy of the options is made only when it does not. Only the optional copy outlives this
-    // block, so the future keeps one pointer across awaits, as with the unconditional copy.
-    let viewport_opts = {
-        let (have, want) = (opts.cx.values.viewport, opts.viewport);
-        let same = (have.0.to_bits(), have.1.to_bits()) == (want.0.to_bits(), want.1.to_bits());
-        (!same).then(|| opts.inner(|cx| cx.values.viewport = opts.viewport))
+    // copy of the options is made only when it does not.
+    let viewport_opts;
+    let (have, want) = (opts.cx.values.viewport, opts.viewport);
+    let opts = if (have.0.to_bits(), have.1.to_bits()) == (want.0.to_bits(), want.1.to_bits()) {
+        opts
+    } else {
+        viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
+        &*viewport_opts
     };
-    let opts = viewport_opts.as_deref().unwrap_or(opts);
     let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let sized = crate::layout::replaced::media::sized(e, inherited, opts, vcx);
     let e = &*sized;
