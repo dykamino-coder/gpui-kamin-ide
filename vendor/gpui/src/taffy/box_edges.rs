@@ -46,8 +46,10 @@ impl TaffyLayoutEngine {
         let (ax, ay) = self.absolute_unrounded.get(&id).copied()?;
         let layout = *self.taffy.layout(id.into()).ok()?;
         let (border, extent) = (layout.border, layout.size);
-        let x = ax + border.left + left * scale_factor;
-        let y = ay + self.taffy.content_shift(id.into()) + border.top + top * scale_factor;
+        // As `layout_bounds` places the child: parent origin (plus content shift) + the
+        // child's location, which taffy computes as start inset + positioning-area offset.
+        let x = ax + (left * scale_factor + border.left);
+        let y = (ay + self.taffy.content_shift(id.into())) + (top * scale_factor + border.top);
         // The same f32 operations, in the same order, as taffy's stretch-fit size of an
         // absolute child: positioning area = border box - (start + end border), then the
         // inset-modified containing block (area - end inset) - start inset.
