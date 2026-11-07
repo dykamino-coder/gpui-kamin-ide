@@ -6,13 +6,48 @@
 //! node instead of copying it. The tag and attributes of an element never change during
 //! construction, so a copy shares them (a reference count) and a rare write copies them
 //! (`DerefMut`, copy on write).
+//!
+//! Construction must not cost more than the plain values did: element names come from a small
+//! vocabulary and are interned per thread (Blink and Gecko intern them as atoms), and every
+//! empty attribute list is one shared value, so neither allocates per element.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-#[derive(Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Shared<T>(Rc<T>);
+
+/// Attribute list of an element: name, value.
+pub type Attrs = Vec<(String, String)>;
+
+/// Interned names are short; a document inventing ever new long names keeps its own copies.
+const MAX_INTERNED_LEN: usize = 32;
+const MAX_INTERNED: usize = 4096;
+
+thread_local! {
+    static NAMES: RefCell<HashMap<String, Rc<String>>> = RefCell::new(HashMap::new());
+    static NO_ATTRS: Rc<Attrs> = Rc::new(Vec::new());
+}
+
+fn intern<S: AsRef<str> + Into<String>>(name: S) -> Shared<String> {
+    if name.as_ref().len() > MAX_INTERNED_LEN {
+        return Shared(Rc::new(name.into()));
+    }
+    NAMES.with(|names| {
+        let mut names = names.borrow_mut();
+        if let Some(rc) = names.get(name.as_ref()) {
+            return Shared(rc.clone());
+        }
+        let rc = Rc::new(name.into());
+        if names.len() < MAX_INTERNED {
+            names.insert(String::clone(&rc), rc.clone());
+        }
+        Shared(rc)
+    })
+}
 
 impl<T> Clone for Shared<T> {
     fn clone(&self) -> Self {
@@ -46,15 +81,37 @@ impl<T: Clone> DerefMut for Shared<T> {
     }
 }
 
-impl<T> From<T> for Shared<T> {
-    fn from(value: T) -> Self {
-        Self::new(value)
+impl Default for Shared<String> {
+    fn default() -> Self {
+        intern("")
+    }
+}
+
+impl Default for Shared<Attrs> {
+    fn default() -> Self {
+        Self(NO_ATTRS.with(Rc::clone))
+    }
+}
+
+impl From<String> for Shared<String> {
+    fn from(value: String) -> Self {
+        intern(value)
     }
 }
 
 impl From<&str> for Shared<String> {
     fn from(value: &str) -> Self {
-        Self::new(value.to_string())
+        intern(value)
+    }
+}
+
+impl From<Attrs> for Shared<Attrs> {
+    fn from(value: Attrs) -> Self {
+        if value.is_empty() {
+            Self::default()
+        } else {
+            Self::new(value)
+        }
     }
 }
 
@@ -132,9 +189,9 @@ impl<'a, T> IntoIterator for &'a Shared<Vec<T>> {
     }
 }
 
-impl<T: Clone> FromIterator<T> for Shared<Vec<T>> {
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self::new(iter.into_iter().collect())
+impl FromIterator<(String, String)> for Shared<Attrs> {
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
+        iter.into_iter().collect::<Attrs>().into()
     }
 }
 
@@ -150,6 +207,21 @@ mod tests {
         b.push(("id".into(), "x".into()));
         assert_eq!(a.len(), 1, "a write does not reach the other copy");
         assert_eq!(b.len(), 2);
+    }
+
+    #[test]
+    fn names_and_empty_attribute_lists_are_one_value_per_thread() {
+        let a: Shared<String> = "div".into();
+        let b: Shared<String> = String::from("div").into();
+        assert!(std::ptr::eq(&*a, &*b), "an element name is interned");
+        let mut c = b.clone();
+        c.push_str("x");
+        assert_eq!((a.as_str(), c.as_str()), ("div", "divx"), "a write copies");
+        let long: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
+        let again: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
+        assert!(!std::ptr::eq(&*long, &*again), "long names are not kept");
+        let empty: Shared<super::Attrs> = Vec::new().into();
+        assert!(std::ptr::eq(&*empty, &*Shared::<super::Attrs>::default()));
     }
 
     #[test]

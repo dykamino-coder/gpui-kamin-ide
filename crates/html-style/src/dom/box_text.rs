@@ -10,27 +10,20 @@
 use std::fmt;
 use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 /// Номер исходного текстового узла документа.
 pub type TextId = NonZeroU32;
 
-/// The content is shared between the copies box construction makes of a node (fixup passes,
-/// anonymous boxes, pieces): a copy costs a reference count, a write copies (CSS Display 3 §2:
-/// boxes are generated from the styled node, not from copies of it).
 #[derive(Clone, Default)]
 pub struct Text {
-    text: Rc<String>,
+    text: String,
     source: Option<TextId>,
 }
 
 impl Text {
     /// Текст из исходного узла `source`.
     pub fn from_source(text: String, source: Option<TextId>) -> Self {
-        Self {
-            text: Rc::new(text),
-            source,
-        }
+        Self { text, source }
     }
 
     /// Номер исходного текстового узла, если текст построен из одного узла.
@@ -40,12 +33,12 @@ impl Text {
 
     /// Дописать `more`; склеенный текст больше не принадлежит одному узлу.
     pub fn append(&mut self, more: &str) {
-        Rc::make_mut(&mut self.text).push_str(more);
+        self.text.push_str(more);
         self.source = None;
     }
 
     pub fn into_string(self) -> String {
-        Rc::unwrap_or_clone(self.text)
+        self.text
     }
 
     pub fn as_str(&self) -> &str {
@@ -62,16 +55,13 @@ impl Deref for Text {
 
 impl DerefMut for Text {
     fn deref_mut(&mut self) -> &mut String {
-        Rc::make_mut(&mut self.text)
+        &mut self.text
     }
 }
 
 impl From<String> for Text {
     fn from(text: String) -> Self {
-        Self {
-            text: Rc::new(text),
-            source: None,
-        }
+        Self { text, source: None }
     }
 }
 
@@ -83,7 +73,7 @@ impl From<&str> for Text {
 
 impl From<Text> for String {
     fn from(text: Text) -> Self {
-        text.into_string()
+        text.text
     }
 }
 
@@ -110,19 +100,19 @@ impl Eq for Text {}
 
 impl PartialEq<str> for Text {
     fn eq(&self, other: &str) -> bool {
-        *self.text == other
+        self.text == other
     }
 }
 
 impl PartialEq<&str> for Text {
     fn eq(&self, other: &&str) -> bool {
-        *self.text == *other
+        self.text == *other
     }
 }
 
 impl PartialEq<String> for Text {
     fn eq(&self, other: &String) -> bool {
-        &*self.text == other
+        &self.text == other
     }
 }
 
