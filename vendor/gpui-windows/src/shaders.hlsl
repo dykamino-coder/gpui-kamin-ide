@@ -1649,6 +1649,17 @@ float4 blur_tap(BlurQuad q, float2 uv, float2 off) {
     return t_sprite.Sample(s_sprite, u);
 }
 
+// KaminIDE patch: texel of a group's retained image at frame point p. The image
+// is the integer rectangle source_rect of the frame, stored in an atlas page at
+// src_origin; outside the rectangle the image is transparent.
+float4 group_texel(BlurQuad q, float2 p) {
+    int2 local = int2(floor(p) - q.source_rect.xy);
+    if (any(local < 0) || any(local >= int2(q.source_rect.zw))) {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    return t_sprite.Load(int3(local + int2(q.src_origin), 0));
+}
+
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     input.position.xy += global_origin;
     BlurQuad q = blur_quads[input.quad_id];
@@ -1663,15 +1674,19 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         int r = int(q.pad);
         int2 lo = int2(q.source_rect.xy);
         int2 hi = lo + int2(q.source_rect.zw);
+        // Unrolled to the largest single-pass radius (4): constant tap indices keep
+        // the weights in registers instead of reloading the instance per tap. Taps
+        // beyond r are skipped, so the sum and its order equal the r-bounded loop.
+        float w[5] = { q.poly[0][0], q.poly[0][1], q.poly[0][2], q.poly[0][3], q.poly[1][0] };
         float4 g = float4(0.0, 0.0, 0.0, 0.0);
-        for (int j = -r; j <= r; j++) {
-            uint b = uint(abs(j));
-            float wj = q.poly[b >> 2u][b & 3u];
-            for (int k = -r; k <= r; k++) {
-                int2 s = p + int2(k, j);
-                uint a = uint(abs(k));
-                if (all(s >= lo) && all(s < hi)) {
-                    g += (q.poly[a >> 2u][a & 3u] * wj) * t_sprite.Load(int3(s, 0));
+        [unroll] for (int j = -4; j <= 4; j++) {
+            if (abs(j) <= r) {
+                float wj = w[abs(j)];
+                [unroll] for (int k = -4; k <= 4; k++) {
+                    int2 s = p + int2(k, j);
+                    if (abs(k) <= r && all(s >= lo) && all(s < hi)) {
+                        g += (w[abs(k)] * wj) * t_sprite.Load(int3(s, 0));
+                    }
                 }
             }
         }
@@ -1683,12 +1698,12 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         int r = int(q.pad);
         int2 lo = int2(q.source_rect.xy);
         int2 hi = lo + int2(q.source_rect.zw);
+        // Unrolled to the largest tap count (15), as in pass 6.
         float4 g = float4(0.0, 0.0, 0.0, 0.0);
-        for (int k = -r; k <= r; k++) {
+        [unroll] for (int k = -15; k <= 15; k++) {
             int2 s = p + dir * k;
-            uint a = uint(abs(k));
-            if (all(s >= lo) && all(s < hi)) {
-                g += q.poly[a >> 2u][a & 3u] * t_sprite.Load(int3(s, 0));
+            if (abs(k) <= r && all(s >= lo) && all(s < hi)) {
+                g += q.poly[abs(k) >> 2][abs(k) & 3] * t_sprite.Load(int3(s, 0));
             }
         }
         return g;
@@ -1729,10 +1744,10 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             // texels stay ~1:1 with frame pixels; a bilinear tap would blur
             // every edge already antialiased in the buffer a second time.
             src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
-                ? t_sprite.Load(int3(int2(floor(rp) - q.source_rect.xy), 0))
+                ? group_texel(q, rp)
                 : float4(0.0, 0.0, 0.0, 0.0);
         } else {
-            src = t_sprite.Load(int3(int2(floor(input.position.xy) - q.source_rect.xy), 0));
+            src = group_texel(q, input.position.xy);
         }
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float corner = saturate(0.5 - distance);
