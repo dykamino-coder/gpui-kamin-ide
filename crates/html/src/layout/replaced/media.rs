@@ -71,7 +71,7 @@ pub(crate) fn resolve(
     }
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
-    copy.attrs.retain(|(name, _)| name != "src");
+    copy.attrs.edit().retain(|(name, _)| name != "src");
     if copy.style.used().reset_context.contain_size == Some(true) {
         return Some(copy);
     }

@@ -145,8 +145,8 @@ mod tests {
             for n in nodes {
                 if let Node::Element(e) = n {
                     if e.tag == "rect" {
-                        e.attrs.retain(|(k, _)| k != "fill");
-                        e.attrs.push(("fill".into(), "blue".into()));
+                        e.attrs.edit().retain(|(k, _)| k != "fill");
+                        e.attrs.edit().push(("fill".into(), "blue".into()));
                     }
                     recolor(&mut e.children);
                 }

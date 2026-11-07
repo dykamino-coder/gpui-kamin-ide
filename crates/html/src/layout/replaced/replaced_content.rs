@@ -117,7 +117,7 @@ pub(crate) fn empty_iframe(
     let vcx = opts.cx.vcx();
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
     if copy.style.used().reset_context.contain_size == Some(true) {
-        copy.attrs.retain(|(name, _)| name != "src");
+        copy.attrs.edit().retain(|(name, _)| name != "src");
         return opts.cx.contracts.build.replaced(&copy, None, &opts.cx);
     }
     opts.cx

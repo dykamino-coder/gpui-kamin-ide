@@ -145,13 +145,13 @@ pub(crate) async fn dispatch_element(
         "object" if e.attr("data").is_some() && !object_is_document(e) => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
-            copy.attrs.push(("src".to_string(), url));
+            copy.attrs.edit().push(("src".to_string(), url));
             image(&copy, &opts.cx)
         }
         "video" if e.attr("poster").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
-            copy.attrs.push(("src".to_string(), url));
+            copy.attrs.edit().push(("src".to_string(), url));
             image(&copy, &opts.cx)
         }
         _ if crate::layout::replaced::media::empty(e) => {

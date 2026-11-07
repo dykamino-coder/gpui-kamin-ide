@@ -10,7 +10,7 @@ mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
 mod shared;
-pub use shared::{Attrs, Shared};
+pub use shared::{Attr, Attrs, AttrsEdit, Shared, SharedAttrs};
 mod children;
 mod same_tree;
 pub use same_tree::{BoxStyles, same_box, same_shell, same_tree, same_tree_as, same_values};
@@ -144,7 +144,7 @@ pub struct Element {
     pub first_line: Option<SharedStyle>,
     pub children: Children,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
-    pub attrs: Shared<Vec<(String, String)>>,
+    pub attrs: SharedAttrs,
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
     /// этого зависит, попадёт ли он в строку текста или станет блоком.
     pub inline: bool,

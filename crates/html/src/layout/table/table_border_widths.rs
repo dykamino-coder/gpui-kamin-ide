@@ -197,7 +197,7 @@ mod tests {
         table.style.used_mut().inh.table_list.border_collapse = Some(true);
         let mut spanning = anon_element("td", vec![]);
         spanning.node_id = 1;
-        *spanning.attrs = vec![("rowspan".into(), "2".into())];
+        spanning.attrs = vec![("rowspan".into(), "2".into())].into();
         spanning.style.used_mut().reset_border.border_width.right = Some(Len::Px(60.0));
         spanning.style.used_mut().reset_border.border_visible[1] = Some(true);
         let mut upper = anon_element("td", vec![]);

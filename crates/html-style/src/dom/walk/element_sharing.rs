@@ -54,7 +54,7 @@ pub(super) struct Key<'a> {
     scheme: Scheme,
     html_attrs: bool,
     tag: &'a str,
-    attrs: &'a crate::dom::Shared<crate::dom::Attrs>,
+    attrs: &'a crate::dom::SharedAttrs,
     /// Отметки `:has()` элемента: они входят в фильтр Блума потомков, а через
     /// него — в их кандидатов индекса; равные номера родителей должны значить
     /// равные отметки всей цепочки.
@@ -69,7 +69,7 @@ struct Entry {
     scheme: Scheme,
     html_attrs: bool,
     tag: String,
-    attrs: crate::dom::Shared<crate::dom::Attrs>,
+    attrs: crate::dom::SharedAttrs,
     marks: Vec<u64>,
     environment: Environment,
     /// Перепроверяемые кандидаты: номер правила и исходы `matches` и
@@ -91,7 +91,7 @@ impl<'a> Key<'a> {
         vcx: ValueCx<'_>,
         me: &Ancestor,
         tag: &'a str,
-        attrs: &'a crate::dom::Shared<crate::dom::Attrs>,
+        attrs: &'a crate::dom::SharedAttrs,
         excluded: bool,
     ) -> Option<Self> {
         if parent == 0

@@ -242,7 +242,7 @@ mod tests {
         let a = block(vec![text("one")]);
         assert!(!same_tree(&a, &block(vec![text("onf")])));
         let mut b = a.clone();
-        b.attrs.push(("class".into(), "x".into()));
+        b.attrs.edit().push(("class".into(), "x".into()));
         assert!(!same_tree(&a, &b));
         assert!(!same_tree(&a, &block(vec![text("one"), text("")])));
     }

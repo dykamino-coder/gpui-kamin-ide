@@ -188,7 +188,7 @@ async fn element_inner(
         // уже разрешёнными (`10em` в собственном стиле — ещё `Len::Em`).
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
-        copy.attrs.push(("src".to_string(), url));
+        copy.attrs.edit().push(("src".to_string(), url));
         copy.style.used_mut().reset_box_layout.width = merged.reset_box_layout.width;
         copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height;
         iframe(&copy, inherited, opts)

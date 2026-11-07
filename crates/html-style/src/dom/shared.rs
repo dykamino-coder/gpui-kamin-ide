@@ -5,11 +5,13 @@
 //! boxes *from* the styled element; Blink's LayoutObject and Servo's box tree reference the
 //! node instead of copying it. The tag and attributes of an element never change during
 //! construction, so a copy shares them (a reference count) and a rare write copies them
-//! (`DerefMut`, copy on write).
+//! (`DerefMut` / [`Shared::edit`], copy on write).
 //!
 //! Construction must not cost more than the plain values did: element names come from a small
 //! vocabulary and are interned per thread (Blink and Gecko intern them as atoms), and every
-//! empty attribute list is one shared value, so neither allocates per element.
+//! empty attribute list is one shared value, so neither allocates per element. A non-empty
+//! attribute list is one allocation holding the count and the pairs (`Rc<[Attr]>`), no larger
+//! than the vector it replaces.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,10 +20,16 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Shared<T>(Rc<T>);
+pub struct Shared<T: ?Sized>(Rc<T>);
 
-/// Attribute list of an element: name, value.
-pub type Attrs = Vec<(String, String)>;
+/// One attribute of an element: name, value.
+pub type Attr = (String, String);
+
+/// Attribute list of an element being assembled or edited.
+pub type Attrs = Vec<Attr>;
+
+/// Attribute list held by an element and shared by its copies.
+pub type SharedAttrs = Shared<[Attr]>;
 
 /// Interned names are short; a document inventing ever new long names keeps its own copies.
 const MAX_INTERNED_LEN: usize = 32;
@@ -29,7 +37,7 @@ const MAX_INTERNED: usize = 4096;
 
 thread_local! {
     static NAMES: RefCell<HashMap<String, Rc<String>>> = RefCell::new(HashMap::new());
-    static NO_ATTRS: Rc<Attrs> = Rc::new(Vec::new());
+    static NO_ATTRS: Rc<[Attr]> = Rc::from(Vec::new());
 }
 
 fn intern<S: AsRef<str> + Into<String>>(name: S) -> Shared<String> {
@@ -49,7 +57,7 @@ fn intern<S: AsRef<str> + Into<String>>(name: S) -> Shared<String> {
     })
 }
 
-impl<T> Clone for Shared<T> {
+impl<T: ?Sized> Clone for Shared<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
@@ -68,7 +76,7 @@ impl<T: Clone> Shared<T> {
     }
 }
 
-impl<T> Deref for Shared<T> {
+impl<T: ?Sized> Deref for Shared<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
@@ -87,7 +95,54 @@ impl Default for Shared<String> {
     }
 }
 
-impl Default for Shared<Attrs> {
+impl DerefMut for SharedAttrs {
+    /// In-place edits of the pairs; a shared list is copied first.
+    fn deref_mut(&mut self) -> &mut [Attr] {
+        if Rc::get_mut(&mut self.0).is_none() {
+            self.0 = Rc::from(self.0.to_vec());
+        }
+        Rc::get_mut(&mut self.0).expect("a fresh copy has one holder")
+    }
+}
+
+impl SharedAttrs {
+    /// The list as a vector for adding or removing attributes; written back when the
+    /// returned guard drops. The only holder moves its pairs out instead of copying them.
+    pub fn edit(&mut self) -> AttrsEdit<'_> {
+        let list = match Rc::get_mut(&mut self.0) {
+            Some(pairs) => pairs.iter_mut().map(std::mem::take).collect(),
+            None => self.0.to_vec(),
+        };
+        AttrsEdit { target: self, list }
+    }
+}
+
+/// Attribute list being edited through [`SharedAttrs::edit`].
+pub struct AttrsEdit<'a> {
+    target: &'a mut SharedAttrs,
+    list: Attrs,
+}
+
+impl Deref for AttrsEdit<'_> {
+    type Target = Attrs;
+    fn deref(&self) -> &Attrs {
+        &self.list
+    }
+}
+
+impl DerefMut for AttrsEdit<'_> {
+    fn deref_mut(&mut self) -> &mut Attrs {
+        &mut self.list
+    }
+}
+
+impl Drop for AttrsEdit<'_> {
+    fn drop(&mut self) {
+        *self.target = std::mem::take(&mut self.list).into();
+    }
+}
+
+impl Default for SharedAttrs {
     fn default() -> Self {
         Self(NO_ATTRS.with(Rc::clone))
     }
@@ -105,12 +160,12 @@ impl From<&str> for Shared<String> {
     }
 }
 
-impl From<Attrs> for Shared<Attrs> {
+impl From<Attrs> for SharedAttrs {
     fn from(value: Attrs) -> Self {
         if value.is_empty() {
             Self::default()
         } else {
-            Self::new(value)
+            Self(Rc::from(value))
         }
     }
 }
@@ -121,13 +176,13 @@ impl From<Shared<String>> for String {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Shared<T> {
+impl<T: fmt::Debug + ?Sized> fmt::Debug for Shared<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&*self.0, f)
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Shared<T> {
+impl<T: fmt::Display + ?Sized> fmt::Display for Shared<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&*self.0, f)
     }
@@ -181,7 +236,7 @@ impl std::borrow::Borrow<str> for Shared<String> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Shared<Vec<T>> {
+impl<'a, T> IntoIterator for &'a Shared<[T]> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
@@ -189,8 +244,8 @@ impl<'a, T> IntoIterator for &'a Shared<Vec<T>> {
     }
 }
 
-impl FromIterator<(String, String)> for Shared<Attrs> {
-    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
+impl FromIterator<Attr> for SharedAttrs {
+    fn from_iter<I: IntoIterator<Item = Attr>>(iter: I) -> Self {
         iter.into_iter().collect::<Attrs>().into()
     }
 }
@@ -201,12 +256,19 @@ mod tests {
 
     #[test]
     fn copies_share_until_one_is_written() {
-        let a: Shared<Vec<(String, String)>> = vec![("class".into(), "row".into())].into();
+        let a: super::SharedAttrs = vec![("class".into(), "row".into())].into();
         let mut b = a.clone();
         assert!(std::ptr::eq(&*a, &*b), "a copy shares the attributes");
-        b.push(("id".into(), "x".into()));
+        b.edit().push(("id".into(), "x".into()));
         assert_eq!(a.len(), 1, "a write does not reach the other copy");
         assert_eq!(b.len(), 2);
+        let mut c = a.clone();
+        c[0].1.push_str(" odd");
+        assert_eq!((a[0].1.as_str(), c[0].1.as_str()), ("row", "row odd"));
+        let mut only = c;
+        only.edit().retain(|(name, _)| name != "class");
+        assert!(only.is_empty());
+        assert_eq!(a[0].1, "row", "edits of the only holder move, not copy");
     }
 
     #[test]
@@ -220,8 +282,11 @@ mod tests {
         let long: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
         let again: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
         assert!(!std::ptr::eq(&*long, &*again), "long names are not kept");
-        let empty: Shared<super::Attrs> = Vec::new().into();
-        assert!(std::ptr::eq(&*empty, &*Shared::<super::Attrs>::default()));
+        let empty: super::SharedAttrs = Vec::new().into();
+        assert!(std::ptr::eq(
+            empty.as_ptr(),
+            super::SharedAttrs::default().as_ptr()
+        ));
     }
 
     #[test]

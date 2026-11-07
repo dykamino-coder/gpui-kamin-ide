@@ -92,9 +92,10 @@ pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>,
     .collect();
     image
         .attrs
+        .edit()
         .push(("preserveAspectRatio".into(), "none".into()));
     e.tag = "svg".into();
-    e.attrs.push(("overflow".into(), "visible".into()));
+    e.attrs.edit().push(("overflow".into(), "visible".into()));
     e.children.push(Node::Element(image));
 }
 

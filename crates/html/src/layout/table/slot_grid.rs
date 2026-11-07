@@ -104,10 +104,11 @@ mod tests {
 
     fn cell(colspan: &str, rowspan: &str) -> Node {
         let mut e = anon_element("td", vec![]);
-        *e.attrs = vec![
+        e.attrs = vec![
             ("colspan".into(), colspan.into()),
             ("rowspan".into(), rowspan.into()),
-        ];
+        ]
+        .into();
         Node::Element(e)
     }
     fn row(cells: Vec<Node>) -> Node {

@@ -85,11 +85,11 @@ mod tests {
             "65536",
             "999999999999999999999999999999999999",
         ] {
-            *cell.attrs = vec![("colspan".into(), input.into())];
+            cell.attrs = vec![("colspan".into(), input.into())].into();
             assert_eq!(column_span(&cell), 1000, "{input}");
         }
         for (input, expected) in [("0", 1), ("-2", 1), ("bad", 1), ("+2tail", 2)] {
-            *cell.attrs = vec![("colspan".into(), input.into())];
+            cell.attrs = vec![("colspan".into(), input.into())].into();
             assert_eq!(column_span(&cell), expected);
         }
         for (input, expected) in [
@@ -100,7 +100,7 @@ mod tests {
             ("9999999999999999999999999999", 65534),
             ("-2", 1),
         ] {
-            *cell.attrs = vec![("rowspan".into(), input.into())];
+            cell.attrs = vec![("rowspan".into(), input.into())].into();
             assert_eq!(row_span_in_group(&cell, 100_000), expected);
             assert_eq!(row_span_in_group(&cell, 3), expected.min(3));
         }

@@ -7,10 +7,11 @@ use crate::style::computed::Overflow;
 #[test]
 fn row_group_limit_and_collapsed_columns_keep_distinct_flags() {
     let mut cell = anon_element("td", vec![]);
-    *cell.attrs = vec![
+    cell.attrs = vec![
         ("colspan".into(), "2".into()),
         ("rowspan".into(), "0".into()),
-    ];
+    ]
+    .into();
     let spans = cell_spans(
         CellSlot {
             element: &cell,

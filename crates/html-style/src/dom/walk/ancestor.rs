@@ -40,7 +40,7 @@ pub(super) fn svg_no_css_box(handle: &Handle) -> bool {
 pub(super) fn element_ancestor(
     handle: &Handle,
     tag: &str,
-    attrs: &crate::dom::Shared<crate::dom::Attrs>,
+    attrs: &crate::dom::SharedAttrs,
     html_attrs: bool,
     spot: Spot,
     sibs: Sibs,

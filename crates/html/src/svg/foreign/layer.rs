@@ -76,7 +76,7 @@ pub(super) fn prepare(
         let element = if cached.is_none() {
             let mut html = e.clone();
             html.tag = "div".into();
-            html.attrs.clear();
+            html.attrs = Default::default();
             html.marks = Default::default();
             html.set_layout_box(LayoutBoxInput::new(
                 BoxOrigin::EmbeddedRoot,
@@ -120,14 +120,16 @@ pub(super) fn prepare(
         });
         e.tag = "image".into();
         e.children.clear();
-        e.attrs.retain(|(name, _)| {
+        let mut attrs = e.attrs.edit();
+        attrs.retain(|(name, _)| {
             !matches!(name.as_str(), "href" | "xlink:href" | "preserveAspectRatio")
         });
         for (name, value) in [("width", w), ("height", h)] {
-            e.attrs.retain(|(key, _)| key != name);
-            e.attrs.push((name.into(), value.to_string()));
+            attrs.retain(|(key, _)| key != name);
+            attrs.push((name.into(), value.to_string()));
         }
-        e.attrs.push(("preserveAspectRatio".into(), "none".into()));
+        attrs.push(("preserveAspectRatio".into(), "none".into()));
+        drop(attrs);
         if origin != gpui::Point::default() {
             super::geometry::expand(e, origin, paint_size, zoom);
         }
@@ -193,7 +195,7 @@ pub(super) fn cache(key: u64, png: &[u8], vcx: ValueCx<'_>) -> String {
 
 pub(super) fn set_image(e: &mut Element, id: u64, uri: String) {
     if e.node_id == id && e.tag == "image" {
-        e.attrs.push(("href".into(), uri));
+        e.attrs.edit().push(("href".into(), uri));
         return;
     }
     for child in &mut e.children {

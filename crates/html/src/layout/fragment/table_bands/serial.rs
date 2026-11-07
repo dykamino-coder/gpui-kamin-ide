@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn rowspans_can_overlap_cells_from_later_rows() {
         let mut spanning = anon_element("td", vec![block()]);
-        spanning.attrs.push(("rowspan".into(), "2".into()));
+        spanning.attrs.edit().push(("rowspan".into(), "2".into()));
         let table = table(vec![
             Node::Element(anon_element("tr", vec![Node::Element(spanning)])),
             Node::Element(anon_element(

@@ -58,14 +58,16 @@ pub(super) fn untaint_filters(e: &mut Element) {
             if p.tag == "feDisplacementMap" && dirty_ref(&in2, prev) {
                 // Сквозной проход: сохранить in/result, снять карту.
                 p.tag = "feOffset".into();
-                p.attrs.retain(|(k, _)| {
+                let mut attrs = p.attrs.edit();
+                attrs.retain(|(k, _)| {
                     !matches!(
                         k.as_str(),
                         "in2" | "scale" | "xChannelSelector" | "yChannelSelector" | "dx" | "dy"
                     )
                 });
-                p.attrs.push(("dx".to_string(), "0".to_string()));
-                p.attrs.push(("dy".to_string(), "0".to_string()));
+                attrs.push(("dx".to_string(), "0".to_string()));
+                attrs.push(("dy".to_string(), "0".to_string()));
+                drop(attrs);
                 // Выход сквозного прохода загрязнён лишь настолько,
                 // насколько его основной вход.
                 dirty = dirty_ref(&in1, prev);

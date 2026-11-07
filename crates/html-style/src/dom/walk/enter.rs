@@ -39,7 +39,7 @@ pub(super) fn enter<'a>(
         return None;
     }
     // One shared list for the ancestor entry, the sharing cache and the element.
-    let attrs: crate::dom::Shared<crate::dom::Attrs> = element_attrs(&attrs.borrow()).into();
+    let attrs: crate::dom::SharedAttrs = element_attrs(&attrs.borrow()).into();
     let mut me = element_ancestor(
         handle,
         &tag,

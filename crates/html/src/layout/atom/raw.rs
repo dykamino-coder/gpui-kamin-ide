@@ -129,7 +129,7 @@ pub(super) fn atom_element_raw(
         "object" if e.attr("data").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
-            copy.attrs.push(("src".to_string(), url));
+            copy.attrs.edit().push(("src".to_string(), url));
             if object_is_document(e) {
                 copy.style
                     .used_mut()
@@ -145,7 +145,7 @@ pub(super) fn atom_element_raw(
         "video" if e.attr("poster").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
-            copy.attrs.push(("src".to_string(), url));
+            copy.attrs.edit().push(("src".to_string(), url));
             Some(build.replaced(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),

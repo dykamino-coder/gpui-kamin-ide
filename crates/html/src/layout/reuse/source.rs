@@ -94,7 +94,7 @@ mod tests {
         let text = Node::Text(Text::from_source(text.into(), None));
         let mut e = Element::synthetic("p", Computed::default(), Marks::default(), vec![text]);
         e.node_id = id;
-        e.attrs.push(("class".into(), class.into()));
+        e.attrs.edit().push(("class".into(), class.into()));
         e
     }
 

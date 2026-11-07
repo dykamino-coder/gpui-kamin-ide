@@ -23,7 +23,7 @@ use std::rc::Rc;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn cascade_element(
     me: &mut Ancestor,
-    attrs: &Vec<(String, String)>,
+    attrs: &[(String, String)],
     tag: &str,
     handle: &Handle,
     tree: &TreeIndex,

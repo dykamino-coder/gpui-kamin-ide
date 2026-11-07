@@ -41,7 +41,7 @@ pub(super) fn content_nodes(
                 let mut image = crate::layout::table::anon::anon_element("img", vec![]);
                 image.inline = true;
                 image.style.used_mut().reset_generated.content = Some(vec![item.clone()]);
-                image.attrs.push(("src".into(), src));
+                image.attrs.edit().push(("src".into(), src));
                 children.push(Node::Element(image));
             }
         } else {
