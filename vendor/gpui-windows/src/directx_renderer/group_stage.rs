@@ -26,11 +26,13 @@ impl Region {
 }
 
 impl DirectXRenderer {
+    /// Clear every stage rectangle written since the last clear, in one call.
     pub(super) fn clear_group_stage(&mut self) -> Result<()> {
-        if let Some(dirty) = self.blur.stage_dirty.take() {
+        if !self.blur.stage_dirty.is_empty() {
             let dc: ID3D11DeviceContext1 = self.dev().device_context.cast()?;
             let view = self.blur.stage.as_ref().unwrap().rtv[0].as_ref().unwrap();
-            unsafe { dc.ClearView(view, &[0.0; 4], Some(&[dirty.rect()])) };
+            let rects: Vec<RECT> = self.blur.stage_dirty.drain(..).map(Region::rect).collect();
+            unsafe { dc.ClearView(view, &[0.0; 4], Some(&rects)) };
         }
         Ok(())
     }
@@ -49,9 +51,10 @@ impl DirectXRenderer {
             // предыдущую грязную область. Scissor ограничивает все записи в неё.
             unsafe { dc.ClearRenderTargetView(stage.rtv[0].as_ref().unwrap(), &[0.0; 4]) };
             self.blur.stage = Some(stage);
-            self.blur.stage_dirty = None;
+            self.blur.stage_dirty.clear();
         }
-        self.clear_group_stage()?;
+        // KaminIDE patch: the stage keeps the pending layer's groups; their
+        // regions are disjoint from `region` (see `render_groups`).
         let original = unsafe { dc.RSGetState()? };
         if self.blur.stage_rasterizer.is_none() {
             let mut desc = D3D11_RASTERIZER_DESC::default();
@@ -63,19 +66,21 @@ impl DirectXRenderer {
             dc.RSSetState(self.blur.stage_rasterizer.as_ref());
             dc.RSSetScissorRects(Some(&[region.rect()]));
         }
-        self.blur.stage_dirty = Some(region);
+        self.blur.stage_dirty.push(region);
         Ok(original)
     }
 
+    /// Copy group `slot`'s region of the stage into its atlas rectangle.
     pub(super) fn save_group_stage(&self, slot: usize) {
         let stage = self.blur.stage.as_ref().unwrap();
         let region = self.blur.group_regions[slot];
+        let place = self.blur.group_place[slot];
         unsafe {
             self.dev().device_context.CopySubresourceRegion(
-                &self.blur.groups[slot].texture,
+                &self.blur.groups[place.page].texture,
                 0,
-                0,
-                0,
+                place.x,
+                place.y,
                 0,
                 &stage.texture,
                 0,
@@ -93,11 +98,20 @@ pub(super) fn downsample_clip(
     height: u32,
     draw: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
+    scissor_clip(dc, Region::full(width, height), draw)
+}
+
+/// KaminIDE patch: draw with the scissor set to `region`, then restore the old rectangles.
+pub(super) fn scissor_clip(
+    dc: &ID3D11DeviceContext,
+    region: Region,
+    draw: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     let mut old = [RECT::default(); 16];
     let mut count = old.len() as u32;
     unsafe {
         dc.RSGetScissorRects(&mut count, Some(old.as_mut_ptr()));
-        dc.RSSetScissorRects(Some(&[Region::full(width, height).rect()]));
+        dc.RSSetScissorRects(Some(&[region.rect()]));
     }
     let result = draw();
     unsafe { dc.RSSetScissorRects(Some(&old[..count as usize])) };
