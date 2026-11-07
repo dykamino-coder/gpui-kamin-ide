@@ -2085,8 +2085,8 @@ impl Element for Div {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
-        Box::pin(self.request_layout_on_stack(id, inspector_id, window, cx, stack))
+    ) -> impl std::future::Future<Output = (LayoutId, Self::RequestLayoutState)> + 'a {
+        self.request_layout_on_stack(id, inspector_id, window, cx, stack)
     }
 
     fn prepaint(
@@ -2122,8 +2122,8 @@ impl Element for Div {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, Self::PrepaintState> {
-        Box::pin(self.prepaint_on_stack(
+    ) -> impl std::future::Future<Output = Self::PrepaintState> + 'a {
+        self.prepaint_on_stack(
             id,
             inspector_id,
             bounds,
@@ -2131,7 +2131,7 @@ impl Element for Div {
             window,
             cx,
             stack,
-        ))
+        )
     }
 
     fn paint(
@@ -2170,8 +2170,8 @@ impl Element for Div {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let image_cache = self
                 .image_cache
                 .as_mut()
@@ -2241,7 +2241,7 @@ impl Element for Div {
                 })
                 .await;
             window.raster_frame.exact_bounds = outer_exact;
-        })
+        }
     }
 }
 
@@ -4165,7 +4165,7 @@ where
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+    ) -> impl std::future::Future<Output = (LayoutId, Self::RequestLayoutState)> + 'a {
         self.element
             .request_layout_async(id, inspector_id, window, cx, stack)
     }
@@ -4178,7 +4178,7 @@ where
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, Self::PrepaintState> {
+    ) -> impl std::future::Future<Output = Self::PrepaintState> + 'a {
         self.element
             .prepaint_async(id, inspector_id, bounds, request_layout, window, cx, stack)
     }
@@ -4192,7 +4192,7 @@ where
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
+    ) -> impl std::future::Future<Output = ()> + 'a {
         self.element.paint_async(
             id,
             inspector_id,

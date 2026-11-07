@@ -73,7 +73,7 @@ fn actual_page_cb_repeats_fixed_through_the_last_absolute_fragment(cx: &mut gpui
             let nodes = nodes.clone();
             let root = root.clone();
             let opts = opts.clone();
-            Box::pin(async move {
+            window.continuations().pin(async move {
             crate::layout::positioned::containing_block::metrics::layout::collect_paged_async(
                 &nodes, &root, (area, &gpui::div), &opts, window, app, stack,
             ).await

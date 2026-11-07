@@ -178,7 +178,7 @@ pub(super) fn defer(
     } else {
         OofKid::Trials(
             Box::new(move |bounds, spot, place, window, cx, stack| {
-                Box::pin(async move {
+                window.continuations().pin(async move {
                     let vcx = base_opts.cx.vcx();
                     let mut base = box_style(&base_inherited, &base_source.style, vcx);
                     base.self_node = base_source.node_id;

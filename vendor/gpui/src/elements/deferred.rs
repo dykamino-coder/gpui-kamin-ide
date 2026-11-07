@@ -59,8 +59,8 @@ impl Element for Deferred {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, (LayoutId, ())> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = (LayoutId, ())> + 'a {
+        async move {
             let layout_id = self
                 .child
                 .as_mut()
@@ -68,7 +68,7 @@ impl Element for Deferred {
                 .request_layout_async(window, cx, stack)
                 .await;
             (layout_id, ())
-        })
+        }
     }
 
     fn prepaint(

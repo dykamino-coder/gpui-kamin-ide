@@ -39,11 +39,13 @@ pub(super) fn deferred(
     SpannerFlow::deferred(
         move |available, pass, window, cx, stack| {
             let recipe = recipe.clone();
-            Box::pin(async move { recipe.build_async(available, pass, window, cx, stack).await })
+            window
+                .continuations()
+                .pin(async move { recipe.build_async(available, pass, window, cx, stack).await })
         },
         move |available, window, cx, stack| {
             let recipe = intrinsic.clone();
-            Box::pin(async move {
+            window.continuations().pin(async move {
                 intrinsic::measure_async(
                     &recipe.e,
                     &recipe.merged,

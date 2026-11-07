@@ -1,6 +1,6 @@
 //! Общие callbacks: геометрия и метаданные явные, правила принадлежат хозяину.
 
-use crate::{AnyElement, App, Bounds, Pixels, Style, Window};
+use crate::{AnyElement, App, Bounds, PaintFuture, Pixels, Style, Window};
 use std::{any::Any, rc::Rc};
 
 /// Геометрия и непрозрачные метаданные в обычной точке рисования детей бокса.
@@ -17,8 +17,6 @@ pub struct ChildPaintContext<'a> {
 
 /// Heap-стек продолжений; один native poll не спускается на глубину дерева.
 pub type PaintStack = reblessive::Stk;
-/// Заимствованное продолжение фазы рисования.
-pub type PaintFuture<'a, T = ()> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + 'a>>;
 
 type ChildrenCallback = dyn for<'a> Fn(
     ChildPaintContext<'a>,

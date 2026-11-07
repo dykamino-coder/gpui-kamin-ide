@@ -162,8 +162,8 @@ impl Hooks for Watch {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(self.paint_children(prepaint, window, cx, stack))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        self.paint_children(prepaint, window, cx, stack)
     }
 }
 

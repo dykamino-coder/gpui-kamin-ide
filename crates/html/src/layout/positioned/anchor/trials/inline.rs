@@ -94,7 +94,7 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
     let dependencies = super::super::Dependencies::of(&own, &inherited, vcx, opts.cx.layout());
     let kid = OofKid::Trials(
         Box::new(move |bounds, spot, place, window, cx, stack| {
-            Box::pin(async move {
+            window.continuations().pin(async move {
                 let vcx = build_opts.cx.vcx();
                 let mut base = box_style(&inherited, &source.style, vcx);
                 base.self_node = source.node_id;

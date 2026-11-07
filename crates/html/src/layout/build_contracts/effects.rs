@@ -99,7 +99,7 @@ where
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a> {
-        Box::pin(self(window, cx, stack))
+        window.continuations().pin(self(window, cx, stack))
     }
 }
 

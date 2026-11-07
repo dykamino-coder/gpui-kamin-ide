@@ -138,9 +138,7 @@ impl Hooks for Transformed {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(paint_body(
-            self, bounds, layout_id, prepaint, window, cx, stack,
-        ))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        paint_body(self, bounds, layout_id, prepaint, window, cx, stack)
     }
 }

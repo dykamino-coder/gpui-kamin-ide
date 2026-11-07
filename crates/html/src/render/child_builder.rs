@@ -52,7 +52,7 @@ impl Default for ChildBuild {
                 crate::paint::effects::grouped::paint_group,
                 crate::paint::effects::mask::collect_mask_defs,
                 |owner, window, cx, stack, body| {
-                    Box::pin(outline_phase::flow_async(
+                    window.continuations().pin(outline_phase::flow_async(
                         Some(owner),
                         window,
                         cx,

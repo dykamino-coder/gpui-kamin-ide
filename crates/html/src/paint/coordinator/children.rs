@@ -27,7 +27,7 @@ pub(super) fn default_painter() -> ChildPainter {
 
 fn painter(policy: Policy) -> ChildPainter {
     ChildPainter(Rc::new(move |context, children, window, cx, stack| {
-        Box::pin(async move {
+        window.continuations().pin(async move {
             match crate::paint::raster::background(&context, window) {
                 Some(background) => {
                     window

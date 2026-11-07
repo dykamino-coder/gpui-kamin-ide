@@ -30,7 +30,7 @@ impl Paint<'_> {
         let source = Rc::new((nodes, root, opts));
         Some(Rc::new(move |area, window, cx, stack| {
             let source = source.clone();
-            Box::pin(async move {
+            window.continuations().pin(async move {
                 let (nodes, root, opts) = &*source;
                 let frame = || super::frame::wrap(padding, area.1, first, vertical);
                 stack

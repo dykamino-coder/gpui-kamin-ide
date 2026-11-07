@@ -106,6 +106,8 @@ pub use instrumentation::*;
 #[cfg(feature = "profiler")]
 mod debug_overlay;
 mod element;
+mod continuation_pool;
+pub use continuation_pool::{ContinuationPool, PaintFuture};
 mod paint_traversal;
 pub use paint_traversal::*;
 mod elements;

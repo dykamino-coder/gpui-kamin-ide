@@ -101,8 +101,8 @@ macro_rules! deferred {
                 window: &'a mut Window,
                 cx: &'a mut App,
                 stack: &'a mut gpui::PaintStack,
-            ) -> gpui::PaintFuture<'a> {
-                Box::pin(async move {
+            ) -> impl std::future::Future<Output = ()> + 'a {
+                async move {
                     if let Some(pass) = current(window).filter(|pass| pass.is_open(window)) {
                         if let Some(child) = self.child.take() {
                             ($enqueue)(self, child, &pass, window);
@@ -113,7 +113,7 @@ macro_rules! deferred {
                             self.child = Some(child);
                         }
                     }
-                })
+                }
             }
         }
         impl IntoElement for $ty {

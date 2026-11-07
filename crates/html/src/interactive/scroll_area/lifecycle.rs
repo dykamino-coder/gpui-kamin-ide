@@ -40,8 +40,8 @@ impl Element for ScrollArea {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
-        Box::pin(self.request_layout_on_stack(id, _inspector_id, window, cx, stack))
+    ) -> impl std::future::Future<Output = (LayoutId, Self::RequestLayoutState)> + 'a {
+        self.request_layout_on_stack(id, _inspector_id, window, cx, stack)
     }
 
     fn prepaint(
@@ -68,8 +68,8 @@ impl Element for ScrollArea {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, Self::PrepaintState> {
-        Box::pin(self.prepaint_on_stack(bounds, child, window, cx, stack))
+    ) -> impl std::future::Future<Output = Self::PrepaintState> + 'a {
+        self.prepaint_on_stack(bounds, child, window, cx, stack)
     }
 
     fn paint(
@@ -108,8 +108,8 @@ impl Element for ScrollArea {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             child.2.set_decoration_clip(window.content_mask());
             // CSS2 Appendix E.2: scrolling does not establish a stacking context.
             // Preserve its block-background / inline-foreground phases through
@@ -131,7 +131,7 @@ impl Element for ScrollArea {
                 alpha,
                 window,
             );
-        })
+        }
     }
 }
 

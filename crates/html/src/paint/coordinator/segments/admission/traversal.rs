@@ -47,7 +47,7 @@ fn admitted_async<'a>(
     stack: &'a mut gpui::PaintStack,
     paint: impl AsyncFnOnce(&mut Window, &mut App, &mut gpui::PaintStack) + 'a,
 ) -> gpui::PaintFuture<'a> {
-    Box::pin(async move {
+    window.continuations().pin(async move {
         let key = capture_key(window);
         let by = shift::current(window);
         if source.painting

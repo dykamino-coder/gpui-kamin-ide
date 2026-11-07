@@ -71,8 +71,8 @@ impl Hooks for Foreign {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let (mut tree, layers) = prepaint.take().expect("foreignObject paint after prepaint");
             let vcx = self.values.vcx();
             for mut layer in layers {
@@ -98,6 +98,6 @@ impl Hooks for Foreign {
                 bounds.size = gpui::size(px(w), px(h));
                 super::super::device_image::paint(window, bounds, image);
             }
-        })
+        }
     }
 }

@@ -131,12 +131,12 @@ impl Element for ContainerQuery {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             if let Some(child) = prepaint {
                 child.paint_async(window, cx, stack).await;
             }
-        })
+        }
     }
 }
 

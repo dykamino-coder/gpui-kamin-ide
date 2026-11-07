@@ -34,7 +34,7 @@ where
         cx: &'a mut App,
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a, MeasuredContent> {
-        Box::pin(self(known, available, geometry, window, cx, stack))
+        window.continuations().pin(self(known, available, geometry, window, cx, stack))
     }
 }
 pub(super) enum NodeMeasureFn {

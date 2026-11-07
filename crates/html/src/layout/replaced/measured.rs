@@ -156,7 +156,7 @@ impl Hooks for MeasuredReplaced {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move { self.image.paint_async(window, cx, stack).await })
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move { self.image.paint_async(window, cx, stack).await }
     }
 }

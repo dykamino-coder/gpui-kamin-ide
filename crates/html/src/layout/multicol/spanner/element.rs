@@ -185,12 +185,12 @@ impl Hooks for SpannerFlow {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             if let Some(child) = &mut self.child {
                 child.paint_async(window, cx, stack).await;
             }
-        })
+        }
     }
 }
 

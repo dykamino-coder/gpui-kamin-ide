@@ -173,8 +173,8 @@ impl Hooks for Content {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let origin = *origin;
             if let Some((x, y, w, h)) = self.rule {
                 window.paint_quad(gpui::fill(
@@ -192,6 +192,6 @@ impl Hooks for Content {
             for child in &mut self.children {
                 child.paint_async(window, cx, stack).await;
             }
-        })
+        }
     }
 }

@@ -36,10 +36,10 @@ pub(crate) trait Painter: 'static {
         window: &'a mut Window,
         cx: &'a mut App,
         _stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.paint(bounds, layout, prepaint, window, cx);
-        })
+        }
     }
 }
 
@@ -89,7 +89,7 @@ impl<T: Painter> Hooks for PaintOnly<T> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
+    ) -> impl std::future::Future<Output = ()> + 'a {
         self.0
             .paint_async(bounds, layout, prepaint, window, cx, stack)
     }

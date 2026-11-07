@@ -10,7 +10,7 @@ impl PageStack {
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
     ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+        window.continuations().pin(async move {
             if !self.has_complete_plan() || self.oof.plan.borrow().failure.is_some() {
                 return;
             }

@@ -135,8 +135,8 @@ pub trait Element: 'static + IntoElement {
         window: &'a mut Window,
         cx: &'a mut App,
         _stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.paint(
                 id,
                 inspector_id,
@@ -146,7 +146,7 @@ pub trait Element: 'static + IntoElement {
                 window,
                 cx,
             );
-        })
+        }
     }
 
     /// Продолжение построения раскладки с сохранением состояния предков.
@@ -157,8 +157,8 @@ pub trait Element: 'static + IntoElement {
         window: &'a mut Window,
         cx: &'a mut App,
         _stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
-        Box::pin(async move { self.request_layout(id, inspector_id, window, cx) })
+    ) -> impl std::future::Future<Output = (LayoutId, Self::RequestLayoutState)> + 'a {
+        async move { self.request_layout(id, inspector_id, window, cx) }
     }
 
     /// Продолжение prepaint с сохранением областей предков.
@@ -171,8 +171,8 @@ pub trait Element: 'static + IntoElement {
         window: &'a mut Window,
         cx: &'a mut App,
         _stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a, Self::PrepaintState> {
-        Box::pin(async move { self.prepaint(id, inspector_id, bounds, request_layout, window, cx) })
+    ) -> impl std::future::Future<Output = Self::PrepaintState> + 'a {
+        async move { self.prepaint(id, inspector_id, bounds, request_layout, window, cx) }
     }
 
     /// Returns the accessible role for this element, if any.
@@ -655,7 +655,7 @@ where
         cx: &'a mut App,
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a, Size<Pixels>> {
-        Box::pin(Drawable::layout_as_root_async(
+        window.continuations().pin(Drawable::layout_as_root_async(
             self,
             available_space,
             window,
@@ -689,7 +689,7 @@ where
         cx: &'a mut App,
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a, LayoutId> {
-        Box::pin(Drawable::request_layout_async(self, window, cx, stack))
+        window.continuations().pin(Drawable::request_layout_async(self, window, cx, stack))
     }
     fn prepaint_async<'a>(
         &'a mut self,
@@ -697,7 +697,7 @@ where
         cx: &'a mut App,
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a> {
-        Box::pin(Drawable::prepaint_async(self, window, cx, stack))
+        window.continuations().pin(Drawable::prepaint_async(self, window, cx, stack))
     }
 
     fn paint_async<'a>(
@@ -706,7 +706,7 @@ where
         cx: &'a mut App,
         stack: &'a mut PaintStack,
     ) -> PaintFuture<'a> {
-        Box::pin(async move {
+        window.continuations().pin(async move {
             Drawable::paint_async(self, window, cx, stack).await;
         })
     }
@@ -829,14 +829,14 @@ impl Element for AnyElement {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a, (LayoutId, Self::RequestLayoutState)> {
+    ) -> impl std::future::Future<Output = (LayoutId, Self::RequestLayoutState)> + 'a {
         let _ = (id, inspector_id);
-        Box::pin(async move {
+        async move {
             (
                 AnyElement::request_layout_async(self, window, cx, stack).await,
                 (),
             )
-        })
+        }
     }
     fn prepaint_async<'a>(
         &'a mut self,
@@ -847,11 +847,11 @@ impl Element for AnyElement {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a, Self::PrepaintState> {
+    ) -> impl std::future::Future<Output = Self::PrepaintState> + 'a {
         let _ = (id, inspector_id, bounds, request_layout);
-        Box::pin(async move {
+        async move {
             AnyElement::prepaint_async(self, window, cx, stack).await;
-        })
+        }
     }
 
     fn paint_async<'a>(
@@ -864,8 +864,8 @@ impl Element for AnyElement {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut PaintStack,
-    ) -> PaintFuture<'a> {
-        Box::pin(AnyElement::paint_async(self, window, cx, stack))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        AnyElement::paint_async(self, window, cx, stack)
     }
 
     fn paint_boundary(&self) -> bool {

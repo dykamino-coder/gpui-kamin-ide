@@ -57,8 +57,8 @@ impl Element for Paragraph {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, (LayoutId, LayoutId)> {
-        Box::pin(self.request_layout_impl(id, inspector, window, cx, stack))
+    ) -> impl std::future::Future<Output = (LayoutId, LayoutId)> + 'a {
+        self.request_layout_impl(id, inspector, window, cx, stack)
     }
 
     fn prepaint_async<'a>(
@@ -70,8 +70,8 @@ impl Element for Paragraph {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, Option<Hitbox>> {
-        Box::pin(self.prepaint_impl(bounds, state, window, cx, stack))
+    ) -> impl std::future::Future<Output = Option<Hitbox>> + 'a {
+        self.prepaint_impl(bounds, state, window, cx, stack)
     }
 
     fn paint(
@@ -100,8 +100,8 @@ impl Element for Paragraph {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(self.paint_impl(id, inspector, bounds, state, hitbox, window, cx, stack))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        self.paint_impl(id, inspector, bounds, state, hitbox, window, cx, stack)
     }
 }
 

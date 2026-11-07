@@ -75,10 +75,10 @@ pub(crate) trait Hooks: 'static {
         window: &'a mut Window,
         cx: &'a mut App,
         _stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.paint(bounds, layout, prepaint, window, cx);
-        })
+        }
     }
 }
 
@@ -153,8 +153,8 @@ impl<T: Wrap> Hooks for T {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(Wrap::paint_async(self, bounds, window, cx, stack))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        Wrap::paint_async(self, bounds, window, cx, stack)
     }
 
     type Layout = ();

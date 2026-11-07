@@ -17,8 +17,8 @@ impl<T: Hooks> Element for Hooked<T> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, (LayoutId, T::Layout)> {
-        Box::pin(Hooks::request_layout_async(&mut self.0, window, cx, stack))
+    ) -> impl std::future::Future<Output = (LayoutId, T::Layout)> + 'a {
+        Hooks::request_layout_async(&mut self.0, window, cx, stack)
     }
 
     fn prepaint_async<'a>(
@@ -30,15 +30,8 @@ impl<T: Hooks> Element for Hooked<T> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, T::Prepaint> {
-        Box::pin(Hooks::prepaint_async(
-            &mut self.0,
-            bounds,
-            layout,
-            window,
-            cx,
-            stack,
-        ))
+    ) -> impl std::future::Future<Output = T::Prepaint> + 'a {
+        Hooks::prepaint_async(&mut self.0, bounds, layout, window, cx, stack)
     }
 
     fn paint_async<'a>(
@@ -51,7 +44,7 @@ impl<T: Hooks> Element for Hooked<T> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
+    ) -> impl std::future::Future<Output = ()> + 'a {
         Hooks::paint_async(&mut self.0, bounds, layout, prepaint, window, cx, stack)
     }
 

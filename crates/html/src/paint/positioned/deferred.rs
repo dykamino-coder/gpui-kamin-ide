@@ -28,8 +28,8 @@ impl Painter for DeferredSource {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.0
                 .with_child(async |child, mask| {
                     // Исходная маска дополняет clip фрагмента, установленный paint.
@@ -43,6 +43,6 @@ impl Painter for DeferredSource {
                         .await;
                 })
                 .await;
-        })
+        }
     }
 }

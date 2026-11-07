@@ -177,8 +177,8 @@ impl Element for ImageCacheElement {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let image_cache = self.image_cache_provider.provide(window, cx);
             window
                 .with_image_cache_async(Some(image_cache), async |window| {
@@ -187,7 +187,7 @@ impl Element for ImageCacheElement {
                     }
                 })
                 .await
-        })
+        }
     }
 }
 

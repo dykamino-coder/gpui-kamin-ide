@@ -70,7 +70,7 @@ mod tests {
         stack: &mut PaintStack,
         depth: usize,
         dropped: Rc<RefCell<Vec<usize>>>,
-    ) -> PaintFuture<'_> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = ()> + '_>> {
         Box::pin(async move {
             let _scope = Scope(depth, dropped.clone());
             if depth == 0 {

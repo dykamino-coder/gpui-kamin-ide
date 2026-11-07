@@ -14,7 +14,7 @@ pub(in crate::paint::coordinator::segments) fn own_capture_async<'a>(
     stack: &'a mut gpui::PaintStack,
     paint: impl AsyncFnOnce(&mut Window, &mut App, &mut gpui::PaintStack) + 'a,
 ) -> gpui::PaintFuture<'a> {
-    Box::pin(async move {
+    window.continuations().pin(async move {
         // The containing block's overflow clips inside the fragmented flow apply in
         // source coordinates, before placement (css-overflow-3 §3, css-break-3 §2);
         // clips above the source root stay with the destination.

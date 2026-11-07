@@ -143,8 +143,8 @@ impl Hooks for Child {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             window
                 .with_retained_layout_async(&mut self.engine, async |window| {
                     window
@@ -154,7 +154,7 @@ impl Hooks for Child {
                         .await
                 })
                 .await;
-        })
+        }
     }
 }
 

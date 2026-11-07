@@ -28,21 +28,33 @@ impl Routes {
         let lines = (self.slices.iter().copied().zip(self.frags.iter().copied())).collect();
         let lines = Lines::new(lines, self.watched.clone(), self.spill);
         let result = crate::hooks::with_replay_pieces_async(slots, window, async |window| {
-            let late_scope: gpui::PaintFuture<'_, R> = Box::pin(
-                crate::hooks::with_late_jobs_async(late, window, async |window| {
-                    let hidden: std::collections::HashSet<u64> =
-                        self.clone_root.into_iter().collect();
-                    crate::hooks::with_clone_hidden_async(Rc::new(hidden), window, async |window| {
-                        let line_scope: gpui::PaintFuture<'_, R> = Box::pin(
-                            line_admission::with_async(lines.clone(), window, async |window| {
-                                stack.run(|stack| record(window, stack)).await
-                            }),
-                        );
-                        line_scope.await
-                    })
-                    .await
-                }),
-            );
+            let late_scope: gpui::PaintFuture<'_, R> =
+                window
+                    .continuations()
+                    .pin(crate::hooks::with_late_jobs_async(
+                        late,
+                        window,
+                        async |window| {
+                            let hidden: std::collections::HashSet<u64> =
+                                self.clone_root.into_iter().collect();
+                            crate::hooks::with_clone_hidden_async(
+                                Rc::new(hidden),
+                                window,
+                                async |window| {
+                                    let line_scope: gpui::PaintFuture<'_, R> =
+                                        window.continuations().pin(line_admission::with_async(
+                                            lines.clone(),
+                                            window,
+                                            async |window| {
+                                                stack.run(|stack| record(window, stack)).await
+                                            },
+                                        ));
+                                    line_scope.await
+                                },
+                            )
+                            .await
+                        },
+                    ));
             late_scope.await
         })
         .await;

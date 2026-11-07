@@ -148,8 +148,8 @@ impl Hooks for OofHost {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             crate::hooks::paint_reopen_async(window, async |window| {
                 let mut children = super::pending::PaintedGuard::take(built);
                 for child in children.iter_mut() {
@@ -157,6 +157,6 @@ impl Hooks for OofHost {
                 }
             })
             .await;
-        })
+        }
     }
 }

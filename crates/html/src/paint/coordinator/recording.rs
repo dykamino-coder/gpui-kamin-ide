@@ -48,7 +48,7 @@ pub(super) fn recording() -> PaintRecording {
             None => Box::new(()),
         }),
         finish: Rc::new(|guard, window, cx, stack| {
-            Box::pin(async move {
+            window.continuations().pin(async move {
                 if let Some(RecordFrame { frame, late }) = guard.downcast_mut::<RecordFrame>() {
                     match late {
                         Some(late) => {

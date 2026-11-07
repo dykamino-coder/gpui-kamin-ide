@@ -131,8 +131,8 @@ impl Hooks for ColumnStack {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let bounds = *prepaint;
             if self.axis.is_vertical() {
                 self.paint_axis(bounds, window, cx, stack).await;
@@ -174,6 +174,6 @@ impl Hooks for ColumnStack {
             }
             // Positioned continuations without a column copy of their ancestors.
             let _ = self.paint_orphans(window);
-        })
+        }
     }
 }

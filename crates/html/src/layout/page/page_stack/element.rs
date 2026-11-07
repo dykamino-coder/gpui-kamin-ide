@@ -196,7 +196,7 @@ impl Hooks for PageStack {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
+    ) -> impl std::future::Future<Output = ()> + 'a {
         self.paint_sheets_async(bounds, window, cx, stack)
     }
 }

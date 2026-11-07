@@ -75,8 +75,8 @@ impl Hooks for PaintCollect {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             if self.open {
                 if let Some(pass) = current(window) {
                     self.state.set(Some(pass.open(window)));
@@ -86,7 +86,7 @@ impl Hooks for PaintCollect {
                 // планировщик сохраняет кадр до завершения всей его очереди.
                 guard.pass.drain_async(guard.depth, window, cx, stack).await;
             }
-        })
+        }
     }
 }
 

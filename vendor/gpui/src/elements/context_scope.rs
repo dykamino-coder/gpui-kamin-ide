@@ -114,11 +114,11 @@ impl Element for ContextScope {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a, (LayoutId, ())> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = (LayoutId, ())> + 'a {
+        async move {
             let _scope = (self.enter)(ScopePhase::RequestLayout);
             (self.child.request_layout_async(window, cx, stack).await, ())
-        })
+        }
     }
 
     fn prepaint_async<'a>(
@@ -130,11 +130,11 @@ impl Element for ContextScope {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let _scope = (self.enter)(ScopePhase::Prepaint);
             self.child.prepaint_async(window, cx, stack).await;
-        })
+        }
     }
 
     fn paint_async<'a>(
@@ -147,11 +147,11 @@ impl Element for ContextScope {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let _scope = (self.enter)(ScopePhase::Paint);
             self.child.paint_async(window, cx, stack).await;
-        })
+        }
     }
 }
 

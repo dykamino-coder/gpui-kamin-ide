@@ -196,8 +196,8 @@ impl Hooks for ClampHost {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.children
                 .outline_flow(
                     &self.paint,
@@ -214,6 +214,6 @@ impl Hooks for ClampHost {
                     },
                 )
                 .await;
-        })
+        }
     }
 }

@@ -104,6 +104,11 @@ impl PaintScopeId {
 }
 
 impl Window {
+    /// Переиспользуемая закреплённая память заимствованных продолжений обхода.
+    pub fn continuations(&self) -> crate::ContinuationPool {
+        self.continuations.clone()
+    }
+
     /// Identify the current draw without extending its validity.
     pub fn paint_pass_id(&self) -> PaintPassId {
         self.paint_pass.clone()
@@ -137,6 +142,7 @@ impl Window {
                     mem::swap(&mut window.layout_inputs, &mut previous.4.1);
                     window.invalidator.set_phase(DrawPhase::None);
                 }
+                window.continuations.finish_frame();
                 window.paint_pass.0.set(false);
                 window.paint_scope.0.set(false);
                 mem::swap(&mut window.paint_pass, &mut previous.0);

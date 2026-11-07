@@ -1274,6 +1274,7 @@ pub struct Window {
     pub(crate) text_style_stack: TextStyleScope,
     // KaminIDE patch: typed host context belongs to this window and traversal.
     render_contexts: render_context::RenderContexts,
+    continuations: crate::ContinuationPool,
     paint_window: Rc<()>,
     paint_pass: PaintPassId,
     paint_scope: PaintScopeId,
@@ -2227,6 +2228,7 @@ impl Window {
             element_id_stack: SmallVec::default(),
             text_style_stack: TextStyleScope::default(),
             render_contexts: Default::default(),
+            continuations: Default::default(),
             paint_window: Rc::new(()),
             paint_pass: PaintPassId::default(),
             paint_scope: PaintScopeId::default(),

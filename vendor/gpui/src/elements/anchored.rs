@@ -250,12 +250,12 @@ impl Element for Anchored {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             for child in &mut self.children {
                 child.paint_async(window, cx, stack).await;
             }
-        })
+        }
     }
 }
 

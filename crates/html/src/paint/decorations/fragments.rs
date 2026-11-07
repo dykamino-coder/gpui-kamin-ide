@@ -107,8 +107,8 @@ impl Hooks for Fragments {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             let admitted = crate::paint::coordinator::segments::decorations(self.node, window);
             for (geometry, child) in fragments {
                 let own = admitted.iter().any(|g| {
@@ -124,6 +124,6 @@ impl Hooks for Fragments {
                     .await;
                 }
             }
-        })
+        }
     }
 }

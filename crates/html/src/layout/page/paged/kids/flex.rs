@@ -72,10 +72,10 @@ impl Hooks for Layer {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             self.0.borrow_mut().paint_async(window, cx, stack).await;
-        })
+        }
     }
 }
 

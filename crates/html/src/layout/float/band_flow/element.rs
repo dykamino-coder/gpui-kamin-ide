@@ -99,8 +99,8 @@ impl Hooks for BandFlow {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(self.paint_children(window, cx, stack))
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        self.paint_children(window, cx, stack)
     }
 }
 

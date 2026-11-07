@@ -406,10 +406,10 @@ impl<E: IntoElement + 'static> Element for SpringAnimationElement<E> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             element.paint_async(window, cx, stack).await;
-        })
+        }
     }
 }
 
@@ -560,10 +560,10 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut crate::PaintStack,
-    ) -> crate::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             element.paint_async(window, cx, stack).await;
-        })
+        }
     }
 }
 

@@ -57,8 +57,8 @@ impl Hooks for Tap {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             // A probe wrapper is not a stacking context: the child's inline
             // foreground stays in the enclosing paint phases (CSS 2.1 Appendix
             // E.2 steps 4, 5, 7).
@@ -66,6 +66,6 @@ impl Hooks for Tap {
                 self.inner.paint_async(window, cx, stack).await
             })
             .await;
-        })
+        }
     }
 }

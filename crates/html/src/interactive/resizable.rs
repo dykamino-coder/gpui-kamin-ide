@@ -74,8 +74,8 @@ impl Element for Resizable {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, (LayoutId, AnyElement)> {
-        Box::pin(self.request_layout_on_stack(id, _inspector_id, window, cx, stack))
+    ) -> impl std::future::Future<Output = (LayoutId, AnyElement)> + 'a {
+        self.request_layout_on_stack(id, _inspector_id, window, cx, stack)
     }
 
     fn prepaint(
@@ -102,8 +102,8 @@ impl Element for Resizable {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a, Hitbox> {
-        Box::pin(self.prepaint_on_stack(bounds, child, window, cx, stack))
+    ) -> impl std::future::Future<Output = Hitbox> + 'a {
+        self.prepaint_on_stack(bounds, child, window, cx, stack)
     }
 
     fn paint(
@@ -133,8 +133,8 @@ impl Element for Resizable {
         window: &'a mut Window,
         cx: &'a mut App,
         stack: &'a mut gpui::PaintStack,
-    ) -> gpui::PaintFuture<'a> {
-        Box::pin(async move {
+    ) -> impl std::future::Future<Output = ()> + 'a {
+        async move {
             child.paint_async(window, cx, stack).await;
             let Some(global_id) = id else { return };
             let axis = self.axis;
@@ -193,7 +193,7 @@ impl Element for Resizable {
 
                 ((), st.get())
             });
-        })
+        }
     }
 }
 
