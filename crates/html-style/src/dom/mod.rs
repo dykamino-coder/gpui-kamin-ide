@@ -10,7 +10,7 @@ mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
 mod shared;
-pub use shared::{Attr, Attrs, AttrsEdit, Shared, SharedAttrs};
+pub use shared::{Attr, Attrs, AttrsEdit, SharedAttrs, Tag};
 mod children;
 mod same_tree;
 pub use same_tree::{BoxStyles, same_box, same_shell, same_tree, same_tree_as, same_values};
@@ -132,7 +132,7 @@ pub struct Element {
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
     pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
-    pub tag: Shared<String>,
+    pub tag: Tag,
     pub style: SharedStyle,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
