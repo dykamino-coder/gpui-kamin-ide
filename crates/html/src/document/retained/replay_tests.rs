@@ -3,6 +3,7 @@
 //! рисует те же команды, что свежая сборка, вместе с заданиями фазы строк.
 //! Тело страниц — `display: flow-root`: записи пропуска (`recorder`) его
 //! детям не остаются, и повтор здесь — только повтор с поддеревом раскладки.
+//! Глубокий тест дополнительно проверяет обычный корневой поток с recorder.
 //! Первая устоявшаяся сборка всё равно оборачивает их для пропуска, поэтому
 //! для повтора их пишет лишь следующая (`mark::replay_worth_recording`).
 
@@ -164,27 +165,41 @@ fn deep_recording_and_replay_keep_the_line_phase_on_a_small_stack() {
     std::thread::Builder::new()
         .stack_size(512 * 1024)
         .spawn(|| {
-            let mut app = TestAppContext::single();
-            let head = format!(
-                "{}<span style='background:lime;text-decoration:underline'>leaf</span>{}",
-                "<div>".repeat(5000),
-                "</div>".repeat(5000),
-            );
-            let page = |text: &str| {
-                format!("<body style='margin:0'>{head}<p>{text}</p><p>tail</p></body>")
-            };
-            let (view, cx) = settled(&mut app, &page("two"), &page("one"));
-            // The default mouse at (0, 0) hovers the leaf: selection tracking
-            // correctly prevents recording it. Exercise inert replay here.
-            cx.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
-            update(&view, cx, &page("two"));
-            update(&view, cx, &page("one"));
-            assert_eq!(replayed(&view, cx), 2, "the deep block or tail was rebuilt");
-            let replay = scene(cx);
-            let (_, fresh) = open(cx, &page("one"));
-            fresh.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
-            frame(fresh);
-            assert_eq!(replay, scene(fresh), "deep replay changed the line phase");
+            for flow_root in [true, false] {
+                let mut app = TestAppContext::single();
+                let head = format!(
+                    "{}<span style='background:lime;text-decoration:underline'>leaf</span>{}",
+                    "<div>".repeat(5000),
+                    "</div>".repeat(5000),
+                );
+                let page = |text: &str| {
+                    let display = if flow_root { ";display:flow-root" } else { "" };
+                    format!("<body style='margin:0{display}'>{head}<p>{text}</p><p>tail</p></body>")
+                };
+                let (view, cx) = settled(&mut app, &page("two"), &page("one"));
+                // The default mouse at (0, 0) hovers the leaf: selection tracking
+                // correctly prevents recording it. Exercise inert replay here.
+                cx.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
+                update(&view, cx, &page("two"));
+                let before = cx.update(|_, cx| view.read(cx).doc.replayed_blocks());
+                update(&view, cx, &page("one"));
+                let after = cx.update(|_, cx| view.read(cx).doc.replayed_blocks());
+                assert_eq!(after - before, 2, "the deep block or tail was rebuilt");
+                if flow_root {
+                    assert_eq!(replayed(&view, cx), 2, "the layout subtree was not claimed");
+                } else {
+                    assert_eq!(
+                        cx.update(|_, cx| view.read(cx).doc.replayed_subtrees()),
+                        0,
+                        "the root-flow recorder was not exercised"
+                    );
+                }
+                let replay = scene(cx);
+                let (_, fresh) = open(cx, &page("one"));
+                fresh.simulate_mouse_move(point(px(-10.), px(-10.)), None, Modifiers::default());
+                frame(fresh);
+                assert_eq!(replay, scene(fresh), "deep replay changed the line phase");
+            }
         })
         .unwrap()
         .join()
@@ -197,7 +212,7 @@ fn deep_recording_and_replay_keep_the_line_phase_on_a_small_stack() {
 fn hovered_line_content_is_rebuilt_instead_of_replayed(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0'><div><span style='background:lime;text-decoration:underline'>leaf</span></div><p>{text}</p><p>tail</p></body>"
+            "<body style='margin:0;display:flow-root'><div><span style='background:lime;text-decoration:underline'>leaf</span></div><p>{text}</p><p>tail</p></body>"
         )
     };
     let (view, cx) = settled(cx, &page("two"), &page("one"));
