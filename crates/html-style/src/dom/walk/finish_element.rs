@@ -16,7 +16,7 @@ pub(super) fn finish_element(
     mut style: Box<Computed>,
     mut children: Vec<Node>,
     tag: String,
-    attrs: Vec<(String, String)>,
+    attrs: crate::dom::Shared<crate::dom::Attrs>,
     anim: Option<Vec<(f32, Computed)>>,
     list_item: Option<i64>,
     node_id: u64,
@@ -115,11 +115,12 @@ pub(super) fn finish_element(
             if tag != "html" && content_image_src(src).is_some() =>
         {
             let mut attrs: Vec<(String, String)> = attrs
-                .into_iter()
+                .iter()
+                .cloned()
                 .filter(|(k, _)| k != "src" && k != "srcset")
                 .collect();
             attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
-            ("img".to_string(), vec![], attrs)
+            ("img".to_string(), vec![], attrs.into())
         }
         _ => (tag, children, attrs),
     };

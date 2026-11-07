@@ -13,7 +13,7 @@ pub(super) struct Pending<'a> {
     pub candidates: Rc<crate::budget::admission::Buffer<usize>>,
     pub me: Ancestor,
     pub tag: String,
-    pub attrs: Vec<(String, String)>,
+    pub attrs: crate::dom::Shared<crate::dom::Attrs>,
     pub style: Box<Computed>,
     pub vars: Rc<VarMap>,
     pub shadow: Option<Rc<Shadow>>,

@@ -33,7 +33,7 @@ pub struct Ancestor {
     pub id: Option<String>,
     pub classes: Vec<String>,
     /// Все атрибуты узла: нужны атрибутным селекторам.
-    pub attrs: Vec<(String, String)>,
+    pub attrs: crate::dom::Shared<crate::dom::Attrs>,
     /// Место среди соседей: нужно структурным псевдоклассам.
     pub spot: Spot,
     /// Адрес ссылки: нужен `:link`/`:visited`.

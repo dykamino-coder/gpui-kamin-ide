@@ -54,7 +54,7 @@ pub(super) struct Key<'a> {
     scheme: Scheme,
     html_attrs: bool,
     tag: &'a str,
-    attrs: &'a [(String, String)],
+    attrs: &'a crate::dom::Shared<crate::dom::Attrs>,
     /// Отметки `:has()` элемента: они входят в фильтр Блума потомков, а через
     /// него — в их кандидатов индекса; равные номера родителей должны значить
     /// равные отметки всей цепочки.
@@ -69,7 +69,7 @@ struct Entry {
     scheme: Scheme,
     html_attrs: bool,
     tag: String,
-    attrs: Vec<(String, String)>,
+    attrs: crate::dom::Shared<crate::dom::Attrs>,
     marks: Vec<u64>,
     environment: Environment,
     /// Перепроверяемые кандидаты: номер правила и исходы `matches` и
@@ -91,7 +91,7 @@ impl<'a> Key<'a> {
         vcx: ValueCx<'_>,
         me: &Ancestor,
         tag: &'a str,
-        attrs: &'a [(String, String)],
+        attrs: &'a crate::dom::Shared<crate::dom::Attrs>,
         excluded: bool,
     ) -> Option<Self> {
         if parent == 0
@@ -159,7 +159,7 @@ impl ElementSharing {
                 && e.scheme == key.scheme
                 && e.html_attrs == key.html_attrs
                 && e.tag == key.tag
-                && e.attrs == key.attrs
+                && e.attrs == *key.attrs
                 && e.marks == key.marks
                 && e.environment.matches(vcx)
                 && e.checks
@@ -223,7 +223,7 @@ impl ElementSharing {
             scheme: key.scheme,
             html_attrs: key.html_attrs,
             tag: key.tag.to_string().into(),
-            attrs: key.attrs.to_vec().into(),
+            attrs: key.attrs.clone(),
             marks: key.marks.clone(),
             environment: Environment::new(vcx),
             checks,

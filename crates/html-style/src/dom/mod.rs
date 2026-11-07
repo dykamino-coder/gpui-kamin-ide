@@ -10,7 +10,7 @@ mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
 mod shared;
-pub use shared::Shared;
+pub use shared::{Attrs, Shared};
 mod children;
 mod same_tree;
 pub use same_tree::{BoxStyles, same_box, same_shell, same_tree, same_tree_as, same_values};
