@@ -43,37 +43,46 @@ pub(super) fn resolve(
     svg: bool,
     admission: &crate::budget::admission::Admission,
 ) -> Result<(), crate::budget::admission::Error> {
-    for node in nodes {
+    // A cursor keeps siblings suspended without a native call per ancestor.
+    // Only successful xml:base changes own URLs; ordinary descendants borrow
+    // the active base rather than cloning it once per level.
+    let mut bases = Vec::new();
+    let mut open = vec![(nodes.iter_mut(), svg, 0)];
+    while let Some((siblings, inherited_svg, base_count)) = open.last_mut() {
+        bases.truncate(*base_count);
+        let Some(node) = siblings.next() else {
+            open.pop();
+            continue;
+        };
         let Node::Element(e) = node else {
             continue;
         };
         admission.work(1)?;
-        let local = e.attrs.iter().find(|(k, _)| k == "xml:base");
-        let base = if let Some((_, value)) = local {
-            super::source::join(base, value, admission)?
-                .map(std::borrow::Cow::Owned)
-                .unwrap_or(std::borrow::Cow::Borrowed(base))
-        } else {
-            std::borrow::Cow::Borrowed(base)
-        };
+        if let Some((_, value)) = e.attrs.iter().find(|(k, _)| k == "xml:base")
+            && let Some(local) =
+                super::source::join(bases.last().unwrap_or(base), value, admission)?
+        {
+            bases.push(local);
+        }
         let svg = if e.tag == "svg" {
             true
         } else if e.tag.eq_ignore_ascii_case("foreignObject") {
             false
         } else {
-            svg
+            *inherited_svg
         };
         if svg && e.tag == "use" {
             for (name, href) in &mut e.attrs {
                 if name == "href"
                     && !href.starts_with('#')
-                    && let Some(url) = super::source::join(&base, href, admission)?
+                    && let Some(url) =
+                        super::source::join(bases.last().unwrap_or(base), href, admission)?
                 {
                     *href = url.to_string();
                 }
             }
         }
-        resolve(&mut e.children, &base, svg, admission)?;
+        open.push((e.children.iter_mut(), svg, bases.len()));
     }
     Ok(())
 }
@@ -94,15 +103,20 @@ pub(super) fn key(html: &str, css: &str, base: Option<&Url>) -> u64 {
 mod tests {
     use super::*;
     fn hrefs(nodes: &[Node], out: &mut Vec<String>) {
-        for n in nodes {
-            if let Node::Element(e) = n {
+        let mut open = vec![nodes.iter()];
+        while let Some(siblings) = open.last_mut() {
+            let Some(node) = siblings.next() else {
+                open.pop();
+                continue;
+            };
+            if let Node::Element(e) = node {
                 out.extend(
                     e.attrs
                         .iter()
                         .filter(|(k, _)| k == "href")
                         .map(|(_, v)| v.clone()),
                 );
-                hrefs(&e.children, out);
+                open.push(e.children.iter());
             }
         }
     }
@@ -140,5 +154,33 @@ mod tests {
         let mut links = Vec::new();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/assets/icons/sprite.svg#x", "#local"]);
+    }
+    #[test]
+    fn nested_bases_restore_sibling_scopes_and_svg_boundaries() {
+        let html = concat!(
+            "<svg xml:base='icons/'><g xml:base='a/'>",
+            "<use href='one.svg'/><g xml:base='../b/'><use href='two.svg'/></g>",
+            "<use href='three.svg'/></g><use href='four.svg'/>",
+            "<foreignObject><use href='html.svg'/><svg><use href='five.svg'/></svg>",
+            "</foreignObject><use href='#local'/></svg>",
+        );
+        let doc = super::super::Document::builder(html, "")
+            .base_uri("file:///tests/page.html")
+            .build()
+            .unwrap();
+        let mut links = Vec::new();
+        hrefs(doc.nodes(), &mut links);
+        assert_eq!(
+            links,
+            [
+                "file:///tests/icons/a/one.svg",
+                "file:///tests/icons/b/two.svg",
+                "file:///tests/icons/a/three.svg",
+                "file:///tests/icons/four.svg",
+                "html.svg",
+                "file:///tests/icons/five.svg",
+                "#local",
+            ]
+        );
     }
 }

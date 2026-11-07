@@ -113,3 +113,26 @@ fn twenty_thousand_levels_complete_all_frame_phases_on_a_small_stack() {
         assert_eq!(text, "leaf");
     });
 }
+
+/// Source URLs exercise resource resolution before the retained viewport path.
+#[test]
+fn sourced_twenty_thousand_levels_complete_a_retained_frame_on_a_small_stack() {
+    regression::on_stack(512 * 1024, || {
+        let document = Document::builder(&(markup(20_000) + "<p>tail</p>"), "")
+            .base_uri("file:///tests/deep.html")
+            .build()
+            .unwrap();
+        let mut cx = gpui::TestAppContext::single();
+        cx.add_empty_window().draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(100.), gpui::px(100.)),
+            |_, _| FrameProbe(document.render_viewport(&options()), "paint".into()),
+        );
+        assert_eq!(document.report().status, RevisionStatus::Complete);
+        assert!(document.take_diagnostics().is_empty());
+        assert_eq!(source_text(&document), "leaftail");
+        let mut text = String::new();
+        crate::dom::text_content::gather_text(document.nodes(), &mut text);
+        assert_eq!(text, "leaftail");
+    });
+}
