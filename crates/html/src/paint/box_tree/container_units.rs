@@ -14,16 +14,20 @@ mod fixture;
 #[cfg(test)]
 mod tests;
 
+/// Whether [observe] attaches the box's layout observer.
+pub(super) fn observes(element: &Element, style: &BoxStyle) -> bool {
+    // Layout-made копия уже имеет computed values и не является новым
+    // источником стиля DOM. Её временный слот не переживает сборку кадра.
+    style.query_container_axes() != (false, false)
+        && !element.marks.anonymous_wrapper
+        && element.style.slot().any().is_some()
+}
+
 pub(super) fn observe(div: Div, element: &Element, style: &BoxStyle) -> Div {
-    let axes = style.query_container_axes();
-    if axes == (false, false)
-        || element.marks.anonymous_wrapper
-        || element.style.slot().any().is_none()
-    {
-        // Layout-made копия уже имеет computed values и не является новым
-        // источником стиля DOM. Её временный слот не переживает сборку кадра.
+    if !observes(element, style) {
         return div;
     }
+    let axes = style.query_container_axes();
     div.observe_layout(ContainerInput {
         slot: element.style.slot().clone(),
         axes,

@@ -114,6 +114,15 @@ pub(crate) fn layer(
     c: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
+    inset_layer(layer, c, vcx).map(exact_layer::InsetLayer::into_element)
+}
+
+/// The background layer as a paint of its box, inset from the padding box.
+pub(crate) fn inset_layer(
+    layer: &crate::style::computed::BgLayer,
+    c: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Option<exact_layer::InsetLayer> {
     let values = vcx.keep();
     layer.image.as_ref()?;
     // Одноцветный фон `border-area` несёт краска рамки (`border_paint`):
@@ -136,52 +145,49 @@ pub(crate) fn layer(
     let style = c.style_rc().clone();
     let opaque_borders = std::array::from_fn(|i| c.used_border_color(i).a >= 1.0);
     let layer = layer.clone();
-    Some(
-        exact_layer::ExactLayer::inset(
-            c.reset_background.bg_border_insets.unwrap_or([0.0; 4]),
-            move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
-                let bounds = geometry.snapped;
-                let vcx = values.vcx();
-                clip::paint(&style, layer.clip, bounds, window, |window| {
-                    if layer.fixed == Some(true) {
-                        // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                        // а красится только внутри своей коробки: сдвиг между
-                        // ними держит сам `paint_tiles`.
-                        let view = Bounds {
-                            origin: gpui::point(px(0.0), px(0.0)),
-                            size: window.viewport_size(),
-                        };
-                        tiles::paint_layer_in(
-                            tiles::LayerPaint {
-                                layer: &layer,
-                                opaque_borders,
-                            },
-                            &style,
-                            view,
-                            Some(bounds),
-                            window,
-                            Some(geometry),
-                            vcx,
-                        );
-                    } else {
-                        tiles::paint_layer_in(
-                            tiles::LayerPaint {
-                                layer: &layer,
-                                opaque_borders,
-                            },
-                            &style,
-                            bounds,
-                            None,
-                            window,
-                            Some(geometry),
-                            vcx,
-                        );
-                    }
-                });
-            },
-        )
-        .hooked(),
-    )
+    Some(exact_layer::InsetLayer::new(
+        c.reset_background.bg_border_insets.unwrap_or([0.0; 4]),
+        move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
+            let bounds = geometry.snapped;
+            let vcx = values.vcx();
+            clip::paint(&style, layer.clip, bounds, window, |window| {
+                if layer.fixed == Some(true) {
+                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
+                    // а красится только внутри своей коробки: сдвиг между
+                    // ними держит сам `paint_tiles`.
+                    let view = Bounds {
+                        origin: gpui::point(px(0.0), px(0.0)),
+                        size: window.viewport_size(),
+                    };
+                    tiles::paint_layer_in(
+                        tiles::LayerPaint {
+                            layer: &layer,
+                            opaque_borders,
+                        },
+                        &style,
+                        view,
+                        Some(bounds),
+                        window,
+                        Some(geometry),
+                        vcx,
+                    );
+                } else {
+                    tiles::paint_layer_in(
+                        tiles::LayerPaint {
+                            layer: &layer,
+                            opaque_borders,
+                        },
+                        &style,
+                        bounds,
+                        None,
+                        window,
+                        Some(geometry),
+                        vcx,
+                    );
+                }
+            });
+        },
+    ))
 }
 
 // --- Сплошная заливка ----------------------------------------------------

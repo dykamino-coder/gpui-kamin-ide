@@ -31,7 +31,63 @@ impl PaintGeometry {
     }
 }
 
+impl PaintGeometry {
+    /// Geometry of a layer box: its snapped bounds, its unrounded bounds when within a
+    /// device pixel of them (another frame of reference otherwise), and the used border and
+    /// padding of the box the layer belongs to.
+    pub(crate) fn of_layer(
+        snapped: Bounds<Pixels>,
+        exact: Bounds<Pixels>,
+        parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
+    ) -> Self {
+        let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(1.0);
+        let exact = (near(exact.left(), snapped.left())
+            && near(exact.top(), snapped.top())
+            && near(exact.right(), snapped.right())
+            && near(exact.bottom(), snapped.bottom()))
+        .then_some(exact);
+        Self {
+            snapped,
+            exact,
+            parent_edges,
+        }
+    }
+}
+
 type PaintFn = Box<dyn FnMut(PaintGeometry, &mut Window)>;
+
+/// A background layer laid out with [top, right, bottom, left] insets from its box's
+/// padding box: painted by the box itself (decorations::box_layers) or, where the box
+/// cannot, as an [ExactLayer] child element.
+pub(crate) struct InsetLayer {
+    insets: [f32; 4],
+    paint: PaintFn,
+}
+
+impl InsetLayer {
+    pub(crate) fn new(
+        insets: [f32; 4],
+        paint: impl FnMut(PaintGeometry, &mut Window) + 'static,
+    ) -> Self {
+        Self {
+            insets,
+            paint: Box::new(paint),
+        }
+    }
+
+    pub(crate) fn insets(&self) -> [f32; 4] {
+        self.insets
+    }
+
+    pub(crate) fn paint(&mut self, geometry: PaintGeometry, window: &mut Window) {
+        (self.paint)(geometry, window)
+    }
+
+    pub(crate) fn into_element(self) -> AnyElement {
+        use crate::hooks::IntoHooked as _;
+        ExactLayer::boxed(self.insets, self.paint).hooked()
+    }
+}
 
 pub(crate) struct ExactLayer {
     child: AnyElement,
@@ -48,6 +104,10 @@ impl ExactLayer {
         [t, r, b, l]: [f32; 4],
         paint: impl FnMut(PaintGeometry, &mut Window) + 'static,
     ) -> Self {
+        Self::boxed([t, r, b, l], Box::new(paint))
+    }
+
+    fn boxed([t, r, b, l]: [f32; 4], paint: PaintFn) -> Self {
         Self {
             child: gpui::div()
                 .absolute()
@@ -56,7 +116,7 @@ impl ExactLayer {
                 .bottom(px(b))
                 .left(px(l))
                 .into_any_element(),
-            paint: Box::new(paint),
+            paint,
             exact: None,
             parent_edges: None,
         }
@@ -84,14 +144,7 @@ impl Hooks for ExactLayer {
             origin: window.layout_origin_unrounded(*layout_id),
             size: window.layout_size_unrounded(*layout_id),
         };
-        // Only an unrounded box within a device pixel of the snapped one is
-        // the same box (another frame of reference otherwise).
-        let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(1.0);
-        self.exact = (near(exact.left(), bounds.left())
-            && near(exact.top(), bounds.top())
-            && near(exact.right(), bounds.right())
-            && near(exact.bottom(), bounds.bottom()))
-        .then_some(exact);
+        self.exact = PaintGeometry::of_layer(bounds, exact, None).exact;
         self.child.prepaint(window, cx);
     }
 

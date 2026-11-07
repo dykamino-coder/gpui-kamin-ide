@@ -13,7 +13,7 @@ use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
 use crate::paint::apply::apply_hover;
 use crate::paint::apply::conversion::converted_div;
-use crate::paint::decorations::decorations;
+use crate::paint::decorations::{decorations, decorations_with};
 use gpui::{ParentElement, Styled};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
@@ -152,9 +152,17 @@ pub(crate) fn styled_div_with_dimensions(
             d = d.child(clone_hidden::layer(e.node_id, extra));
         }
     } else {
-        for extra in decorations(c, empty, frame, Some(cx)) {
+        use crate::paint::decorations::box_layers;
+        // Background layers below every other decoration are painted by the box itself
+        // (CSS 2.1 Appendix E), unless it clips or scrolls its children or already
+        // observes its layout for container units.
+        let mut painted = Vec::new();
+        let own = (!super::container_units::observes(e, style) && box_layers::eligible(&mut d))
+            .then_some(&mut painted);
+        for extra in decorations_with(c, empty, frame, Some(cx), own) {
             d = d.child(extra);
         }
+        d = box_layers::attach(d, painted);
     }
     super::container_units::observe(d, e, style)
 }

@@ -3,6 +3,7 @@
 use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 mod borders;
+pub(crate) mod box_layers;
 pub(crate) mod clone_hidden;
 mod fragments;
 pub(super) use borders::box_borders;
@@ -36,6 +37,19 @@ pub(crate) fn decorations(
     empty: bool,
     frame: FrameCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
+) -> Vec<AnyElement> {
+    decorations_with(c, empty, frame, cx, None)
+}
+
+/// [decorations], with the background layers that come before every other decoration
+/// element moved into `own` when given: the box paints those itself, in the same order,
+/// right after its own background and border ([box_layers::attach]).
+pub(crate) fn decorations_with(
+    c: &BoxStyle,
+    empty: bool,
+    frame: FrameCx<'_>,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+    mut own: Option<&mut Vec<crate::paint::background::exact_layer::InsetLayer>>,
 ) -> Vec<AnyElement> {
     let vcx = frame.values;
     if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
@@ -112,8 +126,8 @@ pub(crate) fn decorations(
         let bg = c.paint_background();
         if let Some(layers) = &bg.layers {
             for layer in layers.iter().rev() {
-                if let Some(element) = crate::paint::background::layer(layer, c, vcx) {
-                    out.push(element);
+                if let Some(layer) = crate::paint::background::inset_layer(layer, c, vcx) {
+                    box_layers::push(&mut out, own.as_deref_mut(), layer);
                 }
             }
         } else {
@@ -121,8 +135,8 @@ pub(crate) fn decorations(
             if layer.image.is_none() && bg.gradient_as_tile() {
                 layer.image = bg.gradient_image.clone();
             }
-            if let Some(element) = crate::paint::background::layer(&layer, c, vcx) {
-                out.push(element);
+            if let Some(layer) = crate::paint::background::inset_layer(&layer, c, vcx) {
+                box_layers::push(&mut out, own.as_deref_mut(), layer);
             }
         }
     }

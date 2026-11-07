@@ -11,7 +11,7 @@
 # 9. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
 # 10. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
 # 11. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
-# 12. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
+# 12. Box painting: expose final used border/padding of a box and of its parent read-only so background clips share layout's percentage basis and scale; resolve the snapped and unrounded bounds an absolutely positioned inset layer child would get, so a box paints its background layers without a layer element or layout node.
 # 13. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 14. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
 # 15. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
@@ -15748,10 +15748,10 @@ index 0000000000000000000000000000000000000000..ac66b037da54050936bd459b0de5e625
 +}
 diff --git a/vendor/gpui/src/taffy/box_edges.rs b/vendor/gpui/src/taffy/box_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e0272552f23
+index 0000000000000000000000000000000000000000..853b1a2942dfba7f4fd989f6c6370c1f6af8b8d5
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/box_edges.rs
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,227 @@
 +//! KaminIDE patch: использованные кромки родителя для фоновых слоёв.
 +//! Процентный padding уже разрешён раскладкой относительно containing block.
 +
@@ -15766,7 +15766,16 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +        scale_factor: f32,
 +    ) -> Option<(Edges<Pixels>, Edges<Pixels>)> {
 +        let parent = self.taffy.parent(child.into())?;
-+        let layout = self.taffy.layout(parent).ok()?;
++        self.box_edges(parent.into(), scale_factor)
++    }
++
++    /// Used border and padding of `id` itself, in unrounded logical pixels.
++    pub fn box_edges(
++        &self,
++        id: LayoutId,
++        scale_factor: f32,
++    ) -> Option<(Edges<Pixels>, Edges<Pixels>)> {
++        let layout = self.taffy.layout(id.into()).ok()?;
 +        let logical = |r: TaffyRect<f32>| Edges {
 +            top: Pixels(r.top / scale_factor),
 +            right: Pixels(r.right / scale_factor),
@@ -15774,6 +15783,41 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +            left: Pixels(r.left / scale_factor),
 +        };
 +        Some((logical(layout.border), logical(layout.padding)))
++    }
++
++    /// The box an absolutely positioned child of `id` with `[top, right, bottom, left]`
++    /// insets from the padding box would get, without creating that child: `(snapped,
++    /// unrounded)` in logical pixels, snapped on absolute edges exactly as `layout_bounds`
++    /// snaps a child. Lets a box paint its own background layers (CSS 2.1 Appendix E)
++    /// at the geometry of a layer element, without the element and its layout node.
++    pub fn inset_box(
++        &mut self,
++        id: LayoutId,
++        [top, right, bottom, left]: [f32; 4],
++        scale_factor: f32,
++    ) -> Option<(Bounds<Pixels>, Bounds<Pixels>)> {
++        let _ = self.layout_bounds(id, scale_factor);
++        let (ax, ay) = self.absolute_unrounded.get(&id).copied()?;
++        let layout = *self.taffy.layout(id.into()).ok()?;
++        let (border, extent) = (layout.border, layout.size);
++        let x = ax + border.left + left * scale_factor;
++        let y = ay + self.taffy.content_shift(id.into()) + border.top + top * scale_factor;
++        let width = extent.width - border.left - border.right - (left + right) * scale_factor;
++        let height = extent.height - border.top - border.bottom - (top + bottom) * scale_factor;
++        let (width, height) = (width.max(0.0), height.max(0.0));
++        let (rx, ry) = (x.round(), y.round());
++        let snapped = Bounds {
++            origin: point(Pixels(rx / scale_factor), Pixels(ry / scale_factor)),
++            size: size(
++                Pixels(((x + width).round() - rx) / scale_factor),
++                Pixels(((y + height).round() - ry) / scale_factor),
++            ),
++        };
++        let exact = Bounds {
++            origin: point(Pixels(x / scale_factor), Pixels(y / scale_factor)),
++            size: size(Pixels(width / scale_factor), Pixels(height / scale_factor)),
++        };
++        Some((snapped, exact))
 +    }
 +}
 +
@@ -15843,6 +15887,95 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +            assert_eq!(border, Edges::all(px(3.0)));
 +            assert_eq!(padding, Edges::all(px(40.0)));
 +            assert_eq!(engine.parent_box_edges(root.into(), scale), None);
++        }
++    }
++
++    #[test]
++    fn inset_box_matches_the_absolute_child_it_replaces() {
++        use taffy::style_helpers::{length, percent};
++        let insets = [[0.0; 4], [-1.5, -2.25, -0.75, -3.0], [0.4, 1.6, 2.5, 0.5]];
++        for scale in [1.0, 1.25, 1.5, 2.0] {
++            for [t, r, b, l] in insets {
++                let mut engine = TaffyLayoutEngine::new();
++                let layer = engine
++                    .taffy
++                    .new_leaf(taffy::Style {
++                        position: taffy::Position::Absolute,
++                        inset: taffy::Rect {
++                            top: length(t * scale),
++                            right: length(r * scale),
++                            bottom: length(b * scale),
++                            left: length(l * scale),
++                        },
++                        ..Default::default()
++                    })
++                    .unwrap();
++                let parent = engine
++                    .taffy
++                    .new_with_children(
++                        taffy::Style {
++                            size: taffy::Size {
++                                width: percent(0.37),
++                                height: length(20.3 * scale),
++                            },
++                            margin: taffy::Rect {
++                                top: length(7.7 * scale),
++                                right: length(0.0),
++                                bottom: length(0.0),
++                                left: length(3.3 * scale),
++                            },
++                            padding: taffy::Rect {
++                                top: percent(0.013),
++                                right: length(1.1 * scale),
++                                bottom: length(0.0),
++                                left: percent(0.021),
++                            },
++                            border: taffy::Rect {
++                                top: length(1.0 * scale),
++                                right: length(2.6 * scale),
++                                bottom: length(1.4 * scale),
++                                left: length(0.8 * scale),
++                            },
++                            ..Default::default()
++                        },
++                        &[layer],
++                    )
++                    .unwrap();
++                let root = engine
++                    .taffy
++                    .new_with_children(
++                        taffy::Style {
++                            display: taffy::Display::Block,
++                            size: taffy::Size {
++                                width: length(401.7 * scale),
++                                height: length(300.0 * scale),
++                            },
++                            ..Default::default()
++                        },
++                        &[parent],
++                    )
++                    .unwrap();
++                engine
++                    .taffy
++                    .compute_layout(root, taffy::Size::MAX_CONTENT)
++                    .unwrap();
++                let (snapped, exact) = engine
++                    .inset_box(parent.into(), [t, r, b, l], scale)
++                    .unwrap();
++                assert_eq!(snapped, engine.layout_bounds(layer.into(), scale));
++                assert_eq!(
++                    exact.origin,
++                    engine.layout_origin_unrounded(layer.into(), scale)
++                );
++                assert_eq!(
++                    exact.size,
++                    engine.layout_size_unrounded(layer.into(), scale)
++                );
++                assert_eq!(
++                    engine.box_edges(parent.into(), scale),
++                    engine.parent_box_edges(layer.into(), scale)
++                );
++            }
 +        }
 +    }
 +}
@@ -23549,10 +23682,10 @@ index 0000000000000000000000000000000000000000..c00c40694f95e76c745138438431e2d8
 +}
 diff --git a/vendor/gpui/src/window/box_edges.rs b/vendor/gpui/src/window/box_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..eab14cedb09668834019fc7323ca77982995c3ce
+index 0000000000000000000000000000000000000000..1047eb359bd5092d8e4fddf9c8f12c0466214528
 --- /dev/null
 +++ b/vendor/gpui/src/window/box_edges.rs
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,45 @@
 +//! KaminIDE patch: read-only доступ фонового слоя к использованным кромкам.
 +
 +use super::*;
@@ -23564,6 +23697,38 @@ index 0000000000000000000000000000000000000000..eab14cedb09668834019fc7323ca7798
 +            .as_ref()
 +            .unwrap()
 +            .parent_box_edges(child, self.scale_factor())
++    }
++
++    /// Used border and padding of the box `id` itself, in logical pixels.
++    pub fn box_edges(&self, id: LayoutId) -> Option<(Edges<Pixels>, Edges<Pixels>)> {
++        self.layout_engine
++            .as_ref()
++            .unwrap()
++            .box_edges(id, self.scale_factor())
++    }
++
++    /// Prepaint-time `(snapped, unrounded)` bounds of a would-be absolutely positioned child
++    /// of `id` with these padding-box insets (see `TaffyLayoutEngine::inset_box`), offset
++    /// like `layout_bounds` and `layout_origin_unrounded` offset that child.
++    pub fn inset_layer_bounds(
++        &mut self,
++        id: LayoutId,
++        insets: [f32; 4],
++    ) -> Option<(Bounds<Pixels>, Bounds<Pixels>)> {
++        let scale_factor = self.scale_factor();
++        let (mut snapped, mut exact) =
++            self.layout_engine
++                .as_mut()
++                .unwrap()
++                .inset_box(id, insets, scale_factor)?;
++        let offset = if self.exact_element_offset_depth > 0 {
++            self.element_offset()
++        } else {
++            self.pixel_snap_point(self.element_offset())
++        };
++        snapped.origin += offset;
++        exact.origin += self.element_offset();
++        Some((snapped, exact))
 +    }
 +}
 diff --git a/vendor/gpui/src/window/frame_capture.rs b/vendor/gpui/src/window/frame_capture.rs
