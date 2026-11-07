@@ -85,19 +85,49 @@ fn create_half_float_target(device: &ID3D11Device, width: u32, height: u32) -> R
     })
 }
 
+/// One-sided kernel weights packed into `BlurQuad::poly` (16 floats).
+pub(super) fn kernel_poly(sigma: f32, r: usize) -> [[f32; 4]; 4] {
+    let t = weights(sigma, r);
+    [
+        [t[0], t[1], t[2], t[3]],
+        [t[4], t[5], t[6], t[7]],
+        [t[8], t[9], t[10], t[11]],
+        [t[12], t[13], t[14], t[15]],
+    ]
+}
+
+/// Instance writing the atlas rectangle `dst` (x, y, w, h) from the texels at
+/// `dst + shift` of the source; taps outside `valid` read transparent black.
+/// `pass` 6 is the whole 2D kernel, 5 one separable direction (`direction`).
+pub(super) fn kernel_quad(
+    dst: [f32; 4],
+    shift: [f32; 2],
+    valid: [f32; 4],
+    pass: f32,
+    direction: [f32; 2],
+    r: usize,
+    poly: [[f32; 4]; 4],
+) -> BlurQuad {
+    BlurQuad {
+        bounds: dst,
+        content_mask: dst,
+        src_origin: shift,
+        blur_pass: pass,
+        pad: r as f32,
+        pad2: direction,
+        poly,
+        source_rect: valid,
+        ..Default::default()
+    }
+}
+
 impl DirectXRenderer {
-    /// Blur group `index` (raw image in the stage) into its retained texture.
+    /// Blur group `index` (raw image in the stage) into its atlas rectangle.
     pub(super) fn gaussian_group(&mut self, index: usize, sigma: f32, r: usize) -> Result<()> {
         let region = self.blur.group_regions[index];
+        let place = self.blur.group_place[index];
         let (w, h) = (region.width, region.height);
-        self.ensure_blur_globals(&self.dev().device.clone())?;
-        let taps = weights(sigma, r);
-        let poly = [
-            [taps[0], taps[1], taps[2], taps[3]],
-            [taps[4], taps[5], taps[6], taps[7]],
-            [taps[8], taps[9], taps[10], taps[11]],
-            [taps[12], taps[13], taps[14], taps[15]],
-        ];
+        let poly = kernel_poly(sigma, r);
         let stage = self
             .blur
             .stage
@@ -105,22 +135,21 @@ impl DirectXRenderer {
             .context("group stage missing")?
             .srv
             .clone();
-        let target = self.blur.groups[index].rtv.clone();
         let frame = [0.0, 0.0, self.width as f32, self.height as f32];
-        let origin = [region.x as f32, region.y as f32];
+        let dst = [place.x as f32, place.y as f32, w as f32, h as f32];
+        let to_stage = [
+            region.x as f32 - place.x as f32,
+            region.y as f32 - place.y as f32,
+        ];
+        let page = self.blur.groups[place.page].rtv.clone();
+        let page_size = (
+            self.blur.groups[place.page].width,
+            self.blur.groups[place.page].height,
+        );
         if r <= MAX_SINGLE_PASS_RADIUS {
-            // Whole kernel: frame-domain stage → retained group texture.
-            return self.gaussian_pass(
-                &stage,
-                &target,
-                (w, h),
-                origin,
-                frame,
-                6.0,
-                [0.0; 2],
-                r,
-                poly,
-            );
+            // Whole kernel: frame-domain stage → atlas rectangle.
+            let quad = kernel_quad(dst, to_stage, frame, 6.0, [0.0; 2], r, poly);
+            return self.kernel_instances(&stage, &page, page_size, &[quad]);
         }
         if self
             .blur
@@ -146,66 +175,44 @@ impl DirectXRenderer {
         }
         let gauss = self.blur.gauss.as_ref().unwrap();
         let (gauss_srv, gauss_rtv) = (gauss.srv.clone(), gauss.rtv.clone());
+        let gauss_size = (gauss.width, gauss.height);
+        let local = [0.0, 0.0, w as f32, h as f32];
         // Horizontal: frame-domain stage → intermediate (local coordinates).
-        self.gaussian_pass(
-            &stage,
-            &gauss_rtv,
-            (w, h),
-            origin,
+        let horizontal = kernel_quad(
+            local,
+            [region.x as f32, region.y as f32],
             frame,
             5.0,
             [1.0, 0.0],
             r,
             poly,
-        )?;
-        // Vertical: intermediate → retained group texture.
-        self.gaussian_pass(
-            &gauss_srv,
-            &target,
-            (w, h),
-            [0.0, 0.0],
-            [0.0, 0.0, w as f32, h as f32],
-            5.0,
-            [0.0, 1.0],
-            r,
-            poly,
-        )
+        );
+        self.kernel_instances(&stage, &gauss_rtv, gauss_size, &[horizontal])?;
+        // Vertical: intermediate → atlas rectangle.
+        let vertical = kernel_quad(dst, [-dst[0], -dst[1]], local, 5.0, [0.0, 1.0], r, poly);
+        self.kernel_instances(&gauss_srv, &page, page_size, &[vertical])
     }
-    #[allow(clippy::too_many_arguments)]
-    fn gaussian_pass(
+
+    /// Draw kernel instances from `src` into the whole target `dst` of `size`.
+    pub(super) fn kernel_instances(
         &mut self,
         src: &[Option<ID3D11ShaderResourceView>; 1],
         dst: &[Option<ID3D11RenderTargetView>; 1],
         (w, h): (u32, u32),
-        origin: [f32; 2],
-        valid: [f32; 4],
-        pass: f32,
-        direction: [f32; 2],
-        r: usize,
-        poly: [[f32; 4]; 4],
+        quads: &[BlurQuad],
     ) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
+        self.ensure_blur_globals(&device)?;
         let (fw, fh) = (w as f32, h as f32);
         update_buffer(
             &dc,
             self.blur.globals[0].as_ref().unwrap(),
             &[global_params(self.font_info, [fw, fh])],
         )?;
-        let quad = BlurQuad {
-            bounds: [0.0, 0.0, fw, fh],
-            content_mask: [0.0, 0.0, fw, fh],
-            src_origin: origin,
-            blur_pass: pass,
-            pad: r as f32,
-            pad2: direction,
-            poly,
-            source_rect: valid,
-            ..Default::default()
-        };
         self.pipelines
             .blur_pipeline
-            .update_buffer(&device, &dc, &[quad])?;
+            .update_buffer(&device, &dc, quads)?;
         let viewport = [D3D11_VIEWPORT {
             TopLeftX: 0.0,
             TopLeftY: 0.0,
@@ -225,42 +232,11 @@ impl DirectXRenderer {
                 &viewport,
                 globals,
                 slice::from_ref(sampler),
-                1,
+                quads.len() as u32,
                 Some(&blend),
             )
         })
     }
 }
-
 #[cfg(test)]
-mod tests {
-    use super::{MAX_DIRECT_SIGMA, direct_radius, margin, weights};
-
-    #[test]
-    fn small_sigmas_convolve_directly_with_three_sigma_support() {
-        assert_eq!(direct_radius(0.6), Some(2));
-        assert_eq!(direct_radius(1.0), Some(3));
-        assert_eq!(direct_radius(MAX_DIRECT_SIGMA), Some(12));
-        assert_eq!(direct_radius(4.01), None);
-        assert_eq!(direct_radius(0.0), None);
-        assert_eq!(direct_radius(f32::NAN), None);
-        assert_eq!(margin(0.6), 2.0);
-        // The cascade keeps its own spread for large radii.
-        assert_eq!(margin(28.0), 48.0);
-    }
-
-    #[test]
-    fn weights_are_a_normalized_symmetric_gaussian() {
-        for sigma in [0.3f32, 0.6, 1.0, 2.5, 4.0] {
-            let r = direct_radius(sigma).unwrap();
-            let w = weights(sigma, r);
-            let sum: f32 = w[0] + 2.0 * w[1..=r].iter().sum::<f32>();
-            assert!((sum - 1.0).abs() < 1e-6, "σ {sigma}: {sum}");
-            assert!(w[1..=r].windows(2).all(|p| p[0] > p[1]));
-            assert!(w[r + 1..].iter().all(|v| *v == 0.0));
-            // Ratio of neighbours is the Gaussian's exp(-(2k+1)/(2σ²)).
-            let expect = (-1.0 / (2.0 * sigma * sigma)).exp();
-            assert!((w[1] / w[0] - expect).abs() < 1e-5);
-        }
-    }
-}
+mod tests;
