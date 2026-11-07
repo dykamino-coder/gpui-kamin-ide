@@ -64,7 +64,7 @@ pub(super) fn resolve(
             svg
         };
         if svg && e.tag == "use" {
-            for (name, href) in e.attrs.iter_mut() {
+            for (name, href) in e.attrs.edit().iter_mut() {
                 if name == "href"
                     && !href.starts_with('#')
                     && let Some(url) = super::source::join(&base, href, admission)?

@@ -63,7 +63,7 @@ impl Document {
                     targets.insert(
                         id,
                         Target {
-                            tag: tag_of(&changed.old).into(),
+                            tag: tag_of(&changed.old),
                             old: attrs_of(&changed.old),
                             new: attrs_of(&changed.new),
                         },

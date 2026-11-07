@@ -4,8 +4,8 @@
 //! works on lists of nodes and copies elements it rearranges. CSS Display 3 §2 generates
 //! boxes *from* the styled element; Blink's LayoutObject and Servo's box tree reference the
 //! node instead of copying it. The tag and attributes of an element never change during
-//! construction, so a copy shares them (a reference count) and a rare write copies them
-//! (`DerefMut` / [`Shared::edit`], copy on write).
+//! construction, so a copy shares them (a reference count). A rare writer replaces the tag or
+//! edits a copy of the attributes ([`SharedAttrs::edit`]).
 //!
 //! Construction must not cost more than the plain values did: element names come from a small
 //! vocabulary and are interned per thread (Blink and Gecko intern them as atoms), and every
@@ -44,8 +44,7 @@ fn intern<S: AsRef<str> + Into<String>>(name: S) -> Shared<String> {
     if name.as_ref().len() > MAX_INTERNED_LEN {
         return Shared(Rc::new(name.into()));
     }
-    NAMES.with(|names| {
-        let mut names = names.borrow_mut();
+    NAMES.with_borrow_mut(|names| {
         if let Some(rc) = names.get(name.as_ref()) {
             return Shared(rc.clone());
         }
@@ -69,23 +68,10 @@ impl<T> Shared<T> {
     }
 }
 
-impl<T: Clone> Shared<T> {
-    /// The value, without a copy when this is its only holder.
-    pub fn into_inner(self) -> T {
-        Rc::unwrap_or_clone(self.0)
-    }
-}
-
 impl<T: ?Sized> Deref for Shared<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
-    }
-}
-
-impl<T: Clone> DerefMut for Shared<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        Rc::make_mut(&mut self.0)
     }
 }
 
@@ -95,24 +81,11 @@ impl Default for Shared<String> {
     }
 }
 
-impl DerefMut for SharedAttrs {
-    /// In-place edits of the pairs; a shared list is copied first.
-    fn deref_mut(&mut self) -> &mut [Attr] {
-        if Rc::get_mut(&mut self.0).is_none() {
-            self.0 = Rc::from(self.0.to_vec());
-        }
-        Rc::get_mut(&mut self.0).expect("a fresh copy has one holder")
-    }
-}
-
 impl SharedAttrs {
-    /// The list as a vector for adding or removing attributes; written back when the
-    /// returned guard drops. The only holder moves its pairs out instead of copying them.
+    /// A copy of the list for changing, adding or removing attributes; it replaces this
+    /// element's list when the returned guard drops, and other holders keep theirs.
     pub fn edit(&mut self) -> AttrsEdit<'_> {
-        let list = match Rc::get_mut(&mut self.0) {
-            Some(pairs) => pairs.iter_mut().map(std::mem::take).collect(),
-            None => self.0.to_vec(),
-        };
+        let list = self.0.to_vec();
         AttrsEdit { target: self, list }
     }
 }
@@ -172,7 +145,7 @@ impl From<Attrs> for SharedAttrs {
 
 impl From<Shared<String>> for String {
     fn from(value: Shared<String>) -> Self {
-        value.into_inner()
+        String::clone(&value.0)
     }
 }
 
@@ -251,50 +224,4 @@ impl FromIterator<Attr> for SharedAttrs {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Shared;
-
-    #[test]
-    fn copies_share_until_one_is_written() {
-        let a: super::SharedAttrs = vec![("class".into(), "row".into())].into();
-        let mut b = a.clone();
-        assert!(std::ptr::eq(&*a, &*b), "a copy shares the attributes");
-        b.edit().push(("id".into(), "x".into()));
-        assert_eq!(a.len(), 1, "a write does not reach the other copy");
-        assert_eq!(b.len(), 2);
-        let mut c = a.clone();
-        c[0].1.push_str(" odd");
-        assert_eq!((a[0].1.as_str(), c[0].1.as_str()), ("row", "row odd"));
-        let mut only = c;
-        only.edit().retain(|(name, _)| name != "class");
-        assert!(only.is_empty());
-        assert_eq!(a[0].1, "row", "edits of the only holder move, not copy");
-    }
-
-    #[test]
-    fn names_and_empty_attribute_lists_are_one_value_per_thread() {
-        let a: Shared<String> = "div".into();
-        let b: Shared<String> = String::from("div").into();
-        assert!(std::ptr::eq(&*a, &*b), "an element name is interned");
-        let mut c = b.clone();
-        c.push_str("x");
-        assert_eq!((a.as_str(), c.as_str()), ("div", "divx"), "a write copies");
-        let long: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
-        let again: Shared<String> = "x".repeat(super::MAX_INTERNED_LEN + 1).into();
-        assert!(!std::ptr::eq(&*long, &*again), "long names are not kept");
-        let empty: super::SharedAttrs = Vec::new().into();
-        assert!(std::ptr::eq(
-            empty.as_ptr(),
-            super::SharedAttrs::default().as_ptr()
-        ));
-    }
-
-    #[test]
-    fn a_shared_tag_compares_like_a_string() {
-        let tag: Shared<String> = "div".into();
-        assert!(tag == "div");
-        assert!("div" == tag);
-        assert_eq!(tag.as_str(), "div");
-        assert_eq!(String::from(tag.clone()), "div");
-    }
-}
+mod tests;

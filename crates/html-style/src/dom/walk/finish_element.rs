@@ -116,8 +116,8 @@ pub(super) fn finish_element(
         {
             let mut attrs: Vec<(String, String)> = attrs
                 .iter()
+                .filter(|&(k, _)| k != "src" && k != "srcset")
                 .cloned()
-                .filter(|(k, _)| k != "src" && k != "srcset")
                 .collect();
             attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
             ("img".to_string(), vec![], attrs.into())
@@ -136,7 +136,7 @@ pub(super) fn finish_element(
         first_letter: first_letter.map(Into::into),
         first_line: first_line.map(Into::into),
         children: children.into(),
-        attrs: attrs.into(),
+        attrs,
     }));
     out.extend(sp.buttons.into_iter().map(Node::Element));
     if let Some(g) = sp.group_after {

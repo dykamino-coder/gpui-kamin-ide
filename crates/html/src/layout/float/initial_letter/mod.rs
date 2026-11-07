@@ -214,18 +214,8 @@ pub(crate) fn initial_letter_float(
     );
     let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
         Node::Element(Element {
-            marks: Default::default(),
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            tag: tag.into(),
-            style: style.into(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children: children.into(),
-            attrs: Default::default(),
             inline,
+            ..Element::synthetic(tag, style, Default::default(), children)
         })
     };
 

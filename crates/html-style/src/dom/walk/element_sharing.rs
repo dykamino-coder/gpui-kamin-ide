@@ -222,7 +222,7 @@ impl ElementSharing {
             vars: key.vars.clone(),
             scheme: key.scheme,
             html_attrs: key.html_attrs,
-            tag: key.tag.to_string().into(),
+            tag: key.tag.to_string(),
             attrs: key.attrs.clone(),
             marks: key.marks.clone(),
             environment: Environment::new(vcx),

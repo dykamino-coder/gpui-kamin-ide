@@ -158,20 +158,8 @@ pub(super) fn enter<'a>(
     };
     let hidden = style.reset_box_layout.display == Some(Display::None);
     if hidden && tag == "html" {
-        out.push(Node::Element(Element {
-            marks: Default::default(),
-            tag: tag.into(),
-            inline: false,
-            node_id: 0,
-            style: style.into(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children: (vec![]).into(),
-            attrs: Default::default(),
-            anim: None,
-            list_item: None,
-        }));
+        let root = Element::synthetic(&tag, *style, Default::default(), vec![]);
+        out.push(Node::Element(root));
         return None;
     }
     if hidden && style.reset_context.col_role.is_none() {
@@ -232,7 +220,7 @@ pub(super) fn enter<'a>(
         visit,
         candidates,
         me,
-        tag: tag.into(),
+        tag,
         attrs,
         style,
         vars: own_vars,

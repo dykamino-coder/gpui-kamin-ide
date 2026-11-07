@@ -39,7 +39,7 @@ pub(super) fn leave(
             first_letter: None,
             first_line: None,
             children: children.into(),
-            attrs: p.attrs.into(),
+            attrs: p.attrs,
         }));
         return Ok(());
     }
