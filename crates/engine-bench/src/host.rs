@@ -126,6 +126,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         doc: empty,
                         phases: Rc::new(RefCell::new(Phases::default())),
                         viewport: None,
+                        source: Vec::new(),
                     })
                 },
             )?;
