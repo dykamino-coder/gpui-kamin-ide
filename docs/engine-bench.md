@@ -13,8 +13,10 @@ Cargo features. Resolved GPUI features are `default`, `font-kit`, `wayland`,
 backend has no enabled features. Neither `gpui/test-support` nor GPUI
 `bench-support`/`profiler` is enabled. The engine enables only `engine-bench`,
 not `wpt-harness`. The global allocator is `mimalloc`, as in the application, with the
-same idle reclaim: 250 ms after the last frame the platform returns free allocator
-pages to the OS (`kamin_alloc::reclaim`).
+same memory policy: 250 ms after the last frame the platform returns free allocator
+pages to the OS (`kamin_alloc::reclaim`), and at the end of a frame that grew the
+allocator's commit by more than max(8 MiB, 1/8 of its post-reclaim level) a
+background thread does the same (`kamin_alloc::bound_retained`).
 
 Build only this package: building workspace tests/examples can unify test
 features and is not a measurement build. You can inspect the normal graph with
