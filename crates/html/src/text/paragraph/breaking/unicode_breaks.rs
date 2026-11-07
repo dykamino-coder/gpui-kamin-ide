@@ -142,7 +142,7 @@ impl Paragraph {
 
 impl Paragraph {
     /// Base-level edge characters of the ruby container atom at `at`.
-    fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
+    pub(super) fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
         crate::work::add!(ParagraphRubyQueries, 1);
         if self.atoms.is_empty() {
             // Щуп замера имеет коробки, но не живые элементы: как и прежде,
