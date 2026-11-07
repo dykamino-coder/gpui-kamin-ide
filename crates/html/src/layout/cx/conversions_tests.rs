@@ -118,10 +118,11 @@ fn capacity(memo: &StyleConversions) -> usize {
 }
 
 #[test]
-fn the_seen_styles_take_no_more_room_than_the_unallocated_candidates() {
+fn the_memory_is_its_seen_styles_and_a_tag_large() {
+    assert_eq!(std::mem::size_of::<Candidates>(), 64);
     assert_eq!(
         std::mem::size_of::<Candidates>(),
-        std::mem::size_of::<Vec<Conversion>>()
+        (SEEN + 1) * std::mem::size_of::<usize>()
     );
 }
 

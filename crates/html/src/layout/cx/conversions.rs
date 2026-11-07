@@ -5,12 +5,10 @@
 //! сборки ([`StyleConversions::build`]: `render::render`, `render::render_block`): перевод
 //! читает арену `calc()` кадра, шрифты и семейство документа, которые между сборками
 //! меняются, поэтому сборка начинает и кончает пустой памятью, а коробки вне сборки
-//! переводятся без неё. Пока в сборке не повторился вычисленный стиль, память помнит
-//! только общие вычисленные стили (`Rc<Computed>` кэша общих стилей каскада) двух последних
-//! коробок — на месте пустого кольца, без выделений и без лишних байтов — и не держит их
-//! переводов. Кольцо кандидатов выделяется при первом повторе и живёт до конца сборки;
-//! сборка без повторов стоит столько же, сколько без памяти (Servo, Blink: ключ — общий
-//! вычисленный стиль из кэша общих стилей).
+//! переводятся без неё. Пока в сборке не повторился вычисленный стиль, память помнит только
+//! вычисленные стили последних коробок (`SEEN`) и не держит переводов: сборка без повторов
+//! ничего не выделяет. Кольцо кандидатов выделяется при первом повторе (Servo, Blink: ключ —
+//! общий вычисленный стиль кэша общих стилей).
 
 use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::{BoxStyle, Computed};
@@ -25,11 +23,9 @@ use std::rc::Rc;
 const CANDIDATES: usize = 32;
 
 /// Balance of lookups at which they pause: a miss takes one from it, a hit adds `HIT_WORTH`.
-/// A miss compares the box with every candidate by value and then copies it into the memory;
-/// on distinct styles (flex items with their own `flex` each) that costs more than the
-/// conversions it saves, and a rare hit among them (p03: 338 hits and 1 047 misses when every
-/// hit restarted lookups) must not restart full lookups. The balance never falls below this
-/// threshold, so a run of hits resumes reuse after a few probes.
+/// On distinct styles (flex items with their own `flex` each) lookups cost more than they save,
+/// and a rare hit among them (p03: 338 hits, 1 047 misses) must not restart them. The balance
+/// never falls below this threshold, so a run of hits resumes reuse after a few probes.
 const PAUSE_AT: i8 = -64;
 
 /// What a hit adds to the balance, and the most the balance keeps: a page of repeated styles
@@ -41,16 +37,14 @@ const BALANCE_CAP: i8 = 64;
 /// later run of repeated styles resumes reuse. Divides 256: the count wraps.
 const PROBE_EVERY: u8 = 16;
 
-/// Computed styles of the latest boxes remembered before any repeats: as many as fit in the
-/// place of the unallocated candidates (`Candidates` is no larger than their `Vec`).
-const SEEN: usize = 2;
+/// Computed styles of the latest boxes remembered until one repeats: with the variant tag,
+/// the memory is 64 bytes, and the unallocated candidates take their place.
+const SEEN: usize = 7;
 
-/// The memory of a build: the computed styles of the latest boxes until one repeats, then
-/// the converted candidates.
+/// The memory of a build: the latest computed styles until one repeats, then the candidates.
 enum Candidates {
-    /// No computed style of the build has repeated yet. They are held, so that another
-    /// style cannot take the address of a remembered one while it is remembered; their boxes'
-    /// element styles are not, so a box changing its own element style copies nothing.
+    /// No computed style of the build has repeated yet. Their boxes' element styles are not
+    /// held, so a box changing its own element style copies nothing.
     Seen([Option<Rc<Computed>>; SEEN]),
     /// Distinct recent inputs with their conversions.
     Kept(Vec<Conversion>),
@@ -91,7 +85,7 @@ pub(crate) enum Lookup {
     Hit(Rc<StyleRefinement>),
     /// Convert and `record` the result.
     Miss,
-    /// Convert without recording: reuse is paused on a run of distinct styles.
+    /// Convert without recording: no style repeated yet, or reuse paused on distinct styles.
     Pass,
 }
 
@@ -170,7 +164,8 @@ impl StyleConversions {
             Candidates::Kept(_) => Lookup::Miss,
             Candidates::Seen(seen) => {
                 let style = input.style_rc();
-                if seen.iter().flatten().any(|s| Rc::ptr_eq(s, style)) {
+                let repeats = |s: &Rc<Computed>| BoxStyle::same_computed_values(s, style);
+                if seen.iter().flatten().any(repeats) {
                     // A repeat: keep this conversion (`record` allocates the candidates).
                     *seen = [const { None }; SEEN];
                     self.next.set(0);
@@ -237,10 +232,9 @@ impl StyleConversions {
             recent.push(entry);
             recent.len() % CANDIDATES
         } else {
-            // A dropped style that no box holds any more becomes the allocation of a later
-            // element's style (`gpui::recycle_style_refinement`): a converted style its box
-            // then changes (copy on write) costs no allocation more than converting without
-            // the memory.
+            // A dropped style no box holds any more becomes the allocation of a later element's
+            // style (`gpui::recycle_style_refinement`): a converted style its box then changes
+            // (copy on write) costs no allocation more than converting without the memory.
             let dropped = std::mem::replace(&mut recent[next], entry);
             gpui::recycle_style_refinement(dropped.style);
             (next + 1) % CANDIDATES
