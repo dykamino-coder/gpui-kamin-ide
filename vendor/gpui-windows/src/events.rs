@@ -1401,6 +1401,8 @@ impl WindowsWindowInner {
         self.state.callbacks.request_frame.set(Some(request_frame));
         self.update_ime_enabled(handle);
         unsafe { ValidateRect(Some(handle), None).ok().log_err() };
+        // KaminIDE patch: WM_PAINT без кадра после паузы закрывает серию кадров.
+        self.state.draw_coordinator.idle.poll();
 
         Some(0)
     }

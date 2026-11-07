@@ -1057,6 +1057,8 @@ impl PlatformWindow for WindowsWindow {
             .borrow_mut()
             .draw(scene, self.state.background_appearance.get())
             .log_err();
+        // KaminIDE patch: конец кадра продлевает серию для действия простоя.
+        self.state.draw_coordinator.idle.note_draw();
     }
 
     #[cfg(any(test, feature = "test-support"))]

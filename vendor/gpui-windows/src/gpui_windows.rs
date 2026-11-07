@@ -15,6 +15,8 @@ mod frame_request;
 // KaminIDE patch: typed per-platform DXGI policy and adapter identity.
 mod gpu_adapter;
 mod gpu_context;
+// KaminIDE patch: действие приложения, когда кадры стихли.
+mod idle_reclaim;
 mod keyboard;
 #[cfg(test)]
 mod ligature_tests;
@@ -47,5 +49,6 @@ pub(crate) use wrapper::*;
 
 pub use platform::WindowsPlatform;
 pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
+pub use idle_reclaim::set_idle_reclaim;
 
 pub(crate) use windows::Win32::Foundation::HWND;

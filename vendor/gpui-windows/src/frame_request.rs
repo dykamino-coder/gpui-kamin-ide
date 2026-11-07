@@ -3,7 +3,7 @@
 use std::{cell::Cell, rc::Rc};
 use gpui_util::ResultExt;
 use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
-use crate::WindowsWindowInner;
+use crate::{WindowsWindowInner, idle_reclaim::IdleReclaim};
 
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
@@ -17,12 +17,15 @@ pub(crate) struct DrawCoordinator {
     /// nest GPUI draws. Nested draws are wasted work whose output is
     /// immediately redrawn, so we defer them instead.
     drawing: Cell<bool>,
+    /// KaminIDE patch: серия кадров всех окон для действия простоя.
+    pub(crate) idle: IdleReclaim,
 }
 
 impl DrawCoordinator {
     pub(crate) fn new() -> Self {
         Self {
             drawing: Cell::new(false),
+            idle: IdleReclaim::new(),
         }
     }
 
