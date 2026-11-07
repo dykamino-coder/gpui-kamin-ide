@@ -123,7 +123,7 @@ pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCaptur
                 Some(pass) => {
                     let job = Inline {
                         paint: InlinePaint::Replay(Box::new(line.clone())),
-                        context: window.raster_paint_ctx(),
+                        context: Box::new(window.raster_paint_ctx()),
                         captures: claim(window, &pass),
                     };
                     pass.jobs.admit_inline(job);

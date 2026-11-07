@@ -13,7 +13,9 @@ pub(super) struct Positioned {
 
 pub(super) struct Inline {
     pub paint: InlinePaint,
-    pub context: RasterPaintCtx,
+    /// Снимок окружения велик (~1,5 КБ: стек id элементов встроен): в куче,
+    /// чтобы очередь из тысяч заданий не росла удвоением многомегабайтного буфера.
+    pub context: Box<RasterPaintCtx>,
     /// Записи блоков, из вывода которых ушло это задание (`capture`).
     /// Почти всегда пусто: пустой срез не выделяет памяти и на слово уже
     /// вектора, а заданий в кадре стопки тысячи.
@@ -86,7 +88,7 @@ impl CssPaintPass {
             context.set_fill_transform(window.raster_frame().fill_transform);
             let admitted = self.jobs.admitted_below(depth + 1);
             let range = window
-                .with_raster_paint_ctx(context, |window| {
+                .with_raster_paint_ctx(*context, |window| {
                     window
                         .record_retained_paint(|window| match paint {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
@@ -155,5 +157,19 @@ impl CssPaintPass {
         self.drain_inline(depth, window, cx);
         // Atomic открывается только внутри живого внешнего collector.
         self.jobs.export_atomic(depth);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A frame queues thousands of inline jobs (p02: ~4 700): a job stays a few words, so
+    /// the queue's growth never moves multi-megabyte buffers, and the large paint snapshot
+    /// is one allocation per job of a single size class.
+    #[test]
+    fn an_inline_job_is_a_few_words() {
+        assert!(size_of::<Inline>() <= 64, "{}", size_of::<Inline>());
+        assert!(size_of::<RasterPaintCtx>() > 4 * size_of::<Inline>());
     }
 }
