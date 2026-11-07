@@ -84,7 +84,6 @@ FIXES = {
         "Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.",
         "Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.",
         "Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.",
-        "Idle reclaim: after the application-set quiet pause without a drawn frame in any window, the next WM_PAINT calls the application's registered reclaim action once per burst; nothing is called without a registration.",
         "DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.",
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",

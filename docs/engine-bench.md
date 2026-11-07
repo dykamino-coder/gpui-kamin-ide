@@ -12,9 +12,7 @@ Cargo features. Resolved GPUI features are `default`, `font-kit`, `wayland`,
 `windows-manifest`, `x11`; platform features are `default`, and the Windows
 backend has no enabled features. Neither `gpui/test-support` nor GPUI
 `bench-support`/`profiler` is enabled. The engine enables only `engine-bench`,
-not `wpt-harness`. The global allocator is `mimalloc`, as in the application, with the
-same idle reclaim: 250 ms after the last frame the platform returns free allocator
-pages to the OS (`kamin_alloc::reclaim`).
+not `wpt-harness`. The global allocator is `mimalloc`, as in the application.
 
 Build only this package: building workspace tests/examples can unify test
 features and is not a measurement build. You can inspect the normal graph with

@@ -47,5 +47,5 @@ pub(super) async fn finish(
     let empty = idle(cx, capture, args.memory_settle_ms).await?;
     Ok(json!({"stable_warm_frames": args.runs, "page": page,
         "after_empty_document_two_frames": empty,
-        "scope": "live window; the application's idle reclaim only, no bench allocator collection or working-set trimming"}))
+        "scope": "live window; no allocator collection or working-set trimming"}))
 }

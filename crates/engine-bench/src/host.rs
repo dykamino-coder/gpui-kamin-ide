@@ -89,8 +89,6 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
         false, preference,
     )?);
-    // Как в приложении: затихшие кадры отдают ОС свободные страницы аллокатора.
-    gpui_windows::set_idle_reclaim(kamin_alloc::IDLE_RECLAIM_QUIET, kamin_alloc::reclaim);
     startup.mark("platform_device_text_and_host_setup");
     let application =
         gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);

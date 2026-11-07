@@ -1,6 +1,5 @@
 //! Проверки политики арен: индекс опции совпадает с собранным mimalloc,
-//! `configure` ставит значение, окружение остаётся сильнее; `reclaim`
-//! декоммитит освобождённое сразу, а не после задержки очистки.
+//! `configure` ставит значение, окружение остаётся сильнее.
 
 use super::{ARENA_RESERVE, ARENA_RESERVE_KIB, arena_reserve_kib, configure};
 use std::ffi::{CStr, c_char, c_void};
@@ -27,48 +26,6 @@ fn printed_options() -> Vec<String> {
         .filter_map(|rest| rest.split('\'').next())
         .map(str::to_owned)
         .collect()
-}
-
-unsafe extern "C" {
-    fn mi_malloc(size: usize) -> *mut c_void;
-    fn mi_free(p: *mut c_void);
-    fn mi_process_info(
-        elapsed_msecs: *mut usize,
-        user_msecs: *mut usize,
-        system_msecs: *mut usize,
-        current_rss: *mut usize,
-        peak_rss: *mut usize,
-        current_commit: *mut usize,
-        peak_commit: *mut usize,
-        page_faults: *mut usize,
-    );
-}
-
-fn committed() -> usize {
-    let mut v = [0usize; 8];
-    let [a, b, c, d, e, f, g, h] = &mut v;
-    // SAFETY: восемь различных выходных ячеек живут дольше вызова.
-    unsafe { mi_process_info(a, b, c, d, e, f, g, h) };
-    v[5]
-}
-
-#[test]
-fn reclaim_decommits_freed_memory_before_the_purge_delay() {
-    const SIZE: usize = 48 << 20;
-    // SAFETY: блок из mimalloc, записан в пределах размера и освобождён им же.
-    unsafe {
-        let p = mi_malloc(SIZE).cast::<u8>();
-        assert!(!p.is_null());
-        std::ptr::write_bytes(p, 1, SIZE);
-        mi_free(p.cast());
-    }
-    let freed = committed();
-    super::reclaim();
-    let reclaimed = committed();
-    assert!(
-        reclaimed + SIZE / 2 <= freed,
-        "commit {freed} -> {reclaimed} after reclaim"
-    );
 }
 
 #[test]
