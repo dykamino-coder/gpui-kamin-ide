@@ -34,11 +34,17 @@ impl Paragraph {
         hitbox: &Option<Hitbox>,
         window: &mut Window,
     ) -> bool {
-        if !self.ink_bounded() || !window.retained_root_environment() {
+        // The ink band contains the box: a box that meets the mask (every
+        // visible paragraph) paints without looking at its lines and runs.
+        let mask = window.content_mask().bounds;
+        let own = (
+            f32::from(bounds.origin.y),
+            f32::from(bounds.origin.y + bounds.size.height),
+        );
+        if !outside(own, mask) || !self.ink_bounded() || !window.retained_root_environment() {
             return false;
         }
         let (top, bottom) = self.ink_band(bounds);
-        let mask = window.content_mask().bounds;
         if !outside((top, bottom), mask) {
             return false;
         }
