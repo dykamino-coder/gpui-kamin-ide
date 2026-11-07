@@ -1,7 +1,6 @@
 //! Проверки политики арен: индекс опции совпадает с собранным mimalloc,
 //! `configure` ставит значение, окружение остаётся сильнее; `reclaim`
-//! декоммитит освобождённое сразу, а не после задержки очистки; предел
-//! удерживаемого считает рост коммита от нижней отметки (не меньше 1/8 её).
+//! декоммитит освобождённое сразу, а не после задержки очистки.
 
 use super::{ARENA_RESERVE, ARENA_RESERVE_KIB, arena_reserve_kib, configure};
 use std::ffi::{CStr, c_char, c_void};
@@ -70,54 +69,6 @@ fn reclaim_decommits_freed_memory_before_the_purge_delay() {
         reclaimed + SIZE / 2 <= freed,
         "commit {freed} -> {reclaimed} after reclaim"
     );
-}
-
-#[test]
-fn committed_bytes_reads_the_linked_mimalloc_stats() {
-    const SIZE: usize = 48 << 20;
-    // SAFETY: блок из mimalloc, записан в пределах размера и освобождён им же.
-    unsafe {
-        let p = mi_malloc(SIZE).cast::<u8>();
-        assert!(!p.is_null());
-        std::ptr::write_bytes(p, 1, SIZE);
-        // Размер и версию `mi_stats_t` сверяет mimalloc: при расхождении 0.
-        let held = super::committed_bytes();
-        mi_free(p.cast());
-        assert!(held >= SIZE, "committed {held} while {SIZE} bytes are live");
-    }
-}
-
-#[test]
-fn growth_over_the_cap_is_due_and_the_low_mark_follows_purges() {
-    const CAP: usize = 8 << 20;
-    let bound = super::RetainedBound::new();
-    bound.reset(40 << 20);
-    assert!(
-        !bound.over_cap((40 << 20) + CAP, CAP),
-        "growth equal to the cap"
-    );
-    assert!(bound.over_cap((40 << 20) + CAP + 1, CAP));
-    // Отложенная очистка mimalloc опустила коммит: предел считается от него.
-    assert!(!bound.over_cap(30 << 20, CAP));
-    assert!(bound.over_cap((30 << 20) + CAP + 1, CAP));
-}
-
-#[test]
-fn a_large_live_level_tolerates_an_eighth_of_itself() {
-    const CAP: usize = 8 << 20;
-    let bound = super::RetainedBound::new();
-    bound.reset(400 << 20);
-    assert!(
-        !bound.over_cap((400 << 20) + (50 << 20), CAP),
-        "1/8 of 400 MiB"
-    );
-    assert!(bound.over_cap((400 << 20) + (50 << 20) + 1, CAP));
-}
-#[test]
-fn the_first_frame_only_sets_the_low_mark() {
-    let bound = super::RetainedBound::new();
-    assert!(!bound.over_cap(500 << 20, 8 << 20));
-    assert!(!bound.over_cap((500 << 20) + (8 << 20), 8 << 20));
 }
 
 #[test]

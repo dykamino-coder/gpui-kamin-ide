@@ -22,13 +22,8 @@ pub fn run(on_launch: impl FnOnce(&mut gpui::App) + 'static) {
             gpui_windows::WindowsPlatform::with_gpu_adapter(false, requested.clone())
                 .unwrap_or_else(|error| fail(error)),
         );
-        // Затихшие кадры и тяжёлый кадр сверх предела отдают ОС свободные страницы
-        // аллокатора.
-        gpui_windows::set_idle_reclaim(
-            kamin_alloc::IDLE_RECLAIM_QUIET,
-            kamin_alloc::reclaim,
-            kamin_alloc::bound_retained,
-        );
+        // Затихшие кадры отдают ОС свободные страницы аллокатора.
+        gpui_windows::set_idle_reclaim(kamin_alloc::IDLE_RECLAIM_QUIET, kamin_alloc::reclaim);
         (
             gpui::Application::with_platform(platform.clone()),
             platform,
