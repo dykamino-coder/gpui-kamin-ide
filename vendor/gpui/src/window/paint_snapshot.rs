@@ -2,6 +2,10 @@
 
 use super::*;
 
+mod raster_env;
+pub(super) use raster_env::{RasterEnv, ReplaySlot};
+pub use raster_env::RasterPaintCtx;
+
 /// General element environment; raster placement is inherited from the caller.
 #[doc = include_str!("paint_contract.md")]
 #[derive(Clone)]
@@ -34,18 +38,6 @@ pub struct PaintState {
     rem_size_overrides: SmallVec<[Pixels; 8]>,
 }
 
-/// Paint environment retaining raster placement at the current device scale.
-pub struct RasterPaintCtx {
-    base: PaintCtx,
-    raster: RasterFrame,
-}
-
-impl RasterPaintCtx {
-    /// Select fill placement independently of the retained glyph placement.
-    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
-        self.raster.fill_transform = transform;
-    }
-}
 
 impl PaintState {
     pub(super) fn restore(&mut self, window: &mut Window) {
@@ -127,19 +119,6 @@ impl Window {
         self.replay_paint(self.paint_state(ctx, self.raster_frame().clone()), f)
     }
 
-    /// Capture environment and raster placement without a scale override.
-    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-        RasterPaintCtx { base: self.paint_ctx(), raster: self.raster_frame().clone() }
-    }
-
-    /// Replay captured raster placement in the original live scope.
-    pub fn with_raster_paint_ctx<R>(
-        &mut self,
-        ctx: RasterPaintCtx,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> Result<R, PaintError> {
-        self.replay_paint(self.paint_state(ctx.base, ctx.raster), f)
-    }
 
     fn replay_paint<R>(
         &mut self,
@@ -164,5 +143,26 @@ impl Window {
         Ok(self.with_retained_layout(&mut layout_owner, |window| {
             window.with_restore(state, |window, state| state.restore(window), f).0
         }))
+    }
+
+    /// KaminIDE patch: `replay_paint` of a checked state kept by the caller (on the heap,
+    /// outside recursive paint frames); the state holds the captured buffers again afterwards.
+    fn replay_in<R>(&mut self, state: &mut PaintState, f: impl FnOnce(&mut Self) -> R) -> R {
+        let mut layout_owner = state.base.layout_owner.clone();
+        let contexts = self.render_contexts.enter_snapshot(mem::take(&mut state.base.render_contexts));
+        state.restore(self);
+        let f = |window: &mut Self| {
+            let probe = super::retained::InkProbe::open(window);
+            let result = f(window);
+            if let Some(probe) = probe {
+                probe.close(window);
+            }
+            result
+        };
+        let result = self.with_retained_layout(&mut layout_owner, |window| {
+            window.with_restore(&mut *state, |window, state| state.restore(window), f).0
+        });
+        state.base.render_contexts = contexts.finish();
+        result
     }
 }

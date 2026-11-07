@@ -1245,6 +1245,10 @@ pub struct Window {
     /// This is used by `with_rem_size` to allow rendering an element tree with
     /// a given rem size.
     rem_size_override_stack: SmallVec<[Pixels; 8]>,
+    /// KaminIDE patch: the environment the latest raster capture shares with its siblings.
+    raster_env: Cell<Option<Rc<paint_snapshot::RasterEnv>>>,
+    /// KaminIDE patch: heap states of raster replays, reused within a frame.
+    raster_replay_spares: Vec<Box<paint_snapshot::ReplaySlot>>,
     pub(crate) viewport_size: Size<Pixels>,
     layout_engine: Option<TaffyLayoutEngine>,
     layout_owner: RetainedLayout,
@@ -2200,6 +2204,8 @@ impl Window {
             text_rendering_mode: cx.text_rendering_mode.clone(),
             rem_size: px(16.),
             rem_size_override_stack: SmallVec::new(),
+            raster_env: Cell::new(None),
+            raster_replay_spares: Vec::new(),
             viewport_size: content_size,
             layout_engine: Some(TaffyLayoutEngine::new()),
             layout_owner: RetainedLayout::active(),
@@ -3577,7 +3583,10 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
-        self.with_paint_pass(|window| window.draw_frame(cx))
+        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        // KaminIDE patch: the shared raster environment must not outlive the frame.
+        self.release_raster_env();
+        drawn
     }
 
     fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {

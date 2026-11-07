@@ -87,6 +87,45 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
 }
 
 #[test]
+fn sibling_raster_captures_share_one_environment_and_replay_their_own_ids() {
+    draw_at_scale(Some(1.0), || {
+        canvas(
+            |_, _, _| (),
+            |_, (), window, _| {
+                let id = |window: &mut gpui::Window| {
+                    window.with_global_id("probe".into(), |id, _| format!("{id:?}"))
+                };
+                let capture = |window: &mut gpui::Window, name: &'static str| {
+                    window.with_global_id(name.into(), |_, window| {
+                        (window.raster_paint_ctx(), id(window))
+                    })
+                };
+                let (a, a_id) = capture(window, "a");
+                let (b, b_id) = capture(window, "b");
+                assert!(a.shares_environment(&b));
+                assert_ne!(a_id, b_id);
+                let moved = TransformationMatrix {
+                    translation: [1.0, 0.0],
+                    ..TransformationMatrix::unit()
+                };
+                let (c, _) = window.with_transformation(moved, |window| capture(window, "c"));
+                assert!(!c.shares_environment(&a));
+                let (d, _) = capture(window, "d");
+                assert!(!d.shares_environment(&a));
+                let outside = id(window);
+                for (ctx, expected) in [(b, b_id), (a, a_id)] {
+                    let replayed = window
+                        .with_raster_paint_ctx(ctx, |window| id(window))
+                        .unwrap();
+                    assert_eq!(replayed, expected);
+                    assert_eq!(id(window), outside);
+                }
+            },
+        )
+    });
+}
+
+#[test]
 fn replicated_table_fill_and_transparent_child_retain_containing_text_frame() {
     draw_at_scale(Some(1.0), || {
         canvas(
