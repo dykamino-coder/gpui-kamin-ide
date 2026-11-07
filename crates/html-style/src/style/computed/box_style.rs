@@ -179,7 +179,7 @@ impl BoxStyle {
                 .background
                 .resolve_viewport(&self.style, viewport, vcx);
         }
-        if self.style.has_viewport_lengths(vcx) {
+        if self.style.needs_viewport_resolution(vcx) {
             Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);
         }
     }

@@ -6,10 +6,25 @@ use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
 impl Computed {
+    /// Консервативный признак зависимости от окна для допуска к повторному
+    /// использованию раскладки. Образы сохраняют этот признак после нормализации:
+    /// он не означает, что текущему стилю нужна копия для решения длин.
+    pub fn has_viewport_lengths(&self, vcx: ValueCx<'_>) -> bool {
+        self.reset_background.gradient.is_some()
+            || self.reset_background.gradient_current.is_some()
+            || self.reset_background.bg_image.is_some()
+            || self.reset_background.gradient_raw.is_some()
+            || self.reset_background.bg_lists != Default::default()
+            || self.reset_generated.content.is_some()
+            || self.reset_mask.mask_image.is_some()
+            || self.reset_border.border_image.is_some()
+            || self.needs_viewport_resolution(vcx)
+    }
+
     /// Есть ли что решать `resolve_viewport`: длины в единицах окна или
     /// контейнера. Типизированные образы проверяются без копирования; для
     /// эллиптических радиусов и отступов линий проверка консервативна.
-    pub fn has_viewport_lengths(&self, vcx: ValueCx<'_>) -> bool {
+    pub(crate) fn needs_viewport_resolution(&self, vcx: ValueCx<'_>) -> bool {
         let vp = |l: &Option<Len>| l.is_some_and(|l| l.needs_viewport_resolution(vcx));
         let sides = |s: &Sides| [&s.top, &s.right, &s.bottom, &s.left].into_iter().any(vp);
         [
@@ -75,18 +90,32 @@ mod tests {
     fn resolved_images_keep_style_and_paint_shared() {
         let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
-        for image in [
-            "url(a.png)",
-            "cross-fade(red 25%, filter(url(a.png), brightness(50%)))",
-            "linear-gradient(90deg, #def, #fff)",
-            "radial-gradient(20px 30px at 10% 20%, red, blue)",
-            "conic-gradient(at 20% 30%, red, blue)",
-            "url(a.png), linear-gradient(red 10px, blue 50%)",
+        for (property, image) in [
+            ("background-image", "url(a.png)"),
+            (
+                "background-image",
+                "cross-fade(red 25%, filter(url(a.png), brightness(50%)))",
+            ),
+            ("background-image", "linear-gradient(90deg, #def, #fff)"),
+            (
+                "background-image",
+                "radial-gradient(20px 30px at 10% 20%, red, blue)",
+            ),
+            ("background-image", "conic-gradient(at 20% 30%, red, blue)"),
+            (
+                "background-image",
+                "url(a.png), linear-gradient(red 10px, blue 50%)",
+            ),
+            ("content", "filter(url(a.png), blur(2px))"),
+            ("mask-image", "linear-gradient(red, blue)"),
+            ("border-image-source", "linear-gradient(red, blue)"),
         ] {
             let mut c = Computed::default();
-            c.apply_one("background-image", image, vcx);
+            c.apply_one(property, image, vcx);
             // Тот же этап нормализации, который предшествует сборке коробок.
             c.resolve_viewport((800.0, 600.0), vcx);
+            assert!(c.has_viewport_lengths(vcx), "{property}: {image}");
+            assert!(!c.needs_viewport_resolution(vcx), "{property}: {image}");
             let style = Rc::new(c);
             let paint = Rc::new(DecorationPaint::from_computed(&style));
             let mut b = BoxStyle::shared(style.clone());
@@ -131,6 +160,7 @@ mod tests {
             let mut c = Computed::default();
             c.apply_one(property, value, vcx);
             assert!(c.has_viewport_lengths(vcx), "{property}: {value}");
+            assert!(c.needs_viewport_resolution(vcx), "{property}: {value}");
             let mut expected = c.clone();
             expected.resolve_viewport((800.0, 600.0), vcx);
             let style = Rc::new(c);
