@@ -46,6 +46,7 @@ pub(crate) use window::*;
 pub(crate) use wrapper::*;
 
 pub use platform::WindowsPlatform;
+pub use events::RESIZE_PRESENTATION_BOOST;
 pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 
 pub(crate) use windows::Win32::Foundation::HWND;

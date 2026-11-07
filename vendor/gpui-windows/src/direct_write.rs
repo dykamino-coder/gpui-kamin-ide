@@ -109,7 +109,12 @@ struct DirectWriteState {
     custom_font_collection: IDWriteFontCollection1,
     fonts: Vec<FontInfo>,
     font_to_font_id: HashMap<Font, FontId>,
-    font_info_cache: HashMap<usize, FontId>,
+    /// KaminIDE patch: keyed by the face's COM address, so each entry retains
+    /// its face. A fallback face DirectWrite served and then released could
+    /// otherwise be freed and its address reused by another face (say the bold
+    /// of the same family), which would inherit the stale FontId: the
+    /// glyph run is then rendered with the wrong face, per process.
+    font_info_cache: HashMap<usize, (FontId, IDWriteFontFace3)>,
     layout_line_scratch: Vec<u16>,
 }
 
@@ -374,9 +379,10 @@ impl DirectWriteState {
                 })?;
 
             let font_id = FontId(this.fonts.len());
-            let font_face_key = info.font_face.cast::<IUnknown>().unwrap().as_raw().addr();
+            let font_face = info.font_face.clone();
+            let font_face_key = font_face.cast::<IUnknown>().unwrap().as_raw().addr();
             this.fonts.push(info);
-            this.font_info_cache.insert(font_face_key, font_id);
+            this.font_info_cache.insert(font_face_key, (font_id, font_face));
             Some(font_id)
         };
 
@@ -1920,7 +1926,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
 
         let font_face_key = font_face.cast::<IUnknown>().unwrap().as_raw().addr();
         let font_id = match context.text_system.font_info_cache.get(&font_face_key) {
-            Some(&font_id) => font_id,
+            Some(&(font_id, _)) => font_id,
             // in some circumstances, we might be getting served a FontFace that we did not create ourselves
             // so create a new font from it and cache it accordingly. The usual culprit here seems to be Segoe UI Symbol
             None => {
@@ -1944,7 +1950,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                 context
                     .text_system
                     .font_info_cache
-                    .insert(font_face_key, font_id);
+                    .insert(font_face_key, (font_id, font_face.clone()));
                 font_id
             }
         };
