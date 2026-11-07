@@ -6568,7 +6568,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bdc4b0c242
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..caa6ceb3abc9a39bb20d6d02aa338a6634e2b338
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6576,19 +6576,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,9 @@
+@@ -38,0 +42,11 @@
 +mod scene_capture;
 +mod frame_capture;
 +mod group_region;
 +mod group_stage;
 +mod gaussian;
++mod group_atlas;
++mod group_batch;
 +mod texture_pool;
 +mod shader_identity;
 +use group_region::Region;
 +
-@@ -46,0 +59 @@
+@@ -46,0 +61 @@
 +    disable_direct_composition: bool,
-@@ -47,0 +61,19 @@
+@@ -47,0 +63,19 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -6608,11 +6610,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
 +    /// смешивание с кадром посчитано в шейдере.
 +    blend_replace: Option<ID3D11BlendState>,
-@@ -50,0 +83,3 @@
+@@ -50,0 +85,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +92,272 @@
+@@ -56,0 +94,284 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -6627,7 +6629,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +struct BlurScratch {
 +    /// KaminIDE patch: общий кадровый домен растеризатора; готовые группы ограничены.
 +    stage: Option<BlurTexture>,
-+    stage_dirty: Option<Region>,
++    /// KaminIDE patch: stage rectangles written since the last clear (one per
++    /// group of the pending layer).
++    stage_dirty: Vec<Region>,
++    /// KaminIDE patch: groups drawn into the stage whose regions are pairwise
++    /// disjoint; one batched blur moves them into the atlas (`flush_group_layer`).
++    layer: Vec<usize>,
++    /// KaminIDE patch: instances of a stage layer, uploaded together.
++    layer_instances: group_batch::LayerInstances,
++    /// KaminIDE patch: frame-sized backdrop copy of a composite level.
++    level_backdrop: Option<BlurTexture>,
++    /// KaminIDE patch: viewport size last written to the frame parameter buffer.
++    frame_globals: Option<[f32; 2]>,
 +    stage_rasterizer: Option<ID3D11RasterizerState>,
 +    copy: Option<BlurTexture>,
 +    blend_copy: Option<BlurTexture>,
@@ -6635,9 +6648,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    /// KaminIDE patch: half-float intermediate of the separable Gaussian (grow-only).
 +    gauss: Option<BlurTexture>,
 +    globals: [Option<ID3D11Buffer>; 1],
-+    /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
-+    /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
++    /// KaminIDE patch: atlas pages holding the retained image of every group
++    /// of the frame (`group_atlas`); `group_place` is each group's rectangle.
 +    groups: Vec<BlurTexture>,
++    group_place: Vec<group_atlas::Place>,
 +    group_regions: Vec<Region>,
 +    pool: texture_pool::Pool,
 +    /// Готовый буфер каждой группы: сырой или размытый.
@@ -6885,10 +6899,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +369,2 @@
+@@ -61,0 +383,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +379,11 @@
+@@ -69,0 +393,11 @@
 +/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
 +/// закрывается при пересоздании ресурсов (device lost).
 +struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
@@ -6900,29 +6914,29 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    }
 +}
 +
-@@ -72,0 +393,2 @@
+@@ -72,0 +407,2 @@
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +417,2 @@
+@@ -94,0 +431,2 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +425,2 @@
+@@ -100,0 +439,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +448 @@
+@@ -121,0 +462 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +461 @@
+@@ -133,0 +475 @@
 +            ..
-@@ -142,0 +471 @@
+@@ -142,0 +485 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +483,4 @@
+@@ -153,0 +497,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -192,0 +526 @@
+@@ -192,0 +540 @@
 +            disable_direct_composition,
-@@ -193,0 +528,8 @@
+@@ -193,0 +542,8 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -6931,9 +6945,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
-@@ -195,0 +538 @@
+@@ -195,0 +552 @@
 +            backdrop: None,
-@@ -199,0 +543,34 @@
+@@ -199,0 +557,34 @@
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
 +    /// общий handle текстуры от CEF.
 +    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -6968,13 +6982,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        self.atlas.unregister_external(id);
 +    }
 +
-@@ -204,0 +582 @@
+@@ -204,0 +596 @@
 +        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +598,2 @@
+@@ -220 +612,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -245,0 +625,7 @@
+@@ -245,0 +639,7 @@
 +        // KaminIDE patch (#76): БЕЗ dcomp-Commit и без ожиданий. dcomp-дерево
 +        // статично после set_swap_chain (underlay-эпоха WebView2 удалена как
 +        // мёртвая), а прежний пер-кадровый commit() делал
@@ -6982,7 +6996,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
 +        // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
 +        // ввода ~1.5с на слабой машине.
-@@ -263,65 +649,33 @@
+@@ -263,65 +663,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7081,7 +7095,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -339,0 +694,25 @@
+@@ -339,0 +708,25 @@
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
 +        // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -7107,16 +7121,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                return Ok(());
 +            }
 +        }
-@@ -340,0 +720,5 @@
+@@ -340,0 +734,5 @@
 +        if self.capture.is_some() {
 +            if let Err(e) = self.capture_frame() {
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -353,0 +738,2 @@
+@@ -353,0 +752,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +744,33 @@
+@@ -358 +758,48 @@
+-        self.upload_scene_buffers(scene)?;
++        // KaminIDE patch: pre_draw wrote the frame parameters for the viewport size.
++        let viewport = self.res().viewport;
++        self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7149,10 +7167,39 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    /// перед её пачками. Параметры кадра (b0/b1, вьюпорт) тоже ставятся
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
++        self.draw_scene_at(scene, None)
++    }
++
++    /// KaminIDE patch: draw `scene`'s batches; with `base` its instances were
++    /// already uploaded as part of a larger buffer (a stage layer, see
++    /// `group_batch::upload_layer`) starting at these offsets per instance kind
++    /// (shadows, quads, underlines, monochrome, subpixel, polychrome sprites).
++    fn draw_scene_at(&mut self, scene: &Scene, base: Option<[usize; 6]>) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +785 @@
++        if base.is_none() {
++            self.upload_scene_buffers(scene)?;
++        }
++        let b = base.unwrap_or_default();
+@@ -365,0 +813 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +823,356 @@
+@@ -370,2 +818,2 @@
+-                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
+-                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
++                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
++                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
+@@ -377 +825 @@
+-                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
++                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
+@@ -379 +827 @@
+-                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
++                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
+@@ -382 +830 @@
+-                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
++                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
+@@ -385 +833 @@
+-                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
++                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
+@@ -402,0 +851,395 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7170,6 +7217,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    fn render_groups(&mut self, scene: &Scene) -> Result<()> {
 +        if scene.groups.is_empty() {
 +            self.blur.groups.clear();
++            self.blur.group_place.clear();
++            self.blur.level_backdrop = None;
 +            self.blur.group_regions.clear();
 +            self.blur.group_slots.clear();
 +            self.blur.group_blend.clear();
@@ -7183,6 +7232,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        let device = self.dev().device.clone();
 +        let dc = self.dev().device_context.clone();
 +        self.prepare_group_targets(scene)?;
++        // A pass that failed last frame may have left its rectangles in the stage.
++        self.clear_group_stage()?;
 +        self.blur.group_slots.clear();
 +        self.blur.group_blend.clear();
 +        self.blur.group_poly.clear();
@@ -7196,31 +7247,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            self.blur.mask_cache.clear();
 +        }
 +
++        // KaminIDE patch: per-group composite data first (nested composites of an
++        // outer group read it while the outer group is drawn).
 +        for (i, group) in scene.groups.iter().enumerate() {
-+            let rasterizer = self.begin_group_stage(Region::for_group(group, self.width, self.height)[0])?;
-+            let raw_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
-+            unsafe {
-+                dc.OMSetRenderTargets(Some(&raw_rtv), None);
-+                dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-+            }
-+            self.group_target = Some(raw_rtv);
-+            self.group_target_tex = Some(self.blur.stage.as_ref().unwrap().texture.clone());
-+            let drawn = self.restore_frame_globals().and_then(|()| self.draw_scene(&group.scene));
-+            unsafe { dc.RSSetState(&rasterizer) };
-+            self.group_target = None;
-+            self.group_target_tex = None;
-+            drawn?;
-+
-+            // KaminIDE patch: a direct Gaussian writes the retained texture itself.
-+            match gaussian::direct_radius(group.blur_radius) {
-+                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
-+                None => {
-+                    if group.blur_radius > 0.0 {
-+                        self.blur_group(i, group)?;
-+                    }
-+                    self.save_group_stage(i);
-+                }
-+            }
 +            self.blur.group_slots.push(i);
 +            self.blur.group_blend.push(group.blend);
 +            let mut poly = [[0.0f32; 4]; 4];
@@ -7273,6 +7302,31 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                .group_clip
 +                .push(group.mask_clip.unwrap_or([0.0; 4]));
 +        }
++        // KaminIDE patch: consecutive groups that can join a stage layer are drawn
++        // layer by layer (`group_batch::draw_group_layers`); any other group ends
++        // the segment, so its nested groups are in the atlas before it is drawn.
++        self.blur.layer.clear();
++        let mut segment = Vec::new();
++        for (i, group) in scene.groups.iter().enumerate() {
++            if group_batch::joins_layer(group) {
++                segment.push(i);
++                continue;
++            }
++            self.draw_group_layers(&scene.groups, &mut segment)?;
++            self.draw_group_content(group, Region::for_group(group, self.width, self.height)[0], None)?;
++            // KaminIDE patch: a direct Gaussian writes the atlas rectangle itself.
++            match gaussian::direct_radius(group.blur_radius) {
++                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
++                None => {
++                    if group.blur_radius > 0.0 {
++                        self.blur_group(i, group)?;
++                    }
++                    self.save_group_stage(i);
++                }
++            }
++            self.clear_group_stage()?;
++        }
++        self.draw_group_layers(&scene.groups, &mut segment)?;
 +
 +        // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
 +        unsafe {
@@ -7280,6 +7334,30 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
 +        }
 +        self.restore_frame_globals()
++    }
++
++    /// KaminIDE patch: draw the scene of `group` into the frame-domain stage,
++    /// scissored to its stage region `raw`.
++    pub(super) fn draw_group_content(
++        &mut self,
++        group: &gpui::PaintGroup,
++        raw: Region,
++        base: Option<[usize; 6]>,
++    ) -> Result<()> {
++        let dc = self.dev().device_context.clone();
++        let rasterizer = self.begin_group_stage(raw)?;
++        let raw_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
++        unsafe {
++            dc.OMSetRenderTargets(Some(&raw_rtv), None);
++            dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
++        }
++        self.group_target = Some(raw_rtv);
++        self.group_target_tex = Some(self.blur.stage.as_ref().unwrap().texture.clone());
++        let drawn = self.draw_scene_at(&group.scene, base);
++        unsafe { dc.RSSetState(&rasterizer) };
++        self.group_target = None;
++        self.group_target_tex = None;
++        drawn
 +    }
 +
 +    /// KaminIDE patch: размыть готовый буфер группы (`filter: blur(N)`).
@@ -7319,7 +7397,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        // KaminIDE patch: апсемпл тоже использует исходный viewport, затем Copy
 +        // переносит точные пиксели в ограниченную сохранённую текстуру.
 +        self.clear_group_stage()?;
-+        self.blur.stage_dirty = Some(self.blur.group_regions[index]);
++        self.blur.stage_dirty.push(self.blur.group_regions[index]);
 +        let dest_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
 +        let last = self.blur.down[2].srv.clone();
 +        let (lw, lh) = (
@@ -7496,11 +7574,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    fn restore_frame_globals(&mut self) -> Result<()> {
 +        let device_context = &self.dev().device_context;
 +        let viewport = self.res().viewport;
-+        update_buffer(
-+            device_context,
-+            self.globals.global_params_buffer.as_ref().unwrap(),
-+            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
-+        )?;
++        // KaminIDE patch: the frame parameters are written once per frame (pre_draw);
++        // passes with other viewports use their own buffer (`blur.globals`), so
++        // only the bindings need restoring, once per group instead of a Map each.
++        let size = [self.width as f32, self.height as f32];
++        if self.blur.frame_globals != Some(size) {
++            update_buffer(
++                device_context,
++                self.globals.global_params_buffer.as_ref().unwrap(),
++                &[global_params(self.font_info, size)],
++            )?;
++            self.blur.frame_globals = Some(size);
++        }
++        let device_context = &self.dev().device_context;
 +        unsafe {
 +            device_context.RSSetViewports(Some(slice::from_ref(&viewport)));
 +            device_context
@@ -7509,13 +7595,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1187,0 @@
+@@ -412 +1254,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1263,2 @@
+@@ -488 +1330,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1270,21 @@
+@@ -494 +1337,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7538,7 +7624,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1296 @@
+@@ -500,19 +1363 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7559,7 +7645,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1378,7 @@
+@@ -599,0 +1445,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7567,29 +7653,40 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        } else {
 +            (start, len)
 +        };
-@@ -621,0 +1407,6 @@
+@@ -621,0 +1474,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1435,2 @@
+@@ -643,0 +1502,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1465,4 @@
+@@ -672 +1532,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1612,4 @@
+@@ -815,0 +1679,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1620,23 @@
+@@ -819,0 +1687,37 @@
++        // KaminIDE patch: consecutive group composites are drawn level by level
++        // (`group_batch`); anything else ends the run.
++        let mut run: Vec<&PaintSurface> = Vec::new();
 +        for surface in surfaces {
++            if self.composite_batches(surface) {
++                run.push(surface);
++                continue;
++            }
++            if let Err(e) = self.draw_composite_run(&run) {
++                log::warn!("surface pass failed: {e}");
++            }
++            run.clear();
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
 +            let drawn = if surface.group > 0 {
@@ -7603,6 +7700,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                log::warn!("surface pass failed: {e}");
 +            }
 +        }
++        if let Err(e) = self.draw_composite_run(&run) {
++            log::warn!("surface pass failed: {e}");
++        }
 +        // Вернуть состояние кадра (проходы меняли RTV/вьюпорт/globals).
 +        self.restore_frame_globals()?;
 +        // KaminIDE patch: цель — текущая (`current_target`): внутри группы это
@@ -7612,9 +7712,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1644,376 @@
-+    }
-+
+@@ -822,0 +1727,365 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -7849,73 +7947,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    fn draw_group_composite(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
 +        let dc = self.dev().device_context.clone();
-+        let Some(&slot) = self.blur.group_slots.get(s.group as usize - 1) else {
++        let Some((mut quad, page)) = self.group_composite_quad(s) else {
 +            return Ok(());
 +        };
-+        let Some(texture) = self.blur.groups.get(slot) else {
-+            return Ok(());
-+        };
-+        let srv = texture.srv.clone();
-+        let blend_mode = self
-+            .blur
-+            .group_blend
-+            .get(s.group as usize - 1)
-+            .copied()
-+            .unwrap_or(0);
-+        let (poly, poly_count) = self
-+            .blur
-+            .group_poly
-+            .get(s.group as usize - 1)
-+            .copied()
-+            .unwrap_or(([[0.0; 4]; 4], 0));
-+        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
-+        let (poly, poly_count) = match s.fragment {
-+            0 => (poly, poly_count),
-+            k => self
-+                .blur
-+                .group_frags
-+                .get(s.group as usize - 1)
-+                .and_then(|f| f.get(k as usize - 1))
-+                .copied()
-+                .unwrap_or((poly, poly_count)),
-+        };
-+        let mut group_proj = self
-+            .blur
-+            .group_proj
-+            .get(s.group as usize - 1)
-+            .copied()
-+            .unwrap_or([[0.0; 4]; 3]);
-+        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
-+        if s.fragment > 0 {
-+            group_proj[0][3] = 1.0;
-+        }
++        let srv = self.blur.groups[page].srv.clone();
 +        let mask = self
 +            .blur
 +            .group_mask
 +            .get(s.group as usize - 1)
 +            .cloned()
 +            .flatten();
-+        let (has_mask, mask_rect, mask_once) = match &mask {
-+            Some((srv, rect, once)) => {
-+                unsafe { dc.PSSetShaderResources(3, Some(srv)) };
-+                (1.0, *rect, *once)
-+            }
-+            None => (0.0, [0.0; 4], 0.0),
-+        };
-+        let mask_clip = self
-+            .blur
-+            .group_clip
-+            .get(s.group as usize - 1)
-+            .copied()
-+            .unwrap_or([0.0; 4]);
-+        let (vw, vh) = (self.width as f32, self.height as f32);
++        if let Some((srv, rect, once)) = &mask {
++            unsafe { dc.PSSetShaderResources(3, Some(srv)) };
++            quad.pad2 = [1.0, *once];
++            quad.mask_rect = *rect;
++        }
++        let blend_mode = quad.blend_mode;
 +
 +        // KaminIDE patch: копируем только подложку покрываемой области.
-+        let backdrop_rect = if blend_mode != 0 {
-+            self.copy_group_backdrop(s)?
-+        } else {
-+            [0.0; 4]
-+        };
++        if blend_mode != 0 {
++            quad.backdrop_rect = self.copy_group_backdrop(s)?;
++        }
 +
 +        self.ensure_blur_globals(&device)?;
 +        update_buffer(
@@ -7923,40 +7975,6 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            self.blur.globals[0].as_ref().unwrap(),
 +            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
 +        )?;
-+        let quad = BlurQuad {
-+            bounds: [
-+                s.bounds.origin.x.0,
-+                s.bounds.origin.y.0,
-+                s.bounds.size.width.0,
-+                s.bounds.size.height.0,
-+            ],
-+            content_mask: [
-+                s.content_mask.bounds.origin.x.0,
-+                s.content_mask.bounds.origin.y.0,
-+                s.content_mask.bounds.size.width.0,
-+                s.content_mask.bounds.size.height.0,
-+            ],
-+            corner_radii: [
-+                s.corner_radii.top_left.0,
-+                s.corner_radii.top_right.0,
-+                s.corner_radii.bottom_right.0,
-+                s.corner_radii.bottom_left.0,
-+            ],
-+            src_origin: [s.bounds.origin.x.0 / vw, s.bounds.origin.y.0 / vh],
-+            src_scale: [s.bounds.size.width.0 / vw, s.bounds.size.height.0 / vh],
-+            texel: [1.0 / vw, 1.0 / vh],
-+            blur_pass: 3.0,
-+            pad: s.opacity,
-+            blend_mode,
-+            poly_count,
-+            pad2: [has_mask, mask_once],
-+            poly,
-+            mask_rect,
-+            mask_clip,
-+            proj: group_proj,
-+            source_rect: self.blur.group_regions[slot].floats(),
-+            backdrop_rect,
-+        };
 +        self.pipelines
 +            .blur_pipeline
 +            .update_buffer(&device, &dc, &[quad])?;
@@ -7989,10 +8007,81 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2039 @@
++    }
++
++    /// KaminIDE patch: composite instance of surface `s` and the atlas page it
++    /// samples. The backdrop rectangle and the mask image are left to the caller.
++    fn group_composite_quad(&self, s: &PaintSurface) -> Option<(BlurQuad, usize)> {
++        let g = s.group as usize - 1;
++        let slot = *self.blur.group_slots.get(g)?;
++        let place = *self.blur.group_place.get(slot)?;
++        self.blur.groups.get(place.page)?;
++        let blend_mode = self.blur.group_blend.get(g).copied().unwrap_or(0);
++        let (poly, poly_count) = self
++            .blur
++            .group_poly
++            .get(g)
++            .copied()
++            .unwrap_or(([[0.0; 4]; 4], 0));
++        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
++        let (poly, poly_count) = match s.fragment {
++            0 => (poly, poly_count),
++            k => self
++                .blur
++                .group_frags
++                .get(g)
++                .and_then(|f| f.get(k as usize - 1))
++                .copied()
++                .unwrap_or((poly, poly_count)),
++        };
++        let mut group_proj = self.blur.group_proj.get(g).copied().unwrap_or([[0.0; 4]; 3]);
++        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
++        if s.fragment > 0 {
++            group_proj[0][3] = 1.0;
++        }
++        let mask_clip = self.blur.group_clip.get(g).copied().unwrap_or([0.0; 4]);
++        let (vw, vh) = (self.width as f32, self.height as f32);
++        let quad = BlurQuad {
++            bounds: [
++                s.bounds.origin.x.0,
++                s.bounds.origin.y.0,
++                s.bounds.size.width.0,
++                s.bounds.size.height.0,
++            ],
++            content_mask: [
++                s.content_mask.bounds.origin.x.0,
++                s.content_mask.bounds.origin.y.0,
++                s.content_mask.bounds.size.width.0,
++                s.content_mask.bounds.size.height.0,
++            ],
++            corner_radii: [
++                s.corner_radii.top_left.0,
++                s.corner_radii.top_right.0,
++                s.corner_radii.bottom_right.0,
++                s.corner_radii.bottom_left.0,
++            ],
++            // KaminIDE patch: pass 3 reads the group's atlas rectangle at this corner.
++            src_origin: [place.x as f32, place.y as f32],
++            src_scale: [s.bounds.size.width.0 / vw, s.bounds.size.height.0 / vh],
++            texel: [1.0 / vw, 1.0 / vh],
++            blur_pass: 3.0,
++            pad: s.opacity,
++            blend_mode,
++            poly_count,
++            pad2: [0.0, 0.0],
++            poly,
++            mask_rect: [0.0; 4],
++            mask_clip,
++            proj: group_proj,
++            source_rect: self.blur.group_regions[slot].floats(),
++            backdrop_rect: [0.0; 4],
++        };
++        Some((quad, place.page))
++    }
+@@ -840 +2109 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2090,12 @@
+@@ -890,0 +2160,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -8005,9 +8094,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2116 @@
+@@ -904,0 +2186 @@
 +            frame_gate,
-@@ -999,0 +2212,7 @@
+@@ -999,0 +2282,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -8015,22 +8104,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2229 @@
+@@ -1009,0 +2299 @@
 +            blur_pipeline,
-@@ -1018,0 +2239,4 @@
+@@ -1018,0 +2309,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2248 @@
+@@ -1023,0 +2318 @@
 +            comp_root,
-@@ -1030 +2255,2 @@
+@@ -1030 +2325,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2290 @@
+@@ -1063,0 +2360 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2303,16 @@
+@@ -1076 +2373,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -8048,10 +8137,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2332,2 @@
+@@ -1089,0 +2402,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2343,0 @@
+@@ -1100,30 +2413,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -8082,7 +8171,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 -        })
 -    }
 -
-@@ -1190,0 +2405,45 @@
+@@ -1190,0 +2475,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8128,21 +8217,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2456 @@
+@@ -1197 +2526 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2535,2 @@
+@@ -1275,0 +2605,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2580,2 @@
+@@ -1319 +2650,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2609,2 @@
+@@ -1347 +2679,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2756,33 @@
+@@ -1492,0 +2826,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8176,17 +8265,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..1177c03cfebdbab8b1e81e4e1eadf5bd
 +    }
 +}
 +
-@@ -1719,0 +3016,2 @@
+@@ -1719,0 +3086,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3095,4 @@
+@@ -1796,0 +3165,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3186 @@
+@@ -1883,0 +3256 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3357,33 @@
+@@ -2054,17 +3427,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -8735,10 +8824,10 @@ index 0000000000000000000000000000000000000000..5de355d6005d778face12c81c32e9e25
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/gaussian.rs b/vendor/gpui-windows/src/directx_renderer/gaussian.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9195f557a
+index 0000000000000000000000000000000000000000..4d03e203c70c9b7e4a1db9ba4819b22b565f36fa
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/gaussian.rs
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,242 @@
 +//! KaminIDE patch: separable Gaussian for a group's `filter: blur(σ)` with a small σ.
 +//!
 +//! Filter Effects 1 §blur(): the standard deviation of the Gaussian is the given length.
@@ -8826,19 +8915,49 @@ index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9
 +    })
 +}
 +
++/// One-sided kernel weights packed into `BlurQuad::poly` (16 floats).
++pub(super) fn kernel_poly(sigma: f32, r: usize) -> [[f32; 4]; 4] {
++    let t = weights(sigma, r);
++    [
++        [t[0], t[1], t[2], t[3]],
++        [t[4], t[5], t[6], t[7]],
++        [t[8], t[9], t[10], t[11]],
++        [t[12], t[13], t[14], t[15]],
++    ]
++}
++
++/// Instance writing the atlas rectangle `dst` (x, y, w, h) from the texels at
++/// `dst + shift` of the source; taps outside `valid` read transparent black.
++/// `pass` 6 is the whole 2D kernel, 5 one separable direction (`direction`).
++pub(super) fn kernel_quad(
++    dst: [f32; 4],
++    shift: [f32; 2],
++    valid: [f32; 4],
++    pass: f32,
++    direction: [f32; 2],
++    r: usize,
++    poly: [[f32; 4]; 4],
++) -> BlurQuad {
++    BlurQuad {
++        bounds: dst,
++        content_mask: dst,
++        src_origin: shift,
++        blur_pass: pass,
++        pad: r as f32,
++        pad2: direction,
++        poly,
++        source_rect: valid,
++        ..Default::default()
++    }
++}
++
 +impl DirectXRenderer {
-+    /// Blur group `index` (raw image in the stage) into its retained texture.
++    /// Blur group `index` (raw image in the stage) into its atlas rectangle.
 +    pub(super) fn gaussian_group(&mut self, index: usize, sigma: f32, r: usize) -> Result<()> {
 +        let region = self.blur.group_regions[index];
++        let place = self.blur.group_place[index];
 +        let (w, h) = (region.width, region.height);
-+        self.ensure_blur_globals(&self.dev().device.clone())?;
-+        let taps = weights(sigma, r);
-+        let poly = [
-+            [taps[0], taps[1], taps[2], taps[3]],
-+            [taps[4], taps[5], taps[6], taps[7]],
-+            [taps[8], taps[9], taps[10], taps[11]],
-+            [taps[12], taps[13], taps[14], taps[15]],
-+        ];
++        let poly = kernel_poly(sigma, r);
 +        let stage = self
 +            .blur
 +            .stage
@@ -8846,22 +8965,21 @@ index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9
 +            .context("group stage missing")?
 +            .srv
 +            .clone();
-+        let target = self.blur.groups[index].rtv.clone();
 +        let frame = [0.0, 0.0, self.width as f32, self.height as f32];
-+        let origin = [region.x as f32, region.y as f32];
++        let dst = [place.x as f32, place.y as f32, w as f32, h as f32];
++        let to_stage = [
++            region.x as f32 - place.x as f32,
++            region.y as f32 - place.y as f32,
++        ];
++        let page = self.blur.groups[place.page].rtv.clone();
++        let page_size = (
++            self.blur.groups[place.page].width,
++            self.blur.groups[place.page].height,
++        );
 +        if r <= MAX_SINGLE_PASS_RADIUS {
-+            // Whole kernel: frame-domain stage → retained group texture.
-+            return self.gaussian_pass(
-+                &stage,
-+                &target,
-+                (w, h),
-+                origin,
-+                frame,
-+                6.0,
-+                [0.0; 2],
-+                r,
-+                poly,
-+            );
++            // Whole kernel: frame-domain stage → atlas rectangle.
++            let quad = kernel_quad(dst, to_stage, frame, 6.0, [0.0; 2], r, poly);
++            return self.kernel_instances(&stage, &page, page_size, &[quad]);
 +        }
 +        if self
 +            .blur
@@ -8887,66 +9005,44 @@ index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9
 +        }
 +        let gauss = self.blur.gauss.as_ref().unwrap();
 +        let (gauss_srv, gauss_rtv) = (gauss.srv.clone(), gauss.rtv.clone());
++        let gauss_size = (gauss.width, gauss.height);
++        let local = [0.0, 0.0, w as f32, h as f32];
 +        // Horizontal: frame-domain stage → intermediate (local coordinates).
-+        self.gaussian_pass(
-+            &stage,
-+            &gauss_rtv,
-+            (w, h),
-+            origin,
++        let horizontal = kernel_quad(
++            local,
++            [region.x as f32, region.y as f32],
 +            frame,
 +            5.0,
 +            [1.0, 0.0],
 +            r,
 +            poly,
-+        )?;
-+        // Vertical: intermediate → retained group texture.
-+        self.gaussian_pass(
-+            &gauss_srv,
-+            &target,
-+            (w, h),
-+            [0.0, 0.0],
-+            [0.0, 0.0, w as f32, h as f32],
-+            5.0,
-+            [0.0, 1.0],
-+            r,
-+            poly,
-+        )
++        );
++        self.kernel_instances(&stage, &gauss_rtv, gauss_size, &[horizontal])?;
++        // Vertical: intermediate → atlas rectangle.
++        let vertical = kernel_quad(dst, [-dst[0], -dst[1]], local, 5.0, [0.0, 1.0], r, poly);
++        self.kernel_instances(&gauss_srv, &page, page_size, &[vertical])
 +    }
-+    #[allow(clippy::too_many_arguments)]
-+    fn gaussian_pass(
++
++    /// Draw kernel instances from `src` into the whole target `dst` of `size`.
++    pub(super) fn kernel_instances(
 +        &mut self,
 +        src: &[Option<ID3D11ShaderResourceView>; 1],
 +        dst: &[Option<ID3D11RenderTargetView>; 1],
 +        (w, h): (u32, u32),
-+        origin: [f32; 2],
-+        valid: [f32; 4],
-+        pass: f32,
-+        direction: [f32; 2],
-+        r: usize,
-+        poly: [[f32; 4]; 4],
++        quads: &[BlurQuad],
 +    ) -> Result<()> {
 +        let device = self.dev().device.clone();
 +        let dc = self.dev().device_context.clone();
++        self.ensure_blur_globals(&device)?;
 +        let (fw, fh) = (w as f32, h as f32);
 +        update_buffer(
 +            &dc,
 +            self.blur.globals[0].as_ref().unwrap(),
 +            &[global_params(self.font_info, [fw, fh])],
 +        )?;
-+        let quad = BlurQuad {
-+            bounds: [0.0, 0.0, fw, fh],
-+            content_mask: [0.0, 0.0, fw, fh],
-+            src_origin: origin,
-+            blur_pass: pass,
-+            pad: r as f32,
-+            pad2: direction,
-+            poly,
-+            source_rect: valid,
-+            ..Default::default()
-+        };
 +        self.pipelines
 +            .blur_pipeline
-+            .update_buffer(&device, &dc, &[quad])?;
++            .update_buffer(&device, &dc, quads)?;
 +        let viewport = [D3D11_VIEWPORT {
 +            TopLeftX: 0.0,
 +            TopLeftY: 0.0,
@@ -8966,51 +9062,680 @@ index 0000000000000000000000000000000000000000..ef2b71b579a58d60079960ab41625dd9
 +                &viewport,
 +                globals,
 +                slice::from_ref(sampler),
-+                1,
++                quads.len() as u32,
 +                Some(&blend),
 +            )
 +        })
 +    }
 +}
++#[cfg(test)]
++mod tests;
+diff --git a/vendor/gpui-windows/src/directx_renderer/gaussian/tests.rs b/vendor/gpui-windows/src/directx_renderer/gaussian/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c6d6912db30686f6411de1815f8167ac29b4cb2
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/gaussian/tests.rs
+@@ -0,0 +1,29 @@
++use super::{MAX_DIRECT_SIGMA, direct_radius, margin, weights};
++
++#[test]
++fn small_sigmas_convolve_directly_with_three_sigma_support() {
++    assert_eq!(direct_radius(0.6), Some(2));
++    assert_eq!(direct_radius(1.0), Some(3));
++    assert_eq!(direct_radius(MAX_DIRECT_SIGMA), Some(12));
++    assert_eq!(direct_radius(4.01), None);
++    assert_eq!(direct_radius(0.0), None);
++    assert_eq!(direct_radius(f32::NAN), None);
++    assert_eq!(margin(0.6), 2.0);
++    // The cascade keeps its own spread for large radii.
++    assert_eq!(margin(28.0), 48.0);
++}
++
++#[test]
++fn weights_are_a_normalized_symmetric_gaussian() {
++    for sigma in [0.3f32, 0.6, 1.0, 2.5, 4.0] {
++        let r = direct_radius(sigma).unwrap();
++        let w = weights(sigma, r);
++        let sum: f32 = w[0] + 2.0 * w[1..=r].iter().sum::<f32>();
++        assert!((sum - 1.0).abs() < 1e-6, "σ {sigma}: {sum}");
++        assert!(w[1..=r].windows(2).all(|p| p[0] > p[1]));
++        assert!(w[r + 1..].iter().all(|v| *v == 0.0));
++        // Ratio of neighbours is the Gaussian's exp(-(2k+1)/(2σ²)).
++        let expect = (-1.0 / (2.0 * sigma * sigma)).exp();
++        assert!((w[1] / w[0] - expect).abs() < 1e-5);
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_atlas.rs b/vendor/gpui-windows/src/directx_renderer/group_atlas.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c48c50dafff4c586208b0ca759b1634951a06435
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_atlas.rs
+@@ -0,0 +1,134 @@
++//! KaminIDE patch: one shared atlas for the retained images of a frame's paint groups.
++//!
++//! Every group used to own a texture of its exact region size, so a page with
++//! hundreds of filtered or blended groups created hundreds of textures on its
++//! first frame and switched render targets between all of them. Like
++//! WebRender's texture cache and render-task atlases, the retained images of
++//! one frame are shelf-packed into a few large pages instead: writes and
++//! composites then address an integer rectangle of a shared surface, and
++//! independent groups can be drawn as instances of one draw call.
++
++/// Largest page side the packer opens on its own (a single larger region
++/// still gets a page of its own size).
++pub(super) const PAGE_LIMIT: u32 = 4096;
++
++/// Where a group's retained image lives: page index and integer top-left corner.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub(super) struct Place {
++    pub page: usize,
++    pub x: u32,
++    pub y: u32,
++}
++
++/// Shelf-pack `sizes` (width, height). Returns the place of every size, in
++/// input order, and the used size of every page. Taller rectangles go first,
++/// so each shelf is as tall as its first rectangle; equal heights keep their
++/// input order, which keeps the layout stable from frame to frame.
++pub(super) fn pack(sizes: &[(u32, u32)]) -> (Vec<Place>, Vec<(u32, u32)>) {
++    if sizes.is_empty() {
++        return (Vec::new(), Vec::new());
++    }
++    let max_w = sizes.iter().map(|s| s.0).max().unwrap_or(1).max(1);
++    let area: u64 = sizes.iter().map(|&(w, h)| u64::from(w) * u64::from(h)).sum();
++    // Square-ish pages; the width is rounded so small changes of the content
++    // do not change the layout of every shelf.
++    let side = ((area as f64).sqrt().ceil() as u32).next_multiple_of(256);
++    let width = side.clamp(256, PAGE_LIMIT).max(max_w);
++    let mut order: Vec<usize> = (0..sizes.len()).collect();
++    order.sort_by_key(|&i| (std::cmp::Reverse(sizes[i].1), i));
++    let mut places = vec![Place::default(); sizes.len()];
++    let mut pages = vec![(width, 0u32)];
++    let (mut x, mut y, mut shelf) = (0u32, 0u32, 0u32);
++    for i in order {
++        let (w, h) = (sizes[i].0.max(1), sizes[i].1.max(1));
++        if x + w > width {
++            y += shelf;
++            (x, shelf) = (0, 0);
++        }
++        if y > 0 && y + h > PAGE_LIMIT.max(h) {
++            pages.push((width, 0));
++            (x, y, shelf) = (0, 0, 0);
++        }
++        places[i] = Place {
++            page: pages.len() - 1,
++            x,
++            y,
++        };
++        x += w;
++        shelf = shelf.max(h);
++        let page = pages.last_mut().unwrap();
++        page.1 = page.1.max(y + shelf);
++    }
++    (places, pages)
++}
++
++/// Whether an existing page of `have` size can hold `need` without wasting
++/// more than three quarters of its memory.
++pub(super) fn page_fits(have: (u32, u32), need: (u32, u32)) -> bool {
++    have.0 >= need.0
++        && have.1 >= need.1
++        && u64::from(have.0) * u64::from(have.1) <= 4 * u64::from(need.0) * u64::from(need.1.max(64))
++}
++
++/// Size of a new page for `need`: the height is rounded up so that a slowly
++/// growing set of groups does not recreate the page every frame.
++pub(super) fn page_size(need: (u32, u32)) -> (u32, u32) {
++    (need.0, need.1.next_multiple_of(256).min(PAGE_LIMIT.max(need.1)))
++}
 +
 +#[cfg(test)]
 +mod tests {
-+    use super::{MAX_DIRECT_SIGMA, direct_radius, margin, weights};
++    use super::{PAGE_LIMIT, Place, pack, page_fits, page_size};
 +
-+    #[test]
-+    fn small_sigmas_convolve_directly_with_three_sigma_support() {
-+        assert_eq!(direct_radius(0.6), Some(2));
-+        assert_eq!(direct_radius(1.0), Some(3));
-+        assert_eq!(direct_radius(MAX_DIRECT_SIGMA), Some(12));
-+        assert_eq!(direct_radius(4.01), None);
-+        assert_eq!(direct_radius(0.0), None);
-+        assert_eq!(direct_radius(f32::NAN), None);
-+        assert_eq!(margin(0.6), 2.0);
-+        // The cascade keeps its own spread for large radii.
-+        assert_eq!(margin(28.0), 48.0);
++    fn overlaps(a: (Place, (u32, u32)), b: (Place, (u32, u32))) -> bool {
++        a.0.page == b.0.page
++            && a.0.x < b.0.x + b.1.0
++            && b.0.x < a.0.x + a.1.0
++            && a.0.y < b.0.y + b.1.1
++            && b.0.y < a.0.y + a.1.1
 +    }
 +
 +    #[test]
-+    fn weights_are_a_normalized_symmetric_gaussian() {
-+        for sigma in [0.3f32, 0.6, 1.0, 2.5, 4.0] {
-+            let r = direct_radius(sigma).unwrap();
-+            let w = weights(sigma, r);
-+            let sum: f32 = w[0] + 2.0 * w[1..=r].iter().sum::<f32>();
-+            assert!((sum - 1.0).abs() < 1e-6, "σ {sigma}: {sum}");
-+            assert!(w[1..=r].windows(2).all(|p| p[0] > p[1]));
-+            assert!(w[r + 1..].iter().all(|v| *v == 0.0));
-+            // Ratio of neighbours is the Gaussian's exp(-(2k+1)/(2σ²)).
-+            let expect = (-1.0 / (2.0 * sigma * sigma)).exp();
-+            assert!((w[1] / w[0] - expect).abs() < 1e-5);
++    fn rectangles_are_disjoint_and_inside_their_pages() {
++        let sizes: Vec<(u32, u32)> = (0..480)
++            .map(|i| (200 + (i % 7) * 3, 160 + (i % 5) * 2))
++            .chain([(1, 1), (800, 600), (37, 4000)])
++            .collect();
++        let (places, pages) = pack(&sizes);
++        assert_eq!(places.len(), sizes.len());
++        for (i, (&p, &s)) in places.iter().zip(&sizes).enumerate() {
++            let page = pages[p.page];
++            assert!(p.x + s.0 <= page.0 && p.y + s.1 <= page.1, "{i}: {p:?} {s:?} {page:?}");
++            for (&q, &t) in places.iter().zip(&sizes).skip(i + 1) {
++                assert!(!overlaps((p, s), (q, t)), "{p:?}{s:?} / {q:?}{t:?}");
++            }
++        }
++        assert!(pages.iter().all(|p| p.0 <= PAGE_LIMIT && p.1 <= PAGE_LIMIT));
++        // Near-uniform rectangles pack densely: the pages hold little more than
++        // the rectangles themselves.
++        let (_, pages) = pack(&sizes[..480]);
++        let used: u64 = pages.iter().map(|p| u64::from(p.0) * u64::from(p.1)).sum();
++        let need: u64 = sizes[..480].iter().map(|s| u64::from(s.0) * u64::from(s.1)).sum();
++        assert!(used < need * 12 / 10, "{used} vs {need}");
++    }
++
++    #[test]
++    fn oversized_rectangles_get_their_own_page_and_layout_is_stable() {
++        let (places, pages) = pack(&[(5000, 10), (10, 5000), (3, 3)]);
++        assert_eq!(pages.len(), 2);
++        assert_eq!(places[0], Place { page: 1, x: 0, y: 0 });
++        assert_eq!(places[1], Place { page: 0, x: 0, y: 0 });
++        assert_eq!(pack(&[(5000, 10), (10, 5000), (3, 3)]).0, places);
++        assert_eq!(pack(&[]), (Vec::new(), Vec::new()));
++    }
++
++    #[test]
++    fn pages_are_reused_only_without_gross_waste() {
++        assert!(page_fits((1024, 1024), (1000, 700)));
++        assert!(!page_fits((1024, 512), (1000, 700)));
++        assert!(!page_fits((4096, 4096), (512, 256)));
++        assert_eq!(page_size((768, 700)), (768, 768));
++        assert_eq!(page_size((768, 4090)), (768, 4096));
++        assert_eq!(page_size((768, 5000)), (768, 5000));
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_batch.rs b/vendor/gpui-windows/src/directx_renderer/group_batch.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..89c4dac3920db0a1bbc7bbe671d5867cc47429bf
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_batch.rs
+@@ -0,0 +1,417 @@
++//! KaminIDE patch: batched group passes — layers of disjoint groups and composite levels.
++//!
++//! A frame with N filtered or blended groups used to run a chain of dependent
++//! passes per group (draw → blur → composite with its own backdrop copy), so
++//! render-target switches and read-after-write barriers grew with N. As in
++//! WebRender's render-task graph (independent tasks of one pass share a target
++//! and one batch) and Skia Graphite's draw passes, independent work is grouped:
++//!
++//! - **Layers.** Groups whose stage regions are pairwise disjoint are drawn into
++//!   the frame-domain stage together; one instanced kernel draw moves all of them
++//!   into their atlas rectangles. Each group still rasterizes in frame
++//!   coordinates with the frame viewport, and its kernel reads only its own
++//!   region, exactly the pixels it read alone.
++//! - **Composite levels.** A composite depends only on earlier composites that
++//!   overlap it. Within one run of consecutive group composites, composite j gets
++//!   level 1 + the highest level of an earlier overlapping composite; composites
++//!   of one level are pairwise disjoint, so one backdrop copy and one instanced
++//!   draw serve the whole level, and every pixel sees the same backdrop as in
++//!   document order (Compositing 1 §5: each group is blended with everything
++//!   painted before it). Masked composites join the draw of their mask image.
++
++use super::*;
++
++/// Largest number of groups or composites batched together; bounds the
++/// quadratic overlap tests.
++const MAX_BATCH: usize = 1024;
++
++pub(super) fn intersects(a: Region, b: Region) -> bool {
++    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
++}
++
++/// Composite level of every rectangle: 0 without an earlier overlapping one,
++/// otherwise one above the highest earlier overlapping level.
++pub(super) fn levels(rects: &[Region]) -> Vec<u32> {
++    let mut level: Vec<u32> = Vec::with_capacity(rects.len());
++    for (j, &rect) in rects.iter().enumerate() {
++        let l = rects[..j]
++            .iter()
++            .zip(&level)
++            .filter(|(r, _)| intersects(**r, rect))
++            .map(|(_, l)| l + 1)
++            .max()
++            .unwrap_or(0);
++        level.push(l);
++    }
++    level
++}
++
++/// Scratch instance vectors of a stage layer (kept between frames for their capacity).
++#[derive(Default)]
++pub(super) struct LayerInstances {
++    shadows: Vec<Shadow>,
++    quads: Vec<Quad>,
++    underlines: Vec<Underline>,
++    mono: Vec<MonochromeSprite>,
++    subpixel: Vec<SubpixelSprite>,
++    poly: Vec<PolychromeSprite>,
++}
++
++impl LayerInstances {
++    fn clear(&mut self) {
++        self.shadows.clear();
++        self.quads.clear();
++        self.underlines.clear();
++        self.mono.clear();
++        self.subpixel.clear();
++        self.poly.clear();
++    }
++}
++
++/// First-fit layers of pairwise disjoint rectangles; each layer lists indices
++/// in increasing order and holds at most `MAX_BATCH` of them.
++pub(super) fn pack_layers(rects: &[Region]) -> Vec<Vec<usize>> {
++    let mut layers: Vec<Vec<usize>> = Vec::new();
++    for (k, &r) in rects.iter().enumerate() {
++        let free = layers
++            .iter()
++            .position(|l| l.len() < MAX_BATCH && l.iter().all(|&j| !intersects(rects[j], r)));
++        match free {
++            Some(l) => layers[l].push(k),
++            None => layers.push(vec![k]),
 +        }
 +    }
++    layers
++}
++
++/// Whether group `g` can join a stage layer: its image is final once drawn
++/// (no nested composites or backdrops reading the stage) and its filter is
++/// none or a single-pass kernel.
++pub(super) fn joins_layer(g: &gpui::PaintGroup) -> bool {
++    g.scene.surfaces.is_empty()
++        && (g.blur_radius <= 0.0
++            || gaussian::direct_radius(g.blur_radius)
++                .is_some_and(|r| r <= gaussian::MAX_SINGLE_PASS_RADIUS))
++}
++
++impl DirectXRenderer {
++    /// Draw the joinable groups `segment` (indices into `groups`) layer by layer
++    /// and empty it. Groups are independent images, so their drawing order is
++    /// free: first-fit puts each group into the first layer whose stage regions
++    /// it does not overlap (graph colouring of the overlap graph), which needs
++    /// about as many layers as the deepest overlap instead of one per
++    /// overlapping neighbour in document order.
++    pub(super) fn draw_group_layers(
++        &mut self,
++        groups: &[gpui::PaintGroup],
++        segment: &mut Vec<usize>,
++    ) -> Result<()> {
++        let raws: Vec<Region> = segment
++            .iter()
++            .map(|&i| Region::for_group(&groups[i], self.width, self.height)[0])
++            .collect();
++        for layer in pack_layers(&raws) {
++            let members: Vec<usize> = layer.iter().map(|&k| segment[k]).collect();
++            // One upload per instance kind for the whole layer; on failure (an
++            // oversized layer) every group uploads its own scene as before.
++            let bases = self.upload_layer(groups, &members).ok();
++            for (n, &k) in layer.iter().enumerate() {
++                let i = segment[k];
++                let base = bases.as_ref().map(|b| b[n]);
++                self.draw_group_content(&groups[i], raws[k], base)?;
++                self.blur.layer.push(i);
++            }
++            self.flush_group_layer(groups)?;
++        }
++        segment.clear();
++        Ok(())
++    }
++    /// Upload the instances of every group of a layer, kind by kind, into one
++    /// buffer each (WebRender and Graphite fill per-frame GPU buffers in bulk
++    /// instead of mapping per draw). Returns each group's first index per kind.
++    pub(super) fn upload_layer(
++        &mut self,
++        groups: &[gpui::PaintGroup],
++        members: &[usize],
++    ) -> Result<Vec<[usize; 6]>> {
++        let mut all = std::mem::take(&mut self.blur.layer_instances);
++        all.clear();
++        let mut bases = Vec::with_capacity(members.len());
++        for &i in members {
++            let s = &groups[i].scene;
++            bases.push([
++                all.shadows.len(),
++                all.quads.len(),
++                all.underlines.len(),
++                all.mono.len(),
++                all.subpixel.len(),
++                all.poly.len(),
++            ]);
++            all.shadows.extend_from_slice(&s.shadows);
++            all.quads.extend_from_slice(&s.quads);
++            all.underlines.extend_from_slice(&s.underlines);
++            all.mono.extend_from_slice(&s.monochrome_sprites);
++            all.subpixel.extend_from_slice(&s.subpixel_sprites);
++            all.poly.extend_from_slice(&s.polychrome_sprites);
++        }
++        let result = self.upload_instances(&all);
++        all.clear();
++        self.blur.layer_instances = all;
++        result.map(|()| bases)
++    }
++
++    fn upload_instances(&mut self, all: &LayerInstances) -> Result<()> {
++        let device = self.dev().device.clone();
++        let dc = self.dev().device_context.clone();
++        let p = &mut self.pipelines;
++        if !all.shadows.is_empty() {
++            p.shadow_pipeline.update_buffer(&device, &dc, &all.shadows)?;
++        }
++        if !all.quads.is_empty() {
++            p.quad_pipeline.update_buffer(&device, &dc, &all.quads)?;
++        }
++        if !all.underlines.is_empty() {
++            p.underline_pipeline.update_buffer(&device, &dc, &all.underlines)?;
++        }
++        if !all.mono.is_empty() {
++            p.mono_sprites.update_buffer(&device, &dc, &all.mono)?;
++        }
++        if !all.subpixel.is_empty() {
++            p.subpixel_sprites.update_buffer(&device, &dc, &all.subpixel)?;
++        }
++        if !all.poly.is_empty() {
++            p.poly_sprites.update_buffer(&device, &dc, &all.poly)?;
++        }
++        Ok(())
++    }
++
++    /// Move every group of the pending layer from the stage into the atlas:
++    /// unfiltered ones by copy, filtered ones with one kernel draw per atlas page.
++    pub(super) fn flush_group_layer(&mut self, groups: &[gpui::PaintGroup]) -> Result<()> {
++        if self.blur.layer.is_empty() {
++            return Ok(());
++        }
++        let layer = std::mem::take(&mut self.blur.layer);
++        let mut pages: Vec<(usize, Vec<BlurQuad>)> = Vec::new();
++        for &i in &layer {
++            let g = &groups[i];
++            let Some(r) = gaussian::direct_radius(g.blur_radius) else {
++                self.save_group_stage(i);
++                continue;
++            };
++            let (region, place) = (self.blur.group_regions[i], self.blur.group_place[i]);
++            // The kernel reads only the group's own stage region: outside it the
++            // stage held transparent black when the group was drawn alone.
++            let raw = Region::for_group(g, self.width, self.height)[0];
++            let quad = gaussian::kernel_quad(
++                [place.x as f32, place.y as f32, region.width as f32, region.height as f32],
++                [
++                    region.x as f32 - place.x as f32,
++                    region.y as f32 - place.y as f32,
++                ],
++                raw.floats(),
++                6.0,
++                [0.0; 2],
++                r,
++                gaussian::kernel_poly(g.blur_radius, r),
++            );
++            match pages.iter_mut().find(|(p, _)| *p == place.page) {
++                Some((_, quads)) => quads.push(quad),
++                None => pages.push((place.page, vec![quad])),
++            }
++        }
++        self.blur.layer = layer;
++        self.blur.layer.clear();
++        let stage = self
++            .blur
++            .stage
++            .as_ref()
++            .context("group stage missing")?
++            .srv
++            .clone();
++        for (page, quads) in pages {
++            let target = &self.blur.groups[page];
++            let (rtv, size) = (target.rtv.clone(), (target.width, target.height));
++            self.kernel_instances(&stage, &rtv, size, &quads)?;
++        }
++        self.clear_group_stage()
++    }
++
++    /// Whether a surface can be drawn as an instance of a composite level.
++    pub(super) fn composite_batches(&self, s: &PaintSurface) -> bool {
++        s.group > 0
++            && self
++                .blur
++                .group_slots
++                .get(s.group as usize - 1)
++                .is_some_and(|&slot| slot < self.blur.group_place.len())
++    }
++
++    /// Draw a run of consecutive group composites level by level.
++    pub(super) fn draw_composite_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
++        for chunk in run.chunks(MAX_BATCH) {
++            if let [s] = chunk {
++                self.draw_group_composite(s)?;
++                continue;
++            }
++            self.draw_composite_levels(chunk)?;
++        }
++        Ok(())
++    }
++
++    fn draw_composite_levels(&mut self, run: &[&PaintSurface]) -> Result<()> {
++        let device = self.dev().device.clone();
++        let dc = self.dev().device_context.clone();
++        // (instance, atlas page, composite region, mask image key); masked
++        // composites carry their mask rectangle per instance and share a draw
++        // with the composites of the same mask image (the mask cache hands
++        // equal images one view).
++        let mut items = Vec::with_capacity(run.len());
++        let mut masks: Vec<Option<ID3D11ShaderResourceView>> = Vec::new();
++        for s in run {
++            if let Some((mut quad, page)) = self.group_composite_quad(s) {
++                let mask = self
++                    .blur
++                    .group_mask
++                    .get(s.group as usize - 1)
++                    .cloned()
++                    .flatten();
++                let key = match &mask {
++                    Some(([srv], rect, once)) => {
++                        quad.pad2 = [1.0, *once];
++                        quad.mask_rect = *rect;
++                        match masks.iter().position(|m| m == srv) {
++                            Some(k) => k + 1,
++                            None => {
++                                masks.push(srv.clone());
++                                masks.len()
++                            }
++                        }
++                    }
++                    None => 0,
++                };
++                items.push((quad, page, self.composite_region(s), key));
++            }
++        }
++        let rects: Vec<Region> = items.iter().map(|i| i.2).collect();
++        let level = levels(&rects);
++        let top = level.iter().copied().max().unwrap_or(0);
++        self.ensure_blur_globals(&device)?;
++        update_buffer(
++            &dc,
++            self.blur.globals[0].as_ref().unwrap(),
++            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
++        )?;
++        let (premultiplied, replace) = (self.premultiplied_blend()?, self.replace_blend()?);
++        let target = self.current_target().to_vec();
++        let mut quads = Vec::new();
++        for l in 0..=top {
++            let members: Vec<usize> = (0..items.len()).filter(|&i| level[i] == l).collect();
++            let blended: Vec<Region> = members
++                .iter()
++                .filter(|&&i| items[i].0.blend_mode != 0)
++                .map(|&i| items[i].2)
++                .collect();
++            if !blended.is_empty() {
++                self.copy_level_backdrop(&blended)?;
++            }
++            // One draw per (atlas page, blend state, mask image); members are disjoint.
++            let mut keys: Vec<(usize, bool, usize)> = members
++                .iter()
++                .map(|&i| (items[i].1, items[i].0.blend_mode == 0, items[i].3))
++                .collect();
++            keys.sort_unstable();
++            keys.dedup();
++            for (page, normal, mask) in keys {
++                quads.clear();
++                quads.extend(
++                    members
++                        .iter()
++                        .filter(|&&i| {
++                            items[i].1 == page
++                                && (items[i].0.blend_mode == 0) == normal
++                                && items[i].3 == mask
++                        })
++                        .map(|&i| items[i].0),
++                );
++                self.pipelines
++                    .blur_pipeline
++                    .update_buffer(&device, &dc, &quads)?;
++                if mask > 0 {
++                    unsafe { dc.PSSetShaderResources(3, Some(slice::from_ref(&masks[mask - 1]))) };
++                }
++                unsafe { dc.OMSetRenderTargets(Some(&target), None) };
++                self.pipelines.blur_pipeline.draw_with_texture_blended(
++                    &dc,
++                    &self.blur.groups[page].srv,
++                    slice::from_ref(&self.res().viewport),
++                    &self.blur.globals,
++                    slice::from_ref(&self.globals.sampler),
++                    quads.len() as u32,
++                    Some(if normal { &premultiplied } else { &replace }),
++                )?;
++            }
++            if !blended.is_empty() {
++                unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
++            }
++        }
++        Ok(())
++    }
++
++    /// Copy the backdrop under the blended composites of one level into the
++    /// frame-sized level backdrop at the same coordinates: one copy of their
++    /// bounding box when it is compact, otherwise one copy per composite.
++    fn copy_level_backdrop(&mut self, rects: &[Region]) -> Result<()> {
++        let device = self.dev().device.clone();
++        let dc = self.dev().device_context.clone();
++        let (w, h) = (self.width, self.height);
++        if self
++            .blur
++            .level_backdrop
++            .as_ref()
++            .is_none_or(|t| t.width != w || t.height != h)
++        {
++            self.blur.level_backdrop = Some(create_blur_texture(&device, w, h, false)?);
++        }
++        let x0 = rects.iter().map(|r| r.x).min().unwrap_or(0);
++        let y0 = rects.iter().map(|r| r.y).min().unwrap_or(0);
++        let x1 = rects.iter().map(|r| r.x + r.width).max().unwrap_or(0);
++        let y1 = rects.iter().map(|r| r.y + r.height).max().unwrap_or(0);
++        let area = |r: &Region| u64::from(r.width) * u64::from(r.height);
++        let union = Region {
++            x: x0,
++            y: y0,
++            width: x1 - x0,
++            height: y1 - y0,
++        };
++        let copies = if 4 * area(&union) <= 5 * rects.iter().map(area).sum::<u64>() {
++            vec![union]
++        } else {
++            rects.to_vec()
++        };
++        let source = self
++            .group_target_tex
++            .as_ref()
++            .or(self.res().render_target.as_ref())
++            .context("render target missing")?;
++        let copy = self.blur.level_backdrop.as_ref().unwrap();
++        unsafe {
++            for r in copies {
++                let area = D3D11_BOX {
++                    left: r.x,
++                    top: r.y,
++                    front: 0,
++                    right: r.x + r.width,
++                    bottom: r.y + r.height,
++                    back: 1,
++                };
++                dc.CopySubresourceRegion(&copy.texture, 0, r.x, r.y, 0, source, 0, Some(&area));
++            }
++            dc.PSSetShaderResources(2, Some(&copy.srv));
++        }
++        Ok(())
++    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_batch/tests.rs b/vendor/gpui-windows/src/directx_renderer/group_batch/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..46d56b3722d28fee2ef1ab2af996742fac619ed5
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_batch/tests.rs
+@@ -0,0 +1,56 @@
++use super::{Region, intersects, levels, pack_layers};
++
++#[test]
++fn first_fit_layers_are_disjoint_and_cover_every_group_once() {
++    // Diagonal chain: neighbours overlap, every third box is clear again.
++    let rects: Vec<Region> = (0..30).map(|i| r(i * 40, (i % 5) * 30, 100, 80)).collect();
++    let layers = pack_layers(&rects);
++    let mut seen: Vec<usize> = layers.concat();
++    seen.sort_unstable();
++    assert_eq!(seen, (0..30).collect::<Vec<_>>());
++    for layer in &layers {
++        assert!(layer.windows(2).all(|w| w[0] < w[1]));
++        for (a, &i) in layer.iter().enumerate() {
++            assert!(layer[a + 1..].iter().all(|&j| !intersects(rects[i], rects[j])));
++        }
++    }
++    // In document order a new layer would start at every overlap (29 times);
++    // first-fit needs only as many layers as the deepest overlap.
++    assert_eq!(layers.len(), 3);
++}
++
++fn r(x: u32, y: u32, width: u32, height: u32) -> Region {
++    Region {
++        x,
++        y,
++        width,
++        height,
++    }
++}
++
++#[test]
++fn half_open_rectangles_touching_at_an_edge_are_disjoint() {
++    assert!(!intersects(r(0, 0, 10, 10), r(10, 0, 5, 5)));
++    assert!(!intersects(r(0, 0, 10, 10), r(0, 10, 5, 5)));
++    assert!(intersects(r(0, 0, 10, 10), r(9, 9, 5, 5)));
++}
++
++#[test]
++fn levels_keep_every_overlapping_pair_in_document_order() {
++    // A diagonal chain like effects-480: each box overlaps the next two.
++    let rects: Vec<Region> = (0..12).map(|i| r(i * 31, i * 47 % 300, 90, 140)).collect();
++    let level = levels(&rects);
++    for j in 0..rects.len() {
++        for i in 0..j {
++            if intersects(rects[i], rects[j]) {
++                assert!(level[i] < level[j], "{i} {j} {level:?}");
++            }
++            if level[i] == level[j] {
++                assert!(!intersects(rects[i], rects[j]));
++            }
++        }
++    }
++    // Disjoint composites share level 0.
++    assert_eq!(levels(&[r(0, 0, 5, 5), r(5, 0, 5, 5), r(0, 5, 5, 5)]), [0, 0, 0]);
++    assert_eq!(levels(&[r(0, 0, 5, 5), r(2, 2, 5, 5), r(20, 20, 1, 1), r(4, 4, 2, 2)]), [0, 1, 0, 2]);
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_region.rs b/vendor/gpui-windows/src/directx_renderer/group_region.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83fcd80ea36
+index 0000000000000000000000000000000000000000..c14dc96356179e0576336ec56663cddeef4a7f7a
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_region.rs
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,218 @@
 +//! KaminIDE patch: целочисленные области групп и ограниченный пул совместимых текстур.
 +
 +use super::*;
@@ -9086,7 +9811,8 @@ index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83f
 +}
 +
 +impl DirectXRenderer {
-+    pub(super) fn copy_group_backdrop(&mut self, s: &PaintSurface) -> Result<[f32; 4]> {
++    /// Frame rectangle a group composite can write (and whose backdrop it reads).
++    pub(super) fn composite_region(&self, s: &PaintSurface) -> Region {
 +        let target = Region::full(self.width, self.height);
 +        let clipped = s.bounds.intersect(&s.content_mask.bounds);
 +        let region = Region::clipped(clipped, 0.0, self.width, self.height);
@@ -9098,12 +9824,23 @@ index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83f
 +        let bottom = (region.y + region.height)
 +            .min(target.y + target.height)
 +            .max(y + 1);
-+        let region = Region {
++        Region {
 +            x,
 +            y,
 +            width: right - x,
 +            height: bottom - y,
-+        };
++        }
++    }
++
++    pub(super) fn copy_group_backdrop(&mut self, s: &PaintSurface) -> Result<[f32; 4]> {
++        let target = Region::full(self.width, self.height);
++        let region = self.composite_region(s);
++        let (x, y, right, bottom) = (
++            region.x,
++            region.y,
++            region.x + region.width,
++            region.y + region.height,
++        );
 +        let device = self.dev().device.clone();
 +        let dc = self.dev().device_context.clone();
 +        if self
@@ -9147,27 +9884,33 @@ index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83f
 +                .group_regions
 +                .push(regions[usize::from(group.blur_radius > 0.0)]);
 +        }
-+        for i in 0..self.blur.group_regions.len() {
-+            let r = self.blur.group_regions[i];
++        // KaminIDE patch: the retained images share atlas pages (`groups`).
++        let sizes: Vec<(u32, u32)> = self
++            .blur
++            .group_regions
++            .iter()
++            .map(|r| (r.width, r.height))
++            .collect();
++        let (places, pages) = group_atlas::pack(&sizes);
++        self.blur.group_place = places;
++        for (k, &need) in pages.iter().enumerate() {
 +            if self
 +                .blur
 +                .groups
-+                .get(i)
-+                .is_some_and(|t| t.width == r.width && t.height == r.height)
++                .get(k)
++                .is_some_and(|t| group_atlas::page_fits((t.width, t.height), need))
 +            {
 +                continue;
 +            }
-+            let texture = self.blur.pool.take(&device, r.width, r.height)?;
-+            if i < self.blur.groups.len() {
-+                let old = std::mem::replace(&mut self.blur.groups[i], texture);
-+                self.blur.pool.put(old);
++            let (w, h) = group_atlas::page_size(need);
++            let page = create_blur_texture(&device, w, h, true)?;
++            if k < self.blur.groups.len() {
++                self.blur.groups[k] = page;
 +            } else {
-+                self.blur.groups.push(texture);
++                self.blur.groups.push(page);
 +            }
 +        }
-+        while self.blur.groups.len() > self.blur.group_regions.len() {
-+            self.blur.pool.put(self.blur.groups.pop().unwrap());
-+        }
++        self.blur.groups.truncate(pages.len());
 +        Ok(())
 +    }
 +}
@@ -9213,10 +9956,10 @@ index 0000000000000000000000000000000000000000..301a25acabed1eaa6339fba5b32fd83f
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_stage.rs b/vendor/gpui-windows/src/directx_renderer/group_stage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e6053710e
+index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da4f1f7b97
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_stage.rs
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,210 @@
 +//! KaminIDE patch: кадровый staging сохраняет точность GPU-интерполяции.
 +
 +use super::*;
@@ -9245,11 +9988,13 @@ index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e
 +}
 +
 +impl DirectXRenderer {
++    /// Clear every stage rectangle written since the last clear, in one call.
 +    pub(super) fn clear_group_stage(&mut self) -> Result<()> {
-+        if let Some(dirty) = self.blur.stage_dirty.take() {
++        if !self.blur.stage_dirty.is_empty() {
 +            let dc: ID3D11DeviceContext1 = self.dev().device_context.cast()?;
 +            let view = self.blur.stage.as_ref().unwrap().rtv[0].as_ref().unwrap();
-+            unsafe { dc.ClearView(view, &[0.0; 4], Some(&[dirty.rect()])) };
++            let rects: Vec<RECT> = self.blur.stage_dirty.drain(..).map(Region::rect).collect();
++            unsafe { dc.ClearView(view, &[0.0; 4], Some(&rects)) };
 +        }
 +        Ok(())
 +    }
@@ -9268,9 +10013,10 @@ index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e
 +            // предыдущую грязную область. Scissor ограничивает все записи в неё.
 +            unsafe { dc.ClearRenderTargetView(stage.rtv[0].as_ref().unwrap(), &[0.0; 4]) };
 +            self.blur.stage = Some(stage);
-+            self.blur.stage_dirty = None;
++            self.blur.stage_dirty.clear();
 +        }
-+        self.clear_group_stage()?;
++        // KaminIDE patch: the stage keeps the pending layer's groups; their
++        // regions are disjoint from `region` (see `render_groups`).
 +        let original = unsafe { dc.RSGetState()? };
 +        if self.blur.stage_rasterizer.is_none() {
 +            let mut desc = D3D11_RASTERIZER_DESC::default();
@@ -9282,19 +10028,21 @@ index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e
 +            dc.RSSetState(self.blur.stage_rasterizer.as_ref());
 +            dc.RSSetScissorRects(Some(&[region.rect()]));
 +        }
-+        self.blur.stage_dirty = Some(region);
++        self.blur.stage_dirty.push(region);
 +        Ok(original)
 +    }
 +
++    /// Copy group `slot`'s region of the stage into its atlas rectangle.
 +    pub(super) fn save_group_stage(&self, slot: usize) {
 +        let stage = self.blur.stage.as_ref().unwrap();
 +        let region = self.blur.group_regions[slot];
++        let place = self.blur.group_place[slot];
 +        unsafe {
 +            self.dev().device_context.CopySubresourceRegion(
-+                &self.blur.groups[slot].texture,
++                &self.blur.groups[place.page].texture,
 +                0,
-+                0,
-+                0,
++                place.x,
++                place.y,
 +                0,
 +                &stage.texture,
 +                0,
@@ -9312,11 +10060,20 @@ index 0000000000000000000000000000000000000000..68c9a85a808a87f7c749010e9bb7410e
 +    height: u32,
 +    draw: impl FnOnce() -> Result<()>,
 +) -> Result<()> {
++    scissor_clip(dc, Region::full(width, height), draw)
++}
++
++/// KaminIDE patch: draw with the scissor set to `region`, then restore the old rectangles.
++pub(super) fn scissor_clip(
++    dc: &ID3D11DeviceContext,
++    region: Region,
++    draw: impl FnOnce() -> Result<()>,
++) -> Result<()> {
 +    let mut old = [RECT::default(); 16];
 +    let mut count = old.len() as u32;
 +    unsafe {
 +        dc.RSGetScissorRects(&mut count, Some(old.as_mut_ptr()));
-+        dc.RSSetScissorRects(Some(&[Region::full(width, height).rect()]));
++        dc.RSSetScissorRects(Some(&[region.rect()]));
 +    }
 +    let result = draw();
 +    unsafe { dc.RSSetScissorRects(Some(&old[..count as usize])) };
@@ -11076,7 +11833,7 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f673349019a197a30
+index ba89c6873354fb7449b8294878e080a68c3dd29b..92fcd284d4a8197be8ced71ded22a5b38d172cee
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -11439,7 +12196,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f67334901
 +        sample = t_sprite.Load(int3(texel, 0));
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1447,406 @@
+@@ -1268,0 +1447,421 @@
 +
 +/*
 +**
@@ -11645,6 +12402,17 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f67334901
 +    return t_sprite.Sample(s_sprite, u);
 +}
 +
++// KaminIDE patch: texel of a group's retained image at frame point p. The image
++// is the integer rectangle source_rect of the frame, stored in an atlas page at
++// src_origin; outside the rectangle the image is transparent.
++float4 group_texel(BlurQuad q, float2 p) {
++    int2 local = int2(floor(p) - q.source_rect.xy);
++    if (any(local < 0) || any(local >= int2(q.source_rect.zw))) {
++        return float4(0.0, 0.0, 0.0, 0.0);
++    }
++    return t_sprite.Load(int3(local + int2(q.src_origin), 0));
++}
++
 +float4 blur_fragment(BlurFragmentInput input): SV_Target {
 +    input.position.xy += global_origin;
 +    BlurQuad q = blur_quads[input.quad_id];
@@ -11659,15 +12427,19 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f67334901
 +        int r = int(q.pad);
 +        int2 lo = int2(q.source_rect.xy);
 +        int2 hi = lo + int2(q.source_rect.zw);
++        // Unrolled to the largest single-pass radius (4): constant tap indices keep
++        // the weights in registers instead of reloading the instance per tap. Taps
++        // beyond r are skipped, so the sum and its order equal the r-bounded loop.
++        float w[5] = { q.poly[0][0], q.poly[0][1], q.poly[0][2], q.poly[0][3], q.poly[1][0] };
 +        float4 g = float4(0.0, 0.0, 0.0, 0.0);
-+        for (int j = -r; j <= r; j++) {
-+            uint b = uint(abs(j));
-+            float wj = q.poly[b >> 2u][b & 3u];
-+            for (int k = -r; k <= r; k++) {
-+                int2 s = p + int2(k, j);
-+                uint a = uint(abs(k));
-+                if (all(s >= lo) && all(s < hi)) {
-+                    g += (q.poly[a >> 2u][a & 3u] * wj) * t_sprite.Load(int3(s, 0));
++        [unroll] for (int j = -4; j <= 4; j++) {
++            if (abs(j) <= r) {
++                float wj = w[abs(j)];
++                [unroll] for (int k = -4; k <= 4; k++) {
++                    int2 s = p + int2(k, j);
++                    if (abs(k) <= r && all(s >= lo) && all(s < hi)) {
++                        g += (w[abs(k)] * wj) * t_sprite.Load(int3(s, 0));
++                    }
 +                }
 +            }
 +        }
@@ -11679,12 +12451,12 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f67334901
 +        int r = int(q.pad);
 +        int2 lo = int2(q.source_rect.xy);
 +        int2 hi = lo + int2(q.source_rect.zw);
++        // Unrolled to the largest tap count (15), as in pass 6.
 +        float4 g = float4(0.0, 0.0, 0.0, 0.0);
-+        for (int k = -r; k <= r; k++) {
++        [unroll] for (int k = -15; k <= 15; k++) {
 +            int2 s = p + dir * k;
-+            uint a = uint(abs(k));
-+            if (all(s >= lo) && all(s < hi)) {
-+                g += q.poly[a >> 2u][a & 3u] * t_sprite.Load(int3(s, 0));
++            if (abs(k) <= r && all(s >= lo) && all(s < hi)) {
++                g += q.poly[abs(k) >> 2][abs(k) & 3] * t_sprite.Load(int3(s, 0));
 +            }
 +        }
 +        return g;
@@ -11725,10 +12497,10 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5ba599e81e2bd6b640f4597f67334901
 +            // texels stay ~1:1 with frame pixels; a bilinear tap would blur
 +            // every edge already antialiased in the buffer a second time.
 +            src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
-+                ? t_sprite.Load(int3(int2(floor(rp) - q.source_rect.xy), 0))
++                ? group_texel(q, rp)
 +                : float4(0.0, 0.0, 0.0, 0.0);
 +        } else {
-+            src = t_sprite.Load(int3(int2(floor(input.position.xy) - q.source_rect.xy), 0));
++            src = group_texel(q, input.position.xy);
 +        }
 +        float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
 +        float corner = saturate(0.5 - distance);

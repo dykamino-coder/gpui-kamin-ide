@@ -44,6 +44,8 @@ mod frame_capture;
 mod group_region;
 mod group_stage;
 mod gaussian;
+mod group_atlas;
+mod group_batch;
 mod texture_pool;
 mod shader_identity;
 use group_region::Region;
@@ -103,7 +105,18 @@ pub(crate) struct DirectXRenderer {
 struct BlurScratch {
     /// KaminIDE patch: общий кадровый домен растеризатора; готовые группы ограничены.
     stage: Option<BlurTexture>,
-    stage_dirty: Option<Region>,
+    /// KaminIDE patch: stage rectangles written since the last clear (one per
+    /// group of the pending layer).
+    stage_dirty: Vec<Region>,
+    /// KaminIDE patch: groups drawn into the stage whose regions are pairwise
+    /// disjoint; one batched blur moves them into the atlas (`flush_group_layer`).
+    layer: Vec<usize>,
+    /// KaminIDE patch: instances of a stage layer, uploaded together.
+    layer_instances: group_batch::LayerInstances,
+    /// KaminIDE patch: frame-sized backdrop copy of a composite level.
+    level_backdrop: Option<BlurTexture>,
+    /// KaminIDE patch: viewport size last written to the frame parameter buffer.
+    frame_globals: Option<[f32; 2]>,
     stage_rasterizer: Option<ID3D11RasterizerState>,
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
@@ -111,9 +124,10 @@ struct BlurScratch {
     /// KaminIDE patch: half-float intermediate of the separable Gaussian (grow-only).
     gauss: Option<BlurTexture>,
     globals: [Option<ID3D11Buffer>; 1],
-    /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
-    /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
+    /// KaminIDE patch: atlas pages holding the retained image of every group
+    /// of the frame (`group_atlas`); `group_place` is each group's rectangle.
     groups: Vec<BlurTexture>,
+    group_place: Vec<group_atlas::Place>,
     group_regions: Vec<Region>,
     pool: texture_pool::Pool,
     /// Готовый буфер каждой группы: сырой или размытый.
@@ -741,6 +755,9 @@ impl DirectXRenderer {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
         })?;
+        // KaminIDE patch: pre_draw wrote the frame parameters for the viewport size.
+        let viewport = self.res().viewport;
+        self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -773,8 +790,19 @@ impl DirectXRenderer {
     /// перед её пачками. Параметры кадра (b0/b1, вьюпорт) тоже ставятся
     /// заново: проходы размытия предыдущей группы привязывали свои.
     fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
+        self.draw_scene_at(scene, None)
+    }
+
+    /// KaminIDE patch: draw `scene`'s batches; with `base` its instances were
+    /// already uploaded as part of a larger buffer (a stage layer, see
+    /// `group_batch::upload_layer`) starting at these offsets per instance kind
+    /// (shadows, quads, underlines, monochrome, subpixel, polychrome sprites).
+    fn draw_scene_at(&mut self, scene: &Scene, base: Option<[usize; 6]>) -> Result<()> {
         self.restore_frame_globals()?;
-        self.upload_scene_buffers(scene)?;
+        if base.is_none() {
+            self.upload_scene_buffers(scene)?;
+        }
+        let b = base.unwrap_or_default();
 
         let annotation = self
             .devices
@@ -787,22 +815,22 @@ impl DirectXRenderer {
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
             match batch {
-                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
+                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
+                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
                 PrimitiveBatch::Paths(range) => {
                     let paths = &scene.paths[range];
                     self.draw_paths_to_intermediate(paths)?;
                     self.draw_paths_from_intermediate(paths)
                 }
-                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
+                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
                 PrimitiveBatch::MonochromeSprites { texture_id, range } => {
-                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
+                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
                 }
                 PrimitiveBatch::SubpixelSprites { texture_id, range } => {
-                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
+                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, range } => {
-                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
+                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
             }
@@ -837,6 +865,8 @@ impl DirectXRenderer {
     fn render_groups(&mut self, scene: &Scene) -> Result<()> {
         if scene.groups.is_empty() {
             self.blur.groups.clear();
+            self.blur.group_place.clear();
+            self.blur.level_backdrop = None;
             self.blur.group_regions.clear();
             self.blur.group_slots.clear();
             self.blur.group_blend.clear();
@@ -850,6 +880,8 @@ impl DirectXRenderer {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         self.prepare_group_targets(scene)?;
+        // A pass that failed last frame may have left its rectangles in the stage.
+        self.clear_group_stage()?;
         self.blur.group_slots.clear();
         self.blur.group_blend.clear();
         self.blur.group_poly.clear();
@@ -863,31 +895,9 @@ impl DirectXRenderer {
             self.blur.mask_cache.clear();
         }
 
+        // KaminIDE patch: per-group composite data first (nested composites of an
+        // outer group read it while the outer group is drawn).
         for (i, group) in scene.groups.iter().enumerate() {
-            let rasterizer = self.begin_group_stage(Region::for_group(group, self.width, self.height)[0])?;
-            let raw_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
-            unsafe {
-                dc.OMSetRenderTargets(Some(&raw_rtv), None);
-                dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-            }
-            self.group_target = Some(raw_rtv);
-            self.group_target_tex = Some(self.blur.stage.as_ref().unwrap().texture.clone());
-            let drawn = self.restore_frame_globals().and_then(|()| self.draw_scene(&group.scene));
-            unsafe { dc.RSSetState(&rasterizer) };
-            self.group_target = None;
-            self.group_target_tex = None;
-            drawn?;
-
-            // KaminIDE patch: a direct Gaussian writes the retained texture itself.
-            match gaussian::direct_radius(group.blur_radius) {
-                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
-                None => {
-                    if group.blur_radius > 0.0 {
-                        self.blur_group(i, group)?;
-                    }
-                    self.save_group_stage(i);
-                }
-            }
             self.blur.group_slots.push(i);
             self.blur.group_blend.push(group.blend);
             let mut poly = [[0.0f32; 4]; 4];
@@ -940,6 +950,31 @@ impl DirectXRenderer {
                 .group_clip
                 .push(group.mask_clip.unwrap_or([0.0; 4]));
         }
+        // KaminIDE patch: consecutive groups that can join a stage layer are drawn
+        // layer by layer (`group_batch::draw_group_layers`); any other group ends
+        // the segment, so its nested groups are in the atlas before it is drawn.
+        self.blur.layer.clear();
+        let mut segment = Vec::new();
+        for (i, group) in scene.groups.iter().enumerate() {
+            if group_batch::joins_layer(group) {
+                segment.push(i);
+                continue;
+            }
+            self.draw_group_layers(&scene.groups, &mut segment)?;
+            self.draw_group_content(group, Region::for_group(group, self.width, self.height)[0], None)?;
+            // KaminIDE patch: a direct Gaussian writes the atlas rectangle itself.
+            match gaussian::direct_radius(group.blur_radius) {
+                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
+                None => {
+                    if group.blur_radius > 0.0 {
+                        self.blur_group(i, group)?;
+                    }
+                    self.save_group_stage(i);
+                }
+            }
+            self.clear_group_stage()?;
+        }
+        self.draw_group_layers(&scene.groups, &mut segment)?;
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {
@@ -947,6 +982,30 @@ impl DirectXRenderer {
             dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
         }
         self.restore_frame_globals()
+    }
+
+    /// KaminIDE patch: draw the scene of `group` into the frame-domain stage,
+    /// scissored to its stage region `raw`.
+    pub(super) fn draw_group_content(
+        &mut self,
+        group: &gpui::PaintGroup,
+        raw: Region,
+        base: Option<[usize; 6]>,
+    ) -> Result<()> {
+        let dc = self.dev().device_context.clone();
+        let rasterizer = self.begin_group_stage(raw)?;
+        let raw_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
+        unsafe {
+            dc.OMSetRenderTargets(Some(&raw_rtv), None);
+            dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
+        }
+        self.group_target = Some(raw_rtv);
+        self.group_target_tex = Some(self.blur.stage.as_ref().unwrap().texture.clone());
+        let drawn = self.draw_scene_at(&group.scene, base);
+        unsafe { dc.RSSetState(&rasterizer) };
+        self.group_target = None;
+        self.group_target_tex = None;
+        drawn
     }
 
     /// KaminIDE patch: размыть готовый буфер группы (`filter: blur(N)`).
@@ -986,7 +1045,7 @@ impl DirectXRenderer {
         // KaminIDE patch: апсемпл тоже использует исходный viewport, затем Copy
         // переносит точные пиксели в ограниченную сохранённую текстуру.
         self.clear_group_stage()?;
-        self.blur.stage_dirty = Some(self.blur.group_regions[index]);
+        self.blur.stage_dirty.push(self.blur.group_regions[index]);
         let dest_rtv = self.blur.stage.as_ref().unwrap().rtv.clone();
         let last = self.blur.down[2].srv.clone();
         let (lw, lh) = (
@@ -1163,11 +1222,19 @@ impl DirectXRenderer {
     fn restore_frame_globals(&mut self) -> Result<()> {
         let device_context = &self.dev().device_context;
         let viewport = self.res().viewport;
-        update_buffer(
-            device_context,
-            self.globals.global_params_buffer.as_ref().unwrap(),
-            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
-        )?;
+        // KaminIDE patch: the frame parameters are written once per frame (pre_draw);
+        // passes with other viewports use their own buffer (`blur.globals`), so
+        // only the bindings need restoring, once per group instead of a Map each.
+        let size = [self.width as f32, self.height as f32];
+        if self.blur.frame_globals != Some(size) {
+            update_buffer(
+                device_context,
+                self.globals.global_params_buffer.as_ref().unwrap(),
+                &[global_params(self.font_info, size)],
+            )?;
+            self.blur.frame_globals = Some(size);
+        }
+        let device_context = &self.dev().device_context;
         unsafe {
             device_context.RSSetViewports(Some(slice::from_ref(&viewport)));
             device_context
@@ -1617,7 +1684,18 @@ impl DirectXRenderer {
         if surfaces.is_empty() {
             return Ok(());
         }
+        // KaminIDE patch: consecutive group composites are drawn level by level
+        // (`group_batch`); anything else ends the run.
+        let mut run: Vec<&PaintSurface> = Vec::new();
         for surface in surfaces {
+            if self.composite_batches(surface) {
+                run.push(surface);
+                continue;
+            }
+            if let Err(e) = self.draw_composite_run(&run) {
+                log::warn!("surface pass failed: {e}");
+            }
+            run.clear();
             // KaminIDE patch: метка группы (`Window::paint_group`) — не
             // размытие фона, а «положить сюда готовый буфер группы».
             let drawn = if surface.group > 0 {
@@ -1630,6 +1708,9 @@ impl DirectXRenderer {
             if let Err(e) = drawn {
                 log::warn!("surface pass failed: {e}");
             }
+        }
+        if let Err(e) = self.draw_composite_run(&run) {
+            log::warn!("surface pass failed: {e}");
         }
         // Вернуть состояние кадра (проходы меняли RTV/вьюпорт/globals).
         self.restore_frame_globals()?;
@@ -1877,73 +1958,27 @@ impl DirectXRenderer {
     fn draw_group_composite(&mut self, s: &PaintSurface) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
-        let Some(&slot) = self.blur.group_slots.get(s.group as usize - 1) else {
+        let Some((mut quad, page)) = self.group_composite_quad(s) else {
             return Ok(());
         };
-        let Some(texture) = self.blur.groups.get(slot) else {
-            return Ok(());
-        };
-        let srv = texture.srv.clone();
-        let blend_mode = self
-            .blur
-            .group_blend
-            .get(s.group as usize - 1)
-            .copied()
-            .unwrap_or(0);
-        let (poly, poly_count) = self
-            .blur
-            .group_poly
-            .get(s.group as usize - 1)
-            .copied()
-            .unwrap_or(([[0.0; 4]; 4], 0));
-        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
-        let (poly, poly_count) = match s.fragment {
-            0 => (poly, poly_count),
-            k => self
-                .blur
-                .group_frags
-                .get(s.group as usize - 1)
-                .and_then(|f| f.get(k as usize - 1))
-                .copied()
-                .unwrap_or((poly, poly_count)),
-        };
-        let mut group_proj = self
-            .blur
-            .group_proj
-            .get(s.group as usize - 1)
-            .copied()
-            .unwrap_or([[0.0; 4]; 3]);
-        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
-        if s.fragment > 0 {
-            group_proj[0][3] = 1.0;
-        }
+        let srv = self.blur.groups[page].srv.clone();
         let mask = self
             .blur
             .group_mask
             .get(s.group as usize - 1)
             .cloned()
             .flatten();
-        let (has_mask, mask_rect, mask_once) = match &mask {
-            Some((srv, rect, once)) => {
-                unsafe { dc.PSSetShaderResources(3, Some(srv)) };
-                (1.0, *rect, *once)
-            }
-            None => (0.0, [0.0; 4], 0.0),
-        };
-        let mask_clip = self
-            .blur
-            .group_clip
-            .get(s.group as usize - 1)
-            .copied()
-            .unwrap_or([0.0; 4]);
-        let (vw, vh) = (self.width as f32, self.height as f32);
+        if let Some((srv, rect, once)) = &mask {
+            unsafe { dc.PSSetShaderResources(3, Some(srv)) };
+            quad.pad2 = [1.0, *once];
+            quad.mask_rect = *rect;
+        }
+        let blend_mode = quad.blend_mode;
 
         // KaminIDE patch: копируем только подложку покрываемой области.
-        let backdrop_rect = if blend_mode != 0 {
-            self.copy_group_backdrop(s)?
-        } else {
-            [0.0; 4]
-        };
+        if blend_mode != 0 {
+            quad.backdrop_rect = self.copy_group_backdrop(s)?;
+        }
 
         self.ensure_blur_globals(&device)?;
         update_buffer(
@@ -1951,40 +1986,6 @@ impl DirectXRenderer {
             self.blur.globals[0].as_ref().unwrap(),
             &[global_params(self.font_info, [self.width as f32, self.height as f32])],
         )?;
-        let quad = BlurQuad {
-            bounds: [
-                s.bounds.origin.x.0,
-                s.bounds.origin.y.0,
-                s.bounds.size.width.0,
-                s.bounds.size.height.0,
-            ],
-            content_mask: [
-                s.content_mask.bounds.origin.x.0,
-                s.content_mask.bounds.origin.y.0,
-                s.content_mask.bounds.size.width.0,
-                s.content_mask.bounds.size.height.0,
-            ],
-            corner_radii: [
-                s.corner_radii.top_left.0,
-                s.corner_radii.top_right.0,
-                s.corner_radii.bottom_right.0,
-                s.corner_radii.bottom_left.0,
-            ],
-            src_origin: [s.bounds.origin.x.0 / vw, s.bounds.origin.y.0 / vh],
-            src_scale: [s.bounds.size.width.0 / vw, s.bounds.size.height.0 / vh],
-            texel: [1.0 / vw, 1.0 / vh],
-            blur_pass: 3.0,
-            pad: s.opacity,
-            blend_mode,
-            poly_count,
-            pad2: [has_mask, mask_once],
-            poly,
-            mask_rect,
-            mask_clip,
-            proj: group_proj,
-            source_rect: self.blur.group_regions[slot].floats(),
-            backdrop_rect,
-        };
         self.pipelines
             .blur_pipeline
             .update_buffer(&device, &dc, &[quad])?;
@@ -2019,6 +2020,75 @@ impl DirectXRenderer {
         drawn
     }
 
+    /// KaminIDE patch: composite instance of surface `s` and the atlas page it
+    /// samples. The backdrop rectangle and the mask image are left to the caller.
+    fn group_composite_quad(&self, s: &PaintSurface) -> Option<(BlurQuad, usize)> {
+        let g = s.group as usize - 1;
+        let slot = *self.blur.group_slots.get(g)?;
+        let place = *self.blur.group_place.get(slot)?;
+        self.blur.groups.get(place.page)?;
+        let blend_mode = self.blur.group_blend.get(g).copied().unwrap_or(0);
+        let (poly, poly_count) = self
+            .blur
+            .group_poly
+            .get(g)
+            .copied()
+            .unwrap_or(([[0.0; 4]; 4], 0));
+        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
+        let (poly, poly_count) = match s.fragment {
+            0 => (poly, poly_count),
+            k => self
+                .blur
+                .group_frags
+                .get(g)
+                .and_then(|f| f.get(k as usize - 1))
+                .copied()
+                .unwrap_or((poly, poly_count)),
+        };
+        let mut group_proj = self.blur.group_proj.get(g).copied().unwrap_or([[0.0; 4]; 3]);
+        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
+        if s.fragment > 0 {
+            group_proj[0][3] = 1.0;
+        }
+        let mask_clip = self.blur.group_clip.get(g).copied().unwrap_or([0.0; 4]);
+        let (vw, vh) = (self.width as f32, self.height as f32);
+        let quad = BlurQuad {
+            bounds: [
+                s.bounds.origin.x.0,
+                s.bounds.origin.y.0,
+                s.bounds.size.width.0,
+                s.bounds.size.height.0,
+            ],
+            content_mask: [
+                s.content_mask.bounds.origin.x.0,
+                s.content_mask.bounds.origin.y.0,
+                s.content_mask.bounds.size.width.0,
+                s.content_mask.bounds.size.height.0,
+            ],
+            corner_radii: [
+                s.corner_radii.top_left.0,
+                s.corner_radii.top_right.0,
+                s.corner_radii.bottom_right.0,
+                s.corner_radii.bottom_left.0,
+            ],
+            // KaminIDE patch: pass 3 reads the group's atlas rectangle at this corner.
+            src_origin: [place.x as f32, place.y as f32],
+            src_scale: [s.bounds.size.width.0 / vw, s.bounds.size.height.0 / vh],
+            texel: [1.0 / vw, 1.0 / vh],
+            blur_pass: 3.0,
+            pad: s.opacity,
+            blend_mode,
+            poly_count,
+            pad2: [0.0, 0.0],
+            poly,
+            mask_rect: [0.0; 4],
+            mask_clip,
+            proj: group_proj,
+            source_rect: self.blur.group_regions[slot].floats(),
+            backdrop_rect: [0.0; 4],
+        };
+        Some((quad, place.page))
+    }
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {
         let devices = self.devices.as_ref().context("devices missing")?;
         let desc = unsafe { devices.adapter.GetDesc1() }?;
