@@ -102,10 +102,5 @@ fn the_document_pays_the_conversion_memory_with_its_registry_hashers() {
     // Six registries hash node ids with a zero-sized builder instead of `RandomState`.
     let saved = 6 * (size_of::<Std<u64>>() - size_of::<Node<u64>>());
     let memory = size_of::<crate::layout::cx::conversions::StyleConversions>();
-    eprintln!(
-        "SIZES layout_state={} anchors={} memory={memory} saved={saved}",
-        size_of::<crate::layout::layout_state::LayoutState>(),
-        size_of::<super::AnchorState>(),
-    );
-    assert!(memory <= saved);
+    assert!(memory <= saved, "memory {memory} > saved {saved}");
 }
