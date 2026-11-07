@@ -32,6 +32,13 @@ pub(crate) const WM_GPUI_END_SESSION: u32 = WM_USER + 9;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
+/// KaminIDE patch: after every WM_SIZE (window creation included) each
+/// WM_PAINT presents the current scene for this long, dirty or not, so a
+/// present lost behind a DWM resize animation is replaced. A host that needs
+/// an idle window (no unrequested presents) waits this long after its last
+/// size change.
+pub const RESIZE_PRESENTATION_BOOST: std::time::Duration = std::time::Duration::from_millis(600);
+
 /// KaminIDE patch: a forced callback also consumes a deferred forced draw.
 fn consume_force_render(incoming: bool, pending: &Cell<bool>) -> bool {
     let deferred = pending.take();
@@ -272,7 +279,7 @@ impl WindowsWindowInner {
         // грязную» — окно больше, контент старый до первого события ввода
         // (замер probe: кадр есть за 0.02 с, на экране его нет).
         self.state.resize_boost_until.set(Some(
-            std::time::Instant::now() + std::time::Duration::from_millis(600),
+            std::time::Instant::now() + RESIZE_PRESENTATION_BOOST,
         ));
         // The new size is presented now, focused or not.
         self.draw_window(
