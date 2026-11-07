@@ -15748,10 +15748,10 @@ index 0000000000000000000000000000000000000000..ac66b037da54050936bd459b0de5e625
 +}
 diff --git a/vendor/gpui/src/taffy/box_edges.rs b/vendor/gpui/src/taffy/box_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..023b2e844c67fe121917a95189bdf6040a41ca4c
+index 0000000000000000000000000000000000000000..10da8ca49619941e1687b6863527bfe0ca2954cd
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/box_edges.rs
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,236 @@
 +//! KaminIDE patch: использованные кромки родителя для фоновых слоёв.
 +//! Процентный padding уже разрешён раскладкой относительно containing block.
 +
@@ -15802,8 +15802,13 @@ index 0000000000000000000000000000000000000000..023b2e844c67fe121917a95189bdf604
 +        let (border, extent) = (layout.border, layout.size);
 +        let x = ax + border.left + left * scale_factor;
 +        let y = ay + self.taffy.content_shift(id.into()) + border.top + top * scale_factor;
-+        let width = extent.width - border.left - border.right - (left + right) * scale_factor;
-+        let height = extent.height - border.top - border.bottom - (top + bottom) * scale_factor;
++        // The same f32 operations, in the same order, as taffy's stretch-fit size of an
++        // absolute child: positioning area = border box - (start + end border), then the
++        // inset-modified containing block (area - end inset) - start inset.
++        let area_width = extent.width - (border.left + border.right);
++        let area_height = extent.height - (border.top + border.bottom);
++        let width = (area_width - right * scale_factor) - left * scale_factor;
++        let height = (area_height - bottom * scale_factor) - top * scale_factor;
 +        let (width, height) = (width.max(0.0), height.max(0.0));
 +        let (rx, ry) = (x.round(), y.round());
 +        let snapped = Bounds {

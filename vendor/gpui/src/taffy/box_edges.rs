@@ -48,8 +48,13 @@ impl TaffyLayoutEngine {
         let (border, extent) = (layout.border, layout.size);
         let x = ax + border.left + left * scale_factor;
         let y = ay + self.taffy.content_shift(id.into()) + border.top + top * scale_factor;
-        let width = extent.width - border.left - border.right - (left + right) * scale_factor;
-        let height = extent.height - border.top - border.bottom - (top + bottom) * scale_factor;
+        // The same f32 operations, in the same order, as taffy's stretch-fit size of an
+        // absolute child: positioning area = border box - (start + end border), then the
+        // inset-modified containing block (area - end inset) - start inset.
+        let area_width = extent.width - (border.left + border.right);
+        let area_height = extent.height - (border.top + border.bottom);
+        let width = (area_width - right * scale_factor) - left * scale_factor;
+        let height = (area_height - bottom * scale_factor) - top * scale_factor;
         let (width, height) = (width.max(0.0), height.max(0.0));
         let (rx, ry) = (x.round(), y.round());
         let snapped = Bounds {
