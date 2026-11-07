@@ -136,7 +136,7 @@ pub(crate) fn decorations_with(
                 layer.image = bg.gradient_image.clone();
             }
             if let Some(layer) = crate::paint::background::inset_layer(&layer, c, vcx) {
-                box_layers::push(&mut out, own.as_deref_mut(), layer);
+                box_layers::push(&mut out, own, layer);
             }
         }
     }
