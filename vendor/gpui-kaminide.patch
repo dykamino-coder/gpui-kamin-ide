@@ -15748,10 +15748,10 @@ index 0000000000000000000000000000000000000000..ac66b037da54050936bd459b0de5e625
 +}
 diff --git a/vendor/gpui/src/taffy/box_edges.rs b/vendor/gpui/src/taffy/box_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..853b1a2942dfba7f4fd989f6c6370c1f6af8b8d5
+index 0000000000000000000000000000000000000000..023b2e844c67fe121917a95189bdf6040a41ca4c
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/box_edges.rs
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,231 @@
 +//! KaminIDE patch: использованные кромки родителя для фоновых слоёв.
 +//! Процентный padding уже разрешён раскладкой относительно containing block.
 +
@@ -15914,6 +15914,10 @@ index 0000000000000000000000000000000000000000..853b1a2942dfba7f4fd989f6c6370c1f
 +                    .taffy
 +                    .new_with_children(
 +                        taffy::Style {
++                            // GPUI boxes are relative by default (gpui Style::default),
++                            // so the box is its layer's containing block; taffy's own
++                            // default is static.
++                            position: taffy::Position::Relative,
 +                            size: taffy::Size {
 +                                width: percent(0.37),
 +                                height: length(20.3 * scale),

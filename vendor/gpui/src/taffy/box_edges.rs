@@ -160,6 +160,10 @@ mod tests {
                     .taffy
                     .new_with_children(
                         taffy::Style {
+                            // GPUI boxes are relative by default (gpui Style::default),
+                            // so the box is its layer's containing block; taffy's own
+                            // default is static.
+                            position: taffy::Position::Relative,
                             size: taffy::Size {
                                 width: percent(0.37),
                                 height: length(20.3 * scale),

@@ -62,10 +62,11 @@ pub(super) fn push(
 /// scrolled by it (an absolutely positioned layer child would be), and no other layout
 /// observer is attached to it.
 pub(crate) fn eligible(div: &mut Div) -> bool {
-    use gpui::Styled as _;
+    use gpui::InteractiveElement as _;
     let visible = |o: Option<gpui::Overflow>| matches!(o, None | Some(gpui::Overflow::Visible));
-    let style = div.style();
-    visible(style.overflow.x) && visible(style.overflow.y)
+    // Read the shared refinement in place: `Styled::style` would copy it when shared.
+    let overflow = &div.interactivity().base_style.overflow;
+    visible(overflow.x) && visible(overflow.y)
 }
 
 /// Paint `layers` (bottom first) after the box's own background and border quad, before its
