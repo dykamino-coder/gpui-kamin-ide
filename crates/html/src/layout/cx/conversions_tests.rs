@@ -55,27 +55,8 @@ fn another_value_size_or_viewport_converts_anew() {
     assert!(memo.find(&stretched, &dimensions, vcx).is_none());
 }
 
-#[cfg(test)]
-fn capacity(memo: &StyleConversions) -> usize {
-    let recent = memo.recent.take();
-    let capacity = recent.capacity();
-    memo.recent.set(recent);
-    capacity
-}
-
-#[cfg(test)]
-fn assert_newest_kept(memo: &StyleConversions, vcx: ValueCx<'_>, newest: usize, kept: usize) {
-    let (dropped, dropped_dimensions) = sized((newest - kept) as f32);
-    assert!(memo.find(&dropped, &dropped_dimensions, vcx).is_none());
-    for width in newest + 1 - kept..=newest {
-        let (input, dimensions) = sized(width as f32);
-        let found = memo.find(&input, &dimensions, vcx).unwrap();
-        assert_eq!(found.size.width, Some(gpui::px(width as f32).into()));
-    }
-}
-
 #[test]
-fn without_reuse_only_the_first_candidates_are_kept() {
+fn the_newest_distinct_inputs_stay_candidates() {
     let doc = state();
     let vcx = doc.frame_values();
     let memo = StyleConversions::default();
@@ -83,29 +64,13 @@ fn without_reuse_only_the_first_candidates_are_kept() {
         let (input, dimensions) = sized(width as f32);
         memo.record(&input, dimensions, vcx, refinement(width as f32));
     }
-    assert_eq!(capacity(&memo), FIRST_CANDIDATES);
-    assert_newest_kept(&memo, vcx, CANDIDATES, FIRST_CANDIDATES);
-}
-
-#[test]
-fn reuse_grows_the_candidates_to_the_newest_distinct_inputs() {
-    let doc = state();
-    let vcx = doc.frame_values();
-    let memo = StyleConversions::default();
-    for width in 0..=2 * CANDIDATES {
+    let (oldest, oldest_dimensions) = sized(0.0);
+    assert!(memo.find(&oldest, &oldest_dimensions, vcx).is_none());
+    for width in 1..=CANDIDATES {
         let (input, dimensions) = sized(width as f32);
-        assert!(matches!(
-            memo.lookup(&input, &dimensions, vcx),
-            Lookup::Miss
-        ));
-        memo.record(&input, dimensions, vcx, refinement(width as f32));
-        assert!(matches!(
-            memo.lookup(&input, &dimensions, vcx),
-            Lookup::Hit(_)
-        ));
+        let found = memo.find(&input, &dimensions, vcx).unwrap();
+        assert_eq!(found.size.width, Some(gpui::px(width as f32).into()));
     }
-    assert_eq!(capacity(&memo), CANDIDATES);
-    assert_newest_kept(&memo, vcx, 2 * CANDIDATES, CANDIDATES);
 }
 
 #[test]

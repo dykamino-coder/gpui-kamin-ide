@@ -6,7 +6,7 @@
 //! читает арену `calc()` кадра, шрифты и семейство документа, которые между сборками
 //! меняются, поэтому сборка начинает и кончает пустой памятью, а коробки вне сборки
 //! переводятся без неё. Выделений на сборку или на `LayoutCx` у памяти нет, кроме кольца
-//! кандидатов, которое живёт только во время сборки и растёт (8, 16, 32) лишь после попаданий.
+//! кандидатов, которое живёт только во время сборки.
 
 use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::BoxStyle;
@@ -19,11 +19,6 @@ use std::rc::Rc;
 /// interleaved (table cells, list items with nested blocks): as in GPUI's refinement share
 /// and Stylo's sharing cache, a bounded set of the newest distinct inputs.
 const CANDIDATES: usize = 32;
-
-/// Candidates a build keeps until one of them is reused: a page whose boxes repeat no style
-/// (paragraph runs, distinct flex items) pays for this many, not for `CANDIDATES`. Each hit
-/// lets the full set double once (8, 16, 32), as an adaptive cache grows on evidence of reuse.
-const FIRST_CANDIDATES: usize = 8;
 
 /// Balance of lookups at which they pause: a miss takes one from it, a hit adds `HIT_WORTH`.
 /// A miss compares the box with every candidate by value and then copies it into the memory;
@@ -54,8 +49,6 @@ pub(crate) struct StyleConversions {
     passed: Cell<u8>,
     /// Builds of the document in progress (a nested document builds inside its host's).
     builds: Cell<u8>,
-    /// A candidate was reused since the set last grew: a full set may double once.
-    grow: Cell<bool>,
 }
 
 /// A document build in progress: the memory is empty when it starts and when it ends.
@@ -126,7 +119,6 @@ impl StyleConversions {
         self.next.set(0);
         self.balance.set(0);
         self.passed.set(0);
-        self.grow.set(false);
     }
     /// Look a box up unless reuse is paused, keeping the balance that pauses it.
     pub(crate) fn lookup(
@@ -146,7 +138,6 @@ impl StyleConversions {
                 self.balance
                     .set((self.balance.get() + HIT_WORTH).min(BALANCE_CAP));
                 self.passed.set(0);
-                self.grow.set(true);
                 Lookup::Hit(style)
             }
             None => {
@@ -191,22 +182,13 @@ impl StyleConversions {
             style,
         };
         let mut recent = self.recent.take();
-        let mut next = usize::from(self.next.get());
-        let len = recent.len();
-        if len == recent.capacity() && len < CANDIDATES && (len == 0 || self.grow.get()) {
-            // Oldest first, so that the pushes below keep the ring in insertion order.
-            recent.rotate_left(next);
-            next = 0;
-            recent.reserve_exact(if len == 0 {
-                FIRST_CANDIDATES
-            } else {
-                len.min(CANDIDATES - len)
-            });
-            self.grow.set(false);
+        if recent.capacity() == 0 {
+            recent.reserve_exact(CANDIDATES);
         }
-        let next = if recent.len() < recent.capacity().min(CANDIDATES) {
+        let next = usize::from(self.next.get());
+        let next = if recent.len() < CANDIDATES {
             recent.push(entry);
-            0
+            recent.len() % CANDIDATES
         } else {
             // A dropped style that no box holds any more becomes the allocation of a later
             // element's style (`gpui::recycle_style_refinement`): a converted style its box
@@ -214,7 +196,7 @@ impl StyleConversions {
             // the memory.
             let dropped = std::mem::replace(&mut recent[next], entry);
             gpui::recycle_style_refinement(dropped.style);
-            (next + 1) % recent.len()
+            (next + 1) % CANDIDATES
         };
         self.next.set(next as u8);
         self.recent.set(recent);
