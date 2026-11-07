@@ -305,6 +305,20 @@ impl Window {
         result
     }
 
+    /// Offer `bounds` (window coordinates) to the open ink sinks as culled
+    /// ink. A host that skips painting a subtree because every primitive it
+    /// would offer lies outside the content mask reports a bound of that ink
+    /// instead, so no sink sees less than the subtree's paint would have
+    /// offered. Only meaningful in the root paint environment
+    /// ([`Self::retained_root_environment`]), where primitives are placed in
+    /// window coordinates.
+    pub fn offer_culled_ink(&mut self, bounds: Bounds<Pixels>) {
+        let bounds = bounds.scale(self.scale_factor());
+        for sink in &self.next_frame.scene.ink {
+            sink.add(bounds);
+        }
+    }
+
     /// Run paint `f`, which reports whether its mouse listeners and element
     /// state reads are inert while nothing it guards is visible: listeners
     /// that act only on a hit of a hitbox under the mouse or on a gesture the

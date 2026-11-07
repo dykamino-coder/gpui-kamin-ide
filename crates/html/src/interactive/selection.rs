@@ -18,6 +18,19 @@ impl Selection {
     }
 }
 
+/// Выделение абзаца `global` пусто и не тянется мышью: пропуск его краски
+/// вне экрана ничего не теряет (`Paragraph::culled`). Состояние читается под
+/// `offscreen_inert`, как и при слежении (`track_selection`), и остаётся жить.
+pub(crate) fn idle(global: &GlobalElementId, window: &mut Window) -> bool {
+    window.offscreen_inert(|window| {
+        window.with_element_state::<Selection, _>(global, |state, _| {
+            let state = state.unwrap_or_default();
+            let idle = !state.dragging && state.anchor == state.head;
+            ((idle, idle), state)
+        })
+    })
+}
+
 pub(crate) fn selected_runs(
     runs: &[TextRun],
     highlight: Hsla,

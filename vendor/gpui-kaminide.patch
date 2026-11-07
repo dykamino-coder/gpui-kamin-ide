@@ -25772,10 +25772,10 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f681f803659
+index 0000000000000000000000000000000000000000..5f347f55cc9f803bd36de62b0c7919891e318eff
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,412 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -26081,6 +26081,20 @@ index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f68
 +        }
 +        self.next_frame.scene.ink.pop();
 +        result
++    }
++
++    /// Offer `bounds` (window coordinates) to the open ink sinks as culled
++    /// ink. A host that skips painting a subtree because every primitive it
++    /// would offer lies outside the content mask reports a bound of that ink
++    /// instead, so no sink sees less than the subtree's paint would have
++    /// offered. Only meaningful in the root paint environment
++    /// ([`Self::retained_root_environment`]), where primitives are placed in
++    /// window coordinates.
++    pub fn offer_culled_ink(&mut self, bounds: Bounds<Pixels>) {
++        let bounds = bounds.scale(self.scale_factor());
++        for sink in &self.next_frame.scene.ink {
++            sink.add(bounds);
++        }
 +    }
 +
 +    /// Run paint `f`, which reports whether its mouse listeners and element

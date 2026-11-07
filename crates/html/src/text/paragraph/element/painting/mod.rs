@@ -3,6 +3,7 @@
 //! преобразованием окна с запомненной коробкой выделения; горизонтальный
 //! идёт сразу в `paint_flat`.
 
+mod cull;
 mod flat;
 
 use crate::text::paragraph::*;
@@ -24,6 +25,10 @@ impl Paragraph {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Вне маски содержимого абзац не рисуется вовсе (`cull`).
+        if self.culled(id, bounds, hitbox, window) {
+            return;
+        }
         // Поворачивается текст внутри уже рассчитанной по физическим осям коробки.
         if self.vertical {
             let bounds = self.vertical_paint_bounds(
