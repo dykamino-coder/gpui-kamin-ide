@@ -11,7 +11,7 @@
 //! candidates are per thread and bounded: at most `CANDIDATES` refinements outlive their frame.
 
 use crate::{Refineable, Style, StyleRefinement};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// Distinct recent refinements kept as sharing candidates. Boxes that differ only in paint
@@ -23,13 +23,63 @@ const CANDIDATES: usize = 32;
 
 thread_local! {
     static RECENT: RefCell<RefinementShare> = RefCell::default();
-    static EMPTY: Rc<StyleRefinement> = Rc::default();
+    static EMPTY: Cell<Option<Rc<StyleRefinement>>> = const { Cell::new(None) };
+    static SPARE: Cell<Option<Rc<StyleRefinement>>> = const { Cell::new(None) };
 }
 
-/// The empty refinement every new element of this thread starts from. Shared, so a write
-/// copies it; an element whose style is replaced whole (a reused conversion) never allocates.
+/// KaminIDE patch: give back a refinement its owner no longer needs (a style memory dropping a
+/// candidate). If nothing else holds it, its allocation becomes the next empty refinement of
+/// this thread instead of a new one.
+pub fn recycle_style_refinement(mut style: Rc<StyleRefinement>) {
+    if Rc::get_mut(&mut style).is_some() {
+        SPARE.with(|spare| spare.set(Some(style)));
+    }
+}
+
+/// A new empty refinement, in the recycled allocation when there is one.
+fn new_empty() -> Rc<StyleRefinement> {
+    match SPARE.with(Cell::take) {
+        Some(mut spare) => {
+            if let Some(style) = Rc::get_mut(&mut spare) {
+                *style = StyleRefinement::default();
+            }
+            spare
+        }
+        None => Rc::default(),
+    }
+}
+
+/// The empty refinement a new element of this thread starts from: one allocation shared by
+/// the elements that have not written their style. An element whose style is replaced whole
+/// (a reused conversion) never allocates, and the first element to write takes the allocation
+/// over ([`writable`]) when only it shares it, so no element allocates more than it would
+/// with an empty refinement of its own.
 pub(crate) fn empty() -> Rc<StyleRefinement> {
-    EMPTY.with(Rc::clone)
+    EMPTY.with(|empty| {
+        let shared = empty.take().unwrap_or_else(new_empty);
+        empty.set(Some(shared.clone()));
+        shared
+    })
+}
+
+/// `style` for writing: copied if it is shared (copy on write), except for the shared empty
+/// refinement held by this element alone, which the element takes over without a copy.
+pub(crate) fn writable(style: &mut Rc<StyleRefinement>) -> &mut StyleRefinement {
+    if Rc::strong_count(style) == 2 {
+        EMPTY.with(|empty| match empty.take() {
+            Some(shared) if Rc::ptr_eq(&shared, style) => drop(shared),
+            other => empty.set(other),
+        });
+    }
+    Rc::make_mut(style)
+}
+
+/// Drop this thread's share of the empty refinement and its spare allocation: called once a
+/// frame is drawn, so they are freed with the last element of the frame that holds them
+/// instead of outliving the frame.
+pub(crate) fn release_empty() {
+    EMPTY.with(|empty| drop(empty.take()));
+    SPARE.with(|spare| drop(spare.take()));
 }
 
 /// Point `style` at an equal recent refinement of this thread, or make it a candidate.
@@ -260,6 +310,43 @@ mod tests {
         assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
         assert_eq!(*super::empty(), StyleRefinement::default());
         assert_eq!(a.interactivity().base_style.size.width, Some(px(5.).into()));
+    }
+
+    #[test]
+    fn the_only_writer_of_the_empty_style_takes_it_over() {
+        use crate::{InteractiveElement, Styled, div};
+        release_empty();
+        let mut a = div();
+        let taken = Rc::as_ptr(&a.interactivity().base_style);
+        a.style().size.width = Some(px(5.).into());
+        // No copy: the allocation became the element's own.
+        assert_eq!(Rc::as_ptr(&a.interactivity().base_style), taken);
+        assert_eq!(Rc::strong_count(&a.interactivity().base_style), 1);
+        let mut b = div();
+        assert_ne!(Rc::as_ptr(&b.interactivity().base_style), taken);
+        assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
+        // Released at the end of a frame, the empty style lives only in its elements.
+        release_empty();
+        assert_eq!(Rc::strong_count(&b.interactivity().base_style), 1);
+    }
+
+    #[test]
+    fn a_recycled_refinement_nothing_holds_is_the_next_empty_one() {
+        release_empty();
+        let held = sized(3.0);
+        recycle_style_refinement(held.clone());
+        let fresh = empty();
+        assert!(!Rc::ptr_eq(&fresh, &held));
+        release_empty();
+        drop(fresh);
+        let free = sized(4.0);
+        let address = Rc::as_ptr(&free);
+        recycle_style_refinement(free);
+        let reused = empty();
+        assert_eq!(Rc::as_ptr(&reused), address);
+        assert_eq!(*reused, StyleRefinement::default());
+        assert_eq!(*held, *sized(3.0));
+        release_empty();
     }
 
     #[test]

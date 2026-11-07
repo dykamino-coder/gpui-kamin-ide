@@ -763,9 +763,10 @@ impl Interactivity {
         self.listeners.get_or_insert_with(Default::default)
     }
 
-    /// KaminIDE patch: the base style for writing; copies it if it is shared.
+    /// KaminIDE patch: the base style for writing; copies it if it is shared
+    /// (see [`super::refinement_share::writable`]).
     pub fn base_style_mut(&mut self) -> &mut StyleRefinement {
-        Rc::make_mut(&mut self.base_style)
+        super::refinement_share::writable(&mut self.base_style)
     }
 
     /// KaminIDE patch: the rare block, allocated by the first setter.

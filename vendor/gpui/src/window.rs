@@ -3577,7 +3577,10 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
-        self.with_paint_pass(|window| window.draw_frame(cx))
+        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        // KaminIDE patch: the empty base style new elements share must not outlive them.
+        crate::elements::refinement_share::release_empty();
+        drawn
     }
 
     fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {

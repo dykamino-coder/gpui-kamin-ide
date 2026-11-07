@@ -82,8 +82,8 @@ pub(crate) fn styled_div_with_dimensions(
     let auto_height = margin_height::used_style(e, paint);
     let paint = auto_height.as_ref().unwrap_or(paint);
     let dimensions = dimensions.unwrap_or_else(|| BoxDimensions::for_element(e, paint));
-    let mut d =
-        crate::layout::cx::conversions::with(|memo| converted_div(paint, dimensions, vcx, memo));
+    let memo = cx.layout().conversions.active();
+    let mut d = converted_div(paint, dimensions, vcx, memo);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords =
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));

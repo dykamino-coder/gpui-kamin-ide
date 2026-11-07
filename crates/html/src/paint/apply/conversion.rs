@@ -22,30 +22,21 @@ pub(crate) fn converted_div(
     let Some(memo) = memo else {
         return apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
     };
-    let lookup = memo.lookup(c, &dimensions, vcx);
-    let mut d = div();
-    match lookup {
+    match memo.lookup(c, &dimensions, vcx) {
         Lookup::Hit(style) => {
             #[cfg(test)]
             verify(&style, c, dimensions, vcx);
+            let mut d = div();
             d.interactivity().base_style = style;
             child_paint_policy(d, c)
         }
         Lookup::Miss => {
-            if let Some(blank) = memo.blank() {
-                d.interactivity().base_style = blank;
-            }
-            let mut d = apply_for_decorations_with_dimensions(d, c, Some(dimensions), vcx);
+            let mut d = apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
             let style = d.interactivity().base_style.clone();
             memo.record(c, dimensions, vcx, style);
             d
         }
-        Lookup::Pass => {
-            if let Some(blank) = memo.blank() {
-                d.interactivity().base_style = blank;
-            }
-            apply_for_decorations_with_dimensions(d, c, Some(dimensions), vcx)
-        }
+        Lookup::Pass => apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx),
     }
 }
 

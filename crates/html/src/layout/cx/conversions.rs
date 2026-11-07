@@ -1,11 +1,12 @@
 //! Стили элементов GPUI, уже переведённые из стилей коробок в этой сборке документа: вход
 //! (значения коробки, её размеры, контекст значений) → общий `StyleRefinement`.
 //!
-//! Память живёт в потоке, но действует только внутри сборки документа ([`build`]:
-//! `render::render`, `render::render_block`): перевод читает арену `calc()` кадра, шрифты и
-//! семейство документа, которые между сборками меняются, поэтому сборка начинает и кончает
-//! пустой памятью, а коробки вне сборки переводятся без неё. Своего выделения у памяти нет:
-//! ни на сборку, ни на `LayoutCx`.
+//! Память — состояние раскладки документа (`LayoutState`), но действует только внутри его
+//! сборки ([`StyleConversions::build`]: `render::render`, `render::render_block`): перевод
+//! читает арену `calc()` кадра, шрифты и семейство документа, которые между сборками
+//! меняются, поэтому сборка начинает и кончает пустой памятью, а коробки вне сборки
+//! переводятся без неё. Выделений на сборку или на `LayoutCx` у памяти нет, кроме кольца
+//! кандидатов, которое живёт только во время сборки.
 
 use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::BoxStyle;
@@ -13,38 +14,6 @@ use crate::values::ValueCx;
 use gpui::StyleRefinement;
 use std::cell::Cell;
 use std::rc::Rc;
-
-thread_local! {
-    static MEMORY: StyleConversions = const { StyleConversions::new() };
-    /// Document builds in progress on this thread (nested documents build inside).
-    static BUILDS: Cell<u32> = const { Cell::new(0) };
-}
-
-/// A document build in progress: the memory is empty when it starts and when it ends.
-pub(crate) struct Build(());
-
-/// Start a document build; dropping the result ends it. A nested document's build empties the
-/// memory too: entries are keyed by document, so the outer build only loses candidates.
-pub(crate) fn build() -> Build {
-    BUILDS.with(|b| b.set(b.get() + 1));
-    MEMORY.with(StyleConversions::clear);
-    Build(())
-}
-
-impl Drop for Build {
-    fn drop(&mut self) {
-        MEMORY.with(StyleConversions::clear);
-        BUILDS.with(|b| b.set(b.get() - 1));
-    }
-}
-
-/// Run `f` with the memory of the current document build, or with none outside builds.
-pub(crate) fn with<R>(f: impl FnOnce(Option<&StyleConversions>) -> R) -> R {
-    if BUILDS.with(Cell::get) == 0 {
-        return f(None);
-    }
-    MEMORY.with(|memory| f(Some(memory)))
-}
 
 /// Distinct recent inputs kept for reuse. Boxes of a page repeat a few styles, often
 /// interleaved (table cells, list items with nested blocks): as in GPUI's refinement share
@@ -57,33 +26,40 @@ const CANDIDATES: usize = 32;
 /// conversions it saves, and a rare hit among them (p03: 338 hits and 1 047 misses when every
 /// hit restarted lookups) must not restart full lookups. The balance never falls below this
 /// threshold, so a run of hits resumes reuse after a few probes.
-const PAUSE_AT: i32 = -64;
+const PAUSE_AT: i8 = -64;
 
 /// What a hit adds to the balance, and the most the balance keeps: a page of repeated styles
 /// that turns to distinct ones pauses after at most `BALANCE_CAP - PAUSE_AT` misses.
-const HIT_WORTH: i32 = 2;
-const BALANCE_CAP: i32 = 64;
+const HIT_WORTH: i8 = 2;
+const BALANCE_CAP: i8 = 64;
 
 /// While paused, every this many boxes one is still looked up and remembered, so that a
-/// later run of repeated styles resumes reuse.
-const PROBE_EVERY: u32 = 16;
+/// later run of repeated styles resumes reuse. Divides 256: the count wraps.
+const PROBE_EVERY: u8 = 16;
 
 #[derive(Default)]
 pub(crate) struct StyleConversions {
     /// Taken out while read or written: the memory never lends itself across a call.
     recent: Cell<Vec<Conversion>>,
     /// Slot of the next new entry once `recent` is full.
-    next: Cell<usize>,
+    next: Cell<u8>,
     /// Hits and misses so far, weighed by `HIT_WORTH` (see `PAUSE_AT`).
-    balance: Cell<i32>,
+    balance: Cell<i8>,
     /// Boxes passed over since lookups paused.
-    passed: Cell<u32>,
-    /// A refinement dropped from the candidates that nothing else held: the allocation of the
-    /// next conversion, so that a converted style its box then changes (copy on write) does
-    /// not cost an allocation more than converting without the memory.
-    spare: Cell<Option<Rc<StyleRefinement>>>,
+    passed: Cell<u8>,
+    /// Builds of the document in progress (a nested document builds inside its host's).
+    builds: Cell<u8>,
 }
 
+/// A document build in progress: the memory is empty when it starts and when it ends.
+pub(crate) struct Build<'a>(&'a StyleConversions);
+
+impl Drop for Build<'_> {
+    fn drop(&mut self) {
+        self.0.clear();
+        self.0.builds.set(self.0.builds.get().saturating_sub(1));
+    }
+}
 /// What the memory says about a box about to be converted.
 pub(crate) enum Lookup {
     /// An equal box was converted earlier in this build.
@@ -124,32 +100,26 @@ impl Values {
 }
 
 impl StyleConversions {
-    const fn new() -> Self {
-        Self {
-            recent: Cell::new(Vec::new()),
-            next: Cell::new(0),
-            balance: Cell::new(0),
-            passed: Cell::new(0),
-            spare: Cell::new(None),
-        }
+    /// Start a build of the document; dropping the result ends it. A nested build empties the
+    /// memory too: it only loses candidates of the enclosing build.
+    pub(crate) fn build(&self) -> Build<'_> {
+        self.builds.set(self.builds.get().saturating_add(1));
+        self.clear();
+        Build(self)
+    }
+
+    /// The memory while the document is being built, none outside its builds.
+    pub(crate) fn active(&self) -> Option<&Self> {
+        (self.builds.get() > 0).then_some(self)
     }
 
     /// Forget every candidate and free their memory.
     fn clear(&self) {
         drop(self.recent.take());
-        drop(self.spare.take());
         self.next.set(0);
         self.balance.set(0);
         self.passed.set(0);
     }
-
-    /// An empty refinement in a recycled allocation, if one is spare.
-    pub(crate) fn blank(&self) -> Option<Rc<StyleRefinement>> {
-        let mut spare = self.spare.take()?;
-        *Rc::get_mut(&mut spare)? = StyleRefinement::default();
-        Some(spare)
-    }
-
     /// Look a box up unless reuse is paused, keeping the balance that pauses it.
     pub(crate) fn lookup(
         &self,
@@ -158,7 +128,7 @@ impl StyleConversions {
         vcx: ValueCx<'_>,
     ) -> Lookup {
         if self.balance.get() <= PAUSE_AT {
-            self.passed.set(self.passed.get() + 1);
+            self.passed.set(self.passed.get().wrapping_add(1));
             if !self.passed.get().is_multiple_of(PROBE_EVERY) {
                 return Lookup::Pass;
             }
@@ -186,7 +156,7 @@ impl StyleConversions {
     ) -> Option<Rc<StyleRefinement>> {
         let values = Values::of(vcx);
         let recent = self.recent.take();
-        let (len, next) = (recent.len(), self.next.get());
+        let (len, next) = (recent.len(), usize::from(self.next.get()));
         let found = (1..=len)
             .map(|back| &recent[(next + len - back) % len])
             .find(|c| {
@@ -215,17 +185,20 @@ impl StyleConversions {
         if recent.capacity() == 0 {
             recent.reserve_exact(CANDIDATES);
         }
-        let next = self.next.get();
-        if recent.len() < CANDIDATES {
+        let next = usize::from(self.next.get());
+        let next = if recent.len() < CANDIDATES {
             recent.push(entry);
-            self.next.set(recent.len() % CANDIDATES);
+            recent.len() % CANDIDATES
         } else {
-            let mut dropped = std::mem::replace(&mut recent[next], entry).style;
-            if Rc::get_mut(&mut dropped).is_some() {
-                self.spare.set(Some(dropped));
-            }
-            self.next.set((next + 1) % CANDIDATES);
-        }
+            // A dropped style that no box holds any more becomes the allocation of a later
+            // element's style (`gpui::recycle_style_refinement`): a converted style its box
+            // then changes (copy on write) costs no allocation more than converting without
+            // the memory.
+            let dropped = std::mem::replace(&mut recent[next], entry);
+            gpui::recycle_style_refinement(dropped.style);
+            (next + 1) % CANDIDATES
+        };
+        self.next.set(next as u8);
         self.recent.set(recent);
     }
 }
