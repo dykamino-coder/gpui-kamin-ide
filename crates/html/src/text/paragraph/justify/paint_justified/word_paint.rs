@@ -31,10 +31,19 @@ impl Paragraph {
             placed,
         } = context;
         let line_base = self.shared_base(range);
-        let order = prepared::visual_order::VisualOrder::new(
-            self,
-            ltr_place.iter().map(|p| (p.0, p.1, p.2)),
-        );
+        // The visual neighbour index serves only words placed by visual
+        // pieces: a line without reordered pieces never builds it.
+        let order_index = std::cell::OnceCell::new();
+        let order = || {
+            order_index.get_or_init(|| {
+                prepared::visual_order::VisualOrder::new(
+                    self,
+                    ltr_place.iter().map(|p| (p.0, p.1, p.2)),
+                )
+            })
+        };
+        // One run buffer for the line, refilled per word.
+        let mut runs = Vec::new();
         let mut fixed = vec![None; words.len()];
         for &(i, x) in logical_run {
             fixed[i].get_or_insert(x);
@@ -49,11 +58,11 @@ impl Paragraph {
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.
-            let mut runs = match place_index.at(word.range.start) {
-                Some(k) => self.visual_band_runs(ltr_place, &order, k, &word.range),
-                None if self.wrap.rtl => self.mirrored_band_runs(&word.range),
-                None => self.own_banded_runs(&word.range),
-            };
+            match place_index.at(word.range.start) {
+                Some(k) => self.visual_band_runs(ltr_place, order(), k, &word.range, &mut runs),
+                None if self.wrap.rtl => self.mirrored_band_runs(&word.range, &mut runs),
+                None => runs = self.own_banded_runs(&word.range),
+            }
             let decor = self.decor_on();
             if decor {
                 for r in runs.iter_mut() {
@@ -73,7 +82,6 @@ impl Paragraph {
             let shaped = if visual.map_or(self.wrap.rtl, |v| v.1) {
                 // A right-to-left level piece: glyphs in visual order (UAX #9
                 // L2/L4), shaped once under an RLO like `shape`.
-                let mut runs = runs;
                 let body = controlled_shape::text(&slice, &mut runs, true);
                 window
                     .text_system()

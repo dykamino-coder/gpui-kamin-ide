@@ -14,9 +14,20 @@ impl Paragraph {
     pub(in crate::text::paragraph) fn own_runs(&self, range: &Range<usize>) -> Vec<TextRun> {
         // Число прогонов известно заранее: один точный блок вместо цепочки
         // удвоений (у длинного абзаца это тысячи прогонов).
-        let indices = self.run_indices(range);
-        let mut out = Vec::with_capacity(indices.len());
-        out.extend(indices.filter_map(|i| {
+        let mut out = Vec::with_capacity(self.run_indices(range).len());
+        self.own_runs_into(range, &mut out);
+        out
+    }
+
+    /// `own_runs` into a reused buffer (cleared first): word-by-word paint
+    /// slices runs once per word and keeps one buffer for the whole line.
+    pub(in crate::text::paragraph) fn own_runs_into(
+        &self,
+        range: &Range<usize>,
+        out: &mut Vec<TextRun>,
+    ) {
+        out.clear();
+        out.extend(self.run_indices(range).filter_map(|i| {
             let end = self.prepared().run_ends[i];
             let start = end - self.runs[i].len;
             let len = end.min(range.end).saturating_sub(start.max(range.start));
@@ -26,7 +37,6 @@ impl Paragraph {
                 run
             })
         }));
-        out
     }
 
     pub(in crate::text::paragraph) fn own_banded_runs(&self, range: &Range<usize>) -> Vec<TextRun> {
@@ -83,6 +93,10 @@ mod tests {
                         .collect::<Vec<_>>(),
                     expected
                 );
+                // The reused buffer starts dirty: filling it replaces it.
+                let mut reused = vec![TextRun::default(); 3];
+                p.own_runs_into(&(start..end), &mut reused);
+                assert_eq!(reused, p.own_runs(&(start..end)));
                 assert_eq!(
                     p.own_banded_runs(&(start..end)),
                     slice_runs_banded(&p.runs, &(start..end))
