@@ -18,6 +18,7 @@ pub(super) use flush::flush_inline;
 use crate::dom::Node;
 use crate::layout::box_kind::{breaks_inline, contains_block, out_of_flow, real_inline};
 use crate::layout::table::anon::anon_element;
+use std::borrow::Cow;
 
 /// Разорвать строчные, внутри которых лежит блок (CSS 2.1 §9.2.1.1).
 ///
@@ -25,13 +26,13 @@ use crate::layout::table::anon::anon_element;
 /// блок | блок | анонимный блок»: строчное содержимое до и после блока
 /// остаётся в своих анонимных коробках, сам блок встаёт между ними. Подряд
 /// идущие блоки в отдельные анонимные коробки не заворачиваются.
-pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Cow<'_, [Node]> {
     split_block_in_inline_dir(nodes, false)
 }
 
 /// [`split_block_in_inline`] with the parent's `direction` known: an inline
 /// that does not set its own inherits it, and its start edge follows it.
-pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec<Node> {
+pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Cow<'_, [Node]> {
     let need = nodes.iter().any(|n| match n {
         Node::Element(e) => {
             real_inline(e) && !out_of_flow(&e.style.used()) && contains_block(&e.children)
@@ -39,7 +40,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         Node::Text(_) => false,
     });
     if !need {
-        return nodes.to_vec();
+        return Cow::Borrowed(nodes);
     }
     let mut out: Vec<Node> = vec![];
     for node in nodes {
@@ -78,7 +79,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         // to this ancestor's fragments on either side of the actual block.
         let kids = split_block_in_inline_dir(&e.children, own_rtl);
         let mut first = true;
-        for child in &kids {
+        for child in kids.iter() {
             // CSS 2.1 section 9.2.1.1 breaks inline ancestors around the
             // actual block, not around each descendant's continuation.
             if let Node::Element(anon) = child
@@ -231,5 +232,5 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
     // и без склейки собирает такой прогон одним абзацем (`block-in-inline-*`,
     // `inline-box-001`, `abspos-029`, `text-indent-014`). Разница эталонов
     // лежит не в числе анонимных коробок.
-    out
+    Cow::Owned(out)
 }

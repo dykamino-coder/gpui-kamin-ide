@@ -25,31 +25,36 @@ pub fn bidi_letter_spans(
     block: Pixels,
     existing: &[(Range<usize>, Pixels)],
 ) -> Vec<(Range<usize>, Pixels)> {
-    let mut text = String::new();
-    let mut piece_of: Vec<(Range<usize>, usize)> = Vec::new();
-    for (k, p) in pieces.iter().enumerate() {
-        if let Piece::Text { text: t, .. } = p
-            && !t.is_empty()
-        {
-            piece_of.push((text.len()..text.len() + t.len(), k));
-            text.push_str(t);
-        }
-    }
-    let bidi = text.chars().any(|c| {
-        matches!(
-            unicode_bidi::bidi_class(c),
-            BidiClass::R
-                | BidiClass::AL
-                | BidiClass::AN
-                | BidiClass::RLE
-                | BidiClass::RLO
-                | BidiClass::RLI
-                | BidiClass::LRO
-                | BidiClass::LRE
-        )
+    let texts = || {
+        pieces.iter().enumerate().filter_map(|(k, p)| match p {
+            Piece::Text { text, .. } if !text.is_empty() => Some((k, text)),
+            _ => None,
+        })
+    };
+    // Без знаков справа налево переупорядочивания нет: абзац не склеивается.
+    let bidi = texts().any(|(_, t)| {
+        t.chars().any(|c| {
+            matches!(
+                unicode_bidi::bidi_class(c),
+                BidiClass::R
+                    | BidiClass::AL
+                    | BidiClass::AN
+                    | BidiClass::RLE
+                    | BidiClass::RLO
+                    | BidiClass::RLI
+                    | BidiClass::LRO
+                    | BidiClass::LRE
+            )
+        })
     });
     if !bidi {
         return Vec::new();
+    }
+    let mut text = String::with_capacity(texts().map(|(_, t)| t.len()).sum());
+    let mut piece_of: Vec<(Range<usize>, usize)> = Vec::with_capacity(texts().count());
+    for (k, t) in texts() {
+        piece_of.push((text.len()..text.len() + t.len(), k));
+        text.push_str(t);
     }
     let piece = |at: usize| {
         piece_of
@@ -68,30 +73,39 @@ pub fn bidi_letter_spans(
     let mut out = Vec::new();
     for para in &info.paragraphs {
         let (levels, runs) = info.visual_runs(para, para.range.clone());
-        // Visual sequence of tracked units (zero-width controls and breaks
-        // take no tracking and are skipped, §8.2).
-        let mut visual: Vec<usize> = Vec::new();
-        for run in runs {
-            let mut chars: Vec<usize> = text[run.clone()]
+        // Tracked units (zero-width controls and breaks take no tracking and
+        // are skipped, §8.2) in logical order: ascending byte offsets.
+        let units = |range: Range<usize>| {
+            text[range.clone()]
                 .char_indices()
                 .filter(|(_, c)| !super::spacing::zero_width_format(*c) && *c != '\n')
-                .map(|(i, _)| run.start + i)
-                .collect();
+                .map(move |(i, _)| range.start + i)
+        };
+        let logical: Vec<usize> = units(para.range.clone()).collect();
+        // Visual sequence of the same units.
+        let mut visual: Vec<usize> = Vec::with_capacity(logical.len());
+        for run in runs {
+            let start = visual.len();
+            visual.extend(units(run.clone()));
             if levels[run.start].is_rtl() {
-                chars.reverse();
+                visual[start..].reverse();
             }
-            visual.extend(chars);
         }
-        let mut logical = visual.clone();
-        logical.sort_unstable();
-        let order: std::collections::HashMap<usize, usize> =
-            visual.iter().enumerate().map(|(p, at)| (*at, p)).collect();
-        let pos = |at: usize| order.get(&at).copied();
-        for pair in logical.windows(2) {
-            let (i, j) = (pair[0], pair[1]);
-            let (Some(pi), Some(pj)) = (pos(i), pos(j)) else {
-                continue;
-            };
+        debug_assert_eq!(
+            visual.len(),
+            logical.len(),
+            "visual runs partition the line"
+        );
+        // Visual position of each logical unit (offsets are unique and sorted).
+        let mut rank = vec![0usize; logical.len()];
+        for (p, at) in visual.iter().enumerate() {
+            if let Ok(l) = logical.binary_search(at) {
+                rank[l] = p;
+            }
+        }
+        for (l, pair) in logical.windows(2).enumerate() {
+            let i = pair[0];
+            let (pi, pj) = (rank[l], rank[l + 1]);
             let rtl_i = levels[i].is_rtl();
             let adjacent = if rtl_i { pj + 1 == pi } else { pi + 1 == pj };
             if adjacent {
@@ -158,5 +172,69 @@ mod tests {
         assert!(bidi_letter_spans(&pieces, false, px(0.), &[(0..4, px(5.))]).is_empty());
         let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
         assert!(bidi_letter_spans(&pieces, false, px(5.), &[]).is_empty());
+    }
+
+    /// Visual neighbours by the definition: units sorted by their visual
+    /// position, read through a map from offset to position.
+    fn reference(text: &str, rtl: bool) -> Vec<(usize, Option<usize>)> {
+        let info = BidiInfo::new(text, Some(if rtl { Level::rtl() } else { Level::ltr() }));
+        let mut out = Vec::new();
+        for para in &info.paragraphs {
+            let (levels, runs) = info.visual_runs(para, para.range.clone());
+            let mut visual = Vec::new();
+            for run in runs {
+                let mut chars: Vec<usize> = text[run.clone()]
+                    .char_indices()
+                    .map(|(i, _)| run.start + i)
+                    .collect();
+                if levels[run.start].is_rtl() {
+                    chars.reverse();
+                }
+                visual.extend(chars);
+            }
+            let order: std::collections::HashMap<usize, usize> =
+                visual.iter().enumerate().map(|(p, at)| (*at, p)).collect();
+            let mut logical = visual.clone();
+            logical.sort_unstable();
+            for at in logical {
+                let p = order[&at];
+                let next = if levels[at].is_rtl() {
+                    p.checked_sub(1)
+                } else {
+                    Some(p + 1)
+                };
+                out.push((at, next.and_then(|n| visual.get(n).copied())));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn overrides_follow_the_visual_order_of_mixed_runs() {
+        // One piece per letter: every non-adjacent pair is a piece boundary,
+        // so each reordered letter must take the block gap exactly where the
+        // reference visual order says its trailing neighbour is not its successor.
+        for (text, rtl) in [
+            ("ab\u{5d0}\u{5d1}cd", false),
+            ("\u{5d0}a1\u{5d1}b", true),
+            ("a\u{627}\u{644}2b", false),
+        ] {
+            let pieces: Vec<Piece> = text
+                .chars()
+                .map(|c| super::tests::text(&c.to_string()))
+                .collect();
+            let got = bidi_letter_spans(&pieces, rtl, px(0.), &[(0..text.len(), px(3.))]);
+            let want: Vec<(Range<usize>, Pixels)> = reference(text, rtl)
+                .windows(2)
+                .filter(|w| w[0].1 != Some(w[1].0))
+                .map(|w| {
+                    (
+                        w[0].0..w[0].0 + text[w[0].0..].chars().next().unwrap().len_utf8(),
+                        px(0.),
+                    )
+                })
+                .collect();
+            assert_eq!(got, want, "{text:?} rtl={rtl}");
+        }
     }
 }

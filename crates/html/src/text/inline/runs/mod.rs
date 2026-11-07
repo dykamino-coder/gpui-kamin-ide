@@ -2,6 +2,7 @@
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 mod atom_glue;
+mod capacity;
 mod wrapped_row;
 use crate::text::inline::runs::atom_glue::glue_atoms;
 pub use crate::text::inline::runs::wrapped_row::as_wrapped_row;
@@ -94,8 +95,8 @@ pub fn text_and_runs(
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<(String, Vec<TextRun>)> {
-    let mut text = String::new();
-    let mut runs: Vec<TextRun> = vec![];
+    let (bytes, count) = capacity::sizes(pieces)?;
+    let (mut text, mut runs) = (String::with_capacity(bytes), Vec::with_capacity(count));
     for p in pieces {
         match p {
             Piece::Text { text: t, style } => {
@@ -114,8 +115,7 @@ pub fn text_and_runs(
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
-            Piece::Overlay(..) => {}
-            Piece::Atom(_) => return None,
+            Piece::Overlay(..) | Piece::Atom(_) => {}
         }
     }
     // OOF-only paragraphs retain a static point without creating a line.

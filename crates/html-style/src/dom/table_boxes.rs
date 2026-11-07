@@ -3,6 +3,7 @@
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};
+use std::borrow::Cow;
 
 /// Табличная роль бесхозного узла: `Some(true)` — структурная (ряд, группа
 /// рядов, колонка, группа колонок), `Some(false)` — ячейка, `None` — обычная
@@ -51,7 +52,8 @@ fn anon_role(n: &Node) -> Option<bool> {
 /// Общая таблица сохраняет последовательные ряды в одной табличной сетке.
 /// Починку содержимого (ряд вокруг ячеек, ячейка вокруг прочего) делает
 /// `fixup_table_children` внутри собранной таблицы.
-pub fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
+/// Without table-role siblings the list is returned as is, not copied.
+pub fn wrap_anon_tables(nodes: &[Node]) -> Cow<'_, [Node]> {
     wrap_anon_tables_as(nodes, Display::Table)
 }
 
@@ -69,14 +71,16 @@ pub fn inline_anon_tables(
             && e.inline
             && e.children.iter().any(|c| anon_role(c).is_some())
         {
-            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable).into();
+            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable)
+                .into_owned()
+                .into();
         }
     })
 }
 
-fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
+fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Cow<'_, [Node]> {
     if !nodes.iter().any(|n| anon_role(n).is_some()) {
-        return nodes.to_vec();
+        return Cow::Borrowed(nodes);
     }
     let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
         if run.is_empty() {
@@ -115,7 +119,7 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     }
     flush(&mut run, &mut out);
     out.append(&mut gap);
-    out
+    Cow::Owned(out)
 }
 
 pub fn anon_element(tag: &str, children: Vec<Node>) -> Element {

@@ -22,7 +22,7 @@ fn hoisted_absolute_box_keeps_its_element_and_css_parent_values() {
         crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some("abs")).unwrap();
     let block_box = box_style(&BoxStyle::default(), &block.style, vcx);
     let nodes = hoist_inset_abs(&block.children, &block_box, vcx);
-    let [Node::Element(span), Node::Element(moved)] = nodes.as_slice() else {
+    let [Node::Element(span), Node::Element(moved)] = &nodes[..] else {
         panic!("the absolute box follows its inline: {nodes:?}");
     };
     assert_eq!(span.tag, "span");
