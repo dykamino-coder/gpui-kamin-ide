@@ -12,18 +12,21 @@ impl Paragraph {
     }
 
     pub(in crate::text::paragraph) fn own_runs(&self, range: &Range<usize>) -> Vec<TextRun> {
-        self.run_indices(range)
-            .filter_map(|i| {
-                let end = self.prepared().run_ends[i];
-                let start = end - self.runs[i].len;
-                let len = end.min(range.end).saturating_sub(start.max(range.start));
-                (len > 0).then(|| {
-                    let mut run = self.runs[i].clone();
-                    run.len = len;
-                    run
-                })
+        // Число прогонов известно заранее: один точный блок вместо цепочки
+        // удвоений (у длинного абзаца это тысячи прогонов).
+        let indices = self.run_indices(range);
+        let mut out = Vec::with_capacity(indices.len());
+        out.extend(indices.filter_map(|i| {
+            let end = self.prepared().run_ends[i];
+            let start = end - self.runs[i].len;
+            let len = end.min(range.end).saturating_sub(start.max(range.start));
+            (len > 0).then(|| {
+                let mut run = self.runs[i].clone();
+                run.len = len;
+                run
             })
-            .collect()
+        }));
+        out
     }
 
     pub(in crate::text::paragraph) fn own_banded_runs(&self, range: &Range<usize>) -> Vec<TextRun> {

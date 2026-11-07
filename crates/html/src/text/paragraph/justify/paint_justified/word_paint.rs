@@ -42,7 +42,10 @@ impl Paragraph {
         let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
         let mut boxes: Vec<(Pixels, Pixels, Pixels)> = Vec::with_capacity(words.len());
         for (wi, word) in words.iter().enumerate() {
-            let slice: SharedString = self.text[word.range.clone()].to_string().into();
+            // Один блок под текст слова: `Arc<str>` прямо из среза, без
+            // промежуточной `String`, которую тут же пришлось бы копировать.
+            let slice: SharedString =
+                std::sync::Arc::<str>::from(&self.text[word.range.clone()]).into();
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.

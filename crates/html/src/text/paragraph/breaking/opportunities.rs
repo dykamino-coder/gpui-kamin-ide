@@ -40,6 +40,48 @@ impl Iterator for Stops<'_> {
 
 impl ExactSizeIterator for Stops<'_> {}
 
+/// Break opportunities of one part of a paragraph, read by index: a slice of
+/// the kept packed list plus an optional closing check, or a list found for
+/// this call only (text too long to pack).
+pub(crate) enum PartStops<'a> {
+    Kept(&'a [u32], Option<Stop>),
+    Found(Vec<Stop>),
+}
+
+impl PartStops<'_> {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Kept(kept, tail) => kept.len() + usize::from(tail.is_some()),
+            Self::Found(found) => found.len(),
+        }
+    }
+
+    pub(crate) fn get(&self, i: usize) -> Option<Stop> {
+        match self {
+            Self::Kept(kept, tail) => kept
+                .get(i)
+                .map(|&s| unpack(s))
+                .or_else(|| (i == kept.len()).then_some(*tail).flatten()),
+            Self::Found(found) => found.get(i).copied(),
+        }
+    }
+
+    pub(crate) fn last(&self) -> Option<Stop> {
+        self.len().checked_sub(1).and_then(|i| self.get(i))
+    }
+
+    /// Appends the closing check after every kept opportunity.
+    pub(crate) fn push(&mut self, stop: Stop) {
+        match self {
+            Self::Kept(_, tail) => {
+                debug_assert!(tail.is_none());
+                *tail = Some(stop);
+            }
+            Self::Found(found) => found.push(stop),
+        }
+    }
+}
+
 impl Paragraph {
     pub(crate) fn opportunities(&self) -> Stops<'_> {
         self.opportunities_with_fallback(false)
@@ -65,50 +107,49 @@ impl Paragraph {
             return None;
         }
         Some(self.prepared().stops.get_or_init(|| {
-            let found = self.opportunities_uncached(false);
-            let mut kept = Vec::with_capacity(found.len());
-            kept.extend(
-                found
-                    .iter()
-                    .map(|s| (s.at as u32) << 1 | u32::from(s.mandatory)),
-            );
+            // Список собирается сразу упакованным: четыре байта на точку
+            // вместо шестнадцати и без второй копии под хранение.
+            let mut kept: Vec<u32> = Vec::new();
+            self.opportunities_into(false, &mut kept);
             kept.into_boxed_slice()
         }))
     }
 
     /// Opportunities after `part.start` up to and including `part.end`, in
-    /// text order: a binary search of the kept list, one exact allocation.
-    pub(crate) fn opportunities_in(&self, part: &std::ops::Range<usize>) -> Vec<Stop> {
+    /// text order: a binary search of the kept list, borrowed without a copy.
+    pub(crate) fn opportunities_in(&self, part: &std::ops::Range<usize>) -> PartStops<'_> {
         let Some(kept) = self.kept_stops() else {
-            return self
-                .opportunities_uncached(false)
-                .into_iter()
-                .filter(|s| s.at > part.start && s.at <= part.end)
-                .collect();
+            return PartStops::Found(
+                self.opportunities_uncached(false)
+                    .into_iter()
+                    .filter(|s| s.at > part.start && s.at <= part.end)
+                    .collect(),
+            );
         };
         let after = |at: usize| kept.partition_point(|&s| (s >> 1) as usize <= at);
-        let (lo, hi) = (after(part.start), after(part.end));
-        // One more for the end-of-part check the line loop appends.
-        let mut out = Vec::with_capacity(hi - lo + 1);
-        out.extend(kept[lo..hi].iter().map(|&s| unpack(s)));
-        out
+        PartStops::Kept(&kept[after(part.start)..after(part.end)], None)
     }
     fn opportunities_uncached(&self, hyphenate: bool) -> Vec<Stop> {
         let mut out: Vec<Stop> = Vec::new();
+        self.opportunities_into(hyphenate, &mut out);
+        out
+    }
+
+    fn opportunities_into(&self, hyphenate: bool, out: &mut impl StopList) {
         // Обязательные разрывы есть всегда, даже при `nowrap`.
         for (i, ch) in self.text.char_indices() {
             if ch == '\n' {
-                out.push(Stop {
+                out.push_stop(Stop {
                     at: i + 1,
                     mandatory: true,
                 });
             }
         }
-        self.soft_opportunities(&mut out);
+        self.soft_opportunities(out);
         // CSS Text 4: auto-phrase suppresses hyphenation for normal layout
         // and intrinsic sizing, but retains it as an overflow fallback.
         if !hyphenate {
-            out.retain(|s| {
+            out.retain_stops(|s| {
                 s.mandatory
                     || !self.wrap_at(s.at.saturating_sub(1)).auto_phrase
                     || !self.text[..s.at].ends_with(SOFT_HYPHEN)
@@ -123,7 +164,7 @@ impl Paragraph {
         // Пока смотрели один знак слева, `<span style="white-space:pre">口</span>口`
         // не рвался на границе куска, хотя рвать там велит div-родитель
         // (`line-breaking-ic-001`).
-        out.retain(|s| s.mandatory || !self.nowrap_between(s.at));
+        out.retain_stops(|s| s.mandatory || !self.nowrap_between(s.at));
         // Внутри грозди знаков рвать нельзя НИКОГДА: составной знак (флаг,
         // смайлик с модификатором) — одна буква, и переносчик UAX-14 о его
         // устройстве не знает (`line-breaking-014`: радужный флаг рассыпался
@@ -134,7 +175,7 @@ impl Paragraph {
         // `line-break: anywhere` рвёт между ЛЮБЫМИ знаками, включая склеенные
         // соединителем нулевой ширины: класс ZWJ он тоже перекрывает
         // (`line-break-anywhere-overrides-uax-behavior-015`).
-        out.retain(|s| {
+        out.retain_stops(|s| {
             s.mandatory || cluster_edge_at(&self.text, s.at, self.wrap_at(s.at).anywhere)
         });
         // Знак перед числом держит следующий за собой: `$`, `£`, `\`. Таблица
@@ -151,7 +192,7 @@ impl Paragraph {
         // а не перебором всех атомов на каждую точку.
         let atoms = &self.prepared().atoms;
         let atom_at = |at: usize| atoms.first(at).is_some();
-        out.retain(|s| {
+        out.retain_stops(|s| {
             let w = self.wrap_at(s.at);
             s.mandatory
                 || w.anywhere
@@ -162,9 +203,43 @@ impl Paragraph {
                     !no_break_after(c) || (w.loose >= 2 && w.cjk_lang && wide_prefix(c))
                 })
         });
-        out.sort_by_key(|s| (s.at, !s.mandatory));
-        out.dedup_by_key(|s| s.at);
-        out
+        out.finish();
+    }
+}
+
+/// A list of break opportunities under construction: plain `Stop`s or the
+/// packed form the preparation keeps (`offset << 1 | mandatory`).
+pub(crate) trait StopList {
+    fn push_stop(&mut self, stop: Stop);
+    fn retain_stops(&mut self, keep: impl FnMut(Stop) -> bool);
+    /// Text order; at one offset the mandatory stop wins.
+    fn finish(&mut self);
+}
+
+impl StopList for Vec<Stop> {
+    fn push_stop(&mut self, stop: Stop) {
+        self.push(stop);
+    }
+    fn retain_stops(&mut self, mut keep: impl FnMut(Stop) -> bool) {
+        self.retain(|s| keep(*s));
+    }
+    fn finish(&mut self) {
+        self.sort_by_key(|s| (s.at, !s.mandatory));
+        self.dedup_by_key(|s| s.at);
+    }
+}
+
+impl StopList for Vec<u32> {
+    fn push_stop(&mut self, stop: Stop) {
+        self.push((stop.at as u32) << 1 | u32::from(stop.mandatory));
+    }
+    fn retain_stops(&mut self, mut keep: impl FnMut(Stop) -> bool) {
+        self.retain(|&s| keep(unpack(s)));
+    }
+    fn finish(&mut self) {
+        // `s ^ 1` orders by offset, the mandatory stop (low bit 1) first.
+        self.sort_unstable_by_key(|&s| s ^ 1);
+        self.dedup_by_key(|s| *s >> 1);
     }
 }
 
@@ -231,9 +306,9 @@ mod tests {
                 .copied()
                 .filter(|&(s, _)| s > part.start && s <= part.end)
                 .collect();
-            let got: Vec<_> = p
-                .opportunities_in(&part)
-                .iter()
+            let stops = p.opportunities_in(&part);
+            let got: Vec<_> = (0..stops.len())
+                .filter_map(|i| stops.get(i))
                 .map(|s| (s.at, s.mandatory))
                 .collect();
             assert_eq!(got, expected, "{part:?}");

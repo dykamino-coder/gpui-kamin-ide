@@ -9,7 +9,10 @@ use crate::tolerance::COORD_EPS;
 use gpui::px;
 
 impl Paragraph {
-    pub(crate) fn part_opportunities(&self, part: &std::ops::Range<usize>) -> Vec<Stop> {
+    pub(crate) fn part_opportunities(
+        &self,
+        part: &std::ops::Range<usize>,
+    ) -> crate::text::paragraph::breaking::opportunities::PartStops<'_> {
         let mut opportunities = self.opportunities_in(part);
         // Конец текста — тоже точка проверки: без него хвост последней строки
         // никто не мерил и она оставалась во всю длину, сколько бы ни
