@@ -21,6 +21,7 @@ mod layout_lines;
 mod opportunities;
 mod soft_opportunities;
 mod split_lines;
+mod uax_stream;
 mod unicode_breaks;
 mod wrap_policy;
 mod wrap_spans;
