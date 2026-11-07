@@ -73,7 +73,8 @@ impl Region {
 }
 
 impl DirectXRenderer {
-    pub(super) fn copy_group_backdrop(&mut self, s: &PaintSurface) -> Result<[f32; 4]> {
+    /// Frame rectangle a group composite can write (and whose backdrop it reads).
+    pub(super) fn composite_region(&self, s: &PaintSurface) -> Region {
         let target = Region::full(self.width, self.height);
         let clipped = s.bounds.intersect(&s.content_mask.bounds);
         let region = Region::clipped(clipped, 0.0, self.width, self.height);
@@ -85,12 +86,23 @@ impl DirectXRenderer {
         let bottom = (region.y + region.height)
             .min(target.y + target.height)
             .max(y + 1);
-        let region = Region {
+        Region {
             x,
             y,
             width: right - x,
             height: bottom - y,
-        };
+        }
+    }
+
+    pub(super) fn copy_group_backdrop(&mut self, s: &PaintSurface) -> Result<[f32; 4]> {
+        let target = Region::full(self.width, self.height);
+        let region = self.composite_region(s);
+        let (x, y, right, bottom) = (
+            region.x,
+            region.y,
+            region.x + region.width,
+            region.y + region.height,
+        );
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         if self
@@ -134,27 +146,33 @@ impl DirectXRenderer {
                 .group_regions
                 .push(regions[usize::from(group.blur_radius > 0.0)]);
         }
-        for i in 0..self.blur.group_regions.len() {
-            let r = self.blur.group_regions[i];
+        // KaminIDE patch: the retained images share atlas pages (`groups`).
+        let sizes: Vec<(u32, u32)> = self
+            .blur
+            .group_regions
+            .iter()
+            .map(|r| (r.width, r.height))
+            .collect();
+        let (places, pages) = group_atlas::pack(&sizes);
+        self.blur.group_place = places;
+        for (k, &need) in pages.iter().enumerate() {
             if self
                 .blur
                 .groups
-                .get(i)
-                .is_some_and(|t| t.width == r.width && t.height == r.height)
+                .get(k)
+                .is_some_and(|t| group_atlas::page_fits((t.width, t.height), need))
             {
                 continue;
             }
-            let texture = self.blur.pool.take(&device, r.width, r.height)?;
-            if i < self.blur.groups.len() {
-                let old = std::mem::replace(&mut self.blur.groups[i], texture);
-                self.blur.pool.put(old);
+            let (w, h) = group_atlas::page_size(need);
+            let page = create_blur_texture(&device, w, h, true)?;
+            if k < self.blur.groups.len() {
+                self.blur.groups[k] = page;
             } else {
-                self.blur.groups.push(texture);
+                self.blur.groups.push(page);
             }
         }
-        while self.blur.groups.len() > self.blur.group_regions.len() {
-            self.blur.pool.put(self.blur.groups.pop().unwrap());
-        }
+        self.blur.groups.truncate(pages.len());
         Ok(())
     }
 }
