@@ -5,11 +5,15 @@
 //! сборки ([`StyleConversions::build`]: `render::render`, `render::render_block`): перевод
 //! читает арену `calc()` кадра, шрифты и семейство документа, которые между сборками
 //! меняются, поэтому сборка начинает и кончает пустой памятью, а коробки вне сборки
-//! переводятся без неё. Выделений на сборку или на `LayoutCx` у памяти нет, кроме кольца
-//! кандидатов, которое живёт только во время сборки.
+//! переводятся без неё. Пока в сборке не повторился вычисленный стиль, память помнит
+//! только общие вычисленные стили (`Rc<Computed>` кэша общих стилей каскада) двух последних
+//! коробок — на месте пустого кольца, без выделений и без лишних байтов — и не держит их
+//! переводов. Кольцо кандидатов выделяется при первом повторе и живёт до конца сборки;
+//! сборка без повторов стоит столько же, сколько без памяти (Servo, Blink: ключ — общий
+//! вычисленный стиль из кэша общих стилей).
 
 use crate::layout::block::sizing::BoxDimensions;
-use crate::style::computed::BoxStyle;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::values::ValueCx;
 use gpui::StyleRefinement;
 use std::cell::Cell;
@@ -37,11 +41,32 @@ const BALANCE_CAP: i8 = 64;
 /// later run of repeated styles resumes reuse. Divides 256: the count wraps.
 const PROBE_EVERY: u8 = 16;
 
+/// Computed styles of the latest boxes remembered before any repeats: as many as fit in the
+/// place of the unallocated candidates (`Candidates` is no larger than their `Vec`).
+const SEEN: usize = 2;
+
+/// The memory of a build: the computed styles of the latest boxes until one repeats, then
+/// the converted candidates.
+enum Candidates {
+    /// No computed style of the build has repeated yet. They are held, so that another
+    /// style cannot take the address of a remembered one while it is remembered; their boxes'
+    /// element styles are not, so a box changing its own element style copies nothing.
+    Seen([Option<Rc<Computed>>; SEEN]),
+    /// Distinct recent inputs with their conversions.
+    Kept(Vec<Conversion>),
+}
+
+impl Default for Candidates {
+    fn default() -> Self {
+        Self::Seen([const { None }; SEEN])
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct StyleConversions {
     /// Taken out while read or written: the memory never lends itself across a call.
-    recent: Cell<Vec<Conversion>>,
-    /// Slot of the next new entry once `recent` is full.
+    recent: Cell<Candidates>,
+    /// Slot of the next seen style, then of the next new entry once the candidates are full.
     next: Cell<u8>,
     /// Hits and misses so far, weighed by `HIT_WORTH` (see `PAUSE_AT`).
     balance: Cell<i8>,
@@ -133,18 +158,33 @@ impl StyleConversions {
                 return Lookup::Pass;
             }
         }
-        match self.find(input, dimensions, vcx) {
-            Some(style) => {
-                self.balance
-                    .set((self.balance.get() + HIT_WORTH).min(BALANCE_CAP));
-                self.passed.set(0);
-                Lookup::Hit(style)
-            }
-            None => {
-                self.balance.set((self.balance.get() - 1).max(PAUSE_AT));
-                Lookup::Miss
-            }
+        if let Some(style) = self.find(input, dimensions, vcx) {
+            self.balance
+                .set((self.balance.get() + HIT_WORTH).min(BALANCE_CAP));
+            self.passed.set(0);
+            return Lookup::Hit(style);
         }
+        self.balance.set((self.balance.get() - 1).max(PAUSE_AT));
+        let mut recent = self.recent.take();
+        let lookup = match &mut recent {
+            Candidates::Kept(_) => Lookup::Miss,
+            Candidates::Seen(seen) => {
+                let style = input.style_rc();
+                if seen.iter().flatten().any(|s| Rc::ptr_eq(s, style)) {
+                    // A repeat: keep this conversion (`record` allocates the candidates).
+                    *seen = [const { None }; SEEN];
+                    self.next.set(0);
+                    Lookup::Miss
+                } else {
+                    let slot = usize::from(self.next.get());
+                    seen[slot] = Some(style.clone());
+                    self.next.set(((slot + 1) % SEEN) as u8);
+                    Lookup::Pass
+                }
+            }
+        };
+        self.recent.set(recent);
+        lookup
     }
 
     /// The element style converted earlier in this build from an equal input.
@@ -155,7 +195,11 @@ impl StyleConversions {
         vcx: ValueCx<'_>,
     ) -> Option<Rc<StyleRefinement>> {
         let values = Values::of(vcx);
-        let recent = self.recent.take();
+        let candidates = self.recent.take();
+        let Candidates::Kept(recent) = &candidates else {
+            self.recent.set(candidates);
+            return None;
+        };
         let (len, next) = (recent.len(), usize::from(self.next.get()));
         let found = (1..=len)
             .map(|back| &recent[(next + len - back) % len])
@@ -163,7 +207,7 @@ impl StyleConversions {
                 c.values == values && c.dimensions == *dimensions && c.input.same_box_values(input)
             })
             .map(|c| c.style.clone());
-        self.recent.set(recent);
+        self.recent.set(candidates);
         found
     }
 
@@ -181,10 +225,13 @@ impl StyleConversions {
             values: Values::of(vcx),
             style,
         };
-        let mut recent = self.recent.take();
-        if recent.capacity() == 0 {
-            recent.reserve_exact(CANDIDATES);
-        }
+        let mut recent = match self.recent.take() {
+            Candidates::Kept(recent) => recent,
+            Candidates::Seen(_) => {
+                self.next.set(0);
+                Vec::with_capacity(CANDIDATES)
+            }
+        };
         let next = usize::from(self.next.get());
         let next = if recent.len() < CANDIDATES {
             recent.push(entry);
@@ -199,7 +246,7 @@ impl StyleConversions {
             (next + 1) % CANDIDATES
         };
         self.next.set(next as u8);
-        self.recent.set(recent);
+        self.recent.set(Candidates::Kept(recent));
     }
 }
 
