@@ -131,6 +131,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             )?;
             startup.mark("window_surface_pipeline");
             window.update(cx, |_, window, _| park(window))??;
+            startup.size_changed();
             startup.mark("offscreen_placement");
             Ok((window, fonts))
         };
