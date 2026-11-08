@@ -57,8 +57,19 @@ pub struct LayoutCx {
 
 impl Clone for LayoutCx {
     fn clone(&self) -> Self {
+        self.with_doc(self.values.doc.clone())
+    }
+}
+
+impl LayoutCx {
+    /// A copy that builds into `doc`: the replaced document is not made or shared.
+    pub(crate) fn with_doc(&self, doc: BuildDoc) -> Self {
         Self {
-            values: self.values.clone(),
+            values: ValueContext {
+                doc,
+                viewport: self.values.viewport,
+                inert_clear: self.values.inert_clear,
+            },
             constraints: self.constraints.clone(),
             position: self.position.clone(),
             clamp: self.clamp.clone(),
@@ -72,38 +83,50 @@ impl Clone for LayoutCx {
     }
 }
 
-/// The document of a build. `Default` is an empty document: a host builds a
-/// `Document`'s nodes through `Document::render`, which sets its own.
-#[derive(Clone)]
-pub(crate) struct BuildDoc(pub(crate) Rc<crate::document::state::DocState>);
+/// The document of a build. `Default` is an empty document, made on first use: a host
+/// builds a `Document`'s nodes through `Document::render`, which sets its own, so the
+/// host's `LayoutCx::default()` of every frame costs no document state. A copy shares the
+/// document with the original (the empty one is made before it is shared).
+#[derive(Default)]
+pub(crate) struct BuildDoc(std::cell::OnceCell<Rc<crate::document::state::DocState>>);
 
-impl Default for BuildDoc {
-    fn default() -> Self {
-        BuildDoc(crate::document::state::DocState::new(
-            crate::style::css::Media::default(),
-        ))
+impl BuildDoc {
+    pub(crate) fn of(doc: Rc<crate::document::state::DocState>) -> Self {
+        BuildDoc(std::cell::OnceCell::from(doc))
+    }
+
+    pub(crate) fn get(&self) -> &Rc<crate::document::state::DocState> {
+        self.0.get_or_init(|| {
+            crate::document::state::DocState::new(crate::style::css::Media::default())
+        })
+    }
+}
+
+impl Clone for BuildDoc {
+    fn clone(&self) -> Self {
+        BuildDoc::of(self.get().clone())
     }
 }
 
 impl LayoutCx {
     /// The document being built.
     pub(crate) fn doc(&self) -> &Rc<crate::document::state::DocState> {
-        &self.values.doc.0
+        &self.values.doc.get()
     }
 
     /// Layout-phase frame state of the document being built.
     pub(crate) fn layout(&self) -> &Rc<crate::layout::layout_state::LayoutState> {
-        &self.values.doc.0.layout
+        &self.values.doc.get().layout
     }
 
     /// Text backend font state of the document being built.
     pub(crate) fn text_fonts(&self) -> &Rc<crate::text::text_fonts::TextFonts> {
-        &self.values.doc.0.text
+        &self.values.doc.get().text
     }
 
     /// Text-phase measurements of the document being built.
     pub(crate) fn paragraph(&self) -> &crate::text::paragraph_state::ParagraphState {
-        &self.values.doc.0.paragraph
+        &self.values.doc.get().paragraph
     }
 
     /// Values of the build: `calc()`/`anchor()` bodies parsed while building
@@ -112,7 +135,7 @@ impl LayoutCx {
         let mut values = self
             .values
             .doc
-            .0
+            .get()
             .frame_values()
             .with_viewport(self.values.viewport);
         values.clearance_possible = !self.values.inert_clear;

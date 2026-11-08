@@ -20,7 +20,7 @@ fn direct_oof_uses_native_static_anchor_and_keeps_empty_normal_plan(cx: &mut gpu
             cx: Default::default(),
             frag: Default::default(),
         };
-        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;
         crate::style::cascade::materialize::materialize(
             &tree, opts.root_style().style_rc(), opts.cx.vcx(),
@@ -73,7 +73,7 @@ fn native_source_routes_only_a_stack_on_its_own_axis(cx: &mut gpui::TestAppConte
             cx: Default::default(),
             frag: Default::default(),
         };
-        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;
         crate::style::cascade::materialize::materialize(
             &tree, opts.root_style().style_rc(), opts.cx.vcx(),
@@ -133,7 +133,7 @@ fn section_snapshot(
         cx: Default::default(),
         frag: Default::default(),
     };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
     opts.cx.values.viewport = opts.viewport;
     crate::style::cascade::materialize::materialize(
         &tree,

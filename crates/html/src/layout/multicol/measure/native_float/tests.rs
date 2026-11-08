@@ -21,7 +21,7 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
         cx: Default::default(),
         frag: Default::default(),
     };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
     let recipe = two_columns(host(&tree), &opts).expect("deferred native float");
     cx.draw(
         gpui::point(gpui::px(0.), gpui::px(0.)),

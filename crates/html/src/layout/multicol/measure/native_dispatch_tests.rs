@@ -111,7 +111,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             }),
                         ] {
                             let mut opts = opts();
-                            opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+                            opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
                             let plan = stack_plan(
                                 &root,
                                 &BoxStyle::shared(root.style.used()),
