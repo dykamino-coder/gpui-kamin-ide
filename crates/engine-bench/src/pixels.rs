@@ -2,7 +2,10 @@
 
 use gpui::frame_capture::CapturedFrame;
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -86,7 +89,7 @@ pub(super) fn detail(a: &CapturedFrame, b: &CapturedFrame) -> Value {
 }
 
 pub(super) struct Recorder {
-    first: Option<CapturedFrame>,
+    first: Option<Rc<CapturedFrame>>,
     first_hash: Option<String>,
     index: usize,
     differences: Vec<Value>,
@@ -108,16 +111,17 @@ impl Recorder {
     }
 
     pub(super) fn first(&self) -> Option<&CapturedFrame> {
-        self.first.as_ref()
+        self.first.as_deref()
     }
 
     pub(super) fn observe(
         &mut self,
-        frame: CapturedFrame,
+        frame: impl Into<Rc<CapturedFrame>>,
         sequence: u64,
         mode: &str,
         sample: usize,
     ) -> Result<()> {
+        let frame = frame.into();
         self.index += 1;
         let Some(first) = self.first.as_ref() else {
             self.first_hash = Some(fingerprint(&frame));

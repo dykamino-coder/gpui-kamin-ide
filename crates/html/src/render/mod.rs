@@ -79,9 +79,14 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.deferred.unkeyed = prepared.unkeyed.clone();
         cx.contracts.in_render = true;
     });
+    // Строковые задания этого документа: вложенный документ уносит свои в свой
+    // сборщик и возвращает счёт внешнего.
+    let inline_jobs = &opts.cx.deferred.paint.inline_jobs;
+    let outer_jobs = inline_jobs.get();
     let mut out = blocks(nodes, &root, opts);
     out.extend(icb_layer.finish());
-    let (open, close) = crate::paint::coordinator::PaintCollect::pair();
+    let own_jobs = inline_jobs.replace(outer_jobs).saturating_sub(outer_jobs);
+    let (open, close) = crate::paint::coordinator::PaintCollect::pair_reserving(own_jobs);
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
     crate::paint::coordinator::roots(out)
