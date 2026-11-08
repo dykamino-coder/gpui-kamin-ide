@@ -65,7 +65,8 @@ impl Interactivity {
             }
         }
         if let Some(global_id) = global_id {
-            self.prepaint_stateful_async(global_id, bounds, window, cx, stack, f)
+            stack
+                .run(|stack| self.prepaint_stateful_async(global_id, bounds, window, cx, stack, f))
                 .await
         } else {
             self.prepaint_with_state_async(None, bounds, window, cx, stack, f)

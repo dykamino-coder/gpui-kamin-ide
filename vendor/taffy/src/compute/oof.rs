@@ -463,7 +463,8 @@ pub async fn compute_oof_layout_async(
     drop(style);
 
     let candidates = output.oof_candidates.take();
-    let result = compute_oof_layout_for_area_async(
+    // KaminIDE patch: reserve positioning state only for a nonempty positioning pass.
+    let result = stack.run(|stack| compute_oof_layout_for_area_async(
         tree,
         node_id,
         candidates.as_slice(),
@@ -471,8 +472,7 @@ pub async fn compute_oof_layout_async(
         direction,
         claims,
         stack,
-    )
-    .await;
+    )).await;
     tree.add_hoisted_children(node_id, &result.hoisted);
     output.oof_candidates = result.unclaimed;
     #[cfg(feature = "content_size")]

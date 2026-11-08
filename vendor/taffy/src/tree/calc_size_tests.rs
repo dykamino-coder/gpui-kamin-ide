@@ -234,3 +234,39 @@ fn fit_content_respects_transferred_cross_minimum() {
     assert_eq!(tree.layout(child).unwrap().size.width, 100.0);
     assert_eq!(tree.layout(child).unwrap().size.height, 50.0);
 }
+
+
+#[test]
+fn ordinary_ancestors_do_not_reserve_intrinsic_probe_state() {
+    let mut tree = TaffyTree::<()>::new();
+    let node = tree.new_leaf(Style::DEFAULT).unwrap();
+    let mut view = TaffyView {
+        taffy: &mut tree,
+        measure_function: crate::tree::SyncMeasure(measured),
+    };
+    let bytes = reblessive::Stack::new().enter(|stack| async {
+        let future = view.resolve_calc_size_async(node, LayoutInput::HIDDEN, stack);
+        core::mem::size_of_val(&future)
+    }).finish();
+    // The ordinary control state must not include the expression/probe payload.
+    assert!(bytes <= 512, "ordinary calc-size continuation: {bytes} bytes");
+}
+
+#[test]
+fn ordinary_ancestors_do_not_reserve_positioning_pass_state() {
+    let mut tree = TaffyTree::<()>::new();
+    let node = tree.new_leaf(Style::DEFAULT).unwrap();
+    let mut view = TaffyView {
+        taffy: &mut tree,
+        measure_function: crate::tree::SyncMeasure(measured),
+    };
+    let mut output = LayoutOutput::HIDDEN;
+    let bytes = reblessive::Stack::new().enter(|stack| async {
+        let future = crate::compute::oof::compute_oof_layout_async(
+            &mut view, node, &mut output, stack,
+        );
+        core::mem::size_of_val(&future)
+    }).finish();
+    // Candidate storage and the full positioning algorithm are not ancestor state.
+    assert!(bytes <= 512, "ordinary positioning continuation: {bytes} bytes");
+}

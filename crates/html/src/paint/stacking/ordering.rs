@@ -2,6 +2,8 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
+use crate::layout::cx::subtree::positioned_inside;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::Display;
 
@@ -14,7 +16,10 @@ use crate::style::computed::Display;
 /// auto создаёт контекст наложения и без `position` (css-flexbox-1 §4.3:
 /// «z-index values other than auto create a stacking context even if
 /// position is static»; `flex-item-z-ordering-001/002`).
-pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
+pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool, frame: FrameCx<'_>) -> Vec<Node> {
+    if nodes.len() < 2 {
+        return nodes;
+    }
     // Элемент на статической позиции переставлять НЕЛЬЗЯ: место в потоке и
     // есть его координата. `z-index` меняет только порядок отрисовки, а
     // перестановка меняла и раскладку — абсолютный блок с `z-index: -1`
@@ -109,20 +114,18 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // сосед, а его потомок (`position-relative-table-tbody-top`: зелёный
     // `tbody` лежит внутри непозиционированной таблицы, и прыжок абсолюта
     // через неё открывал красный индикатор).
-    fn positioned_inside(n: &Node, depth: usize) -> bool {
-        match n {
-            Node::Element(e) => {
-                e.style.used().reset_positioned.position.is_some()
-                    || (depth < 8 && e.children.iter().any(|c| positioned_inside(c, depth + 1)))
-            }
-            Node::Text(_) => false,
-        }
+    // Без кандидатов перестановки факты потомков не нужны.
+    if !nodes.iter().any(|n| match n {
+        Node::Element(e) => movable(e) || over(e),
+        Node::Text(_) => false,
+    }) {
+        return nodes;
     }
     let mut after_positioned = vec![false; nodes.len()];
     let mut seen = false;
     for (i, n) in nodes.iter().enumerate().rev() {
         after_positioned[i] = seen;
-        if positioned_inside(n, 0) {
+        if !seen && positioned_inside(n, frame) {
             seen = true;
         }
     }
@@ -177,3 +180,6 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     let mut taken: Vec<Option<Node>> = nodes.into_iter().map(Some).collect();
     order.into_iter().filter_map(|i| taken[i].take()).collect()
 }
+
+#[cfg(test)]
+mod tests;

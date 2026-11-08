@@ -40,13 +40,20 @@ pub(crate) fn block_group(
 ) -> AnyElement {
     let vcx = frame.values;
     let style = group_style(&e.style, inherited, vcx);
-    if crate::paint::stacking::stacking_context(&e.style.used())
+    let isolate = crate::paint::stacking::stacking_context(&e.style.used())
         && e.style.used().reset_effects.isolate != Some(true)
-        && crate::paint::stacking::blends_inside(&e.children, 0)
-    {
-        let mut iso = style;
-        iso.reset_effects.isolate = Some(true);
-        return super::grouped(el, &iso, frame);
+        && crate::paint::stacking::blends_inside(&e.children, frame);
+    isolated_group(el, style, frame, isolate)
+}
+
+fn isolated_group(
+    el: AnyElement,
+    mut style: BoxStyle,
+    frame: FrameCx<'_>,
+    isolate: bool,
+) -> AnyElement {
+    if isolate {
+        style.reset_effects.isolate = Some(true);
     }
     super::grouped(el, &style, frame)
 }
@@ -60,6 +67,7 @@ pub(crate) fn paint_group(
     e: &Element,
     inherited: &BoxStyle,
     frame: FrameCx<'_>,
+    isolate: bool,
 ) -> AnyElement {
     let vcx = frame.values;
     let el = crate::paint::apply::static_shift(container, &e.style.used());
@@ -70,5 +78,5 @@ pub(crate) fn paint_group(
         inherited,
         frame,
     );
-    block_group(el, e, inherited, frame)
+    isolated_group(el, group_style(&e.style, inherited, vcx), frame, isolate)
 }

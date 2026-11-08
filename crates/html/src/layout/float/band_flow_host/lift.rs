@@ -17,43 +17,25 @@ use crate::style::values::value::Len;
 /// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
 /// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
 pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
-    c.children.iter().all(|n| match n {
-        Node::Text(_) => true,
-        Node::Element(k) => {
-            if k.style
-                .used()
-                .reset_box_layout
-                .float
-                .is_some_and(|f| f != 0)
-            {
-                return false;
-            }
-            // `<br style="clear">` под срезом конца строки по НЕ-текстовому
-            // краю (`text-box-trim: trim-end` + `text-box-edge: … alphabetic`):
-            // css-inline-3 §text-box-trim — срез не трогает clearance, конец
-            // блока = max(срезанная строка, низ флоатов). Блок потока хоста
-            // срезает строку, а clearance разрыва не видит — такой блок
-            // уходит на прежний путь (`text-box-trim-float-clear-br-003`).
-            // Срез по краю `text` (у Ahem он нулевой) хост держит верно:
-            // гейт на любой `clear` отправлял и его на прежний путь, и
-            // `text-box-trim-float-clear-br-001` ломался.
-            if trimmed_clear(c, k) {
-                return false;
-            }
-            if block_level_in_flow(k) {
-                // Вложенный `clear` тоже упирается во ВНЕШНИЕ флоаты
-                // (`clear-applies-to-009`: `<div><span display:block;
-                // clear:both>`).
-                !own_context(k)
-                    && k.tag != "table"
-                    && k.style.used().reset_box_layout.clear.is_none()
-                    && flow_interior_plain(k)
-            } else {
-                // Строчный: атом в строке (инлайн-блок) режется вырезом как
-                // целое; флоат внутри строчного всплывает к блоку (§10.1).
-                inline_level(k) || flow_interior_plain(k)
-            }
-        }
+    crate::dom::traversal::read_inherited(&c.children, c, |child, _| {
+        // Атомарные строчные дети сохраняют независимое поддерево форматирования.
+        (block_level_in_flow(child) || !inline_level(child)).then_some(child)
+    })
+    .all(|(node, parent)| {
+        let Node::Element(child) = node else {
+            return true;
+        };
+        !child
+            .style
+            .used()
+            .reset_box_layout
+            .float
+            .is_some_and(|float| float != 0)
+            && !trimmed_clear(parent, child)
+            && (!block_level_in_flow(child)
+                || (!own_context(child)
+                    && child.tag != "table"
+                    && child.style.used().reset_box_layout.clear.is_none()))
     })
 }
 
@@ -244,3 +226,6 @@ pub(crate) fn band_flow_rest_lift(
     }
     (!bad).then_some(out)
 }
+
+#[cfg(test)]
+mod tests;

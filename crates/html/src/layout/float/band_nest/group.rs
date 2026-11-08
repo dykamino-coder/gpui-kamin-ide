@@ -24,13 +24,13 @@ pub(crate) fn paint_group(c: &Computed) -> bool {
 
 /// An absolutely or fixed positioned descendant at any depth.
 pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
-    nodes.iter().any(|n| match n {
+    crate::dom::traversal::read_nodes(nodes).any(|n| match n {
         Node::Element(e) => {
             matches!(
                 e.style.used().reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) || positioned_inside(&e.children)
+            )
         }
         Node::Text(_) => false,
     })
@@ -45,6 +45,10 @@ pub(super) fn group_wrap(
     inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> crate::layout::float::band_flow::GroupWrap {
+    // Отложенная обёртка хранит результат запроса, а не весь кэш сборки.
+    let isolate = crate::style::computed::stacking::stacking_context(&c.style.used())
+        && c.style.used().reset_effects.isolate != Some(true)
+        && crate::layout::cx::subtree::blends_inside(&c.children, cx.frame());
     let (c, inherited, values, build) = (
         c.clone(),
         inherited.clone(),
@@ -52,7 +56,7 @@ pub(super) fn group_wrap(
         cx.contracts.build,
     );
     std::rc::Rc::new(move |container: gpui::Div| {
-        build.paint_group(container, &c, &inherited, values.frame())
+        build.paint_group(container, &c, &inherited, values.frame(), isolate)
     })
 }
 
@@ -64,4 +68,35 @@ pub(crate) fn group_shell(c: &mut Computed) {
     c.reset_transforms.transform = None;
     c.reset_transforms.rotate_prop = None;
     c.reset_transforms.scale_prop = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::table::anon::anon_element;
+    use crate::style::computed::{Position, ResetPositioned, StyleGroup};
+
+    #[test]
+    fn positioned_descendants_use_bounded_native_stack() {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let mut root = anon_element("leaf", vec![]);
+                root.style = Computed {
+                    reset_positioned: StyleGroup::new(ResetPositioned {
+                        position: Some(Position::Absolute),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }
+                .into();
+                for _ in 0..20_000 {
+                    root = anon_element("nested", vec![Node::Element(root)]);
+                }
+                assert!(positioned_inside(&[Node::Element(root)]));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 }

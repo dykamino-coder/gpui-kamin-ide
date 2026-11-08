@@ -32,10 +32,6 @@ use crate::util::sys::Vec;
 use crate::util::{MaybeResolve, ResolveOrZero};
 use crate::GenericRepetition;
 
-/// Глубина вложенности подсеток, дальше которой сплющивание не идёт
-/// (страховка от патологических деревьев; у WPT — не глубже четырёх).
-const MAX_DEPTH: u8 = 12;
-
 /// Результат размещения элементов сетки (шаги 2-4 `compute_grid_layout`).
 pub(super) struct PlacedGrid<S: crate::CheapCloneStr> {
     /// Элементы в потоке.
@@ -135,5 +131,69 @@ mod kamin_placement_tests {
         assert!(count as i16 > 0);
         assert_eq!(bounded_subgrid_count(0), 1);
         assert_eq!(bounded_subgrid_count(12), 12);
+    }
+}
+
+#[cfg(all(test, feature = "taffy_tree"))]
+mod depth_tests {
+    use crate::prelude::*;
+    use crate::{SUBGRID_COLUMNS, SUBGRID_ROWS};
+
+    fn intrinsic_height(depth: usize) -> f32 {
+        let mut tree = TaffyTree::<()>::new();
+        tree.disable_rounding();
+        let mut child = tree
+            .new_leaf(Style {
+                size: Size {
+                    width: length(20.0),
+                    height: length(77.0),
+                },
+                ..Style::DEFAULT
+            })
+            .unwrap();
+        for _ in 0..depth {
+            child = tree
+                .new_with_children(
+                    Style {
+                        display: Display::Grid,
+                        subgrid: SUBGRID_COLUMNS | SUBGRID_ROWS,
+                        ..Style::DEFAULT
+                    },
+                    &[child],
+                )
+                .unwrap();
+        }
+        let root = tree
+            .new_with_children(
+                Style {
+                    display: Display::Grid,
+                    size: Size {
+                        width: length(100.0),
+                        height: Dimension::AUTO,
+                    },
+                    grid_template_columns: vec![auto()],
+                    grid_template_rows: vec![auto()],
+                    ..Style::DEFAULT
+                },
+                &[child],
+            )
+            .unwrap();
+        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+        tree.layout(root).unwrap().size.height
+    }
+
+    #[test]
+    fn deeply_nested_subgrids_preserve_intrinsic_contributions_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                // Both sides of the former cutoff, plus depth beyond a u8 counter.
+                for depth in [12, 13, 32, 256] {
+                    assert_eq!(intrinsic_height(depth), 77.0, "subgrid depth {depth}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

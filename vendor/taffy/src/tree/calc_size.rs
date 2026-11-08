@@ -26,8 +26,8 @@ where
         {
             return inputs;
         }
-        self.resolve_calc_size_expressions_async(node, inputs, stack)
-            .await
+        // KaminIDE patch: ordinary ancestors do not retain intrinsic-probe state.
+        stack.run(|stack| self.resolve_calc_size_expressions_async(node, inputs, stack)).await
     }
 
     // KaminIDE patch: the resolution temporaries must not live in the native

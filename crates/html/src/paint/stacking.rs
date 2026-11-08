@@ -4,9 +4,9 @@
 //! `fixed`, и обёртка `layered`: положительный `z-index`, `fixed` и `sticky` выражаются
 //! отложенной отрисовкой GPUI с приоритетом, отрицательный — подложкой.
 mod ordering;
+pub(crate) use crate::layout::cx::subtree::blends_inside;
 pub(crate) use ordering::by_layer;
 
-use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -22,24 +22,6 @@ pub(crate) fn paint_last(el: AnyElement, key: u64) -> AnyElement {
 pub(crate) use crate::style::computed::stacking::{
     fixed_cb_layer_box, nested_context, stacking_context,
 };
-
-/// Есть ли в поддереве смешивание (`mix-blend-mode` ≠ normal).
-///
-/// Спуск НЕ останавливается на вложенных контекстах наложения: лишняя
-/// изоляция при обычном сложении картинку не меняет (source-over
-/// ассоциативен), а вложенный контекст со смешиванием внутри изолируется тем
-/// же правилом сам. Глубина ограничена ради страниц с тысячами вложенных
-/// трансформов: обход идёт у каждого контекста наложения.
-pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
-    depth < 32
-        && nodes.iter().any(|n| match n {
-            Node::Element(c) => {
-                c.style.used().reset_effects.blend.is_some_and(|b| b != 0)
-                    || blends_inside(&c.children, depth + 1)
-            }
-            Node::Text(_) => false,
-        })
-}
 
 /// Действует ли `z-index` на этой коробке.
 ///

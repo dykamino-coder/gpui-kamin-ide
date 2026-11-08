@@ -4,7 +4,7 @@ use super::{Element, Node};
 use crate::budget::admission::{Admission, Buffer, Error};
 
 mod cursor;
-pub use cursor::{for_each_inherited, read_nodes};
+pub use cursor::{for_each_inherited, read_inherited, read_nodes};
 
 /// Прямой порядок. `None` запрещает спуск, но не посещение следующего брата.
 pub fn preorder<C>(

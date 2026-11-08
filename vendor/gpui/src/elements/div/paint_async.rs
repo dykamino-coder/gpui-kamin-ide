@@ -16,17 +16,20 @@ impl Interactivity {
     ) {
         self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
         if let Some(global_id) = global_id {
-            self.paint_stateful_async(
-                global_id,
-                _inspector_id,
-                bounds,
-                hitbox,
-                window,
-                cx,
-                stack,
-                f,
-            )
-            .await;
+            stack
+                .run(|stack| {
+                    self.paint_stateful_async(
+                        global_id,
+                        _inspector_id,
+                        bounds,
+                        hitbox,
+                        window,
+                        cx,
+                        stack,
+                        f,
+                    )
+                })
+                .await;
         } else {
             self.paint_with_state_async(
                 None,

@@ -25,10 +25,7 @@ use crate::style::computed::Display;
 /// и обе пары остаются нетронутыми. Перенос «бок о бок» для запретов —
 /// отдельный шаг с отдельным замером.
 pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
-    if vcx
-        .subtrees
-        .is_some_and(|facts| facts.borrow_mut().breaks_absent(e))
-    {
+    if crate::layout::cx::subtree::breaks_absent(e, vcx) {
         return false;
     }
     let own = if last {
@@ -80,10 +77,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
 /// `BoxFragmentBuilder::SetInitialBreakBefore`). Текст или строчный на краю
 /// — анонимная коробка без разрыва, пропагация останавливается.
 pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
-    if vcx
-        .subtrees
-        .is_some_and(|facts| facts.borrow_mut().breaks_absent(e))
-    {
+    if crate::layout::cx::subtree::breaks_absent(e, vcx) {
         return false;
     }
     // Абсолютная коробка вне потока: `break-*` применяется к блочным коробкам

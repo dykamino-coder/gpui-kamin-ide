@@ -26,11 +26,6 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
     if !c.style.used().reset_fragmentation.bdb_clone {
         return None;
     }
-    fn oof_inside(e: &Element) -> bool {
-        e.children
-            .iter()
-            .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style.used()) || oof_inside(k)))
-    }
     if c.inline
         || solid_box(c)
         || table_box(c)
@@ -47,7 +42,8 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
             c.style.used().reset_positioned.position,
             Some(Position::Sticky) | Some(Position::Absolute) | Some(Position::Fixed)
         )
-        || oof_inside(c)
+        || crate::dom::traversal::read_nodes(&c.children)
+            .any(|node| matches!(node, Node::Element(child) if out_of_flow(&child.style.used())))
     {
         return None;
     }
@@ -171,39 +167,4 @@ pub(crate) fn clone_fragment(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn border_box_clone_subtracts_edges_once_and_does_not_reapply_minimum() {
-        let tree = crate::document::parsed::parse(
-            "<div style='height:100px;min-height:80px;max-height:120px;box-sizing:border-box;padding:10px;box-decoration-break:clone'></div>",
-            "",
-        );
-        fn find(nodes: &[Node]) -> Option<&Element> {
-            nodes.iter().find_map(|n| match n {
-                Node::Element(e) if e.tag == "div" => Some(e),
-                Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        let fragment = clone_fragment(find(&tree).unwrap(), 10.0, 10.0, 30.0, 50.0, 30.0);
-        assert_eq!(
-            fragment.style.used().reset_box_layout.height,
-            Some(Len::Px(30.0))
-        );
-        assert_eq!(fragment.style.used().reset_box_layout.min_height, None);
-        let Node::Element(clip) = &fragment.children[0] else {
-            panic!("clip box")
-        };
-        let Node::Element(body) = &clip.children[0] else {
-            panic!("body box")
-        };
-        let style = body.style.used();
-        assert_eq!(style.reset_box_layout.height, Some(Len::Px(80.0)));
-        assert_eq!(style.reset_box_layout.min_height, Some(Len::Px(60.0)));
-        assert_eq!(style.reset_box_layout.max_height, Some(Len::Px(100.0)));
-        assert_eq!(style.reset_positioned.inset.top, Some(Len::Px(-30.0)));
-        assert_eq!(style.reset_border.border_box, Some(false));
-    }
-}
+mod tests;

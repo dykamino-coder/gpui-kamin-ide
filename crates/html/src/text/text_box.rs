@@ -31,98 +31,98 @@ use crate::style::values::value::px_lossy_zero;
 /// Второе значение — узел блока, чей абзац держит строку (`owner` —
 /// узел самого контейнера): ему `line_trim::request` адресует срез.
 pub(crate) fn text_box_line_style(
-    nodes: &[Node],
+    mut nodes: &[Node],
     inherited: &BoxStyle,
     start: bool,
-    owner: u64,
+    mut owner: u64,
     vcx: ValueCx<'_>,
 ) -> Option<(BoxStyle, u64)> {
-    let has_block = nodes.iter().any(breaks_inline);
-    let order: Vec<&Node> = if start {
-        nodes.iter().collect()
-    } else {
-        nodes.iter().rev().collect()
-    };
-    for (i, n) in order.iter().enumerate() {
-        let e = match n {
-            Node::Text(t) if blank_text(t) => continue,
-            // Непробельный текст — строка в этом контейнере.
-            Node::Text(_) => return Some((inherited.clone(), owner)),
-            Node::Element(e) => e,
-        };
-        if e.style.used().reset_box_layout.display == Some(Display::None)
-            || out_of_flow(&e.style.used())
-        {
-            continue;
-        }
-        if e.style.used().reset_box_layout.display == Some(Display::Contents) {
-            return text_box_line_style(
-                &e.children,
-                &box_style(inherited, &e.style, vcx),
-                start,
-                owner,
-                vcx,
-            );
-        }
-        if breaks_inline(n) {
-            // Через гибкий, сеточный и табличный контекст свойство не
-            // распространяется (css-inline-3 §4.2, примечание).
-            if matches!(
-                e.style.used().reset_box_layout.display,
-                Some(Display::Flex)
-                    | Some(Display::Grid)
-                    | Some(Display::Table)
-                    | Some(Display::GridLanes)
-            ) {
-                return None;
-            }
-            let merged = box_style(inherited, &e.style, vcx);
-            let px_of = px_lossy_zero;
-            let bs = merged.borders();
-            let blocked = if start {
-                px_of(merged.reset_box_layout.padding.top) != 0.0 || px_of(bs.top) != 0.0
-            } else {
-                px_of(merged.reset_box_layout.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
+    let mut inherited = std::borrow::Cow::Borrowed(inherited);
+    'descend: loop {
+        let has_block = nodes.iter().any(breaks_inline);
+        let ordered = |i| &nodes[if start { i } else { nodes.len() - 1 - i }];
+        for i in 0..nodes.len() {
+            let n = ordered(i);
+            let e = match n {
+                Node::Text(t) if blank_text(t) => continue,
+                // Непробельный текст — строка в этом контейнере.
+                Node::Text(_) => return Some((inherited.into_owned(), owner)),
+                Node::Element(e) => e,
             };
-            if blocked {
-                return None;
+            if e.style.used().reset_box_layout.display == Some(Display::None)
+                || out_of_flow(&e.style.used())
+            {
+                continue;
             }
-            // Потомок, который САМ срезает эту сторону, срежет ту же строку в
-            // своём хвосте `blocks()`: срез «до метрики» идемпотентен, второй
-            // раз его не кладут (`ul, li { text-box-trim: trim-both }` —
-            // `text-box-trim-list-001`). `merged` несёт собственные флаги
-            // ребёнка: `inherit()` клонирует его стиль, а свойство не
-            // наследуется.
-            let own_trim = if start {
-                merged.reset_text_box.text_box_trim_start
+            if e.style.used().reset_box_layout.display == Some(Display::Contents) {
+                inherited = std::borrow::Cow::Owned(box_style(&inherited, &e.style, vcx));
+                nodes = &e.children;
+                continue 'descend;
+            }
+            if breaks_inline(n) {
+                // Через гибкий, сеточный и табличный контекст свойство не
+                // распространяется (css-inline-3 §4.2, примечание).
+                if matches!(
+                    e.style.used().reset_box_layout.display,
+                    Some(Display::Flex)
+                        | Some(Display::Grid)
+                        | Some(Display::Table)
+                        | Some(Display::GridLanes)
+                ) {
+                    return None;
+                }
+                let merged = box_style(&inherited, &e.style, vcx);
+                let px_of = px_lossy_zero;
+                let bs = merged.borders();
+                let blocked = if start {
+                    px_of(merged.reset_box_layout.padding.top) != 0.0 || px_of(bs.top) != 0.0
+                } else {
+                    px_of(merged.reset_box_layout.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
+                };
+                if blocked {
+                    return None;
+                }
+                // Потомок, который САМ срезает эту сторону, срежет ту же строку в
+                // своём хвосте `blocks()`: срез «до метрики» идемпотентен, второй
+                // раз его не кладут (`ul, li { text-box-trim: trim-both }` —
+                // `text-box-trim-list-001`). `merged` несёт собственные флаги
+                // ребёнка: `inherit()` клонирует его стиль, а свойство не
+                // наследуется.
+                let own_trim = if start {
+                    merged.reset_text_box.text_box_trim_start
+                } else {
+                    merged.reset_text_box.text_box_trim_end
+                };
+                if own_trim {
+                    return None;
+                }
+                inherited = std::borrow::Cow::Owned(merged);
+                nodes = &e.children;
+                owner = e.node_id;
+                continue 'descend;
+            }
+            // Блок-в-строчном: оболочка прозрачна, строка — внутри блока.
+            if real_inline(e) && contains_block(&e.children) {
+                nodes = &e.children;
+                continue 'descend;
+            }
+            // Строчное содержимое. Без блочных братьев это весь контекст
+            // форматирования; с ними — анонимная коробка из прогона до блока,
+            // и пустая (только пробелы и пустые спаны) строки не имеет.
+            let has_line = if has_block {
+                let run: Vec<Node> = (i..nodes.len())
+                    .map(ordered)
+                    .take_while(|m| !breaks_inline(m))
+                    .cloned()
+                    .collect();
+                holds_line_box(&run)
             } else {
-                merged.reset_text_box.text_box_trim_end
+                holds_line_box(nodes)
             };
-            if own_trim {
-                return None;
-            }
-            return text_box_line_style(&e.children, &merged, start, e.node_id, vcx);
+            return has_line.then(|| (inherited.into_owned(), owner));
         }
-        // Блок-в-строчном: оболочка прозрачна, строка — внутри блока.
-        if real_inline(e) && contains_block(&e.children) {
-            return text_box_line_style(&e.children, inherited, start, owner, vcx);
-        }
-        // Строчное содержимое. Без блочных братьев это весь контекст
-        // форматирования; с ними — анонимная коробка из прогона до блока,
-        // и пустая (только пробелы и пустые спаны) строки не имеет.
-        let has_line = if has_block {
-            let run: Vec<Node> = order[i..]
-                .iter()
-                .take_while(|m| !breaks_inline(m))
-                .map(|m| (*m).clone())
-                .collect();
-            holds_line_box(&run)
-        } else {
-            holds_line_box(nodes)
-        };
-        return has_line.then(|| (inherited.clone(), owner));
+        return None;
     }
-    None
 }
 
 /// Срез `text-box-trim` одной стороны строки в точках (css-inline-3 §4.2,
@@ -197,10 +197,8 @@ pub(crate) fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
 
 /// Есть ли в поддереве непустой текст — по нему считается высота строки.
 pub(crate) fn has_text(nodes: &[Node]) -> bool {
-    nodes.iter().any(|n| match n {
-        Node::Text(t) => !blank_text(t),
-        Node::Element(e) => has_text(&e.children),
-    })
+    crate::dom::traversal::read_nodes(nodes)
+        .any(|node| matches!(node, Node::Text(text) if !blank_text(text)))
 }
 
 /// Доля кегля для `line-height: normal` — по метрикам шрифта элемента.
@@ -238,3 +236,6 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
         opts.normal_line_height
     }
 }
+
+#[cfg(test)]
+mod tests;

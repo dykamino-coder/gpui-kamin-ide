@@ -1,9 +1,9 @@
-//! Cursors for passes over an already admitted tree; no additional work charges.
+//! Курсоры уже допущенного дерева: братья, inherited-состояние и отсечение поддеревьев.
 
 use super::{Element, Node};
 
-/// Preorder with parent state, saving only pending siblings. A single-child
-/// chain needs no traversal allocation. No references to changed nodes escape.
+/// Прямой обход с состоянием родителя; хранятся только отложенные братья.
+/// Цепочка без братьев не требует аллокаций. Ссылки на изменённые узлы не выходят.
 pub fn for_each_inherited<C>(
     nodes: &mut [Node],
     mut parent: C,
@@ -35,28 +35,43 @@ pub fn for_each_inherited<C>(
     }
 }
 
-/// Read nodes in preorder, preserving first/last definition behavior of callers.
-pub fn read_nodes(nodes: &[Node]) -> impl Iterator<Item = &Node> {
+/// Чтение с состоянием родителя. `None` отсекает детей, сохраняя братьев.
+/// Хранятся только отложенные братья; цепочка без братьев не требует аллокаций.
+pub fn read_inherited<'a, C: Clone>(
+    nodes: &'a [Node],
+    mut parent: C,
+    mut enter: impl FnMut(&'a Element, &C) -> Option<C>,
+) -> impl Iterator<Item = (&'a Node, C)> {
     let mut pending = Vec::new();
     let mut remaining = nodes;
     std::iter::from_fn(move || {
         loop {
             let Some((node, siblings)) = remaining.split_first() else {
-                remaining = pending.pop()?;
+                let (siblings, inherited) = pending.pop()?;
+                remaining = siblings;
+                parent = inherited;
                 continue;
             };
             remaining = siblings;
+            let inherited = parent.clone();
             if let Node::Element(element) = node
                 && !element.children.is_empty()
+                && let Some(next) = enter(element, &parent)
             {
                 if !remaining.is_empty() {
-                    pending.push(remaining);
+                    pending.push((remaining, parent));
                 }
                 remaining = &element.children;
+                parent = next;
             }
-            return Some(node);
+            return Some((node, inherited));
         }
     })
+}
+
+/// Чтение в прямом порядке с сохранением порядка определений вызывающего.
+pub fn read_nodes(nodes: &[Node]) -> impl Iterator<Item = &Node> {
+    read_inherited(nodes, (), |_, _| Some(())).map(|(node, ())| node)
 }
 
 #[cfg(test)]

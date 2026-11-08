@@ -112,7 +112,7 @@ type OutlineFlow = for<'a> fn(
 ) -> gpui::PaintFuture<'a>;
 
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
-type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, FrameCx<'_>) -> AnyElement;
+type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, FrameCx<'_>, bool) -> AnyElement;
 type PaintResources = fn(&[Node], ValueCx<'_>);
 
 /// The paint operations of [`ChildBuild`](super::ChildBuild).
@@ -160,8 +160,9 @@ impl EffectBuild {
         e: &Element,
         inherited: &BoxStyle,
         frame: FrameCx<'_>,
+        isolate: bool,
     ) -> AnyElement {
-        (self.paint_group)(container, e, inherited, frame)
+        (self.paint_group)(container, e, inherited, frame, isolate)
     }
 
     pub(super) fn paint_resources(&self, nodes: &[Node], vcx: ValueCx<'_>) {

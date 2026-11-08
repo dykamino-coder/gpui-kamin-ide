@@ -65,7 +65,6 @@ pub(in super::super) async fn flatten_subgrid_items_async<Tree: LayoutGridContai
             known,
             &mut out,
             &mut edges,
-            0,
             stack,
         )
         .await;

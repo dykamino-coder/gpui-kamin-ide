@@ -230,8 +230,10 @@ impl ChildBuild {
         e: &Element,
         inherited: &BoxStyle,
         frame: crate::layout::cx::FrameCx<'_>,
+        isolate: bool,
     ) -> AnyElement {
-        self.effects.paint_group(container, e, inherited, frame)
+        self.effects
+            .paint_group(container, e, inherited, frame, isolate)
     }
 
     /// Prepares the paint resources of the document `nodes` (the `<mask>`,

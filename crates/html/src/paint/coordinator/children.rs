@@ -61,10 +61,16 @@ async fn paint(
             child.paint_async(window, cx, stack).await;
         }
         if let Some(guard) = guard {
+            // A deferred queue's state belongs only to the scope that drains it.
+            // Embedding its future would reserve that state in every ancestor.
+            let continuations = window.continuations();
             if stacking {
-                pass.drain_async(guard.depth, window, cx, stack).await;
+                continuations
+                    .pin(pass.drain_async(guard.depth, window, cx, stack))
+                    .await;
             } else {
-                pass.finish_atomic_async(guard.depth, window, cx, stack)
+                continuations
+                    .pin(pass.finish_atomic_async(guard.depth, window, cx, stack))
                     .await;
             }
         }
@@ -91,5 +97,33 @@ async fn fallback(
     }
     for child in late {
         child.paint_async(window, cx, stack).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+
+    #[test]
+    fn ordinary_ancestors_do_not_reserve_deferred_queue_state() {
+        fn bytes<F: Future>(
+            _: impl FnOnce(
+                &'static Style,
+                &'static mut dyn Iterator<Item = &'static mut AnyElement>,
+                &'static mut Window,
+                &'static mut App,
+                &'static mut gpui::PaintStack,
+            ) -> F,
+        ) -> usize {
+            size_of::<F>()
+        }
+
+        // One KiB bounds the retained per-ancestor control state, independently
+        // of the deferred job payload and the number of positioned descendants.
+        let bytes = bytes(|style, children, window, cx, stack| {
+            paint(Policy::default(), style, children, window, cx, stack)
+        });
+        assert!(bytes <= 1024, "ordinary paint continuation: {bytes} bytes");
     }
 }

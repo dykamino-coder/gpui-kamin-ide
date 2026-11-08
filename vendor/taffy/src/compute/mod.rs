@@ -152,21 +152,24 @@ pub async fn compute_root_layout_async(
 
         let mut hoisted: Vec<NodeId> = Vec::new();
         let mut unclaimed = OofCandidates::new();
-        oof::perform_oof_layout_async(
-            tree,
-            root,
-            candidates.as_slice(),
-            area_size,
-            area_offset,
-            direction,
-            // The root is the initial containing block and claims all remaining candidates
-            ContainingBlockClaims::ALL,
-            overflow,
-            &mut hoisted,
-            &mut unclaimed,
-            stack,
-        )
-        .await;
+        stack
+            .run(|stack| {
+                oof::perform_oof_layout_async(
+                    tree,
+                    root,
+                    candidates.as_slice(),
+                    area_size,
+                    area_offset,
+                    direction,
+                    // The root is the initial containing block and claims all remaining candidates
+                    ContainingBlockClaims::ALL,
+                    overflow,
+                    &mut hoisted,
+                    &mut unclaimed,
+                    stack,
+                )
+            })
+            .await;
         debug_assert!(
             unclaimed.is_empty(),
             "the root positioning pass must claim all remaining candidates"

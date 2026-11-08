@@ -6,6 +6,9 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use std::collections::HashMap;
 
+mod queries;
+pub(crate) use queries::{blends_inside, breaks_absent, floats_absent, positioned_inside};
+
 /// Отрицательный ответ разрешает пропустить семантический обход. Неизвестные
 /// длины и сложные inline-коробки остаются на общем пути схлопывания.
 #[derive(Default)]
@@ -20,6 +23,8 @@ const MARGIN: u8 = 4;
 const BLOCK: u8 = 8;
 const CLEARABLE: u8 = 16;
 const SPLIT: u8 = 32;
+const BLEND: u8 = 64;
+const POSITIONED: u8 = 128;
 
 fn own(e: &Element, descendants: u8) -> u8 {
     crate::work::add!(SubtreeNodesVisited, 1);
@@ -61,6 +66,8 @@ fn own(e: &Element, descendants: u8) -> u8 {
         | (u8::from(block) * BLOCK)
         | (u8::from(may_clear) * CLEARABLE)
         | (u8::from(split) * SPLIT)
+        | (u8::from(style.reset_effects.blend.is_some_and(|b| b != 0)) * BLEND)
+        | (u8::from(style.reset_positioned.position.is_some()) * POSITIONED)
 }
 
 mod preparation;
@@ -104,6 +111,15 @@ impl SubtreeFacts {
         self.list_flags(nodes) & CLEARABLE != 0
     }
 
+    pub(crate) fn blends_inside(&mut self, nodes: &[Node]) -> bool {
+        self.collect(nodes);
+        self.list_flags(nodes) & BLEND != 0
+    }
+
+    pub(crate) fn positioned_inside(&mut self, root: &Element) -> bool {
+        self.element_flags(root) & POSITIONED != 0
+    }
+
     fn element_flags(&mut self, root: &Element) -> u8 {
         self.collect(&root.children);
         own(root, self.list_flags(&root.children))
@@ -127,7 +143,9 @@ impl SubtreeFacts {
         crate::work::add!(SubtreeQueries, 1);
         let mut pending = Vec::new();
         for node in nodes {
-            if let Node::Element(e) = node {
+            if let Node::Element(e) = node
+                && self.cached(e.children.identity()).is_none()
+            {
                 pending.push((&e.children, false));
             }
         }

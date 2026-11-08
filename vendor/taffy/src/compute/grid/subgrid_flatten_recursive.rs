@@ -6,7 +6,7 @@ use super::super::types::NamedLineResolver;
 use super::super::OriginZeroLine;
 use super::{
     linked_axes, nested_standalone_size, place_items, subgrid_edges, subgrid_gaps, PlacedGrid,
-    SubgridEdge, MAX_DEPTH,
+    SubgridEdge,
 };
 use crate::geometry::Line;
 use crate::geometry::Rect;
@@ -15,7 +15,6 @@ use crate::style::AlignItemsKeyword;
 use crate::style::SUBGRID_COLUMNS;
 use crate::style::SUBGRID_ROWS;
 use crate::tree::NodeId;
-use crate::util::sys::Box;
 use crate::util::sys::Vec;
 use crate::CoreStyle;
 use crate::GridContainerStyle;
@@ -41,12 +40,8 @@ pub(in super::super) async fn flatten_into_async<Tree: LayoutGridContainer>(
     known_content: Size<Option<f32>>,
     out: &mut Vec<GridItem>,
     edges_out: &mut Vec<SubgridEdge>,
-    depth: u8,
     stack: &mut reblessive::Stk,
 ) {
-    if depth >= MAX_DEPTH {
-        return;
-    }
     let style = tree.get_grid_container_style(node);
     let bits = style.subgrid();
     let own_axes = super::super::subgrid_flow::axes(&style);
@@ -187,26 +182,28 @@ pub(in super::super) async fn flatten_into_async<Tree: LayoutGridContainer>(
         if chained != 0 {
             let child_content =
                 nested_standalone_size::content_async(tree, &child, chained, stack).await;
-            Box::pin(flatten_into_async(
-                tree,
-                child.node,
-                chained,
-                (column, row),
-                (child.column, child.row),
-                root_axes,
-                own_axes,
-                Some(&own_resolver),
-                extra,
-                gap,
-                root_gap,
-                inner_node_size,
-                child_content,
-                out,
-                edges_out,
-                depth + 1,
-                stack,
-            ))
-            .await;
+            stack
+                .run(|stack| {
+                    flatten_into_async(
+                        tree,
+                        child.node,
+                        chained,
+                        (column, row),
+                        (child.column, child.row),
+                        root_axes,
+                        own_axes,
+                        Some(&own_resolver),
+                        extra,
+                        gap,
+                        root_gap,
+                        inner_node_size,
+                        child_content,
+                        out,
+                        edges_out,
+                        stack,
+                    )
+                })
+                .await;
         }
         let sizing = linked & !chained;
         if sizing == 0 {

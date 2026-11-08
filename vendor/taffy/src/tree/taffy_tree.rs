@@ -33,20 +33,20 @@ use crate::tree::{
     NodeId, PrintTree, RoundTree, RunMode, TraversePartialTree, TraverseTree,
 };
 use crate::util::debug::{debug_log, debug_log_node};
-use crate::util::sys::{Box, ChildrenVec, Vec, new_const_children_vec, new_vec_with_capacity};
+use crate::util::sys::{new_const_children_vec, new_vec_with_capacity, Box, ChildrenVec, Vec};
 
-use crate::CacheTree;
 use crate::compute::{
     compute_cached_layout_async, compute_leaf_layout, compute_oof_layout_async,
     compute_root_layout_async, round_layout,
 };
+use crate::CacheTree;
 
 #[cfg(feature = "block_layout")]
-use crate::{LayoutBlockContainer, compute::compute_block_layout_async};
+use crate::{compute::compute_block_layout_async, LayoutBlockContainer};
 #[cfg(feature = "flexbox")]
-use crate::{LayoutFlexboxContainer, compute::compute_flexbox_layout_async};
+use crate::{compute::compute_flexbox_layout_async, LayoutFlexboxContainer};
 #[cfg(feature = "grid")]
-use crate::{LayoutGridContainer, compute::compute_grid_layout_async};
+use crate::{compute::compute_grid_layout_async, LayoutGridContainer};
 
 #[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
@@ -716,7 +716,12 @@ where
                     .run(|stack| compute_grid_layout_async(self, node_id, inputs, stack))
                     .await
             }
-            (_, false) => self.measure_leaf(node_id, inputs, stack).await,
+            (_, false) => {
+                // Leaf measurement state must not widen every container continuation.
+                stack
+                    .run(|stack| self.measure_leaf(node_id, inputs, stack))
+                    .await
+            }
             #[allow(unreachable_patterns)]
             _ => unreachable!("block containers with children are dispatched inline"),
         }
@@ -1350,7 +1355,9 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
     /// KaminIDE patch: whether `pin_identity` was called for `node`.
     pub fn identity_pinned(&self, node: NodeId) -> bool {
-        self.nodes.get(node.into()).is_some_and(|data| data.identity_pinned)
+        self.nodes
+            .get(node.into())
+            .is_some_and(|data| data.identity_pinned)
     }
 
     /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
@@ -1368,7 +1375,10 @@ impl<NodeContext> TaffyTree<NodeContext> {
     ) -> TaffyResult<()> {
         let style = style.into();
         let key = node.into();
-        debug_assert!(!self.nodes[key].identity_pinned, "a pinned node keeps its identity");
+        debug_assert!(
+            !self.nodes[key].identity_pinned,
+            "a pinned node keeps its identity"
+        );
         for child in self.children[key].iter() {
             if self.parents[(*child).into()] == Some(node) {
                 self.parents[(*child).into()] = None;
@@ -2736,21 +2746,18 @@ mod tests {
                     panic!("a hidden descendant must not be measured")
                 })
                 .unwrap();
-                assert!(
-                    tree.nodes
-                        .values()
-                        .all(|node| node.unrounded_layout.size == Size::ZERO)
-                );
-                assert!(
-                    tree.nodes
-                        .values()
-                        .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO)
-                );
-                assert!(
-                    tree.nodes
-                        .iter()
-                        .all(|(key, node)| key == root.into() || node.cache.is_empty())
-                );
+                assert!(tree
+                    .nodes
+                    .values()
+                    .all(|node| node.unrounded_layout.size == Size::ZERO));
+                assert!(tree
+                    .nodes
+                    .values()
+                    .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO));
+                assert!(tree
+                    .nodes
+                    .iter()
+                    .all(|(key, node)| key == root.into() || node.cache.is_empty()));
             })
             .unwrap()
             .join()
@@ -3076,3 +3083,7 @@ mod tests {
 ))]
 #[path = "layout_depth_tests.rs"]
 mod layout_depth_tests;
+
+#[cfg(test)]
+#[path = "continuation_size_tests.rs"]
+mod continuation_size_tests;

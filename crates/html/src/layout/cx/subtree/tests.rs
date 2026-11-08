@@ -136,3 +136,51 @@ fn nonzero_margins_do_not_require_structural_inline_preparation() {
     let inline = anon_element("span", vec![Node::Element(block)]);
     assert!(!facts.inline_preparation_absent(&[Node::Element(inline)]));
 }
+
+#[test]
+fn paint_facts_follow_cow_style_changes_and_reuse_deep_snapshot_entries() {
+    use crate::style::computed::{Position, ResetEffects, ResetPositioned, StyleGroup};
+    let mut root = anon_element("div", vec![]);
+    for _ in 0..1000 {
+        root = anon_element("div", vec![Node::Element(root)]);
+    }
+    let mut nodes = vec![Node::Element(root)];
+    let mut facts = SubtreeFacts::default();
+    assert!(!facts.blends_inside(&nodes));
+    let entries = facts.children.len();
+    let old = nodes.clone();
+    let Node::Element(root) = &mut nodes[0] else {
+        unreachable!()
+    };
+    assert!(!facts.positioned_inside(root));
+    let Node::Element(child) = &mut root.children[0] else {
+        unreachable!()
+    };
+    child.style = Computed {
+        reset_effects: StyleGroup::new(ResetEffects {
+            blend: Some(1),
+            ..Default::default()
+        }),
+        reset_positioned: StyleGroup::new(ResetPositioned {
+            position: Some(Position::Relative),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+    .into();
+    assert!(facts.positioned_inside(root));
+    assert!(facts.blends_inside(&nodes));
+    let Node::Element(old_root) = &old[0] else {
+        unreachable!()
+    };
+    assert!(!facts.positioned_inside(old_root));
+    assert!(!facts.blends_inside(&old));
+    assert_eq!(facts.children.len(), entries + 1);
+    let mut next = nodes.as_slice();
+    while let Some(Node::Element(e)) = next.first() {
+        facts.positioned_inside(e);
+        facts.blends_inside(next);
+        next = &e.children;
+    }
+    assert_eq!(facts.children.len(), entries + 1);
+}

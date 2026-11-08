@@ -15263,10 +15263,10 @@ index 0000000000000000000000000000000000000000..c5fc6e98e285db1fa8c72e12b3c541a2
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid.rs b/vendor/taffy/src/compute/grid/subgrid.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..44309819eaeec8ecff3d67d3d54d9ae76bdadaa1
+index 0000000000000000000000000000000000000000..95d5b2f7cf23f8e597a0fd115fc2ca1050ce4ff2
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,199 @@
 +//! KaminIDE patch: ПОДСЕТКА (css-grid-2 §9 `#subgrids`) на общем пути сетки.
 +//!
 +//! Спека — `refs/csswg-drafts/css-grid-2/Overview.bs:3555-3925`; референс —
@@ -15300,10 +15300,6 @@ index 0000000000000000000000000000000000000000..44309819eaeec8ecff3d67d3d54d9ae7
 +use crate::util::sys::Vec;
 +use crate::util::{MaybeResolve, ResolveOrZero};
 +use crate::GenericRepetition;
-+
-+/// Глубина вложенности подсеток, дальше которой сплющивание не идёт
-+/// (страховка от патологических деревьев; у WPT — не глубже четырёх).
-+const MAX_DEPTH: u8 = 12;
 +
 +/// Результат размещения элементов сетки (шаги 2-4 `compute_grid_layout`).
 +pub(super) struct PlacedGrid<S: crate::CheapCloneStr> {
@@ -15404,6 +15400,70 @@ index 0000000000000000000000000000000000000000..44309819eaeec8ecff3d67d3d54d9ae7
 +        assert!(count as i16 > 0);
 +        assert_eq!(bounded_subgrid_count(0), 1);
 +        assert_eq!(bounded_subgrid_count(12), 12);
++    }
++}
++
++#[cfg(all(test, feature = "taffy_tree"))]
++mod depth_tests {
++    use crate::prelude::*;
++    use crate::{SUBGRID_COLUMNS, SUBGRID_ROWS};
++
++    fn intrinsic_height(depth: usize) -> f32 {
++        let mut tree = TaffyTree::<()>::new();
++        tree.disable_rounding();
++        let mut child = tree
++            .new_leaf(Style {
++                size: Size {
++                    width: length(20.0),
++                    height: length(77.0),
++                },
++                ..Style::DEFAULT
++            })
++            .unwrap();
++        for _ in 0..depth {
++            child = tree
++                .new_with_children(
++                    Style {
++                        display: Display::Grid,
++                        subgrid: SUBGRID_COLUMNS | SUBGRID_ROWS,
++                        ..Style::DEFAULT
++                    },
++                    &[child],
++                )
++                .unwrap();
++        }
++        let root = tree
++            .new_with_children(
++                Style {
++                    display: Display::Grid,
++                    size: Size {
++                        width: length(100.0),
++                        height: Dimension::AUTO,
++                    },
++                    grid_template_columns: vec![auto()],
++                    grid_template_rows: vec![auto()],
++                    ..Style::DEFAULT
++                },
++                &[child],
++            )
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        tree.layout(root).unwrap().size.height
++    }
++
++    #[test]
++    fn deeply_nested_subgrids_preserve_intrinsic_contributions_on_small_stack() {
++        std::thread::Builder::new()
++            .stack_size(512 * 1024)
++            .spawn(|| {
++                // Both sides of the former cutoff, plus depth beyond a u8 counter.
++                for depth in [12, 13, 32, 256] {
++                    assert_eq!(intrinsic_height(depth), 77.0, "subgrid depth {depth}");
++                }
++            })
++            .unwrap()
++            .join()
++            .unwrap();
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_cross_constraints.rs b/vendor/taffy/src/compute/grid/subgrid_cross_constraints.rs
@@ -15566,10 +15626,10 @@ index 0000000000000000000000000000000000000000..37eada6191d786df9f2b8fb525a6ddc4
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_flatten_entry.rs b/vendor/taffy/src/compute/grid/subgrid_flatten_entry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9aa1db0b2216a09a8ce65d80cdd21d78b6a3d229
+index 0000000000000000000000000000000000000000..8d77d64b50e0d7aef980615033a2f0ede44890a5
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_flatten_entry.rs
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,80 @@
 +//! Subgrid flatten entry phase. CSS Grid 2 §9.
 +
 +use super::super::types::GridItem;
@@ -15637,7 +15697,6 @@ index 0000000000000000000000000000000000000000..9aa1db0b2216a09a8ce65d80cdd21d78
 +            known,
 +            &mut out,
 +            &mut edges,
-+            0,
 +            stack,
 +        )
 +        .await;
@@ -15653,10 +15712,10 @@ index 0000000000000000000000000000000000000000..9aa1db0b2216a09a8ce65d80cdd21d78
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_flatten_recursive.rs b/vendor/taffy/src/compute/grid/subgrid_flatten_recursive.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..adc407eb8232c48837c0fbb785ca29174c581faf
+index 0000000000000000000000000000000000000000..58ff9c60d0c833bad58071a4a5f10906a42dbc9a
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_flatten_recursive.rs
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,229 @@
 +//! Subgrid flatten recursive phase. CSS Grid 2 §9.
 +
 +use super::super::explicit_grid::AutoRepeatStrategy;
@@ -15665,7 +15724,7 @@ index 0000000000000000000000000000000000000000..adc407eb8232c48837c0fbb785ca2917
 +use super::super::OriginZeroLine;
 +use super::{
 +    linked_axes, nested_standalone_size, place_items, subgrid_edges, subgrid_gaps, PlacedGrid,
-+    SubgridEdge, MAX_DEPTH,
++    SubgridEdge,
 +};
 +use crate::geometry::Line;
 +use crate::geometry::Rect;
@@ -15674,7 +15733,6 @@ index 0000000000000000000000000000000000000000..adc407eb8232c48837c0fbb785ca2917
 +use crate::style::SUBGRID_COLUMNS;
 +use crate::style::SUBGRID_ROWS;
 +use crate::tree::NodeId;
-+use crate::util::sys::Box;
 +use crate::util::sys::Vec;
 +use crate::CoreStyle;
 +use crate::GridContainerStyle;
@@ -15700,12 +15758,8 @@ index 0000000000000000000000000000000000000000..adc407eb8232c48837c0fbb785ca2917
 +    known_content: Size<Option<f32>>,
 +    out: &mut Vec<GridItem>,
 +    edges_out: &mut Vec<SubgridEdge>,
-+    depth: u8,
 +    stack: &mut reblessive::Stk,
 +) {
-+    if depth >= MAX_DEPTH {
-+        return;
-+    }
 +    let style = tree.get_grid_container_style(node);
 +    let bits = style.subgrid();
 +    let own_axes = super::super::subgrid_flow::axes(&style);
@@ -15846,26 +15900,28 @@ index 0000000000000000000000000000000000000000..adc407eb8232c48837c0fbb785ca2917
 +        if chained != 0 {
 +            let child_content =
 +                nested_standalone_size::content_async(tree, &child, chained, stack).await;
-+            Box::pin(flatten_into_async(
-+                tree,
-+                child.node,
-+                chained,
-+                (column, row),
-+                (child.column, child.row),
-+                root_axes,
-+                own_axes,
-+                Some(&own_resolver),
-+                extra,
-+                gap,
-+                root_gap,
-+                inner_node_size,
-+                child_content,
-+                out,
-+                edges_out,
-+                depth + 1,
-+                stack,
-+            ))
-+            .await;
++            stack
++                .run(|stack| {
++                    flatten_into_async(
++                        tree,
++                        child.node,
++                        chained,
++                        (column, row),
++                        (child.column, child.row),
++                        root_axes,
++                        own_axes,
++                        Some(&own_resolver),
++                        extra,
++                        gap,
++                        root_gap,
++                        inner_node_size,
++                        child_content,
++                        out,
++                        edges_out,
++                        stack,
++                    )
++                })
++                .await;
 +        }
 +        let sizing = linked & !chained;
 +        if sizing == 0 {
@@ -20150,7 +20206,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224d7790743
+index 1366d8349f1668c19f04bd2d85e88422918b6604..7acdacb84dc4e5f49f4f5c2b09b46d092d64b39a
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -20305,27 +20361,48 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +            x: area_x,
 +            y: area_y,
 +        };
-@@ -165 +155 @@
+@@ -165,12 +155,21 @@
 -        oof::perform_oof_layout(
-+        oof::perform_oof_layout_async(
-@@ -168 +158 @@
+-            tree,
+-            root,
 -            candidates,
-+            candidates.as_slice(),
-@@ -176,0 +167,6 @@
-+            stack,
-+        )
-+        .await;
+-            area_size,
+-            area_offset,
+-            direction,
+-            // The root is the initial containing block and claims all remaining candidates
+-            ContainingBlockClaims::ALL,
+-            overflow,
+-            &mut hoisted,
+-            &mut unclaimed,
++        stack
++            .run(|stack| {
++                oof::perform_oof_layout_async(
++                    tree,
++                    root,
++                    candidates.as_slice(),
++                    area_size,
++                    area_offset,
++                    direction,
++                    // The root is the initial containing block and claims all remaining candidates
++                    ContainingBlockClaims::ALL,
++                    overflow,
++                    &mut hoisted,
++                    &mut unclaimed,
++                    stack,
++                )
++            })
++            .await;
 +        debug_assert!(
 +            unclaimed.is_empty(),
 +            "the root positioning pass must claim all remaining candidates"
-@@ -178 +173,0 @@
+@@ -178 +176,0 @@
 -        debug_assert!(unclaimed.is_empty(), "the root positioning pass must claim all remaining candidates");
-@@ -188 +183 @@
+@@ -188 +186 @@
 -fn compute_in_flow_root_layout(
 +async fn compute_in_flow_root_layout_async(
-@@ -192,0 +188 @@
+@@ -192,0 +191 @@
 +    stack: &mut reblessive::Stk,
-@@ -194,10 +189,0 @@
+@@ -194,10 +192,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -20336,7 +20413,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +191,3 @@
+@@ -205,50 +194,3 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -20390,19 +20467,19 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +    let known_dimensions = root_block_constraints::known(tree, root, available_space);
 +    #[cfg(not(feature = "block_layout"))]
 +    let known_dimensions = Size::NONE;
-@@ -258 +197,4 @@
+@@ -258 +200,4 @@
 -        known_dimensions_are_definite: Size { width: true, height: true },
 +        known_dimensions_are_definite: Size {
 +            width: true,
 +            height: true,
 +        },
-@@ -260 +202 @@
+@@ -260 +205 @@
 -        available_space: root_available_space,
 +        available_space,
-@@ -269 +211 @@
+@@ -269 +214 @@
 -    let mut output = tree.compute_child_layout(root, inputs);
 +    let mut output = tree.compute_child_layout_async(root, inputs, stack).await;
-@@ -271,6 +213,25 @@
+@@ -271,6 +216,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -20434,7 +20511,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -278,24 +239,2 @@
+@@ -278,24 +242,2 @@
 -        width: if style.overflow().y == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
 -        height: if style.overflow().x == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
 -    };
@@ -20461,7 +20538,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 -            right.map(|right| -right).or(left).unwrap_or(0.0)
 +        width: if style.overflow().y == Overflow::Scroll {
 +            style.scrollbar_width()
-@@ -303,4 +242,47 @@
+@@ -303,4 +245,47 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 -        };
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
@@ -20513,12 +20590,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +        },
 +    };
 +
-@@ -311,0 +294 @@
+@@ -311,0 +297 @@
 +        relative_offset: Point::ZERO,
-@@ -355 +338 @@
+@@ -355 +341 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -363,89 +346,11 @@
+@@ -363,89 +349,11 @@
 -/// Rounds the calculated layout to exact pixel values
 -///
 -/// In order to ensure that no gaps in the layout are introduced we:
@@ -20619,46 +20696,46 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +    output: &LayoutOutput,
 +) {
 +    tree.cache_store(node, inputs, output.clone());
-@@ -456 +361,5 @@
+@@ -456 +364,5 @@
 -pub fn compute_hidden_layout(tree: &mut (impl LayoutPartialTree + CacheTree), node: NodeId) -> LayoutOutput {
 +pub async fn compute_hidden_layout_async(
 +    tree: &mut (impl LayoutPartialTree + CacheTree),
 +    node: NodeId,
 +    stack: &mut reblessive::Stk,
 +) -> LayoutOutput {
-@@ -464 +373,2 @@
+@@ -464 +376,2 @@
 -        tree.compute_child_layout(child_id, LayoutInput::HIDDEN);
 +        tree.compute_child_layout_async(child_id, LayoutInput::HIDDEN, stack)
 +            .await;
-@@ -474 +384,2 @@
+@@ -474 +387,2 @@
 -        DetailedGridInfo, DetailedGridItemsInfo, DetailedGridTracksInfo, GridLineNames, GridLineNamesIter,
 +        DetailedGridInfo, DetailedGridItemsInfo, DetailedGridTracksInfo, GridLineNames,
 +        GridLineNamesIter,
-@@ -489 +400,5 @@
+@@ -489 +403,5 @@
 -        let style: Style = Style { display: Display::Flex, size: Size::from_lengths(50.0, 50.0), ..Default::default() };
 +        let style: Style = Style {
 +            display: Display::Flex,
 +            size: Size::from_lengths(50.0, 50.0),
 +            ..Default::default()
 +        };
-@@ -493 +408,3 @@
+@@ -493 +411,3 @@
 -        let child_00 = taffy.new_with_children(style.clone(), &[grandchild_00, grandchild_01]).unwrap();
 +        let child_00 = taffy
 +            .new_with_children(style.clone(), &[grandchild_00, grandchild_01])
 +            .unwrap();
-@@ -496 +413,3 @@
+@@ -496 +416,3 @@
 -        let child_01 = taffy.new_with_children(style.clone(), &[grandchild_02]).unwrap();
 +        let child_01 = taffy
 +            .new_with_children(style.clone(), &[grandchild_02])
 +            .unwrap();
-@@ -500 +419,5 @@
+@@ -500 +422,5 @@
 -                Style { display: Display::None, size: Size::from_lengths(50.0, 50.0), ..Default::default() },
 +                Style {
 +                    display: Display::None,
 +                    size: Size::from_lengths(50.0, 50.0),
 +                    ..Default::default()
 +                },
-@@ -510 +433,8 @@
+@@ -510 +436,8 @@
 -        for node in [root, child_00, child_01, grandchild_00, grandchild_01, grandchild_02] {
 +        for node in [
 +            root,
@@ -20668,14 +20745,14 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..3dacb3d72712130fdb3d0b3a5f6be224
 +            grandchild_01,
 +            grandchild_02,
 +        ] {
-@@ -516,0 +447,5 @@
+@@ -516,0 +450,5 @@
 +
 +mod sync_api;
 +pub use sync_api::*;
 +mod stack_cache;
 +pub(crate) use stack_cache::compute_cached_layout_async;
 diff --git a/vendor/taffy/src/compute/oof.rs b/vendor/taffy/src/compute/oof.rs
-index 746c9f387238729971e490debc213c5b8c882735..cfb0942384fde495ffc483826fc749e18f3d4d8c
+index 746c9f387238729971e490debc213c5b8c882735..189594789eba3a1af3d5c39fd2397bf250f07aad
 --- a/vendor/taffy/src/compute/oof.rs
 +++ b/vendor/taffy/src/compute/oof.rs
 @@ -9,2 +9,2 @@
@@ -20882,7 +20959,8 @@ index 746c9f387238729971e490debc213c5b8c882735..cfb0942384fde495ffc483826fc749e1
 -    // Always record the hoisted child list (even when empty) so that lists recorded by previous
 -    // layout runs do not persist
 -    tree.clear_hoisted_children(node_id);
-+    let result = compute_oof_layout_for_area_async(
++    // KaminIDE patch: reserve positioning state only for a nonempty positioning pass.
++    let result = stack.run(|stack| compute_oof_layout_for_area_async(
 +        tree,
 +        node_id,
 +        candidates.as_slice(),
@@ -20890,8 +20968,7 @@ index 746c9f387238729971e490debc213c5b8c882735..cfb0942384fde495ffc483826fc749e1
 +        direction,
 +        claims,
 +        stack,
-+    )
-+    .await;
++    )).await;
 @@ -365 +480,3 @@
 -        output.scrollable_overflow_rect = output.scrollable_overflow_rect.union(result.scrollable_overflow_rect);
 +        output.scrollable_overflow_rect = output
@@ -24131,7 +24208,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..e107c34547c8ec38fd25014713d4919b
 +}
 diff --git a/vendor/taffy/src/tree/calc_size.rs b/vendor/taffy/src/tree/calc_size.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cb961dc64fe57ba0a6bcb21e4077e2ab37b25313
+index 0000000000000000000000000000000000000000..2a190fe4297def01e2e0e989e13642c29b7a4f3c
 --- /dev/null
 +++ b/vendor/taffy/src/tree/calc_size.rs
 @@ -0,0 +1,292 @@
@@ -24163,8 +24240,8 @@ index 0000000000000000000000000000000000000000..cb961dc64fe57ba0a6bcb21e4077e2ab
 +        {
 +            return inputs;
 +        }
-+        self.resolve_calc_size_expressions_async(node, inputs, stack)
-+            .await
++        // KaminIDE patch: ordinary ancestors do not retain intrinsic-probe state.
++        stack.run(|stack| self.resolve_calc_size_expressions_async(node, inputs, stack)).await
 +    }
 +
 +    // KaminIDE patch: the resolution temporaries must not live in the native
@@ -24429,10 +24506,10 @@ index 0000000000000000000000000000000000000000..cb961dc64fe57ba0a6bcb21e4077e2ab
 +mod tests;
 diff --git a/vendor/taffy/src/tree/calc_size_tests.rs b/vendor/taffy/src/tree/calc_size_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae8bf210ba7748069b22d357263fd14de1dccab6
+index 0000000000000000000000000000000000000000..64802cc7ebe2d6d9159b094e3d94ef94abcba7c2
 --- /dev/null
 +++ b/vendor/taffy/src/tree/calc_size_tests.rs
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,272 @@
 +//! calc-size preserves intrinsic contributions, automatic minima and its sizing box.
 +
 +use super::*;
@@ -24669,6 +24746,42 @@ index 0000000000000000000000000000000000000000..ae8bf210ba7748069b22d357263fd14d
 +    assert_eq!(tree.layout(child).unwrap().size.width, 100.0);
 +    assert_eq!(tree.layout(child).unwrap().size.height, 50.0);
 +}
++
++
++#[test]
++fn ordinary_ancestors_do_not_reserve_intrinsic_probe_state() {
++    let mut tree = TaffyTree::<()>::new();
++    let node = tree.new_leaf(Style::DEFAULT).unwrap();
++    let mut view = TaffyView {
++        taffy: &mut tree,
++        measure_function: crate::tree::SyncMeasure(measured),
++    };
++    let bytes = reblessive::Stack::new().enter(|stack| async {
++        let future = view.resolve_calc_size_async(node, LayoutInput::HIDDEN, stack);
++        core::mem::size_of_val(&future)
++    }).finish();
++    // The ordinary control state must not include the expression/probe payload.
++    assert!(bytes <= 512, "ordinary calc-size continuation: {bytes} bytes");
++}
++
++#[test]
++fn ordinary_ancestors_do_not_reserve_positioning_pass_state() {
++    let mut tree = TaffyTree::<()>::new();
++    let node = tree.new_leaf(Style::DEFAULT).unwrap();
++    let mut view = TaffyView {
++        taffy: &mut tree,
++        measure_function: crate::tree::SyncMeasure(measured),
++    };
++    let mut output = LayoutOutput::HIDDEN;
++    let bytes = reblessive::Stack::new().enter(|stack| async {
++        let future = crate::compute::oof::compute_oof_layout_async(
++            &mut view, node, &mut output, stack,
++        );
++        core::mem::size_of_val(&future)
++    }).finish();
++    // Candidate storage and the full positioning algorithm are not ancestor state.
++    assert!(bytes <= 512, "ordinary positioning continuation: {bytes} bytes");
++}
 diff --git a/vendor/taffy/src/tree/computed_output.rs b/vendor/taffy/src/tree/computed_output.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..c1cb755c05fd160217476a02383282701ba411db
@@ -24764,6 +24877,63 @@ index 0000000000000000000000000000000000000000..c1cb755c05fd160217476a0238328270
 +            matches!(tree.computed_layout_output(node), Err(TaffyError::InvalidInputNode(id)) if id == node)
 +        );
 +    }
++}
+diff --git a/vendor/taffy/src/tree/continuation_size_tests.rs b/vendor/taffy/src/tree/continuation_size_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e26a3248fb291bb2df0aae695f1c4d5cc16ef5a
+--- /dev/null
++++ b/vendor/taffy/src/tree/continuation_size_tests.rs
+@@ -0,0 +1,51 @@
++//! Leaf-only suspended state stays outside container continuations.
++use super::*;
++use core::{hint::black_box, mem::size_of_val};
++
++struct PayloadMeasure<const N: usize>;
++impl<const N: usize> crate::tree::LayoutMeasurer<()> for PayloadMeasure<N> {
++    async fn measure<'a>(
++        &'a mut self,
++        _: LayoutInput,
++        _: NodeId,
++        _: Option<&'a mut ()>,
++        _: &'a Style,
++        _: &'a mut reblessive::Stk,
++    ) -> LayoutOutput {
++        let payload = black_box([0u8; N]);
++        core::future::pending::<()>().await;
++        black_box(payload);
++        LayoutOutput::HIDDEN
++    }
++}
++
++fn ancestor_bytes<const N: usize>() -> usize {
++    let mut tree = TaffyTree::<()>::new();
++    let node = tree.new_leaf(Style::DEFAULT).unwrap();
++    let mut view = TaffyView {
++        taffy: &mut tree,
++        measure_function: PayloadMeasure::<N>,
++    };
++    reblessive::Stack::new()
++        .enter(|stack| async {
++            let future = view.compute_child_layout_on_stack(
++                node,
++                LayoutInput::HIDDEN,
++                #[cfg(feature = "block_layout")]
++                None,
++                stack,
++            );
++            size_of_val(&future)
++        })
++        .finish()
++}
++
++#[test]
++fn leaf_measurement_payload_does_not_widen_ancestor_continuations() {
++    let ordinary = ancestor_bytes::<0>();
++    let large_leaf = ancestor_bytes::<4096>();
++    assert_eq!(
++        ordinary, large_leaf,
++        "leaf-only state leaked into ancestor: {ordinary} -> {large_leaf} bytes"
++    );
 +}
 diff --git a/vendor/taffy/src/tree/flex.rs b/vendor/taffy/src/tree/flex.rs
 new file mode 100644
@@ -32373,7 +32543,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b66475ac69
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3907fb5e4a1382a1323ecf109cf8770ba4951559
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -32400,28 +32570,20 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 -    RoundTree, RunMode, TraversePartialTree, TraverseTree,
 +    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree,
 +    NodeId, PrintTree, RoundTree, RunMode, TraversePartialTree, TraverseTree,
-@@ -18,2 +36,3 @@
--use crate::util::sys::{new_const_children_vec, new_vec_with_capacity, Box, ChildrenVec, Vec};
--
-+use crate::util::sys::{Box, ChildrenVec, Vec, new_const_children_vec, new_vec_with_capacity};
-+
-+use crate::CacheTree;
-@@ -21,2 +40,2 @@
+@@ -21,2 +39,2 @@
 -    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout, compute_root_layout,
 -    round_layout,
 +    compute_cached_layout_async, compute_leaf_layout, compute_oof_layout_async,
 +    compute_root_layout_async, round_layout,
-@@ -24 +42,0 @@
--use crate::CacheTree;
 @@ -27 +45 @@
 -use crate::{compute::compute_block_layout, LayoutBlockContainer};
-+use crate::{LayoutBlockContainer, compute::compute_block_layout_async};
++use crate::{compute::compute_block_layout_async, LayoutBlockContainer};
 @@ -29 +47 @@
 -use crate::{compute::compute_flexbox_layout, LayoutFlexboxContainer};
-+use crate::{LayoutFlexboxContainer, compute::compute_flexbox_layout_async};
++use crate::{compute::compute_flexbox_layout_async, LayoutFlexboxContainer};
 @@ -31 +49 @@
 -use crate::{compute::compute_grid_layout, LayoutGridContainer};
-+use crate::{LayoutGridContainer, compute::compute_grid_layout_async};
++use crate::{compute::compute_grid_layout_async, LayoutGridContainer};
 @@ -63,2 +81,9 @@
 -            TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count } => {
 -                write!(f, "Index (is {child_index}) should be < child_count ({child_count}) for parent node {parent:?}")
@@ -32786,7 +32948,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                node.cache.clear();
 +                node.pct_parent_h = Some(inputs.parent_size.height);
 +            }
-@@ -305,24 +635,107 @@
+@@ -305,24 +635,112 @@
 -        compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
 -            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
 -            let has_children = tree.child_count(node_id) > 0;
@@ -32895,7 +33057,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                    .run(|stack| compute_grid_layout_async(self, node_id, inputs, stack))
 +                    .await
 +            }
-+            (_, false) => self.measure_leaf(node_id, inputs, stack).await,
++            (_, false) => {
++                // Leaf measurement state must not widen every container continuation.
++                stack
++                    .run(|stack| self.measure_leaf(node_id, inputs, stack))
++                    .await
++            }
 +            #[allow(unreachable_patterns)]
 +            _ => unreachable!("block containers with children are dispatched inline"),
 +        }
@@ -32918,7 +33085,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                        pending.push(children);
 +                    }
 +                    break;
-@@ -330,9 +743,4 @@
+@@ -330,9 +748,4 @@
 -            };
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
@@ -32932,7 +33099,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                    Some(siblings) => children = siblings,
 +                    None => break,
 +                }
-@@ -340,3 +748,45 @@
+@@ -340,3 +753,45 @@
 -
 -            output
 -        })
@@ -32981,25 +33148,25 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +            compute_oof_layout_async(self, node_id, &mut output, stack).await;
 +        }
 +        output
-@@ -347 +797,2 @@
+@@ -347 +802,2 @@
 -impl<NodeContext, MeasureFunction> TraversePartialTree for TaffyView<'_, NodeContext, MeasureFunction>
 +impl<NodeContext, MeasureFunction> TraversePartialTree
 +    for TaffyView<'_, NodeContext, MeasureFunction>
-@@ -349 +800 @@
+@@ -349 +805 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -374 +825 @@
+@@ -374 +830 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>
-@@ -381 +832 @@
+@@ -381 +837 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -401,2 +852,2 @@
+@@ -401,2 +857,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -407,6 +858,26 @@
+@@ -407,6 +863,26 @@
 -        self.compute_child_layout(
 -            node_id,
 -            inputs,
@@ -33032,34 +33199,34 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                })
 +                .await
 +        }
-@@ -416 +887,2 @@
+@@ -416 +892,2 @@
 -impl<NodeContext, MeasureFunction> LayoutContainingBlock for TaffyView<'_, NodeContext, MeasureFunction>
 +impl<NodeContext, MeasureFunction> LayoutContainingBlock
 +    for TaffyView<'_, NodeContext, MeasureFunction>
-@@ -418 +890 @@
+@@ -418 +895 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -437 +909,3 @@
+@@ -437 +914,3 @@
 -        self.taffy.nodes[node_id.into()].hoisted_children.extend_from_slice(hoisted);
 +        self.taffy.nodes[node_id.into()]
 +            .hoisted_children
 +            .extend_from_slice(hoisted);
-@@ -448 +922 @@
+@@ -448 +927 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -455 +929,3 @@
+@@ -455 +934,3 @@
 -        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
 +        self.taffy.nodes[node_id.into()]
 +            .cache
 +            .store(input, layout_output)
-@@ -464 +940,2 @@
+@@ -464 +945,2 @@
 -impl<NodeContext, MeasureFunction> LayoutBlockContainer for TaffyView<'_, NodeContext, MeasureFunction>
 +impl<NodeContext, MeasureFunction> LayoutBlockContainer
 +    for TaffyView<'_, NodeContext, MeasureFunction>
-@@ -466 +943 @@
+@@ -466 +948 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -494 +971,19 @@
+@@ -494 +976,19 @@
 -        self.compute_child_layout(node_id, inputs, block_ctx)
 +        reblessive::Stack::new()
 +            .enter(|stack| self.compute_block_child_layout_async(node_id, inputs, block_ctx, stack))
@@ -33080,14 +33247,14 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                .run(|stack| self.compute_child_layout_on_stack(node, inputs, context, stack))
 +                .await
 +        }
-@@ -499 +994,2 @@
+@@ -499 +999,2 @@
 -impl<NodeContext, MeasureFunction> LayoutFlexboxContainer for TaffyView<'_, NodeContext, MeasureFunction>
 +impl<NodeContext, MeasureFunction> LayoutFlexboxContainer
 +    for TaffyView<'_, NodeContext, MeasureFunction>
-@@ -501 +997 @@
+@@ -501 +1002 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -520,0 +1017,49 @@
+@@ -520,0 +1022,49 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -33137,14 +33304,14 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +            .fragmentation()
 +            .flex_fragmentation
 +    }
-@@ -524 +1069,2 @@
+@@ -524 +1074,2 @@
 -impl<NodeContext, MeasureFunction> LayoutGridContainer for TaffyView<'_, NodeContext, MeasureFunction>
 +impl<NodeContext, MeasureFunction> LayoutGridContainer
 +    for TaffyView<'_, NodeContext, MeasureFunction>
-@@ -526 +1072 @@
+@@ -526 +1077 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -546,0 +1093,35 @@
+@@ -546,0 +1098,35 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()]
 +            .subgrid_tracks
@@ -33180,19 +33347,19 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        }
 +    }
 +
-@@ -549 +1130,2 @@
+@@ -549 +1135,2 @@
 -        self.taffy.nodes[node_id.into()].detailed_layout_info = DetailedLayoutInfo::Grid(Box::new(detailed_grid_info));
 +        self.taffy.nodes[node_id.into()].detailed_layout_info =
 +            DetailedLayoutInfo::Grid(Box::new(detailed_grid_info));
-@@ -556 +1138 @@
+@@ -556 +1143 @@
 -    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +    MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -565 +1147,3 @@
+@@ -565 +1152,3 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()]
 +            .final_layout
 +            .get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1171,42 @@
+@@ -586,0 +1176,42 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -33235,7 +33402,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        }
 +    }
 +
-@@ -606 +1232,18 @@
+@@ -606 +1237,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -33255,12 +33422,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1263,2 @@
+@@ -620,2 +1268,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1274,6 @@
+@@ -631,2 +1279,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -33269,7 +33436,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1292,6 @@
+@@ -645,2 +1297,6 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(
@@ -33278,12 +33445,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        children: &[NodeId],
 +    ) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -652 +1303,3 @@
+@@ -652 +1308,3 @@
 -        let _ = self.children.insert(children.iter().copied().collect::<_>());
 +        let _ = self
 +            .children
 +            .insert(children.iter().copied().collect::<_>());
-@@ -666,0 +1320,117 @@
+@@ -666,0 +1325,122 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -33317,7 +33484,9 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +
 +    /// KaminIDE patch: whether `pin_identity` was called for `node`.
 +    pub fn identity_pinned(&self, node: NodeId) -> bool {
-+        self.nodes.get(node.into()).is_some_and(|data| data.identity_pinned)
++        self.nodes
++            .get(node.into())
++            .is_some_and(|data| data.identity_pinned)
 +    }
 +
 +    /// KaminIDE patch: turn `node` into a fresh node with `style`, `children` and
@@ -33335,7 +33504,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    ) -> TaffyResult<()> {
 +        let style = style.into();
 +        let key = node.into();
-+        debug_assert!(!self.nodes[key].identity_pinned, "a pinned node keeps its identity");
++        debug_assert!(
++            !self.nodes[key].identity_pinned,
++            "a pinned node keeps its identity"
++        );
 +        for child in self.children[key].iter() {
 +            if self.parents[(*child).into()] == Some(node) {
 +                self.parents[(*child).into()] = None;
@@ -33401,18 +33573,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -698 +1468,5 @@
+@@ -698 +1478,5 @@
 -    pub fn set_node_context(&mut self, node: NodeId, measure: Option<NodeContext>) -> TaffyResult<()> {
 +    pub fn set_node_context(
 +        &mut self,
 +        node: NodeId,
 +        measure: Option<NodeContext>,
 +    ) -> TaffyResult<()> {
-@@ -730 +1504,2 @@
+@@ -730 +1514,2 @@
 -        self.node_context_data.get_disjoint_mut(keys.map(|k| k.into()))
 +        self.node_context_data
 +            .get_disjoint_mut(keys.map(|k| k.into()))
-@@ -745 +1520,6 @@
+@@ -745 +1530,6 @@
 -    pub fn insert_child_at_index(&mut self, parent: NodeId, child_index: usize, child: NodeId) -> TaffyResult<()> {
 +    pub fn insert_child_at_index(
 +        &mut self,
@@ -33420,53 +33592,53 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        child_index: usize,
 +        child: NodeId,
 +    ) -> TaffyResult<()> {
-@@ -750 +1530,5 @@
+@@ -750 +1540,5 @@
 -            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
 +            return Err(TaffyError::ChildIndexOutOfBounds {
 +                parent,
 +                child_index,
 +                child_count,
 +            });
-@@ -780 +1564,3 @@
+@@ -780 +1574,3 @@
 -        children.iter().for_each(|child| parent_children.push(*child));
 +        children
 +            .iter()
 +            .for_each(|child| parent_children.push(*child));
-@@ -791 +1577,4 @@
+@@ -791 +1587,4 @@
 -        let index = self.children[parent.into()].iter().position(|n| *n == child).unwrap();
 +        let index = self.children[parent.into()]
 +            .iter()
 +            .position(|n| *n == child)
 +            .unwrap();
-@@ -798 +1587,5 @@
+@@ -798 +1597,5 @@
 -    pub fn remove_child_at_index(&mut self, parent: NodeId, child_index: usize) -> TaffyResult<NodeId> {
 +    pub fn remove_child_at_index(
 +        &mut self,
 +        parent: NodeId,
 +        child_index: usize,
 +    ) -> TaffyResult<NodeId> {
-@@ -802 +1595,5 @@
+@@ -802 +1605,5 @@
 -            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
 +            return Err(TaffyError::ChildIndexOutOfBounds {
 +                parent,
 +                child_index,
 +                child_count,
 +            });
-@@ -844 +1641,5 @@
+@@ -844 +1651,5 @@
 -            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
 +            return Err(TaffyError::ChildIndexOutOfBounds {
 +                parent,
 +                child_index,
 +                child_count,
 +            });
-@@ -862 +1663,5 @@
+@@ -862 +1673,5 @@
 -            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
 +            return Err(TaffyError::ChildIndexOutOfBounds {
 +                parent,
 +                child_index,
 +                child_count,
 +            });
-@@ -871,0 +1677,17 @@
+@@ -871,0 +1687,17 @@
 +    }
 +
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
@@ -33484,12 +33656,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +            self.children.reserve(additional);
 +            self.parents.reserve(additional);
 +        }
-@@ -897,2 +1719,2 @@
+@@ -897,2 +1729,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1731,31 @@
+@@ -908,0 +1741,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -33521,13 +33693,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1766,4 @@
+@@ -913 +1776,4 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()]
 +                .final_layout
 +                .as_deref()
 +                .unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1773,8 @@
+@@ -916,0 +1783,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -33536,7 +33708,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -936,16 +1800,5 @@
+@@ -936,16 +1810,5 @@
 -        fn mark_dirty_recursive(
 -            nodes: &mut SlotMap<DefaultKey, NodeData>,
 -            parents: &SlotMap<DefaultKey, Option<NodeId>>,
@@ -33558,7 +33730,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +            if matches!(self.nodes[node_key].mark_dirty(), ClearState::AlreadyEmpty) {
 +                // Уже грязный узел ранее инвалидировал своих предков.
 +                break;
-@@ -953,3 +1806,5 @@
+@@ -953,3 +1816,5 @@
 -        }
 -
 -        mark_dirty_recursive(&mut self.nodes, &self.parents, node.into());
@@ -33567,7 +33739,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                _ => break,
 +            }
 +        }
-@@ -974 +1829,61 @@
+@@ -974 +1839,61 @@
 -        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +        MeasureFunction:
 +            FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
@@ -33630,7 +33802,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    ) -> Result<(), TaffyError>
 +    where
 +        MeasureFunction: crate::tree::LayoutMeasurer<NodeContext>,
-@@ -977,2 +1892,7 @@
+@@ -977,2 +1902,7 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 -        compute_root_layout(&mut taffy_view, node_id, available_space);
 +        #[cfg(feature = "std")]
@@ -33640,7 +33812,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +            measure_function,
 +        };
 +        compute_root_layout_async(&mut taffy_view, node_id, available_space, stack).await;
-@@ -984,8 +1904,38 @@
+@@ -984,8 +1914,38 @@
 -
 -    /// Updates the stored layout of the provided `node` and its children
 -    pub fn compute_layout(&mut self, node: NodeId, available_space: Size<AvailableSpace>) -> Result<(), TaffyError> {
@@ -33687,14 +33859,14 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        )
 +        .await
 +    }
-@@ -1003 +1953,5 @@
+@@ -1003 +1963,5 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: crate::tree::SyncMeasure(
 +                |inputs: LayoutInput, _: NodeId, _: Option<&mut NodeContext>, style: &Style| {
 +                    compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +                },
 +            ),
-@@ -1032,0 +1987,82 @@
+@@ -1032,0 +1997,82 @@
 +    #[cfg(all(feature = "flexbox", feature = "grid"))]
 +    fn fragmentation_inputs_allocate_only_when_a_setter_changes_them() {
 +        let mut tree = TaffyTree::<()>::new();
@@ -33777,12 +33949,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    }
 +
 +    #[test]
-@@ -1082 +2118,3 @@
+@@ -1082 +2128,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1141 +2179,7 @@
+@@ -1141 +2189,7 @@
 -            .new_leaf(Style { border: Rect { bottom: length(1f32), ..Rect::zero() }, ..Default::default() })
 +            .new_leaf(Style {
 +                border: Rect {
@@ -33791,7 +33963,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                },
 +                ..Default::default()
 +            })
-@@ -1159,2 +2203,12 @@
+@@ -1159,2 +2213,12 @@
 -        let node = taffy.new_leaf_with_context(Style::default(), Size { width: 200.0, height: 200.0 }).unwrap();
 -        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
 +        let node = taffy
@@ -33806,7 +33978,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        taffy
 +            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
 +            .unwrap();
-@@ -1163,2 +2217,12 @@
+@@ -1163,2 +2227,12 @@
 -        taffy.set_node_context(node, Some(Size { width: 100.0, height: 100.0 })).unwrap();
 -        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
 +        taffy
@@ -33821,12 +33993,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        taffy
 +            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
 +            .unwrap();
-@@ -1172 +2236,3 @@
+@@ -1172 +2246,3 @@
 -        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
 +        taffy
 +            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
 +            .unwrap();
-@@ -1175,2 +2241,12 @@
+@@ -1175,2 +2251,12 @@
 -        taffy.set_node_context(node, Some(Size { width: 100.0, height: 100.0 })).unwrap();
 -        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
 +        taffy
@@ -33841,32 +34013,32 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        taffy
 +            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
 +            .unwrap();
-@@ -1229 +2305,3 @@
+@@ -1229 +2315,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1250 +2328,3 @@
+@@ -1250 +2338,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1267 +2347,3 @@
+@@ -1267 +2357,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1286 +2368,3 @@
+@@ -1286 +2378,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1, child2, child3]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1, child2, child3])
 +            .unwrap();
-@@ -1324 +2408,3 @@
+@@ -1324 +2418,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0])
 +            .unwrap();
-@@ -1338,5 +2424,19 @@
+@@ -1338,5 +2434,19 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1, child2]).unwrap();
 -
 -        assert!(if let Ok(result) = taffy.child_at_index(node, 0) { result == child0 } else { false });
@@ -33891,17 +34063,17 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        } else {
 +            false
 +        });
-@@ -1349 +2449,3 @@
+@@ -1349 +2459,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1362 +2464,3 @@
+@@ -1362 +2474,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1380 +2484,9 @@
+@@ -1380 +2494,9 @@
 -        taffy.set_style(node, Style { display: Display::None, ..Style::default() }).unwrap();
 +        taffy
 +            .set_style(
@@ -33912,19 +34084,19 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                },
 +            )
 +            .unwrap();
-@@ -1387 +2499,5 @@
+@@ -1387 +2509,5 @@
 -        let style = Style { display: Display::None, flex_direction: FlexDirection::RowReverse, ..Default::default() };
 +        let style = Style {
 +            display: Display::None,
 +            flex_direction: FlexDirection::RowReverse,
 +            ..Default::default()
 +        };
-@@ -1410 +2526,3 @@
+@@ -1410 +2536,3 @@
 -        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
 +        let node = taffy
 +            .new_with_children(Style::default(), &[child0, child1])
 +            .unwrap();
-@@ -1430,0 +2549,267 @@
+@@ -1430,0 +2559,264 @@
 +    #[cfg(feature = "std")]
 +    fn mark_dirty_twenty_thousand_ancestors_on_small_stack() {
 +        std::thread::Builder::new()
@@ -34115,21 +34287,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +                    panic!("a hidden descendant must not be measured")
 +                })
 +                .unwrap();
-+                assert!(
-+                    tree.nodes
-+                        .values()
-+                        .all(|node| node.unrounded_layout.size == Size::ZERO)
-+                );
-+                assert!(
-+                    tree.nodes
-+                        .values()
-+                        .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO)
-+                );
-+                assert!(
-+                    tree.nodes
-+                        .iter()
-+                        .all(|(key, node)| key == root.into() || node.cache.is_empty())
-+                );
++                assert!(tree
++                    .nodes
++                    .values()
++                    .all(|node| node.unrounded_layout.size == Size::ZERO));
++                assert!(tree
++                    .nodes
++                    .values()
++                    .all(|node| node.final_layout.as_ref().unwrap().size == Size::ZERO));
++                assert!(tree
++                    .nodes
++                    .iter()
++                    .all(|(key, node)| key == root.into() || node.cache.is_empty()));
 +            })
 +            .unwrap()
 +            .join()
@@ -34192,41 +34361,41 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +    }
 +
 +    #[test]
-@@ -1434 +2819,4 @@
+@@ -1434 +2826,4 @@
 -            size: Size { width: Dimension::from_length(10f32), height: Dimension::from_length(10f32) },
 +            size: Size {
 +                width: Dimension::from_length(10f32),
 +                height: Dimension::from_length(10f32),
 +            },
-@@ -1441 +2829,4 @@
+@@ -1441 +2836,4 @@
 -            Size { width: AvailableSpace::Definite(100.), height: AvailableSpace::Definite(100.) },
 +            Size {
 +                width: AvailableSpace::Definite(100.),
 +                height: AvailableSpace::Definite(100.),
 +            },
-@@ -1454 +2845,4 @@
+@@ -1454 +2852,4 @@
 -                size: Size { width: Dimension::from_percent(1f32), height: Dimension::from_percent(1f32) },
 +                size: Size {
 +                    width: Dimension::from_percent(1f32),
 +                    height: Dimension::from_percent(1f32),
 +                },
-@@ -1462 +2856,4 @@
+@@ -1462 +2863,4 @@
 -                    size: Size { width: Dimension::from_length(100f32), height: Dimension::from_length(100f32) },
 +                    size: Size {
 +                        width: Dimension::from_length(100f32),
 +                        height: Dimension::from_length(100f32),
 +                    },
-@@ -1516 +2913,3 @@
+@@ -1516 +2920,3 @@
 -        let node = taffy.new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS)).unwrap();
 +        let node = taffy
 +            .new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS))
 +            .unwrap();
-@@ -1532 +2931,3 @@
+@@ -1532 +2938,3 @@
 -            taffy.new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS)).unwrap();
 +            taffy
 +                .new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS))
 +                .unwrap();
-@@ -1542,0 +2944,124 @@
+@@ -1542,0 +2951,124 @@
 +
 +    #[test]
 +    fn final_layout_storage_is_allocated_only_by_rounding() {
@@ -34351,7 +34520,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +        taffy.reserve_nodes(10);
 +        assert!(taffy.nodes.capacity() >= 1001);
 +    }
-@@ -1543,0 +3069,10 @@
+@@ -1543,0 +3076,14 @@
 +
 +#[cfg(all(
 +    test,
@@ -34362,6 +34531,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..9ecd0b183ccae3af4b9ecd61cfa549b6
 +))]
 +#[path = "layout_depth_tests.rs"]
 +mod layout_depth_tests;
++
++#[cfg(test)]
++#[path = "continuation_size_tests.rs"]
++mod continuation_size_tests;
 diff --git a/vendor/taffy/src/tree/traits.rs b/vendor/taffy/src/tree/traits.rs
 index 7d4adf226accc9339bedf755ca3b60007addecd9..eb27a22b7820dfdee7a64ffed0575955165e442e
 --- a/vendor/taffy/src/tree/traits.rs
