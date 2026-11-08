@@ -22,9 +22,9 @@ pub struct LogicalSharing {
 }
 
 struct Entry {
-    own: Computed,
+    own: crate::style::computed::identity::Storage,
     writing: (WritingMode, bool, bool),
-    value: Computed,
+    value: crate::style::computed::identity::Storage,
 }
 
 impl LogicalSharing {
@@ -43,12 +43,12 @@ impl LogicalSharing {
             .entries
             .iter()
             .rev()
-            .find(|entry| entry.writing == writing && entry.own.shares_storage(own))
+            .find(|entry| entry.writing == writing && entry.own.matches(own))
         {
-            own.share_groups_from(&hit.value);
+            hit.value.share_into(own);
             return;
         }
-        let input = own.clone();
+        let input = crate::style::computed::identity::Storage::of(own);
         own.resolve_logical(wm, parent_vertical, is_cell, vcx);
         if self.entries.len() == CAPACITY {
             self.entries.pop_front();
@@ -56,7 +56,7 @@ impl LogicalSharing {
         self.entries.push_back(Entry {
             own: input,
             writing,
-            value: own.clone(),
+            value: crate::style::computed::identity::Storage::of(own),
         });
     }
 }

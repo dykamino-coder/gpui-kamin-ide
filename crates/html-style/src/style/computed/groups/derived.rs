@@ -12,6 +12,7 @@ use super::StyleGroup;
 use std::any::{Any, TypeId};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Выведенные группы одного документа.
 #[derive(Default)]
@@ -27,18 +28,11 @@ struct Key {
     value: u64,
 }
 
+/// Владельцы исходной группы и результата без типа: запись не выделяет памяти сверх карты.
 struct Entry {
-    /// `(исходная, результат)`: `(StyleGroup<T>, StyleGroup<T>)`.
-    groups: Box<dyn Any>,
-    /// Держит ли исходную группу кто-то, кроме записи.
-    owned: fn(&dyn Any) -> bool,
+    source: Rc<dyn Any>,
+    result: Rc<dyn Any>,
     used: u32,
-}
-
-fn owned<T: 'static>(groups: &dyn Any) -> bool {
-    groups
-        .downcast_ref::<(StyleGroup<T>, StyleGroup<T>)>()
-        .is_some_and(|(source, _)| source.is_shared())
 }
 
 impl DerivedGroups {
@@ -59,21 +53,19 @@ impl DerivedGroups {
         let generation = self.generation.get();
         let mut entries = self.entries.borrow_mut();
         if let Some(entry) = entries.get_mut(&key)
-            && let Some((held, result)) = entry
-                .groups
-                .downcast_ref::<(StyleGroup<T>, StyleGroup<T>)>()
-            && held.ptr_eq(source)
+            && StyleGroup::<T>::restore(&entry.source).is_some_and(|held| held.ptr_eq(source))
+            && let Some(result) = StyleGroup::<T>::restore(&entry.result)
         {
             entry.used = generation;
-            return result.clone();
+            return result;
         }
         let mut result = source.clone();
         edit(&mut result);
         entries.insert(
             key,
             Entry {
-                groups: Box::new((source.clone(), result.clone())),
-                owned: owned::<T>,
+                source: source.erase(),
+                result: result.erase(),
                 used: generation,
             },
         );
@@ -94,7 +86,7 @@ impl DerivedGroups {
     pub fn release_unowned(&self) {
         self.entries
             .borrow_mut()
-            .retain(|_, entry| (entry.owned)(entry.groups.as_ref()));
+            .retain(|_, entry| Rc::strong_count(&entry.source) > 1);
     }
 
     #[cfg(test)]

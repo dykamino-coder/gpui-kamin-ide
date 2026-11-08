@@ -34,9 +34,20 @@ impl<T> StyleGroup<T> {
         Rc::as_ptr(&self.0) as *const () as usize
     }
 
-    /// Есть ли у группы другие владельцы.
-    pub(crate) fn is_shared(&self) -> bool {
-        Rc::strong_count(&self.0) > 1
+    /// Тот же владелец без типа группы: запись кэша без новой аллокации.
+    pub(crate) fn erase(&self) -> Rc<dyn std::any::Any>
+    where
+        T: 'static,
+    {
+        self.0.clone()
+    }
+
+    /// Владелец, стёртый [`Self::erase`], если он той же группы.
+    pub(crate) fn restore(erased: &Rc<dyn std::any::Any>) -> Option<Self>
+    where
+        T: 'static,
+    {
+        erased.clone().downcast::<Payload<T>>().ok().map(Self)
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
