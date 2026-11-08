@@ -1,7 +1,7 @@
 //! Данные контекста сборки коробки без зависимостей от style и layout.
 //! Параметры сохраняют типы письма и выравнивания владельца без обратного импорта.
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BoxContext<W, A> {
     /// Ориентация сетки: horizontal = 1, vertical-lr = 2, vertical-rl = 3.
     pub parent_grid: u8,
@@ -25,7 +25,7 @@ impl<W: Default, A> Default for BoxContext<W, A> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ApplicabilityInputs {
     pub flex: bool,
     pub rtl: bool,

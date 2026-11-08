@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 mod background;
 mod context;
+mod conversion_input;
 mod inputs;
 mod paint;
 mod paint_projection;
