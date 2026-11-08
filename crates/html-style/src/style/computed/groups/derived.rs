@@ -19,6 +19,32 @@ use std::rc::Rc;
 pub struct DerivedGroups {
     entries: RefCell<HashMap<Key, Entry>>,
     generation: Cell<u32>,
+    /// Живые документы этих значений (`DerivedHold`).
+    documents: Cell<u32>,
+}
+
+/// Документ, чьё дерево владеет выведенными группами. Значения документа переживают его
+/// в отложенных кадрах; когда отпущен последний документ этих значений, записи отпускают
+/// его группы сразу, а не вместе со значениями.
+pub struct DerivedHold(Rc<crate::values::DocumentValues>);
+
+impl DerivedHold {
+    pub fn new(values: &Rc<crate::values::DocumentValues>) -> Self {
+        let derived = &values.derived;
+        derived.documents.set(derived.documents.get() + 1);
+        Self(values.clone())
+    }
+}
+
+impl Drop for DerivedHold {
+    fn drop(&mut self) {
+        let derived = &self.0.derived;
+        let left = derived.documents.get().saturating_sub(1);
+        derived.documents.set(left);
+        if left == 0 {
+            derived.entries.take();
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -147,5 +173,18 @@ mod tests {
         drop(other);
         cache.release_unowned();
         assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn the_last_document_releases_entries_while_values_live() {
+        let values = crate::values::DocumentValues::detached(Default::default());
+        let base = StyleGroup::new(vec![1]);
+        let first = DerivedHold::new(&values);
+        let _ = values.derived.derive::<Push, _>(&base, 2, |v| v.push(2));
+        let second = DerivedHold::new(&values);
+        drop(first);
+        assert_eq!(values.derived.len(), 1);
+        drop(second);
+        assert_eq!(values.derived.len(), 0);
     }
 }

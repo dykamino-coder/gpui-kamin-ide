@@ -3,7 +3,7 @@ use super::*;
 mod shared;
 pub use shared::StyleGroup;
 mod derived;
-pub use derived::DerivedGroups;
+pub use derived::{DerivedGroups, DerivedHold};
 mod reset_text_box;
 pub use reset_text_box::ResetTextBox;
 mod reset_cascade;

@@ -119,6 +119,7 @@ impl Document {
             .traversal
             .readopt(source.input, elements, source_texts, read_next);
         Ok(Document {
+            _derived: crate::style::computed::DerivedHold::new(&state.values),
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),

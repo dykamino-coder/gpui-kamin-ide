@@ -108,6 +108,7 @@ impl Document {
             return Err(failure);
         }
         Ok(Document {
+            _derived: crate::style::computed::DerivedHold::new(&state.values),
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),
