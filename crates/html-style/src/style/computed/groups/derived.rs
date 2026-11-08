@@ -14,34 +14,16 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-type Entries = HashMap<Key, Entry>;
-
 /// Выведенные группы одного документа. Карта выделяется с первой правкой и отпускается,
-/// когда пустеет: значения документа без правок держат только счётчики и указатель.
+/// когда пустеет: значения документа без правок держат один пустой указатель.
 #[derive(Default)]
-pub struct DerivedGroups {
-    entries: Cell<Option<Box<Entries>>>,
-    generation: Cell<u32>,
-    /// Живые документы этих значений (`hold_document`).
-    documents: Cell<u32>,
-}
+pub struct DerivedGroups(Cell<Option<Box<Entries>>>);
 
-impl DerivedGroups {
-    /// Документ этих значений создан: его дерево владеет выведенными группами.
-    pub fn hold_document(&self) {
-        self.documents.set(self.documents.get() + 1);
-    }
-
-    /// Документ отпущен. Значения документа переживают его в отложенных кадрах; когда
-    /// отпущен последний документ этих значений, записи отпускают его группы сразу, а не
-    /// вместе со значениями.
-    pub fn release_document(&self) {
-        let left = self.documents.get().saturating_sub(1);
-        self.documents.set(left);
-        if left == 0 {
-            drop(self.entries.take());
-        }
-    }
+#[derive(Default)]
+struct Entries {
+    map: HashMap<Key, Entry>,
+    /// Номер кадра, которым помечаются использованные записи.
+    generation: u32,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -73,20 +55,20 @@ impl DerivedGroups {
             edit: TypeId::of::<(E, T)>(),
             value,
         };
-        let generation = self.generation.get();
         // Карта вынута на время правки: `edit` правит одну группу и в кэш не входит.
-        let mut entries = self.entries.take().unwrap_or_default();
-        if let Some(entry) = entries.get_mut(&key)
+        let mut entries = self.0.take().unwrap_or_default();
+        let generation = entries.generation;
+        if let Some(entry) = entries.map.get_mut(&key)
             && StyleGroup::<T>::restore(&entry.source).is_some_and(|held| held.ptr_eq(source))
             && let Some(result) = StyleGroup::<T>::restore(&entry.result)
         {
             entry.used = generation;
-            self.entries.set(Some(entries));
+            self.0.set(Some(entries));
             return result;
         }
         let mut result = source.clone();
         edit(&mut result);
-        entries.insert(
+        entries.map.insert(
             key,
             Entry {
                 source: source.erase(),
@@ -94,42 +76,48 @@ impl DerivedGroups {
                 used: generation,
             },
         );
-        self.entries.set(Some(entries));
+        self.0.set(Some(entries));
         result
     }
 
     /// Оставить записи, для которых `keep` верно; пустая карта отпускается.
-    fn retain(&self, keep: impl FnMut(&Key, &mut Entry) -> bool) {
-        if let Some(mut entries) = self.entries.take() {
-            entries.retain(keep);
-            if !entries.is_empty() {
-                self.entries.set(Some(entries));
+    fn retain(&self, next_frame: bool, mut keep: impl FnMut(&Entry, u32) -> bool) {
+        if let Some(mut entries) = self.0.take() {
+            let generation = entries.generation;
+            entries.map.retain(|_, entry| keep(entry, generation));
+            if next_frame {
+                entries.generation = generation.wrapping_add(1);
+            }
+            if !entries.map.is_empty() {
+                self.0.set(Some(entries));
             }
         }
     }
 
     /// Начало кадра: записи, которыми не пользовался прошлый кадр, отпускают свои группы.
     pub fn begin_frame(&self) {
-        let generation = self.generation.get();
-        self.retain(|_, entry| entry.used == generation);
-        self.generation.set(generation.wrapping_add(1));
+        self.retain(true, |entry, generation| entry.used == generation);
     }
 
     /// После новой материализации: исходную группу, которую держит только запись, больше
     /// никто не предъявит — запись отпускает её сразу, а не через кадр.
     pub fn release_unowned(&self) {
-        self.retain(|_, entry| Rc::strong_count(&entry.source) > 1);
+        self.retain(false, |entry, _| Rc::strong_count(&entry.source) > 1);
+    }
+
+    /// Отпустить все записи (последний документ этих значений отпущен).
+    pub fn clear(&self) {
+        drop(self.0.take());
     }
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        let entries = self.entries.take();
-        let len = entries.as_ref().map_or(0, |entries| entries.len());
-        self.entries.set(entries);
+        let entries = self.0.take();
+        let len = entries.as_ref().map_or(0, |entries| entries.map.len());
+        self.0.set(entries);
         len
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,14 +174,14 @@ mod tests {
 
     #[test]
     fn the_last_document_releases_entries_while_values_live() {
-        let cache = DerivedGroups::default();
+        let values = crate::values::DocumentValues::detached(Default::default());
         let base = StyleGroup::new(vec![1]);
-        cache.hold_document();
-        let _ = cache.derive::<Push, _>(&base, 2, |v| v.push(2));
-        cache.hold_document();
-        cache.release_document();
-        assert_eq!(cache.len(), 1);
-        cache.release_document();
-        assert_eq!(cache.len(), 0);
+        values.hold_document();
+        let _ = values.derived.derive::<Push, _>(&base, 2, |v| v.push(2));
+        values.hold_document();
+        values.release_document();
+        assert_eq!(values.derived.len(), 1);
+        values.release_document();
+        assert_eq!(values.derived.len(), 0);
     }
 }

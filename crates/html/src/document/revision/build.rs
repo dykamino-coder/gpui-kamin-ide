@@ -108,7 +108,7 @@ impl Document {
             return Err(failure);
         }
         // Документ отпускает выведенные группы стиля в Drop.
-        state.values.derived.hold_document();
+        state.values.hold_document();
         Ok(Document {
             state,
             nodes: Rc::new(nodes),

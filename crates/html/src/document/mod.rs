@@ -107,7 +107,7 @@ impl Drop for Document {
     /// Значения документа живут дольше него в отложенных кадрах: выведенные группы стиля
     /// отпускаются с последним документом этих значений, а не с ними самими.
     fn drop(&mut self) {
-        self.state.values.derived.release_document();
+        self.state.values.release_document();
     }
 }
 

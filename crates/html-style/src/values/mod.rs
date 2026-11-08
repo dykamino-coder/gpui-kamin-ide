@@ -76,8 +76,9 @@ pub struct DocumentValues {
     pub property_rules: RefCell<property_registry::PropertyRegistry>,
     /// `@counter-style` (css-counter-styles-3 §3).
     pub counter_styles: RefCell<CounterStyles>,
-    /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile).
-    pub profiles: RefCell<HashMap<String, Vec<u8>>>,
+    /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile). Правило редкое:
+    /// карта вне структуры и появляется с первым профилем.
+    pub profiles: RefCell<Option<Box<HashMap<String, Vec<u8>>>>>,
     /// Запросы картинок документа, его база и политика доступа; декодированное — в
     /// общем процессном кэше по содержимому (`resources::images::store`).
     pub images: RefCell<crate::resources::images::store::ImageStore>,
@@ -92,6 +93,8 @@ pub struct DocumentValues {
     frame_owner: Cell<u32>,
     /// Документ красился после последнего сброса области кадра.
     painted: Cell<bool>,
+    /// Живые документы этих значений (`hold_document`).
+    documents: Cell<u32>,
     /// Наблюдение за незавершённой работой кадра; не управляет раскладкой.
     readiness: readiness::FrameState,
     this: Weak<DocumentValues>,
@@ -137,6 +140,7 @@ impl DocumentValues {
             calc: Default::default(),
             anchor: Default::default(),
             painted: Default::default(),
+            documents: Default::default(),
             readiness: Default::default(),
         });
         doc.install_font_facts(None);
@@ -169,6 +173,21 @@ impl DocumentValues {
     /// Документ покрашен: следующая сборка кадра может сбросить область кадра.
     pub fn mark_painted(&self) {
         self.painted.set(true);
+    }
+
+    /// Документ этих значений создан: его дерево владеет выведенными группами.
+    pub fn hold_document(&self) {
+        self.documents.set(self.documents.get() + 1);
+    }
+
+    /// Документ отпущен. Значения переживают его в отложенных кадрах; когда отпущен последний
+    /// документ этих значений, выведенные группы отпускаются сразу, а не вместе со значениями.
+    pub fn release_document(&self) {
+        let left = self.documents.get().saturating_sub(1);
+        self.documents.set(left);
+        if left == 0 {
+            self.derived.clear();
+        }
     }
 
     /// Нижние данные без верхнего документа: шрифтовых фактов нет, читатели
