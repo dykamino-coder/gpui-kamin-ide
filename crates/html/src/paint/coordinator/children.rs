@@ -66,11 +66,11 @@ async fn paint(
             let continuations = window.continuations();
             if stacking {
                 continuations
-                    .pin(pass.drain_async(guard.depth, window, cx, stack))
+                    .pin(pass.drain_async(guard.depth(), window, cx, stack))
                     .await;
             } else {
                 continuations
-                    .pin(pass.finish_atomic_async(guard.depth, window, cx, stack))
+                    .pin(pass.finish_atomic_async(guard.depth(), window, cx, stack))
                     .await;
             }
         }

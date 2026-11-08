@@ -32,10 +32,15 @@ pub struct Deferred {
     pub(crate) effect: RefCell<Option<crate::layout::fragment::effect_fragment::Scope>>,
     pub(crate) gap: RefCell<Option<crate::layout::fragment::gap_fragment::Scope>>,
     /// Куски разрезанного ребёнка во время записи его главной копии.
+    /// `Cell`, не `RefCell`: значение только заменяется и копируется, а свободное
+    /// слово флага занимает счёт строковых заданий — `Deferred` не растёт.
     pub(crate) pieces:
-        RefCell<Option<Rc<crate::layout::fragment::effect_fragment::pieces::Pieces>>>,
+        std::cell::Cell<Option<Rc<crate::layout::fragment::effect_fragment::pieces::Pieces>>>,
     pub(crate) coordinates: RefCell<Vec<crate::layout::fragment::static_coordinates::Mapping>>,
     pub(crate) outlines: RefCell<Vec<Option<Vec<Outline>>>>,
+    /// Строковых заданий (`PaintInline`), собранных этим деревом: сборщик документа
+    /// резервирует под них очередь кадра (`PaintCollect::pair_reserving`).
+    pub(crate) inline_jobs: std::cell::Cell<u32>,
 }
 
 #[cfg(test)]

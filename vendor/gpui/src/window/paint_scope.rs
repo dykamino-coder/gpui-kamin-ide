@@ -57,6 +57,13 @@ impl Identity {
         Ok(())
     }
 
+    /// KaminIDE patch: captured in the window's current pass and scope.
+    pub(super) fn is_current(&self, window: &Window) -> bool {
+        Rc::ptr_eq(&self.window, &window.paint_window)
+            && Rc::ptr_eq(&self.pass.0, &window.paint_pass.0)
+            && Rc::ptr_eq(&self.scope.0, &window.paint_scope.0)
+    }
+
     // Commands retain draw resources, not permission to restore an old scope.
     pub(super) fn check_pass(&self, window: &Window) -> Result<(), PaintError> {
         if !Rc::ptr_eq(&self.window, &window.paint_window) {

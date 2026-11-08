@@ -41,6 +41,11 @@ impl<I: ImageCache> From<Entity<I>> for AnyImageCache {
 }
 
 impl AnyImageCache {
+    /// KaminIDE patch: the same cache entity.
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.image_cache.entity_id() == other.image_cache.entity_id()
+    }
+
     /// Load an image given a resource
     /// returns the result of loading the image if it has finished loading, or None if it is still loading
     pub fn load(

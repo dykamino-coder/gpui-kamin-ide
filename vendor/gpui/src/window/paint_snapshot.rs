@@ -3,6 +3,9 @@
 use super::*;
 mod traversal;
 
+mod raster_env;
+pub use raster_env::{RasterCaptures, RasterPaintCtx};
+
 /// General element environment; raster placement is inherited from the caller.
 #[doc = include_str!("paint_contract.md")]
 #[derive(Clone)]
@@ -33,22 +36,6 @@ pub struct PaintState {
     raster: RasterFrame,
     scale_factor: f32,
     rem_size_overrides: SmallVec<[Pixels; 8]>,
-}
-
-/// Paint environment retaining raster placement at the current device scale.
-pub struct RasterPaintCtx {
-    base: PaintCtx,
-    raster: RasterFrame,
-}
-
-impl RasterPaintCtx {
-    /// Select fill placement independently of the retained glyph placement.
-    pub fn set_fill_transform(
-        &mut self,
-        transform: Option<(TransformationMatrix, TransformationMatrix)>,
-    ) {
-        self.raster.fill_transform = transform;
-    }
 }
 
 impl PaintState {
@@ -144,23 +131,6 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
         self.replay_paint(self.paint_state(ctx, self.raster_frame().clone()), f)
-    }
-
-    /// Capture environment and raster placement without a scale override.
-    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-        RasterPaintCtx {
-            base: self.paint_ctx(),
-            raster: self.raster_frame().clone(),
-        }
-    }
-
-    /// Replay captured raster placement in the original live scope.
-    pub fn with_raster_paint_ctx<R>(
-        &mut self,
-        ctx: RasterPaintCtx,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> Result<R, PaintError> {
-        self.replay_paint(self.paint_state(ctx.base, ctx.raster), f)
     }
 
     fn replay_paint<R>(

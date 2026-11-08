@@ -16,6 +16,15 @@ struct Link {
 }
 
 impl TextStyleScope {
+    /// KaminIDE patch: the same scope (the same chain of links).
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+
     /// This scope with `style` applied innermost.
     pub(crate) fn push(&self, style: TextStyleRefinement) -> Self {
         Self(Some(Rc::new(Link {
