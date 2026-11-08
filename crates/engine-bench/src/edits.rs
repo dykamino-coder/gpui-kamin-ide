@@ -29,10 +29,12 @@ pub(super) async fn run(
     let variants = [base.as_str(), edited.as_str()];
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
+    let mut work = Vec::with_capacity(args.runs);
+    let mut usage = Vec::with_capacity(args.runs);
     let mut last = [None, None];
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, _) = sample(
+        let (measured, frame, (counts, process)) = sample(
             cx,
             window,
             fonts,
@@ -44,6 +46,8 @@ pub(super) async fn run(
         .await?;
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
+        work.push(counts);
+        usage.push(process);
         last[variant] = Some(frame.pixels);
     }
     let mut checks = Vec::new();
@@ -96,8 +100,7 @@ pub(super) async fn run(
         }
         checks.push(check);
     }
-    let mut mode = report::mode(&samples);
-    mode["diagnostic_scopes"] = report::mode(&diagnostics);
+    let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
