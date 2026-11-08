@@ -72,7 +72,7 @@ pub(crate) async fn with_async<R>(
     value: Option<Rc<Pieces>>,
     f: impl AsyncFnOnce() -> R,
 ) -> R {
-    let _scope = crate::layout::cx::deferred::scoped::Scope::enter(&owner.pieces, value);
+    let _scope = crate::layout::cx::deferred::scoped::CellScope::enter(&owner.pieces, value);
     f().await
 }
 
@@ -142,4 +142,27 @@ pub(crate) fn paint_unclipped(
         source_clip,
     };
     let _ = window.with_paint_segment_slices(Rc::from([slice]), f);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{future::Future, task::Context};
+
+    #[test]
+    fn cancelling_suspended_pieces_restores_the_outer_owner() {
+        let owner = Deferred::default();
+        let outer = Rc::new(Pieces::new(Rc::from([]), None));
+        let inner = Rc::new(Pieces::new(Rc::from([]), None));
+        owner.pieces.set(Some(outer.clone()));
+        let mut future = Box::pin(with_async(&owner, Some(inner.clone()), async || {
+            std::future::pending::<()>().await;
+        }));
+        let mut cx = Context::from_waker(std::task::Waker::noop());
+        assert!(future.as_mut().poll(&mut cx).is_pending());
+        assert!(Rc::ptr_eq(&active(Some(&owner)).unwrap(), &inner));
+        drop(future);
+        assert!(Rc::ptr_eq(&active(Some(&owner)).unwrap(), &outer));
+        assert_eq!(Rc::strong_count(&inner), 1);
+    }
 }

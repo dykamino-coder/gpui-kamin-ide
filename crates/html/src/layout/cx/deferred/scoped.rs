@@ -1,6 +1,28 @@
 //! Временное состояние фрагмента восстанавливается при завершении и отмене обхода.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+
+/// Replacement-only state needs no borrow flag, including across suspension.
+pub(crate) struct CellScope<'a, T> {
+    cell: &'a Cell<T>,
+    previous: Option<T>,
+}
+
+impl<'a, T> CellScope<'a, T> {
+    pub(crate) fn enter(cell: &'a Cell<T>, value: T) -> Self {
+        Self {
+            cell,
+            previous: Some(cell.replace(value)),
+        }
+    }
+}
+
+impl<T> Drop for CellScope<'_, T> {
+    fn drop(&mut self) {
+        self.cell
+            .set(self.previous.take().expect("состояние области"));
+    }
+}
 
 pub(crate) struct Scope<'a, T> {
     cell: &'a RefCell<T>,
