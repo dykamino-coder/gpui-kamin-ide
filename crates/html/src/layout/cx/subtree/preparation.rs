@@ -15,7 +15,7 @@ pub(crate) struct Preparation {
 
 /// Предел цепочки продолжений: глубже факты собираются полным обходом, чтобы
 /// поиск по слоям и удержанные ими метки снимков не росли с числом правок.
-const MAX_DEPTH: u8 = 8;
+const MAX_DEPTH: u8 = 4;
 
 type Snapshot = ((usize, usize), Rc<Preparation>);
 
