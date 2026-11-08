@@ -107,7 +107,10 @@ mod tests {
         let cache = DerivedGroups::default();
         let base = StyleGroup::new(vec![1]);
         let first = cache.derive::<Push, _>(&base, 2, |v| v.push(2));
-        let second = cache.derive::<Push, _>(&base.clone(), 2, |v| v.push(2));
+        // Another owner handle of the same group hits the same entry.
+        let alias = base.clone();
+        let second = cache.derive::<Push, _>(&alias, 2, |v| v.push(2));
+        drop(alias);
         assert!(first.ptr_eq(&second));
         assert_eq!(&*first, &[1, 2]);
         assert_eq!(&*base, &[1]);

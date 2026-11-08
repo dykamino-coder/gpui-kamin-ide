@@ -78,7 +78,7 @@ mod tests {
         let wm = WritingMode::default();
         let mut first = own.clone();
         cache.resolve(&mut first, wm, false, false, vcx);
-        let mut second = sibling.clone();
+        let mut second = sibling;
         cache.resolve(&mut second, wm, false, false, vcx);
         assert!(first.shares_storage(&second));
         assert_eq!(second.decor_box, 7);
