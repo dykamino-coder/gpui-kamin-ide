@@ -150,12 +150,6 @@ impl std::borrow::Borrow<str> for Tag {
 pub struct SharedAttrs(Option<Rc<[Attr]>>);
 
 impl SharedAttrs {
-    /// A list read from an iterator of known length: one allocation (count and pairs), with
-    /// no intermediate vector.
-    pub fn from_exact<I: ExactSizeIterator<Item = Attr>>(iter: I) -> Self {
-        Self((iter.len() != 0).then(|| iter.collect()))
-    }
-
     /// A copy of the list for changing, adding or removing attributes; it replaces this
     /// element's list when the returned guard drops, and other holders keep theirs.
     pub fn edit(&mut self) -> AttrsEdit<'_> {

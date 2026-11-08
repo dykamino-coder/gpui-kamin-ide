@@ -55,17 +55,3 @@ fn a_tag_compares_and_hashes_like_its_name() {
     assert!(a < b, "names order like strings");
     assert_eq!(Tag::default().as_str(), "");
 }
-
-#[test]
-fn exact_lists_match_collected_ones() {
-    let pairs = [("class", "row"), ("id", "x")];
-    let exact = SharedAttrs::from_exact(pairs.iter().map(|&(k, v)| (k.into(), v.into())));
-    let collected: SharedAttrs = pairs.iter().map(|&(k, v)| (k.into(), v.into())).collect();
-    assert_eq!(exact, collected);
-    let none = SharedAttrs::from_exact(std::iter::empty());
-    assert_eq!(
-        none,
-        SharedAttrs::default(),
-        "an empty list is no allocation"
-    );
-}

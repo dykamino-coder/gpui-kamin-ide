@@ -111,40 +111,15 @@ pub(super) fn element_ancestor(
     me
 }
 
-/// The element's attribute list, shared with its sibling census entry when it holds the same
-/// pairs. Blink keeps an element's attributes once, in its ElementData
-/// (third_party/blink/renderer/core/dom/element_data.h:88), and selector matching reads them
-/// there; the census (`Sibs::all[pos]`) already read this node's list, so the walk takes it
-/// instead of a second copy. Only `xml:base` differs: the census keeps its local name.
-pub(super) fn element_attrs_shared(
-    handle: &Handle,
-    attrs: &[html5ever::Attribute],
-    sibs: &Sibs,
-) -> crate::dom::SharedAttrs {
-    let census = sibs.is_elem.then(|| sibs.all.get(sibs.pos)).flatten();
-    match census {
-        Some(a)
-            if a.key == crate::dom::tree_index::NodeKey::of(handle)
-                && !attrs.iter().any(is_xml_base) =>
-        {
-            a.attrs.clone()
-        }
-        _ => element_attrs(attrs).into(),
-    }
-}
-
-/// `xml:base`: the one namespaced attribute whose name keeps its prefix.
-fn is_xml_base(a: &html5ever::Attribute) -> bool {
-    &*a.name.local == "base" && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
-}
-
 /// The element's attributes as `(name, value)`; `xml:base` keeps its prefix
 /// (the only namespaced attribute the engine reads).
 pub fn element_attrs(attrs: &[html5ever::Attribute]) -> Vec<(String, String)> {
     attrs
         .iter()
         .map(|a| {
-            let key = if is_xml_base(a) {
+            let key = if &*a.name.local == "base"
+                && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+            {
                 "xml:base".to_owned()
             } else {
                 a.name.local.to_string()
