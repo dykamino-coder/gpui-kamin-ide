@@ -152,7 +152,7 @@ impl Document {
         xml: bool,
         key: u64,
         revision: &crate::budget::RevisionBudget,
-    ) -> Result<Source, (DocumentFailure, crate::dom::input::Admitted)> {
+    ) -> Result<Source, Box<(DocumentFailure, crate::dom::input::Admitted)>> {
         let base = if xml {
             Ok(base_url.cloned())
         } else {
@@ -177,7 +177,7 @@ impl Document {
             }),
             Err(mut failure) => {
                 failure.report.revision = Some(key);
-                Err((failure, input))
+                Err(Box::new((failure, input)))
             }
         }
     }

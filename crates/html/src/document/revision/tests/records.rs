@@ -97,9 +97,12 @@ fn find_x(doc: &Document) -> Handle {
     find(&doc.source_dom(), &hit).expect("p#x")
 }
 
+/// Записи правки, построенные по документу.
+type Records = fn(&Document) -> Vec<Mutation>;
+
 #[test]
 fn records_the_cascade_can_see_rebuild_the_same_dom() {
-    let cases: [(fn(&Document) -> Vec<Mutation>, String); 4] = [
+    let cases: [(Records, String); 4] = [
         // Класс, упомянутый листом документа.
         (
             |d| vec![attr(&text_parent(d, "d"), "class", Some("on"))],

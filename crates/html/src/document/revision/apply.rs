@@ -113,7 +113,10 @@ impl Document {
             &revision,
         ) {
             Ok(source) => source,
-            Err((failure, input)) => return Err(refused(self, failure, input)),
+            Err(refusal) => {
+                let (failure, input) = *refusal;
+                return Err(refused(self, failure, input));
+            }
         };
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
@@ -138,7 +141,9 @@ impl Document {
     /// формы (атрибуты и тексты), адресованные узлам `source_dom`; `None` —
     /// форма другая (дети, комментарии) или разметка не разобрана.
     pub fn mutations(&self, html: &str) -> Option<Vec<Mutation>> {
-        let parsed = crate::dom::input::Admitted::parse(html, self.xml).ok()?;
+        let parsed =
+            crate::dom::input::Admitted::with_budget(html, self.xml, self.budget().revision())
+                .ok()?;
         let shape = super::shape::compare(&self.source_dom(), &parsed.dom.document)?;
         Some(shape.records())
     }
