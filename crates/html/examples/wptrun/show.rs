@@ -135,11 +135,10 @@ impl Stage {
             }
             let readback_started = std::time::Instant::now();
             let shot = if first && first_shot.is_none() {
-                self.capture
-                    .session
-                    .as_ref()?
-                    .take_first()
-                    .map(|f| (f.pixels.width, f.pixels.height, f.pixels.bgra))
+                self.capture.session.as_ref()?.take_first().map(|f| {
+                    let pixels = f.into_pixels();
+                    (pixels.width, pixels.height, pixels.bgra)
+                })
             } else {
                 captures.next(hwnd)
             };

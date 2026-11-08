@@ -9276,10 +9276,16 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        interactivity.rare_mut().aria.max_numeric_value = Some(72.0);
 +        interactivity.rare_mut().aria.numeric_value_step = Some(1.0);
 diff --git a/vendor/gpui/src/elements/image_cache.rs b/vendor/gpui/src/elements/image_cache.rs
-index 84948145aa869a09032e292e6b6b0ca679b8726d..6d8fd7676ee616e450f1cf21248b2a3ff58ee281
+index 84948145aa869a09032e292e6b6b0ca679b8726d..bed05a6b26a44866e636f3b5ec6c5217d188b5ff
 --- a/vendor/gpui/src/elements/image_cache.rs
 +++ b/vendor/gpui/src/elements/image_cache.rs
-@@ -191 +191,7 @@
+@@ -43,0 +44,5 @@
++    /// KaminIDE patch: the same cache entity.
++    pub(crate) fn same(&self, other: &Self) -> bool {
++        self.image_cache.entity_id() == other.image_cache.entity_id()
++    }
++
+@@ -191 +196,7 @@
 -        self.0.use_by(window.current_view())
 +        // KaminIDE patch: a detached measure (layout of a root outside the
 +        // view's render) has no current view — subscribe the window's root
@@ -21159,7 +21165,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f64a57f14f9d480dc84b05662a5aaa1cc72006b6
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b21202ac24
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -21187,7 +21193,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f64a57f14f9d480dc84b05662a5aaa1c
 +mod raster_frame;
 +mod scoped;
 +pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
-+pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
++pub use paint_snapshot::{PaintCtx, PaintState, RasterCaptures, RasterPaintCtx};
 +pub use raster_frame::RasterFrame;
 +mod line_baselines;
 +mod text_rendering;
@@ -24711,10 +24717,10 @@ index 0000000000000000000000000000000000000000..034695032ea9996211c1dca22dbdc9d2
 +}
 diff --git a/vendor/gpui/src/window/paint_scope.rs b/vendor/gpui/src/window/paint_scope.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0a98c97df7204a9b0c676e813949919793697728
+index 0000000000000000000000000000000000000000..ea39641835bab004bb51e7bef5393ff4f9ea7b2b
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_scope.rs
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,153 @@
 +//! Живая идентичность прохода и композиционных областей одного окна.
 +
 +use super::*;
@@ -24772,6 +24778,13 @@ index 0000000000000000000000000000000000000000..0a98c97df7204a9b0c676e8139499197
 +            return Err(PaintError::WrongScope);
 +        }
 +        Ok(())
++    }
++
++    /// KaminIDE patch: captured in the window's current pass and scope.
++    pub(super) fn is_current(&self, window: &Window) -> bool {
++        Rc::ptr_eq(&self.window, &window.paint_window)
++            && Rc::ptr_eq(&self.pass.0, &window.paint_pass.0)
++            && Rc::ptr_eq(&self.scope.0, &window.paint_scope.0)
 +    }
 +
 +    // Commands retain draw resources, not permission to restore an old scope.
@@ -24863,13 +24876,16 @@ index 0000000000000000000000000000000000000000..0a98c97df7204a9b0c676e8139499197
 +}
 diff --git a/vendor/gpui/src/window/paint_snapshot.rs b/vendor/gpui/src/window/paint_snapshot.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f1b63a914f31f078ef35d1c3a098021c4f1a1ae2
+index 0000000000000000000000000000000000000000..32afafea6bf43036205f524b23c6bb3c123d2cda
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_snapshot.rs
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,167 @@
 +//! Снимок окружения и единый проверяемый replay с восстановлением через guard.
 +
 +use super::*;
++
++mod raster_env;
++pub use raster_env::{RasterCaptures, RasterPaintCtx};
 +
 +/// General element environment; raster placement is inherited from the caller.
 +#[doc = include_str!("paint_contract.md")]
@@ -24903,18 +24919,6 @@ index 0000000000000000000000000000000000000000..f1b63a914f31f078ef35d1c3a098021c
 +    rem_size_overrides: SmallVec<[Pixels; 8]>,
 +}
 +
-+/// Paint environment retaining raster placement at the current device scale.
-+pub struct RasterPaintCtx {
-+    base: PaintCtx,
-+    raster: RasterFrame,
-+}
-+
-+impl RasterPaintCtx {
-+    /// Select fill placement independently of the retained glyph placement.
-+    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
-+        self.raster.fill_transform = transform;
-+    }
-+}
 +
 +impl PaintState {
 +    pub(super) fn restore(&mut self, window: &mut Window) {
@@ -24996,19 +25000,6 @@ index 0000000000000000000000000000000000000000..f1b63a914f31f078ef35d1c3a098021c
 +        self.replay_paint(self.paint_state(ctx, self.raster_frame().clone()), f)
 +    }
 +
-+    /// Capture environment and raster placement without a scale override.
-+    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-+        RasterPaintCtx { base: self.paint_ctx(), raster: self.raster_frame().clone() }
-+    }
-+
-+    /// Replay captured raster placement in the original live scope.
-+    pub fn with_raster_paint_ctx<R>(
-+        &mut self,
-+        ctx: RasterPaintCtx,
-+        f: impl FnOnce(&mut Self) -> R,
-+    ) -> Result<R, PaintError> {
-+        self.replay_paint(self.paint_state(ctx.base, ctx.raster), f)
-+    }
 +
 +    fn replay_paint<R>(
 +        &mut self,
@@ -25034,7 +25025,272 @@ index 0000000000000000000000000000000000000000..f1b63a914f31f078ef35d1c3a098021c
 +            window.with_restore(state, |window, state| state.restore(window), f).0
 +        }))
 +    }
++
++    /// KaminIDE patch: `replay_paint` of a checked state kept by the caller (on the heap,
++    /// outside recursive paint frames); the state holds the captured buffers again afterwards.
++    fn replay_in<R>(&mut self, state: &mut PaintState, f: impl FnOnce(&mut Self) -> R) -> R {
++        let mut layout_owner = state.base.layout_owner.clone();
++        let contexts = self.render_contexts.enter_snapshot(mem::take(&mut state.base.render_contexts));
++        state.restore(self);
++        let f = |window: &mut Self| {
++            let probe = super::retained::InkProbe::open(window);
++            let result = f(window);
++            if let Some(probe) = probe {
++                probe.close(window);
++            }
++            result
++        };
++        let result = self.with_retained_layout(&mut layout_owner, |window| {
++            window.with_restore(&mut *state, |window, state| state.restore(window), f).0
++        });
++        state.base.render_contexts = contexts.finish();
++        result
++    }
 +}
+diff --git a/vendor/gpui/src/window/paint_snapshot/raster_env.rs b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..6b712265f3afec9f62c6316bc4843ed90c767e87
+--- /dev/null
++++ b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
+@@ -0,0 +1,237 @@
++//! KaminIDE patch: raster captures of sibling elements share one environment.
++//!
++//! A deferred inline job used to carry a full copy of the paint environment (~1.5 KB, the
++//! element id stack inline, a clone of every stack and of both context tables): thousands
++//! of jobs per frame cost several allocations each and a queue of megabytes. As Blink's
++//! paint chunks point at shared property tree nodes instead of copying transforms and clips
++//! (`PropertyTreeState`), a capture here keeps a reference to the environment of its parent
++//! (the caller's pass remembers the last one and reuses it while it still matches) plus what
++//! differs per element: its own element id, glyph offset, fill transform and exact bounds.
++//! Replay fills the window from the shared environment into reused buffers, so neither capture
++//! nor replay allocates while the environment holds. That scratch belongs to the caller's
++//! paint pass (`RasterCaptures`), as Blink's paint scratch belongs to the `PaintController` of
++//! one paint, not to the window: it lives no longer than the pass.
++
++use super::*;
++
++/// KaminIDE patch: scratch of the raster captures and replays of one paint pass: the last
++/// shared environment and the buffers of a finished replay of a shared environment. Owned by
++/// the caller's pass and cleared when the pass ends, so nothing of it outlives the paint.
++#[derive(Default)]
++pub struct RasterCaptures {
++    env: Cell<Option<Rc<RasterEnv>>>,
++    buffers: Cell<Option<Box<ReplayBuffers>>>,
++}
++
++impl RasterCaptures {
++    /// Forget the shared environment and the replay buffers.
++    pub fn clear(&self) {
++        self.env.take();
++        self.buffers.take();
++    }
++
++    /// `env` without the reference this scratch keeps for later siblings, when no one else
++    /// holds it: its replay then takes the captured stacks over instead of copying them.
++    fn release(&self, env: Rc<RasterEnv>) -> Result<RasterEnv, Rc<RasterEnv>> {
++        if Rc::strong_count(&env) == 2 {
++            match self.env.take() {
++                Some(kept) if Rc::ptr_eq(&kept, &env) => drop(kept),
++                kept => self.env.set(kept),
++            }
++        }
++        Rc::try_unwrap(env)
++    }
++}
++
++/// The environment a raster capture shares with its siblings. Its element id stack is the
++/// prefix common to them (the parent's ids).
++pub(in crate::window) struct RasterEnv {
++    base: PaintCtx,
++    contexts: render_context::Snapshot,
++}
++
++/// Paint environment retaining raster placement at the current device scale.
++pub struct RasterPaintCtx {
++    env: Rc<RasterEnv>,
++    /// Element ids below the shared prefix (the capturing element's own).
++    ids: SmallVec<[ElementId; 1]>,
++    glyph_offset: Point<Pixels>,
++    fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
++    exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
++}
++
++impl RasterPaintCtx {
++    /// Select fill placement independently of the retained glyph placement.
++    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
++        self.fill_transform = transform;
++    }
++
++    /// Whether `self` and `other` share one captured environment (no copy of their own).
++    pub fn shares_environment(&self, other: &Self) -> bool {
++        Rc::ptr_eq(&self.env, &other.env)
++    }
++}
++
++impl RasterEnv {
++    fn capture(window: &Window, prefix: usize) -> Self {
++        let mut base = window.paint_ctx();
++        base.element_id_stack.truncate(prefix);
++        Self { base, contexts: window.raster_frame.contexts.clone() }
++    }
++
++    /// Everything but the capturing element's own id and placement equals the window's.
++    fn matches(&self, window: &Window) -> bool {
++        let b = &self.base;
++        let prefix = b.element_id_stack.len();
++        let depth = window.element_id_stack.len();
++        (depth == prefix || depth == prefix + 1)
++            && b.identity.is_current(window)
++            && b.layout_owner.same(&window.layout_owner)
++            && window.element_id_stack[..prefix] == b.element_id_stack[..]
++            && b.text_style_stack.same(&window.text_style_stack)
++            && window.render_contexts.matches(&b.render_contexts)
++            && b.rendered_entity_stack == window.rendered_entity_stack
++            && b.element_offset_stack == window.element_offset_stack
++            && b.exact_element_offset_depth == window.exact_element_offset_depth
++            && b.transformation_stack == window.transformation_stack
++            && b.mask_scale == window.mask_scale
++            && b.mask_map == window.mask_map
++            && b.element_opacity.to_bits() == window.element_opacity.to_bits()
++            && b.content_mask_stack == window.content_mask_stack
++            && b.image_cache_stack.len() == window.image_cache_stack.len()
++            && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
++            && b.ink.len() == window.next_frame.scene.ink.len()
++            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(a, b))
++            && self.contexts == window.raster_frame.contexts
++    }
++}
++
++/// Buffers of a finished replay of a shared environment, empty, with their capacity: the
++/// next replay of a shared environment fills them instead of allocating.
++#[derive(Default)]
++struct ReplayBuffers {
++    ids: SmallVec<[ElementId; 32]>,
++    contexts: render_context::Snapshot,
++    rendered: Vec<EntityId>,
++    offsets: Vec<Point<Pixels>>,
++    transforms: Vec<TransformationMatrix>,
++    masks: Vec<ContentMask<Pixels>>,
++    images: Vec<AnyImageCache>,
++    ink: Vec<Rc<InkSink>>,
++    raster_contexts: render_context::Snapshot,
++}
++
++impl ReplayBuffers {
++    /// The stacks of `env` copied into these buffers.
++    fn fill(&mut self, env: &RasterEnv, own: &[ElementId]) -> PaintCtx {
++        let b = &env.base;
++        self.ids.extend(b.element_id_stack.iter().chain(own).cloned());
++        b.render_contexts.clone_into(&mut self.contexts);
++        self.rendered.extend_from_slice(&b.rendered_entity_stack);
++        self.offsets.extend_from_slice(&b.element_offset_stack);
++        self.transforms.extend_from_slice(&b.transformation_stack);
++        self.masks.extend_from_slice(&b.content_mask_stack);
++        self.images.extend(b.image_cache_stack.iter().cloned());
++        self.ink.extend(b.ink.iter().cloned());
++        env.contexts.clone_into(&mut self.raster_contexts);
++        PaintCtx {
++            identity: b.identity.clone(),
++            layout_owner: b.layout_owner.clone(),
++            element_id_stack: mem::take(&mut self.ids),
++            text_style_stack: b.text_style_stack.clone(),
++            render_contexts: mem::take(&mut self.contexts),
++            rendered_entity_stack: mem::take(&mut self.rendered),
++            element_offset_stack: mem::take(&mut self.offsets),
++            exact_element_offset_depth: b.exact_element_offset_depth,
++            transformation_stack: mem::take(&mut self.transforms),
++            mask_scale: b.mask_scale,
++            mask_map: b.mask_map,
++            element_opacity: b.element_opacity,
++            content_mask_stack: mem::take(&mut self.masks),
++            image_cache_stack: mem::take(&mut self.images),
++            ink: mem::take(&mut self.ink),
++        }
++    }
++
++    /// Take the buffers back from a finished replay, empty, keeping their capacity.
++    fn reclaim(&mut self, state: PaintState) {
++        let PaintState { base, raster, .. } = state;
++        self.ids = base.element_id_stack;
++        self.contexts = base.render_contexts;
++        self.rendered = base.rendered_entity_stack;
++        self.offsets = base.element_offset_stack;
++        self.transforms = base.transformation_stack;
++        self.masks = base.content_mask_stack;
++        self.images = base.image_cache_stack;
++        self.ink = base.ink;
++        self.raster_contexts = raster.contexts;
++        self.ids.clear();
++        self.contexts.clear();
++        self.rendered.clear();
++        self.offsets.clear();
++        self.transforms.clear();
++        self.masks.clear();
++        self.images.clear();
++        self.ink.clear();
++        self.raster_contexts.clear();
++    }
++}
++
++impl Window {
++    /// Capture environment and raster placement without a scale override; siblings captured
++    /// with the same `captures` share one environment.
++    pub fn raster_paint_ctx(&self, captures: &RasterCaptures) -> RasterPaintCtx {
++        let env = match captures.env.take() {
++            Some(env) if env.matches(self) => env,
++            _ => Rc::new(RasterEnv::capture(self, self.element_id_stack.len().saturating_sub(1))),
++        };
++        captures.env.set(Some(env.clone()));
++        let prefix = env.base.element_id_stack.len();
++        RasterPaintCtx {
++            ids: self.element_id_stack[prefix..].iter().cloned().collect(),
++            glyph_offset: self.raster_frame.glyph_offset,
++            fill_transform: self.raster_frame.fill_transform,
++            exact_bounds: self.raster_frame.exact_bounds,
++            env,
++        }
++    }
++
++    /// Replay captured raster placement in the original live scope. The last replay of an
++    /// environment takes its stacks over (no copy, as a replay of a full snapshot does); a
++    /// replay of a shared one copies them into buffers kept by `captures`.
++    pub fn with_raster_paint_ctx<R>(
++        &mut self,
++        ctx: RasterPaintCtx,
++        captures: &RasterCaptures,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> Result<R, PaintError> {
++        let RasterPaintCtx { env, ids, glyph_offset, fill_transform, exact_bounds } = ctx;
++        env.base.identity.check(self)?;
++        let (base, contexts, mut buffers) = match captures.release(env) {
++            Ok(RasterEnv { mut base, contexts }) => {
++                base.element_id_stack.extend(ids);
++                (base, contexts, None)
++            }
++            Err(env) => {
++                let mut buffers = captures.buffers.take().unwrap_or_default();
++                let base = buffers.fill(&env, &ids);
++                let contexts = mem::take(&mut buffers.raster_contexts);
++                (base, contexts, Some(buffers))
++            }
++        };
++        let mut state = PaintState {
++            base,
++            raster: RasterFrame { glyph_offset, fill_transform, exact_bounds, contexts },
++            scale_factor: self.scale_factor,
++            rem_size_overrides: self.rem_size_override_stack.clone(),
++        };
++        let result = self.replay_in(&mut state, f);
++        if let Some(buffers) = buffers.as_mut() {
++            buffers.reclaim(state);
++        }
++        if let Some(buffers) = buffers {
++            captures.buffers.set(Some(buffers));
++        }
++        Ok(result)
++    }
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/window/plane3d.rs b/vendor/gpui/src/window/plane3d.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..2cc616654025935609dd5abe7c7f3920735d58cf
@@ -25540,10 +25796,10 @@ index 0000000000000000000000000000000000000000..bc58113f146f236fc2ec37947d0ece68
 +}
 diff --git a/vendor/gpui/src/window/render_context.rs b/vendor/gpui/src/window/render_context.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc2340a43bfb1
+index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f12ad244d
 --- /dev/null
 +++ b/vendor/gpui/src/window/render_context.rs
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,259 @@
 +//! Window-owned typed traversal scopes and snapshots for deferred drawing.
 +// KaminIDE patch: pass host paint/prepaint context through GPUI without thread-local state.
 +
@@ -25573,6 +25829,16 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +            None => self.0.remove(&id),
 +        };
 +        previous?.downcast().ok()
++    }
++
++    /// KaminIDE patch: copy `self` into `target`, reusing its table.
++    pub(super) fn clone_into(&self, target: &mut Snapshot) {
++        target.0.clone_from(&self.0);
++    }
++
++    /// KaminIDE patch: forget every value, keeping the table.
++    pub(super) fn clear(&mut self) {
++        self.0.clear();
 +    }
 +}
 +
@@ -25604,7 +25870,17 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +        SnapshotScope {
 +            values: self.0.clone(),
 +            previous,
++            finished: false,
 +        }
++    }
++
++    /// KaminIDE patch: the current values are those of `snapshot` (same `Rc`s).
++    pub(super) fn matches(&self, snapshot: &Snapshot) -> bool {
++        let values = self.0.borrow();
++        values.len() == snapshot.0.len()
++            && values.iter().all(|(id, value)| {
++                snapshot.0.get(id).is_some_and(|other| Rc::ptr_eq(value, other))
++            })
 +    }
 +
 +    pub(super) fn get<T: Any>(&self) -> Option<Rc<T>> {
@@ -25633,11 +25909,24 @@ index 0000000000000000000000000000000000000000..92a6535e1c1aca02cd1446d39f5bc234
 +pub(super) struct SnapshotScope {
 +    values: Rc<RefCell<Values>>,
 +    previous: Values,
++    finished: bool,
++}
++
++impl SnapshotScope {
++    /// KaminIDE patch: restore the previous values and give the entered snapshot back,
++    /// so that its table can be reused.
++    pub(super) fn finish(mut self) -> Snapshot {
++        let previous = std::mem::take(&mut self.previous);
++        self.finished = true;
++        Snapshot(std::mem::replace(&mut *self.values.borrow_mut(), previous))
++    }
 +}
 +
 +impl Drop for SnapshotScope {
 +    fn drop(&mut self) {
-+        *self.values.borrow_mut() = std::mem::take(&mut self.previous);
++        if !self.finished {
++            *self.values.borrow_mut() = std::mem::take(&mut self.previous);
++        }
 +    }
 +}
 +
@@ -26177,10 +26466,10 @@ index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f68
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/retained_layout.rs b/vendor/gpui/src/window/retained_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7873842ab10069ed45d20b6f8f07b7213a074051
+index 0000000000000000000000000000000000000000..2ff98772980f1d5f532c8c384d868ecdd0fc17a1
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained_layout.rs
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,140 @@
 +//! Сохранённое дерево независимой раскладки в пределах текущего кадра.
 +
 +use super::{TaffyLayoutEngine, Window};
@@ -26214,6 +26503,11 @@ index 0000000000000000000000000000000000000000..7873842ab10069ed45d20b6f8f07b721
 +}
 +
 +impl RetainedLayout {
++    /// KaminIDE patch: the same layout owner.
++    pub(super) fn same(&self, other: &Self) -> bool {
++        Rc::ptr_eq(&self.0, &other.0)
++    }
++
 +    pub(super) fn active() -> Self {
 +        Self(Rc::new(RefCell::new(None)))
 +    }
@@ -26578,10 +26872,10 @@ index 0000000000000000000000000000000000000000..a4394ce52c4c1c59c9b9b85bb0a3df93
 +}
 diff --git a/vendor/gpui/src/window/text_style_scope.rs b/vendor/gpui/src/window/text_style_scope.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..aebddb9e13954877655d29ada76baa5ae12dbb3c
+index 0000000000000000000000000000000000000000..8d16d84961fd4d691ad521a17d5560dde463a78c
 --- /dev/null
 +++ b/vendor/gpui/src/window/text_style_scope.rs
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,110 @@
 +//! KaminIDE patch: the inherited text style refinements as a shared persistent
 +//! list. A push links one refinement to the current scope; capturing a scope for
 +//! a deferred draw, a paint snapshot or a measure callback is one `Rc` clone.
@@ -26600,6 +26894,15 @@ index 0000000000000000000000000000000000000000..aebddb9e13954877655d29ada76baa5a
 +}
 +
 +impl TextStyleScope {
++    /// KaminIDE patch: the same scope (the same chain of links).
++    pub(crate) fn same(&self, other: &Self) -> bool {
++        match (&self.0, &other.0) {
++            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
++            (None, None) => true,
++            _ => false,
++        }
++    }
++
 +    /// This scope with `style` applied innermost.
 +    pub(crate) fn push(&self, style: TextStyleRefinement) -> Self {
 +        Self(Some(Rc::new(Link {

@@ -6,18 +6,30 @@ use gpui::{App, Bounds, IntoElement, LayoutId, Pixels, Position, Style};
 
 pub(crate) struct PaintCollect {
     open: bool,
+    /// Строковых заданий, собранных сборкой между метками (`Deferred::inline_jobs`).
+    inline_jobs: u32,
     state: Rc<Cell<Option<FrameGuard>>>,
 }
 
 impl PaintCollect {
     pub(crate) fn pair() -> (Self, Self) {
+        Self::pair_reserving(0)
+    }
+
+    /// Пара, чей кадр сразу берёт место под `inline_jobs` строковых заданий.
+    pub(crate) fn pair_reserving(inline_jobs: u32) -> (Self, Self) {
         let state = Rc::default();
         (
             Self {
                 open: true,
+                inline_jobs,
                 state: Rc::clone(&state),
             },
-            Self { open: false, state },
+            Self {
+                open: false,
+                inline_jobs: 0,
+                state,
+            },
         )
     }
 }
@@ -53,10 +65,11 @@ impl Hooks for PaintCollect {
     ) {
         if self.open {
             if let Some(pass) = current(window) {
-                self.state.set(Some(pass.open(window)));
+                self.state
+                    .set(Some(pass.open_reserving(window, self.inline_jobs)));
             }
         } else if let Some(guard) = self.state.take() {
-            guard.pass.drain(guard.depth, window, cx);
+            guard.pass.drain(guard.depth(), window, cx);
         }
     }
 }

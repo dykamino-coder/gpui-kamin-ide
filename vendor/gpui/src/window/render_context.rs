@@ -28,6 +28,16 @@ impl Snapshot {
         };
         previous?.downcast().ok()
     }
+
+    /// KaminIDE patch: copy `self` into `target`, reusing its table.
+    pub(super) fn clone_into(&self, target: &mut Snapshot) {
+        target.0.clone_from(&self.0);
+    }
+
+    /// KaminIDE patch: forget every value, keeping the table.
+    pub(super) fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl std::fmt::Debug for Snapshot {
@@ -58,7 +68,17 @@ impl RenderContexts {
         SnapshotScope {
             values: self.0.clone(),
             previous,
+            finished: false,
         }
+    }
+
+    /// KaminIDE patch: the current values are those of `snapshot` (same `Rc`s).
+    pub(super) fn matches(&self, snapshot: &Snapshot) -> bool {
+        let values = self.0.borrow();
+        values.len() == snapshot.0.len()
+            && values.iter().all(|(id, value)| {
+                snapshot.0.get(id).is_some_and(|other| Rc::ptr_eq(value, other))
+            })
     }
 
     pub(super) fn get<T: Any>(&self) -> Option<Rc<T>> {
@@ -87,11 +107,24 @@ impl RenderContexts {
 pub(super) struct SnapshotScope {
     values: Rc<RefCell<Values>>,
     previous: Values,
+    finished: bool,
+}
+
+impl SnapshotScope {
+    /// KaminIDE patch: restore the previous values and give the entered snapshot back,
+    /// so that its table can be reused.
+    pub(super) fn finish(mut self) -> Snapshot {
+        let previous = std::mem::take(&mut self.previous);
+        self.finished = true;
+        Snapshot(std::mem::replace(&mut *self.values.borrow_mut(), previous))
+    }
 }
 
 impl Drop for SnapshotScope {
     fn drop(&mut self) {
-        *self.values.borrow_mut() = std::mem::take(&mut self.previous);
+        if !self.finished {
+            *self.values.borrow_mut() = std::mem::take(&mut self.previous);
+        }
     }
 }
 
