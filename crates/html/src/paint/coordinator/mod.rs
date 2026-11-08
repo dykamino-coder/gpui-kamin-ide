@@ -30,6 +30,9 @@ struct CssPaintPass {
     id: PaintPassId,
     failed: Cell<bool>,
     jobs: PaintJobQueue,
+    /// Окружение, общее у соседних строковых заданий, и состояния их повторов
+    /// (`gpui::RasterCaptures`): живут, пока открыт корневой кадр прохода.
+    raster: gpui::RasterCaptures,
 }
 
 /// Снимок окна удерживает только слабую ссылку: jobs не удерживают свою очередь.
@@ -49,10 +52,15 @@ impl CssPaintPass {
     }
 
     fn open(self: &Rc<Self>, window: &Window) -> FrameGuard {
-        let (depth, previous) = self.jobs.open(window.paint_scope_id());
+        self.open_reserving(window, 0)
+    }
+
+    /// Кадр, чья очередь строк возьмёт место под `inline_capacity` заданий сразу.
+    fn open_reserving(self: &Rc<Self>, window: &Window, inline_capacity: u32) -> FrameGuard {
+        let (depth, previous) = self.jobs.open(window.paint_scope_id(), inline_capacity);
         FrameGuard {
             pass: self.clone(),
-            depth,
+            level: u32::try_from(depth).expect("CSS frame depth fits u32"),
             previous,
         }
     }
@@ -60,13 +68,22 @@ impl CssPaintPass {
     fn abort(&self) {
         self.failed.set(true);
         self.jobs.clear();
+        self.raster.clear();
     }
 }
 
+/// Глубина — `u32`: страж с флагом занимает два слова, и общее состояние пары
+/// `PaintCollect` не растёт (сборка держит его на каждый сборщик).
 struct FrameGuard {
     pass: Rc<CssPaintPass>,
-    depth: usize,
+    level: u32,
     previous: bool,
+}
+
+impl FrameGuard {
+    fn depth(&self) -> usize {
+        self.level as usize
+    }
 }
 
 impl Drop for FrameGuard {
@@ -77,7 +94,11 @@ impl Drop for FrameGuard {
         if std::thread::panicking() {
             self.pass.abort();
         } else {
-            self.pass.jobs.close(self.depth, self.previous);
+            self.pass.jobs.close(self.depth(), self.previous);
+            // Корневой кадр закрыт: заданий прохода больше нет, их окружение не нужно.
+            if self.level == 0 {
+                self.pass.raster.clear();
+            }
         }
     }
 }
@@ -111,6 +132,12 @@ fn boundary(window: &mut Window) -> Box<dyn std::any::Any> {
         previous,
         saved,
     })
+}
+
+/// Место очередей строк кадров открытого прохода, от внешнего к внутреннему.
+#[cfg(test)]
+pub(crate) fn inline_capacities(window: &Window) -> Vec<usize> {
+    current(window).map_or_else(Vec::new, |pass| pass.jobs.inline_capacities())
 }
 
 /// Явный адаптер восстанавливает collector через непрозрачного GPUI consumer.

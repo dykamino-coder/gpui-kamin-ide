@@ -77,11 +77,14 @@ pub(super) async fn blocks_flow(
         if run_breaks.contains(&idx) && !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
             let t = trim::para_flags(trim_own, std::mem::take(&mut first_para), false);
-            out.push(paint_inline_step7(letter_scope.paragraph(
-                &taken,
-                inherited,
-                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
-            )));
+            out.push(paint_inline_step7(
+                letter_scope.paragraph(
+                    &taken,
+                    inherited,
+                    &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+                ),
+                opts,
+            ));
         }
         let is_inline = inline_node(n, inherited, ordered_context, &pending);
         if is_inline {
@@ -98,11 +101,14 @@ pub(super) async fn blocks_flow(
                 std::mem::take(&mut first_para),
                 trim::rest_is_empty(&nodes[idx..]),
             );
-            out.push(paint_inline_step7(letter_scope.paragraph(
-                &taken,
-                inherited,
-                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
-            )));
+            out.push(paint_inline_step7(
+                letter_scope.paragraph(
+                    &taken,
+                    inherited,
+                    &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+                ),
+                opts,
+            ));
         }
         // Позиционированные с `z-index: auto` красятся В ПОРЯДКЕ ДЕРЕВА
         // (CSS 2.1 прил. E, шаг 8; Blink `paint_layer_paint_order_iterator.h`
@@ -186,11 +192,14 @@ pub(super) async fn blocks_flow(
     }
     if !pending.is_empty() {
         let t = trim::para_flags(trim_own, first_para, true);
-        out.push(paint_inline_step7(letter_scope.paragraph(
-            &pending,
-            inherited,
-            &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
-        )));
+        out.push(paint_inline_step7(
+            letter_scope.paragraph(
+                &pending,
+                inherited,
+                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+            ),
+            opts,
+        ));
     }
     if (inherited.reset_text_box.text_box_trim_start || inherited.reset_text_box.text_box_trim_end)
         && !out.is_empty()
