@@ -39,8 +39,6 @@ pub(super) struct View {
     pub(super) doc: Document,
     pub(super) phases: Rc<RefCell<Phases>>,
     pub(super) viewport: Option<(u32, u32)>,
-    /// Байты входа хоста: ёмкость живёт между холодными замерами.
-    pub(super) source: Vec<u8>,
 }
 
 impl Render for View {

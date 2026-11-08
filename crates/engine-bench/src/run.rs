@@ -73,7 +73,7 @@ pub(super) async fn sample(
             }
             if let Step::Cold(markup) = step {
                 let t = Instant::now();
-                let mut source = std::mem::take(&mut view.source);
+                let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
                     match markup {
@@ -89,8 +89,6 @@ pub(super) async fn sample(
                     .fonts(fonts)
                     .build()?;
                 build_time = Some(t.elapsed());
-                drop(html);
-                view.source = source;
                 if let Some(limit) = doc.traversal_limit() {
                     return Err(format!("degraded document: {limit}").into());
                 }
