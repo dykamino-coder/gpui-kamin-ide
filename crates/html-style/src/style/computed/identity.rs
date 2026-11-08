@@ -69,6 +69,12 @@ macro_rules! storage {
                     $(&& self.$group.ptr_eq(&c.$group))*
             }
 
+            /// Хоть одну группу `c` держит только `c`: другой элемент с теми же группами
+            /// не встретится, а запись входа в кэш заставила бы копировать её при правке.
+            pub(crate) fn any_unique(c: &Computed) -> bool {
+                std::rc::Rc::strong_count(&c.inh.0) == 1 $(|| c.$group.is_unique())*
+            }
+
             /// Поставить эти группы в `c`; собственные поля элемента остаются.
             pub(crate) fn share_into(&self, c: &mut Computed) {
                 c.inh = self.inh.clone();

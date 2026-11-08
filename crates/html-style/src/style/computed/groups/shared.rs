@@ -50,6 +50,11 @@ impl<T> StyleGroup<T> {
         erased.clone().downcast::<Payload<T>>().ok().map(Self)
     }
 
+    /// Группу держит только этот владелец: запись в неё не копирует группу.
+    pub(crate) fn is_unique(&self) -> bool {
+        Rc::strong_count(&self.0) == 1
+    }
+
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }

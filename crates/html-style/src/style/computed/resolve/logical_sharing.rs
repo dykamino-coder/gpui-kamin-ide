@@ -49,6 +49,12 @@ impl LogicalSharing {
             hit.value.share_into(own);
             return;
         }
+        // Вход со своей группой никто не повторит: правка на месте, без записи (запись держала
+        // бы группы и заставила бы `resolve_logical` их копировать).
+        if crate::style::computed::identity::Storage::any_unique(own) {
+            own.resolve_logical(wm, parent_vertical, is_cell, vcx);
+            return;
+        }
         let input = crate::style::computed::identity::Storage::of(own);
         own.resolve_logical(wm, parent_vertical, is_cell, vcx);
         self.entries[self.next] = Some(Entry {
@@ -88,5 +94,17 @@ mod tests {
         let mut vertical = own.clone();
         cache.resolve(&mut vertical, wm, true, false, vcx);
         assert!(!vertical.shares_storage(&first));
+    }
+
+    #[test]
+    fn an_input_with_its_own_group_is_resolved_in_place_without_an_entry() {
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let vcx = doc.values();
+        let mut own = doc.initial_style();
+        own.apply_one("margin-block", "1em", vcx);
+        let mut cache = LogicalSharing::default();
+        cache.resolve(&mut own, WritingMode::default(), false, false, vcx);
+        assert!(cache.entries.iter().all(Option::is_none));
+        assert_eq!(own.reset_box_layout.margin.top, Some(Len::Em(1.0)));
     }
 }
