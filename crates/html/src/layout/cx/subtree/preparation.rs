@@ -19,11 +19,15 @@ const MAX_DEPTH: u8 = 8;
 
 type Snapshot = ((usize, usize), Rc<Preparation>);
 
+/// Ключ снимка-основы (`continuing`): адрес корневого списка не бывает нулевым,
+/// поэтому основа не совпадает ни с одним деревом и не требует своего поля.
+const BASE: (usize, usize) = (0, 0);
+
 #[derive(Default)]
 pub(crate) struct PreparationCache {
+    /// Подготовка последнего дерева или, под ключом `BASE`, подготовка дерева
+    /// прошлой ревизии той же формы и стилей (`continuing`).
     snapshot: std::cell::Cell<Option<Snapshot>>,
-    /// Подготовка дерева прошлой ревизии той же формы и стилей (`continuing`).
-    base: std::cell::Cell<Option<Rc<Preparation>>>,
 }
 
 impl PreparationCache {
@@ -35,18 +39,12 @@ impl PreparationCache {
     /// ниже грязного корня, чистые поддеревья не посещаются).
     pub(crate) fn continuing(previous: &Self) -> Self {
         let snapshot = previous.snapshot.take();
-        let base = match &snapshot {
-            Some((_, prepared)) => Some(prepared.clone()),
-            None => {
-                let base = previous.base.take();
-                previous.base.set(base.clone());
-                base
-            }
-        };
+        let base = snapshot
+            .as_ref()
+            .map(|(_, prepared)| (BASE, prepared.clone()));
         previous.snapshot.set(snapshot);
         Self {
-            snapshot: Default::default(),
-            base: std::cell::Cell::new(base),
+            snapshot: std::cell::Cell::new(base),
         }
     }
 
@@ -55,14 +53,13 @@ impl PreparationCache {
     pub(crate) fn get(&self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
         let key = (nodes.as_ptr() as usize, nodes.len());
         let snapshot = self.snapshot.take();
+        let fresh = stable && !changed;
         let prepared = match snapshot {
-            Some((old, prepared)) if stable && !changed && old == key => prepared,
-            _ => match self.base.take() {
-                Some(base) if stable && !changed && base.depth < MAX_DEPTH => {
-                    Rc::new(Preparation::continued(&base, nodes))
-                }
-                _ => Rc::new(Preparation::new(nodes)),
-            },
+            Some((old, prepared)) if fresh && old == key => prepared,
+            Some((BASE, base)) if fresh && base.depth < MAX_DEPTH => {
+                Rc::new(Preparation::continued(&base, nodes))
+            }
+            _ => Rc::new(Preparation::new(nodes)),
         };
         if stable {
             self.snapshot.set(Some((key, prepared.clone())));

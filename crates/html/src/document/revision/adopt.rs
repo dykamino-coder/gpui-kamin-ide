@@ -101,11 +101,19 @@ impl Document {
         let attrs = attr_paths(&self.nodes, &targets)?;
         let found = text_paths(&self.nodes, &texts)?;
         if attrs.is_empty() && found.is_empty() {
-            return Some(Plan::Clean);
+            return Some(Plan::Clean(None));
         }
         let mut nodes = (*self.nodes).clone();
-        (patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts))
-            .then_some(Plan::Patched(nodes))
+        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+            return None;
+        }
+        // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
+        // лишь селекторы и `attr()` каскада, а не сборка кадра.
+        Some(if texts.is_empty() {
+            Plan::Clean(Some(nodes))
+        } else {
+            Plan::Patched(nodes)
+        })
     }
 }
 

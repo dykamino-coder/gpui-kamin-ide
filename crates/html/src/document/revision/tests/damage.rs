@@ -27,8 +27,9 @@ fn attr(element: &Handle, name: &str, value: &str) -> Mutation {
 }
 
 /// Применить запись к `old` (элемент `local`, атрибут `name`): равна ли
-/// ревизия свежей сборке `new`, и сохранены ли дерево, кадр и состояние.
-fn kept(old: &str, local: &str, name: &str, value: &str, new: &str) -> bool {
+/// ревизия свежей сборке `new`, и сохранены ли кадр и состояние (`Some`:
+/// и дерево тоже — ни одна коробка не правлена).
+fn kept(old: &str, local: &str, name: &str, value: &str, new: &str) -> Option<bool> {
     let mut doc = Document::builder(old, "").build().unwrap();
     let (nodes, slot, state_rc) = (doc.nodes.clone(), doc.retained.clone(), doc.state.clone());
     let target = element(&doc.source_dom(), local).expect("element");
@@ -40,30 +41,52 @@ fn kept(old: &str, local: &str, name: &str, value: &str, new: &str) -> bool {
     let fresh = Document::builder(new, "").build().unwrap();
     assert_eq!(tree(&doc), tree(&fresh), "{old} -> {new}");
     assert_eq!(state(&doc), state(&fresh), "{old} -> {new}");
-    let same = Rc::ptr_eq(&nodes, &doc.nodes);
+    let frame = Rc::ptr_eq(&slot, &doc.retained);
     assert_eq!(
-        same,
-        Rc::ptr_eq(&slot, &doc.retained),
-        "tree and frame go together"
-    );
-    assert_eq!(
-        same,
+        frame,
         Rc::ptr_eq(&state_rc, &doc.state),
-        "tree and state go together"
+        "frame and state go together"
     );
-    same
+    frame.then(|| Rc::ptr_eq(&nodes, &doc.nodes))
 }
 
 #[test]
-fn records_on_boxless_elements_keep_the_tree_the_frame_and_the_state() {
+fn records_no_frame_reads_keep_the_frame_and_the_state() {
     let classed = PAGE.replace("<html>", "<html class=\"alt\">");
-    assert!(kept(PAGE, "html", "class", "alt", &classed));
+    assert_eq!(kept(PAGE, "html", "class", "alt", &classed), Some(true));
+    // Коробка `p` получает новый атрибут, но кадр его не читает.
+    let boxed = PAGE.replace("<p>a", "<p data-k=\"1\">a");
+    assert_eq!(kept(PAGE, "p", "data-k", "1", &boxed), Some(false));
+    let classed = PAGE.replace("<p>a", "<p class=\"zz\">a");
+    assert_eq!(kept(PAGE, "p", "class", "zz", &classed), Some(false));
     // Элемент вне обхода сборки (`head`) не адресуется правкой: каскад заново.
     let head = PAGE.replace("<head>", "<head data-k=\"1\">");
-    assert!(!kept(PAGE, "head", "data-k", "1", &head));
-    // Первый `p` — коробка: правка копирует путь к ней.
-    let boxed = PAGE.replace("<p>a", "<p data-k=\"1\">a");
-    assert!(!kept(PAGE, "p", "data-k", "1", &boxed));
+    assert_eq!(kept(PAGE, "head", "data-k", "1", &head), None);
+    // Упомянутый листом класс меняет каскад.
+    let on = PAGE.replace("<p>a", "<p class=\"on\">a");
+    assert_eq!(kept(PAGE, "p", "class", "on", &on), None);
+}
+
+#[test]
+fn a_text_record_copies_its_path_into_a_new_frame() {
+    let mut doc = Document::builder(PAGE, "").build().unwrap();
+    let slot = doc.retained.clone();
+    let p = element(&doc.source_dom(), "p").unwrap();
+    let text = p.children.borrow()[0].clone();
+    let record = Mutation::CharacterData {
+        node: text,
+        data: "z".into(),
+    };
+    doc.apply(&[record], "").unwrap();
+    assert!(
+        !Rc::ptr_eq(&slot, &doc.retained),
+        "a changed text keeps no frame"
+    );
+    let fresh = Document::builder(&PAGE.replace("<p>a", "<p>z"), "")
+        .build()
+        .unwrap();
+    assert_eq!(tree(&doc), tree(&fresh));
+    assert_eq!(state(&doc), state(&fresh));
 }
 
 #[test]
