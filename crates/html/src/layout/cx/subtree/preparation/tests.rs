@@ -72,6 +72,8 @@ fn continued_preparation_visits_only_the_copied_lists_and_equals_a_full_one() {
         unreachable!()
     };
     five.children[0] = Node::Text("y".into());
+    // Прошлое дерево живо и не тронуто: копия при записи отделила пути.
+    assert_ne!(format!("{nodes:?}"), format!("{next:?}"));
     let continued = PreparationCache::continuing(&cache).get(&next, true, false);
     assert_eq!(continued.facts.children.len(), 3, "only the copied lists");
     let full = Preparation::new(&next);
