@@ -118,8 +118,9 @@ impl Document {
             .values
             .traversal
             .readopt(source.input, elements, source_texts, read_next);
+        // Документ отпускает выведенные группы стиля в Drop.
+        state.values.derived.hold_document();
         Ok(Document {
-            _derived: crate::style::computed::DerivedHold::new(&state.values),
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),

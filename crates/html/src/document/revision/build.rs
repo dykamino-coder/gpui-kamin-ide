@@ -107,8 +107,9 @@ impl Document {
             failure.report.revision = Some(key);
             return Err(failure);
         }
+        // Документ отпускает выведенные группы стиля в Drop.
+        state.values.derived.hold_document();
         Ok(Document {
-            _derived: crate::style::computed::DerivedHold::new(&state.values),
             state,
             nodes: Rc::new(nodes),
             retained: Default::default(),

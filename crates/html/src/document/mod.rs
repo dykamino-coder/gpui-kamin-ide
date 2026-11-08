@@ -81,9 +81,6 @@ pub struct Document {
     /// Правила, метрики корня и режим документа (`state`): живут вместе с
     /// деревом и подменяются вместе с ним на `update`.
     state: Rc<DocState>,
-    /// Выведенные группы стиля отпускаются вместе с последним документом этих значений,
-    /// а не с самими значениями, которые живут дольше в отложенных кадрах.
-    _derived: crate::style::computed::DerivedHold,
     /// Дерево общее с элементом сохраняемого кадра (`retained`): тот
     /// собирает кадр сам, когда повтор прошлого не подошёл.
     nodes: Rc<Vec<Node>>,
@@ -104,6 +101,14 @@ pub struct Document {
     last_failure: Option<DocumentFailure>,
     #[cfg(feature = "engine-bench")]
     timings: BuildTimings,
+}
+
+impl Drop for Document {
+    /// Значения документа живут дольше него в отложенных кадрах: выведенные группы стиля
+    /// отпускаются с последним документом этих значений, а не с ними самими.
+    fn drop(&mut self) {
+        self.state.values.derived.release_document();
+    }
 }
 
 impl Document {
