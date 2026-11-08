@@ -27,8 +27,10 @@ pub(super) enum Step<'a> {
     Cold(Option<&'a str>),
     /// Тот же документ, принудительная перерисовка.
     Warm,
-    /// `Document::update` данной разметкой (локальная правка).
-    Update(&'a str),
+    /// Локальная правка: записи мутаций отличия данной разметки от документа
+    /// (`Document::mutations` до начала замера, как DOM-вызов пробы JS у
+    /// браузеров), применённые `Document::apply`.
+    Edit(&'a str),
 }
 
 async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
@@ -56,6 +58,14 @@ pub(super) async fn sample(
 )> {
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
+            let records = match step {
+                Step::Edit(html) => Some(
+                    view.doc
+                        .mutations(html)
+                        .ok_or("the edit changes the shape of the document")?,
+                ),
+                _ => None,
+            };
             let started = Instant::now();
             let work = work::Capture::begin(luid)?;
             let observer_setup = started.elapsed();
@@ -64,10 +74,10 @@ pub(super) async fn sample(
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
-            if let Step::Update(html) = step {
+            if let Some(records) = &records {
                 let t = Instant::now();
                 kamin_html::work::phase!(_document, DocumentOther);
-                view.doc.update(html, BROWSER_CSS)?;
+                view.doc.apply(records, BROWSER_CSS)?;
                 build_time = Some(t.elapsed());
                 timings = Some(view.doc.build_timings());
             }

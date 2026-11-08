@@ -118,6 +118,11 @@ impl ImageStore {
         }
     }
 
+    /// База документа, от которой разрешаются запросы картинок.
+    pub fn base(&self) -> Option<&Url> {
+        self.base.as_ref()
+    }
+
     /// Новая база документа: прежние запросы разрешались от старой и отбрасываются.
     pub fn set_base(&mut self, base: Option<Url>) {
         if self.base != base {
