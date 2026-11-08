@@ -26,8 +26,9 @@ pub(super) fn read(path: &Path) -> Result<String> {
     Ok(read_into(path, &mut Vec::new())?.into_owned())
 }
 
-/// Читает вход в `source` (ёмкость переиспользуется) и отдаёт разметку для
-/// движка. UTF-8 без замен заимствуется из `source` без копии.
+/// Читает вход в `source` одним выделением по размеру файла и отдаёт разметку для
+/// движка. UTF-8 без замен заимствуется из `source` без копии; буфер живёт
+/// только до постройки документа, а не весь замер.
 pub(super) fn read_into<'a>(path: &Path, source: &'a mut Vec<u8>) -> Result<Cow<'a, str>> {
     source.clear();
     std::fs::File::open(path)?.read_to_end(source)?;
