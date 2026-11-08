@@ -25,6 +25,12 @@ pub fn bidi_letter_spans(
     block: Pixels,
     existing: &[(Range<usize>, Pixels)],
 ) -> Vec<(Range<usize>, Pixels)> {
+    // An override replaces a letter's tracking with the block's: where every letter
+    // already tracks like the block (no `letter-spacing` below it), there is none,
+    // and the paragraph is neither scanned nor reordered.
+    if existing.iter().all(|(_, v)| *v == block) {
+        return Vec::new();
+    }
     let mut text = String::new();
     let mut piece_of: Vec<(Range<usize>, usize)> = Vec::new();
     for (k, p) in pieces.iter().enumerate() {
@@ -158,5 +164,12 @@ mod tests {
         assert!(bidi_letter_spans(&pieces, false, px(0.), &[(0..4, px(5.))]).is_empty());
         let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
         assert!(bidi_letter_spans(&pieces, false, px(5.), &[]).is_empty());
+    }
+
+    #[test]
+    fn tracking_like_the_block_everywhere_needs_no_override() {
+        // Reordered as in the first test, but the span tracks like the block.
+        let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
+        assert!(bidi_letter_spans(&pieces, false, px(10.), &[(1..4, px(10.))]).is_empty());
     }
 }
