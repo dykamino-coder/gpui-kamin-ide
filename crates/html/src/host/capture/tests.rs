@@ -92,6 +92,23 @@ fn consuming_latest_transfers_pixels_without_changing_first_or_completion() {
 }
 
 #[test]
+fn an_armed_first_frame_shares_the_readback_buffer_with_latest() {
+    let (session, mut sink) = CaptureSession::open();
+    session.arm_first();
+    store(&mut *sink, 1);
+    let latest = session.latest().unwrap();
+    let first = session.take_first().unwrap();
+    assert_eq!(first.pixels.bgra.as_ptr(), latest.pixels.bgra.as_ptr());
+    drop(latest);
+    store(&mut *sink, 2);
+    // The later frame replaced latest: the first one is now the only owner.
+    let pointer = first.pixels.bgra.as_ptr();
+    let owned = first.into_pixels();
+    assert_eq!(owned.bgra.as_ptr(), pointer);
+    assert_eq!(owned.bgra, [1; 4]);
+}
+
+#[test]
 fn endpoint_drop_cancels_waiters_and_a_replacement_starts_independently() {
     let (old, mut sink) = CaptureSession::open();
     store(&mut *sink, 1);

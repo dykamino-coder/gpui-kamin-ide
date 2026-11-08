@@ -49,8 +49,8 @@ pub(super) fn recording() -> PaintRecording {
         finish: Rc::new(|guard, window, cx| {
             if let Some(RecordFrame { frame, late }) = guard.downcast_mut::<RecordFrame>() {
                 match late {
-                    Some(late) => frame.pass.drain_late(frame.depth, late, window, cx),
-                    None => frame.pass.drain(frame.depth, window, cx),
+                    Some(late) => frame.pass.drain_late(frame.depth(), late, window, cx),
+                    None => frame.pass.drain(frame.depth(), window, cx),
                 }
             }
         }),
