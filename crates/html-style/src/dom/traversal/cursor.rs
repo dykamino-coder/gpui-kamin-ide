@@ -58,11 +58,11 @@ pub fn read_inherited<'a, C: Clone>(
                 && !element.children.is_empty()
                 && let Some(next) = enter(element, &parent)
             {
+                let previous = std::mem::replace(&mut parent, next);
                 if !remaining.is_empty() {
-                    pending.push((remaining, parent));
+                    pending.push((remaining, previous));
                 }
                 remaining = &element.children;
-                parent = next;
             }
             return Some((node, inherited));
         }
@@ -77,6 +77,49 @@ pub fn read_nodes(nodes: &[Node]) -> impl Iterator<Item = &Node> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_cursor_restores_owned_state_after_pruned_and_nested_branches() {
+        let element = |tag: &str, children: Vec<Node>| {
+            Node::Element(Element::synthetic(
+                tag,
+                Default::default(),
+                Default::default(),
+                children,
+            ))
+        };
+        let nodes = vec![
+            element(
+                "root",
+                vec![
+                    element("branch", vec![element("leaf", vec![])]),
+                    element("prune", vec![element("hidden", vec![])]),
+                    element("tail", vec![]),
+                ],
+            ),
+            element("after", vec![]),
+        ];
+        let visited = read_inherited(&nodes, String::new(), |e, parent| {
+            (e.tag != "prune").then(|| format!("{parent}/{}", e.tag))
+        })
+        .map(|(node, parent)| match node {
+            Node::Element(e) => (e.tag.as_str(), parent),
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+        assert_eq!(
+            visited,
+            [
+                ("root", ""),
+                ("branch", "/root"),
+                ("leaf", "/root/branch"),
+                ("prune", "/root"),
+                ("tail", "/root"),
+                ("after", ""),
+            ]
+            .map(|(tag, parent)| (tag, parent.to_owned()))
+        );
+    }
 
     #[test]
     fn deep_cursor_restores_parent_state_for_pending_siblings() {
