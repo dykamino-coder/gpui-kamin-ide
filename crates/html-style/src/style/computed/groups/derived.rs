@@ -10,14 +10,17 @@
 
 use super::StyleGroup;
 use std::any::{Any, TypeId};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Выведенные группы одного документа.
+type Entries = HashMap<Key, Entry>;
+
+/// Выведенные группы одного документа. Карта выделяется с первой правкой и отпускается,
+/// когда пустеет: значения документа без правок держат только счётчики и указатель.
 #[derive(Default)]
 pub struct DerivedGroups {
-    entries: RefCell<HashMap<Key, Entry>>,
+    entries: Cell<Option<Box<Entries>>>,
     generation: Cell<u32>,
     /// Живые документы этих значений (`hold_document`).
     documents: Cell<u32>,
@@ -36,7 +39,7 @@ impl DerivedGroups {
         let left = self.documents.get().saturating_sub(1);
         self.documents.set(left);
         if left == 0 {
-            self.entries.take();
+            drop(self.entries.take());
         }
     }
 }
@@ -71,12 +74,14 @@ impl DerivedGroups {
             value,
         };
         let generation = self.generation.get();
-        let mut entries = self.entries.borrow_mut();
+        // Карта вынута на время правки: `edit` правит одну группу и в кэш не входит.
+        let mut entries = self.entries.take().unwrap_or_default();
         if let Some(entry) = entries.get_mut(&key)
             && StyleGroup::<T>::restore(&entry.source).is_some_and(|held| held.ptr_eq(source))
             && let Some(result) = StyleGroup::<T>::restore(&entry.result)
         {
             entry.used = generation;
+            self.entries.set(Some(entries));
             return result;
         }
         let mut result = source.clone();
@@ -89,29 +94,39 @@ impl DerivedGroups {
                 used: generation,
             },
         );
+        self.entries.set(Some(entries));
         result
+    }
+
+    /// Оставить записи, для которых `keep` верно; пустая карта отпускается.
+    fn retain(&self, keep: impl FnMut(&Key, &mut Entry) -> bool) {
+        if let Some(mut entries) = self.entries.take() {
+            entries.retain(keep);
+            if !entries.is_empty() {
+                self.entries.set(Some(entries));
+            }
+        }
     }
 
     /// Начало кадра: записи, которыми не пользовался прошлый кадр, отпускают свои группы.
     pub fn begin_frame(&self) {
         let generation = self.generation.get();
-        self.entries
-            .borrow_mut()
-            .retain(|_, entry| entry.used == generation);
+        self.retain(|_, entry| entry.used == generation);
         self.generation.set(generation.wrapping_add(1));
     }
 
     /// После новой материализации: исходную группу, которую держит только запись, больше
     /// никто не предъявит — запись отпускает её сразу, а не через кадр.
     pub fn release_unowned(&self) {
-        self.entries
-            .borrow_mut()
-            .retain(|_, entry| Rc::strong_count(&entry.source) > 1);
+        self.retain(|_, entry| Rc::strong_count(&entry.source) > 1);
     }
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        self.entries.borrow().len()
+        let entries = self.entries.take();
+        let len = entries.as_ref().map_or(0, |entries| entries.len());
+        self.entries.set(entries);
+        len
     }
 }
 

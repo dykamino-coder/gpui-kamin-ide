@@ -10,15 +10,17 @@
 use super::*;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::values::ValueCx;
-use std::collections::VecDeque;
 
 /// Записей одного прохода: соседей с разными каскадами больше обычно не бывает подряд.
 const CAPACITY: usize = 32;
 
-/// Кэш одного прохода `resolve_logical` по документу.
+/// Кэш одного прохода `resolve_logical` по документу: кольцо записей на стеке прохода,
+/// без выделения памяти (как LRU-кэш соседей Stylo фиксированной ёмкости).
 #[derive(Default)]
 pub struct LogicalSharing {
-    entries: VecDeque<Entry>,
+    entries: [Option<Entry>; CAPACITY],
+    /// Ячейка следующей записи; самые свежие записи стоят перед ней.
+    next: usize,
 }
 
 struct Entry {
@@ -39,10 +41,9 @@ impl LogicalSharing {
         vcx: ValueCx<'_>,
     ) {
         let writing = (wm, parent_vertical, is_cell);
-        if let Some(hit) = self
-            .entries
-            .iter()
-            .rev()
+        let recent = (1..=CAPACITY).map(|back| (self.next + CAPACITY - back) % CAPACITY);
+        if let Some(hit) = recent
+            .filter_map(|slot| self.entries[slot].as_ref())
             .find(|entry| entry.writing == writing && entry.own.matches(own))
         {
             hit.value.share_into(own);
@@ -50,14 +51,12 @@ impl LogicalSharing {
         }
         let input = crate::style::computed::identity::Storage::of(own);
         own.resolve_logical(wm, parent_vertical, is_cell, vcx);
-        if self.entries.len() == CAPACITY {
-            self.entries.pop_front();
-        }
-        self.entries.push_back(Entry {
+        self.entries[self.next] = Some(Entry {
             own: input,
             writing,
             value: crate::style::computed::identity::Storage::of(own),
         });
+        self.next = (self.next + 1) % CAPACITY;
     }
 }
 
