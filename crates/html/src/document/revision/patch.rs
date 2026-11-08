@@ -10,7 +10,8 @@ pub(super) type Attrs = Vec<(String, String)>;
 pub(super) struct Target {
     pub(super) tag: String,
     pub(super) old: Attrs,
-    pub(super) new: Attrs,
+    /// Shared by every box copy the patch writes: one list per edit, not per copy.
+    pub(super) new: crate::dom::SharedAttrs,
 }
 
 /// Атрибуты новой ревизии у каждого узла коробок адресуемого элемента: у
@@ -28,7 +29,7 @@ pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bo
     }
     for (path, id) in paths {
         match (apply(nodes, &path), targets.get(&id)) {
-            (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone().into(),
+            (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
             _ => return false,
         }
     }

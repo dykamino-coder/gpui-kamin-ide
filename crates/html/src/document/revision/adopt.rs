@@ -65,7 +65,7 @@ impl Document {
                         Target {
                             tag: tag_of(&changed.old),
                             old: attrs_of(&changed.old),
-                            new: attrs_of(&changed.new),
+                            new: attrs_of(&changed.new).into(),
                         },
                     );
                 }
