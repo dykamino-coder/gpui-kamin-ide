@@ -20,23 +20,22 @@
 //! (`dom::Text::source`), и только они; текст, склеенный обходом с соседним,
 //! номера не несёт и правкой не находится.
 
+use super::mutation::TextChange;
 use super::patch::{Path, apply};
-use super::shape::Edited;
 use crate::dom::{Node, TextId};
 use std::collections::{HashMap, HashSet};
 
-/// Прежнее и новое содержимое правленого исходного текста.
-pub(super) struct TextEdit {
-    pub(super) old: String,
-    pub(super) new: String,
-}
+/// Правки текстов по номерам исходных текстов.
+pub(super) type TextEdits<'a> = HashMap<TextId, &'a TextChange>;
 
 /// Не меняет ли правка `edit` ни одного каскадного значения: оба текста
 /// непустые по CSS, и содержимое прежнего не читал ни один читатель сборки
 /// (`read` — адреса прочитанных исходных текстов).
-pub(super) fn editable(edit: &Edited, read: &HashSet<usize>) -> bool {
+pub(super) fn editable(edit: &TextChange, read: &HashSet<usize>) -> bool {
     use crate::dom::whitespace::blank_text;
-    !blank_text(&edit.old) && !blank_text(&edit.new) && !read.contains(&edit.node)
+    !blank_text(&edit.old)
+        && !blank_text(&edit.new)
+        && !read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize))
 }
 
 /// Новые тексты в узлах дерева коробок с номерами правленых исходных
@@ -45,7 +44,7 @@ pub(super) fn editable(edit: &Edited, read: &HashSet<usize>) -> bool {
 /// разрезала или изменила текст), узел внутри псевдоэлемента и правка без
 /// единого узла (текст склеен с соседом или выброшен) — `false`, дерево не
 /// меняется.
-pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &HashMap<TextId, TextEdit>) -> bool {
+pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &TextEdits<'_>) -> bool {
     if edits.is_empty() {
         return true;
     }
@@ -70,7 +69,7 @@ pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &HashMap<TextId, TextEdi
 /// текст внутри псевдоэлемента.
 fn collect(
     children: &[Node],
-    edits: &HashMap<TextId, TextEdit>,
+    edits: &TextEdits<'_>,
     generated: bool,
     path: &mut Vec<usize>,
     found: &mut Vec<(Path, TextId)>,
