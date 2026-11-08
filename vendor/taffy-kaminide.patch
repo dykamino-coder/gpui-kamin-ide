@@ -52,7 +52,7 @@ index 17a17a498d2978b0aa1085efca6deb5552b2f76c..47d91f1970e3e89f8d47d4d8048daf37
 +[dependencies.reblessive]
 +version = "0.4.3"
 diff --git a/vendor/taffy/src/compute/block.rs b/vendor/taffy/src/compute/block.rs
-index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25fc9c6d1fb
+index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..c83038e10fc6a6b00366284398428c515c2d0b53
 --- a/vendor/taffy/src/compute/block.rs
 +++ b/vendor/taffy/src/compute/block.rs
 @@ -1,0 +2,6 @@
@@ -635,7 +635,11 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                stack,
 +            )
 +            .await;
-@@ -880,4 +1120,6 @@
+@@ -874 +1114,2 @@
+-    tree.child_ids(node)
++    let mut items = tree
++        .child_ids(node)
+@@ -880,4 +1121,6 @@
 -            let padding =
 -                child_style.padding().resolve_or_zero(node_inner_size.width, |val, basis| tree.calc(val, basis));
 -            let border =
@@ -646,7 +650,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +            let border = child_style
 +                .border()
 +                .resolve_or_zero(node_inner_size.width, |val, basis| tree.calc(val, basis));
-@@ -885,2 +1127,5 @@
+@@ -885,2 +1128,5 @@
 -            let box_sizing_adjustment =
 -                if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 +            let box_sizing_adjustment = if child_style.box_sizing() == BoxSizing::ContentBox {
@@ -654,15 +658,26 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +            } else {
 +                Size::ZERO
 +            };
-@@ -902 +1147,2 @@
+@@ -902 +1148,2 @@
 -            let is_scroll_container = overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
 +            let is_scroll_container =
 +                overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
-@@ -971 +1217,2 @@
+@@ -959,2 +1206,8 @@
+-        })
+-        .collect()
++        });
++    let Some(first) = items.next() else {
++        return Vec::new();
++    };
++    let mut output = Vec::with_capacity(tree.child_count(node).min(4));
++    output.push(first);
++    output.extend(items);
++    output
+@@ -971 +1224,2 @@
 -    item_y_margin_sum: f32,
 +    item_margin: Rect<f32>,
 +    margins_treated_as_zero: Line<bool>,
-@@ -973,0 +1221,10 @@
+@@ -973,0 +1228,10 @@
 +    // KaminIDE patch: CSS Sizing 4 stretch ignores margins adjoining the parent's edges.
 +    let margin_sum = if margins_treated_as_zero.start {
 +        0.0
@@ -673,10 +688,10 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +    } else {
 +        item_margin.bottom
 +    };
-@@ -976 +1233 @@
+@@ -976 +1240 @@
 -        container_inner_height.maybe_sub(item_y_margin_sum),
 +        container_inner_height.maybe_sub(margin_sum),
-@@ -984,0 +1242,30 @@
+@@ -984,0 +1249,30 @@
 +// KaminIDE patch: floats and normal blocks share relative inset resolution.
 +/// Compute the offset applied to a box by its `inset` if it is `position: relative` (CSS2.2 9.4.3).
 +///
@@ -707,40 +722,40 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +    }
 +}
 +
-@@ -987 +1274 @@
+@@ -987 +1281 @@
 -fn determine_content_based_container_width(
 +async fn determine_content_based_container_width_async(
-@@ -990,0 +1278 @@
+@@ -990,0 +1285 @@
 +    stack: &mut reblessive::Stk,
-@@ -992 +1280,4 @@
+@@ -992 +1287,4 @@
 -    let available_space = Size { width: available_width, height: AvailableSpace::MinContent };
 +    let available_space = Size {
 +        width: available_width,
 +        height: AvailableSpace::MinContent,
 +    };
-@@ -1002 +1293,3 @@
+@@ -1002 +1300,3 @@
 -            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
 +            .resolve_or_zero(available_space.width.into_option(), |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -1004 +1297 @@
+@@ -1004 +1304 @@
 -        let width = known_dimensions.width.unwrap_or_else(|| {
 +        let width = crate::traversal::unwrap_or_else(known_dimensions.width, async || {
-@@ -1006 +1299,3 @@
+@@ -1006 +1306,3 @@
 -                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| tree.calc(val, basis)) {
 +                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| {
 +                    tree.calc(val, basis)
 +                }) {
-@@ -1011 +1306 @@
+@@ -1011 +1313 @@
 -            tree.measure_child_size(
 +            tree.measure_child_size_async(
-@@ -1015 +1310,4 @@
+@@ -1015 +1317,4 @@
 -                Size { width: item_available_width, height: available_space.height },
 +                Size {
 +                    width: item_available_width,
 +                    height: available_space.height,
 +                },
-@@ -1019 +1317,6 @@
+@@ -1019 +1324,6 @@
 -                if item.is_in_same_bfc { Line::TRUE } else { Line::FALSE },
 +                if item.is_in_same_bfc {
 +                    Line::TRUE
@@ -748,12 +763,12 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                    Line::FALSE
 +                },
 +                stack,
-@@ -1021 +1324,3 @@
+@@ -1021 +1331,3 @@
 -        });
 +            .await
 +        })
 +        .await;
-@@ -1041,0 +1347,15 @@
+@@ -1041,0 +1354,15 @@
 +/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
 +type BlockItemLayout = (
 +    Rect<f32>,
@@ -769,16 +784,16 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +    ),
 +);
 +
-@@ -1045 +1365 @@
+@@ -1045 +1372 @@
 -fn perform_final_layout_on_in_flow_children(
 +async fn perform_final_layout_on_in_flow_children_async(
-@@ -1057,0 +1378 @@
+@@ -1057,0 +1385 @@
 +    children_margins_adjoin_own_edges: Line<bool>,
-@@ -1060 +1381,2 @@
+@@ -1060 +1388,2 @@
 -) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
 +    stack: &mut reblessive::Stk,
 +) -> BlockItemLayout {
-@@ -1062,4 +1384,8 @@
+@@ -1062,4 +1391,8 @@
 -    let container_inner_width = (container_outer_width - resolved_content_box_inset.horizontal_axis_sum()).max(0.0);
 -    let container_percentage_resolution_height =
 -        container_percentage_resolution_height.maybe_sub(resolved_content_box_inset.vertical_axis_sum());
@@ -791,38 +806,38 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +        width: Some(container_inner_width),
 +        height: container_percentage_resolution_height,
 +    };
-@@ -1073,2 +1399,4 @@
+@@ -1073,2 +1406,4 @@
 -    let available_space =
 -        Size { width: AvailableSpace::Definite(container_inner_width), height: AvailableSpace::MaxContent };
 +    let available_space = Size {
 +        width: AvailableSpace::Definite(container_inner_width),
 +        height: AvailableSpace::MaxContent,
 +    };
-@@ -1080 +1408,4 @@
+@@ -1080 +1415,4 @@
 -        block_ctx.apply_content_box_inset([resolved_content_box_inset.left, resolved_content_box_inset.right]);
 +        block_ctx.apply_content_box_inset([
 +            resolved_content_box_inset.left,
 +            resolved_content_box_inset.right,
 +        ]);
-@@ -1098,0 +1430,4 @@
+@@ -1098,0 +1437,4 @@
 +    let mut last_baseline: Option<f32> = None;
 +    let mut first_baseline_x: Option<f32> = None;
 +    let mut last_baseline_x: Option<f32> = None;
 +    let mut inline_block_last: Option<f32> = None;
-@@ -1115 +1450,4 @@
+@@ -1115 +1457,4 @@
 -            item.static_position = Point { x, y: y_offset_for_absolute }
 +            item.static_position = Point {
 +                x,
 +                y: y_offset_for_absolute,
 +            }
-@@ -1117,3 +1455,3 @@
+@@ -1117,3 +1462,3 @@
 -            let item_margin = item
 -                .margin
 -                .map(|margin| margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)));
 +            let item_margin = item.margin.map(|margin| {
 +                margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1124,2 +1462,10 @@
+@@ -1124,2 +1469,10 @@
 -                width: if item.overflow.y == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
 -                height: if item.overflow.x == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
 +                width: if item.overflow.y == Overflow::Scroll {
@@ -835,16 +850,16 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                } else {
 +                    0.0
 +                },
-@@ -1143 +1489,3 @@
+@@ -1143 +1496,3 @@
 -                    Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
 +                    Some(SizingKeywordResolution::Exact(width)) => {
 +                        (Some(width), AvailableSpace::Definite(width))
 +                    }
-@@ -1149 +1497,2 @@
+@@ -1149 +1504,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    Line::FALSE,
-@@ -1152,10 +1501,19 @@
+@@ -1152,10 +1508,19 @@
 -                let mut item_layout = tree.perform_child_layout(
 -                    item.node_id,
 -                    Size { width: item_known_width, height: item_known_height },
@@ -874,28 +889,28 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        stack,
 +                    )
 +                    .await;
-@@ -1181,0 +1540 @@
+@@ -1181,0 +1547 @@
 +                    item.node_id.into(),
-@@ -1199,0 +1559,5 @@
+@@ -1199,0 +1566,5 @@
 +
 +                // Relative painting does not alter float exclusions (CSS 2.2 9.4.3).
 +                let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
 +                location.x += inset_offset.x;
 +                location.y += inset_offset.y;
-@@ -1212,0 +1577 @@
+@@ -1212,0 +1584 @@
 +                    relative_offset: inset_offset,
-@@ -1224 +1589,3 @@
+@@ -1224 +1596,3 @@
 -                            x: container_outer_width - (location.x + item_layout.size.width) - resolved_border.right,
 +                            x: container_outer_width
 +                                - (location.x + item_layout.size.width)
 +                                - resolved_border.right,
-@@ -1228 +1595,4 @@
+@@ -1228 +1602,4 @@
 -                        Point { x: location.x - resolved_border.left, y: location.y - resolved_border.top }
 +                        Point {
 +                            x: location.x - resolved_border.left,
 +                            y: location.y - resolved_border.top,
 +                        }
-@@ -1230,8 +1600,9 @@
+@@ -1230,8 +1607,9 @@
 -                    inflow_overflow_rect = inflow_overflow_rect.union(compute_scrollable_overflow_contribution(
 -                        contribution_location,
 -                        item_layout.size,
@@ -913,12 +928,12 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                            item.contain,
 +                            is_scroll_container,
 +                        ));
-@@ -1251 +1622,3 @@
+@@ -1251 +1629,3 @@
 -            let (stretch_width, float_avoiding_position, float_avoiding_width) = if item.is_in_same_bfc {
 +            let (stretch_width, float_avoiding_position, float_avoiding_width) = if item
 +                .is_in_same_bfc
 +            {
-@@ -1260,3 +1633,6 @@
+@@ -1260,3 +1640,6 @@
 -                    if !is_collapsing_with_first_margin_set || !own_margins_collapse_with_children.start {
 -                        y_margin_offset =
 -                            active_collapsible_margin_set.collapse_with_margin(item_non_auto_margin.top).resolve();
@@ -928,7 +943,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        y_margin_offset = active_collapsible_margin_set
 +                            .collapse_with_margin(item_non_auto_margin.top)
 +                            .resolve();
-@@ -1280,2 +1656,10 @@
+@@ -1280,2 +1663,10 @@
 -                            let slot = block_ctx.find_bfc_slot(min_y, x_margins, direction, item.clear, slot_segment);
 -                            let Some(segment_id) = slot.segment_id else { break slot };
 +                            let slot = block_ctx.find_bfc_slot(
@@ -941,13 +956,13 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                            let Some(segment_id) = slot.segment_id else {
 +                                break slot;
 +                            };
-@@ -1303,5 +1686,0 @@
+@@ -1303,5 +1693,0 @@
 -                        break 'block (stretch_width, Point { x: slot.x, y: slot.y }, slot.border_width);
 -                    }
 -
 -                    if !has_active_floats {
 -                        let stretch_width = (container_inner_width - item_non_auto_x_margin_sum).max(0.0);
-@@ -1310 +1689,17 @@
+@@ -1310 +1696,17 @@
 -                            Point { x: resolved_content_box_inset.left, y: min_y },
 +                            Point {
 +                                x: slot.x,
@@ -966,14 +981,14 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                                x: resolved_content_box_inset.left,
 +                                y: min_y,
 +                            },
-@@ -1324,2 +1719,4 @@
+@@ -1324,2 +1726,4 @@
 -            let justify_self =
 -                item.justify_self.unwrap_or(justify_items).resolve_self_relative(item.direction, direction, true);
 +            let justify_self = item
 +                .justify_self
 +                .unwrap_or(justify_items)
 +                .resolve_self_relative(item.direction, direction, true);
-@@ -1335,7 +1732,3 @@
+@@ -1335,7 +1739,3 @@
 -            let known_dimensions = if (item.is_table || item.is_compressible_replaced) && !is_stretch {
 -                Size::NONE
 -            } else {
@@ -984,7 +999,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +            let known_dimensions =
 +                if (item.is_table || item.is_compressible_replaced) && !is_stretch {
 +                    Size::NONE
-@@ -1343 +1736,60 @@
+@@ -1343 +1743,60 @@
 -                    item.size_style.width
 +                    // The automatic width of a block-level box whose `justify-self` is neither `normal` nor `stretch`
 +                    // is equivalent to `fit-content` rather than `stretch`
@@ -1046,7 +1061,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        })
 +                        .map_height(|height| height.or(keyword_height))
 +                        .maybe_clamp(item.min_size, item.max_size)
-@@ -1345,43 +1796,0 @@
+@@ -1345,43 +1803,0 @@
 -
 -                // Items with a sizing keyword width (min-content, max-content, fit-content,
 -                // fit-content(...), stretch) resolve their width either directly or by measuring
@@ -1090,13 +1105,13 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 -                    .map_height(|height| height.or(keyword_height))
 -                    .maybe_clamp(item.min_size, item.max_size)
 -            };
-@@ -1396 +1805,4 @@
+@@ -1396 +1812,4 @@
 -                known_dimensions_are_definite: Size { width: true, height: true },
 +                known_dimensions_are_definite: Size {
 +                    width: true,
 +                    height: true,
 +                },
-@@ -1398,2 +1810,7 @@
+@@ -1398,2 +1817,7 @@
 -                available_space: available_space.map_width(|_| AvailableSpace::Definite(stretch_width)),
 -                vertical_margins_are_collapsible: if item.is_in_same_bfc { Line::TRUE } else { Line::FALSE },
 +                available_space: available_space
@@ -1106,18 +1121,18 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                } else {
 +                    Line::FALSE
 +                },
-@@ -1417 +1834,4 @@
+@@ -1417 +1841,4 @@
 -                let width = known_dimensions.width.unwrap_or(stretch_width).max(item.padding_border_sum.width);
 +                let width = known_dimensions
 +                    .width
 +                    .unwrap_or(stretch_width)
 +                    .max(item.padding_border_sum.width);
-@@ -1427 +1847,3 @@
+@@ -1427 +1854,3 @@
 -                    + active_collapsible_margin_set.collapse_with_margin(item_non_auto_margin.top).resolve();
 +                    + active_collapsible_margin_set
 +                        .collapse_with_margin(item_non_auto_margin.top)
 +                        .resolve();
-@@ -1429 +1851,8 @@
+@@ -1429 +1858,8 @@
 -                let output = tree.compute_block_child_layout(item.node_id, inputs, Some(&mut child_block_ctx));
 +                let output = tree
 +                    .compute_block_child_layout_async(
@@ -1127,15 +1142,15 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        stack,
 +                    )
 +                    .await;
-@@ -1434 +1863,2 @@
+@@ -1434 +1870,2 @@
 -                    child_float_contribution = child_block_ctx.floated_content_height_contribution();
 +                    child_float_contribution =
 +                        child_block_ctx.floated_content_height_contribution();
-@@ -1443 +1873,2 @@
+@@ -1443 +1880,2 @@
 -                tree.compute_child_layout(item.node_id, inputs)
 +                tree.compute_child_layout_async(item.node_id, inputs, stack)
 +                    .await
-@@ -1448,2 +1879,6 @@
+@@ -1448,2 +1886,6 @@
 -            let top_margin_set = item_layout.top_margin.collapse_with_margin(item_margin.top.unwrap_or(0.0));
 -            let bottom_margin_set = item_layout.bottom_margin.collapse_with_margin(item_margin.bottom.unwrap_or(0.0));
 +            let top_margin_set = item_layout
@@ -1144,11 +1159,11 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +            let bottom_margin_set = item_layout
 +                .bottom_margin
 +                .collapse_with_margin(item_margin.bottom.unwrap_or(0.0));
-@@ -1456 +1891,2 @@
+@@ -1456 +1898,2 @@
 -                let auto_margin_count = item_margin.left.is_none() as u8 + item_margin.right.is_none() as u8;
 +                let auto_margin_count =
 +                    item_margin.left.is_none() as u8 + item_margin.right.is_none() as u8;
-@@ -1471,17 +1907 @@
+@@ -1471,17 +1914 @@
 -            let inset_percentage_basis =
 -                Size { width: Some(container_inner_width), height: container_percentage_resolution_height };
 -            let inset = item
@@ -1167,23 +1182,23 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 -                Point::ZERO
 -            };
 +            let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
-@@ -1491 +1911,2 @@
+@@ -1491 +1918,2 @@
 -                && (!is_collapsing_with_first_margin_set || !own_margins_collapse_with_children.start)
 +                && (!is_collapsing_with_first_margin_set
 +                    || !own_margins_collapse_with_children.start)
-@@ -1493 +1914,3 @@
+@@ -1493 +1921,3 @@
 -                y_margin_offset = active_collapsible_margin_set.collapse_with_set(top_margin_set).resolve()
 +                y_margin_offset = active_collapsible_margin_set
 +                    .collapse_with_set(top_margin_set)
 +                    .resolve()
-@@ -1511,2 +1934,4 @@
+@@ -1511,2 +1941,4 @@
 -                    let hypothetical_y =
 -                        committed_y_offset + active_collapsible_margin_set.collapse_with_set(top_margin_set).resolve();
 +                    let hypothetical_y = committed_y_offset
 +                        + active_collapsible_margin_set
 +                            .collapse_with_set(top_margin_set)
 +                            .resolve();
-@@ -1524,6 +1949,7 @@
+@@ -1524,6 +1956,7 @@
 -                        let escaped_margin =
 -                            if is_collapsing_with_first_margin_set && own_margins_collapse_with_children.start {
 -                                active_collapsible_margin_set.resolve()
@@ -1197,54 +1212,54 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        } else {
 +                            0.0
 +                        };
-@@ -1536 +1962,2 @@
+@@ -1536 +1969,2 @@
 -            item.can_be_collapsed_through = item_layout.margins_can_collapse_through && !has_clearance;
 +            item.can_be_collapsed_through =
 +                item_layout.margins_can_collapse_through && !has_clearance;
-@@ -1542 +1969,5 @@
+@@ -1542 +1976,5 @@
 -                        Direction::Rtl => container_outer_width - resolved_content_box_inset.right - final_size.width,
 +                        Direction::Rtl => {
 +                            container_outer_width
 +                                - resolved_content_box_inset.right
 +                                - final_size.width
 +                        }
-@@ -1551 +1982,3 @@
+@@ -1551 +1989,3 @@
 -                        Direction::Rtl => float_avoiding_position.x + float_avoiding_width - final_size.width,
 +                        Direction::Rtl => {
 +                            float_avoiding_position.x + float_avoiding_width - final_size.width
 +                        }
-@@ -1559 +1992,3 @@
+@@ -1559 +1999,3 @@
 -                        Direction::Ltr => resolved_content_box_inset.left + inset_offset.x + resolved_margin.left,
 +                        Direction::Ltr => {
 +                            resolved_content_box_inset.left + inset_offset.x + resolved_margin.left
 +                        }
-@@ -1584 +2019,2 @@
+@@ -1584 +2026,2 @@
 -                let (extra_margin_left, extra_margin_right) = (resolved_margin.left, resolved_margin.right);
 +                let (extra_margin_left, extra_margin_right) =
 +                    (resolved_margin.left, resolved_margin.right);
-@@ -1589 +2025,3 @@
+@@ -1589 +2032,3 @@
 -                        Direction::Ltr => float_avoiding_position.x + extra_margin_left + inset_offset.x,
 +                        Direction::Ltr => {
 +                            float_avoiding_position.x + extra_margin_left + inset_offset.x
 +                        }
-@@ -1591 +2029,3 @@
+@@ -1591 +2036,3 @@
 -                            float_avoiding_position.x + float_avoiding_width - final_size.width - extra_margin_right
 +                            float_avoiding_position.x + float_avoiding_width
 +                                - final_size.width
 +                                - extra_margin_right
-@@ -1619 +2059,4 @@
+@@ -1619 +2066,4 @@
 -                    (float_avoiding_position.x - resolved_margin.left, float_avoiding_width - item_layout.size.width)
 +                    (
 +                        float_avoiding_position.x - resolved_margin.left,
 +                        float_avoiding_width - item_layout.size.width,
 +                    )
-@@ -1621 +2064,4 @@
+@@ -1621 +2071,4 @@
 -                    (resolved_content_box_inset.left, container_inner_width - item_outer_width)
 +                    (
 +                        resolved_content_box_inset.left,
 +                        container_inner_width - item_outer_width,
 +                    )
-@@ -1624,8 +2070,11 @@
+@@ -1624,8 +2077,11 @@
 -                let (container_start, free_x_space) =
 -                    (resolved_content_box_inset.left, container_inner_width - item_outer_width);
 -
@@ -1264,16 +1279,16 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                    } else {
 +                        justify_self.keyword
 +                    };
-@@ -1634 +2083,3 @@
+@@ -1634 +2090,3 @@
 -                    AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::SelfEnd => Some(true),
 +                    AlignItemsKeyword::End
 +                    | AlignItemsKeyword::FlexEnd
 +                    | AlignItemsKeyword::SelfEnd => Some(true),
-@@ -1643 +2094,2 @@
+@@ -1643 +2101,2 @@
 -            } else if non_stretch_justify_self.is_none() && item_outer_width < container_inner_width {
 +            } else if non_stretch_justify_self.is_none() && item_outer_width < container_inner_width
 +            {
-@@ -1682 +2134,42 @@
+@@ -1682 +2141,42 @@
 -                first_baseline = child_baseline.map(|baseline| location.y + baseline);
 +                first_baseline =
 +                    child_baseline.map(|baseline| (location.y - inset_offset.y) + baseline);
@@ -1317,20 +1332,20 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                )
 +            }) {
 +                last_baseline_x = Some((location.x - inset_offset.x) + baseline);
-@@ -1711,0 +2205 @@
+@@ -1711,0 +2212 @@
 +                relative_offset: inset_offset,
-@@ -1721 +2215,3 @@
+@@ -1721 +2222,3 @@
 -                        x: container_outer_width - (location.x + final_size.width) - resolved_border.right,
 +                        x: container_outer_width
 +                            - (location.x + final_size.width)
 +                            - resolved_border.right,
-@@ -1725 +2221,4 @@
+@@ -1725 +2228,4 @@
 -                    Point { x: location.x - resolved_border.left, y: location.y - resolved_border.top }
 +                    Point {
 +                        x: location.x - resolved_border.left,
 +                        y: location.y - resolved_border.top,
 +                    }
-@@ -1727,8 +2226,9 @@
+@@ -1727,8 +2233,9 @@
 -                inflow_overflow_rect = inflow_overflow_rect.union(compute_scrollable_overflow_contribution(
 -                    contribution_location,
 -                    final_size,
@@ -1348,23 +1363,23 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +                        item.contain,
 +                        is_scroll_container,
 +                    ));
-@@ -1755 +2255,2 @@
+@@ -1755 +2262,2 @@
 -                    first_child_top_margin_set = first_child_top_margin_set.collapse_with_set(top_margin_set);
 +                    first_child_top_margin_set =
 +                        first_child_top_margin_set.collapse_with_set(top_margin_set);
-@@ -1765 +2266,2 @@
+@@ -1765 +2273,2 @@
 -                y_offset_for_absolute = committed_y_offset + item_layout.size.height + y_margin_offset;
 +                y_offset_for_absolute =
 +                    committed_y_offset + item_layout.size.height + y_margin_offset;
-@@ -1776 +2278,2 @@
+@@ -1776 +2285,2 @@
 -                    active_collapsible_margin_set = top_margin_set.collapse_with_set(bottom_margin_set);
 +                    active_collapsible_margin_set =
 +                        top_margin_set.collapse_with_set(bottom_margin_set);
-@@ -1782 +2285,2 @@
+@@ -1782 +2292,2 @@
 -                y_offset_for_absolute = committed_y_offset + active_collapsible_margin_set.resolve();
 +                y_offset_for_absolute =
 +                    committed_y_offset + active_collapsible_margin_set.resolve();
-@@ -1793,2 +2297,5 @@
+@@ -1793,2 +2304,5 @@
 -    let last_child_bottom_margin_set =
 -        if active_margin_set_has_clearance { CollapsibleMarginSet::ZERO } else { active_collapsible_margin_set };
 +    let last_child_bottom_margin_set = if active_margin_set_has_clearance {
@@ -1372,7 +1387,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +    } else {
 +        active_collapsible_margin_set
 +    };
-@@ -1805 +2312,13 @@
+@@ -1805 +2319,13 @@
 -    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
 +    (
 +        inflow_overflow_rect,
@@ -1387,7 +1402,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..79dea143143777dda2eec6fb4462f25f
 +            inline_block_last,
 +        ),
 +    )
-@@ -1806,0 +2326,14 @@
+@@ -1806,0 +2333,14 @@
 +
 +#[cfg(test)]
 +mod kamin_block_tests {

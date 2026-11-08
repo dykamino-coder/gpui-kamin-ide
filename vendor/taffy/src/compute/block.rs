@@ -1111,7 +1111,8 @@ fn generate_item_list(
     node: NodeId,
     node_inner_size: Size<Option<f32>>,
 ) -> Vec<BlockItem> {
-    tree.child_ids(node)
+    let mut items = tree
+        .child_ids(node)
         .map(|child_node_id| (child_node_id, tree.get_block_child_style(child_node_id)))
         .filter(|(_, style)| style.box_generation_mode() != BoxGenerationMode::None)
         .enumerate()
@@ -1202,8 +1203,14 @@ fn generate_item_list(
                 final_layout: None,
                 oof_candidates: OofCandidates::new(),
             }
-        })
-        .collect()
+        });
+    let Some(first) = items.next() else {
+        return Vec::new();
+    };
+    let mut output = Vec::with_capacity(tree.child_count(node).min(4));
+    output.push(first);
+    output.extend(items);
+    output
 }
 
 /// Resolve the `stretch` sizing keyword for an item's height style. In the block axis the
