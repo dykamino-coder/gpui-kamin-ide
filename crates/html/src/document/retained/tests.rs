@@ -178,10 +178,9 @@ fn a_rebuilt_frame_reuses_the_previous_frames_line_splits(cx: &mut TestAppContex
 /// names) keeps the recorded frame: the next frame replays it, nothing is built.
 #[gpui::test]
 fn a_clean_revision_replays_the_recorded_frame(cx: &mut TestAppContext) {
-    let (view, cx) = open(
-        cx,
-        "<html><body><p style='color:red'>hello</p></body></html>",
-    );
+    let page =
+        "<!doctype html><html><head></head><body><p style='color:red'>hello</p></body></html>";
+    let (view, cx) = open(cx, page);
     frame(cx);
     frame(cx);
     let (builds, replays) = frames(&view, cx);
