@@ -4,7 +4,7 @@
 //! to be far, before its functions are kept for the next pass.
 
 use gpui::Window;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// State of a measure function that can drop what a new measure does not read.
@@ -14,12 +14,14 @@ pub(crate) trait Compact {
 
 /// Compactable states offered by the leaves of one recorded block.
 #[derive(Default)]
-pub(crate) struct Compacts(RefCell<Vec<Rc<dyn Compact>>>);
+pub(crate) struct Compacts(Cell<Vec<Rc<dyn Compact>>>);
 
 impl Compacts {
     /// Offer `state` to the block being recorded.
     pub(crate) fn offer(&self, state: Rc<dyn Compact>) {
-        self.0.borrow_mut().push(state);
+        let mut offered = self.0.take();
+        offered.push(state);
+        self.0.set(offered);
     }
 
     /// Compact every offered state and let them go.

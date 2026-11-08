@@ -8,11 +8,11 @@
 //! and not the layout objects of a pass.
 
 use crate::text::paragraph::*;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// A measure probe that a far block may compact (`Compact`).
-pub(super) struct Shared(RefCell<State>);
+pub(super) struct Shared(Cell<Option<State>>);
 
 enum State {
     Built(Box<Paragraph>),
@@ -21,33 +21,38 @@ enum State {
 
 impl Shared {
     pub(super) fn new(probe: Paragraph) -> Rc<Self> {
-        Rc::new(Self(RefCell::new(State::Built(Box::new(probe)))))
+        Rc::new(Self(Cell::new(Some(State::Built(Box::new(probe))))))
     }
 
     /// `f` with the probe: the built one, or one made from the compact form.
     pub(super) fn measure<R>(&self, f: impl FnOnce(&mut Paragraph) -> R) -> R {
-        let mut state = self.0.borrow_mut();
-        match &mut *state {
+        let mut state = self.0.take().expect("a measure probe is not re-entered");
+        let out = match &mut state {
             State::Built(probe) => f(probe),
             State::Plain(plain) => f(&mut plain.probe()),
-        }
+        };
+        self.0.set(Some(state));
+        out
     }
 }
 
 impl crate::layout::reuse::compact::Compact for Shared {
     fn compact(&self) {
-        let mut state = self.0.borrow_mut();
-        if let State::Built(probe) = &*state
-            && let Some(plain) = PlainProbe::of(probe)
-        {
-            *state = State::Plain(Box::new(plain));
-        }
+        let state = match self.0.take() {
+            Some(State::Built(probe)) => match PlainProbe::of(&probe) {
+                Some(plain) => State::Plain(Box::new(plain)),
+                None => State::Built(probe),
+            },
+            other => other.expect("a measure probe is not re-entered"),
+        };
+        self.0.set(Some(state));
     }
 }
 
-/// What the measure of a plain paragraph reads: the fields its layout probe
-/// gets (`request_layout_impl`), every other one being `Paragraph::new`'s.
-struct PlainProbe {
+/// The fields of a layout probe that every probe takes from its paragraph
+/// (`request_layout_impl`): text and runs, line settings, the first-line
+/// indent, the `line-clamp` cut, struts and run metrics.
+pub(super) struct Settings {
     text: gpui::SharedString,
     text_hash: u64,
     runs: Vec<gpui::TextRun>,
@@ -79,36 +84,11 @@ struct PlainProbe {
     first_strut: Option<super::super::super::first_line::Strut>,
     run_metrics: Vec<(f32, f32)>,
     strut: (f32, f32, f32),
-    /// Break opportunities of the text (`Prepared::stops`), if found.
-    stops: Option<Box<[u32]>>,
 }
 
-impl PlainProbe {
-    /// The compact form of probe `p`, if it is plain: horizontal, with no
-    /// per-span rules, atoms, ruby, clamp measure, fitting or fragmentation,
-    /// so that a probe made from it is `p` as its layout request built it.
-    fn of(p: &Paragraph) -> Option<Self> {
-        let plain = !p.vertical
-            && p.vertical_inline.is_none()
-            && p.clamp_rows.is_none()
-            && p.ruby_base_sink.is_none()
-            && p.ruby_layers.is_none()
-            && p.spans.is_empty()
-            && p.word_spans.is_empty()
-            && p.letter_spans.is_empty()
-            && p.shift_spans.is_empty()
-            && p.lh_spans.is_empty()
-            && p.fit.is_none()
-            && p.fragment.is_none()
-            && p.atom_boxes.is_empty()
-            && p.edge_spans.is_empty()
-            && p.emph_spans.is_empty()
-            && p.box_spans.is_empty()
-            && p.spacers.is_empty()
-            && p.spacer_edges.is_empty()
-            && p.box_extents.is_empty()
-            && p.atom_fit.borrow().is_empty();
-        plain.then(|| Self {
+impl Settings {
+    pub(super) fn of(p: &Paragraph) -> Self {
+        Self {
             text: p.text.clone(),
             text_hash: p.text_hash(),
             runs: p.runs.clone(),
@@ -137,12 +117,11 @@ impl PlainProbe {
             first_strut: p.first_strut.clone(),
             run_metrics: p.run_metrics.clone(),
             strut: p.strut,
-            stops: p.kept_stops().map(Box::from),
-        })
+        }
     }
 
-    /// A fresh probe equal to the one the compact form was taken from.
-    fn probe(&self) -> Paragraph {
+    /// A probe with these fields, every other one being `Paragraph::new`'s.
+    pub(super) fn probe(&self) -> Paragraph {
         let mut p = Paragraph::new(
             self.text.clone(),
             self.runs.clone(),
@@ -167,12 +146,60 @@ impl PlainProbe {
         p.hanging = self.hanging;
         p.flow = self.flow.clone();
         p.ruby_trim = self.ruby_trim;
+        // Ruby's sub-line keeps trailing spaces and suppresses word
+        // justification. Its intrinsic probe must use the same rules
+        // as the paragraph that later places the base/annotation.
         p.ruby_unit = self.ruby_unit;
         p.ruby_justify = self.ruby_justify;
         p.strut_box = self.strut_box;
         p.first_strut = self.first_strut.clone();
         p.run_metrics = self.run_metrics.clone();
         p.strut = self.strut;
+        p
+    }
+}
+
+/// What the measure of a plain paragraph reads: its probe's settings and the
+/// break opportunities of its text.
+struct PlainProbe {
+    settings: Settings,
+    stops: Option<Box<[u32]>>,
+}
+
+impl PlainProbe {
+    /// The compact form of probe `p`, if it is plain: horizontal, with no
+    /// per-span rules, atoms, ruby, clamp measure, fitting or fragmentation,
+    /// so that `Settings::probe` makes `p` as its layout request built it.
+    fn of(p: &Paragraph) -> Option<Self> {
+        let plain = !p.vertical
+            && p.vertical_inline.is_none()
+            && p.clamp_rows.is_none()
+            && p.ruby_base_sink.is_none()
+            && p.ruby_layers.is_none()
+            && p.spans.is_empty()
+            && p.word_spans.is_empty()
+            && p.letter_spans.is_empty()
+            && p.shift_spans.is_empty()
+            && p.lh_spans.is_empty()
+            && p.fit.is_none()
+            && p.fragment.is_none()
+            && p.atom_boxes.is_empty()
+            && p.edge_spans.is_empty()
+            && p.emph_spans.is_empty()
+            && p.box_spans.is_empty()
+            && p.spacers.is_empty()
+            && p.spacer_edges.is_empty()
+            && p.box_extents.is_empty()
+            && p.atom_fit.borrow().is_empty();
+        plain.then(|| Self {
+            settings: Settings::of(p),
+            stops: p.kept_stops().map(Box::from),
+        })
+    }
+
+    /// A fresh probe equal to the one the compact form was taken from.
+    fn probe(&self) -> Paragraph {
+        let p = self.settings.probe();
         if let Some(stops) = &self.stops {
             p.seed_stops(stops.clone());
         }
