@@ -31,6 +31,11 @@ impl Default for RetainedLayout {
 }
 
 impl RetainedLayout {
+    /// KaminIDE patch: the same layout owner.
+    pub(super) fn same(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+
     pub(super) fn active() -> Self {
         Self(Rc::new(RefCell::new(None)))
     }
