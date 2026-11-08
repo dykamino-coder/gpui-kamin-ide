@@ -121,7 +121,7 @@ pub fn bidi_letter_spans(
             let first = units.next()?;
             Some((
                 first,
-                units.last().unwrap_or(first),
+                units.next_back().unwrap_or(first),
                 levels[run.start].is_rtl(),
             ))
         });
