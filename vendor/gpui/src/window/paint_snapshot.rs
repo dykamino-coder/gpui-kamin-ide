@@ -3,8 +3,7 @@
 use super::*;
 
 mod raster_env;
-pub(super) use raster_env::{RasterEnv, ReplaySlot};
-pub use raster_env::RasterPaintCtx;
+pub use raster_env::{RasterCaptures, RasterPaintCtx};
 
 /// General element environment; raster placement is inherited from the caller.
 #[doc = include_str!("paint_contract.md")]

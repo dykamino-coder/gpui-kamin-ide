@@ -5,12 +5,43 @@
 //! of jobs per frame cost several allocations each and a queue of megabytes. As Blink's
 //! paint chunks point at shared property tree nodes instead of copying transforms and clips
 //! (`PropertyTreeState`), a capture here keeps a reference to the environment of its parent
-//! (the window remembers the last one and reuses it while it still matches) plus what differs
-//! per element: its own element id, glyph offset, fill transform and exact bounds. Replay
-//! fills the window from the shared environment into reused buffers, so neither capture nor
-//! replay allocates while the environment holds.
+//! (the caller's pass remembers the last one and reuses it while it still matches) plus what
+//! differs per element: its own element id, glyph offset, fill transform and exact bounds.
+//! Replay fills the window from the shared environment into reused buffers, so neither capture
+//! nor replay allocates while the environment holds. That scratch belongs to the caller's
+//! paint pass (`RasterCaptures`), as Blink's paint scratch belongs to the `PaintController` of
+//! one paint, not to the window: it lives no longer than the pass.
 
 use super::*;
+
+/// KaminIDE patch: scratch of the raster captures and replays of one paint pass: the last
+/// shared environment and the buffers of a finished replay of a shared environment. Owned by
+/// the caller's pass and cleared when the pass ends, so nothing of it outlives the paint.
+#[derive(Default)]
+pub struct RasterCaptures {
+    env: Cell<Option<Rc<RasterEnv>>>,
+    buffers: Cell<Option<Box<ReplayBuffers>>>,
+}
+
+impl RasterCaptures {
+    /// Forget the shared environment and the replay buffers.
+    pub fn clear(&self) {
+        self.env.take();
+        self.buffers.take();
+    }
+
+    /// `env` without the reference this scratch keeps for later siblings, when no one else
+    /// holds it: its replay then takes the captured stacks over instead of copying them.
+    fn release(&self, env: Rc<RasterEnv>) -> Result<RasterEnv, Rc<RasterEnv>> {
+        if Rc::strong_count(&env) == 2 {
+            match self.env.take() {
+                Some(kept) if Rc::ptr_eq(&kept, &env) => drop(kept),
+                kept => self.env.set(kept),
+            }
+        }
+        Rc::try_unwrap(env)
+    }
+}
 
 /// The environment a raster capture shares with its siblings. Its element id stack is the
 /// prefix common to them (the parent's ids).
@@ -75,14 +106,8 @@ impl RasterEnv {
     }
 }
 
-/// One raster replay: its state on the heap (outside recursive paint frames) and, between
-/// replays, the empty buffers of that state. Kept for the replays of a frame.
-#[derive(Default)]
-pub(in crate::window) struct ReplaySlot {
-    state: Option<PaintState>,
-    buffers: ReplayBuffers,
-}
-
+/// Buffers of a finished replay of a shared environment, empty, with their capacity: the
+/// next replay of a shared environment fills them instead of allocating.
 #[derive(Default)]
 struct ReplayBuffers {
     ids: SmallVec<[ElementId; 32]>,
@@ -94,13 +119,43 @@ struct ReplayBuffers {
     images: Vec<AnyImageCache>,
     ink: Vec<Rc<InkSink>>,
     raster_contexts: render_context::Snapshot,
-    rem: SmallVec<[Pixels; 8]>,
 }
 
 impl ReplayBuffers {
+    /// The stacks of `env` copied into these buffers.
+    fn fill(&mut self, env: &RasterEnv, own: &[ElementId]) -> PaintCtx {
+        let b = &env.base;
+        self.ids.extend(b.element_id_stack.iter().chain(own).cloned());
+        b.render_contexts.clone_into(&mut self.contexts);
+        self.rendered.extend_from_slice(&b.rendered_entity_stack);
+        self.offsets.extend_from_slice(&b.element_offset_stack);
+        self.transforms.extend_from_slice(&b.transformation_stack);
+        self.masks.extend_from_slice(&b.content_mask_stack);
+        self.images.extend(b.image_cache_stack.iter().cloned());
+        self.ink.extend(b.ink.iter().cloned());
+        env.contexts.clone_into(&mut self.raster_contexts);
+        PaintCtx {
+            identity: b.identity.clone(),
+            layout_owner: b.layout_owner.clone(),
+            element_id_stack: mem::take(&mut self.ids),
+            text_style_stack: b.text_style_stack.clone(),
+            render_contexts: mem::take(&mut self.contexts),
+            rendered_entity_stack: mem::take(&mut self.rendered),
+            element_offset_stack: mem::take(&mut self.offsets),
+            exact_element_offset_depth: b.exact_element_offset_depth,
+            transformation_stack: mem::take(&mut self.transforms),
+            mask_scale: b.mask_scale,
+            mask_map: b.mask_map,
+            element_opacity: b.element_opacity,
+            content_mask_stack: mem::take(&mut self.masks),
+            image_cache_stack: mem::take(&mut self.images),
+            ink: mem::take(&mut self.ink),
+        }
+    }
+
     /// Take the buffers back from a finished replay, empty, keeping their capacity.
     fn reclaim(&mut self, state: PaintState) {
-        let PaintState { base, raster, rem_size_overrides, .. } = state;
+        let PaintState { base, raster, .. } = state;
         self.ids = base.element_id_stack;
         self.contexts = base.render_contexts;
         self.rendered = base.rendered_entity_stack;
@@ -110,7 +165,6 @@ impl ReplayBuffers {
         self.images = base.image_cache_stack;
         self.ink = base.ink;
         self.raster_contexts = raster.contexts;
-        self.rem = rem_size_overrides;
         self.ids.clear();
         self.contexts.clear();
         self.rendered.clear();
@@ -120,18 +174,18 @@ impl ReplayBuffers {
         self.images.clear();
         self.ink.clear();
         self.raster_contexts.clear();
-        self.rem.clear();
     }
 }
 
 impl Window {
-    /// Capture environment and raster placement without a scale override.
-    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-        let env = match self.raster_env.take() {
+    /// Capture environment and raster placement without a scale override; siblings captured
+    /// with the same `captures` share one environment.
+    pub fn raster_paint_ctx(&self, captures: &RasterCaptures) -> RasterPaintCtx {
+        let env = match captures.env.take() {
             Some(env) if env.matches(self) => env,
             _ => Rc::new(RasterEnv::capture(self, self.element_id_stack.len().saturating_sub(1))),
         };
-        self.raster_env.set(Some(env.clone()));
+        captures.env.set(Some(env.clone()));
         let prefix = env.base.element_id_stack.len();
         RasterPaintCtx {
             ids: self.element_id_stack[prefix..].iter().cloned().collect(),
@@ -142,68 +196,42 @@ impl Window {
         }
     }
 
-    /// Replay captured raster placement in the original live scope.
+    /// Replay captured raster placement in the original live scope. The last replay of an
+    /// environment takes its stacks over (no copy, as a replay of a full snapshot does); a
+    /// replay of a shared one copies them into buffers kept by `captures`.
     pub fn with_raster_paint_ctx<R>(
         &mut self,
         ctx: RasterPaintCtx,
+        captures: &RasterCaptures,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
-        let env = &ctx.env;
-        let b = &env.base;
-        b.identity.check(self)?;
-        let mut slot: Box<ReplaySlot> = self.raster_replay_spares.pop().unwrap_or_default();
-        let buffers = &mut slot.buffers;
-        buffers.ids.extend(b.element_id_stack.iter().chain(&ctx.ids).cloned());
-        b.render_contexts.clone_into(&mut buffers.contexts);
-        buffers.rendered.extend_from_slice(&b.rendered_entity_stack);
-        buffers.offsets.extend_from_slice(&b.element_offset_stack);
-        buffers.transforms.extend_from_slice(&b.transformation_stack);
-        buffers.masks.extend_from_slice(&b.content_mask_stack);
-        buffers.images.extend(b.image_cache_stack.iter().cloned());
-        buffers.ink.extend(b.ink.iter().cloned());
-        env.contexts.clone_into(&mut buffers.raster_contexts);
-        buffers.rem.extend_from_slice(&self.rem_size_override_stack);
-        slot.state = Some(PaintState {
-            base: PaintCtx {
-                identity: b.identity.clone(),
-                layout_owner: b.layout_owner.clone(),
-                element_id_stack: mem::take(&mut buffers.ids),
-                text_style_stack: b.text_style_stack.clone(),
-                render_contexts: mem::take(&mut buffers.contexts),
-                rendered_entity_stack: mem::take(&mut buffers.rendered),
-                element_offset_stack: mem::take(&mut buffers.offsets),
-                exact_element_offset_depth: b.exact_element_offset_depth,
-                transformation_stack: mem::take(&mut buffers.transforms),
-                mask_scale: b.mask_scale,
-                mask_map: b.mask_map,
-                element_opacity: b.element_opacity,
-                content_mask_stack: mem::take(&mut buffers.masks),
-                image_cache_stack: mem::take(&mut buffers.images),
-                ink: mem::take(&mut buffers.ink),
-            },
-            raster: RasterFrame {
-                glyph_offset: ctx.glyph_offset,
-                fill_transform: ctx.fill_transform,
-                exact_bounds: ctx.exact_bounds,
-                contexts: mem::take(&mut buffers.raster_contexts),
-            },
+        let RasterPaintCtx { env, ids, glyph_offset, fill_transform, exact_bounds } = ctx;
+        env.base.identity.check(self)?;
+        let (base, contexts, mut buffers) = match captures.release(env) {
+            Ok(RasterEnv { mut base, contexts }) => {
+                base.element_id_stack.extend(ids);
+                (base, contexts, None)
+            }
+            Err(env) => {
+                let mut buffers = captures.buffers.take().unwrap_or_default();
+                let base = buffers.fill(&env, &ids);
+                let contexts = mem::take(&mut buffers.raster_contexts);
+                (base, contexts, Some(buffers))
+            }
+        };
+        let mut state = PaintState {
+            base,
+            raster: RasterFrame { glyph_offset, fill_transform, exact_bounds, contexts },
             scale_factor: self.scale_factor,
-            rem_size_overrides: mem::take(&mut buffers.rem),
-        });
-        drop(ctx);
-        let state = slot.state.as_mut().expect("raster replay state");
-        let result = self.replay_in(state, f);
-        if let Some(state) = slot.state.take() {
-            slot.buffers.reclaim(state);
+            rem_size_overrides: self.rem_size_override_stack.clone(),
+        };
+        let result = self.replay_in(&mut state, f);
+        if let Some(buffers) = buffers.as_mut() {
+            buffers.reclaim(state);
         }
-        self.raster_replay_spares.push(slot);
+        if let Some(buffers) = buffers {
+            captures.buffers.set(Some(buffers));
+        }
         Ok(result)
-    }
-
-    /// Forget the shared raster environment and the replay buffers once a frame is drawn,
-    /// so that nothing they hold outlives it.
-    pub(in crate::window) fn release_raster_env(&mut self) {
-        self.raster_env.take();
-        self.raster_replay_spares.clear();
     }
 }

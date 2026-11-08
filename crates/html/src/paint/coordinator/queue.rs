@@ -39,15 +39,21 @@ pub(super) struct Frame {
     /// Заданий, принятых кадром: запись блока под ним видит, ушли ли её
     /// задания за её вывод (`capture`).
     pub admitted: u64,
+    /// Строковых заданий, собранных сборкой под этим кадром (`PaintCollect`):
+    /// очередь берёт место под них одним выделением при первом задании,
+    /// а не растёт удвоением (как Blink резервирует список отображения,
+    /// `PaintController`).
+    pub inline_capacity: u32,
 }
 
 impl Frame {
-    pub fn new(scope: PaintScopeId) -> Self {
+    pub fn new(scope: PaintScopeId, inline_capacity: u32) -> Self {
         Self {
             scope,
             inline: VecDeque::new(),
             positioned: BTreeMap::new(),
             admitted: 0,
+            inline_capacity,
         }
     }
 
@@ -58,6 +64,14 @@ impl Frame {
 
     pub fn push_inline(&mut self, job: Inline) {
         self.admitted += 1;
+        // Место берёт первое собранное задание: повтор записи (`capture::replay`)
+        // идёт вместо собранных заданий своего блока, и кадр одних повторов
+        // остаётся в пределах их числа.
+        if self.inline_capacity != 0 && matches!(job.paint, InlinePaint::Element(_)) {
+            let reserve = std::mem::take(&mut self.inline_capacity) as usize;
+            self.inline
+                .reserve_exact(reserve.saturating_sub(self.inline.len()));
+        }
         self.inline.push_back(job);
     }
 
@@ -88,7 +102,7 @@ impl CssPaintPass {
             context.set_fill_transform(window.raster_frame().fill_transform);
             let admitted = self.jobs.admitted_below(depth + 1);
             let range = window
-                .with_raster_paint_ctx(context, |window| {
+                .with_raster_paint_ctx(context, &self.raster, |window| {
                     window
                         .record_retained_paint(|window| match paint {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
@@ -166,6 +180,12 @@ mod tests {
 
     /// A frame queues thousands of inline jobs (p02: ~4 700): a job refers to the
     /// environment it shares with its siblings instead of copying it (was ~1.5 KB).
+    /// Every collector pair built shares one `Cell<Option<FrameGuard>>`: two words.
+    #[test]
+    fn a_frame_guard_is_two_words() {
+        assert_eq!(size_of::<Option<FrameGuard>>(), 2 * size_of::<usize>());
+    }
+
     #[test]
     fn an_inline_job_is_a_few_words() {
         assert!(size_of::<Inline>() <= 256, "{}", size_of::<Inline>());

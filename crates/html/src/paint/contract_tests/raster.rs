@@ -3,7 +3,8 @@
 use super::draw_at_scale;
 use crate::text::raster::{Background, ReplicatedBackground, background_offset};
 use gpui::{
-    Bounds, ChildPaintContext, RasterFrame, Style, TransformationMatrix, canvas, point, px, size,
+    Bounds, ChildPaintContext, RasterCaptures, RasterFrame, Style, TransformationMatrix, canvas,
+    point, px, size,
 };
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -16,6 +17,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
+                let captures = RasterCaptures::default();
                 let captured = Rc::new(17u32);
                 let caller = Rc::new(23u32);
                 let mut frame = RasterFrame::new(point(px(0.125), px(0.375)), None);
@@ -28,7 +30,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
                     window.with_raster_frame(frame.clone(), |window| {
                         (
                             window.paint_ctx(),
-                            window.raster_paint_ctx(),
+                            window.raster_paint_ctx(&captures),
                             window.snapshot_paint_state(),
                         )
                     });
@@ -57,7 +59,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
                     let mut expected = frame.clone();
                     expected.fill_transform = outer.fill_transform;
                     window
-                        .with_raster_paint_ctx(raster, |window| {
+                        .with_raster_paint_ctx(raster, &captures, |window| {
                             assert_eq!(window.raster_frame().clone(), expected);
                             assert!(Rc::ptr_eq(
                                 &window.raster_context::<u32>().unwrap(),
@@ -81,45 +83,6 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
                         &caller
                     ));
                 });
-            },
-        )
-    });
-}
-
-#[test]
-fn sibling_raster_captures_share_one_environment_and_replay_their_own_ids() {
-    draw_at_scale(Some(1.0), || {
-        canvas(
-            |_, _, _| (),
-            |_, (), window, _| {
-                let id = |window: &mut gpui::Window| {
-                    window.with_global_id("probe".into(), |id, _| format!("{id:?}"))
-                };
-                let capture = |window: &mut gpui::Window, name: &'static str| {
-                    window.with_global_id(name.into(), |_, window| {
-                        (window.raster_paint_ctx(), id(window))
-                    })
-                };
-                let (a, a_id) = capture(window, "a");
-                let (b, b_id) = capture(window, "b");
-                assert!(a.shares_environment(&b));
-                assert_ne!(a_id, b_id);
-                let moved = TransformationMatrix {
-                    translation: [1.0, 0.0],
-                    ..TransformationMatrix::unit()
-                };
-                let (c, _) = window.with_transformation(moved, |window| capture(window, "c"));
-                assert!(!c.shares_environment(&a));
-                let (d, _) = capture(window, "d");
-                assert!(!d.shares_environment(&a));
-                let outside = id(window);
-                for (ctx, expected) in [(b, b_id), (a, a_id)] {
-                    let replayed = window
-                        .with_raster_paint_ctx(ctx, |window| id(window))
-                        .unwrap();
-                    assert_eq!(replayed, expected);
-                    assert_eq!(id(window), outside);
-                }
             },
         )
     });

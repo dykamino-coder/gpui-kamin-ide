@@ -75,7 +75,10 @@ pub(crate) fn with<R>(owner: &Deferred, pieces: Option<Rc<Pieces>>, f: impl FnOn
 }
 
 pub(crate) fn active(owner: Option<&Deferred>) -> Option<Rc<Pieces>> {
-    owner?.pieces.borrow().clone()
+    let owner = owner?;
+    let pieces = owner.pieces.take();
+    owner.pieces.set(pieces.clone());
+    pieces
 }
 
 /// Резкая наружная тень коробки `bounds` с чернилами `ink` (верх, низ) по кускам: срез
