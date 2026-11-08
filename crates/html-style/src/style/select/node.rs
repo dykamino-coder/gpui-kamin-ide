@@ -27,10 +27,11 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
         classes: find("class")
             .map(|v| v.split_whitespace().map(str::to_string).collect())
             .unwrap_or_default(),
-        attrs: attrs
-            .iter()
-            .map(|a| (a.name.local.to_string(), a.value.to_string()))
-            .collect(),
+        attrs: crate::dom::SharedAttrs::from_exact(
+            attrs
+                .iter()
+                .map(|a| (a.name.local.to_string(), a.value.to_string())),
+        ),
         spot,
         href: find("href"),
         visited: link_visited(find("href").as_deref()),

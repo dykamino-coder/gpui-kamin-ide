@@ -1,7 +1,7 @@
 //! Вход в элемент: каскад и счётчики до обхода детей.
 use super::element_sharing::{ElementSharing, Key, Shared};
 use super::{
-    ancestor::{element_ancestor, element_attrs},
+    ancestor::{element_ancestor, element_attrs_shared},
     cascade::cascade_element,
     pseudo_styles::pseudo_styles,
     style_normalization::normalize_style,
@@ -38,8 +38,8 @@ pub(super) fn enter<'a>(
     if DROP_TAGS.contains(&tag.as_str()) {
         return None;
     }
-    // One shared list for the ancestor entry, the sharing cache and the element.
-    let attrs: crate::dom::SharedAttrs = element_attrs(&attrs.borrow()).into();
+    // One shared list for the sibling census, the ancestor entry, the sharing cache and the element.
+    let attrs = element_attrs_shared(handle, &attrs.borrow(), &sibs);
     let mut me = element_ancestor(
         handle,
         &tag,
