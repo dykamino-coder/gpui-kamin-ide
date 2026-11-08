@@ -73,11 +73,12 @@ pub(super) async fn sample(
             }
             if let Step::Cold(markup) = step {
                 let t = Instant::now();
+                let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
                     match markup {
-                        Some(html) => html.to_owned(),
-                        None => resources::read(&args.path)?,
+                        Some(html) => html.into(),
+                        None => resources::read_into(&args.path, &mut source)?,
                     }
                 };
                 resources_time = Some(t.elapsed());
@@ -177,6 +178,8 @@ pub(super) async fn run(
     window.update(cx, |_, window, _| window.refresh())?;
     wait(cx, seq, capture).await?;
     startup_timings.mark("initial_empty_gpu_frame");
+    // Замер начинается в покое платформы (без презентов буста после WM_SIZE).
+    startup_timings.settle(cx).await;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let luid = (identity.luid_high_part, identity.luid_low_part);

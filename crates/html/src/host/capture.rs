@@ -8,11 +8,20 @@ pub use completion::{CaptureClosed, Completion};
 use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
-/// Кадр с номером завершения внутри этой сессии.
+/// Кадр с номером завершения внутри этой сессии. Буфер readback один на кадр:
+/// first и latest делят его (как результат `CopyOutputRequest` в Chromium
+/// передаётся владельцу без копии пикселей).
 #[derive(Clone)]
 pub struct Frame {
     pub seq: u64,
-    pub pixels: CapturedFrame,
+    pub pixels: Rc<CapturedFrame>,
+}
+
+impl Frame {
+    /// Пиксели во владение: без копии, если кадр больше никто не держит.
+    pub fn into_pixels(self) -> CapturedFrame {
+        Rc::try_unwrap(self.pixels).unwrap_or_else(|shared| (*shared).clone())
+    }
 }
 
 #[derive(Default)]
@@ -95,7 +104,10 @@ impl FrameCaptureSink for Endpoint {
         state.seq += 1;
         state.readback_us += readback.as_micros() as u64;
         let seq = state.seq;
-        let frame = Frame { seq, pixels };
+        let frame = Frame {
+            seq,
+            pixels: Rc::new(pixels),
+        };
         if state.armed {
             state.first = Some(frame.clone());
             state.armed = false;

@@ -56,9 +56,9 @@ fn paint(
         }
         if let Some(guard) = guard {
             if stacking {
-                pass.drain(guard.depth, window, cx);
+                pass.drain(guard.depth(), window, cx);
             } else {
-                pass.finish_atomic(guard.depth, window, cx);
+                pass.finish_atomic(guard.depth(), window, cx);
             }
         }
     } else {
