@@ -14,17 +14,47 @@ impl Computed {
             || self.reset_background.gradient_current.is_some()
             || self.reset_background.bg_image.is_some()
             || self.reset_background.gradient_raw.is_some()
-            || self.reset_background.bg_lists != Default::default()
+            || !self.reset_background.bg_lists.is_empty()
             || self.reset_generated.content.is_some()
             || self.reset_mask.mask_image.is_some()
             || self.reset_border.border_image.is_some()
-            || self.needs_viewport_resolution(vcx)
+            || self.has_contextual_scalar_lengths(vcx)
+            // Остальные образы уже учтены выше консервативно. Только shape-image
+            // требует точной проверки после отрицательного результата этих условий.
+            || self.reset_shapes.shape_image.as_ref().is_some_and(|image| {
+                image.needs_length_resolution(&|l| {
+                    l.is_some_and(|l| l.needs_viewport_resolution(vcx))
+                })
+            })
     }
 
     /// Есть ли что решать `resolve_viewport`: длины в единицах окна или
     /// контейнера. Типизированные образы проверяются без копирования; для
     /// эллиптических радиусов и отступов линий проверка консервативна.
     pub(crate) fn needs_viewport_resolution(&self, vcx: ValueCx<'_>) -> bool {
+        let vp = |l: &Option<Len>| l.is_some_and(|l| l.needs_viewport_resolution(vcx));
+        self.has_contextual_scalar_lengths(vcx)
+            || [
+                self.reset_background.gradient.as_ref(),
+                self.reset_background.gradient_current.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|gradient| gradient.needs_length_resolution(&vp))
+            || self
+                .reset_background
+                .bg_lists
+                .iter()
+                .flat_map(|(_, layers)| layers)
+                .any(|layer| layer.needs_length_resolution(&vp))
+            || self
+                .image_operands_ref()
+                .any(|image| image.needs_length_resolution(&vp))
+    }
+
+    /// Общая часть допуска reuse и точной проверки перед COW. Отсутствие
+    /// контекстных длин само по себе не требует обхода образов.
+    fn has_contextual_scalar_lengths(&self, vcx: ValueCx<'_>) -> bool {
         let vp = |l: &Option<Len>| l.is_some_and(|l| l.needs_viewport_resolution(vcx));
         let sides = |s: &Sides| [&s.top, &s.right, &s.bottom, &s.left].into_iter().any(vp);
         [
@@ -60,22 +90,6 @@ impl Computed {
                 .is_some_and(|(row, col)| vp(&row) || vp(&col))
             || self.has_decor_insets()
             || self.reset_border.radius_ell.is_some()
-            || [
-                self.reset_background.gradient.as_ref(),
-                self.reset_background.gradient_current.as_ref(),
-            ]
-            .into_iter()
-            .flatten()
-            .any(|gradient| gradient.needs_length_resolution(&vp))
-            || self
-                .reset_background
-                .bg_lists
-                .iter()
-                .flat_map(|(_, layers)| layers)
-                .any(|layer| layer.needs_length_resolution(&vp))
-            || self
-                .image_operands_ref()
-                .any(|image| image.needs_length_resolution(&vp))
     }
 }
 
@@ -85,6 +99,48 @@ mod tests {
     use crate::style::computed::BoxStyle;
     use crate::style::decoration_paint::DecorationPaint;
     use std::rc::Rc;
+
+    #[test]
+    fn scalar_and_shape_admission_survives_the_split_image_walk() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let vcx = doc.values();
+        for (property, value, before, after) in [
+            ("width", "100px", false, false),
+            ("width", "calc(20% + 2px)", false, false),
+            ("width", "10vw", true, false),
+            ("padding", "2vh", true, false),
+            ("gap", "2vw 3vh", true, false),
+            ("background-size", "10px 20px, 30px 40px", true, true),
+            ("shape-outside", "url(shape.png)", false, false),
+            (
+                "shape-outside",
+                "linear-gradient(red 1vw, blue)",
+                true,
+                false,
+            ),
+            (
+                "background-image",
+                "linear-gradient(red 1vw, blue)",
+                true,
+                true,
+            ),
+        ] {
+            let mut style = Computed::default();
+            style.apply_one(property, value, vcx);
+            assert_eq!(
+                style.has_viewport_lengths(vcx),
+                before,
+                "{property}: {value}"
+            );
+            style.resolve_viewport((800.0, 600.0), vcx);
+            assert_eq!(
+                style.has_viewport_lengths(vcx),
+                after,
+                "{property}: {value}"
+            );
+            assert!(!style.needs_viewport_resolution(vcx), "{property}: {value}");
+        }
+    }
 
     #[test]
     fn resolved_images_keep_style_and_paint_shared() {
