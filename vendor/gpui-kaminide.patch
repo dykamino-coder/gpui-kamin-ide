@@ -7912,7 +7912,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228d523b2b2
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..58f50287974722086d7aa9b343447dd20a81e7bf
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8038,7 +8038,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 @@ -750 +750 @@
 -        self.window_control = Some(area);
 +        self.rare_mut().window_control = Some(area);
-@@ -761,2 +761,35 @@
+@@ -761,2 +761,36 @@
 -    fn has_pinch_listeners(&self) -> bool {
 -        !self.pinch_listeners.is_empty()
 +    /// KaminIDE patch: the listener block, allocated on the first registration.
@@ -8046,9 +8046,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        self.listeners.get_or_insert_with(Default::default)
 +    }
 +
-+    /// KaminIDE patch: the base style for writing; copies it if it is shared.
++    /// KaminIDE patch: the base style for writing; copies it if it is shared
++    /// (see [`super::refinement_share::writable`]).
 +    pub fn base_style_mut(&mut self) -> &mut StyleRefinement {
-+        Rc::make_mut(&mut self.base_style)
++        super::refinement_share::writable(&mut self.base_style)
 +    }
 +
 +    /// KaminIDE patch: the rare block, allocated by the first setter.
@@ -8076,132 +8077,132 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    /// KaminIDE patch: take one listener list without allocating the block.
 +    fn take_listeners<T>(&mut self, list: impl FnOnce(&mut InteractivityListeners) -> &mut Vec<T>) -> Vec<T> {
 +        self.listeners.as_deref_mut().map(|listeners| mem::take(list(listeners))).unwrap_or_default()
-@@ -844 +877 @@
+@@ -844 +878 @@
 -            self.interactivity().hover_style.is_none(),
 +            self.interactivity().rare().is_none_or(|rare| rare.hover_style.is_none()),
-@@ -847 +880 @@
+@@ -847 +881 @@
 -        self.interactivity().hover_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().hover_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -857 +890 @@
+@@ -857 +891 @@
 -        self.interactivity().group_hover_style = Some(GroupStyle {
 +        self.interactivity().rare_mut().group_hover_style = Some(GroupStyle {
-@@ -1195 +1228 @@
+@@ -1195 +1229 @@
 -        self.interactivity().drag_over_styles.push((
 +        self.interactivity().listeners_mut().drag_over_styles.push((
-@@ -1215 +1248 @@
+@@ -1215 +1249 @@
 -        self.interactivity().group_drag_over_styles.push((
 +        self.interactivity().listeners_mut().group_drag_over_styles.push((
-@@ -1277 +1310 @@
+@@ -1277 +1311 @@
 -        self.interactivity().focus_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().focus_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1287 +1320 @@
+@@ -1287 +1321 @@
 -        self.interactivity().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().in_focus_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1299 +1332 @@
+@@ -1299 +1333 @@
 -        self.interactivity().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().focus_visible_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1315 +1348 @@
+@@ -1315 +1349 @@
 -        self.interactivity().override_role = Some(role);
 +        self.interactivity().rare_mut().override_role = Some(role);
-@@ -1327 +1360 @@
+@@ -1327 +1361 @@
 -        self.interactivity().aria.author_id = Some(id.into());
 +        self.interactivity().rare_mut().aria.author_id = Some(id.into());
-@@ -1333 +1366 @@
+@@ -1333 +1367 @@
 -        self.interactivity().aria.label = Some(label.into());
 +        self.interactivity().rare_mut().aria.label = Some(label.into());
-@@ -1342 +1375 @@
+@@ -1342 +1376 @@
 -        self.interactivity().aria.description = Some(description.into());
 +        self.interactivity().rare_mut().aria.description = Some(description.into());
-@@ -1352 +1385 @@
+@@ -1352 +1386 @@
 -        self.interactivity().aria.keyshortcuts = Some(keyshortcuts.into());
 +        self.interactivity().rare_mut().aria.keyshortcuts = Some(keyshortcuts.into());
-@@ -1389 +1422 @@
+@@ -1389 +1423 @@
 -        self.interactivity().a11y_synthetic_children = Some(Box::new(f));
 +        self.interactivity().rare_mut().a11y_synthetic_children = Some(Box::new(f));
-@@ -1395 +1428 @@
+@@ -1395 +1429 @@
 -        self.interactivity().aria.selected = Some(selected);
 +        self.interactivity().rare_mut().aria.selected = Some(selected);
-@@ -1401 +1434 @@
+@@ -1401 +1435 @@
 -        self.interactivity().aria.expanded = Some(expanded);
 +        self.interactivity().rare_mut().aria.expanded = Some(expanded);
-@@ -1407 +1440 @@
+@@ -1407 +1441 @@
 -        self.interactivity().aria.toggled = Some(toggled);
 +        self.interactivity().rare_mut().aria.toggled = Some(toggled);
-@@ -1413 +1446 @@
+@@ -1413 +1447 @@
 -        self.interactivity().aria.numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.numeric_value = Some(value);
-@@ -1420 +1453 @@
+@@ -1420 +1454 @@
 -        self.interactivity().aria.numeric_value_step = Some(step);
 +        self.interactivity().rare_mut().aria.numeric_value_step = Some(step);
-@@ -1427 +1460 @@
+@@ -1427 +1461 @@
 -        self.interactivity().aria.value = Some(value.into());
 +        self.interactivity().rare_mut().aria.value = Some(value.into());
-@@ -1434 +1467 @@
+@@ -1434 +1468 @@
 -        self.interactivity().aria.placeholder = Some(placeholder.into());
 +        self.interactivity().rare_mut().aria.placeholder = Some(placeholder.into());
-@@ -1440 +1473 @@
+@@ -1440 +1474 @@
 -        self.interactivity().aria.min_numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.min_numeric_value = Some(value);
-@@ -1446 +1479 @@
+@@ -1446 +1480 @@
 -        self.interactivity().aria.max_numeric_value = Some(value);
 +        self.interactivity().rare_mut().aria.max_numeric_value = Some(value);
-@@ -1452 +1485 @@
+@@ -1452 +1486 @@
 -        self.interactivity().aria.orientation = Some(orientation);
 +        self.interactivity().rare_mut().aria.orientation = Some(orientation);
-@@ -1458 +1491 @@
+@@ -1458 +1492 @@
 -        self.interactivity().aria.level = Some(level);
 +        self.interactivity().rare_mut().aria.level = Some(level);
-@@ -1464 +1497 @@
+@@ -1464 +1498 @@
 -        self.interactivity().aria.position_in_set = Some(position);
 +        self.interactivity().rare_mut().aria.position_in_set = Some(position);
-@@ -1470 +1503 @@
+@@ -1470 +1504 @@
 -        self.interactivity().aria.size_of_set = Some(size);
 +        self.interactivity().rare_mut().aria.size_of_set = Some(size);
-@@ -1476 +1509 @@
+@@ -1476 +1510 @@
 -        self.interactivity().aria.row_index = Some(index);
 +        self.interactivity().rare_mut().aria.row_index = Some(index);
-@@ -1482 +1515 @@
+@@ -1482 +1516 @@
 -        self.interactivity().aria.column_index = Some(index);
 +        self.interactivity().rare_mut().aria.column_index = Some(index);
-@@ -1488 +1521 @@
+@@ -1488 +1522 @@
 -        self.interactivity().aria.row_count = Some(count);
 +        self.interactivity().rare_mut().aria.row_count = Some(count);
-@@ -1494 +1527 @@
+@@ -1494 +1528 @@
 -        self.interactivity().aria.column_count = Some(count);
 +        self.interactivity().rare_mut().aria.column_count = Some(count);
-@@ -1509,0 +1543 @@
+@@ -1509,0 +1544 @@
 +            .listeners_mut()
-@@ -1523,2 +1557,2 @@
+@@ -1523,2 +1558,2 @@
 -        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
 -        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
 +        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
 +        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
-@@ -1530 +1564 @@
+@@ -1530 +1565 @@
 -        self.interactivity().base_style.overflow.x = Some(Overflow::Scroll);
 +        self.interactivity().base_style_mut().overflow.x = Some(Overflow::Scroll);
-@@ -1536 +1570 @@
+@@ -1536 +1571 @@
 -        self.interactivity().base_style.overflow.y = Some(Overflow::Scroll);
 +        self.interactivity().base_style_mut().overflow.y = Some(Overflow::Scroll);
-@@ -1544 +1578 @@
+@@ -1544 +1579 @@
 -        self.interactivity().base_style.restrict_scroll_to_axis = Some(true);
 +        self.interactivity().base_style_mut().restrict_scroll_to_axis = Some(true);
-@@ -1565 +1599 @@
+@@ -1565 +1600 @@
 -        self.interactivity().active_style = Some(Box::new(f(StyleRefinement::default())));
 +        self.interactivity().rare_mut().active_style = Some(Box::new(f(StyleRefinement::default())));
-@@ -1578 +1612 @@
+@@ -1578 +1613 @@
 -        self.interactivity().group_active_style = Some(GroupStyle {
 +        self.interactivity().rare_mut().group_active_style = Some(GroupStyle {
-@@ -1800,0 +1835,3 @@
+@@ -1800,0 +1836,3 @@
 +        layout_observer: None,
 +        child_painter: None,
 +        paint_metadata: None,
-@@ -1805,0 +1843,2 @@
+@@ -1805,0 +1844,2 @@
 +    child_painter: Option<crate::ChildPainter>,
 +    paint_metadata: Option<std::rc::Rc<dyn std::any::Any>>,
-@@ -1810,0 +1850,2 @@
+@@ -1810,0 +1851,2 @@
 +    // KaminIDE patch: layout inputs must observe this node, not a wrapper box.
 +    layout_observer: Option<Box<dyn LayoutObserver>>,
-@@ -1812,0 +1854,10 @@
+@@ -1812,0 +1855,10 @@
 +/// KaminIDE patch: observes a box's layout lifecycle without adding a node.
 +/// The request phase records identity; prepaint sees the completed layout.
 +pub trait LayoutObserver: 'static {
@@ -8212,7 +8213,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
 +}
 +
-@@ -1813,0 +1865,24 @@
+@@ -1813,0 +1866,24 @@
 +    /// Локальная замена собственной краски; callback не наследуется потомками.
 +    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
 +        self.interactivity.box_painter = Some(painter);
@@ -8237,22 +8238,22 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        self.layout_observer = Some(Box::new(observer));
 +        self
 +    }
-@@ -1854,0 +1930,4 @@
+@@ -1854,0 +1931,4 @@
 +    /// KaminIDE patch: this node's layout id and its unrounded window
 +    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
 +    layout_id: Option<LayoutId>,
 +    exact_bounds: Option<Bounds<Pixels>>,
-@@ -1873 +1952 @@
+@@ -1873 +1953 @@
 -        &mut self.interactivity.base_style
 +        self.interactivity.base_style_mut()
-@@ -1893,0 +1973,2 @@
+@@ -1893,0 +1974,2 @@
 +    fn paint_boundary(&self) -> bool { false }
 +
-@@ -1909 +1990,2 @@
+@@ -1909 +1991,2 @@
 -            .override_role
 +            .rare()
 +            .and_then(|rare| rare.override_role)
-@@ -1922 +2004,6 @@
+@@ -1922 +2005,6 @@
 -        if let Some(f) = self.interactivity.a11y_synthetic_children.take() {
 +        if let Some(f) = self
 +            .interactivity
@@ -8260,13 +8261,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +            .as_deref_mut()
 +            .and_then(|rare| rare.a11y_synthetic_children.take())
 +        {
-@@ -1942 +2029 @@
+@@ -1942 +2030 @@
 -            self.interactivity.request_layout(
 +            self.interactivity.request_layout_boxed(
-@@ -1947 +2034 @@
+@@ -1947 +2035 @@
 -                |style, window, cx| {
 +                |style, refinement, window, cx| {
-@@ -1954 +2041,7 @@
+@@ -1954 +2042,7 @@
 -                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
 +                        let children = child_layout_ids.iter().copied();
 +                        match refinement {
@@ -8275,7 +8276,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                            }
 +                            None => window.request_layout_ref(&style, children, cx),
 +                        }
-@@ -1960 +2053,12 @@
+@@ -1960 +2054,12 @@
 -        (layout_id, DivFrameState { child_layout_ids })
 +        // KaminIDE patch: capture identity in the tree receiving this node.
 +        if let Some(observer) = &mut self.layout_observer {
@@ -8289,14 +8290,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                exact_bounds: None,
 +            },
 +        )
-@@ -1972,0 +2077,6 @@
+@@ -1972,0 +2078,6 @@
 +        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
 +        if let Some(observer) = &mut self.layout_observer
 +            && !observer.prepaint(window)
 +        {
 +            return None;
 +        }
-@@ -2019 +2129,21 @@
+@@ -2019 +2130,21 @@
 -        self.interactivity.prepaint(
 +        // KaminIDE patch: unrounded bounds of this node, only when they lie
 +        // within half a device pixel of the snapped ones (a node moved by
@@ -8319,31 +8320,31 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        );
 +
 +        let hitbox = self.interactivity.prepaint(
-@@ -2026,0 +2157,2 @@
+@@ -2026,0 +2158,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
-@@ -2033,0 +2166,3 @@
+@@ -2033,0 +2167,3 @@
 +                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
 +                            (traversal.enter_children)(window);
 +                        }
-@@ -2055 +2190,3 @@
+@@ -2055 +2191,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2201 @@
+@@ -2064 +2202 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2211,4 @@
+@@ -2073,0 +2212,4 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
-@@ -2082,0 +2224,3 @@
+@@ -2082,0 +2225,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,2 +2232,22 @@
+@@ -2088,2 +2233,22 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
 +                    let painter = self.child_painter.clone().or_else(|| {
@@ -8368,20 +8369,22 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-@@ -2093,0 +2258 @@
+@@ -2093,0 +2259 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2100 +2265,4 @@
+@@ -2100 +2266,4 @@
 -    fn into_element(self) -> Self::Element {
 +    // KaminIDE patch: a finished div's base style may point at an equal earlier one
 +    // (`refinement_share`); later writes copy it.
 +    fn into_element(mut self) -> Self::Element {
 +        super::refinement_share::share(&mut self.interactivity.base_style);
+@@ -2132 +2300,0 @@
+-#[derive(Default)]
 @@ -2133,0 +2302 @@
 +    pub(crate) box_painter: Option<crate::BoxPainter>,
 @@ -2150,0 +2320,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,
-@@ -2153,8 +2324,27 @@
+@@ -2153,8 +2324,64 @@
 -    pub base_style: Box<StyleRefinement>,
 -    pub(crate) focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
@@ -8410,6 +8413,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    pub(crate) debug_selector: Option<String>,
 +}
 +
++/// KaminIDE patch: a new element shares its thread's empty base style
++/// ([`super::refinement_share::empty`]); the first write copies it
++/// ([`Interactivity::base_style_mut`]). An element that takes a whole, already shared style
++/// allocates no style of its own.
++impl Default for Interactivity {
++    fn default() -> Self {
++        Self {
++            box_painter: None,
++            element_id: None,
++            active: None,
++            hovered: None,
++            tooltip_id: None,
++            content_size: Size::default(),
++            key_context: None,
++            focusable: false,
++            tracked_focus_handle: None,
++            tracked_scroll_handle: None,
++            scroll_anchor: None,
++            scroll_offset: None,
++            ongoing_scroll: None,
++            group: None,
++            listeners: None,
++            base_style: super::refinement_share::empty(),
++            rare: None,
++            hitbox_behavior: HitboxBehavior::default(),
++            tab_index: None,
++            tab_group: false,
++            tab_stop: false,
++            report_active_descendant_focus: false,
++            #[cfg(any(feature = "inspector", debug_assertions))]
++            source_location: None,
++            #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
++            debug_selector: None,
++        }
++    }
++}
++
 +/// KaminIDE patch: the listener and drag-style lists of an [`Interactivity`].
 +///
 +/// Twenty lists inline were about half of every `Div`, and most boxes of a rendered document
@@ -8417,9 +8457,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +/// registration; a box without listeners keeps a single null pointer.
 +#[derive(Default)]
 +pub(crate) struct InteractivityListeners {
-@@ -2179 +2368,0 @@
+@@ -2179 +2405,0 @@
 -    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2181,0 +2371,21 @@
+@@ -2181,0 +2408,21 @@
 +    pub(crate) a11y_action_listeners:
 +        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 +}
@@ -8441,7 +8481,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +    pub(crate) active_style: Option<Box<StyleRefinement>>,
 +    pub(crate) group_active_style: Option<GroupStyle>,
 +    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2188,7 +2397,0 @@
+@@ -2188,7 +2434,0 @@
 -    pub(crate) hitbox_behavior: HitboxBehavior,
 -    pub(crate) tab_index: Option<isize>,
 -    pub(crate) tab_group: bool,
@@ -8449,16 +8489,16 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -
 -    pub(crate) a11y_action_listeners:
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-@@ -2196 +2398,0 @@
+@@ -2196 +2435,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2400,0 @@
+@@ -2199,6 +2437,0 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
 -
 -    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
 -    pub(crate) debug_selector: Option<String>,
-@@ -2206,0 +2403,56 @@
+@@ -2206,0 +2440,56 @@
 +impl InteractivityRare {
 +    /// Whether a rare field needs the element's hitbox.
 +    fn need_hitbox(&self) -> bool {
@@ -8515,7 +8555,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        }
 +    }
 +}
-@@ -2216,0 +2469,16 @@
+@@ -2216,0 +2506,16 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, _, window, cx| {
 +            f(style.into_owned(), window, cx)
 +        })
@@ -8532,13 +8572,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        cx: &mut App,
 +        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2223 +2491 @@
+@@ -2223 +2528 @@
 -                    self.base_style = inspector_state.base_style.clone();
 +                    self.base_style = Rc::from(inspector_state.base_style.clone());
-@@ -2226 +2494 @@
+@@ -2226 +2531 @@
 -                        base_style: self.base_style.clone(),
 +                        base_style: Box::new((*self.base_style).clone()),
-@@ -2294,2 +2562,5 @@
+@@ -2294,2 +2599,5 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 -                let layout_id = f(style, window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
@@ -8546,7 +8586,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                // refinement on the default style (`compute_style_internal`).
 +                let refinement = self.rare.is_none().then_some(&self.base_style);
 +                let layout_id = f(style, refinement, window, cx);
-@@ -2354,11 +2625,56 @@
+@@ -2354,11 +2662,56 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8614,7 +8654,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2682 @@
+@@ -2366,18 +2719 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -8634,7 +8674,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2684,12 @@
+@@ -2385,20 +2721,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -8667,9 +8707,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2409 +2699,0 @@
+@@ -2409 +2736,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2704,2 @@
+@@ -2414,17 +2741,2 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -8689,7 +8729,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2793,109 @@
+@@ -2518,113 +2830,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8912,7 +8952,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2903,28 @@
+@@ -2632,2 +2940,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -8943,54 +8983,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2932,2 @@
+@@ -2635,4 +2969,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3084,3 @@
+@@ -2789 +3121,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3093 @@
+@@ -2796 +3130 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3100 @@
+@@ -2803 +3137 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3107 @@
+@@ -2810 +3144 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3114 @@
+@@ -2817 +3151 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3121 @@
+@@ -2824 +3158 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3128 @@
+@@ -2831 +3165 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3135 @@
+@@ -2838 +3172 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3142,2 @@
+@@ -2845 +3179,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3145,2 @@
+@@ -2847 +3182,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3149 @@
+@@ -2850 +3186 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3171 @@
+@@ -2872 +3208 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3196,5 @@
+@@ -2897,5 +3233,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -9001,25 +9041,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3432 @@
+@@ -3133 +3469 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3451 @@
+@@ -3152 +3488 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3486 @@
+@@ -3187 +3523 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3527 @@
+@@ -3228 +3564 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3551,3 @@
+@@ -3252,2 +3588,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3575,4 @@
+@@ -3275,4 +3612,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -9028,12 +9068,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3308,2 +3608,2 @@
+@@ -3308,2 +3645,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3705,28 @@
+@@ -3404,0 +3742,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -9062,43 +9102,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +        )))
 +    }
 +
-@@ -3414,0 +3743 @@
+@@ -3414,0 +3780 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3746 @@
+@@ -3417 +3783 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3752 @@
+@@ -3423 +3789 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3758 @@
+@@ -3429 +3795 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3767 @@
+@@ -3438 +3804 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3787 @@
+@@ -3458 +3824 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3810 @@
+@@ -3481 +3847 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3815 @@
+@@ -3486 +3852 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3825 @@
+@@ -3496 +3862 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3828,2 @@
+@@ -3499 +3865,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3845 @@
+@@ -3515 +3882 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3850 @@
+@@ -3520 +3887 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3861,66 @@
+@@ -3531,64 +3898,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -9229,14 +9269,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +3932 @@
+@@ -3600 +3969 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4435,3 @@
+@@ -4102,0 +4472,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4448,0 +4784,21 @@
+@@ -4448,0 +4821,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -9258,7 +9298,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..11cd73f893e2c43a8b10de7650e2f228
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5624,8 @@
+@@ -5268,8 +5661,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -9822,22 +9862,23 @@ index 0000000000000000000000000000000000000000..cf326ec21a6f320e54ff5e2049d42ec6
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/mod.rs b/vendor/gpui/src/elements/mod.rs
-index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b17dfd5c2f00c8512990e93e48e6ebbff2e95107
+index 8a2a1b70a7bf28464547009020efa9caff8f0cff..26cfef212095dde1037dc8e594d7c7f1784a1815
 --- a/vendor/gpui/src/elements/mod.rs
 +++ b/vendor/gpui/src/elements/mod.rs
-@@ -9,0 +10,4 @@
+@@ -9,0 +10,5 @@
 +// KaminIDE patch: equal div base styles share one allocation.
-+mod refinement_share;
++pub(crate) mod refinement_share;
++pub use refinement_share::{recycle_style_refinement, release_spare_style_refinement};
 +// KaminIDE patch: второй проход краски детей `Div`.
 +pub(crate) mod context_scope;
-@@ -23,0 +28 @@
+@@ -23,0 +29 @@
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e75b832121
+index 0000000000000000000000000000000000000000..a7ccb3d4574ac0ce71143bf2f6eb9a4d2ab6dd52
 --- /dev/null
 +++ b/vendor/gpui/src/elements/refinement_share.rs
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,390 @@
 +//! KaminIDE patch: equal div base style refinements share one allocation.
 +//!
 +//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
@@ -9851,7 +9892,7 @@ index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e7
 +//! candidates are per thread and bounded: at most `CANDIDATES` refinements outlive their frame.
 +
 +use crate::{Refineable, Style, StyleRefinement};
-+use std::cell::RefCell;
++use std::cell::{Cell, RefCell};
 +use std::rc::Rc;
 +
 +/// Distinct recent refinements kept as sharing candidates. Boxes that differ only in paint
@@ -9863,6 +9904,70 @@ index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e7
 +
 +thread_local! {
 +    static RECENT: RefCell<RefinementShare> = RefCell::default();
++    static EMPTY: Cell<Option<Rc<StyleRefinement>>> = const { Cell::new(None) };
++    static SPARE: Cell<Option<Rc<StyleRefinement>>> = const { Cell::new(None) };
++}
++
++/// KaminIDE patch: give back a refinement its owner no longer needs (a style memory dropping a
++/// candidate). If nothing else holds it, its allocation becomes the next empty refinement of
++/// this thread instead of a new one.
++pub fn recycle_style_refinement(mut style: Rc<StyleRefinement>) {
++    if Rc::get_mut(&mut style).is_some() {
++        SPARE.with(|spare| spare.set(Some(style)));
++    }
++}
++
++/// KaminIDE patch: free the recycled allocation (`recycle_style_refinement`) when its owner
++/// stops recycling (a style memory cleared at the end of a document build): it serves only
++/// elements built after it, so it must not live on to the end of the frame.
++pub fn release_spare_style_refinement() {
++    SPARE.with(|spare| drop(spare.take()));
++}
++
++/// A new empty refinement, in the recycled allocation when there is one.
++fn new_empty() -> Rc<StyleRefinement> {
++    match SPARE.with(Cell::take) {
++        Some(mut spare) => {
++            if let Some(style) = Rc::get_mut(&mut spare) {
++                *style = StyleRefinement::default();
++            }
++            spare
++        }
++        None => Rc::default(),
++    }
++}
++
++/// The empty refinement a new element of this thread starts from: one allocation shared by
++/// the elements that have not written their style. An element whose style is replaced whole
++/// (a reused conversion) never allocates, and the first element to write takes the allocation
++/// over ([`writable`]) when only it shares it, so no element allocates more than it would
++/// with an empty refinement of its own.
++pub(crate) fn empty() -> Rc<StyleRefinement> {
++    EMPTY.with(|empty| {
++        let shared = empty.take().unwrap_or_else(new_empty);
++        empty.set(Some(shared.clone()));
++        shared
++    })
++}
++
++/// `style` for writing: copied if it is shared (copy on write), except for the shared empty
++/// refinement held by this element alone, which the element takes over without a copy.
++pub(crate) fn writable(style: &mut Rc<StyleRefinement>) -> &mut StyleRefinement {
++    if Rc::strong_count(style) == 2 {
++        EMPTY.with(|empty| match empty.take() {
++            Some(shared) if Rc::ptr_eq(&shared, style) => drop(shared),
++            other => empty.set(other),
++        });
++    }
++    Rc::make_mut(style)
++}
++
++/// Drop this thread's share of the empty refinement and its spare allocation: called once a
++/// frame is drawn, so they are freed with the last element of the frame that holds them
++/// instead of outliving the frame.
++pub(crate) fn release_empty() {
++    EMPTY.with(|empty| drop(empty.take()));
++    SPARE.with(|spare| drop(spare.take()));
 +}
 +
 +/// Point `style` at an equal recent refinement of this thread, or make it a candidate.
@@ -10080,6 +10185,77 @@ index 0000000000000000000000000000000000000000..21becae50fc773ad55360c649cb274e7
 +        assert!(!Rc::ptr_eq(&first, &other));
 +        assert_eq!(format!("{:?}", *other), format!("{expected:?}"));
 +    }
++    #[test]
++    fn new_divs_share_the_empty_style_until_written() {
++        use crate::{InteractiveElement, Styled, div};
++        let mut a = div();
++        let mut b = div();
++        let empty = b.interactivity().base_style.clone();
++        assert!(Rc::ptr_eq(&a.interactivity().base_style, &empty));
++        assert_eq!(*empty, StyleRefinement::default());
++        a.style().size.width = Some(px(5.).into());
++        assert!(!Rc::ptr_eq(&a.interactivity().base_style, &empty));
++        assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
++        assert_eq!(*super::empty(), StyleRefinement::default());
++        assert_eq!(a.interactivity().base_style.size.width, Some(px(5.).into()));
++    }
++
++    #[test]
++    fn the_only_writer_of_the_empty_style_takes_it_over() {
++        use crate::{InteractiveElement, Styled, div};
++        release_empty();
++        let mut a = div();
++        let taken = Rc::as_ptr(&a.interactivity().base_style);
++        a.style().size.width = Some(px(5.).into());
++        // No copy: the allocation became the element's own.
++        assert_eq!(Rc::as_ptr(&a.interactivity().base_style), taken);
++        assert_eq!(Rc::strong_count(&a.interactivity().base_style), 1);
++        let mut b = div();
++        assert_ne!(Rc::as_ptr(&b.interactivity().base_style), taken);
++        assert_eq!(*b.interactivity().base_style, StyleRefinement::default());
++        // Released at the end of a frame, the empty style lives only in its elements.
++        release_empty();
++        assert_eq!(Rc::strong_count(&b.interactivity().base_style), 1);
++    }
++
++    #[test]
++    fn a_recycled_refinement_nothing_holds_is_the_next_empty_one() {
++        release_empty();
++        let held = sized(3.0);
++        recycle_style_refinement(held.clone());
++        let fresh = empty();
++        assert!(!Rc::ptr_eq(&fresh, &held));
++        release_empty();
++        drop(fresh);
++        let free = sized(4.0);
++        let address = Rc::as_ptr(&free);
++        recycle_style_refinement(free);
++        let reused = empty();
++        assert_eq!(Rc::as_ptr(&reused), address);
++        assert_eq!(*reused, StyleRefinement::default());
++        assert_eq!(*held, *sized(3.0));
++        release_empty();
++    }
++
++    #[test]
++    fn a_released_spare_is_freed() {
++        release_empty();
++        let held = || {
++            SPARE.with(|spare| {
++                let kept = spare.take();
++                let held = kept.is_some();
++                spare.set(kept);
++                held
++            })
++        };
++        recycle_style_refinement(sized(5.0));
++        assert!(held(), "kept as the spare");
++        release_spare_style_refinement();
++        assert!(!held());
++        assert_eq!(*empty(), StyleRefinement::default());
++        release_empty();
++    }
++
 +    #[test]
 +    fn finished_divs_with_equal_styles_share_and_styling_after_copies() {
 +        use crate::{InteractiveElement, IntoElement, Styled, div};
@@ -20628,7 +20804,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_line_gap: false,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac32239808b03e
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d79991f08
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -20669,10 +20845,143 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +            }
 +
 +            if width - trailing_space > wrap_width && boundary > last_boundary {
-@@ -487 +512 @@
+@@ -487 +512,37 @@
 -#[derive(Clone, Default)]
++impl FrameCache {
++    /// KaminIDE patch: nothing laid out in this frame yet.
++    fn is_empty(&self) -> bool {
++        self.lines.is_empty()
++            && self.wrapped_lines.is_empty()
++            && self.used_lines.is_empty()
++            && self.used_wrapped_lines.is_empty()
++            && self.lines_by_hash.is_empty()
++            && self.wrapped_lines_by_hash.is_empty()
++            && self.used_lines_by_hash.is_empty()
++            && self.used_wrapped_lines_by_hash.is_empty()
++    }
++
++    /// KaminIDE patch: `range` starts this frame's uses, and the frame caches
++    /// as many layouts as it used, so every cached layout is in a use. (Equal
++    /// counts can still hide a layout cached without a use, after
++    /// `truncate_layouts`, next to one used twice: a swap then keeps that
++    /// layout one frame longer. The cache is keyed by every input of a
++    /// layout, so that changes only what a later frame finds cached.)
++    fn used_from_start(&self, range: &Range<LineLayoutIndex>) -> bool {
++        let (start, end) = (&range.start, &range.end);
++        start.lines_index == 0
++            && start.wrapped_lines_index == 0
++            && start.lines_by_hash_index == 0
++            && start.wrapped_lines_by_hash_index == 0
++            && end.lines_index <= self.used_lines.len()
++            && end.wrapped_lines_index <= self.used_wrapped_lines.len()
++            && end.lines_by_hash_index <= self.used_lines_by_hash.len()
++            && end.wrapped_lines_by_hash_index <= self.used_wrapped_lines_by_hash.len()
++            && self.lines.len() == self.used_lines.len()
++            && self.wrapped_lines.len() == self.used_wrapped_lines.len()
++            && self.lines_by_hash.len() == self.used_lines_by_hash.len()
++            && self.wrapped_lines_by_hash.len() == self.used_wrapped_lines_by_hash.len()
++    }
++}
++
 +#[derive(Clone, Default, PartialEq)]
-@@ -602 +627,7 @@
+@@ -530,12 +591,21 @@
+-        let mut current_frame = &mut *self.current_frame.write();
+-        let mut previous_frame = &mut *self.previous_frame.lock();
+-
+-        for key in &previous_frame.used_lines[range.start.lines_index..range.end.lines_index] {
+-            if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
+-                current_frame.lines.insert(key, line);
+-            }
+-            current_frame.used_lines.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_wrapped_lines
+-            [range.start.wrapped_lines_index..range.end.wrapped_lines_index]
++        let current_frame = &mut *self.current_frame.write();
++        let previous_frame = &mut *self.previous_frame.lock();
++
++        // KaminIDE patch: a subtree that replays the previous frame's layouts
++        // from its first one, before this frame laid out anything (a retained
++        // document replayed whole: its prepaint, then its paint), takes the
++        // whole previous frame in the same order: a swap of the frames, O(1)
++        // instead of two hash-map operations per line. Uses after `range`
++        // come along at the same positions, so the replay that follows reuses
++        // them in place; a frame that does not replay them only keeps them
++        // cached one frame longer.
++        if previous_frame.used_from_start(&range) && current_frame.is_empty() {
++            std::mem::swap(current_frame, previous_frame);
++            return;
++        }
++
++        // KaminIDE patch: a range the swap above already brought into this
++        // frame is past the previous frame's lists: nothing is left to reuse.
++        if let Some(keys) = previous_frame
++            .used_lines
++            .get(range.start.lines_index..range.end.lines_index)
+@@ -543,8 +613,11 @@
+-            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
+-                current_frame.wrapped_lines.insert(key, line);
+-            }
+-            current_frame.used_wrapped_lines.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_lines_by_hash
+-            [range.start.lines_by_hash_index..range.end.lines_by_hash_index]
++            for key in keys {
++                if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
++                    current_frame.lines.insert(key, line);
++                }
++                current_frame.used_lines.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_wrapped_lines
++            .get(range.start.wrapped_lines_index..range.end.wrapped_lines_index)
+@@ -552,8 +625,11 @@
+-            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
+-                current_frame.lines_by_hash.insert(key, line);
+-            }
+-            current_frame.used_lines_by_hash.push(key.clone());
+-        }
+-
+-        for key in &previous_frame.used_wrapped_lines_by_hash
+-            [range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index]
++            for key in keys {
++                if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
++                    current_frame.wrapped_lines.insert(key, line);
++                }
++                current_frame.used_wrapped_lines.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_lines_by_hash
++            .get(range.start.lines_by_hash_index..range.end.lines_by_hash_index)
+@@ -561,4 +637,18 @@
+-            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
+-                current_frame.wrapped_lines_by_hash.insert(key, line);
+-            }
+-            current_frame.used_wrapped_lines_by_hash.push(key.clone());
++            for key in keys {
++                if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
++                    current_frame.lines_by_hash.insert(key, line);
++                }
++                current_frame.used_lines_by_hash.push(key.clone());
++            }
++        }
++
++        if let Some(keys) = previous_frame
++            .used_wrapped_lines_by_hash
++            .get(range.start.wrapped_lines_by_hash_index..range.end.wrapped_lines_by_hash_index)
++        {
++            for key in keys {
++                if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
++                    current_frame.wrapped_lines_by_hash.insert(key, line);
++                }
++                current_frame.used_wrapped_lines_by_hash.push(key.clone());
++            }
+@@ -602 +692,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -20681,17 +20990,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +640 @@
+@@ -608,0 +705 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +646,5 @@
+@@ -613,0 +711,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +658 @@
+@@ -620,0 +723 @@
 +            letter_spacing,
-@@ -639 +677,7 @@
+@@ -639 +742,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -20700,9 +21009,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +                None,
 +                letter_spacing,
 +            );
-@@ -655,0 +700 @@
+@@ -655,0 +765 @@
 +                letter_spacing,
-@@ -673,0 +719,18 @@
+@@ -673,0 +784,18 @@
 +    ) -> Arc<LineLayout>
 +    where
 +        Text: AsRef<str>,
@@ -20721,23 +21030,23 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +        runs: &[FontRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -685,0 +749 @@
+@@ -685,0 +814 @@
 +            letter_spacing,
-@@ -689,0 +754,2 @@
+@@ -689,0 +819,2 @@
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -694,0 +761 @@
+@@ -694,0 +826 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -698,0 +766,3 @@
+@@ -698,0 +831,3 @@
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -702,0 +773,4 @@
+@@ -702,0 +838,4 @@
 +            crate::frame_perf::SHAPE_US.fetch_add(
 +                shape_started.elapsed().as_micros() as u32,
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
-@@ -705,0 +780,39 @@
+@@ -705,0 +845,39 @@
 +            }
 +
 +            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
@@ -20777,13 +21086,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +                if i == 0 {
 +                    layout.width += letter_spacing * (text.chars().count() as f32);
 +                }
-@@ -713,0 +827 @@
+@@ -713,0 +892 @@
 +                letter_spacing,
-@@ -927,0 +1042,3 @@
+@@ -927,0 +1107,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1047,7 @@
+@@ -929,0 +1112,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -20791,17 +21100,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1067,3 @@
+@@ -942,0 +1132,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1079,2 @@
+@@ -951,0 +1144,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1173 @@
+@@ -1043,0 +1238 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1069,0 +1200,8 @@
-+}
+@@ -1070,0 +1266,11 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -20809,8 +21117,158 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..1407473b987ac784423f239c9eac3223
 +    matches!(c as u32,
 +        0x0600..=0x08FF | 0x1800..=0x18AF
 +        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
-@@ -1094,0 +1233 @@
++}
++
++#[cfg(test)]
++mod reuse_tests;
+@@ -1094,0 +1301 @@
 +                font_size: px(16.),
+diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7fa3775e0d00017e9038623d384ae60c18a63d6b
+--- /dev/null
++++ b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
+@@ -0,0 +1,140 @@
++//! KaminIDE patch: reusing a frame's line layouts whole equals reusing them
++//! one by one, and a range past a frame reused whole reuses nothing.
++
++use super::*;
++use crate::NoopTextSystem;
++
++fn cache() -> LineLayoutCache {
++    LineLayoutCache::new(Arc::new(NoopTextSystem), Arc::new(AtomicUsize::new(0)))
++}
++
++fn line(cache: &LineLayoutCache, text: &'static str) -> Arc<LineLayout> {
++    let run = FontRun {
++        break_ligatures: true,
++        len: text.len(),
++        font_id: FontId(0),
++        font_size: px(0.),
++    };
++    cache.layout_line(text, px(16.), &[run], None)
++}
++
++fn used(frame: &FrameCache) -> Vec<String> {
++    frame
++        .used_lines
++        .iter()
++        .map(|key| key.text.to_string())
++        .collect()
++}
++
++fn cached(frame: &FrameCache) -> Vec<String> {
++    let mut texts: Vec<String> = frame.lines.keys().map(|key| key.text.to_string()).collect();
++    texts.sort();
++    texts
++}
++
++/// Lays out `texts` in a frame and finishes it; returns the frame's range.
++fn frame(cache: &LineLayoutCache, texts: &[&'static str]) -> Range<LineLayoutIndex> {
++    let start = cache.layout_index();
++    for text in texts {
++        line(cache, text);
++    }
++    let end = cache.layout_index();
++    cache.finish_frame();
++    start..end
++}
++
++#[test]
++fn reusing_a_whole_frame_keeps_every_layout_in_its_order() {
++    let cache = cache();
++    let start = cache.layout_index();
++    let first = line(&cache, "a");
++    line(&cache, "b");
++    let range = start..cache.layout_index();
++    cache.finish_frame();
++    cache.reuse_layouts(range.clone());
++    {
++        let current = cache.current_frame.read();
++        assert_eq!(used(&current), ["a", "b"]);
++        assert_eq!(cached(&current), ["a", "b"]);
++        assert!(cache.previous_frame.lock().lines.is_empty());
++    }
++    // The paint range after it is past the previous frame's lists now.
++    cache.reuse_layouts(range.end.clone()..range.end.clone());
++    // Reused layouts are the same allocations, found without shaping again.
++    assert!(Arc::ptr_eq(&line(&cache, "a"), &first));
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++    // The next frame replays the same range again.
++    cache.finish_frame();
++    cache.reuse_layouts(range);
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++}
++
++#[test]
++fn reusing_a_frame_from_its_start_then_the_rest_keeps_it_whole() {
++    // A replayed retained document reuses its prepaint lines, then its paint
++    // lines; the swap on the first range brings both along in place.
++    let cache = cache();
++    let start = cache.layout_index();
++    let first = line(&cache, "a");
++    let middle = cache.layout_index();
++    line(&cache, "b");
++    let end = cache.layout_index();
++    cache.finish_frame();
++    cache.reuse_layouts(start.clone()..middle.clone());
++    let after_prepaint = cache.layout_index();
++    cache.reuse_layouts(middle..end.clone());
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a", "b"]);
++    assert!(cache.previous_frame.lock().lines.is_empty());
++    assert!(Arc::ptr_eq(&line(&cache, "a"), &first));
++    // The next frame records the whole frame under the prepaint range.
++    cache.truncate_layouts(end.clone());
++    cache.finish_frame();
++    cache.reuse_layouts(start..after_prepaint.clone());
++    assert_eq!(after_prepaint.lines_index, end.lines_index);
++    assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
++}
++
++#[test]
++fn reusing_part_of_a_frame_moves_only_that_part() {
++    let cache = cache();
++    let start = cache.layout_index();
++    line(&cache, "a");
++    let middle = cache.layout_index();
++    line(&cache, "b");
++    let end = cache.layout_index();
++    cache.finish_frame();
++    cache.reuse_layouts(middle.clone()..end.clone());
++    assert_eq!(used(&cache.current_frame.read()), ["b"]);
++    assert_eq!(cached(&cache.previous_frame.lock()), ["a"]);
++    cache.reuse_layouts(start..middle);
++    assert_eq!(used(&cache.current_frame.read()), ["b", "a"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a", "b"]);
++}
++
++#[test]
++fn a_frame_that_laid_out_lines_already_reuses_one_by_one() {
++    let cache = cache();
++    let range = frame(&cache, &["a", "b"]);
++    line(&cache, "c");
++    cache.reuse_layouts(range);
++    assert_eq!(used(&cache.current_frame.read()), ["c", "a", "b"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a", "b", "c"]);
++}
++
++#[test]
++fn a_frame_with_a_layout_cached_twice_is_not_swapped() {
++    let cache = cache();
++    let start = cache.layout_index();
++    line(&cache, "a");
++    line(&cache, "b");
++    // A truncated tail leaves "b" cached without a use.
++    let mut index = cache.layout_index();
++    index.lines_index = 1;
++    cache.truncate_layouts(index.clone());
++    cache.finish_frame();
++    cache.reuse_layouts(start..index);
++    assert_eq!(used(&cache.current_frame.read()), ["a"]);
++    assert_eq!(cached(&cache.current_frame.read()), ["a"]);
++    assert_eq!(cached(&cache.previous_frame.lock()), ["b"]);
++}
 diff --git a/vendor/gpui/src/text_system/line_wrapper.rs b/vendor/gpui/src/text_system/line_wrapper.rs
 index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb6bd59522
 --- a/vendor/gpui/src/text_system/line_wrapper.rs
@@ -21165,7 +21623,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b21202ac24
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..a41412d30cf643c99e365f85315746eccaea0623
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -21544,23 +22002,26 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3305,0 +3580,4 @@
-+        self.with_paint_pass(|window| window.draw_frame(cx))
+@@ -3305,0 +3580,7 @@
++        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
++        // KaminIDE patch: the empty base style new elements share must not outlive them.
++        crate::elements::refinement_share::release_empty();
++        drawn
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3354,0 +3633,4 @@
+@@ -3354,0 +3636,4 @@
 +        }
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            return arena_scope.exit(&cx.element_arena);
-@@ -3395,0 +3678 @@
+@@ -3395,0 +3681 @@
 +        self.frame_serial += 1;
-@@ -3554,3 +3836,0 @@
+@@ -3554,3 +3839,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +3859,16 @@
+@@ -3579,37 +3862,16 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -21614,27 +22075,27 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +3876,4 @@
+@@ -3616,0 +3879,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3619,0 +3883 @@
+@@ -3619,0 +3886 @@
 +        let _paint_started = std::time::Instant::now();
-@@ -3620,0 +3885,4 @@
+@@ -3620,0 +3888,4 @@
 +        crate::frame_perf::PAINT_US.fetch_add(
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +4032,3 @@
+@@ -3763,0 +4035,3 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
-@@ -3768,2 +4039 @@
+@@ -3768,2 +4042 @@
 -                    self.text_style_stack
 -                        .clone_from(&deferred_draw.text_style_stack);
 +                    self.text_style_stack = deferred_draw.text_style_stack.clone();
-@@ -3783,4 +4053,8 @@
+@@ -3783,4 +4056,8 @@
 -                    self.with_rendered_view(current_view, |window| {
 -                        window.with_rem_size(Some(rem_size), |window| {
 -                            window.with_absolute_element_offset(absolute_offset, |window| {
@@ -21647,13 +22108,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +                                window.with_absolute_element_offset(absolute_offset, |window| {
 +                                    element.prepaint(window, cx);
 +                                });
-@@ -3800 +4074 @@
+@@ -3800 +4077 @@
 -            self.text_style_stack.clear();
 +            self.text_style_stack = TextStyleScope::default();
-@@ -3817,0 +4092,2 @@
+@@ -3817,0 +4095,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3827,5 +4103,7 @@
+@@ -3827,5 +4106,7 @@
 -                self.with_rendered_view(deferred_draw.current_view, |window| {
 -                    window.with_content_mask(content_mask, |window| {
 -                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
@@ -21666,7 +22127,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +                                element.paint(window, cx);
 +                            });
 +                        })
-@@ -3862,0 +4141,12 @@
+@@ -3862,0 +4144,12 @@
 +        for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
 +            if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
 +                self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
@@ -21679,10 +22140,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
 +            }
 +        }
-@@ -3901,0 +4192,2 @@
+@@ -3901,0 +4195,2 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
 +                    layout_owner: deferred_draw.layout_owner.clone(),
-@@ -3972,0 +4265,19 @@
+@@ -3972,0 +4268,19 @@
 +    /// KaminIDE patch: read the host context of type `T` for this traversal.
 +    /// Values belong to this window; callers retain ownership through `Rc`.
 +    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
@@ -21702,7 +22163,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        self.with_restore(scope, |_, _| {}, f).0
 +    }
 +
-@@ -3982,4 +4293,3 @@
+@@ -3982,4 +4296,3 @@
 -            self.text_style_stack.push(style);
 -            let result = f(self);
 -            self.text_style_stack.pop();
@@ -21710,7 +22171,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            let inner = self.text_style_stack.push(style);
 +            let outer = std::mem::replace(&mut self.text_style_stack, inner);
 +            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
-@@ -3988,0 +4299,24 @@
+@@ -3988,0 +4302,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -21735,7 +22196,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack = self.text_style_stack.push(style.clone());
-@@ -4034,0 +4369,8 @@
+@@ -4034,0 +4372,8 @@
 +        let depth = self.content_mask_stack.len();
 +        let _clip_scope = self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -21744,7 +22205,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
-@@ -4036,5 +4378,12 @@
+@@ -4036,5 +4381,12 @@
 -            let mask = mask.intersect(&self.content_mask());
 -            self.content_mask_stack.push(mask);
 -            let result = f(self);
@@ -21762,7 +22223,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            let scope = self.segment_clip_scope(mask, false);
 +            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
 +            scope
-@@ -4042,2 +4391,136 @@
+@@ -4042,2 +4394,136 @@
 -            f(self)
 -        }
 +            None
@@ -21901,7 +22362,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4544,19 @@
+@@ -4060,0 +4547,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -21921,21 +22382,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4574 @@
+@@ -4071,0 +4577 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4576 @@
+@@ -4073,3 +4579 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4592 @@
+@@ -4091,3 +4595 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4106,0 +4606 @@
+@@ -4106,0 +4609 @@
 +            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
-@@ -4147 +4647,10 @@
+@@ -4147 +4650,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -21947,7 +22408,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4667,56 @@
+@@ -4157,0 +4670,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -22004,26 +22465,26 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4168,2 +4733 @@
+@@ -4168,2 +4736 @@
 -    /// Obtain the current element opacity. This method should only be called during the
 -    /// prepaint phase of element drawing.
 +    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
-@@ -4171 +4735 @@
+@@ -4171 +4738 @@
 -    pub(crate) fn element_opacity(&self) -> f32 {
 +    pub fn element_opacity(&self) -> f32 {
-@@ -4178,0 +4743 @@
+@@ -4178,0 +4746 @@
 +        if let Some(mask) = self.segment_capture_mask() { return mask; }
-@@ -4196,0 +4762 @@
+@@ -4196,0 +4765 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +4764 @@
+@@ -4198,3 +4767 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4383,0 +4948,2 @@
+@@ -4383,0 +4951,2 @@
 +            render_contexts: self.render_contexts.snapshot(),
 +            layout_owner: self.retained_layout(),
-@@ -4405,12 +4971,91 @@
+@@ -4405,12 +4974,91 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -22127,7 +22588,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4554,2 +5199,8 @@
+@@ -4554,2 +5202,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -22138,24 +22599,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5208 @@
+@@ -4556,0 +5211 @@
 +            transformation,
-@@ -4558,2 +5210,2 @@
+@@ -4558,2 +5213,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5214,2 @@
+@@ -4562,2 +5217,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5219,3 @@
+@@ -4567 +5222,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5333,9 @@
+@@ -4678,0 +5336,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
@@ -22165,7 +22626,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
 +    }
 +
-@@ -4699,14 +5362,32 @@
+@@ -4699,14 +5365,32 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -22212,7 +22673,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            )
 +        };
 +        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
-@@ -4738 +5419,6 @@
+@@ -4738 +5422,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -22220,13 +22681,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5434 @@
+@@ -4748 +5437 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5444 @@
+@@ -4758 +5447 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4763,19 +5448,0 @@
+@@ -4763,19 +5451,0 @@
 -    }
 -
 -    fn should_use_subpixel_rendering(&self, font_id: FontId, font_size: Pixels) -> bool {
@@ -22246,7 +22707,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 -        };
 -
 -        mode == TextRenderingMode::Subpixel
-@@ -4798,0 +5466,14 @@
+@@ -4798,0 +5469,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -22261,11 +22722,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5484,2 @@
+@@ -4803 +5487,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5511,4 @@
+@@ -4829,3 +5514,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -22273,14 +22734,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5516 @@
+@@ -4832,0 +5519 @@
 +                transformation,
-@@ -5003,0 +5688,2 @@
+@@ -5003,0 +5691,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5691 @@
+@@ -5004,0 +5694 @@
 +            transformation,
-@@ -5016,0 +5704,71 @@
+@@ -5016,0 +5707,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -22352,7 +22813,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5777,219 @@
+@@ -5018,0 +5780,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -22572,7 +23033,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        result
 +    }
 +
-@@ -5076,0 +6054,22 @@
+@@ -5076,0 +6057,22 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -22595,7 +23056,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6082,26 @@
+@@ -5082,0 +6085,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -22622,7 +23083,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6115,66 @@
+@@ -5089,0 +6118,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -22689,10 +23150,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6200,2 @@
+@@ -5108,0 +6203,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6205,229 @@
+@@ -5112 +6208,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -22923,7 +23384,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6454,48 @@
+@@ -5132,0 +6457,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -22972,7 +23433,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6516,6 @@
+@@ -5147,2 +6519,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -22981,7 +23442,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6542,6 @@
+@@ -5169 +6545,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -22989,7 +23450,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6590,16 @@
+@@ -5211,0 +6593,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -23006,51 +23467,51 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..e5124adf0b6f98ba8d6f28b02df0f7b2
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6618 @@
+@@ -5223,0 +6621 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6620 @@
+@@ -5225,3 +6623 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6629 @@
+@@ -5235,0 +6632 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6631 @@
+@@ -5237,3 +6634 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +6851,2 @@
+@@ -5458,0 +6854,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7187,5 @@
+@@ -5792,0 +7190,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -6132 +7531 @@
+@@ -6132 +7534 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7543 @@
+@@ -6144 +7546 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7563 @@
+@@ -6164 +7566 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +7795 @@
+@@ -6396 +7798 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +7818 @@
+@@ -6419 +7821 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +7997 @@
+@@ -6598 +8000 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8100 @@
+@@ -6701 +8103 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -7752,0 +9152,31 @@
+@@ -7752,0 +9155,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {

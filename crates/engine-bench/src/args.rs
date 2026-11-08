@@ -2,8 +2,14 @@
 
 use std::path::PathBuf;
 
+/// Наименьшее окно устойчивой памяти (`--memory-settle-ms`) после последнего кадра.
+/// mimalloc возвращает освобождённые страницы с задержкой около 1 с, поэтому более
+/// короткое окно меряет время кадров, а не память: быстрый кандидат выглядел
+/// тяжелее базы. 2 с — то же окно, что у замера браузеров после загрузки.
+pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
+
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
@@ -53,9 +59,9 @@ mod tests {
     #[test]
     fn memory_audit_requires_five_warm_frames_and_a_bounded_hold() {
         for options in [
-            vec!["--runs", "4", "--memory-settle-ms", "1"],
-            vec!["--mode", "cold", "--memory-settle-ms", "1"],
-            vec!["--mode", "relayout", "--memory-settle-ms", "1"],
+            vec!["--runs", "4", "--memory-settle-ms", "2000"],
+            vec!["--mode", "cold", "--memory-settle-ms", "2000"],
+            vec!["--mode", "relayout", "--memory-settle-ms", "2000"],
             vec!["--memory-settle-ms", "0"],
             vec!["--memory-settle-ms", "60001"],
         ] {
@@ -68,6 +74,27 @@ mod tests {
             .unwrap();
             assert!(error.to_string().contains("memory audit"));
         }
+    }
+
+    /// mimalloc отдаёт страницы через ~1 с: окно короче 2 с меряет время кадров.
+    #[test]
+    fn memory_audit_window_is_at_least_the_two_second_steady_window() {
+        let page = std::env::temp_dir().join("engine-bench-settle-window-test.html");
+        std::fs::write(&page, "<p>x</p>").unwrap();
+        let parse = |ms: &str| {
+            Args::parse(
+                [page.to_str().unwrap(), "--memory-settle-ms", ms]
+                    .into_iter()
+                    .map(str::to_owned),
+            )
+        };
+        for short in ["1", "500", "1999"] {
+            let error = parse(short).err().unwrap().to_string();
+            assert!(error.contains("memory audit hold must be 2000"), "{error}");
+        }
+        let args = parse("2000").unwrap().unwrap();
+        assert_eq!(args.memory_settle_ms, super::MEMORY_STEADY_WINDOW_MS);
+        std::fs::remove_file(&page).unwrap();
     }
 }
 
@@ -151,8 +178,11 @@ impl Args {
                 "--snapshot" => out.snapshot = Some(value.into()),
                 "--memory-settle-ms" => {
                     out.memory_settle_ms = value.parse()?;
-                    if !(1..=60_000).contains(&out.memory_settle_ms) {
-                        return Err("memory audit hold must be 1..60000 milliseconds".into());
+                    if !(MEMORY_STEADY_WINDOW_MS..=60_000).contains(&out.memory_settle_ms) {
+                        return Err(format!(
+                            "memory audit hold must be {MEMORY_STEADY_WINDOW_MS}..60000 milliseconds"
+                        )
+                        .into());
                     }
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),

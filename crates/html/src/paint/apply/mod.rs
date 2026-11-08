@@ -11,6 +11,7 @@ use crate::style::values::value::Len;
 use crate::values::ValueCx;
 use gpui::{Div, InteractiveElement, ParentElement, Styled, px, relative};
 mod contained_intrinsic;
+pub(crate) mod conversion;
 pub(crate) mod intrinsic_size;
 use crate::paint::apply::contained_intrinsic::empty_contained_size;
 mod flex_cross_default;
