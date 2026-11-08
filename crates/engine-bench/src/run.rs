@@ -73,11 +73,12 @@ pub(super) async fn sample(
             }
             if let Step::Cold(markup) = step {
                 let t = Instant::now();
+                let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
                     match markup {
-                        Some(html) => html.to_owned(),
-                        None => resources::read(&args.path)?,
+                        Some(html) => html.into(),
+                        None => resources::read_into(&args.path, &mut source)?,
                     }
                 };
                 resources_time = Some(t.elapsed());
