@@ -155,13 +155,23 @@ impl Arena {
     fn force_clear(&mut self) {
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
+        let used_elements = self.elements.len();
         self.elements.clear();
         // KaminIDE patch: drop elements before returning their backing chunks.
-        // Keep one normal frame chunk, rather than a permanent high-water mark.
-        self.chunks.truncate(1);
-        self.chunks.shrink_to_fit();
-        self.elements.shrink_to(1024);
-        self.chunks[0].reset();
+        // Keep the chunks the cleared frame used, not a permanent high-water
+        // mark: the next frame of the same document reuses them instead of
+        // allocating and freeing its whole element tree again (Gecko keeps
+        // display items in recycler lists of the retained builder's arena,
+        // layout/base/nsPresArena.h:29). A smaller frame returns the rest at
+        // its own clear, so an empty document is back to one chunk.
+        self.chunks.truncate(self.current_chunk_index + 1);
+        for chunk in &mut self.chunks {
+            chunk.reset();
+        }
+        let keep = used_elements.max(1024);
+        if self.elements.capacity() > 2 * keep {
+            self.elements.shrink_to(keep);
+        }
         self.current_chunk_index = 0;
     }
 
@@ -320,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_returns_overflow_chunks_after_dropping_elements() {
+    fn test_clear_keeps_the_last_frame_chunks_and_returns_unused_ones() {
         struct Value(Rc<Cell<usize>>);
         impl Drop for Value {
             fn drop(&mut self) {
@@ -342,11 +352,31 @@ mod tests {
         arena.clear();
         assert_eq!(drops.get(), 2);
         assert!(!first.valid.get() && !second.valid.get());
-        assert_eq!(arena.capacity(), std::mem::size_of::<Value>());
+        // The two-chunk frame keeps its chunks for the next frame.
+        assert_eq!(arena.capacity(), 2 * std::mem::size_of::<Value>());
         let next = arena.alloc(|| Value(drops.clone()));
         assert!(next.valid.get());
         arena.clear();
         assert_eq!(drops.get(), 3);
+        // A one-chunk frame returns the chunk it did not use.
+        assert_eq!(arena.capacity(), std::mem::size_of::<Value>());
+    }
+
+    #[test]
+    fn test_steady_frames_reuse_chunks_without_allocating() {
+        let mut arena = Arena::new(16);
+        for _ in 0..4 {
+            arena.alloc(|| 1u64);
+        }
+        arena.clear();
+        let chunks: Vec<*mut u8> = arena.chunks.iter().map(|c| c.start).collect();
+        assert_eq!(chunks.len(), 2);
+        for _ in 0..4 {
+            arena.alloc(|| 2u64);
+        }
+        arena.clear();
+        let again: Vec<*mut u8> = arena.chunks.iter().map(|c| c.start).collect();
+        assert_eq!(again, chunks);
     }
 
     #[test]
