@@ -36,6 +36,13 @@ pub fn recycle_style_refinement(mut style: Rc<StyleRefinement>) {
     }
 }
 
+/// KaminIDE patch: free the recycled allocation (`recycle_style_refinement`) when its owner
+/// stops recycling (a style memory cleared at the end of a document build): it serves only
+/// elements built after it, so it must not live on to the end of the frame.
+pub fn release_spare_style_refinement() {
+    SPARE.with(|spare| drop(spare.take()));
+}
+
 /// A new empty refinement, in the recycled allocation when there is one.
 fn new_empty() -> Rc<StyleRefinement> {
     match SPARE.with(Cell::take) {
@@ -346,6 +353,25 @@ mod tests {
         assert_eq!(Rc::as_ptr(&reused), address);
         assert_eq!(*reused, StyleRefinement::default());
         assert_eq!(*held, *sized(3.0));
+        release_empty();
+    }
+
+    #[test]
+    fn a_released_spare_is_freed() {
+        release_empty();
+        let held = || {
+            SPARE.with(|spare| {
+                let kept = spare.take();
+                let held = kept.is_some();
+                spare.set(kept);
+                held
+            })
+        };
+        recycle_style_refinement(sized(5.0));
+        assert!(held(), "kept as the spare");
+        release_spare_style_refinement();
+        assert!(!held());
+        assert_eq!(*empty(), StyleRefinement::default());
         release_empty();
     }
 

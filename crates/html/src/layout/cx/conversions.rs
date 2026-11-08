@@ -114,9 +114,10 @@ impl StyleConversions {
         (self.builds.get() > 0).then_some(self)
     }
 
-    /// Forget every candidate and free their memory.
+    /// Forget every candidate and free their memory, with the style recycled from them.
     fn clear(&self) {
         drop(self.recent.take());
+        gpui::release_spare_style_refinement();
         self.next.set(0);
         self.balance.set(0);
         self.passed.set(0);

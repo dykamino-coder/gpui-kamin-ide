@@ -9856,23 +9856,23 @@ index 0000000000000000000000000000000000000000..cf326ec21a6f320e54ff5e2049d42ec6
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/mod.rs b/vendor/gpui/src/elements/mod.rs
-index 8a2a1b70a7bf28464547009020efa9caff8f0cff..de1b983384908c4276742570496fc8f483e0d837
+index 8a2a1b70a7bf28464547009020efa9caff8f0cff..26cfef212095dde1037dc8e594d7c7f1784a1815
 --- a/vendor/gpui/src/elements/mod.rs
 +++ b/vendor/gpui/src/elements/mod.rs
 @@ -9,0 +10,5 @@
 +// KaminIDE patch: equal div base styles share one allocation.
 +pub(crate) mod refinement_share;
-+pub use refinement_share::recycle_style_refinement;
++pub use refinement_share::{recycle_style_refinement, release_spare_style_refinement};
 +// KaminIDE patch: второй проход краски детей `Div`.
 +pub(crate) mod context_scope;
 @@ -23,0 +29 @@
 +pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 diff --git a/vendor/gpui/src/elements/refinement_share.rs b/vendor/gpui/src/elements/refinement_share.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9e8409877b95a7d595ffdd2aa8067daa4952a799
+index 0000000000000000000000000000000000000000..a7ccb3d4574ac0ce71143bf2f6eb9a4d2ab6dd52
 --- /dev/null
 +++ b/vendor/gpui/src/elements/refinement_share.rs
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,390 @@
 +//! KaminIDE patch: equal div base style refinements share one allocation.
 +//!
 +//! Every `Div` owned the refinement it was styled with (about 480 bytes), although the boxes
@@ -9909,6 +9909,13 @@ index 0000000000000000000000000000000000000000..9e8409877b95a7d595ffdd2aa8067daa
 +    if Rc::get_mut(&mut style).is_some() {
 +        SPARE.with(|spare| spare.set(Some(style)));
 +    }
++}
++
++/// KaminIDE patch: free the recycled allocation (`recycle_style_refinement`) when its owner
++/// stops recycling (a style memory cleared at the end of a document build): it serves only
++/// elements built after it, so it must not live on to the end of the frame.
++pub fn release_spare_style_refinement() {
++    SPARE.with(|spare| drop(spare.take()));
 +}
 +
 +/// A new empty refinement, in the recycled allocation when there is one.
@@ -10221,6 +10228,25 @@ index 0000000000000000000000000000000000000000..9e8409877b95a7d595ffdd2aa8067daa
 +        assert_eq!(Rc::as_ptr(&reused), address);
 +        assert_eq!(*reused, StyleRefinement::default());
 +        assert_eq!(*held, *sized(3.0));
++        release_empty();
++    }
++
++    #[test]
++    fn a_released_spare_is_freed() {
++        release_empty();
++        let held = || {
++            SPARE.with(|spare| {
++                let kept = spare.take();
++                let held = kept.is_some();
++                spare.set(kept);
++                held
++            })
++        };
++        recycle_style_refinement(sized(5.0));
++        assert!(held(), "kept as the spare");
++        release_spare_style_refinement();
++        assert!(!held());
++        assert_eq!(*empty(), StyleRefinement::default());
 +        release_empty();
 +    }
 +
