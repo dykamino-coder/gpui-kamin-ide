@@ -22,6 +22,13 @@ pub(crate) fn apply_opacity(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
 
 pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     d.style().snap_to_device_pixels = Some(true);
+    d = child_paint_policy(d, c);
+    paint_values(d, c, vcx)
+}
+
+/// The order in which the box paints its children (`coordinator::box_policy`): the only
+/// part of the element conversion that is not its style.
+pub(crate) fn child_paint_policy(d: Div, c: &BoxStyle) -> Div {
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
     // "paint exactly the same as inline blocks"): the box's own line content
@@ -46,7 +53,10 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
                     | Some(Position::Fixed)
                     | Some(Position::Sticky)
             ));
-    d = crate::paint::coordinator::box_policy(d, atomic, stacking);
+    crate::paint::coordinator::box_policy(d, atomic, stacking)
+}
+
+fn paint_values(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).

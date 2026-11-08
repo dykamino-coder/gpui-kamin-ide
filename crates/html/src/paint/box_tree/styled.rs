@@ -11,9 +11,10 @@ use crate::layout::block::margin_height;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
-use crate::paint::apply::{apply_for_decorations_with_dimensions, apply_hover};
+use crate::paint::apply::apply_hover;
+use crate::paint::apply::conversion::converted_div;
 use crate::paint::decorations::decorations;
-use gpui::{ParentElement, Styled, div};
+use gpui::{ParentElement, Styled};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
@@ -81,7 +82,8 @@ pub(crate) fn styled_div_with_dimensions(
     let auto_height = margin_height::used_style(e, paint);
     let paint = auto_height.as_ref().unwrap_or(paint);
     let dimensions = dimensions.unwrap_or_else(|| BoxDimensions::for_element(e, paint));
-    let mut d = apply_for_decorations_with_dimensions(div(), paint, Some(dimensions), vcx);
+    let memo = cx.layout().conversions.active();
+    let mut d = converted_div(paint, dimensions, vcx, memo);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords =
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));

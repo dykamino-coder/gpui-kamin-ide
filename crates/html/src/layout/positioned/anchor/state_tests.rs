@@ -97,3 +97,14 @@ fn deferred_context_restores_the_original_stack_without_changing_another_documen
     assert_eq!(tf_map(rect, av).0.origin, point(px(32.), px(43.)));
     assert_eq!(tf_map(rect, bv).0.origin, point(px(52.), px(63.)));
 }
+
+#[test]
+fn the_document_pays_the_conversion_memory_with_its_registry_hashers() {
+    use std::mem::size_of;
+    type Std<V> = std::cell::RefCell<std::collections::HashMap<u64, V>>;
+    type Node<V> = std::cell::RefCell<super::state::NodeMap<V>>;
+    // Six registries hash node ids with a zero-sized builder instead of `RandomState`.
+    let saved = 6 * (size_of::<Std<u64>>() - size_of::<Node<u64>>());
+    let memory = size_of::<crate::layout::cx::conversions::StyleConversions>();
+    assert!(memory <= saved, "memory {memory} > saved {saved}");
+}
