@@ -38,8 +38,7 @@ pub(super) fn enter<'a>(
     if DROP_TAGS.contains(&tag.as_str()) {
         return None;
     }
-    // One shared list for the ancestor entry, the sharing cache and the element.
-    let attrs: crate::dom::SharedAttrs = element_attrs(&attrs.borrow()).into();
+    let attrs: crate::dom::ElementAttrs = element_attrs(&attrs.borrow()).into();
     let mut me = element_ancestor(
         handle,
         &tag,

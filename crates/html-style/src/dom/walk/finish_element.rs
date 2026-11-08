@@ -16,7 +16,7 @@ pub(super) fn finish_element(
     mut style: Box<Computed>,
     mut children: Vec<Node>,
     tag: String,
-    attrs: crate::dom::SharedAttrs,
+    attrs: crate::dom::ElementAttrs,
     anim: Option<Vec<(f32, Computed)>>,
     list_item: Option<i64>,
     node_id: u64,

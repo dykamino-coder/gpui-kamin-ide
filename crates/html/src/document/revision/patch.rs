@@ -10,8 +10,8 @@ pub(super) type Attrs = Vec<(String, String)>;
 pub(super) struct Target {
     pub(super) tag: String,
     pub(super) old: Attrs,
-    /// Shared by every box copy the patch writes: one list per edit, not per copy.
-    pub(super) new: crate::dom::SharedAttrs,
+    /// Built once per edit in element storage; each box copy takes a copy of it (one exact block).
+    pub(super) new: crate::dom::ElementAttrs,
 }
 
 /// Атрибуты новой ревизии у каждого узла коробок адресуемого элемента: у

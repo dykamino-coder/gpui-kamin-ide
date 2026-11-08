@@ -1,12 +1,12 @@
-//! Tests of the shared element name and attribute list.
+//! Tests of the element name and attribute list storage.
 
-use super::{SharedAttrs, Tag};
+use super::{ElementAttrs, Tag};
 
 #[test]
-fn copies_share_until_one_is_written() {
-    let a: SharedAttrs = vec![("class".into(), "row".into())].into();
+fn a_write_reaches_only_its_own_copy() {
+    let a: ElementAttrs = vec![("class".into(), "row".into())].into();
     let mut b = a.clone();
-    assert!(std::ptr::eq(&*a, &*b), "a copy shares the attributes");
+    assert_eq!(a, b);
     b.edit().push(("id".into(), "x".into()));
     assert_eq!(a.len(), 1, "a write does not reach the other copy");
     assert_eq!(b.len(), 2);
@@ -17,7 +17,7 @@ fn copies_share_until_one_is_written() {
     assert!(c.is_empty());
     assert_eq!(
         c,
-        SharedAttrs::default(),
+        ElementAttrs::default(),
         "an emptied list is the empty list"
     );
     assert_eq!(a[0].1, "row");
@@ -32,11 +32,11 @@ fn names_and_empty_attribute_lists_cost_no_allocation_per_element() {
     let custom: Tag = "x-a-rather-long-custom-element".into();
     assert_eq!(custom.as_str(), "x-a-rather-long-custom-element");
     assert_ne!(custom, a);
-    let empty: SharedAttrs = Vec::new().into();
+    let empty: ElementAttrs = Vec::new().into();
     assert!(empty.is_empty());
-    assert_eq!(empty, SharedAttrs::default());
+    assert_eq!(empty, ElementAttrs::default());
     assert_eq!(
-        std::mem::size_of::<SharedAttrs>(),
+        std::mem::size_of::<ElementAttrs>(),
         16,
         "a list is one pointer and a count"
     );

@@ -1,23 +1,29 @@
-//! Node fields shared between the copies box construction makes of an element.
+//! Element name and attribute storage of styled nodes.
 //!
 //! Box construction (anonymous boxes, block-in-inline splits, margin collapsing, layers)
 //! works on lists of nodes and copies elements it rearranges. CSS Display 3 §2 generates
 //! boxes *from* the styled element; Blink's LayoutObject and Servo's box tree reference the
-//! node instead of copying it. The tag and attributes of an element never change during
-//! construction, so a copy shares them. A rare writer replaces the tag or edits a copy of the
-//! attributes ([`SharedAttrs::edit`]).
+//! node instead of copying it. The tag of an element never changes during construction, so a
+//! copy shares it. A rare writer replaces the tag or edits the attributes ([`ElementAttrs::edit`]).
 //!
 //! Construction must not cost more than the plain values did. An element name is the parser's
 //! own atom ([`Tag`] over `LocalName`, as Servo keeps names; Blink and Gecko intern them too):
 //! the names of the HTML, SVG and MathML vocabularies are static, short names are inline, so a
-//! name costs no allocation per element. An empty attribute list is no allocation; a non-empty
-//! one is a single allocation holding the count and the pairs (`Rc<[Attr]>`).
+//! name costs no allocation per element.
+//!
+//! Attributes: on the measured corpus almost every element has none or one (selectors-3200:
+//! 80 001 of 80 006 elements have one). Blink gives an element without attributes no
+//! ElementData at all (third_party/blink/renderer/core/dom/element_data.h:88, `Attributes()`
+//! of the shareable and unique variants at :254/:258). Here an empty list is no allocation and
+//! a non-empty one is one exact-size block of the pairs with no reference-count header
+//! (`Box<[Attr]>`, 16 bytes in the element instead of a vector's 24). A shared `Rc<[Attr]>`
+//! made copies free but added a 16-byte header to every element's list, which raised the
+//! style-phase heap peak; a copy now costs what a vector copy did.
 
 use html5ever::LocalName;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 /// One attribute of an element: name, value.
 pub type Attr = (String, String);
@@ -145,29 +151,29 @@ impl std::borrow::Borrow<str> for Tag {
     }
 }
 
-/// Attribute list held by an element and shared by its copies; empty without an allocation.
+/// Attribute list of an element: empty without an allocation, otherwise one exact-size block.
 #[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SharedAttrs(Option<Rc<[Attr]>>);
+pub struct ElementAttrs(Option<Box<[Attr]>>);
 
-impl SharedAttrs {
-    /// A copy of the list for changing, adding or removing attributes; it replaces this
-    /// element's list when the returned guard drops, and other holders keep theirs.
+impl ElementAttrs {
+    /// The list as a vector for changing, adding or removing attributes (no copy: the block
+    /// becomes the vector); it is stored back when the returned guard drops.
     pub fn edit(&mut self) -> AttrsEdit<'_> {
-        let list = self.to_vec();
+        let list = self.0.take().map(Vec::from).unwrap_or_default();
         AttrsEdit { target: self, list }
     }
 }
 
-impl Deref for SharedAttrs {
+impl Deref for ElementAttrs {
     type Target = [Attr];
     fn deref(&self) -> &[Attr] {
         self.0.as_deref().unwrap_or(&[])
     }
 }
 
-/// Attribute list being edited through [`SharedAttrs::edit`].
+/// Attribute list being edited through [`ElementAttrs::edit`].
 pub struct AttrsEdit<'a> {
-    target: &'a mut SharedAttrs,
+    target: &'a mut ElementAttrs,
     list: Attrs,
 }
 
@@ -190,19 +196,19 @@ impl Drop for AttrsEdit<'_> {
     }
 }
 
-impl From<Attrs> for SharedAttrs {
+impl From<Attrs> for ElementAttrs {
     fn from(value: Attrs) -> Self {
-        Self((!value.is_empty()).then(|| Rc::from(value)))
+        Self((!value.is_empty()).then(|| value.into_boxed_slice()))
     }
 }
 
-impl fmt::Debug for SharedAttrs {
+impl fmt::Debug for ElementAttrs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'a> IntoIterator for &'a SharedAttrs {
+impl<'a> IntoIterator for &'a ElementAttrs {
     type Item = &'a Attr;
     type IntoIter = std::slice::Iter<'a, Attr>;
     fn into_iter(self) -> Self::IntoIter {
@@ -210,7 +216,7 @@ impl<'a> IntoIterator for &'a SharedAttrs {
     }
 }
 
-impl FromIterator<Attr> for SharedAttrs {
+impl FromIterator<Attr> for ElementAttrs {
     fn from_iter<I: IntoIterator<Item = Attr>>(iter: I) -> Self {
         iter.into_iter().collect::<Attrs>().into()
     }
