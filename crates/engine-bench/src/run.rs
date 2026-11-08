@@ -73,11 +73,12 @@ pub(super) async fn sample(
             }
             if let Step::Cold(markup) = step {
                 let t = Instant::now();
+                let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
                     match markup {
-                        Some(html) => html.to_owned(),
-                        None => resources::read(&args.path)?,
+                        Some(html) => html.into(),
+                        None => resources::read_into(&args.path, &mut source)?,
                     }
                 };
                 resources_time = Some(t.elapsed());
@@ -112,7 +113,8 @@ pub(super) async fn sample(
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
     let work = window.read_with(cx, |view, _| {
-        work.finish(matches!(step, Step::Cold(_)), &view.doc)
+        // Document phases ran in cold and in edit (`Document::update`) samples.
+        work.finish(!matches!(step, Step::Warm), &view.doc)
     })?;
     let after = Counters::read(capture);
     let frame = capture
@@ -177,6 +179,8 @@ pub(super) async fn run(
     window.update(cx, |_, window, _| window.refresh())?;
     wait(cx, seq, capture).await?;
     startup_timings.mark("initial_empty_gpu_frame");
+    // Замер начинается в покое платформы (без презентов буста после WM_SIZE).
+    startup_timings.settle(cx).await;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let luid = (identity.luid_high_part, identity.luid_low_part);
@@ -218,10 +222,7 @@ pub(super) async fn run(
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
-        let mut mode = report::mode(&samples);
-        mode["diagnostic_scopes"] = report::mode(&diagnostics);
-        mode["work_counters"] = serde_json::json!({"samples": work});
-        mode["process_resources"] = serde_json::json!({"samples": usage});
+        let mode = report::measured_mode(&samples, &diagnostics, work, usage);
         modes.insert(name.into(), mode);
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,

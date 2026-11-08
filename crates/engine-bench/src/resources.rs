@@ -6,7 +6,7 @@ use html5ever::{
     tree_builder::{NodeOrText, TreeSink},
 };
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom, SerializableHandle};
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, io::Read, path::Path, rc::Rc};
 use url::Url;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -23,15 +23,53 @@ fn attr(node: &Handle, key: &str) -> Option<String> {
 }
 
 pub(super) fn read(path: &Path) -> Result<String> {
-    let bytes = std::fs::read(path)?;
-    let html = kamin_html::encoding::sniff(&bytes)
-        .decode(&bytes)
-        .0
-        .into_owned();
+    Ok(read_into(path, &mut Vec::new())?.into_owned())
+}
+
+/// Читает вход в `source` одним выделением по размеру файла и отдаёт разметку для
+/// движка. UTF-8 без замен заимствуется из `source` без копии; буфер живёт
+/// только до постройки документа, а не весь замер.
+pub(super) fn read_into<'a>(path: &Path, source: &'a mut Vec<u8>) -> Result<Cow<'a, str>> {
+    source.clear();
+    std::fs::File::open(path)?.read_to_end(source)?;
+    let source: &'a [u8] = source;
+    let html = kamin_html::encoding::sniff(source).decode(source).0;
+    let base = Url::from_file_path(path).map_err(|_| "invalid HTML file URL")?;
+    if !host_tokens(&html) {
+        return Ok(html);
+    }
+    Ok(Cow::Owned(rewrite(base, html.into_owned())?))
+}
+
+/// Есть ли в разметке то, на что хост действует: теги, которые он встраивает,
+/// разрешает или отвергает, и CSS `url(`/`@import`, которые раскрывает
+/// `stylesheet::expand` (он ищет их буквально). Элемент возникает только из
+/// начального тега (`<image>` дерево строит как `img`), а ссылки символов
+/// раскрываются в тексте `<style>` только внутри SVG/MathML — их хост тоже
+/// отдаёт полному разбору. Без этих токенов полный разбор вернул бы вход как есть.
+fn host_tokens(html: &str) -> bool {
+    const TAGS: [&[u8]; 9] = [
+        b"link", b"base", b"img", b"image", b"iframe", b"object", b"embed", b"svg", b"math",
+    ];
+    let bytes = html.as_bytes();
+    let at = |i: usize, word: &[u8]| {
+        bytes
+            .get(i..i + word.len())
+            .is_some_and(|s| s.eq_ignore_ascii_case(word))
+    };
+    bytes.iter().enumerate().any(|(i, &b)| match b {
+        b'<' => TAGS.iter().any(|tag| at(i + 1, tag)),
+        b'(' => i >= 3 && at(i - 3, b"url"),
+        b'@' => at(i + 1, b"import"),
+        _ => false,
+    })
+}
+
+/// Полный разбор хоста: встраивает связанный CSS и раскрывает ресурсы.
+fn rewrite(mut base: Url, html: String) -> Result<String> {
     // Хосту нужен DOM только для ссылок; движок получает исходную строку,
     // если замены не нужны. Этот разбор не выдаётся за фазу parse движка.
     let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(html.clone());
-    let mut base = Url::from_file_path(path).map_err(|_| "invalid HTML file URL")?;
     let mut nodes = vec![dom.document.clone()];
     let mut ordered = Vec::new();
     while let Some(node) = nodes.pop() {
@@ -128,42 +166,4 @@ pub(super) fn read(path: &Path) -> Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn linked_css_keeps_order_and_its_own_resource_base() {
-        let dir =
-            std::env::temp_dir().join(format!("kamin-bench-resources-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("css")).unwrap();
-        std::fs::write(dir.join("css/asset.png"), b"fixture").unwrap();
-        std::fs::write(dir.join("css/import.css"), "p { color: green }").unwrap();
-        std::fs::write(
-            dir.join("css/main.css"),
-            "@import 'import.css'; p {background:url(asset.png)}",
-        )
-        .unwrap();
-        let path = dir.join("input.html");
-        std::fs::write(&path, "<!doctype html><meta charset=utf-8><link rel=stylesheet href=css/main.css><style>p{color:blue}</style><p>x").unwrap();
-        let html = read(&path).unwrap();
-        assert!(html.contains("color: green"));
-        assert!(html.find("color: green") < html.find("color:blue"));
-        assert!(
-            html.contains(
-                Url::from_file_path(dir.join("css/asset.png"))
-                    .unwrap()
-                    .as_str()
-            )
-        );
-        for file in [
-            "css/asset.png",
-            "css/import.css",
-            "css/main.css",
-            "input.html",
-        ] {
-            std::fs::remove_file(dir.join(file)).unwrap();
-        }
-        std::fs::remove_dir(dir.join("css")).unwrap();
-        std::fs::remove_dir(dir).unwrap();
-    }
-}
+mod tests;

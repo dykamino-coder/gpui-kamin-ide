@@ -34,18 +34,23 @@ fn a_reused_conversion_equals_a_fresh_one_and_is_shared() {
     let memo = StyleConversions::default();
     for style in styles() {
         let dimensions = BoxDimensions::from_computed(&style);
-        let mut first = converted_div(&style, dimensions, vcx, Some(&memo));
+        // The first box only remembers its computed style, the second (sharing it) keeps
+        // its conversion, the third, with equal values, reuses it.
+        let _first = converted_div(&style, dimensions, vcx, Some(&memo));
+        let mut sharing = style.clone();
+        sharing.self_node = 77;
+        let mut second = converted_div(&sharing, dimensions, vcx, Some(&memo));
         let mut twin = BoxStyle::new((*style).clone());
-        twin.self_node = 77;
-        let mut second = converted_div(&twin, dimensions, vcx, Some(&memo));
+        twin.self_node = 78;
+        let mut third = converted_div(&twin, dimensions, vcx, Some(&memo));
         let mut fresh = apply_for_decorations_with_dimensions(div(), &style, Some(dimensions), vcx);
         assert_eq!(
-            *second.interactivity().base_style,
+            *third.interactivity().base_style,
             *fresh.interactivity().base_style
         );
         assert!(Rc::ptr_eq(
-            &first.interactivity().base_style,
-            &second.interactivity().base_style
+            &second.interactivity().base_style,
+            &third.interactivity().base_style
         ));
     }
 }

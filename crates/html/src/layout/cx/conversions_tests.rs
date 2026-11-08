@@ -87,7 +87,7 @@ fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
         lookup
     };
     for width in 0..-PAUSE_AT {
-        assert!(matches!(miss(&memo, width as f32), Lookup::Miss));
+        assert!(matches!(miss(&memo, width as f32), Lookup::Pass));
     }
     let (repeated, dimensions) = sized(1000.0);
     memo.record(&repeated, dimensions, vcx, refinement(1000.0));
@@ -104,6 +104,94 @@ fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
         memo.lookup(&repeated, &dimensions, vcx),
         Lookup::Hit(_)
     ));
+}
+
+/// The capacity of the candidates: zero means the memory allocated nothing.
+fn capacity(memo: &StyleConversions) -> usize {
+    let candidates = memo.recent.take();
+    let capacity = match &candidates {
+        Candidates::Seen(_) => 0,
+        Candidates::Kept(recent) => recent.capacity(),
+    };
+    memo.recent.set(candidates);
+    capacity
+}
+
+#[test]
+fn the_memory_is_its_seen_styles_and_a_tag_large() {
+    assert_eq!(std::mem::size_of::<Candidates>(), 64);
+    assert_eq!(
+        std::mem::size_of::<Candidates>(),
+        (SEEN + 1) * std::mem::size_of::<usize>()
+    );
+}
+
+#[test]
+fn a_build_without_a_repeated_style_allocates_nothing_and_shares_no_conversion() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    let _build = memo.build();
+    let converted: Vec<_> = (0..4 * CANDIDATES)
+        .map(|width| {
+            let (input, dimensions) = sized(width as f32);
+            let style = refinement(width as f32);
+            match memo.lookup(&input, &dimensions, vcx) {
+                Lookup::Pass => {}
+                Lookup::Miss => memo.record(&input, dimensions, vcx, style.clone()),
+                Lookup::Hit(_) => panic!("no input repeats"),
+            }
+            style
+        })
+        .collect();
+    assert_eq!(capacity(&memo), 0);
+    assert!(converted.iter().all(|style| Rc::strong_count(style) == 1));
+}
+
+#[test]
+fn the_first_repeated_style_allocates_the_candidates_and_the_next_box_reuses() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    let _build = memo.build();
+    let (a, a_dimensions) = sized(1.0);
+    let (b, b_dimensions) = sized(2.0);
+    let mut twin = a.clone();
+    twin.self_node = 9;
+    assert!(matches!(memo.lookup(&a, &a_dimensions, vcx), Lookup::Pass));
+    assert!(matches!(memo.lookup(&b, &b_dimensions, vcx), Lookup::Pass));
+    assert_eq!(capacity(&memo), 0);
+    assert!(matches!(
+        memo.lookup(&twin, &a_dimensions, vcx),
+        Lookup::Miss
+    ));
+    let converted = refinement(1.0);
+    memo.record(&twin, a_dimensions, vcx, converted.clone());
+    assert_eq!(capacity(&memo), CANDIDATES);
+    let Lookup::Hit(found) = memo.lookup(&a, &a_dimensions, vcx) else {
+        panic!("a repeated style is reused");
+    };
+    assert!(Rc::ptr_eq(&found, &converted));
+    // Once allocated, a new input is a candidate at once.
+    assert!(matches!(memo.lookup(&b, &b_dimensions, vcx), Lookup::Miss));
+}
+
+#[test]
+fn nothing_seen_outlives_the_build() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    let (input, dimensions) = sized(3.0);
+    {
+        let _build = memo.build();
+        assert!(matches!(
+            memo.lookup(&input, &dimensions, vcx),
+            Lookup::Pass
+        ));
+        assert_eq!(Rc::strong_count(input.style_rc()), 2);
+    }
+    assert_eq!(Rc::strong_count(input.style_rc()), 1);
+    assert_eq!(capacity(&memo), 0);
 }
 
 #[test]
@@ -129,4 +217,30 @@ fn the_memory_works_only_inside_a_build_of_its_document_and_is_emptied_by_it() {
     assert!(memo.active().is_none());
     let _again = memo.build();
     assert!(memo.find(&input, &dimensions, vcx).is_none());
+}
+
+#[test]
+fn a_seen_style_of_a_dropped_box_does_not_outlive_it() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    let _build = memo.build();
+    let (temporary, dimensions) = sized(4.0);
+    assert!(matches!(
+        memo.lookup(&temporary, &dimensions, vcx),
+        Lookup::Pass
+    ));
+    let style = Rc::downgrade(temporary.style_rc());
+    drop(temporary);
+    let (next, next_dimensions) = sized(5.0);
+    memo.lookup(&next, &next_dimensions, vcx);
+    assert!(style.upgrade().is_none(), "the memory released it");
+    // A style its box still holds stays seen: its repeat is still found.
+    let mut twin = next.clone();
+    twin.self_node = 7;
+    assert!(matches!(
+        memo.lookup(&twin, &next_dimensions, vcx),
+        Lookup::Miss
+    ));
+    drop(next);
 }

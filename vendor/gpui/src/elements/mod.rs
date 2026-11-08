@@ -9,7 +9,7 @@ mod img;
 mod list;
 // KaminIDE patch: equal div base styles share one allocation.
 pub(crate) mod refinement_share;
-pub use refinement_share::recycle_style_refinement;
+pub use refinement_share::{recycle_style_refinement, release_spare_style_refinement};
 // KaminIDE patch: второй проход краски детей `Div`.
 pub(crate) mod context_scope;
 mod surface;

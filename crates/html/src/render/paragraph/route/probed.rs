@@ -17,7 +17,9 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
 /// собирателе краски (`crate::paint::coordinator::PaintCollect`) абзац уходит в него, иначе
 /// рисуется на месте (`crate::paint::coordinator::PaintInline`).
-pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
+pub(crate) fn paint_inline_step7(para: AnyElement, opts: &RenderOpts) -> AnyElement {
+    let count = &opts.cx.deferred.paint.inline_jobs;
+    count.set(count.get().saturating_add(1));
     crate::paint::coordinator::PaintInline::new(para).into_any_element()
 }
 

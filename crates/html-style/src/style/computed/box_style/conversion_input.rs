@@ -15,6 +15,12 @@ impl BoxStyle {
             && (self.same_style_allocation(other) || self.same_style_values(other))
     }
 
+    /// Equal computed styles as `same_box_values` compares them: a necessary condition of
+    /// equal box values that needs only the shared computed styles.
+    pub fn same_computed_values(a: &Rc<Computed>, b: &Rc<Computed>) -> bool {
+        Rc::ptr_eq(a, b) || same_values(a, b)
+    }
+
     /// Equal values of the box context: every field but the computed style and the
     /// decoration paint. The destructuring is exhaustive, so a new field has to be
     /// classified here.
