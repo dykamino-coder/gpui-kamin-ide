@@ -5552,7 +5552,7 @@ index e7a8c06fd5fbda341f1c91ae0c526ae85e53daec..d1883d27ad7110b19ff441946c5ceacf
 +                (request_layout_state, prepaint_state)
 +            })
 diff --git a/vendor/gpui/src/arena.rs b/vendor/gpui/src/arena.rs
-index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..50b0568d2faf5c744e1f8decad0b4e5904302165
+index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..ef4056df1848b66866e350a873a05550a2f074dc
 --- a/vendor/gpui/src/arena.rs
 +++ b/vendor/gpui/src/arena.rs
 @@ -110,0 +111,5 @@
@@ -5561,27 +5561,18 @@ index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..50b0568d2faf5c744e1f8decad0b4e59
 +    /// KaminIDE patch: values allocated since the last clear (elements of the frame).
 +    pub fn allocations(&self) -> usize {
 +        self.elements.len()
-@@ -152,0 +158 @@
-+        let used_elements = self.elements.len();
-@@ -154,2 +160,14 @@
+@@ -154,3 +159,6 @@
 -        for chunk_index in 0..=self.current_chunk_index {
 -            self.chunks[chunk_index].reset();
+-        }
 +        // KaminIDE patch: drop elements before returning their backing chunks.
-+        // Keep the chunks the cleared frame used, not a permanent high-water
-+        // mark: the next frame of the same document reuses them instead of
-+        // allocating and freeing its whole element tree again (Gecko keeps
-+        // display items in recycler lists of the retained builder's arena,
-+        // layout/base/nsPresArena.h:29). A smaller frame returns the rest at
-+        // its own clear, so an empty document is back to one chunk.
-+        self.chunks.truncate(self.current_chunk_index + 1);
-+        for chunk in &mut self.chunks {
-+            chunk.reset();
-+        }
-+        let keep = used_elements.max(1024);
-+        if self.elements.capacity() > 2 * keep {
-+            self.elements.shrink_to(keep);
-@@ -314,0 +333,50 @@
-+    fn test_clear_keeps_the_last_frame_chunks_and_returns_unused_ones() {
++        // Keep one normal frame chunk, rather than a permanent high-water mark.
++        self.chunks.truncate(1);
++        self.chunks.shrink_to_fit();
++        self.elements.shrink_to(1024);
++        self.chunks[0].reset();
+@@ -314,0 +323,30 @@
++    fn test_clear_returns_overflow_chunks_after_dropping_elements() {
 +        struct Value(Rc<Cell<usize>>);
 +        impl Drop for Value {
 +            fn drop(&mut self) {
@@ -5603,31 +5594,11 @@ index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..50b0568d2faf5c744e1f8decad0b4e59
 +        arena.clear();
 +        assert_eq!(drops.get(), 2);
 +        assert!(!first.valid.get() && !second.valid.get());
-+        // The two-chunk frame keeps its chunks for the next frame.
-+        assert_eq!(arena.capacity(), 2 * std::mem::size_of::<Value>());
++        assert_eq!(arena.capacity(), std::mem::size_of::<Value>());
 +        let next = arena.alloc(|| Value(drops.clone()));
 +        assert!(next.valid.get());
 +        arena.clear();
 +        assert_eq!(drops.get(), 3);
-+        // A one-chunk frame returns the chunk it did not use.
-+        assert_eq!(arena.capacity(), std::mem::size_of::<Value>());
-+    }
-+
-+    #[test]
-+    fn test_steady_frames_reuse_chunks_without_allocating() {
-+        let mut arena = Arena::new(16);
-+        for _ in 0..4 {
-+            arena.alloc(|| 1u64);
-+        }
-+        arena.clear();
-+        let chunks: Vec<*mut u8> = arena.chunks.iter().map(|c| c.start).collect();
-+        assert_eq!(chunks.len(), 2);
-+        for _ in 0..4 {
-+            arena.alloc(|| 2u64);
-+        }
-+        arena.clear();
-+        let again: Vec<*mut u8> = arena.chunks.iter().map(|c| c.start).collect();
-+        assert_eq!(again, chunks);
 +    }
 +
 +    #[test]
