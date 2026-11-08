@@ -242,4 +242,5 @@ fn a_seen_style_of_a_dropped_box_does_not_outlive_it() {
         memo.lookup(&twin, &next_dimensions, vcx),
         Lookup::Miss
     ));
+    drop(next);
 }
