@@ -130,31 +130,33 @@ impl Paragraph {
         let compacts = (!rebuild)
             .then(|| crate::layout::reuse::compact::open(window))
             .flatten();
-        let mut source = match compacts {
+        // The closure holds only what its source needs: a probe kept for a
+        // far block lives in its own allocation and can shrink (`Shared`).
+        let id = match compacts {
             Some(compacts) => {
                 let shared = plain_probe::Shared::new(make_probe());
                 compacts.offer(shared.clone());
-                Probe::Shared(shared)
+                request(window, atom_fit, normal_static, move |f| {
+                    shared.measure(|p| f(p))
+                })
             }
-            None if rebuild => Probe::Rebuild(make_probe),
-            None => Probe::Built(make_probe()),
-        };
-        let id = window.request_measured_layout_with_physical_baselines(
-            gpui::Style::default(),
-            move |known, available, window, cx| {
-                // Заданная ширина сильнее доступной: раскладка уже решила, в
-                // какую коробку абзац ставится, и переносы считаются по ней.
-                let mut measure = |probe: &mut Paragraph| {
-                    let fit = atom_fit.clone();
-                    measured_layout(probe, fit, known, available, &normal_static, window, cx)
+            None => {
+                let mut source = if rebuild {
+                    Probe::Rebuild(make_probe)
+                } else {
+                    Probe::Built(make_probe())
                 };
-                match &mut source {
-                    Probe::Built(probe) => measure(probe),
-                    Probe::Rebuild(make_probe) => measure(&mut make_probe()),
-                    Probe::Shared(shared) => shared.measure(measure),
-                }
-            },
-        );
+                request(
+                    window,
+                    atom_fit,
+                    normal_static,
+                    move |f| match &mut source {
+                        Probe::Built(probe) => f(probe),
+                        Probe::Rebuild(make_probe) => f(&mut make_probe()),
+                    },
+                )
+            }
+        };
         static_bind.bind(crate::layout::fragment::geometry::Node::capture(id, window));
         if let Some(f) = &self.fragment {
             f.node.record(id, window);
@@ -168,6 +170,27 @@ impl Paragraph {
 enum Probe<F> {
     Built(Paragraph),
     Rebuild(F),
-    /// Built, and shrinkable once its block is far (`plain_probe`).
-    Shared(std::rc::Rc<plain_probe::Shared>),
+}
+
+type Measure<'a> = dyn FnMut(&mut Paragraph) -> gpui::MeasuredContent + 'a;
+
+/// Register the measured layout of a paragraph whose probe `with_probe`
+/// lends to the measure.
+fn request(
+    window: &mut Window,
+    atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
+    normal_static: normal_static::NormalStatic,
+    mut with_probe: impl FnMut(&mut Measure<'_>) -> gpui::MeasuredContent + 'static,
+) -> LayoutId {
+    window.request_measured_layout_with_physical_baselines(
+        gpui::Style::default(),
+        move |known, available, window, cx| {
+            // Заданная ширина сильнее доступной: раскладка уже решила, в
+            // какую коробку абзац ставится, и переносы считаются по ней.
+            with_probe(&mut |probe: &mut Paragraph| {
+                let fit = atom_fit.clone();
+                measured_layout(probe, fit, known, available, &normal_static, window, cx)
+            })
+        },
+    )
 }
