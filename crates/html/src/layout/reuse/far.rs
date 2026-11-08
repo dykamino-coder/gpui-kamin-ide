@@ -151,23 +151,20 @@ fn ink_beyond(boxes: Bounds<ScaledPixels>, ink: Option<Bounds<ScaledPixels>>) ->
     }
 }
 
-/// The layout boxes `boxes`, grown by the ink `excess` and by a margin of the
-/// screen's larger side, stay off `screen`. The margin covers what the box
-/// union cannot show at a new width: glyph ink outside line boxes, which
-/// depends on the font, not on the width (the rule `recorder::far` uses).
+/// The layout boxes `boxes`, grown by the ink `excess`, are far from `screen`
+/// by the same test as a skipped block's ink (`recorder::far`: a margin of
+/// the screen's larger side). The margin covers what the box union cannot
+/// show at a new width: glyph ink outside line boxes, which depends on the
+/// font, not on the width.
 fn clear_of(boxes: Bounds<ScaledPixels>, excess: Excess, screen: Bounds<ScaledPixels>) -> bool {
-    let m = screen.size.width.0.max(screen.size.height.0) + super::frame::SNAP;
-    let grown = Bounds {
-        origin: point(
-            ScaledPixels(boxes.origin.x.0 - excess.left - m),
-            ScaledPixels(boxes.origin.y.0 - excess.top - m),
-        ),
+    let ink = Bounds {
+        origin: point(ScaledPixels(-excess.left), ScaledPixels(-excess.top)),
         size: size(
-            ScaledPixels(boxes.size.width.0 + excess.left + excess.right + 2.0 * m),
-            ScaledPixels(boxes.size.height.0 + excess.top + excess.bottom + 2.0 * m),
+            ScaledPixels(boxes.size.width.0 + excess.left + excess.right),
+            ScaledPixels(boxes.size.height.0 + excess.top + excess.bottom),
         ),
     };
-    !grown.intersects(&screen)
+    super::recorder::far(Some(ink), boxes.origin, screen)
 }
 
 /// The window's content mask in device pixels.
