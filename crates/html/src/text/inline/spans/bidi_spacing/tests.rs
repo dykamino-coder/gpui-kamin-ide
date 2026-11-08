@@ -126,3 +126,10 @@ fn overrides_of_multi_letter_pieces_match_the_visual_reference() {
         assert_eq!(got, want, "{parts:?} rtl={rtl}");
     }
 }
+
+#[test]
+fn tracking_like_the_block_everywhere_needs_no_override() {
+    // Reordered as in the first test, but the span tracks like the block.
+    let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
+    assert!(bidi_letter_spans(&pieces, false, px(10.), &[(1..4, px(10.))]).is_empty());
+}

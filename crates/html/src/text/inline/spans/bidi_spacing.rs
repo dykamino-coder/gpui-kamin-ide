@@ -25,10 +25,9 @@ pub fn bidi_letter_spans(
     block: Pixels,
     existing: &[(Range<usize>, Pixels)],
 ) -> Vec<(Range<usize>, Pixels)> {
-    // Every override is the block gap and is emitted only where it differs
-    // from the tracking already in place; when all of it already equals the
-    // block gap (no letter-spacing anywhere, the common case) there is nothing
-    // to override and the paragraph is not reordered at all.
+    // An override replaces a letter's tracking with the block's: where every letter
+    // already tracks like the block (no `letter-spacing` below it), there is none,
+    // and the paragraph is neither scanned nor reordered.
     if existing.iter().all(|(_, v)| *v == block) {
         return Vec::new();
     }
