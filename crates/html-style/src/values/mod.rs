@@ -34,6 +34,9 @@ pub use arena::ArenaKey;
 pub use arena::{Arena, load, store};
 pub use value_cx::{ValueCx, ValueDoc};
 
+/// Профили `@color-profile` документа: имя → байты ICC.
+pub type IccProfiles = HashMap<String, Vec<u8>>;
+
 /// Нижние данные одного документа: арены значений, at-правила, метрики корня,
 /// носитель, ресурсы, готовность кадра и провайдер шрифтовых фактов (ADR3).
 /// Поля пишет его разбор, читают разбор, сборка кадра и фазы GPUI; состояния
@@ -78,7 +81,7 @@ pub struct DocumentValues {
     pub counter_styles: RefCell<CounterStyles>,
     /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile). Правило редкое:
     /// карта вне структуры и появляется с первым профилем.
-    pub profiles: RefCell<Option<Box<HashMap<String, Vec<u8>>>>>,
+    pub profiles: RefCell<Option<Box<IccProfiles>>>,
     /// Запросы картинок документа, его база и политика доступа; декодированное — в
     /// общем процессном кэше по содержимому (`resources::images::store`).
     pub images: RefCell<crate::resources::images::store::ImageStore>,
