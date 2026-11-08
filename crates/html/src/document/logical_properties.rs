@@ -19,8 +19,14 @@ use crate::values::ValueCx;
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
+    use crate::style::computed::LogicalSharing;
     use crate::style::computed::writing_mode::WritingProps;
-    fn walk(nodes: &mut [Node], parent: WritingProps, vcx: ValueCx<'_>) {
+    fn walk(
+        nodes: &mut [Node],
+        parent: WritingProps,
+        sharing: &mut LogicalSharing,
+        vcx: ValueCx<'_>,
+    ) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // `writing-mode` и `direction` наследуются (css-writing-modes-4 §3.1, §2.1):
@@ -35,9 +41,10 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
                 || e.style.cascaded().reset_box_layout.display
                     == Some(crate::style::computed::Display::TableCell);
             if e.style.cascaded().reset_context.logical.is_some() {
-                e.style
-                    .cascaded_mut()
-                    .resolve_logical(wm, parent_vertical, is_cell, vcx);
+                // Соседи с одним каскадом получают общий результат, а не копии групп.
+                let resolved =
+                    sharing.resolve(e.style.cascaded(), wm, parent_vertical, is_cell, vcx);
+                *e.style.cascaded_mut() = resolved;
             }
             // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
             // снятые до этого прохода, поэтому логические стороны ложатся на их
@@ -66,10 +73,15 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
                 e.style.cascaded_mut().reset_box_layout.own_margin =
                     Some(e.style.cascaded().reset_box_layout.margin);
             }
-            walk(&mut e.children, props, vcx);
+            walk(&mut e.children, props, sharing, vcx);
         }
     }
-    walk(&mut nodes, WritingProps::default(), vcx);
+    walk(
+        &mut nodes,
+        WritingProps::default(),
+        &mut LogicalSharing::default(),
+        vcx,
+    );
     // Зум, каскадное `inherit` ненаследуемых свойств (`z-index`, `clip`,
     // `text-overflow`, свойства реестра) — стадия вычисленных значений
     // (`style::cascade::compute`): раскладка читает вычисленный стиль.

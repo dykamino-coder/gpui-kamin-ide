@@ -1,0 +1,92 @@
+//! Общий результат логических сторон для соседей с одним каскадом (Stylo
+//! `style/sharing/mod.rs`: соседи с равными входами делят вычисленный стиль).
+//!
+//! Подготовка документа раскладывает `margin-block` и другие логические стороны каждого
+//! элемента копией его каскадного стиля. У тысяч абзацев с одним правилом `p` выходили
+//! тысячи равных копий групп, и общий кэш вычисленной стадии (`materialize::sharing`) уже не
+//! узнавал соседей. Ключ — тождество групп входа (`shares_storage`) и письмо коробки; запись
+//! держит свои группы, поэтому их адреса не переиспользуются.
+
+use super::*;
+use crate::style::computed::writing_mode::WritingMode;
+use crate::values::ValueCx;
+use std::collections::VecDeque;
+
+/// Записей одного прохода: соседей с разными каскадами больше обычно не бывает подряд.
+const CAPACITY: usize = 32;
+
+/// Кэш одного прохода `resolve_logical` по документу.
+#[derive(Default)]
+pub struct LogicalSharing {
+    entries: VecDeque<Entry>,
+}
+
+struct Entry {
+    own: Computed,
+    writing: (WritingMode, bool, bool),
+    value: Computed,
+}
+
+impl LogicalSharing {
+    /// Каскадный стиль `own` с логическими сторонами, разложенными по `wm`.
+    pub fn resolve(
+        &mut self,
+        own: &Computed,
+        wm: WritingMode,
+        parent_vertical: bool,
+        is_cell: bool,
+        vcx: ValueCx<'_>,
+    ) -> Computed {
+        let writing = (wm, parent_vertical, is_cell);
+        if let Some(hit) = self
+            .entries
+            .iter()
+            .rev()
+            .find(|entry| entry.writing == writing && entry.own.shares_storage(own))
+        {
+            // Номер коробки оформления — тождество элемента, не CSS: он остаётся своим.
+            let mut value = hit.value.clone();
+            value.decor_box = own.decor_box;
+            return value;
+        }
+        let mut value = own.clone();
+        value.resolve_logical(wm, parent_vertical, is_cell, vcx);
+        if self.entries.len() == CAPACITY {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(Entry {
+            own: own.clone(),
+            writing,
+            value: value.clone(),
+        });
+        value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn siblings_with_one_cascade_share_resolved_groups() {
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        let vcx = doc.values();
+        let mut own = doc.initial_style();
+        own.apply_one("margin-block", "1em", vcx);
+        let mut sibling = own.clone();
+        sibling.decor_box = 7;
+        let mut cache = LogicalSharing::default();
+        let wm = WritingMode::default();
+        let first = cache.resolve(&own, wm, false, false, vcx);
+        let second = cache.resolve(&sibling, wm, false, false, vcx);
+        assert!(first.shares_storage(&second));
+        assert_eq!(second.decor_box, 7);
+        assert_eq!(first.reset_box_layout.margin.top, Some(Len::Em(1.0)));
+        let mut alone = own.clone();
+        alone.resolve_logical(wm, false, false, vcx);
+        assert_eq!(alone, first);
+        let vertical = cache.resolve(&own, wm, true, false, vcx);
+        assert!(!vertical.shares_storage(&first));
+    }
+}

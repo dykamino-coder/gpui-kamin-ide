@@ -2,6 +2,8 @@
 use super::*;
 mod shared;
 pub use shared::StyleGroup;
+mod derived;
+pub use derived::DerivedGroups;
 mod reset_text_box;
 pub use reset_text_box::ResetTextBox;
 mod reset_cascade;

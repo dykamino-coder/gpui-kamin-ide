@@ -40,6 +40,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// фаз раскладки и текста держит верхний `DocState`.
 pub struct DocumentValues {
     initial_styles: style_storage::InitialStyles,
+    /// Группы used-стадии, выведенные из общих групп правками раскладки.
+    pub derived: crate::style::computed::DerivedGroups,
     /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
     pub budget: RefCell<Option<crate::budget::RevisionBudget>>,
     pub font_facts: font_facts::DocumentFonts,
@@ -108,6 +110,7 @@ impl DocumentValues {
         let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             initial_styles: Default::default(),
+            derived: Default::default(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),
             frame_owner: Cell::new(arena::new_owner()),
@@ -144,6 +147,7 @@ impl DocumentValues {
     /// Начало сборки кадра: наблюдение готовности и перепроверка картинок.
     pub fn begin_frame_inputs(&self) {
         self.readiness.begin();
+        self.derived.begin_frame();
         self.revalidate_images();
     }
 

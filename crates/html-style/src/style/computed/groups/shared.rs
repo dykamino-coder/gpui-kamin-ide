@@ -29,6 +29,11 @@ impl<T> StyleGroup<T> {
         payload.allocation = crate::work::style_storage::Allocation::new::<T>(owner);
     }
 
+    /// Адрес владельца: ключ кэша, который держит саму группу (`DerivedGroups`).
+    pub(crate) fn addr(&self) -> usize {
+        Rc::as_ptr(&self.0) as *const () as usize
+    }
+
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
