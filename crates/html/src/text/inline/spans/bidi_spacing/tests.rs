@@ -1,3 +1,5 @@
+//! Тесты переопределений межбуквенного интервала после переупорядочивания bidi.
+
 use super::*;
 use crate::style::computed::{BoxStyle, Computed};
 use gpui::px;
