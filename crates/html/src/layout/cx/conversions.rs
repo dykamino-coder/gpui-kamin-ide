@@ -17,6 +17,10 @@ use gpui::StyleRefinement;
 use std::cell::Cell;
 use std::rc::Rc;
 
+#[path = "conversions_values.rs"]
+mod values;
+use values::Values;
+
 /// Distinct recent inputs kept for reuse. Boxes of a page repeat a few styles, often
 /// interleaved (table cells, list items with nested blocks): as in GPUI's refinement share
 /// and Stylo's sharing cache, a bounded set of the newest distinct inputs.
@@ -96,28 +100,6 @@ struct Conversion {
     style: Rc<StyleRefinement>,
 }
 
-/// The parts of the value context a conversion reads.
-#[derive(Clone, Copy, PartialEq)]
-struct Values {
-    doc: *const crate::values::DocumentValues,
-    frame: bool,
-    viewport: (f32, f32),
-    scheme: crate::style::values::value::Scheme,
-    clearance_possible: bool,
-}
-
-impl Values {
-    fn of(vcx: ValueCx<'_>) -> Self {
-        Self {
-            doc: vcx.doc,
-            frame: vcx.frame,
-            viewport: vcx.viewport,
-            scheme: vcx.scheme,
-            clearance_possible: vcx.clearance_possible,
-        }
-    }
-}
-
 impl StyleConversions {
     /// Start a build of the document; dropping the result ends it. A nested build empties the
     /// memory too: it only loses candidates of the enclosing build.
@@ -139,6 +121,20 @@ impl StyleConversions {
         self.balance.set(0);
         self.passed.set(0);
     }
+    /// Forget seen styles that only the memory still holds: a box built and dropped (an
+    /// anonymous or pseudo box's own style) must not outlive its box because of the memory.
+    fn forget_dropped(&self) {
+        let mut recent = self.recent.take();
+        if let Candidates::Seen(seen) = &mut recent {
+            for slot in seen.iter_mut() {
+                if slot.as_ref().is_some_and(|s| Rc::strong_count(s) == 1) {
+                    *slot = None;
+                }
+            }
+        }
+        self.recent.set(recent);
+    }
+
     /// Look a box up unless reuse is paused, keeping the balance that pauses it.
     pub(crate) fn lookup(
         &self,
@@ -146,6 +142,7 @@ impl StyleConversions {
         dimensions: &BoxDimensions,
         vcx: ValueCx<'_>,
     ) -> Lookup {
+        self.forget_dropped();
         if self.balance.get() <= PAUSE_AT {
             self.passed.set(self.passed.get().wrapping_add(1));
             if !self.passed.get().is_multiple_of(PROBE_EVERY) {

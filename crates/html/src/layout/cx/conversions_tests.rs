@@ -218,3 +218,28 @@ fn the_memory_works_only_inside_a_build_of_its_document_and_is_emptied_by_it() {
     let _again = memo.build();
     assert!(memo.find(&input, &dimensions, vcx).is_none());
 }
+
+#[test]
+fn a_seen_style_of_a_dropped_box_does_not_outlive_it() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let memo = StyleConversions::default();
+    let _build = memo.build();
+    let (temporary, dimensions) = sized(4.0);
+    assert!(matches!(
+        memo.lookup(&temporary, &dimensions, vcx),
+        Lookup::Pass
+    ));
+    let style = Rc::downgrade(temporary.style_rc());
+    drop(temporary);
+    let (next, next_dimensions) = sized(5.0);
+    memo.lookup(&next, &next_dimensions, vcx);
+    assert!(style.upgrade().is_none(), "the memory released it");
+    // A style its box still holds stays seen: its repeat is still found.
+    let mut twin = next.clone();
+    twin.self_node = 7;
+    assert!(matches!(
+        memo.lookup(&twin, &next_dimensions, vcx),
+        Lookup::Miss
+    ));
+}
