@@ -28,15 +28,16 @@ struct Entry {
 }
 
 impl LogicalSharing {
-    /// Каскадный стиль `own` с логическими сторонами, разложенными по `wm`.
+    /// Разложить логические стороны каскадного стиля `own` по `wm`. Попадание берёт
+    /// группы общего результата; номер коробки оформления (тождество элемента) остаётся своим.
     pub fn resolve(
         &mut self,
-        own: &Computed,
+        own: &mut Computed,
         wm: WritingMode,
         parent_vertical: bool,
         is_cell: bool,
         vcx: ValueCx<'_>,
-    ) -> Computed {
+    ) {
         let writing = (wm, parent_vertical, is_cell);
         if let Some(hit) = self
             .entries
@@ -44,22 +45,19 @@ impl LogicalSharing {
             .rev()
             .find(|entry| entry.writing == writing && entry.own.shares_storage(own))
         {
-            // Номер коробки оформления — тождество элемента, не CSS: он остаётся своим.
-            let mut value = hit.value.clone();
-            value.decor_box = own.decor_box;
-            return value;
+            own.share_groups_from(&hit.value);
+            return;
         }
-        let mut value = own.clone();
-        value.resolve_logical(wm, parent_vertical, is_cell, vcx);
+        let input = own.clone();
+        own.resolve_logical(wm, parent_vertical, is_cell, vcx);
         if self.entries.len() == CAPACITY {
             self.entries.pop_front();
         }
         self.entries.push_back(Entry {
-            own: own.clone(),
+            own: input,
             writing,
-            value: value.clone(),
+            value: own.clone(),
         });
-        value
     }
 }
 
@@ -78,15 +76,18 @@ mod tests {
         sibling.decor_box = 7;
         let mut cache = LogicalSharing::default();
         let wm = WritingMode::default();
-        let first = cache.resolve(&own, wm, false, false, vcx);
-        let second = cache.resolve(&sibling, wm, false, false, vcx);
+        let mut first = own.clone();
+        cache.resolve(&mut first, wm, false, false, vcx);
+        let mut second = sibling.clone();
+        cache.resolve(&mut second, wm, false, false, vcx);
         assert!(first.shares_storage(&second));
         assert_eq!(second.decor_box, 7);
         assert_eq!(first.reset_box_layout.margin.top, Some(Len::Em(1.0)));
         let mut alone = own.clone();
         alone.resolve_logical(wm, false, false, vcx);
         assert_eq!(alone, first);
-        let vertical = cache.resolve(&own, wm, true, false, vcx);
+        let mut vertical = own.clone();
+        cache.resolve(&mut vertical, wm, true, false, vcx);
         assert!(!vertical.shares_storage(&first));
     }
 }

@@ -30,7 +30,15 @@ struct Key {
 struct Entry {
     /// `(исходная, результат)`: `(StyleGroup<T>, StyleGroup<T>)`.
     groups: Box<dyn Any>,
+    /// Держит ли исходную группу кто-то, кроме записи.
+    owned: fn(&dyn Any) -> bool,
     used: u32,
+}
+
+fn owned<T: 'static>(groups: &dyn Any) -> bool {
+    groups
+        .downcast_ref::<(StyleGroup<T>, StyleGroup<T>)>()
+        .is_some_and(|(source, _)| source.is_shared())
 }
 
 impl DerivedGroups {
@@ -65,6 +73,7 @@ impl DerivedGroups {
             key,
             Entry {
                 groups: Box::new((source.clone(), result.clone())),
+                owned: owned::<T>,
                 used: generation,
             },
         );
@@ -78,6 +87,14 @@ impl DerivedGroups {
             .borrow_mut()
             .retain(|_, entry| entry.used == generation);
         self.generation.set(generation.wrapping_add(1));
+    }
+
+    /// После новой материализации: исходную группу, которую держит только запись, больше
+    /// никто не предъявит — запись отпускает её сразу, а не через кадр.
+    pub fn release_unowned(&self) {
+        self.entries
+            .borrow_mut()
+            .retain(|_, entry| (entry.owned)(entry.groups.as_ref()));
     }
 
     #[cfg(test)]
@@ -128,6 +145,12 @@ mod tests {
                 .ptr_eq(&kept)
         );
         cache.begin_frame();
+        assert_eq!(cache.len(), 1);
+        let other = StyleGroup::new(vec![5]);
+        let _ = cache.derive::<Push, _>(&other, 2, |v| v.push(2));
+        assert_eq!(cache.len(), 2);
+        drop(other);
+        cache.release_unowned();
         assert_eq!(cache.len(), 1);
     }
 }

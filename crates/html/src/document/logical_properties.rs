@@ -42,9 +42,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
                     == Some(crate::style::computed::Display::TableCell);
             if e.style.cascaded().reset_context.logical.is_some() {
                 // Соседи с одним каскадом получают общий результат, а не копии групп.
-                let resolved =
-                    sharing.resolve(e.style.cascaded(), wm, parent_vertical, is_cell, vcx);
-                *e.style.cascaded_mut() = resolved;
+                sharing.resolve(e.style.cascaded_mut(), wm, parent_vertical, is_cell, vcx);
             }
             // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
             // снятые до этого прохода, поэтому логические стороны ложатся на их

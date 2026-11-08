@@ -34,6 +34,11 @@ impl<T> StyleGroup<T> {
         Rc::as_ptr(&self.0) as *const () as usize
     }
 
+    /// Есть ли у группы другие владельцы.
+    pub(crate) fn is_shared(&self) -> bool {
+        Rc::strong_count(&self.0) > 1
+    }
+
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
