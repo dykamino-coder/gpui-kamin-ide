@@ -198,7 +198,7 @@ pub(super) fn enter<'a>(
     let list_item = (!hidden && is_list_item).then(|| counters.value_of("list-item"));
     let style_scope = (!hidden && box_level && style.reset_context.contain_style == Some(true))
         .then(|| counters.enter_style_scope());
-    let mut children = Vec::with_capacity(handle.children.borrow().len() * usize::from(!hidden));
+    let mut children = Vec::with_capacity(super::text_nodes::kept_children_hint(handle, hidden));
     if !hidden {
         super::marker::apply(
             &mut style,

@@ -63,3 +63,45 @@ pub(super) fn walk_text(
         }
     }
 }
+
+/// Upper estimate of the children `walk` keeps for `handle` (0 when the box is
+/// hidden): elements and text nodes that are not pure markup line breaks or
+/// tabs (`walk_text` drops those outside `white-space: pre*`). Used as the box
+/// children capacity: counting every DOM child over-reserves for the newline
+/// nodes between block siblings (one per element in pretty-printed markup).
+pub(super) fn kept_children_hint(handle: &Handle, hidden: bool) -> usize {
+    if hidden {
+        return 0;
+    }
+    handle
+        .children
+        .borrow()
+        .iter()
+        .filter(|h| match &h.data {
+            NodeData::Element { .. } => true,
+            NodeData::Text { contents } => contents
+                .borrow()
+                .chars()
+                .any(|c| !matches!(c, '\t' | '\r' | '\n')),
+            _ => false,
+        })
+        .count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::kept_children_hint;
+    use html5ever::tendril::TendrilSink;
+
+    #[test]
+    fn children_hint_skips_markup_newlines_and_comments_but_keeps_spaces() {
+        let dom =
+            html5ever::parse_document(markup5ever_rcdom::RcDom::default(), Default::default())
+                .one("<body>\n<p>a</p>\n<!-- c -->\n<p>b</p> <i>x</i>\n\t</body>");
+        let html = dom.document.children.borrow()[0].clone();
+        let body = html.children.borrow()[1].clone();
+        // p, p, " " (a space between inline siblings survives), i
+        assert_eq!(kept_children_hint(&body, false), 4);
+        assert_eq!(kept_children_hint(&body, true), 0);
+    }
+}
