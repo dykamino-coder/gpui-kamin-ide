@@ -9,6 +9,22 @@ for the existing App. It is not yet a runnable browser workspace: executable
 composition, environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
+Owner requirement (2026-11-09): the browser must be a thin view and closing it
+must not interrupt agent work. The container host owns all sessions, execution,
+queues, pending prompts, file watches and PTYs, including with zero browsers.
+Re-attach must deliver transcript/streaming/tool/prompt state, open files/watches
+and terminal scrollback, then live updates, without replaying mutations or
+duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
+tears down work. The merged browser entry does not yet meet this full contract:
+host presentation snapshots and authoritative state migration remain open.
+Acceptance must cover close/reopen during Bash/MCP, pending permission after
+reopen, two tabs, and report production bundle size and page JS heap.
+
+Pending increments remain tracked separately: #643 serves application assets;
+#642 needs host-owned file watches and re-attach refresh; #644 needs host-owned
+PTY lifetime and scrollback. The explicit Disconnect follow-up precedes #643,
+then corrected #642. None of these increments establishes full parity.
+
 Run the boundary checks with Node 22:
 
 ```sh
