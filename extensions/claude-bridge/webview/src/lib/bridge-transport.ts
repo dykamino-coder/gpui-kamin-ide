@@ -29,14 +29,15 @@ const subs = new Map<string, Set<EventCb>>()
 interface ReplyFrame { kind: "invoke-reply"; id: number; generation?: string; ok: boolean; result?: unknown; error?: unknown }
 interface EventFrame { kind: "event"; channel: string; args?: unknown[] }
 
-window.addEventListener("message", (e: MessageEvent) => {
-  const msg = e.data as ReplyFrame | EventFrame | null
+function receive(frame: unknown): void {
+  const msg = frame as ReplyFrame | EventFrame | null
   if (!msg || typeof msg !== "object") return
   if (msg.kind === "invoke-reply") {
     const p = pending.get(msg.id)
     const otherDocument = typeof msg.generation === 'string' && msg.generation !== generation
     diagnostic(otherDocument ? 'renderer-other-document' : p ? 'renderer-received' : recentlySettled.has(msg.id) ? 'renderer-duplicate' : 'renderer-unknown',
       msg.id, p?.channel ?? recentlySettled.get(msg.id) ?? '', msg.generation ?? generation)
+    if (vscodeApi.onHostMessage && otherDocument) return
     if (!p) return
     pending.delete(msg.id)
     recentlySettled.set(msg.id, p.channel)
@@ -51,6 +52,15 @@ window.addEventListener("message", (e: MessageEvent) => {
       try { cb(...args) } catch (err) { console.error(`[bridge] handler for ${msg.channel} threw`, err) }
     }
   }
+}
+
+if (vscodeApi.onHostMessage) vscodeApi.onHostMessage(receive)
+else window.addEventListener('message', (event: MessageEvent) => receive(event.data))
+vscodeApi.onDisconnect?.(() => {
+  // The host may already have executed a mutation. Reject without replaying it
+  // or implying cancellation; reconnect only restores read snapshots/events.
+  for (const call of pending.values()) call.reject(new Error('Workspace disconnected; operation outcome may be unknown'))
+  pending.clear()
 })
 
 export function inv(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -61,8 +71,9 @@ export function inv(channel: string, ...args: unknown[]): Promise<unknown> {
       vscodeApi.postMessage({ kind: "invoke", id, channel, args, generation })
       diagnostic('renderer-sent', id, channel)
     } catch (error) {
+      pending.delete(id)
       diagnostic('renderer-send-threw', id, channel)
-      throw error
+      reject(error)
     }
   })
 }

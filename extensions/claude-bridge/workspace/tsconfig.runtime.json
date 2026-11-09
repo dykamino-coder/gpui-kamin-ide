@@ -1,0 +1,7 @@
+{
+  "extends": "../extension/tsconfig.json",
+  "compilerOptions": {
+    "paths": { "@kaminide/host-compat": ["../extension/src/shim/host-compat.ts"] }
+  },
+  "include": ["src/runtime.ts", "src/cli.ts", "src/environment.ts", "src/protocol.ts"]
+}

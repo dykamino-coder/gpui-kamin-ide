@@ -35,7 +35,7 @@ import { setToastRouteHandler } from "./main/notifications/toast-window"
 import { setPermissionStorageDir } from "./main/mcp/permission-manager"
 import { McpServerManager } from "./main/mcp/manager"
 import { setExternalMcpManager } from "./main/mcp/executor"
-import { registerShimWindow } from "@kaminide/host-compat"
+import { registerShimWindow, unregisterShimWindow } from "@kaminide/host-compat"
 import { setHookEmitConfigStore } from "./main/hooks/emit-bridge-event"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { registerCoreIpc, wireConnectionCallbacks } from "./core-ipc"
@@ -108,6 +108,9 @@ export class BridgeHost {
   private readonly deferredReplies = new DeferredReplies<vscode.Webview>()
   private onResyncNeeded: (() => void) | undefined
   private disposed = false
+  private readonly startupTimers = new Set<ReturnType<typeof setTimeout>>()
+  private releaseMcpReady: (() => void) | undefined
+  private cancelMarketplaceStartup: (() => void) | undefined
   private readonly sink: BrowserWindow
   private readonly event: { sender: WebContents }
   private readonly tabManager: TabManager
@@ -127,6 +130,11 @@ export class BridgeHost {
     // трактует как перевод строки ВНУТРИ пасты — сообщение оставалось стоять
     // в инпуте CLI неотправленным (поймано e2e-прогоном Session 6).
     a.conn.submitText(text)
+    return true
+  }
+  cmdRegenerateTitle(tabId: string): boolean {
+    if (!this.tabManager.getTab(tabId)) return false
+    this.tabManager.submitText(tabId, '/rename')
     return true
   }
   cmdChangeModel(model: string): boolean {
@@ -172,7 +180,11 @@ export class BridgeHost {
   private readonly configStore: ConfigStore
   private readonly mcpManager: McpServerManager
 
-  constructor(context: vscode.ExtensionContext, opts?: { onOpenChat?: () => void }) {
+  constructor(context: vscode.ExtensionContext, opts?: {
+    onOpenChat?: () => void
+    onRegenerateTitle?: (tabId: string) => void
+    persistConnectionToken?: boolean
+  }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
         recordBridgeOutbound(channel, args)
@@ -189,7 +201,7 @@ export class BridgeHost {
     })
 
     setPermissionStorageDir(context.globalStorageUri.fsPath)
-    this.configStore = new ConfigStore(context.globalStorageUri.fsPath)
+    this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken)
     // One-shot: bring an upgrading user's Electron Bridge sessions/projects into
     // KaminIDE's sidebar (same store shape + token-key; transcripts resolve
     // server-side by conversationId). No-op after the first run.
@@ -265,21 +277,29 @@ export class BridgeHost {
     let mcpKicked = false
     let resolveReady!: () => void
     const mcpReady = new Promise<void>((r) => { resolveReady = r })
+    this.releaseMcpReady = resolveReady
+    const scheduleStartup = (run: () => void, delay: number): void => {
+      const timer = setTimeout(() => {
+        this.startupTimers.delete(timer)
+        if (!this.disposed) run()
+      }, delay)
+      this.startupTimers.add(timer)
+    }
     const kickMcp = (delay: number): void => {
-      if (mcpKicked) return
+      if (mcpKicked || this.disposed) return
       mcpKicked = true
       if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === '1') {
         mcpSettled = true
         resolveReady()
         return
       }
-      setTimeout(() => {
+      scheduleStartup(() => {
         this.mcpManager.initAll()
           .catch(() => { /* best-effort discovery */ })
           .finally(() => { mcpSettled = true; resolveReady() })
       }, delay)
     }
-    setTimeout(() => kickMcp(0), MCP_FALLBACK_MS)
+    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS)
     ConnectionManager.whenExternalToolsReady = () => {
       // Сессию MCP не держат: не начали подниматься — не ждём их вовсе;
       // уже поднимаются — даём им добежать, но не дольше короткой крышки.
@@ -304,6 +324,7 @@ export class BridgeHost {
     setMonitorsWindow(this.sink)
     registerMonitorsIPC()
     const startTabMonitors = (tab: import('./main/tab-manager').Tab): void => {
+      if (this.disposed) return
       void startMonitorsForTab(tab.id, tab.config.cwd, (pluginId, monitorName, line) => {
         if (tab.connection.getExtendedState().status !== 'authenticated') return
         tab.connection.submitText([
@@ -323,11 +344,15 @@ export class BridgeHost {
       void pluginLspManager.stopTab(tab.id)
     }
     const reloadPluginRuntime = async (): Promise<void> => {
+      if (this.disposed) return
       resetSyncTimers()
       const cfg = this.configStore.get()
       if (cfg?.serverUrl && cfg?.token) await syncUserData(cfg.serverUrl, cfg.token)
+      if (this.disposed) return
       await this.mcpManager.initAll()
+      if (this.disposed) return
       await pluginLspManager.restart()
+      if (this.disposed) return
       for (const tab of this.tabManager.listTabs()) {
         stopMonitorsForTab(tab.id)
         const live = this.tabManager.getConnection(tab.id)
@@ -340,7 +365,7 @@ export class BridgeHost {
     // Plugins + marketplace (install/uninstall/clone/browse). Runtime refresh
     // updates sync metadata, MCP servers and per-session host monitors.
     registerPluginsIPC({ reloadPluginRuntime })
-    registerMarketplaceIPC(() => this.sink)
+    this.cancelMarketplaceStartup = registerMarketplaceIPC(() => this.sink)
     installConsoleCapture()
     registerLogsIPC(() => this.sink)
     registerSyncIPC({
@@ -369,6 +394,7 @@ export class BridgeHost {
     ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt()
     const prevOnAuth = ConnectionManager.onAuthenticated
     ConnectionManager.onAuthenticated = (connection) => {
+      if (this.disposed) return
       prevOnAuth?.(connection)
       for (const info of this.tabManager.listTabs()) {
         if (this.tabManager.getConnection(info.id) !== connection) continue
@@ -402,6 +428,11 @@ export class BridgeHost {
     // Settings (host app-pref, enforced in the host's showMessageFocusAware
     // away-branch), so the Bridge always emits — no extension-side gate.
     setToastRouteHandler((payload) => this.post({ kind: "event", channel: "toast:route", args: [payload] }))
+    ipcMain.on("bridge:regenerate-title", (_event, tabId: unknown) => {
+      if (typeof tabId !== "string" || !this.tabManager.getTab(tabId)) return
+      if (opts?.onRegenerateTitle) opts.onRegenerateTitle(tabId)
+      else this.cmdRegenerateTitle(tabId)
+    })
 
     // ui-tools delivers AskUserQuestion/ExitPlanMode answers back through the PTY.
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text))
@@ -417,6 +448,7 @@ export class BridgeHost {
    *  message listener; events broadcast to all, invoke replies target the
    *  originating webview. */
   attach(webview: vscode.Webview, role: WebviewRole = "chat"): vscode.Disposable {
+    if (this.disposed) throw new Error("Bridge host is disposed")
     this.webviews.add(webview)
     this.invokeDiagnostics.attach(webview)
     this.webviewRoles.set(webview, role)
@@ -484,9 +516,17 @@ export class BridgeHost {
   }
 
   dispose(): void {
+    if (this.disposed) return
     this.disposed = true
-    this.tabManager.disconnectAll()
+    for (const timer of this.startupTimers) clearTimeout(timer)
+    this.startupTimers.clear()
+    this.cancelMarketplaceStartup?.()
+    this.releaseMcpReady?.()
+    for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id)
+    this.tabManager.dispose()
+    this.mcpManager.dispose()
     void pluginLspManager.restart()
+    unregisterShimWindow(this.sink)
     for (const view of this.webviews) this.invokeDiagnostics.detach(view)
     this.webviews.clear()
   }

@@ -71,6 +71,9 @@ export interface McpServerState {
 
 /** Surface of the manager that transports need to call back into. */
 export interface TransportContext {
+  /** Manager disposal, optionally combined with the owning tool call's signal.
+   *  Never aborted merely because a browser view detaches or reconnects. */
+  shutdownSignal?: AbortSignal
   window: BrowserWindow
   servers: Map<string, McpServerState>
   appendLog(id: string, level: McpTestLogEntry['level'], msg: string): void

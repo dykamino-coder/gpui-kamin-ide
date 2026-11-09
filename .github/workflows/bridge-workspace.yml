@@ -1,0 +1,69 @@
+name: bridge workspace checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
+      - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
+      - .github/workflows/bridge-workspace.yml
+  push:
+    branches: [main]
+    paths:
+      - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
+      - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
+      - .github/workflows/bridge-workspace.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bridge-workspace-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  transport:
+    name: Bridge workspace runtime
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extensions/claude-bridge/workspace
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            extensions/claude-bridge/workspace/package-lock.json
+            extensions/claude-bridge/extension/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: extensions/claude-bridge/extension
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:parity
+      - run: npm run test:acceptance
+      - run: npm run build

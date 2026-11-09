@@ -1,7 +1,8 @@
-// Build the two decomposed Bridge webview bundles. vite-plugin-singlefile sets
+// Build the decomposed desktop bundles and the combined browser entry.
+// vite-plugin-singlefile sets
 // inlineDynamicImports (single-chunk), which forbids multiple inputs in ONE
 // rollup pass — so we run a separate single-input build per entry, then copy
-// each inlined html into builtin-extensions/claude-bridge/ (the shipped artifact).
+// each desktop HTML into builtin-extensions/claude-bridge/ (the shipped artifact).
 import { build } from "vite"
 import fs from "node:fs"
 import path from "node:path"
@@ -14,10 +15,12 @@ const dest = path.resolve(dir, "../../../builtin-extensions/claude-bridge")
 // sub-agents + plan + todos) + customize (Bridge's Settings/Skills/MCP/… block,
 // rendered inside KaminIDE's own Customize area). KaminIDE's native sessions
 // replace the Bridge sidebar (see docs/BRIDGE_VSIX_INTEGRATION.md).
-for (const entry of ["chat", "tools", "customize"]) {
+const browserOnly = process.argv.includes('--browser')
+for (const entry of browserOnly ? ['browser'] : ["chat", "tools", "customize", 'browser']) {
   await build({
     configFile: path.resolve(dir, "vite.config.ts"),
     root: dir,
+    mode: entry === 'browser' ? 'browser' : 'production',
     build: {
       outDir: path.resolve(dir, `dist/${entry}`),
       emptyOutDir: true,
@@ -34,6 +37,7 @@ for (const entry of ["chat", "tools", "customize"]) {
   // `[\n]`. Store the equivalent escaped JS string in the shipped artifact so
   // formatting tools cannot alter its runtime value.
   html = html.split("`[ \t\n]`").join('"[ \\t\\n]"')
-  fs.writeFileSync(path.join(dest, `${entry}.html`), html, "utf8")
+  // Browser assets are consumed by the workspace package, never the VSIX.
+  fs.writeFileSync(entry === 'browser' ? builtPath : path.join(dest, `${entry}.html`), html, "utf8")
   console.log(`[claude-bridge] webview → ${entry}.html`)
 }
