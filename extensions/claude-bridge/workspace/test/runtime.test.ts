@@ -52,7 +52,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     await new Promise<void>(resolve => upstream.close(() => resolve()))
     await new Promise<void>(resolve => http.close(() => resolve()))
   })
-  const { child, exited, ready } = await startRuntimeProcess(root, tmp, home, upstreamUrl, cleanup)
+  const { child, exited, ready, runtimeOutput } = await startRuntimeProcess(root, tmp, home, upstreamUrl, cleanup)
   const login = await fetch(`${ready.origin}/auth/login`, { method: 'POST', headers: { Origin: ready.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'synthetic-workspace-token' }) })
   const cookie = login.headers.get('set-cookie')!.split(';')[0]
   const connect = () => new WebSocket(ready.origin.replace('http:', 'ws:') + '/bridge', { headers: { Origin: ready.origin, Cookie: cookie } })
@@ -81,6 +81,16 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   assert.equal((await invoke('get-version')).result, 'fixture')
   assert.equal((await invoke('get-cwd')).result, root)
   assert.equal((await invoke('get-config')).result.token, '[workspace credential]')
+  const configFile = path.join(root, 'storage', 'open-claude-bridge-config.json')
+  function assertCredentialPrivate() {
+    const stored = fs.readFileSync(configFile, 'utf8')
+    assert.equal(JSON.parse(stored).config.token, '')
+    assert.equal(stored.includes('synthetic-workspace-token'), false)
+    assert.equal(runtimeOutput().includes('synthetic-workspace-token'), false, 'Runtime output must omit the credential')
+  }
+  assertCredentialPrivate()
+  await invoke('set-config', [{ token: 'forged', serverUrl: 'ws://attacker.invalid' }])
+  assertCredentialPrivate()
   assert.equal((await invoke('not:a:channel')).ok, false)
   assert.equal((await invoke('select-folder')).ok, false, 'missing browser services must reject explicitly')
   assert.equal((await invoke('bridge:server-fetch', ['http://attacker.invalid', '/api/tokens'])).ok, false)
@@ -105,8 +115,9 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(resumed.token, 'synthetic-workspace-token')
     assert.equal(resumed.cwd, root)
     const persisted = JSON.parse(fs.readFileSync(path.join(root, 'storage', 'open-claude-bridge-config.json'), 'utf8'))
-    assert.equal(persisted.config.token, 'synthetic-workspace-token')
+    assert.equal(persisted.config.token, '')
     assert.equal(persisted.config.serverUrl, upstreamUrl)
+    assertCredentialPrivate()
   }
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {
@@ -232,5 +243,12 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   assert.equal(signal, null)
   for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
   assert.equal(upstreamFrames.some(frame => frame.type === 'session:end'), lifecycle === 'tab close then shutdown')
+  assertCredentialPrivate()
+  for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const content = fs.readFileSync(path.join(entry.parentPath, entry.name))
+    assert.equal(content.includes(Buffer.from('synthetic-workspace-token')), false,
+      'Workspace config, cache, temporary files and diagnostic logs must omit the credential')
+  }
 })
 }

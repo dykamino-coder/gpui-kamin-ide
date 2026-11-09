@@ -1,5 +1,6 @@
 import { build } from 'esbuild'
 import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 
 await build({
   entryPoints: ['src/index.ts'],
@@ -14,12 +15,14 @@ await build({
 // Use the SAME BridgeHost and handler graph as the VSIX. Only the VS Code API
 // boundary is replaced; the host-compat IPC facade itself remains shared.
 await build({
-  entryPoints: ['src/runtime.ts'],
-  outfile: 'dist/runtime.cjs',
+  entryPoints: { runtime: 'src/runtime.ts', cli: 'src/cli.ts' },
+  outdir: 'dist',
+  outExtension: { '.js': '.cjs' },
   bundle: true,
   platform: 'node',
   format: 'cjs',
   target: 'node22',
+  define: { BRIDGE_VERSION: JSON.stringify(JSON.parse(await readFile('../../../builtin-extensions/claude-bridge/package.json', 'utf8')).version) },
   packages: 'external',
   alias: {
     vscode: path.resolve('src/environment.ts'),
