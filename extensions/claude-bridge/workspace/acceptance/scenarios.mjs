@@ -74,7 +74,9 @@ export function liveScenarios(state) {
       try {
         await ready(second, owned.origin)
         await second.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
-        await second.getByRole('button', { name: 'Restore panel layout', exact: true }).click()
+        await second.getByRole('button', { name: /Type a command/ }).click()
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).fill('layout.restore')
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).press('Enter')
         await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
       } finally { await second.close() }
       await current.getByRole('button', { name: 'Unpin tab', exact: true }).click()
