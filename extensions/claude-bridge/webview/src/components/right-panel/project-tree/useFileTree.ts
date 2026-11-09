@@ -4,8 +4,9 @@
 // (when we add it) can plug in via the same handles without coupling
 // to the visual component.
 
-import { useEffect, useState, useCallback } from 'preact/hooks'
+import { useEffect, useState, useCallback, useRef } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { vscodeApi } from '../../../lib/webview-api'
 
 export interface TreeEntry {
   name: string
@@ -33,6 +34,8 @@ export function useFileTree(root: string | null): UseFileTreeHandle {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [children, setChildren] = useState<Map<string, TreeEntry[]>>(() => new Map())
   const [focused, setFocused] = useState<string | null>(null)
+  const childrenRef = useRef(children)
+  childrenRef.current = children
 
   const fetchDir = useCallback(async (dir: string) => {
     try {
@@ -54,6 +57,13 @@ export function useFileTree(root: string | null): UseFileTreeHandle {
     setFocused(null)
     fetchDir(root)
     bridge.fileTreeWatch(root)
+    const offSnapshot = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const f = frame as { kind?: string; channel?: string }
+      if (f.kind !== 'event' || f.channel !== 'workspace:files-state') return
+      // Read every loaded directory: changes in an expanded descendant could
+      // have happened while the page had no socket. Never replay a rename.
+      for (const dir of new Set([root, ...childrenRef.current.keys()])) void fetchDir(dir)
+    })
     const off = bridge.onFileTreeChange(({ root: changedRoot, changedDir }) => {
       if (changedRoot !== root) return
       // Refresh just the affected directory's children if we have it
@@ -78,6 +88,7 @@ export function useFileTree(root: string | null): UseFileTreeHandle {
     })
     return () => {
       off()
+      offSnapshot?.()
       bridge.fileTreeUnwatch(root)
     }
   }, [root, bridge, fetchDir])

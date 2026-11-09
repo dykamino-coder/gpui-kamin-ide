@@ -3,10 +3,10 @@
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 
-This increment provides an HTTP/WebSocket boundary library and a headless
-composition of the real shared `BridgeHost`, alongside the merged browser entry
-for the existing App. It is not yet a runnable browser workspace: executable
-composition, environment services, capability matrix and Podman acceptance remain open.
+This package provides the HTTP/WebSocket boundary, the existing App browser
+entry, headless composition of the real shared `BridgeHost` and file-panel
+environment services. It is not yet a runnable browser workspace: executable composition,
+remaining environment services, the full matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -184,9 +184,63 @@ JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+Native window/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Container file-panel services
+
+`WorkspaceFiles` decorates a `WorkspaceBackend`. It intercepts only the existing
+`file-viewer:read`, `read-binary`, `write`, `watch`, `unwatch` and
+`file-tree:list-dir`, `rename`, `watch`, `unwatch` channels. Every other frame
+continues to the underlying shared backend. These are environment services for
+the existing file panel; the agent's Read/Write/Edit/Glob tools stay in the
+shared client registry.
+
+Set `root` to the container workspace (default `/workspace`). Relative paths
+resolve against that root, while absolute paths and symlinks retain container
+filesystem semantics. This is not a filesystem sandbox around one directory.
+The authenticated container is the user's local machine; never give it host
+home or unrelated host mounts. Writes preserve supplied UTF-8 text, truncate
+existing files, and create files without creating missing parent directories.
+Rename uses the container filesystem's normal replacement semantics.
+
+Reads/writes accept regular files up to 8 MiB. Text additionally has a 12 MiB
+JSON-encoded limit so control characters cannot overflow the transport frame;
+binary reads return base64. Concurrently changing reads fail with a retry error.
+Listings return directories first and reject more than 10,000 entries. Errors
+are explicit invoke replies, retaining the request ID and document generation.
+
+Each view owns up to 64 file watches and 8 recursive directory watches. Watching
+a file's parent preserves updates across atomic replacement. File events are
+debounced; unlink never invents empty file content, and recreation is observed.
+Directory events carry the original root and the changed parent/path. Required
+`onWatchError` forwards asynchronous failures to the embedding host's logger/UI;
+errors never masquerade as successful empty content. A future executable must
+wire that callback to the shared logging surface.
+
+Watch ownership belongs to logical host views, not sockets. Socket loss only
+detaches delivery; watches and debounce/read work survive with zero pages.
+`workspace:sync` accepts an optional `{fileViewId}` and replies privately with
+`workspace:files-state` (`id`, `files`, `trees`), fresh watched text and tree
+invalidation events. The browser remembers only this opaque ID in sessionStorage.
+A new document without an ID adopts the latest detached view; a concurrent page,
+including a tab with copied sessionStorage, gets independent copied subscriptions.
+Mounted trees refresh every loaded directory, including expanded descendants.
+Only current read snapshots are sent; writes and renames are never replayed.
+
+At most 32 logical file views are retained until host shutdown; new views beyond
+that limit fail explicitly. Explicit unwatch removes a path from its logical
+view. Dispose the file decorator before disposing the shared runtime on shutdown;
+this releases every retained watcher/timer. Watches do not keep Node alive.
+
+Tests execute every file channel against real temporary files, including an
+authenticated HTTP/WebSocket integration, atomic saves, watcher ownership,
+deletion/recreation, limits, explicit errors and lifecycle cleanup. The upstream
+fixture rejects unknown invokes. This proves this adapter only; actual browser
+file-panel rendering, complete host-owned layout/selection context and live container acceptance remain
+required after executable composition. Linux CI also checks FIFO rejection and
+symlinks; Windows skips FIFO and skips symlinks if the identity lacks privilege.
 
 ## Host presentation and re-attachment increment
 

@@ -28,8 +28,8 @@ machine is a Linux container with persistent `/workspace`. Serve the existing
 webview components to an ordinary browser, preserving the Kamin bridge API and
 server protocol.
 
-Owner requirement, 2026-11-09 (verbatim): «важно что бы страница в браузере
-тонкой была и если ее закрыть и открыть работа с агентом не прервется».
+Owner requirement, 2026-11-09 (verbatim): В«РІР°Р¶РЅРѕ С‡С‚Рѕ Р±С‹ СЃС‚СЂР°РЅРёС†Р° РІ Р±СЂР°СѓР·РµСЂРµ
+С‚РѕРЅРєРѕР№ Р±С‹Р»Р° Рё РµСЃР»Рё РµРµ Р·Р°РєСЂС‹С‚СЊ Рё РѕС‚РєСЂС‹С‚СЊ СЂР°Р±РѕС‚Р° СЃ Р°РіРµРЅС‚РѕРј РЅРµ РїСЂРµСЂРІРµС‚СЃСЏВ».
 The browser is only a view. All authoritative state and execution belong to the
 container host, including sessions, connections, transcript, streaming turns,
 tool status, permission prompts, queued messages, files/watches and terminal
@@ -37,7 +37,7 @@ scrollback. A page can disappear with zero attached browsers while work proceeds
 Reopening attaches to the same running workspace and renders its current state.
 The existing browser entry alone does not yet satisfy this contract.
 
-Scope clarification from the owner (verbatim): «мы бридж копируем а не камин».
+Scope clarification from the owner (verbatim): В«РјС‹ Р±СЂРёРґР¶ РєРѕРїРёСЂСѓРµРј Р° РЅРµ РєР°РјРёРЅВ».
 Bridge's own FilePanel, file viewer, attach-file/editor context, terminal,
 uploads/downloads and attachments remain in scope. Opening/revealing files in
 the IDE editor and openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not
@@ -235,6 +235,15 @@ callback alone is not a test. Test actual environment services and shared
 handlers, not a fake blanket success responder. Fixtures must name observable
 effects, cancellation, errors and cleanup as appropriate.
 
+The independent file-panel environment increment decorates `WorkspaceBackend`
+at the existing invoke/send boundary, leaving unknown frames and all agent tool
+logic to the underlying shared backend. File watches belong to each attached
+view, and asynchronous watch errors have a required host logging callback.
+Its actual-files and authenticated transport fixtures are partial capability
+evidence, not the exhaustive matrix or a browser/container acceptance claim.
+This separation allows review from fresh main while runtime/browser PRs await
+the lead; the executable must compose all three pieces before deployment.
+
 | Inventory group | Intended implementation | Required proof |
 | --- | --- | --- |
 | Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and host state/event pipeline | Create/resume/switch/close; host queue once; pending permission after reopen; complete turn snapshot; two tabs |
@@ -282,6 +291,19 @@ backend. It intentionally does not count toward the exhaustive handler matrix or
 live Podman gate below. Environment adapters/executable composition remain next.
 
 ### Full workspace gates
+
+The FilePanel watch revision makes subscriptions part of a bounded host logical
+view registry (32 views, each at most 64 files/8 tree roots). A socket only owns
+delivery. The existing read-only `workspace:sync` optionally carries a remembered
+opaque `fileViewId`; `workspace:files-state` returns the host ID and retained
+paths, followed by fresh text snapshots and tree invalidations. An ID-less
+reopen adopts the latest detached host view; a second attached page receives
+independent copied subscriptions, even if sessionStorage was copied by the
+browser. No write/rename history is retained or replayed. Shutdown disposes the
+registry, and explicit unwatch releases paths. This bounded increment restores
+watched files into a fresh page's active session; exact per-session file layout,
+dirty drafts, selection and previews still require the remaining host projection
+work. The existing Bridge FilePanel stays in scope; IDE integration does not.
 
 Use an isolated Podman project and headless Playwright, with synthetic content
 and private raw captures. Record source SHA, dependency locks, image ID, container
