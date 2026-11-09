@@ -12,7 +12,8 @@ import { assertProcessStopped, deadline, externalMcp } from './fixtures/external
 
 // Protocol peer only: the CLIENT, handlers, filesystem and socket routing are
 // real. This is deliberately not live Claude/Podman/browser acceptance.
-test('real BridgeHost pins identity, runs file tools, persists settings and shuts down naturally', async t => {
+for (const lifecycle of ['shutdown', 'disconnect then shutdown', 'detach then shutdown']) {
+test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned work`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-runtime-'))
   const home = path.join(root, 'home')
   const tmp = path.join(root, 'tmp')
@@ -75,7 +76,8 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   const login = await fetch(`${ready.origin}/auth/login`, { method: 'POST', headers: { Origin: ready.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'synthetic-workspace-token' }) })
   const cookie = login.headers.get('set-cookie')!.split(';')[0]
   const connect = () => new WebSocket(ready.origin.replace('http:', 'ws:') + '/bridge', { headers: { Origin: ready.origin, Cookie: cookie } })
-  const a = connect(), b = connect()
+  let a = connect()
+  const b = connect()
   const framesA: any[] = [], framesB: any[] = []
   const eventsA = new EventEmitter(), eventsB = new EventEmitter()
   a.on('message', raw => { framesA.push(JSON.parse(raw.toString())); eventsA.emit('frame') })
@@ -165,6 +167,32 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   assert.ok(pidFiles.every(file => fs.existsSync(file)), 'Long-running Bash commands did not start')
   const shellPids = pidFiles.map(file => Number(fs.readFileSync(file, 'utf8').trim()))
   assert.ok(shellPids.every(pid => Number.isSafeInteger(pid) && pid > 0))
+  if (lifecycle === 'detach then shutdown') {
+    let cancelled = false
+    void external.cancelled.then(() => { cancelled = true })
+    const closed = Promise.all([once(a, 'close'), once(b, 'close')])
+    a.close()
+    b.close()
+    await closed
+    // Zero browser sockets: neither sessions nor their work belong to the page.
+    await new Promise(resolve => setTimeout(resolve, 250))
+    assert.equal(cancelled, false, 'Socket loss must not abort an external MCP call')
+    for (const pid of shellPids) assert.doesNotThrow(() => process.kill(pid, 0))
+    assert.equal(peer!.readyState, WebSocket.OPEN, 'Socket loss must keep the upstream connection')
+    assert.match(JSON.stringify((await tool('Read', { file_path: file })).result), /after/)
+    a = connect()
+    a.on('message', raw => { framesA.push(JSON.parse(raw.toString())); eventsA.emit('frame') })
+    await once(a, 'open')
+    assert.equal((await invoke('tab:list')).result.length, 3)
+    assert.equal(cancelled, false)
+  }
+  if (lifecycle === 'disconnect then shutdown') {
+    // This is the public browser message, not a direct ConnectionManager call.
+    a.send(JSON.stringify({ kind: 'send', channel: 'disconnect', args: [] }))
+    assert.deepEqual((await invoke('tab:list')).result, [])
+    await deadline(external.cancelled, 'External MCP request survived explicit browser disconnect')
+    for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
+  }
   child.send('shutdown')
   await deadline(external.cancelled, 'External MCP request survived terminal shutdown')
   const [code, signal] = await Promise.race([
@@ -180,3 +208,4 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
   assert.equal(upstreamFrames.some(frame => frame.type === 'session:end'), false)
 })
+}
