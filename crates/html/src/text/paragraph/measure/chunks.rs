@@ -29,7 +29,9 @@ impl Paragraph {
             let (mut from, mut rejects) = (start, 0);
             let mut c = start + MIN;
             while c + MIN <= end && rejects < REJECTS {
-                if candidate(bytes, c) && (word_hash(bytes, c) % 64 == 0 || c - from >= MAX) {
+                if candidate(bytes, c)
+                    && (word_hash(bytes, c).is_multiple_of(64) || c - from >= MAX)
+                {
                     if self.joins_cleanly(c, window) {
                         ends.push(c);
                         from = c;
