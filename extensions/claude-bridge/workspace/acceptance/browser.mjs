@@ -1,4 +1,4 @@
-import { check } from './report.mjs'
+import { check, CheckFailure } from './report.mjs'
 
 export async function raw(page, method, ...args) {
   return page.evaluate(({ method, args }) => window.bridgeCmd.raw(method, ...args), { method, args })
@@ -29,6 +29,18 @@ export async function newTab(page, mode = 'bypassPermissions') {
   await raw(page, 'changePermissionMode', id, mode)
   return id
 }
+async function turnWaitFailure(page, code) {
+  try {
+    const state = await page.evaluate(() => {
+      const s = window.bridgeCmd.state()
+      return { stateEntries: s.entryCount, busy: s.busy, working: s.working,
+        promptReady: s.promptReady, settling: s.settling, queued: s.queued,
+        boundMatchesActive: s.boundTabId === s.activeTabId }
+    })
+    console.log('turn-state:', JSON.stringify({ stage: code, ...state }))
+  } catch { /* A lost page must not replace the original fixed failure code. */ }
+  throw new CheckFailure(code)
+}
 export async function turn(page, prompt) {
   const marker = prompt.match(/acceptance-[a-f0-9-]+/)?.[0]
   check(marker, 'TURN_MARKER')
@@ -41,8 +53,9 @@ export async function turn(page, prompt) {
     return state.activeTabId === tab && entries.some(e => e.type === 'user' &&
       (typeof e.message?.content === 'string' ? e.message.content :
         (e.message?.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n')).includes(marker))
-  }, { tab, marker }, { timeout: 180_000 })
+  }, { tab, marker }, { timeout: 180_000 }).catch(() => turnWaitFailure(page, 'TURN_ENTRY_WAIT'))
   await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 180_000 }))
+    .catch(() => turnWaitFailure(page, 'TURN_IDLE_WAIT'))
 }
 // Inspect the real viewer store, rather than truncated entry previews or model prose.
 // Full content stays in browser memory; only IDs/counts/tool names cross to Node.
