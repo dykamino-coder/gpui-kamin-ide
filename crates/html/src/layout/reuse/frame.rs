@@ -49,10 +49,24 @@ impl FlowReuse {
                         },
                         false => ink,
                     };
+                    // A repainted block may now paint its box where it painted
+                    // nothing (a new background): its leaf counts as ink too.
+                    let painted = match slot.repainted() {
+                        true => {
+                            let s = window.layout_bounds(id).size;
+                            let leaf = Bounds {
+                                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                                size: size(
+                                    ScaledPixels(s.width.as_f32() * scale),
+                                    ScaledPixels(s.height.as_f32() * scale),
+                                ),
+                            };
+                            Some(record.ink.map_or(leaf, |i| i.union(&leaf)))
+                        }
+                        false => record.ink,
+                    };
                     replay
-                        || record
-                            .ink
-                            .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
+                        || painted.is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
                 refused.insert(record.source.id());

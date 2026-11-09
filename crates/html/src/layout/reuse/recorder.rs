@@ -199,6 +199,7 @@ impl Pending {
                     .is_some_and(|flow| self.border.get() <= flow + 0.5),
             far,
             replay: RefCell::new(replay),
+            repaint: false,
         })
     }
 }

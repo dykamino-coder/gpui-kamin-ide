@@ -111,11 +111,12 @@ impl Document {
             Err(failure) => return Err(record(failure, self)),
         };
         // The same source shape gives the same node ids (traversal counters):
-        // the block records may hold for the restyled tree, and each is checked
-        // by value before use (`layout::reuse`).
+        // the block records may hold for the restyled tree; each is compared
+        // with it now (`Store::rebase`).
         let reuse = same_shape.then(|| self.reuse.clone());
         *self = candidate;
         if let Some(reuse) = reuse {
+            reuse.rebase(&self.nodes);
             self.reuse = reuse;
         }
         Ok(self.report())

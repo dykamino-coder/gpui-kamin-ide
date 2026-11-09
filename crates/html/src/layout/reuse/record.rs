@@ -25,9 +25,36 @@ pub(crate) struct Record {
     /// Только у ближнего блока: далёкий на том же месте под той же маской
     /// и так вне экрана, и его пропуску повтор не нужен (`far`).
     pub(super) replay: RefCell<Option<Box<Replay>>>,
+    /// The block's paint-only values changed since its paint was recorded
+    /// (`Store::same_tree`): the layout leaf holds, the recorded paint and
+    /// ink do not (`FlowReuse::validate` tests the leaf's box as well).
+    pub(super) repaint: bool,
 }
 
 impl Record {
+    /// This record compared with `source`, the block of a restyled tree.
+    /// `repaint`: the block differs in paint-only values, so the recorded
+    /// output is dropped (Blink keeps the layout result of a
+    /// paint-invalidated object and drops its display items).
+    pub(super) fn moved_to(&self, source: Source, repaint: bool) -> Self {
+        Self {
+            source,
+            key: self.key.clone(),
+            start: self.start,
+            end: self.end,
+            snapshot: self.snapshot,
+            ink: self.ink,
+            resizable: self.resizable,
+            stretch: self.stretch,
+            far: self.far,
+            replay: RefCell::new(match repaint {
+                true => None,
+                false => self.replay.take(),
+            }),
+            repaint: self.repaint || repaint,
+        }
+    }
+
     /// Запись годна в потоке ключа `key` другой ширины.
     pub(super) fn fits_width(&self, key: &FlowKey) -> bool {
         match self.resizable {

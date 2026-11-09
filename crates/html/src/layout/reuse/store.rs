@@ -73,9 +73,16 @@ impl Store {
     pub(crate) fn same_tree(&self, e: &Element) -> Option<(Rc<Record>, Damage)> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
         if record.source.same(e) {
-            return Some((record, Damage::None));
+            let damage = match record.repaint {
+                true => Damage::Paint,
+                false => Damage::None,
+            };
+            return Some((record, damage));
         }
-        if record.source.same_layout(e) {
+        // A repainted block stands only off screen (`FlowCx::placeholder`):
+        // the layout compare of a near one, a walk of its whole subtree,
+        // would only find a record its build cannot use.
+        if record.far && record.source.same_layout(e) {
             // The caller keeps the layout under a record of this tree
             // (`FlowCx::placeholder`): the previous subtree goes now, not at
             // the end of the frame.
@@ -89,6 +96,28 @@ impl Store {
         records.remove(&e.node_id);
         self.records.replace(records);
         None
+    }
+
+    /// The document was restyled into a new tree of the same source DOM
+    /// (`Document::apply` rebuild, same-shape `Document::update`): the node
+    /// ids are the same. Each record is compared with its block of `nodes`
+    /// now and moved to it, so the previous tree goes with the previous
+    /// document, as for a fresh one, not during the next build. A block equal
+    /// but for paint-only values keeps its record only if it was far from the
+    /// screen (`Damage::Paint` stands only there); replay records, compared
+    /// exactly and holding their output, go.
+    pub(crate) fn rebase(&self, nodes: &[crate::dom::Node]) {
+        self.reset_replays();
+        let blocks = super::flow_blocks(nodes);
+        let shells = super::Shells::default();
+        let records = self.records.take();
+        let records = records.into_iter().filter_map(|(id, record)| {
+            let e = blocks.get(&id)?;
+            let exact = record.source.same(e);
+            let repaint = !exact && record.far && record.source.same_layout(e);
+            (exact || repaint).then(|| (id, Rc::new(record.moved_to(shells.source(e), repaint))))
+        });
+        self.records.replace(records.collect());
     }
 
     /// Build inputs of the kept records, for tests.

@@ -65,6 +65,11 @@ impl Slot {
         !self.stretched && !self.repaint
     }
 
+    /// The block's paint-only values changed since its record.
+    pub(super) fn repainted(&self) -> bool {
+        self.repaint
+    }
+
     pub(super) fn record(&self) -> &Record {
         &self.record
     }

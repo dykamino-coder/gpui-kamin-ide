@@ -88,7 +88,9 @@ impl FlowKey {
             (Some(a), Some(b)) => crate::dom::same_box(a, b),
             _ => false,
         };
-        *self.root == *other.root && boxes(&self.html, &other.html) && boxes(&self.body, &other.body)
+        *self.root == *other.root
+            && boxes(&self.html, &other.html)
+            && boxes(&self.body, &other.body)
     }
     /// The widths of the flow (see `same_outside_widths`).
     pub(super) fn same_widths(&self, other: &Self) -> bool {

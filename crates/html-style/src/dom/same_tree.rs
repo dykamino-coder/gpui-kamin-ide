@@ -220,4 +220,3 @@ fn same_children<'a>(
 
 #[cfg(test)]
 mod tests;
-

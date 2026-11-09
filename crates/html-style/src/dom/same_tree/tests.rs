@@ -1,3 +1,5 @@
+//! Tests of the value comparison of box trees (`same_tree`, `same_layout_tree_as`).
+
 use super::*;
 use crate::dom::{Marks, Text};
 use crate::style::computed::Computed;
@@ -102,10 +104,16 @@ fn paint_only_values_keep_the_layout_of_a_subtree() {
     assert!(!same_tree_as(&shell, &styles, &a.children, &b));
     assert!(same_layout_tree_as(&shell, &styles, &a.children, &b));
     let onf = block(vec![text("one"), Node::Element(block(vec![text("twp")]))]);
-    assert!(!same_layout_tree_as(&shell, &styles, &a.children, &onf), "texts stay exact");
+    assert!(
+        !same_layout_tree_as(&shell, &styles, &a.children, &onf),
+        "texts stay exact"
+    );
     let mut classed = b;
     classed.attrs.push(("class".into(), "x".into()));
-    assert!(!same_layout_tree_as(&shell, &styles, &a.children, &classed), "attributes stay exact");
+    assert!(
+        !same_layout_tree_as(&shell, &styles, &a.children, &classed),
+        "attributes stay exact"
+    );
 }
 
 #[test]

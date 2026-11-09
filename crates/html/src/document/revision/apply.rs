@@ -131,9 +131,11 @@ impl Document {
         ) {
             Ok(next) => {
                 // Same source DOM, same node ids: the block records may hold
-                // for the restyled tree (each is checked by value before use).
+                // for the restyled tree; each is compared with it now and the
+                // previous tree goes with the previous document (Store::rebase).
                 let reuse = self.reuse.clone();
                 *self = next;
+                reuse.rebase(&self.nodes);
                 self.reuse = reuse;
                 Ok(self.report())
             }
