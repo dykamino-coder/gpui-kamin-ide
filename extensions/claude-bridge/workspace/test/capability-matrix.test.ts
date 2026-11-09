@@ -61,6 +61,8 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   const original = fs.readFileSync(api, 'utf8')
   fs.writeFileSync(api, original.replace('export interface KaminBridgeApi {', 'export interface KaminBridgeApi {\n futureApi(): void'))
   assert.throws(() => assertCapabilityMatrix(capabilityInventory(fixture), matrix, fixture), /api:futureApi/)
+  fs.writeFileSync(api, original.replace('export interface KaminBridgeApi {', 'export interface KaminBridgeApi extends FutureApi {'))
+  assert.throws(() => capabilityInventory(fixture), /Unclassified inherited API members/)
   fs.writeFileSync(api, original)
   const probe = path.join(fixture, 'extension/src/main/mcp/tools/capability-probe.ts')
   fs.writeFileSync(probe, `
@@ -92,6 +94,20 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
     assert.ok(adapters.some(item => item.id === id), `Inventory omitted dispatch set ${id}`)
   }
   assert.throws(() => assertCapabilityMatrix(adapters, matrix, fixture), /future-adapter-invoke/)
+  fs.writeFileSync(adapter, `
+    if ('future-reversed-route' === frame.channel) {}
+    switch (frame.channel) {
+      case 'future-switch-route': break
+      default: break
+    }
+  `)
+  const routes = capabilityInventory(fixture)
+  for (const id of ['route:future-reversed-route', 'route:future-switch-route']) {
+    assert.ok(routes.some(item => item.id === id), `Inventory omitted dispatcher ${id}`)
+  }
+  assert.throws(() => assertCapabilityMatrix(routes, matrix, fixture), /future-reversed-route/)
+  fs.writeFileSync(adapter, 'switch (frame.channel) { case unknownChannel: break }')
+  assert.throws(() => capabilityInventory(fixture), /Unclassified channel case/)
 })
 
 test('a mapped capability cannot pass the full parity gate while its host adapter is pending', () => {
