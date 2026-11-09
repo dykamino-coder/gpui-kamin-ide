@@ -6,7 +6,7 @@ Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
 for the existing App. It is not yet a runnable browser workspace: executable
-composition, environment services, capability matrix and Podman acceptance remain open.
+composition, remaining environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -146,22 +146,75 @@ expired session returns to sign-in; protocol/overload closes require reload.
 The browser smoke uses production assets, the real HTTP/WS boundary, headless
 Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
 fail; this is startup/transport/UI composition evidence, not shared-handler,
-model or Podman parity. Run after building both packages:
+model or live-server parity. Browser processes must run in Linux; Windows host
+runs are rejected, including headless browsers. Run once in an isolated Podman
+container (repository mounted read-only; source copied to container storage):
 
 ```sh
-# In workspace; choose a private browser cache on a shared developer machine.
-export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
-export PLAYWRIGHT_SKIP_BROWSER_GC=1
-npx playwright install chromium --only-shell
-npm run test:browser
+npm run test:browser:container
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI.
+The runner uses the official Playwright Linux image matching the lockfile,
+installs locked dependencies, builds both packages and runs the suite once.
+It copies logs/screenshots to a private temporary directory (or
+`BRIDGE_BROWSER_OUTPUT`) and removes only its exact `bridgeweb-acc-browser-*`
+container. Linux CI runs the same suite headlessly and captures only synthetic
+fixture UI.
+
 The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
 JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+File/PTY integration, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Browser environment effects
+
+`createBrowserEnvironment({ root })` returns `{ environment, wrap }`. Pass the
+environment to `createSharedBackend`, then pass `wrap(backend)` to the HTTP/WS
+server. The wrapper owns only view effects; disposing a view does not dispose
+the runtime or its sessions. This increment does not change session persistence.
+
+Existing shared handlers keep their dialog/clipboard/external-link behavior via
+request-local effects. A thin browser dialog performs browser clipboard access,
+file selection, downloads and navigation after a user gesture. Cancellation,
+permission denial, timeout or detach returns an explicit error/cancel result;
+effects are never queued or replayed on reconnect. Background notifications are
+best effort when no browser is attached.
+
+Browser uploads and existing paste/drop attachments use the same attachment
+writer as the native client, with sanitized filenames below
+`<root>/.bridge-uploads` (`/workspace/.bridge-uploads` in the container). Upload
+selections and each exported file are limited to 8 MiB to fit the bounded socket
+frames. Existing export handlers write into request-owned staging directories;
+the wrapper transfers those exact bytes to browser downloads before replying and
+removes its staging files. Folder selection addresses existing absolute
+container paths; the whole container filesystem remains available.
+
+Bridge's own FilePanel viewer and attachment context remain in scope. IDE editor
+open/reveal/openInVscode operations are excluded: **KaminIDE host feature, not
+Bridge**. Native window controls belong to the browser. The production-bundle
+environment smoke proves actual upload/download bytes and clipboard round trips
+against an enumerated fixture; it does not prove live server/model parity.
+
+## Settings server requests and voice input
+
+Wrap the configured backend with `withBrowserServer(backend, { serverUrl, token })`
+using the same host-owned connection settings. The existing Settings HTTP helpers
+are shared with the native client; browser callers cannot choose a different
+upstream origin. Responses are bounded, redirects are rejected, and the configured
+credential is redacted. The existing settings credential placeholder is resolved
+only by the host. Tokens created explicitly for the user remain visible as results.
+Compose this inside `browser.wrap(...)` when using the environment adapter.
+
+Voice input uses the existing browser MediaRecorder/getUserMedia flow and the
+shared host `whisper:transcribe` handler. Configure the Whisper URL, token and
+model in Bridge settings. The host posts recorded bytes as multipart (up to
+8 MiB); the page receives recognized text or an explicit error. Microphone access
+requires a secure browser context, such as HTTPS or localhost. Native microphone
+and removed PWA-microphone channels do not run in the container host.
+
+The Tools usage action also reuses the native relay and targets currently
+attached browser views. It owns no session lifecycle state.

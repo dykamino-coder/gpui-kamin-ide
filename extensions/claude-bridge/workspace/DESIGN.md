@@ -302,3 +302,20 @@ a concrete prerequisite; it never becomes a request for owner testing.
 Complete applicable package typechecks/tests/builds, regenerated artifact checks,
 event routing check and GitHub CI on the final candidate. No Windows GUI launch
 or focus is necessary for this new browser-only contract.
+
+## Browser environment effects
+
+The host composes the shared Bridge handlers with a request-scoped browser
+environment. Clipboard, file chooser, download, notification and external-link
+effects target only the originating authenticated view. The page renders the
+requested primitive and returns its result; it does not choose host paths,
+implement tools, or own sessions. Closing the view cancels pending environment
+effects without disposing the shared runtime. Uploads land under the workspace;
+existing shared attachment and export handlers consume those paths. Container
+folder selection accepts container paths, including paths outside `/workspace`.
+
+Bridge's own FilePanel, attachment context and terminal remain in scope.
+IDE editor/reveal/openInVscode operations are not applicable: "KaminIDE host
+feature, not Bridge". Browser deployment replaces the desktop auto-updater and
+native window chrome. Browser audio capture reuses the existing voice-input
+hook, with transcription performed by the host.
