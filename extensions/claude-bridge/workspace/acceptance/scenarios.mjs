@@ -105,7 +105,8 @@ export function liveScenarios(state) {
       await page.evaluate(() => {
         window.__acceptancePermission = undefined
         window.__acceptanceUnsubscribe = window.bridgeCmd.raw('onPermissionRequest', (id, req) => {
-          window.__acceptancePermission = { tab: id, id: req.requestId }
+          window.__acceptancePermission = { tab: id, id: req.requestId, shell: req.toolName === 'Bash',
+            expectedInput: JSON.stringify(req.input).includes('/workspace/bridgeweb-acc-permission') }
         })
       })
       const n = nonce()
@@ -113,19 +114,26 @@ export function liveScenarios(state) {
         `Use Bash to run: printf 'approved\\n' > /workspace/bridgeweb-acc-permission. ${finish(n)}`)
       await page.waitForFunction(() => !!window.__acceptancePermission, null, { timeout: 120_000 })
       const pending = await page.evaluate(() => window.__acceptancePermission)
-      check(pending.tab === tab && !(await owned.read('/workspace/bridgeweb-acc-permission')), 'PENDING_PERMISSION')
+      check(pending.tab === tab && pending.shell && pending.expectedInput &&
+        !(await owned.read('/workspace/bridgeweb-acc-permission')), 'PENDING_PERMISSION')
+      try { await page.getByRole('button', { name: 'Allow', exact: true }).waitFor({ timeout: 10_000 }) }
+      catch { throw new CheckFailure('PERMISSION_INITIAL_WIDGET') }
       check(context.pages().length === 1, 'SOLE_BROWSER_PAGE')
       await page.close()
       state.page = await context.newPage()
       await ready(state.page, owned.origin)
+      check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
       try {
-        check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
         // switchTab normally awaits idle, which cannot happen before this prompt is answered.
         await state.page.evaluate(tab => { void window.bridgeCmd.switchTab(tab).catch(() => {}) }, tab)
         await state.page.waitForFunction(tab => window.bridgeCmd.state().activeTabId === tab, tab)
-        await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 15_000 })
-        await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 })
-      } catch { throw new CheckFailure('PERMISSION_REHYDRATION') }
+              } catch { throw new CheckFailure('PERMISSION_BINDING') }
+      try { await state.page.getByRole('button', { name: 'Allow', exact: true }).waitFor({ timeout: 15_000 }) }
+      catch { throw new CheckFailure('PERMISSION_REOPEN_WIDGET') }
+      try { await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 5_000 }) }
+      catch { throw new CheckFailure('PERMISSION_REOPEN_INPUT') }
+      try { await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 }) }
+      catch { throw new CheckFailure('PERMISSION_ALLOW_CLICK') }
       await state.page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 120_000 }))
       check((await owned.read('/workspace/bridgeweb-acc-permission')).trim() === 'approved', 'PERMISSION_BYTES')
       complete(await transcript(state.page, n), { code: 'PERMISSION_REHYDRATION' })
