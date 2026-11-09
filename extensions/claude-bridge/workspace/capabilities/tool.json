@@ -1,7 +1,7 @@
 [
-  {"id":"tool:preview_mount","status":"supported-in-browser-host","provider":"preview","handler":"previewMount","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
-  {"id":"tool:preview_update","status":"supported-in-browser-host","provider":"preview","handler":"previewUpdate","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
-  {"id":"tool:preview_unmount","status":"supported-in-browser-host","provider":"preview","handler":"previewUnmount","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
+  {"id":"tool:preview_mount","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"handler":"previewMount","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
+  {"id":"tool:preview_update","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"handler":"previewUpdate","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
+  {"id":"tool:preview_unmount","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"handler":"previewUnmount","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:Agent","status":"explicitly-not-applicable-with-reason","reason":"CLI native tool, deliberately not advertised as a client MCP tool; execution stays in the server container.","evidence":"server/src/core/pty/mcp-tools-defs.ts","handler":"agentSpawn","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:AskUserQuestion","status":"supported-in-browser-host","provider":"shared-host","handler":"askUserQuestion","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:Bash","status":"supported-in-browser-host","provider":"shared-host","handler":"bashExecute","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
