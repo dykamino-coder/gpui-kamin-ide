@@ -87,6 +87,10 @@ test('long assistant prose stays complete and readable across streaming and cano
       }
       await emit('streaming-entry', { ...snapshot(blocks), __streaming: false })
       for (const row of canonical) await emit('jsonl-entries', [row])
+      // A delayed proxy flush must not replace canonical prose with a partial
+      // snapshot. Replaying the same UUIDs afterwards cannot repair that loss.
+      await emit('streaming-entry', snapshot([blocks.at(-1)]))
+      await emit('streaming-delta', { msgId: 'scroll-message', blockIdx: 0, kind: 'text', appendText: ' LATE_PROXY_SENTINEL' })
       // Duplicate replay must neither drop nor double any canonical block.
       await emit('jsonl-entries', canonical)
       await page.waitForFunction(expected => {
