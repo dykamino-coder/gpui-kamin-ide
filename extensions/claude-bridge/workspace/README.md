@@ -9,6 +9,22 @@ for the existing App. It is not yet a runnable browser workspace: executable
 composition, remaining environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
+Owner requirement (2026-11-09): the browser must be a thin view and closing it
+must not interrupt agent work. The container host owns all sessions, execution,
+queues, pending prompts, file watches and PTYs, including with zero browsers.
+Re-attach must deliver transcript/streaming/tool/prompt state, open files/watches
+and terminal scrollback, then live updates, without replaying mutations or
+duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
+tears down work. The merged browser entry does not yet meet this full contract:
+host presentation snapshots and authoritative state migration remain open.
+Acceptance must cover close/reopen during Bash/MCP, pending permission after
+reopen, two tabs, and report production bundle size and page JS heap.
+
+Pending increments remain tracked separately: #643 serves application assets;
+#642 needs host-owned file watches and re-attach refresh; #644 needs host-owned
+PTY lifetime and scrollback. The explicit Disconnect follow-up precedes #643,
+then corrected #642. None of these increments establishes full parity.
+
 Run the boundary checks with Node 22:
 
 ```sh
@@ -58,7 +74,15 @@ MCP requests and closes shared resources without sending `session:end`; the
 server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
 The test starts long-running foreground/background Bash processes and an actual
 loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
-process termination and natural client exit. A
+process termination and natural client exit. It also sends the public explicit
+Disconnect before shutdown: connections are terminally disposed before tabs are
+forgotten, and the owning call's cancellation reaches external HTTP/SSE requests.
+An SSE response still pending after POST 202 is cancelled without closing the
+shared stream or another call. Stdio/WS per-call remote cancellation remains a
+separate parity gap. A third case closes both browser sockets while Bash/MCP run,
+checks continued tools with zero browsers, re-attaches to the same three sessions,
+then verifies shutdown cleanup. This is socket-level lifecycle evidence, not the
+full transcript/prompt recovery acceptance. A
 synthetic upstream protocol peer supplies session/MCP frames; this does not
 prove browser UI, live model, external plugin or container acceptance. The test
 uses a disposable HOME and cannot load the operator's Claude profile.
@@ -135,8 +159,12 @@ installs locked dependencies, builds both packages and runs the suite once.
 It copies logs/screenshots to a private temporary directory (or
 `BRIDGE_BROWSER_OUTPUT`) and removes only its exact `bridgeweb-acc-browser-*`
 container. Linux CI runs the same suite headlessly and captures only synthetic
-fixture UI. File/PTY and
-audio adaptations, dashboard-admin login, the
+fixture UI. The smoke also reports all production JS chunks (raw/gzip/Brotli)
+and Chromium JS heap after GC at initial App mount and after socket re-attach.
+These are synthetic empty-workspace baselines, not long-turn/retention acceptance
+or proof that the page is already thin. The design requires remaining measurements.
+
+File/PTY and audio adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
 

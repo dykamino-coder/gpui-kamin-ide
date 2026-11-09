@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
 import './linux-browser-only.mjs'
@@ -16,6 +17,11 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
       const filename = path.join(entry.parentPath, entry.name)
       return ['/' + path.relative(assets, filename).split(path.sep).join('/'), filename]
     }))
+  const scripts = await Promise.all([...files.values()].filter(filename => filename.endsWith('.js')).map(filename => readFile(filename)))
+  t.diagnostic(JSON.stringify({ measurement: 'production-js-bundle', chunks: scripts.length,
+    rawBytes: scripts.reduce((sum, bytes) => sum + bytes.length, 0),
+    gzipBytes: scripts.reduce((sum, bytes) => sum + gzipSync(bytes).length, 0),
+    brotliBytes: scripts.reduce((sum, bytes) => sum + brotliCompressSync(bytes).length, 0) }))
   let valid = true
   let attachments = 0
   const calls = []
@@ -64,6 +70,12 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   const browser = await chromium.launch({ headless: true })
   t.after(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const cdp = await page.context().newCDPSession(page)
+  async function reportHeap(stage) {
+    await cdp.send('HeapProfiler.collectGarbage')
+    const heap = await cdp.send('Runtime.getHeapUsage')
+    t.diagnostic(JSON.stringify({ measurement: 'fixture-page-js-heap', stage, ...heap }))
+  }
   page.setDefaultTimeout(10_000)
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
@@ -86,6 +98,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
     await page.getByText('No sessions', { exact: true }).waitFor()
   }
   await signIn()
+  await reportHeap('initial-shared-App')
   assert.equal(attachments, 1)
   await page.locator('.file-panel-column').waitFor()
   // Synthetic fixture UI only; local captures must use a private destination.
@@ -121,6 +134,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
+  await reportHeap('after-socket-reattach')
 
   valid = false
   await page.locator('#workspace-login:not([hidden])').waitFor()

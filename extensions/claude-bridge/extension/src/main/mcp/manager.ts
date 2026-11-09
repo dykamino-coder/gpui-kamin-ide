@@ -828,8 +828,9 @@ export class McpServerManager {
   }
 
   /** Execute a tool on an external server */
-  async callTool(toolName: string, input: Record<string, unknown>): Promise<McpResult> {
+  async callTool(toolName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpResult> {
     if (this.disposed) throw new Error('MCP manager is disposed')
+    signal?.throwIfAborted()
     // Ленивый сервер: тул значится в диск-кэше, процесс ещё не поднят —
     // поднимаем СЕЙЧАС (первое обращение) и продолжаем обычным путём.
     let hasLive = false
@@ -853,13 +854,18 @@ export class McpServerManager {
         }
       }
     }
+    const ctx = this.ctx()
+    // A session can terminate while other sessions still use this manager.
+    // Abort that call's HTTP request/body without disposing shared transports.
+    if (signal) ctx.shutdownSignal = AbortSignal.any([this.shutdown.signal, signal])
+    ctx.shutdownSignal?.throwIfAborted()
     for (const [id, state] of this.servers) {
       const rawToolName = state.status === 'connected'
         ? state.tools.find(raw => exposedToolName(state, raw) === toolName)
         : undefined
       if (rawToolName) {
         if (state.config.type === 'sse') {
-          const result = await sseJsonRpcRequest(this.ctx(), id, {
+          const result = await sseJsonRpcRequest(ctx, id, {
             jsonrpc: '2.0',
             id: state.nextRequestId++,
             method: 'tools/call',
@@ -868,11 +874,11 @@ export class McpServerManager {
           if (result?.content && Array.isArray(result.content)) return result
           return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] }
         } else if (state.config.type === 'http') {
-          return callHttpTool(this.ctx(), id, rawToolName, input)
+          return callHttpTool(ctx, id, rawToolName, input)
         } else if (state.config.type === 'ws') {
-          return callWsTool(this.ctx(), id, rawToolName, input)
+          return callWsTool(ctx, id, rawToolName, input)
         } else {
-          return callStdioTool(this.ctx(), id, rawToolName, input)
+          return callStdioTool(ctx, id, rawToolName, input)
         }
       }
     }
