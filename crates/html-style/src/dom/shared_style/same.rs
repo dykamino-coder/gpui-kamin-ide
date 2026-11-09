@@ -42,10 +42,16 @@ impl SharedStyle {
             (Some(a), Some(b)) => layout(a, b),
             _ => false,
         };
+        // A rebuilt tree carries its own decoration inputs: by value, as layout reads them.
+        let decoration = match (&self.decoration, &other.decoration) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b) || a.same_layout(b),
+            _ => false,
+        };
         used && layout(&self.cascaded, &other.cascaded)
             && layout(&self.base(), &other.base())
             && same_ptr(&self.box_facts, &other.box_facts)
-            && same_ptr(&self.decoration, &other.decoration)
+            && decoration
     }
 }
 

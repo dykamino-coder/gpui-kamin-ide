@@ -7,8 +7,9 @@ use super::reuse_tests::{reused, update};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
-/// A standard document (wrappers unwrapped into the root style) whose class
-/// on `html` changes the colour or the margin of every row through a rule.
+/// A standard document whose class on `html` changes the colour or the margin
+/// of every row through a rule. The background of the root boxes keeps them as
+/// boxes with decoration inputs, which a rebuild allocates anew.
 fn page(class: &str, text: &str) -> String {
     let rows: String = (0..600)
         .map(|i| {
@@ -18,7 +19,7 @@ fn page(class: &str, text: &str) -> String {
         .collect();
     format!(
         "<!doctype html><html class='{class}'><head><style>\
-         html,body{{margin:0;padding:0;color:#000}} .r{{height:20px}} \
+         html,body{{margin:0;padding:0;background:#fff;color:#000}} .r{{height:20px}} \
          html.paint body{{color:#123456}} html.paint .r{{background-color:#abcdef}} \
          html.layout .r{{margin-top:1px}}</style></head><body>{rows}</body></html>"
     )
@@ -91,4 +92,3 @@ fn a_recoloured_block_keeps_its_record_for_layout_only(cx: &mut TestAppContext) 
         Some(crate::style::values::value::Len::Px(1.0));
     assert_eq!(damage(&moved), None, "a new margin is layout damage");
 }
-
