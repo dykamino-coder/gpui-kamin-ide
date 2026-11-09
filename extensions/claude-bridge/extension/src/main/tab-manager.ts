@@ -408,17 +408,14 @@ export class TabManager {
   }
 
   /**
-   * Disconnect all tabs. Called on app quit / window close.
+   * Explicit Disconnect / app quit: cancel owned work before forgetting tabs.
+   * A browser view detaching must never call this terminal path.
    */
   disconnectAll(): void {
-    for (const tab of this.tabs.values()) {
-      tab.connection.disconnect()
-    }
-    this.tabs.clear()
-    this.activeTabId = null
+    this.dispose()
   }
 
-  /** Terminal client shutdown; transient disconnectAll keeps resumable work. */
+  /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose(): void {
     for (const tab of this.tabs.values()) tab.connection.dispose()
     this.tabs.clear()

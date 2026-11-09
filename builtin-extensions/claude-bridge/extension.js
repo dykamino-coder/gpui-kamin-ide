@@ -38353,7 +38353,7 @@ ${stack}` : ""}`
   }
   if (externalManager?.hasExternalTool(toolName)) {
     try {
-      return await externalManager.callTool(toolName, input);
+      return await externalManager.callTool(toolName, input, context?.signal);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -44638,16 +44638,13 @@ var TabManager = class {
     return tabId;
   }
   /**
-   * Disconnect all tabs. Called on app quit / window close.
+   * Explicit Disconnect / app quit: cancel owned work before forgetting tabs.
+   * A browser view detaching must never call this terminal path.
    */
   disconnectAll() {
-    for (const tab of this.tabs.values()) {
-      tab.connection.disconnect();
-    }
-    this.tabs.clear();
-    this.activeTabId = null;
+    this.dispose();
   }
-  /** Terminal client shutdown; transient disconnectAll keeps resumable work. */
+  /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose() {
     for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
@@ -49871,6 +49868,8 @@ async function sseJsonRpcRequest(ctx, id, body) {
     }, 6e4);
     state.pendingRequests.set(reqId, { resolve, reject, timer });
   });
+  const abort = () => state.pendingRequests.get(reqId)?.reject(new Error("MCP request cancelled"));
+  ctx.shutdownSignal?.addEventListener("abort", abort, { once: true });
   const posted = fetch(state.sseMessageEndpoint, {
     method: "POST",
     headers,
@@ -49883,6 +49882,7 @@ async function sseJsonRpcRequest(ctx, id, body) {
     const [result] = await Promise.all([responsePromise, posted]);
     return result;
   } finally {
+    ctx.shutdownSignal?.removeEventListener("abort", abort);
     const pending = state.pendingRequests.get(reqId);
     if (pending?.timer) clearTimeout(pending.timer);
     state.pendingRequests.delete(reqId);
@@ -51188,8 +51188,9 @@ var McpServerManager = class _McpServerManager {
     return false;
   }
   /** Execute a tool on an external server */
-  async callTool(toolName, input) {
+  async callTool(toolName, input, signal) {
     if (this.disposed) throw new Error("MCP manager is disposed");
+    signal?.throwIfAborted();
     let hasLive = false;
     for (const state of this.servers.values()) {
       if (state.status === "connected" && state.tools.some((raw) => exposedToolName(state, raw) === toolName)) {
@@ -51210,11 +51211,14 @@ var McpServerManager = class _McpServerManager {
         }
       }
     }
+    const ctx = this.ctx();
+    if (signal) ctx.shutdownSignal = AbortSignal.any([this.shutdown.signal, signal]);
+    ctx.shutdownSignal?.throwIfAborted();
     for (const [id, state] of this.servers) {
       const rawToolName = state.status === "connected" ? state.tools.find((raw) => exposedToolName(state, raw) === toolName) : void 0;
       if (rawToolName) {
         if (state.config.type === "sse") {
-          const result = await sseJsonRpcRequest(this.ctx(), id, {
+          const result = await sseJsonRpcRequest(ctx, id, {
             jsonrpc: "2.0",
             id: state.nextRequestId++,
             method: "tools/call",
@@ -51223,11 +51227,11 @@ var McpServerManager = class _McpServerManager {
           if (result?.content && Array.isArray(result.content)) return result;
           return { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] };
         } else if (state.config.type === "http") {
-          return callHttpTool(this.ctx(), id, rawToolName, input);
+          return callHttpTool(ctx, id, rawToolName, input);
         } else if (state.config.type === "ws") {
-          return callWsTool(this.ctx(), id, rawToolName, input);
+          return callWsTool(ctx, id, rawToolName, input);
         } else {
-          return callStdioTool(this.ctx(), id, rawToolName, input);
+          return callStdioTool(ctx, id, rawToolName, input);
         }
       }
     }
