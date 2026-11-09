@@ -110,7 +110,7 @@ incomplete acceptance. `--strict` makes known missing features fail. Live model
 output, raw logs, credentials, screenshots, traces and transcripts are not retained.
 Fixture smoke is deterministic UI/transport evidence, not live-model parity.
 The executed #653 live suite passed its 15 listed scenarios on production
-sources identical to main `91b757d0`; DESIGN.md records exact provenance and
+sources identical to main `65fa7467`; DESIGN.md records exact provenance and
 remaining acceptance. This does not establish full desktop parity.
 
 Stop/recreate only explicitly owned resources. Do not run prune or broad cleanup,

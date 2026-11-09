@@ -145,9 +145,9 @@ executed source/image/report must be checked before marking these gates passed;
 historical failures are not waived by later source changes. The executed
 [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653) records
 15/15 PASS for its listed scenarios on production sources matching main
-`91b757d0`; see DESIGN.md for exact runner/image provenance and limitations.
-This does not validate the later title/toast hooks merged through #650 or
-establish full parity.
+`65fa7467`, including #650's title/toast integration; see DESIGN.md for exact
+runner/image provenance and limitations. Pending #655 PREVIEW/HMR and #657
+fallback-receipt changes are outside that run. It does not establish full parity.
 
 The owner task remains open for remaining host-authoritative page/FilePanel
 state, PREVIEW/HMR, exhaustive behavior proof and final composed live acceptance.

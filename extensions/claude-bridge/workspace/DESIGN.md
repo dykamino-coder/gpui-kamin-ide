@@ -171,7 +171,7 @@ supplies the executable dependencies it advertises, including PowerShell.
 Native editor LSP fallback commands reject explicitly; this does not replace
 testing the shared plugin LSP path.
 
-At main `4bf69698`, #650 supplies the bidirectional source inventory and
+At main `65fa7467`, #650 supplies the bidirectional source inventory and
 mutation tests. Its readiness manifest declares only `host-terminal`,
 `title-regeneration` and `finished-toast-route`, all implemented. Thus the current
 `test:parity` passes even though host-page state, full FilePanel state and
@@ -214,25 +214,26 @@ reports exact residual blockers to the lead; the owner is never asked to test.
 ## Latest executed live subset
 
 The [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653)
-records **15/15 PASS, exit 0**, run `2026-11-09T13:58:59.676Z`, runner
-`fbfdd144ba29a73bcecf09626fa3473f6cbb0abf`, image
-`d9c19f3a32b573989f159a17a8b89a5e8b99e22d6d9f0cf7f165001d644f951b`,
-image source `33bbb7cc8651824334003a2b615b051cce2e9602`.
-The production-source diff against main `91b757d0` is empty across workspace/src,
-workspace/Dockerfile, webview and extension. The runner changes only the harness.
-The two former FilePanel/Allow-click failures passed in this executed rerun.
+records **15/15 PASS, exit 0**, run `2026-11-09T14:49:15.369Z`, runner and
+image source `a0207c8b53c60cb9d34fb80bd5c88552e824975c`, image
+`cae40cb044a48d17aff91d8d82b99eec8eeea13cf77ed49fe0e5c5ade136212d`.
+That source tree equals merged main `65fa7467`, including #650's title/toast
+integration. This supersedes the older #653 subset report; both former
+FilePanel/Allow-click failures passed. The permission test uses the real Allow
+button, with no forced click or injected permission response.
 
 Its assertions cover image contract, credential storage, upstream health,
 workspace start/login, chat, file tools, Bash, MCP, hook, FilePanel,
 close-mid-turn, reopen-permission, two browser tabs and browser metrics.
 Chromium `158.0.8127.18`; 34 production JS chunks total 2,268,318 raw bytes,
 732,461 gzip and 591,675 Brotli (sums of individual files). Post-GC used heap:
-5,072,860 bytes at startup and 11,757,924 bytes after the suite. These are the
-suite's recorded points, not a complete long-turn/repeated-attach retention study.
+5,071,372 bytes at startup and 11,824,116 bytes after the suite (total heap
+5,906,432 and 12,984,320 bytes respectively). These are the suite's recorded
+points, not a complete long-turn/repeated-attach retention study.
 
 This is executed subset evidence supplied by bridgeweb2, not a rerun by the
-final documentation author. It predates the title/toast hooks integrated through
-#650 (#654 was closed as covered) and does not prove full host-owned
-page/FilePanel state, PREVIEW/HMR, host/container restart, or every desktop tool
-behavior. The committed readiness manifest does not yet encode these remaining
-completion requirements; the inventory's passing state is a narrower result.
+final documentation author. It does not include pending #655 PREVIEW/HMR or
+#657 fallback-receipt recovery and does not prove full host-owned page/FilePanel
+state, host/container restart, or every desktop tool behavior. The committed
+readiness manifest does not yet encode these remaining completion requirements;
+the inventory's passing state is a narrower result.

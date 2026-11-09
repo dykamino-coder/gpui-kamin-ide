@@ -2,15 +2,17 @@
 
 ## Выборочная сверка browser workspace INC-0087 — 2026-11-09
 
-Source `origin/main` `4bf69698`: [INC-0087](runtime-issues/INC-2026-0087.md)
-остаётся **in progress**. #639–#646, #648 и #650 слиты; #647/#649/#654
+Source `origin/main` `65fa7467`: [INC-0087](runtime-issues/INC-2026-0087.md)
+остаётся **in progress**. #639–#646, #648, #650 и #653 слиты; #647/#649/#654
 закрыты как covered. #652 обновлён обычным merge до дерева main, его
-memory-token source уже включён через #648. #653 содержит follow-up live harness.
+memory-token source уже включён через #648. Открыты #655 (PREVIEW/HMR) и #657
+(восстановление fallback queue receipts после потери страницы).
 
 Реализованы shared client host, тот же browser App, файлы/watches, host PTY,
 browser adapters, executable/Podman packaging и source-derived capability gate.
-Live subset #653: 15/15 PASS на отдельно указанном image/source, до последних
-title/toast hooks; это не финальная приёмка полного паритета. Текущий
+Live subset #653: 15/15 PASS на source tree, совпадающем с main `65fa7467`, включая
+title/toast hooks; pending #655/#657 в прогон не входят. Это не финальная приёмка
+полного паритета. Текущий
 `test:parity` проверяет три declared implemented prerequisites, но не кодирует
 оставшиеся host-page/FilePanel state и PREVIEW/HMR. Следующий шаг исполнителей:
 добавить эти readiness gates, поведенческое доказательство всех capabilities и
