@@ -131,3 +131,32 @@ fn a_root_box_ignores_paint_only_values_class_and_data_attributes() {
     d.node_id += 1;
     assert!(!same_layout_box(&a, &d));
 }
+
+#[test]
+fn cascaded_values_decide_a_rebuilt_tree_before_its_styles_are_computed() {
+    let inner = block(vec![text("two")]);
+    let a = block(vec![text("one"), Node::Element(inner.clone())]);
+    let rebuilt = block(vec![text("one"), Node::Element(inner.clone())]);
+    assert!(same_cascaded_tree(&a, &rebuilt, false));
+    let b = block(vec![text("one"), Node::Element(recoloured(&inner))]);
+    assert!(!same_cascaded_tree(&a, &b, false), "a colour is not exact");
+    assert!(same_cascaded_tree(&a, &b, true), "but lays out the same");
+    let mut boxed = inner.clone();
+    boxed.style = Computed {
+        decor_box: 1,
+        ..Computed::default()
+    }
+    .into();
+    let c = block(vec![text("one"), Node::Element(boxed)]);
+    assert!(
+        !same_cascaded_tree(&a, &c, true),
+        "layout values stay exact"
+    );
+    let d = block(vec![text("onf"), Node::Element(inner.clone())]);
+    assert!(!same_cascaded_tree(&a, &d, true), "texts stay exact");
+    let mut e = rebuilt.clone();
+    e.node_id += 1;
+    assert!(!same_cascaded_tree(&a, &e, true), "node ids stay exact");
+    assert!(same_cascaded_box(&inner, &recoloured(&inner), true));
+    assert!(!same_cascaded_box(&inner, &recoloured(&inner), false));
+}
