@@ -126,6 +126,9 @@ export async function sseJsonRpcRequest(
   const state = ctx.servers.get(id)!
   if (!state.sseMessageEndpoint) throw new Error('SSE endpoint not yet negotiated')
   const reqId = body.id as number
+  const headers = await ctx.buildHttpHeaders(id)
+  headers['Content-Type'] = 'application/json'
+  ctx.shutdownSignal?.throwIfAborted()
   const responsePromise = new Promise<unknown>((resolve, reject) => {
     const timer = setTimeout(() => {
       state.pendingRequests.delete(reqId)
@@ -133,14 +136,21 @@ export async function sseJsonRpcRequest(
     }, 60_000)
     state.pendingRequests.set(reqId, { resolve, reject, timer })
   })
-  const headers = await ctx.buildHttpHeaders(id)
-  headers['Content-Type'] = 'application/json'
-  const res = await fetch(state.sseMessageEndpoint, { method: 'POST', headers, body: JSON.stringify(body) })
-  if (!res.ok && res.status !== 202) {
+  // Observe the response promise immediately: disposal rejects it even while
+  // the POST itself is still waiting for headers.
+  const posted = fetch(state.sseMessageEndpoint, {
+    method: 'POST', headers, body: JSON.stringify(body), signal: ctx.shutdownSignal,
+  }).then(async res => {
+    if (!res.ok && res.status !== 202) throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => '')}`)
+  })
+  try {
+    const [result] = await Promise.all([responsePromise, posted])
+    return result
+  } finally {
+    const pending = state.pendingRequests.get(reqId)
+    if (pending?.timer) clearTimeout(pending.timer)
     state.pendingRequests.delete(reqId)
-    throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => '')}`)
   }
-  return responsePromise
 }
 
 /** Fire-and-forget JSON-RPC notification via SSE POST. */
@@ -153,5 +163,7 @@ async function sseSendNotification(
   if (!state.sseMessageEndpoint) throw new Error('SSE endpoint not yet negotiated')
   const headers = await ctx.buildHttpHeaders(id)
   headers['Content-Type'] = 'application/json'
-  await fetch(state.sseMessageEndpoint, { method: 'POST', headers, body: JSON.stringify(body) }).catch(() => {})
+  await fetch(state.sseMessageEndpoint, {
+    method: 'POST', headers, body: JSON.stringify(body), signal: ctx.shutdownSignal,
+  }).catch(() => {})
 }

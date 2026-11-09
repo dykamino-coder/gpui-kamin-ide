@@ -23,6 +23,29 @@ function manager(tab: string) {
 }
 
 describe('INC-2026-0057 manager lifecycle', () => {
+  it('only terminal disposal aborts execution, without ending the server session', async () => {
+    execute.mockImplementation((_name, _input, context) => new Promise(resolve => {
+      context.signal.addEventListener('abort', () => resolve('cancelled'), { once: true })
+    }))
+    const m = manager('terminal')
+    m.internal.dispatchMessage({ type: 'mcp:call', requestId: 'r', toolName: 'Bash', input: {} })
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
+    const signal = execute.mock.calls[0]![2].signal as AbortSignal
+    m.manager.disconnect()
+    expect(signal.aborted).toBe(false)
+    expect(m.manager.hasPendingMcp('r')).toBe(true)
+    m.internal.ws = m.socket
+    m.manager.dispose()
+    m.manager.dispose()
+    expect(signal.aborted).toBe(true)
+    expect(m.manager.hasPendingMcp('r')).toBe(false)
+    expect(m.frames).toHaveLength(0) // retain the CLI for reattach, no session:end
+    m.manager.connect()
+    m.internal.dispatchMessage({ type: 'mcp:call', requestId: 'late', toolName: 'Bash', input: {} })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
   it('retains execution across reconnect and completes only after the owning ack', async () => {
     let finish!: (result: unknown) => void
     execute.mockImplementation(() => new Promise(resolve => { finish = resolve }))
