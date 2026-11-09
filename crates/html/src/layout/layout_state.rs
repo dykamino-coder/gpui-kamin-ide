@@ -21,3 +21,17 @@ pub(crate) struct LayoutState {
     /// Element styles converted in the current build of this document.
     pub(crate) conversions: crate::layout::cx::conversions::StyleConversions,
 }
+
+impl LayoutState {
+    /// Состояние ревизии, дерево которой — копия путей к правкам прошлого
+    /// (`Document::adopted`): из прошлого переходит только основа подготовки
+    /// дерева (`PreparationCache::continuing`), остальное начинается заново.
+    pub(crate) fn continuing(previous: &Self) -> Self {
+        Self {
+            preparation: crate::layout::cx::subtree::PreparationCache::continuing(
+                &previous.preparation,
+            ),
+            ..Self::default()
+        }
+    }
+}

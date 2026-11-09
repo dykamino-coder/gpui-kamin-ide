@@ -19,13 +19,26 @@ pub(super) struct Target {
 /// за наибольшим номер дерева, которым может оказаться номер развёрнутого
 /// `html`) атрибутов автора не несёт: она должна быть без атрибутов и не
 /// правится. Элемент без коробки (`html`, `display: none`) правки не требует.
-/// `false` — у коробки атрибуты не те, что дал прежний DOM (их переписал
-/// проход сборки), и правка неприменима.
-pub(super) fn patch(nodes: &mut Vec<Node>, targets: &HashMap<u64, Target>) -> bool {
+/// `None` — у коробки атрибуты не те, что дал прежний DOM (их переписал
+/// проход сборки), и правка неприменима; пустой список — ни одна коробка не
+/// несёт правленых атрибутов. Без целей дерево не обходится.
+pub(super) fn attr_paths(
+    nodes: &[Node],
+    targets: &HashMap<u64, Target>,
+) -> Option<Vec<(Path, u64)>> {
     let mut paths = Vec::new();
-    if !find(nodes, targets, &mut paths) {
-        return false;
+    if !targets.is_empty() && !find(nodes, targets, &mut paths) {
+        return None;
     }
+    Some(paths)
+}
+
+/// Записать атрибуты новой ревизии по путям `attr_paths` (копия только путей).
+pub(super) fn patch(
+    nodes: &mut Vec<Node>,
+    paths: Vec<(Path, u64)>,
+    targets: &HashMap<u64, Target>,
+) -> bool {
     for (path, id) in paths {
         match (apply(nodes, &path), targets.get(&id)) {
             (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),

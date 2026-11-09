@@ -38,24 +38,30 @@ pub(super) fn editable(edit: &TextChange, read: &HashSet<usize>) -> bool {
         && !read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize))
 }
 
-/// Новые тексты в узлах дерева коробок с номерами правленых исходных
-/// текстов. Куски и копии исходного текста несут его номер, поэтому правится
+/// Пути к узлам дерева коробок с номерами правленых исходных текстов.
+/// Куски и копии исходного текста несут его номер, поэтому правится
 /// каждый такой узел. Узел с номером правки, но другим содержимым (сборка
 /// разрезала или изменила текст), узел внутри псевдоэлемента и правка без
-/// единого узла (текст склеен с соседом или выброшен) — `false`, дерево не
-/// меняется.
-pub(super) fn patch_texts(nodes: &mut Vec<Node>, edits: &TextEdits<'_>) -> bool {
-    if edits.is_empty() {
-        return true;
-    }
+/// единого узла (текст склеен с соседом или выброшен) — `None`. Без правок
+/// дерево не обходится.
+pub(super) fn text_paths(nodes: &[Node], edits: &TextEdits<'_>) -> Option<Vec<(Path, TextId)>> {
     let mut found: Vec<(Path, TextId)> = Vec::new();
+    if edits.is_empty() {
+        return Some(found);
+    }
     if !collect(nodes, edits, false, &mut Vec::new(), &mut found) {
-        return false;
+        return None;
     }
     let seen: HashSet<TextId> = found.iter().map(|(_, id)| *id).collect();
-    if seen.len() != edits.len() {
-        return false;
-    }
+    (seen.len() == edits.len()).then_some(found)
+}
+
+/// Записать новые тексты по путям `text_paths` (копия только путей).
+pub(super) fn patch_texts(
+    nodes: &mut Vec<Node>,
+    found: Vec<(Path, TextId)>,
+    edits: &TextEdits<'_>,
+) -> bool {
     for (path, id) in found {
         match apply(nodes, &path) {
             Some(Node::Text(text)) => edits[&id].new.clone_into(&mut **text),
