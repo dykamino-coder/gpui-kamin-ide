@@ -418,6 +418,13 @@ export class TabManager {
     this.activeTabId = null
   }
 
+  /** Terminal client shutdown; transient disconnectAll keeps resumable work. */
+  dispose(): void {
+    for (const tab of this.tabs.values()) tab.connection.dispose()
+    this.tabs.clear()
+    this.activeTabId = null
+  }
+
   /**
    * Number of open tabs.
    */

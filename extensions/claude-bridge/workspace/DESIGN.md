@@ -1,13 +1,15 @@
 # Browser workspace client design
 
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
-Status: proposed implementation plan; no capability below is claimed delivered.
+Status: implementation in progress; the README records the tested increment.
 Source and rules baseline: `9f2db23aa2ce26246d7aee68b80ce68bec97f7f6`.
 
-Implementation sequencing note: the first Change PR isolates the authenticated
-HTTP/WebSocket boundary as a library, before wiring the shared runtime and UI.
-This makes the shell-access authentication boundary independently reviewable.
-It is a smaller first increment of the architecture below, not a deployable
+Implementation sequencing note: merged PR #639 provides the authenticated
+HTTP/WebSocket boundary library. The next increment composes the real shared
+BridgeHost. An explicit
+build-time VS Code adapter and shared host lifecycle cleanup make the client
+testable without launching KaminIDE. Browser services and UI follow separately.
+These are bounded increments of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
 
 The application-asset increment supplies `createAppAssetHandler`, used by the
@@ -80,7 +82,7 @@ generation protects document identity. Replies return only to their requester,
 while workspace events reach subscribed views. Bound payload sizes, reject
 malformed frames, and return errors for unknown invokes instead of null success.
 
-Until the socket opens, queue a bounded set of startup calls. On disconnect,
+Mount the UI after the socket opens, without queuing commands. On disconnect,
 reject pending calls, preserve the shared host and server sessions, reconnect
 with backoff and resynchronize tabs/history. Browser reload is a new document,
 not permission to replay writes or submissions. Persist only UI state in browser
@@ -122,10 +124,16 @@ filesystem boundary is the container, not a claimed sandbox around `/workspace`.
 
 ## Persistent state and lifecycle
 
-Set cwd and the initial project root to `/workspace`. Keep user HOME, shared
-client global storage and CLI auth in explicit persistent volumes. Preserve both
-`.claude/` and `.claude.json` by mounting an appropriate home directory rather
-than assuming the former contains all auth. Give the unprivileged runtime user
+Set cwd and the initial project root to `/workspace`. Treat HOME and project
+paths as ordinary container paths: file tools and shell have
+container-wide access, including absolute paths and symlink destinations outside
+`/workspace`. Isolation is supplied by the container and its mounts, not by a
+directory jail in the client. Keep workspace user HOME and shared client global
+storage in explicit persistent volumes. That HOME holds
+client plugin configuration, not a Claude CLI login. The server alone owns CLI
+auth, including its `.claude/` and `.claude.json`; separate-server mode never
+mounts the server's auth into the workspace. Combined mode preserves the owned
+server auth separately from client HOME. Give the unprivileged runtime user
 write access without changing arbitrary host directories. Do not mount host
 home, Podman socket or unrelated worktrees.
 
@@ -135,6 +143,11 @@ and subscriptions without destroying a live conversation. Shutdown disposes
 watchers, PTYs, MCP/LSP/monitor children, timers and client connections; combined
 mode forwards signals to both owned processes and reaps them. Persisted sessions
 can be resumed after restart; do not automatically repeat a pending command.
+Final client disposal aborts in-flight local tool controllers and owned shell
+processes, and aborts the MCP manager's HTTP/SSE requests before tearing down
+transports. It detaches from the server without ending its CLI sessions. This
+terminal path is distinct from transient desktop disconnect/reconnect, which
+continues to retain in-flight work for acknowledged result delivery.
 
 ## Packaging and bounded changes
 
@@ -235,8 +248,12 @@ manifest. Never record credentials. Two layers are required:
 
 Local fixture MCP/LSP/hook/monitor processes exercise the executable plugin
 boundary without requiring a private marketplace. A mock model or protocol peer
-does not count as the live chat gate. Missing CLI identity is reported to the
-lead as a concrete prerequisite; it never becomes a request for owner testing.
+does not count as the live chat gate. Acceptance uses a lead-approved server
+with an existing CLI identity and a separately issued client token. The agent
+never reads or copies that server's auth volumes. If a candidate needs a changed
+server build, ask the lead to select its deployment before running acceptance;
+never modify a daily server. Missing server access is reported to the lead as
+a concrete prerequisite; it never becomes a request for owner testing.
 Complete applicable package typechecks/tests/builds, regenerated artifact checks,
 event routing check and GitHub CI on the final candidate. No Windows GUI launch
 or focus is necessary for this new browser-only contract.
