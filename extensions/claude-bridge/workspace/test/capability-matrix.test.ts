@@ -41,7 +41,7 @@ test('mapping validation rejects stale rows, missing reasons, changed handlers a
 test('new source APIs, channels, dynamic dispatchers and unregistered handlers fail without explicit mapping', t => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-capabilities-'))
   t.after(() => {
-    assert.equal(path.dirname(fixture), fs.realpathSync(os.tmpdir()))
+    assert.equal(fs.realpathSync(path.dirname(fixture)), fs.realpathSync(os.tmpdir()))
     assert.ok(path.basename(fixture).startsWith('bridgeweb-capabilities-'))
     fs.rmSync(fixture, { recursive: true })
   })
