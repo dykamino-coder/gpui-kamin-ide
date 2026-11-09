@@ -2,6 +2,8 @@
 
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
+Container build, compose profiles and repeatable live acceptance:
+[PACKAGING.md](PACKAGING.md).
 
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
