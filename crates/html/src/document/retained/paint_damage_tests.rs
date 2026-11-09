@@ -98,19 +98,3 @@ fn a_recoloured_block_keeps_its_record_for_layout_only(cx: &mut TestAppContext) 
         Some(crate::style::values::value::Len::Px(1.0));
     assert_eq!(damage(&moved), None, "a new margin is layout damage");
 }
-
-#[gpui::test]
-fn a_restyle_releases_the_previous_tree_before_the_next_frame(cx: &mut TestAppContext) {
-    let (view, cx) = settled(cx);
-    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
-    let marks: Vec<_> = store.recorded().iter().map(|e| e.children.mark()).collect();
-    assert!(marks.len() > 400, "settled blocks were recorded");
-    let html = page("paint", "row");
-    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
-    let alive = marks.iter().filter(|m| m.is_alive()).count();
-    assert_eq!(alive, 0, "records kept blocks of the previous tree");
-    assert!(
-        store.recorded().len() > 400,
-        "the offscreen blocks keep their records for their layout"
-    );
-}

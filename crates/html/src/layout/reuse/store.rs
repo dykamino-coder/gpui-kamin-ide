@@ -98,28 +98,6 @@ impl Store {
         None
     }
 
-    /// The document was restyled into a new tree of the same source DOM
-    /// (`Document::apply` rebuild, same-shape `Document::update`): the node
-    /// ids are the same. Each record is compared with its block of `nodes`
-    /// now and moved to it, so the previous tree goes with the previous
-    /// document, as for a fresh one, not during the next build. A block equal
-    /// but for paint-only values keeps its record only if it was far from the
-    /// screen (`Damage::Paint` stands only there); replay records, compared
-    /// exactly and holding their output, go.
-    pub(crate) fn rebase(&self, nodes: &[crate::dom::Node]) {
-        self.reset_replays();
-        let blocks = super::flow_blocks(nodes);
-        let shells = super::Shells::default();
-        let records = self.records.take();
-        let records = records.into_iter().filter_map(|(id, record)| {
-            let e = blocks.get(&id)?;
-            let exact = record.source.same(e);
-            let repaint = !exact && record.far && record.source.same_layout(e);
-            (exact || repaint).then(|| (id, Rc::new(record.moved_to(shells.source(e), repaint))))
-        });
-        self.records.replace(records.collect());
-    }
-
     /// Build inputs of the kept records, for tests.
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
