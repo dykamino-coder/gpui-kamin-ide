@@ -98,7 +98,7 @@ impl Paragraph {
         let normal_static = normal_static::NormalStatic::new(self, window, cx);
         let static_bind = normal_static.clone();
         let rebuild = fit.is_some() || !atom_fit.borrow().is_empty();
-        let make_probe = move || {
+        let make_probe = move |settings: &plain_probe::Settings| {
             let mut probe = settings.probe();
             probe.clamp_rows = clamp_rows.clone();
             probe.vertical = vertical;
@@ -134,7 +134,7 @@ impl Paragraph {
         // far block lives in its own allocation and can shrink (`Shared`).
         let id = match compacts {
             Some(compacts) => {
-                let shared = plain_probe::Shared::new(make_probe());
+                let shared = plain_probe::Shared::new(make_probe(&settings), settings);
                 compacts.offer(shared.clone());
                 request(window, atom_fit, normal_static, move |f| {
                     shared.measure(|p| f(p))
@@ -142,9 +142,9 @@ impl Paragraph {
             }
             None => {
                 let mut source = if rebuild {
-                    Probe::Rebuild(make_probe)
+                    Probe::Rebuild(settings, make_probe)
                 } else {
-                    Probe::Built(make_probe())
+                    Probe::Built(make_probe(&settings))
                 };
                 request(
                     window,
@@ -152,7 +152,7 @@ impl Paragraph {
                     normal_static,
                     move |f| match &mut source {
                         Probe::Built(probe) => f(probe),
-                        Probe::Rebuild(make_probe) => f(&mut make_probe()),
+                        Probe::Rebuild(settings, make_probe) => f(&mut make_probe(settings)),
                     },
                 )
             }
@@ -169,7 +169,7 @@ impl Paragraph {
 #[allow(clippy::large_enum_variant)] // вариант выбран на всю жизнь замыкания
 enum Probe<F> {
     Built(Paragraph),
-    Rebuild(F),
+    Rebuild(plain_probe::Settings, F),
 }
 
 type Measure<'a> = dyn FnMut(&mut Paragraph) -> gpui::MeasuredContent + 'a;
