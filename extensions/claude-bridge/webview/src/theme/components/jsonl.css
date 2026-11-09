@@ -49,25 +49,28 @@
   color: var(--text-muted);
 }
 .jsonl-entry-assistant {
-  background: var(--bg-sidebar);
+  background: transparent;
+  padding: 0 14px 10px;
 }
-/* Real merge container — wraps a run of consecutive assistant entries so
-   the bg + sunken shadow + rounded corners are owned by ONE element rather
-   than juggled across N siblings. Inner entries shed their own bg/shadow
-   and become transparent rows inside the fused card. */
+/* Assistant runs sit directly on the chat surface. Own the gutter once so
+   prose, identity dots and tool summaries align in both browser and IDE. */
 .asst-merge-container {
   margin: 6px;
-  /* Level-1 card. Match other chat-panel cards (12px) instead of the
-     outer 16px panel — outer 16 + gap 6 = inner 12 by the concentric rule. */
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--bg-sidebar);
+  background: transparent;
+  padding: 0 14px 10px;
 }
 .asst-merge-container .jsonl-entry-assistant {
   background: transparent;
   box-shadow: none;
   margin: 0;
   border-radius: 0;
+  padding: 0;
+}
+.jsonl-entry-assistant > .tool-group-header {
+  padding-left: 0;
+  padding-right: 0;
 }
 /* Inside the merge container only the first row shows the "ASSISTANT"
    label — JsonlViewer tags subsequent rows with `asst-merge-top`. Time-

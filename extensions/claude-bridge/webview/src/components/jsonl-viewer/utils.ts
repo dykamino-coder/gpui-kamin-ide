@@ -3,6 +3,11 @@ import { stripMcpPrefix } from '../../lib/mcp-tool-name'
 import { taskNotificationText } from './task-notification'
 import { systemEntryDraws } from './entry-draws'
 
+/** JsonlEntry's rendering branches; unknown CLI telemetry draws no row. */
+export const RENDERABLE_ENTRY_TYPES: ReadonlySet<string> = new Set([
+  'user', 'assistant', 'system', 'attachment', 'tool_group',
+])
+
 /** A ShowWidget renders as its own clean visual — it must never be folded into a
  *  collapsed tool burst, so an entry carrying one is kept standalone. */
 function hasWidgetTool(entry: JsonlEntryData): boolean {
@@ -376,7 +381,9 @@ export function groupConsecutiveToolCalls(entries: JsonlEntryData[]): JsonlEntry
         // in the viewer and must not break the burst.
         if (n.type === 'user' && isCaveatOnlyEntry(n)) { groupEntries.push(n); j++; continue }
         // Bookkeeping rows render nothing, so they must not split a tool burst.
-        if (NON_RENDERING_ENTRY_TYPES.has(n.type)) { groupEntries.push(n); j++; continue }
+        // Match visibility's fallback for new CLI telemetry (api-request*,
+        // tools-used, etc.). Invisible rows cannot form a visual burst boundary.
+        if (!RENDERABLE_ENTRY_TYPES.has(n.type)) { groupEntries.push(n); j++; continue }
         // Attachment entries — invisible except for `queued_command` and
         // `edited_text_file` (those render their own bubble). Everything
         // else (task_reminder, raw image metadata, …) must not split a burst.
