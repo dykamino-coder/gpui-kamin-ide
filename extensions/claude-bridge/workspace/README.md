@@ -196,18 +196,14 @@ of UI controls in this build is not a claim those adapters already exist.
 `pty:spawn`, `pty:write`, `pty:resize`, `pty:kill`, `pty:data` and `pty:exit`.
 It reuses the native host's extracted `PtySessions` and shell discovery, with
 the same packed argument/reply/event contract. The embedding executable must
-dispose the decorator at shutdown; disconnect or logout releases that view's
-PTYs without ending shared chat sessions. Workspace root is the default cwd;
-other existing absolute container directories are allowed. Container/mount
-isolation determines filesystem access, rather than a pathname sandbox.
-
-Each view owns at most four terminals, with 32 total including pending spawns.
-Dimensions, profiles, cwd, ownership and 64 KiB input limits are checked before
-execution. Output uses the boundary's bounded transport; backpressure tears down
-the view and its terminals. Real PTY tests execute Node inside the discovered
-shell, observe cwd/TTY size and output, and verify child termination on explicit
-kill, disconnect, logout, shutdown and output rejection. CI runs on Linux and
-Windows. These are actual local shell tests, not browser or Podman acceptance.
+dispose the decorator at shutdown. The revision under test moves shell ownership
+and screen/scrollback into the host: socket detach, logout and backpressure must
+preserve shells, while explicit Kill/End session/Disconnect and shutdown must
+terminate them. `workspace:terminal-sync` restores a private sequenced xterm
+snapshot per chat tab without replaying mutations. The detailed resource and
+lifecycle contract is in DESIGN.md; live composed-workspace acceptance is open.
+Workspace root is the default cwd; other existing absolute container directories
+are allowed. Container/mount isolation determines filesystem access.
 
 The native facade retains its environment collections and ConPTY preference.
 Disposal now terminates the owned process tree before releasing ConPTY, avoiding
