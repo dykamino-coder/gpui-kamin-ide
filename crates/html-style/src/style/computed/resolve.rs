@@ -21,6 +21,8 @@ pub use len_cx::{LenCx, ViewportCx};
 pub use len_px::FontCx;
 pub(super) mod image_lengths;
 mod logical;
+mod logical_sharing;
+pub use logical_sharing::LogicalSharing;
 #[cfg(test)]
 mod mask_tests;
 

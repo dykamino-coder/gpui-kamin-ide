@@ -122,7 +122,8 @@ impl Document {
         let builder = Builder {
             state: self.state.clone(),
             nodes: self.nodes.clone(),
-            opts: opts.clone(),
+            // The frame builds into this document: the host's empty one is never made.
+            opts: opts.with_doc(self.state.clone()),
             store: self.reuse.clone(),
             counters: Cell::new(None),
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),

@@ -83,6 +83,17 @@ impl ImageFilter {
 }
 
 impl ImageSource {
+    /// Может ли `resolve_colors` что-то записать: операнд без цветовых выражений группу не трогает.
+    pub fn has_color_expressions(&self) -> bool {
+        match self {
+            Self::Gradient { value, .. } => !value.colors.is_empty(),
+            Self::Conic(value) => !value.colors.is_empty(),
+            Self::CrossFade(items) => items.iter().any(|(image, _)| image.has_color_expressions()),
+            Self::Filter { .. } | Self::Color(_) | Self::Fallback { color: Some(_), .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn resolve_colors(&mut self, current: Color) {
         match self {
             Self::Gradient { value, .. } => value.resolve_colors(current),

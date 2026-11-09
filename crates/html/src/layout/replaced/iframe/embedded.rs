@@ -34,7 +34,7 @@ pub(crate) fn build_embedded(
     sub.cx.position.state = Default::default();
     sub.cx.contracts.frame_depth += 1;
     sub.cx.clamp.input = None;
-    sub.cx.values.doc = crate::layout::cx::BuildDoc(embedded.state.clone());
+    sub.cx.values.doc = crate::layout::cx::BuildDoc::of(embedded.state.clone());
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;

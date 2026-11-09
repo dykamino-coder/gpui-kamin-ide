@@ -76,6 +76,8 @@ impl Document {
         let state = DocState::adopting(&self.state);
         let base = state.values.images.borrow().base().cloned();
         state.values.admit_revision(revision.clone(), base.as_ref());
+        // Документ отпускает выведенные группы стиля в Drop.
+        state.values.hold_document();
         Document {
             state,
             nodes: Rc::new(nodes),
