@@ -38,9 +38,11 @@ export interface JsonlEntryData {
   /** parentUuid→uuid chain — used by orderEntries to keep a child after its
    *  parent, and by compute-chain-uuids for the active-branch membership set. */
   parentUuid?: string
-  /** Server reverse-replay file-position tag (monotonic per process); primary
-   *  sort key in orderEntries. Absent on live streaming stubs (they sort last). */
+  /** Server reverse-replay ordinal (monotonic per process); fallback
+   *  for rows without timestamps/positions. Absent on live streaming stubs. */
   _ord?: number
+  /** Stable byte offset in the session JSONL file (absent on legacy rows). */
+  _pos?: number
   timestamp?: string
   message?: JsonlMessage
   /** For system entries */
@@ -112,6 +114,8 @@ export interface JsonlEntryData {
    *  or the non-surviving uuids stay in `seen` forever and a re-replay drops those
    *  content blocks as duplicates — the middle-of-chat data-loss gap. */
   __uuids?: string[]
+  /** Original canonical rows, retained to merge out-of-order content blocks. */
+  __assistantParts?: JsonlEntryData[]
 
   // Optional API-error subtype fields (rendered in SystemEntry.ApiErrorBlock).
   retryInMs?: number
