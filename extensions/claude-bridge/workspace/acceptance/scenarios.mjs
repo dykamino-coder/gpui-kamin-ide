@@ -127,7 +127,7 @@ export function liveScenarios(state) {
         // switchTab normally awaits idle, which cannot happen before this prompt is answered.
         await state.page.evaluate(tab => { void window.bridgeCmd.switchTab(tab).catch(() => {}) }, tab)
         await state.page.waitForFunction(tab => window.bridgeCmd.state().activeTabId === tab, tab)
-              } catch { throw new CheckFailure('PERMISSION_BINDING') }
+      } catch { throw new CheckFailure('PERMISSION_BINDING') }
       try { await state.page.getByRole('button', { name: 'Allow', exact: true }).waitFor({ timeout: 15_000 }) }
       catch { throw new CheckFailure('PERMISSION_REOPEN_WIDGET') }
       try { await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 5_000 }) }

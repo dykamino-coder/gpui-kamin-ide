@@ -3,11 +3,26 @@ import { check, CheckFailure } from './report.mjs'
 export async function raw(page, method, ...args) {
   return page.evaluate(({ method, args }) => window.bridgeCmd.raw(method, ...args), { method, args })
 }
+const notificationPages = new WeakSet()
+async function handleNotifications(page) {
+  if (notificationPages.has(page)) return
+  // Host notifications use modal browser effects. Acknowledge only their real
+  // Dismiss control; permission prompts and other browser actions stay intact.
+  const messages = page.locator('dialog[aria-label="Bridge workspace action"]').filter({
+    has: page.getByRole('button', { name: 'Dismiss', exact: true }),
+  }).last()
+  await page.addLocatorHandler(messages, async dialog => {
+    await dialog.getByRole('button', { name: 'Dismiss', exact: true }).click()
+  }, { noWaitAfter: true })
+  notificationPages.add(page)
+}
 export async function ready(page, origin) {
+  await handleNotifications(page)
   await page.goto(origin, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => !!window.bridgeCmd, null, { timeout: 30_000 })
 }
 export async function newTab(page, mode = 'bypassPermissions') {
+  await handleNotifications(page)
   const config = await raw(page, 'getConfig')
   const id = await raw(page, 'createTab', { ...config, cwd: '/workspace' })
   await page.evaluate(id => window.bridgeCmd.switchTab(id), id)
