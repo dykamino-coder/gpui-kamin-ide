@@ -134,7 +134,7 @@ impl Paragraph {
         // far block lives in its own allocation and can shrink (`Shared`).
         let id = match compacts {
             Some(compacts) => {
-                let shared = plain_probe::Shared::new(make_probe(settings.probe()), settings);
+                let shared = plain_probe::Shared::new(make_probe(settings.into_probe()));
                 compacts.offer(shared.clone());
                 request(window, atom_fit, normal_static, move |f| {
                     shared.measure(|p| f(p))
