@@ -98,7 +98,9 @@ export function CommandPalette({ commands }: { commands: WorkspaceCommand[] }): 
 
   if (!open) return null
   return createPortal(
-    <div class="workspace-palette-scrim" onMouseDown={event => { if (event.target === event.currentTarget) dismiss() }}>
+    <div class="workspace-palette-scrim" onMouseDown={event => {
+      if (event.target === event.currentTarget) { event.preventDefault(); dismiss() }
+    }}>
       <div ref={panel} class="workspace-palette" role="dialog" aria-modal="true" aria-label="Command palette">
         <div class="workspace-palette-input-row">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true" />
