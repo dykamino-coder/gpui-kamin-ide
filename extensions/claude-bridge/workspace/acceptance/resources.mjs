@@ -95,12 +95,12 @@ export class OwnedResources {
     await poll(async () => {
       check(!this.launchError, 'COMMAND_START')
       if (this.exitCode !== undefined) throw new CheckFailure(this.exitCode === 78 ? 'CORE_ENTRYPOINT' : 'CONTAINER_EXIT')
-      return upstreamHealth(this.origin, '/auth/session')
+      return upstreamHealth(this.origin, '/health')
     }, { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
   }
   async restart() {
     await command('podman', ['restart', '--time', '10', this.name])
-    await poll(() => upstreamHealth(this.origin, '/auth/session'), { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
+    await poll(() => upstreamHealth(this.origin, '/health'), { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
   }
   async recreate() {
     await command('podman', ['stop', '--time', '10', this.name])

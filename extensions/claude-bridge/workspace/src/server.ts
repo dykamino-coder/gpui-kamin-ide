@@ -83,6 +83,11 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     if ((request.headers.origin && !sameOrigin(request)) || request.headers['sec-fetch-site'] === 'cross-site') {
       json(response, 403, { error: 'Invalid origin' }); return
     }
+    if (request.url === '/health' && request.method === 'GET') {
+      // Container reachability probes must not mint browser sessions or call
+      // upstream authentication. Model readiness is tested separately.
+      json(response, 200, { ready: true }); return
+    }
     if (request.url === '/auth/login' && request.method === 'POST') {
       if (!sameOrigin(request)) { json(response, 403, { error: 'Invalid origin' }); return }
       const address = request.socket.remoteAddress ?? ''

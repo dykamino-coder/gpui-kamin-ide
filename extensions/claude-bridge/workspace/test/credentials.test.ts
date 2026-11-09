@@ -73,6 +73,10 @@ test('loopback first visit, restart cookie, persisted logout, foreign Origin/Hos
   const backend = { attach() { throw new Error('Unused') } }
   let server = await startWorkspaceServer({ auth: auth(), backend, port: 0, autoLogin: true })
   t.after(() => server.close())
+  const health = await fetch(`${server.origin}/health`)
+  assert.deepEqual(await health.json(), { ready: true })
+  assert.equal(health.headers.has('set-cookie'), false)
+  assert.equal(fs.existsSync(persistent.file), false)
   let response = await fetch(`${server.origin}/auth/session`)
   assert.deepEqual(await response.json(), { authenticated: true })
   const cookie = response.headers.get('set-cookie')!.split(';')[0]
