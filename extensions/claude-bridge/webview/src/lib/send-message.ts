@@ -7,6 +7,7 @@ import { tabPromptReady, lastSendAt } from '../signals/connection'
 import { tabActivity } from '../signals/ui'
 import { modCapabilities, optimisticSubmission } from '../signals/submissions'
 import { enqueueLocal } from '../signals/queue'
+import { vscodeApi } from './webview-api'
 
 /** Ship `message` to `tabId`'s PTY.
  *
@@ -21,7 +22,9 @@ export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message:
   // a scripted send queues exactly like a click; while it sat in `InputBar` a
   // command-driven send silently skipped the queue.
   const busy = (tabActivity.value.get(tabId)?.isWorking ?? false) || !(tabPromptReady.value.get(tabId) ?? false)
-  const submissionId = modCapabilities.value.get(tabId) ? optimisticSubmission(tabId, message) : undefined
+  // Browser ingress is acknowledged/deduplicated by the workspace host even
+  // when the upstream CLI uses native terminal delivery instead of its mod.
+  const submissionId = (vscodeApi.onHostMessage || modCapabilities.value.get(tabId)) ? optimisticSubmission(tabId, message) : undefined
   if (busy && !submissionId) enqueueLocal(tabId, message)
 
   const nextSend = new Map(lastSendAt.value)
