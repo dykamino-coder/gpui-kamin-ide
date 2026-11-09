@@ -80,6 +80,8 @@ export function liveScenarios(state) {
         await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
       } finally { await second.close() }
       await current.getByRole('button', { name: 'Unpin tab', exact: true }).click()
+      // Await the shared terminal resize/repaint before capturing the restored dock.
+      await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 30_000 }))
       // Private visual evidence includes the current real-agent transcript and CLI.
       await page.screenshot({ path: state.screenshot })
     },
