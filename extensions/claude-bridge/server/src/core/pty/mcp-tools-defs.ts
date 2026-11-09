@@ -9,14 +9,23 @@
 export const MCP_TOOLS = [
   {
     name: 'preview_mount',
-    description: 'Mount a trusted Module Federation remote in the browser Bridge panel beside chat. Start its dev server in /workspace first. The entry must be an http://127.0.0.1:<port>/remoteEntry.js container-local URL; assets are proxied under /preview/remotes/<name>/ with webpack publicPath:auto. Configure HMR WebSocket pathname to that prefix plus /ws. Expose a React 19.3.1 component (default export) or mount(element, props) returning {update?, unmount()} or a cleanup function. Share react/react-dom 19.3.1 as strict singletons. Remotes run with the Bridge UI authority; only mount trusted code. Mount state survives closing and reopening the page.',
-    inputSchema: { type: 'object', properties: {
-      name: { type: 'string', description: 'Module Federation container name.' },
-      entry: { type: 'string', description: 'Container-local HTTP remoteEntry URL, no credentials/query.' },
-      exposedModule: { type: 'string', description: 'Exposed module key, e.g. ./Panel.' },
-      props: { type: 'object', description: 'JSON props, at most 64 KiB.' },
-      type: { type: 'string', enum: ['global', 'module'], description: 'Entry format; default global (webpack/rspack).' },
-    }, required: ['name', 'entry', 'exposedModule'] },
+    description:
+      'Mount a trusted Module Federation remote in the browser Bridge panel beside chat. Start its dev server in /workspace first. The entry must be an http://127.0.0.1:<port>/remoteEntry.js container-local URL; assets are proxied under /preview/remotes/<name>/ with webpack publicPath:auto. Configure HMR WebSocket pathname to that prefix plus /ws. Expose a React 19.3.1 component (default export) or mount(element, props) returning {update?, unmount()} or a cleanup function. Share react/react-dom 19.3.1 as strict singletons. Remotes run with the Bridge UI authority; only mount trusted code. Mount state survives closing and reopening the page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Module Federation container name.' },
+        entry: { type: 'string', description: 'Container-local HTTP remoteEntry URL, no credentials/query.' },
+        exposedModule: { type: 'string', description: 'Exposed module key, e.g. ./Panel.' },
+        props: { type: 'object', description: 'JSON props, at most 64 KiB.' },
+        type: {
+          type: 'string',
+          enum: ['global', 'module'],
+          description: 'Entry format; default global (webpack/rspack).',
+        },
+      },
+      required: ['name', 'entry', 'exposedModule'],
+    },
   },
   {
     name: 'preview_update',
