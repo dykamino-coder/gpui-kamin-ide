@@ -15,26 +15,27 @@
 //! (арены, шрифты, at-правила, картинки) и соответствие исходных узлов узлам
 //! коробок — прежними: записи пишутся в тот же исходный DOM.
 
+use super::commit::Plan;
 use super::mentions::mentions;
 use super::mutation::{AttrChange, Batch, open};
-use super::patch::{Target, patch};
-use super::text::{TextEdits, editable, patch_texts};
-use crate::document::{Document, state::DocState};
-use crate::dom::Node;
+use super::patch::{Target, attr_paths, patch};
+use super::text::{TextEdits, editable, patch_texts, text_paths};
+use crate::document::Document;
+use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 impl Document {
     /// Дерево коробок после пакета `batch` без каскада, если ни одна правка не
-    /// меняет каскад; `sheets` — тексты всех `<style>` документа, если уже
-    /// известны. Ничего в ревизии не меняется.
+    /// меняет каскад (`Plan`); `sheets` — тексты всех `<style>` документа, если
+    /// уже известны. Ничего в ревизии не меняется.
     pub(super) fn plan(
         &self,
         batch: &Batch,
         theme_css: &str,
         sheets: Option<&[String]>,
         revision: &crate::budget::RevisionBudget,
-    ) -> Option<Vec<Node>> {
+    ) -> Option<Plan> {
         let values = &self.state.values;
         let (records, suppressed) = values.diagnostics_snapshot();
         let quiet = records.is_empty()
@@ -62,10 +63,10 @@ impl Document {
                 all.push(crate::style::ua::QUIRKS_CSS);
             }
             all.extend(sheets.iter().map(String::as_str));
-            let ids = source_ids(&values.traversal.elements());
-            for change in &batch.elements {
-                let id = ids.get(&(Rc::as_ptr(&change.element) as usize)).copied();
-                match id.filter(|id| *id != AMBIGUOUS) {
+            let handles = batch.elements.iter().map(|change| &change.element);
+            let ids = source_ids(&values.traversal.elements(), handles);
+            for (change, id) in batch.elements.iter().zip(ids) {
+                match id {
                     Some(id) if open(&change.element, &root) && neutral(change, &all) => {
                         targets.insert(
                             id,
@@ -80,14 +81,12 @@ impl Document {
                 }
             }
         }
-        let text_ids = source_ids(&values.traversal.texts());
+        let handles = batch.texts.iter().map(|change| &change.node);
+        let text_ids = source_ids(&values.traversal.texts(), handles);
         let read = values.traversal.read_texts();
         let mut texts: TextEdits<'_> = HashMap::new();
-        for change in &batch.texts {
-            let id = text_ids
-                .get(&(Rc::as_ptr(&change.node) as usize))
-                .copied()
-                .filter(|id| *id != AMBIGUOUS)
+        for (change, id) in batch.texts.iter().zip(text_ids) {
+            let id = id
                 .and_then(|id| u32::try_from(id).ok())
                 .and_then(crate::dom::TextId::new);
             match id {
@@ -97,54 +96,42 @@ impl Document {
                 _ => return None,
             }
         }
-        let mut nodes = (*self.nodes).clone();
-        (patch(&mut nodes, &targets) && patch_texts(&mut nodes, &texts)).then_some(nodes)
-    }
-
-    /// Следующая ревизия с деревом `nodes` и прежними значениями документа;
-    /// пакет уже записан в исходный DOM, соответствие узлов не меняется.
-    pub(super) fn adopted(
-        &self,
-        nodes: Vec<Node>,
-        key: u64,
-        revision: &crate::budget::RevisionBudget,
-        #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
-    ) -> Document {
-        let state = DocState::adopting(&self.state);
-        let base = state.values.images.borrow().base().cloned();
-        state.values.admit_revision(revision.clone(), base.as_ref());
-        // Документ отпускает выведенные группы стиля в Drop.
-        state.values.hold_document();
-        Document {
-            state,
-            nodes: Rc::new(nodes),
-            retained: Default::default(),
-            reuse: self.reuse.clone(),
-            root: self.root.clone(),
-            key,
-            theme_css: self.theme_css.clone(),
-            base_url: self.base_url.clone(),
-            xml: self.xml,
-            last_failure: None,
-            #[cfg(feature = "engine-bench")]
-            timings,
+        // Пути к правкам ищутся в текущем дереве; без единого пути дерево
+        // коробок после пакета то же самое, и копировать нечего.
+        let attrs = attr_paths(&self.nodes, &targets)?;
+        let found = text_paths(&self.nodes, &texts)?;
+        if attrs.is_empty() && found.is_empty() {
+            return Some(Plan::Clean(None));
         }
+        let mut nodes = (*self.nodes).clone();
+        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+            return None;
+        }
+        // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
+        // лишь селекторы и `attr()` каскада, а не сборка кадра.
+        Some(if texts.is_empty() {
+            Plan::Clean(Some(nodes))
+        } else {
+            Plan::Patched(nodes)
+        })
     }
 }
 
-/// Один адрес у двух узлов коробок: такой узел правкой не адресуется.
-const AMBIGUOUS: u64 = u64::MAX;
-
-fn source_ids(elements: &[usize]) -> HashMap<usize, u64> {
-    let mut ids = HashMap::with_capacity(elements.len());
-    for (slot, &address) in elements.iter().enumerate() {
-        if address != 0 {
-            ids.entry(address)
-                .and_modify(|id| *id = AMBIGUOUS)
-                .or_insert(slot as u64 + 1);
+/// Номера коробок (позиция в списке адресов сборки плюс один) исходных узлов
+/// `handles`, в их порядке. Один проход по списку без карты всех узлов:
+/// карта — только из адресов пакета. `None` — узел не построен или его адрес у
+/// двух номеров (такой узел правкой не адресуется).
+fn source_ids<'a>(list: &[usize], handles: impl Iterator<Item = &'a Handle>) -> Vec<Option<u64>> {
+    let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
+    let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
+    let mut seen = std::collections::HashSet::with_capacity(wanted.len());
+    for (slot, address) in list.iter().enumerate() {
+        if let Some(id) = found.get_mut(address) {
+            // Второе появление адреса делает узел неадресуемым.
+            *id = seen.insert(*address).then_some(slot as u64 + 1);
         }
     }
-    ids
+    wanted.iter().map(|a| found[a]).collect()
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).

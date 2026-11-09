@@ -64,10 +64,10 @@ impl Document {
         }
         let key = applied_key(self.key, records, theme_css);
         let revision = self.budget().revision();
-        if let Some(nodes) = self.plan(&batch, theme_css, None, &revision) {
+        if let Some(plan) = self.plan(&batch, theme_css, None, &revision) {
             batch.write();
-            *self = self.adopted(
-                nodes,
+            self.commit(
+                plan,
                 key,
                 &revision,
                 #[cfg(feature = "engine-bench")]
