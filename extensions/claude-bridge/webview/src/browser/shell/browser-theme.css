@@ -1,4 +1,9 @@
 /* Browser equivalent of GPUI webview_theme.rs palette injection. */
+:root {
+  --vscode-font-family: 'Bricolage Grotesque',system-ui,sans-serif;
+  --vscode-font-size: 13px;
+  --font-mono: 'JetBrains Mono',Consolas,monospace;
+}
 [data-theme="dark"] {
   --vscode-foreground: #cfd4e2;
   --vscode-disabledForeground: #60667b;

@@ -6,7 +6,7 @@
 .ws-shell .ws-icon { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:8px; flex-shrink:0; color:var(--text-muted); }
 .ws-shell .ws-icon.selected { background:color-mix(in srgb,var(--accent-blue) 16%,transparent); color:var(--accent-blue); }
 .ws-topbar { height:42px; display:flex; align-items:center; gap:8px; padding-right:8px; flex-shrink:0; }
-.ws-logo { width:48px; flex-shrink:0; text-align:center; font-size:22px; font-weight:800; color:var(--accent-purple); }
+.ws-logo { width:42px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
 .ws-command-search { display:flex; align-items:center; justify-content:center; gap:8px; height:26px; min-width:150px; width:240px; flex-shrink:1; border-radius:8px; background:color-mix(in srgb,var(--bg-surface) 60%,transparent) !important; border:1px solid color-mix(in srgb,var(--bg-overlay) 30%,transparent) !important; color:var(--text-muted) !important; font-size:11px !important; }
 .ws-command-search kbd { font:inherit; opacity:.6; margin-left:auto; margin-right:8px; }
 .ws-body { display:flex; flex:1; min-height:0; overflow:hidden; }
@@ -42,6 +42,9 @@
 .ws-session-tab .ws-pin { font-size:7px; }
 .ws-session-tab.sleeping { opacity:.6; }
 .ws-new-tab { margin-left:2px; }
+.ws-session-menu-backdrop { position:fixed; inset:0; z-index:200; }
+.ws-session-menu { position:absolute; width:180px; padding:6px; border:1px solid var(--bg-overlay); border-radius:8px; background:var(--bg-surface); box-shadow:var(--shadow-lg); }
+.ws-session-menu button { display:block; width:100%; padding:8px; text-align:left; border-radius:4px; }
 .ws-sidebar-resize { position:absolute; top:0; bottom:0; right:0; width:4px; cursor:col-resize; touch-action:none; }
 .ws-sidebar-resize:hover,.ws-dock-split:hover { background:color-mix(in srgb,var(--accent-blue) 35%,transparent); }
 .ws-main { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; padding:0 0 8px 4px; }
@@ -58,7 +61,7 @@
 .ws-panel-tab { height:26px; border-radius:8px; padding:0 8px; display:flex; align-items:center; gap:6px; white-space:nowrap; color:var(--text-muted) !important; font-size:11px !important; }
 .ws-panel-tab.selected { background:var(--bg-surface); color:var(--text-primary) !important; }
 .ws-panel-tab i { font-size:10px; }
-.ws-panel-content { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; border-radius:0 0 8px 8px; background:var(--ws-sidebar); }
+.ws-panel-content { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; border-radius:0 0 8px 8px; background:var(--ws-sidebar); font-size:var(--vscode-font-size,13px); }
 .ws-content-main { grid-area:2 / 1; }
 .ws-content-bottom { grid-area:5 / 1; }
 .ws-content-right { grid-area:2 / 3 / -1 / 4; }

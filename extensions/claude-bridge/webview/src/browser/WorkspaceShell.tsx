@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
+import kaminoid from '../assets/kaminoid.svg'
 import { ChatRoot } from '../roots/ChatRoot'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import { AgentsToolPanel } from '../components/agent-tiles/AgentsToolPanel'
@@ -38,7 +39,7 @@ export function WorkspaceShell() {
   return <div id="app-wrapper" class="ws-shell" ref={frame} style={{ '--ws-sidebar-width': `${state.sidebarWidth}px` }}>
     <div class="ws-notices" aria-live="polite">{toasts.value.map(notice => <div role="status" key={notice.id}><strong>{notice.title}</strong><p>{notice.message}</p><button aria-label="Dismiss notification" onClick={() => dismissToast(notice.id)}>×</button></div>)}</div>
     <header class="ws-topbar">
-      <div class="ws-logo" title="KaminIDE">K</div>
+      <div class="ws-logo" title="KaminIDE"><img src={kaminoid} alt="KaminIDE" width={26} height={26} /></div>
       <button class="ws-icon" aria-label="Toggle sessions sidebar" onClick={() => updateShell({ type: 'sidebar', visible: !state.sidebarVisible })}><i class="fas fa-table-columns" /></button>
       <SessionTabs />
       <button class="ws-command-search" onClick={() => window.dispatchEvent(new CustomEvent('workspace:command-palette'))}><i class="fas fa-magnifying-glass" />Type a command…<kbd>Ctrl K</kbd></button>
