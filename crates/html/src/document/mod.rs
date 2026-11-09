@@ -40,6 +40,7 @@ pub use crate::dom::outcome::{
     TraversalLimit,
 };
 pub use builder::DocumentBuilder;
+pub use revision::{ApplyError, Mutation};
 mod canvas_background;
 mod embedded;
 mod logical_properties;

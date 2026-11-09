@@ -7,8 +7,8 @@
 //! отличие (дети, атрибут или текст SVG/MathML или внутри `<template>`) —
 //! `None`: такая ревизия собирается заново.
 
+use super::mutation::{Mutation, attribute_records};
 use markup5ever_rcdom::{Handle, NodeData};
-use std::rc::Rc;
 
 /// Элемент, атрибуты которого в новой ревизии другие.
 pub(super) struct Changed {
@@ -18,9 +18,8 @@ pub(super) struct Changed {
 
 /// Текстовый узел элемента HTML, содержимое которого в новой ревизии другое.
 pub(super) struct Edited {
-    /// Адрес текстового узла в прежнем DOM.
-    pub(super) node: usize,
-    pub(super) old: String,
+    /// Текстовый узел прежнего DOM.
+    pub(super) node: Handle,
     pub(super) new: String,
 }
 
@@ -28,10 +27,32 @@ pub(super) struct Edited {
 pub(super) struct Shape {
     pub(super) changed: Vec<Changed>,
     pub(super) texts: Vec<Edited>,
-    /// Адреса элементов и текстов прежнего и нового DOM в одном порядке обхода.
-    pub(super) nodes: Vec<(usize, usize)>,
     /// Тексты всех `<style>` нового DOM, включая содержимое шаблонов.
     pub(super) sheets: Vec<String>,
+}
+
+impl Shape {
+    /// Записи мутаций, переводящие прежний DOM в новый: атрибуты элементов и
+    /// содержимое текстов, адресованные узлам прежнего DOM.
+    pub(super) fn records(&self) -> Vec<Mutation> {
+        let attrs = |node: &Handle| match &node.data {
+            NodeData::Element { attrs, .. } => attrs.borrow().clone(),
+            _ => Vec::new(),
+        };
+        let mut out = Vec::new();
+        for changed in &self.changed {
+            out.extend(attribute_records(
+                &changed.old,
+                &attrs(&changed.old),
+                &attrs(&changed.new),
+            ));
+        }
+        out.extend(self.texts.iter().map(|edit| Mutation::CharacterData {
+            node: edit.node.clone(),
+            data: edit.new.clone(),
+        }));
+        out
+    }
 }
 
 /// Отличия `new` от `old`, если у них одна форма.
@@ -39,7 +60,6 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
     let mut shape = Shape {
         changed: Vec::new(),
         texts: Vec::new(),
-        nodes: Vec::new(),
         sheets: Vec::new(),
     };
     // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
@@ -61,16 +81,12 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 },
             ) if name == n && public_id == p && system_id == s => frozen,
             (NodeData::Text { contents }, NodeData::Text { contents: c }) => {
-                shape
-                    .nodes
-                    .push((Rc::as_ptr(&a) as usize, Rc::as_ptr(&b) as usize));
                 if *contents.borrow() != *c.borrow() {
                     if frozen || !child {
                         return None;
                     }
                     shape.texts.push(Edited {
-                        node: Rc::as_ptr(&a) as usize,
-                        old: contents.borrow().to_string(),
+                        node: a.clone(),
                         new: c.borrow().to_string(),
                     });
                 }
@@ -118,9 +134,6 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                         new: b.clone(),
                     });
                 }
-                shape
-                    .nodes
-                    .push((Rc::as_ptr(&a) as usize, Rc::as_ptr(&b) as usize));
                 if &*name.local == "style" {
                     shape.sheets.push(text_of(&b));
                 }
@@ -150,6 +163,30 @@ fn text_of(node: &Handle) -> String {
         if let NodeData::Text { contents } = &child.data {
             out.push_str(&contents.borrow());
         }
+    }
+    out
+}
+
+/// Тексты всех `<style>` DOM `root`, включая содержимое шаблонов, в порядке
+/// обхода (как `Shape::sheets`).
+pub(super) fn sheets(root: &Handle) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(node) = stack.pop() {
+        if let NodeData::Element {
+            name,
+            template_contents,
+            ..
+        } = &node.data
+        {
+            if &*name.local == "style" {
+                out.push(text_of(&node));
+            }
+            if let Some(contents) = &*template_contents.borrow() {
+                stack.push(contents.clone());
+            }
+        }
+        stack.extend(node.children.borrow().iter().rev().cloned());
     }
     out
 }

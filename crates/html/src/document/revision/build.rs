@@ -80,13 +80,28 @@ impl Document {
         fonts: &crate::text::metrics::FontContext,
         revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
+        Self::try_source(source, theme_css, base_url, xml, state, fonts, revision)
+            .map_err(|(failure, _)| failure)
+    }
+
+    /// Каскад `source`; при отказе разобранный вход возвращается вызывающему
+    /// (сборка из исходного DOM прежней ревизии кладёт его обратно).
+    pub(super) fn try_source(
+        source: Source,
+        theme_css: &str,
+        base_url: Option<url::Url>,
+        xml: bool,
+        state: Rc<state::DocState>,
+        fonts: &crate::text::metrics::FontContext,
+        revision: crate::budget::RevisionBudget,
+    ) -> Result<Self, (DocumentFailure, Box<Source>)> {
         let key = source.key;
         #[cfg(feature = "engine-bench")]
         let mut timings = super::super::BuildTimings {
             parse: source.parse,
             ..Default::default()
         };
-        let (state, nodes, root) = parse_document(
+        let built = parse_document(
             &source.input,
             theme_css,
             source.base.as_ref(),
@@ -95,18 +110,21 @@ impl Document {
             revision,
             #[cfg(feature = "engine-bench")]
             &mut timings,
-        )
-        .map_err(|mut failure| {
-            failure.report.revision = Some(key);
-            failure
-        })?;
-        state.values.traversal.retain(source.input);
+        );
+        let (state, nodes, root) = match built {
+            Ok(built) => built,
+            Err(mut failure) => {
+                failure.report.revision = Some(key);
+                return Err((failure, Box::new(source)));
+            }
+        };
         // Исчерпание aggregate ревизии в ранних проходах (ресурсы, подстановки) терминально:
         // кандидат не публикуется, даже если операции вернули штатный fallback.
         if let Some(mut failure) = state.values.revision_budget().failure() {
             failure.report.revision = Some(key);
-            return Err(failure);
+            return Err((failure, Box::new(source)));
         }
+        state.values.traversal.retain(source.input);
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
         Ok(Document {
@@ -123,5 +141,46 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             timings,
         })
+    }
+
+    /// Разобранный вход следующей ревизии из исходного DOM этой же ревизии,
+    /// в который уже записаны записи мутаций: база документа и ранний допуск
+    /// источников заново (записи могли изменить `<base href>` и адреса
+    /// ресурсов). При отказе вход возвращается вызывающему.
+    pub(super) fn readmit(
+        input: crate::dom::input::Admitted,
+        theme_css: &str,
+        base_url: Option<&url::Url>,
+        xml: bool,
+        key: u64,
+        revision: &crate::budget::RevisionBudget,
+    ) -> Result<Source, Box<(DocumentFailure, crate::dom::input::Admitted)>> {
+        let base = if xml {
+            Ok(base_url.cloned())
+        } else {
+            base_url::document_base(
+                &input.dom.document,
+                base_url,
+                &crate::budget::admission::Admission::new(revision.clone()),
+            )
+            .map_err(DocumentFailure::from)
+        };
+        let admitted = base.and_then(|base| {
+            crate::dom::early_admission::admit_sources(&input, theme_css)?;
+            Ok(base)
+        });
+        match admitted {
+            Ok(base) => Ok(Source {
+                input,
+                base,
+                key,
+                #[cfg(feature = "engine-bench")]
+                parse: std::time::Duration::ZERO,
+            }),
+            Err(mut failure) => {
+                failure.report.revision = Some(key);
+                Err(Box::new((failure, input)))
+            }
+        }
     }
 }
