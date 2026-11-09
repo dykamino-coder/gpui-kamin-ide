@@ -1,6 +1,7 @@
-//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`) через
-//! `Document::update`, по очереди правка и возврат, затем проверка, что каждый
-//! вариант совпадает по пикселям со свежим документом той же разметки.
+//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`),
+//! применённой записями мутаций DOM (`Document::apply`), по очереди правка и
+//! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
+//! документом той же разметки.
 
 use super::{
     args::Args,
@@ -39,7 +40,7 @@ pub(super) async fn run(
             window,
             fonts,
             args,
-            Step::Update(variants[variant]),
+            Step::Edit(variants[variant]),
             capture,
             luid,
         )
@@ -102,6 +103,7 @@ pub(super) async fn run(
     }
     let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
+    mode["edit_input"] = json!("mutation_records");
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
     Ok(mode)
