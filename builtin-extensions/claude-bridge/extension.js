@@ -44798,12 +44798,15 @@ function tokenKey(token) {
   return import_crypto5.default.createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
 var ConfigStore = class {
-  data;
-  file;
-  constructor(storageDir) {
+  constructor(storageDir, persistToken = true) {
+    this.persistToken = persistToken;
     this.file = import_path10.default.join(storageDir, "open-claude-bridge-config.json");
     this.data = this.load();
+    if (!persistToken) this.data.config = { ...this.data.config, token: "" };
   }
+  persistToken;
+  data;
+  file;
   load() {
     const base = {
       config: { ...defaults },
@@ -44825,7 +44828,8 @@ var ConfigStore = class {
     try {
       import_fs9.default.mkdirSync(import_path10.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      import_fs9.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
+      const snapshot2 = this.persistToken ? this.data : { ...this.data, config: { ...this.data.config, token: "" } };
+      import_fs9.default.writeFileSync(tmp, JSON.stringify(snapshot2, null, 2), "utf8");
       import_fs9.default.renameSync(tmp, this.file);
     } catch {
     }
@@ -44913,7 +44917,7 @@ var ConfigStore = class {
    *  Resume works because the transcripts live on the server, resolved by
    *  conversationId. Runs once (guarded); best-effort. */
   migrateFromElectron() {
-    if (this.data.migratedFromElectron) return;
+    if (!this.persistToken || this.data.migratedFromElectron) return;
     const appData = process.env.APPDATA;
     const candidates = appData ? [
       import_path10.default.join(appData, "open-claude-bridge-electron", "open-claude-bridge-config.json"),
@@ -51642,6 +51646,39 @@ async function saveAttachment(base64, name, root = import_node_os4.default.tmpdi
   return file;
 }
 
+// src/transcription.ts
+async function transcribeAudio(config, base64, mimeType) {
+  try {
+    if (!config.whisperUrl) return { error: "Configure a Whisper API URL in settings" };
+    const url = new URL(config.whisperUrl);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid transcription URL");
+    const extensions = { "audio/wav": "wav", "audio/webm": "webm", "audio/mp4": "mp4", "audio/ogg": "ogg", "audio/mpeg": "mp3" };
+    const mime = String(mimeType).split(";")[0].trim().toLowerCase();
+    if (!extensions[mime]) throw new Error("Unsupported audio format");
+    if (typeof base64 !== "string" || base64.length > 11184812 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+      throw new Error("Invalid audio encoding or audio exceeds 8 MiB");
+    }
+    const bytes = Buffer.from(base64, "base64");
+    if (!bytes.length || bytes.length > 8 * 1024 * 1024) throw new Error("Audio must contain 1 byte to 8 MiB");
+    const body = new FormData();
+    body.append("file", new Blob([bytes], { type: mime }), `recording.${extensions[mime]}`);
+    body.append("model", config.whisperModel || "whisper-1");
+    const response = await fetch(url, {
+      method: "POST",
+      body,
+      redirect: "error",
+      headers: config.whisperToken ? { Authorization: `Bearer ${config.whisperToken}` } : void 0,
+      signal: AbortSignal.timeout(12e4)
+    });
+    if (!response.ok) return { error: `Transcription failed (HTTP ${response.status})` };
+    const result = await response.json();
+    if (typeof result.text !== "string") throw new Error("Transcription returned no text");
+    return { text: result.text };
+  } catch {
+    return { error: "Could not transcribe audio; check endpoint, format and connectivity" };
+  }
+}
+
 // src/core-ipc.ts
 init_host_compat();
 
@@ -51698,6 +51735,82 @@ function withSyncAuthorization(path47, init, token) {
   };
 }
 
+// src/server-http.ts
+function createServerHttp(httpBase, token, options = {}) {
+  const base = new URL(httpBase);
+  if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) throw new Error("Invalid Bridge HTTP origin");
+  function target(route) {
+    if (options.pinned && (!route.startsWith("/") || route.startsWith("//") || route.includes("\\"))) throw new Error("Expected a relative Bridge API path");
+    const url = new URL(`${base.href.replace(/\/$/, "")}${route}`);
+    if (options.pinned && url.origin !== base.origin) throw new Error("Bridge HTTP origin is pinned");
+    return url.href;
+  }
+  async function request(route, init) {
+    const authenticated = withSyncAuthorization(route, init, token);
+    const response = await fetch(target(route), {
+      method: authenticated?.method ?? "GET",
+      body: authenticated?.body,
+      headers: authenticated?.headers ?? (authenticated?.body ? { "Content-Type": "application/json" } : void 0),
+      signal: AbortSignal.timeout(8e3),
+      ...options.pinned ? { redirect: "error" } : {}
+    });
+    let text = "";
+    if (options.maxBytes && response.body) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let size = 0;
+      try {
+        for (; ; ) {
+          const next = await reader.read();
+          if (next.done) break;
+          size += next.value.byteLength;
+          if (size > options.maxBytes) throw new Error("Bridge response exceeds the browser limit");
+          chunks.push(next.value);
+        }
+        text = Buffer.concat(chunks).toString("utf8");
+      } finally {
+        await reader.cancel();
+      }
+    } else text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    return { ok: response.ok, status: response.status, data };
+  }
+  return {
+    async createToken(name) {
+      const result = await request("/api/dashboard/tokens", { method: "POST", body: JSON.stringify({ name }) });
+      if (!result.ok) throw new Error(`HTTP ${result.status}`);
+      return result.data;
+    },
+    async serverVersion() {
+      for (const route of ["/api/bridge-version", "/health"]) {
+        try {
+          const result = await request(route);
+          if (result.ok) return result.data;
+        } catch {
+        }
+      }
+      return null;
+    },
+    async serverFetch(route, init) {
+      try {
+        return await request(route, init);
+      } catch (error) {
+        return {
+          ok: false,
+          status: 0,
+          data: null,
+          error: options.pinned ? "Bridge server request failed" : error instanceof Error ? error.message : String(error)
+        };
+      }
+    }
+  };
+}
+
 // src/core-ipc.ts
 init_toast_window();
 var MIME = {
@@ -51711,6 +51824,7 @@ var MIME = {
 function registerCoreIpc(context, configStore) {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""));
   ipcMain.handle("vscode:is-available", () => false);
+  ipcMain.handle("whisper:transcribe", (_e, base64, mime) => transcribeAudio(configStore.get(), base64, mime));
   ipcMain.on("vscode:open", () => {
   });
   ipcMain.on("theme:set", () => {
@@ -51799,44 +51913,13 @@ function registerCoreIpc(context, configStore) {
     }
   });
   ipcMain.handle("bridge:create-token", async (_e, httpBase, name) => {
-    const resp = await fetch(`${httpBase}/api/dashboard/tokens`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name })
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return await resp.json();
+    return createServerHttp(httpBase).createToken(name);
   });
   ipcMain.handle("bridge:server-version", async (_e, httpBase) => {
-    for (const path47 of ["/api/bridge-version", "/health"]) {
-      try {
-        const resp = await fetch(`${httpBase}${path47}`, { signal: AbortSignal.timeout(8e3) });
-        if (resp.ok) return await resp.json();
-      } catch {
-      }
-    }
-    return null;
+    return createServerHttp(httpBase).serverVersion();
   });
   ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path47, init) => {
-    try {
-      const authenticatedInit = withSyncAuthorization(path47, init, configStore.get().token);
-      const resp = await fetch(`${httpBase}${path47}`, {
-        method: authenticatedInit?.method ?? "GET",
-        headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : void 0),
-        body: authenticatedInit?.body,
-        signal: AbortSignal.timeout(8e3)
-      });
-      const text = await resp.text();
-      let data = null;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = text;
-      }
-      return { ok: resp.ok, status: resp.status, data };
-    } catch (err) {
-      return { ok: false, status: 0, data: null, error: err instanceof Error ? err.message : String(err) };
-    }
+    return createServerHttp(httpBase, configStore.get().token).serverFetch(path47, init);
   });
   ipcMain.handle("save-text-as", async (_e, opts) => {
     try {
@@ -52176,7 +52259,7 @@ var BridgeHost = class {
       ipcMain.on("diag:renderer-sample", (_event, sample) => listener(sample));
     });
     setPermissionStorageDir(context.globalStorageUri.fsPath);
-    this.configStore = new ConfigStore(context.globalStorageUri.fsPath);
+    this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken);
     this.configStore.migrateFromElectron();
     this.tabManager = new TabManager(this.sink);
     setPluginLspProjectResolver((tabId, file) => {
@@ -52854,6 +52937,13 @@ var SessionsBridge = class {
 
 // src/index.ts
 init_host_compat();
+
+// src/tool-usage-relay.ts
+function relayToolUsage(name, broadcast2) {
+  if (typeof name === "string") broadcast2("toolusage-open", name);
+}
+
+// src/index.ts
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [
@@ -52935,7 +53025,7 @@ function activate(context) {
     vscode9.commands.registerCommand("claude-bridge.getSessionInfo", () => host.cmdGetSessionInfo()),
     // Панель Tools/e2e: раскрыть применения тула фуллскрином в чате.
     vscode9.commands.registerCommand("claude-bridge.openToolUsage", (name) => {
-      if (typeof name === "string") host.broadcast("toolusage-open", name);
+      relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool));
     }),
     // Жизненный цикл сессий (правило тестируемости): создание/активация идут
     // через нативный sessions-API хоста — sessionsBridge сам поднимет вкладку.
@@ -52948,7 +53038,7 @@ function activate(context) {
     vscode9.commands.registerCommand("claude-bridge.setPermissionMode", (mode) => typeof mode === "string" && host.cmdSetPermissionMode(mode))
   );
   ipcMain.on("toolusage:open", (_e, name) => {
-    if (typeof name === "string") host.broadcast("toolusage-open", name);
+    relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool));
   });
 }
 function deactivate() {

@@ -30,6 +30,8 @@ bridge.ptyResize = (ptyId, cols, rows) => snd("pty:resize", { ptyId, cols, rows 
 bridge.ptyKill = (ptyId) => snd("pty:kill", { ptyId })
 // External-MCP elicitation reply uses a per-request dynamic channel.
 bridge.respondMcpElicitation = (requestId, payload) => snd(`mcp-elicitation-response:${requestId as string}`, payload)
+// Retained legacy generic invoke; the host enforces its registered channel set.
+bridge.invoke = (channel, ...args) => inv(String(channel), ...args)
 // getDroppedFilePath (Electron webUtils) удалён: не-image drop/paste ходят
 // байтами через save-dropped-file (аудит #70 A3).
 

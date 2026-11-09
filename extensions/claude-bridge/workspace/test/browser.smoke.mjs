@@ -1,3 +1,5 @@
+if (process.platform === 'win32') throw new Error('Windows host browsers are forbidden; use test:browser:container with --report-dir outside checkout')
+
 // Real Chromium + HTTP/WS boundary + production browser bundle. This deliberate
 // fixture peer proves browser startup/lifecycle, not shared-handler/model parity.
 import assert from 'node:assert/strict'

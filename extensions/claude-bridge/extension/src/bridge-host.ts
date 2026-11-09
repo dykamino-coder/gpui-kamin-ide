@@ -180,7 +180,11 @@ export class BridgeHost {
   private readonly configStore: ConfigStore
   private readonly mcpManager: McpServerManager
 
-  constructor(context: vscode.ExtensionContext, opts?: { onOpenChat?: () => void; onRegenerateTitle?: (tabId: string) => void }) {
+  constructor(context: vscode.ExtensionContext, opts?: {
+    onOpenChat?: () => void
+    onRegenerateTitle?: (tabId: string) => void
+    persistConnectionToken?: boolean
+  }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
         recordBridgeOutbound(channel, args)
@@ -197,7 +201,7 @@ export class BridgeHost {
     })
 
     setPermissionStorageDir(context.globalStorageUri.fsPath)
-    this.configStore = new ConfigStore(context.globalStorageUri.fsPath)
+    this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken)
     // One-shot: bring an upgrading user's Electron Bridge sessions/projects into
     // KaminIDE's sidebar (same store shape + token-key; transcripts resolve
     // server-side by conversationId). No-op after the first run.
