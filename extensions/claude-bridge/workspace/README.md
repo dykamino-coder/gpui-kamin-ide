@@ -2,6 +2,8 @@
 
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
+Service-owned credentials, loopback automatic login, container run steps and
+explicit reset: [CREDENTIALS.md](CREDENTIALS.md).
 
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
@@ -144,8 +146,10 @@ Never serve project files as application assets. The browser build preserves a d
 chunk: desktop single-file bundling would execute its module initializers before
 the browser transport is installed.
 
-The entry checks `/auth/session`, signs in via `/auth/login`, and uses only the
-opaque HttpOnly cookie for the same-origin `/bridge` socket. The token field is
+The entry checks `/auth/session` and uses only an opaque HttpOnly cookie for the
+same-origin `/bridge` socket. The executable service issues this automatically
+for its exact loopback public origin. Explicit remote mode signs in via
+`/auth/login`; see [service credentials](CREDENTIALS.md). The token field is
 cleared when submitted; there is no token in browser storage, URLs or renderer
 state. UI state is document-local memory; durable client settings remain host
 responsibilities. Logout and reauthentication reload the document.

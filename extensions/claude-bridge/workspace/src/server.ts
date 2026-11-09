@@ -20,6 +20,8 @@ export interface WorkspaceServerOptions {
   bind?: string
   port?: number
   revalidateMs?: number
+  /** Only for an exactly pinned loopback browser origin, including port mapping. */
+  autoLogin?: boolean
   /** Trusted Module Federation remote; state is owned by this host process. */
   preview?: WorkspacePreview
   /** Serve only trusted application assets; this callback never receives API routes. */
@@ -50,6 +52,9 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   }
   let origin = options.origin ? new URL(options.origin).origin : ''
   if (options.origin && (origin !== options.origin || !/^https?:/.test(origin))) throw new Error('Invalid browser origin')
+  if (options.autoLogin && origin && !['127.0.0.1', '[::1]', 'localhost'].includes(new URL(origin).hostname)) {
+    throw new Error('Automatic login requires a loopback browser origin')
+  }
   const sockets = new Map<WebSocket, string>()
   const alive = new Set<WebSocket>()
   const previewSockets = new Map<Duplex, string>()
@@ -75,6 +80,9 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (closing || !sameHost(request)) { json(response, 403, { error: 'Invalid host' }); return }
+    if ((request.headers.origin && !sameOrigin(request)) || request.headers['sec-fetch-site'] === 'cross-site') {
+      json(response, 403, { error: 'Invalid origin' }); return
+    }
     if (request.url === '/auth/login' && request.method === 'POST') {
       if (!sameOrigin(request)) { json(response, 403, { error: 'Invalid origin' }); return }
       const address = request.socket.remoteAddress ?? ''
@@ -104,7 +112,15 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       return
     }
     if (request.url === '/auth/session' && request.method === 'GET') {
-      json(response, 200, { authenticated: await options.auth.validate(readSessionCookie(request.headers.cookie)) })
+      let authenticated = await options.auth.validate(readSessionCookie(request.headers.cookie))
+      if (!authenticated && options.autoLogin) {
+        const cookie = await options.auth.loginLocal()
+        if (cookie) {
+          response.setHeader('Set-Cookie', options.auth.cookieHeader(cookie, origin.startsWith('https:')))
+          authenticated = true
+        }
+      }
+      json(response, 200, { authenticated })
       return
     }
     if (request.url?.startsWith('/preview/')) {

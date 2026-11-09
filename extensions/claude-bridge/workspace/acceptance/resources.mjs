@@ -62,6 +62,8 @@ export class OwnedResources {
   async start(token, upstream) {
     const port = await freePort()
     this.origin = `http://127.0.0.1:${port}`
+    this.port = port
+    this.upstream = upstream
     for (const suffix of ['project', 'home']) {
       const name = `${this.name}-${suffix}`
       // Random exact names only. Never adopt or clean up an existing volume.
@@ -70,23 +72,41 @@ export class OwnedResources {
       await command('podman', ['volume', 'create', name])
       this.volumes.push(name)
     }
-    this.child = spawn('podman', ['run', '--rm', '--name', this.name, '-i',
+    await this.launch(token)
+  }
+  async launch(token) {
+    this.exitCode = undefined
+    this.launchError = false
+    this.child = spawn('podman', ['run', '--name', this.name, '-i',
       '--network', 'host', '--add-host', 'host.containers.internal:127.0.0.1',
       '-v', `${this.volumes[0]}:/workspace`, '-v', `${this.volumes[1]}:/home/workspace`,
-      '-e', `BRIDGE_SERVER_URL=${upstream}`, '-e', `WORKSPACE_ORIGIN=${this.origin}`,
-      '-e', 'WORKSPACE_BIND=127.0.0.1', '-e', `WORKSPACE_PORT=${port}`,
-      this.image, '--token-stdin'], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
+      '-e', `BRIDGE_SERVER_URL=${this.upstream}`, '-e', `WORKSPACE_ORIGIN=${this.origin}`,
+      '-e', 'WORKSPACE_BIND=127.0.0.1', '-e', `WORKSPACE_PORT=${this.port}`,
+      this.image, ...(token === undefined ? [] : ['--token-stdin'])], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
     this.started = true
     this.child.on('error', () => { this.launchError = true })
     this.closed = new Promise(resolve => this.child.once('close', code => { this.exitCode = code; resolve() }))
     this.child.stdin.on('error', () => {})
     // Secret crosses stdin once; it is never a Podman argument, file or configured env.
-    this.child.stdin.end(`${token}\n`)
+    this.child.stdin.end(token === undefined ? undefined : `${token}\n`)
+    await this.healthy()
+  }
+  async healthy() {
     await poll(async () => {
       check(!this.launchError, 'COMMAND_START')
       if (this.exitCode !== undefined) throw new CheckFailure(this.exitCode === 78 ? 'CORE_ENTRYPOINT' : 'CONTAINER_EXIT')
       return upstreamHealth(this.origin, '/auth/session')
     }, { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
+  }
+  async restart() {
+    await command('podman', ['restart', '--time', '10', this.name])
+    await poll(() => upstreamHealth(this.origin, '/auth/session'), { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
+  }
+  async recreate() {
+    await command('podman', ['stop', '--time', '10', this.name])
+    await this.closed
+    await command('podman', ['rm', this.name])
+    await this.launch() // Same volumes, port and identity; no bootstrap secret.
   }
   exec(script, input) { return command('podman', ['exec', '-i', this.name, 'node', '-e', script], { input }) }
   async write(path, text) {
@@ -98,13 +118,15 @@ export class OwnedResources {
   async cleanup() {
     const failures = []
     if (this.started) {
-      // --rm can finish before cleanup. Inspect only this run's exact container name.
+      // Inspect only this run's exact container name.
       let exists = false
       try { await command('podman', ['container', 'inspect', this.name]); exists = true }
       catch (e) { if (e.code !== 'COMMAND_EXIT') failures.push('CONTAINER_INSPECT') }
       if (exists) {
         try { await command('podman', ['stop', '--time', '5', this.name]) }
         catch { failures.push('CONTAINER_STOP') }
+        try { await command('podman', ['rm', this.name]) }
+        catch { failures.push('CONTAINER_REMOVE') }
       }
       if (this.child && this.exitCode === undefined) {
         await Promise.race([this.closed, delay(10_000)])
