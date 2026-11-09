@@ -10,6 +10,14 @@ This makes the shell-access authentication boundary independently reviewable.
 It is a smaller first increment of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
 
+The application-asset increment supplies `createAppAssetHandler`, used by the
+production-bundle browser smoke and later executable composition. It loads only
+the dedicated browser build's entry and supported assets, validates links and
+size/depth limits before listen, and snapshots bytes for the life of the process.
+Application HTTP routes never interpret project paths. This restriction applies
+to public application assets, not the container-wide agent filesystem described
+below. Shared runtime/file adapters remain separate increments awaiting lead merge.
+
 ## Problem and completion contract
 
 The Bridge server owns Claude CLI PTYs, while the client owns project access

@@ -1,20 +1,13 @@
 // Real Chromium + HTTP/WS boundary + production browser bundle. This deliberate
 // fixture peer proves browser startup/lifecycle, not shared-handler/model parity.
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
-import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
-import { WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
+import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
-  const files = new Map((await readdir(assets, { recursive: true, withFileTypes: true }))
-    .filter(entry => entry.isFile()).map(entry => {
-      const filename = path.join(entry.parentPath, entry.name)
-      return ['/' + path.relative(assets, filename).split(path.sep).join('/'), filename]
-    }))
   let valid = true
   let attachments = 0
   const calls = []
@@ -51,13 +44,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         dispose() {},
       }
     } },
-    async serveApp(request, response) {
-      const filename = files.get(request.url === '/' ? '/browser.html' : request.url)
-      if (!filename) { response.writeHead(404); response.end(); return }
-      const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[path.extname(filename)]
-      response.writeHead(200, { 'Content-Type': mime ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
-      response.end(await readFile(filename))
-    },
+    serveApp: await createAppAssetHandler(assets),
   })
   t.after(() => server.close())
   const browser = await chromium.launch({ headless: true })

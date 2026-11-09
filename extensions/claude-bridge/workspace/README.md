@@ -52,9 +52,27 @@ channels.
 `webview/browser.html` mounts the existing full `App` (sessions, chat, settings
 and file panel) through the existing KaminBridgeApi channel tables. Build with
 `npm run build:browser` in `webview`; serve the entire `webview/dist/browser`
-directory at the HTTP origin root, with `/` mapped to `browser.html`. The
-embedding executable/static asset server is still pending. Never serve project
-files as application assets. The browser build preserves a deferred renderer
+directory at the HTTP origin root, with `/` mapped to `browser.html`. Supply the
+production asset handler to the HTTP boundary:
+
+```ts
+const serveApp = await createAppAssetHandler('/opt/bridge/webview/dist/browser')
+const server = await startWorkspaceServer({ auth, backend, serveApp })
+```
+
+`createAppAssetHandler` and `startWorkspaceServer` are package exports. Load the
+assets before listening; pass a dedicated, trusted browser build directory, never
+`/workspace` or client HOME. The handler snapshots `browser.html` and supported
+files under `assets/` into memory. It rejects symlinks, special files, missing
+entry/assets directories, files above 16 MiB, builds above 64 MiB, more than 4096
+asset entries or directory depth above eight. Project files, source maps, unknown
+routes and traversal paths return 404 without an HTML fallback. GET and HEAD
+preserve byte lengths and MIME types; all responses use `no-store`, so a restart
+cannot reuse stale application code. Changes to on-disk assets require a host
+restart. Only trusted application bytes are public before sign-in; API/socket
+authentication is unchanged. Executable/runtime composition is still pending.
+
+Never serve project files as application assets. The browser build preserves a deferred renderer
 chunk: desktop single-file bundling would execute its module initializers before
 the browser transport is installed.
 
@@ -75,7 +93,7 @@ without replacing the UI document. Connection deadlines, exponential backoff,
 frame/output byte limits and page-owned cleanup bound transport resources. An
 expired session returns to sign-in; protocol/overload closes require reload.
 
-The browser smoke uses production assets, the real HTTP/WS boundary, headless
+The browser smoke uses this production asset handler, the real HTTP/WS boundary, headless
 Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
 fail; this is startup/transport/UI composition evidence, not shared-handler,
 model or Podman parity. Run after building both packages:
