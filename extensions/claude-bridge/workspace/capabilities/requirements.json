@@ -7,13 +7,17 @@
     "test": "workspace/test/terminal-reattach.test.ts"
   },
   "title-regeneration": {
-    "state": "pending",
+    "state": "implemented",
     "owner": "bridgeweb/lead",
-    "reason": "bridge:regenerate-title requires shared host submit /rename hook; native SessionsBridge is not loaded in browser host."
+    "reason": "Shared BridgeHost registers bridge:regenerate-title and reuses cmdRegenerateTitle /rename submission; the native metadata callback remains optional.",
+    "file": "extension/src/bridge-host.ts",
+    "test": "extension/src/sessions-bridge-title.test.ts"
   },
   "finished-toast-route": {
-    "state": "pending",
+    "state": "implemented",
     "owner": "bridgeweb/lead",
-    "reason": "Finished notification Open calls native session activation hook; browser question routing works but finished routing is not installed."
+    "reason": "Finished notification Open uses the existing browser route when no native activation hook exists; native activation remains unchanged.",
+    "file": "extension/src/main/notifications/toast-window.ts",
+    "test": "extension/src/main/notifications/toast-window.test.ts"
   }
 }
