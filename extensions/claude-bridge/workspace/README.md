@@ -219,15 +219,26 @@ Directory events carry the original root and the changed parent/path. Required
 errors never masquerade as successful empty content. A future executable must
 wire that callback to the shared logging surface.
 
-Socket disposal releases that view's watchers and pending debounce timers without
-affecting other views. Dispose the file decorator before disposing the shared
-runtime on application shutdown. It does not keep Node alive by itself.
+Watch ownership belongs to logical host views, not sockets. Socket loss only
+detaches delivery; watches and debounce/read work survive with zero pages.
+`workspace:sync` accepts an optional `{fileViewId}` and replies privately with
+`workspace:files-state` (`id`, `files`, `trees`), fresh watched text and tree
+invalidation events. The browser remembers only this opaque ID in sessionStorage.
+A new document without an ID adopts the latest detached view; a concurrent page,
+including a tab with copied sessionStorage, gets independent copied subscriptions.
+Mounted trees refresh every loaded directory, including expanded descendants.
+Only current read snapshots are sent; writes and renames are never replayed.
+
+At most 32 logical file views are retained until host shutdown; new views beyond
+that limit fail explicitly. Explicit unwatch removes a path from its logical
+view. Dispose the file decorator before disposing the shared runtime on shutdown;
+this releases every retained watcher/timer. Watches do not keep Node alive.
 
 Tests execute every file channel against real temporary files, including an
 authenticated HTTP/WebSocket integration, atomic saves, watcher ownership,
 deletion/recreation, limits, explicit errors and lifecycle cleanup. The upstream
 fixture rejects unknown invokes. This proves this adapter only; actual browser
-file-panel rendering, selection context and live container acceptance remain
+file-panel rendering, complete host-owned layout/selection context and live container acceptance remain
 required after executable composition. Linux CI also checks FIFO rejection and
 symlinks; Windows skips FIFO and skips symlinks if the identity lacks privilege.
 

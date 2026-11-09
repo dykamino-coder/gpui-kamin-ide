@@ -292,6 +292,19 @@ live Podman gate below. Environment adapters/executable composition remain next.
 
 ### Full workspace gates
 
+The FilePanel watch revision makes subscriptions part of a bounded host logical
+view registry (32 views, each at most 64 files/8 tree roots). A socket only owns
+delivery. The existing read-only `workspace:sync` optionally carries a remembered
+opaque `fileViewId`; `workspace:files-state` returns the host ID and retained
+paths, followed by fresh text snapshots and tree invalidations. An ID-less
+reopen adopts the latest detached host view; a second attached page receives
+independent copied subscriptions, even if sessionStorage was copied by the
+browser. No write/rename history is retained or replayed. Shutdown disposes the
+registry, and explicit unwatch releases paths. This bounded increment restores
+watched files into a fresh page's active session; exact per-session file layout,
+dirty drafts, selection and previews still require the remaining host projection
+work. The existing Bridge FilePanel stays in scope; IDE integration does not.
+
 Use an isolated Podman project and headless Playwright, with synthetic content
 and private raw captures. Record source SHA, dependency locks, image ID, container
 names, commands, browser version, test results and volume names in the acceptance
