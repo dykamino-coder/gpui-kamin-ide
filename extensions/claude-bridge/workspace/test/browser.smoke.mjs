@@ -29,6 +29,9 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
   const calls = []
   const unexpected = new Set()
   let held
+  let holdSettingsSave = false
+  let settingsSaveRead
+  const settingsSavePending = new Promise(resolve => { settingsSaveRead = resolve })
   const config = { serverUrl: 'ws://fixture.invalid', token: '[workspace credential]', cwd: '/workspace' }
   const replies = new Map([
     ['get-version', 'fixture'], ['get-config', config],
@@ -56,6 +59,7 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
           }
           if (frame.kind !== 'invoke') return
           calls.push(frame)
+          if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
           if (frame.channel === 'read-clipboard') { held = frame; return }
           if (frame.channel === 'logs:clear') throw new Error('Fixture disconnect')
           const known = replies.has(frame.channel)
@@ -141,6 +145,7 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'set-config').length, 0)
+  await page.getByText('Settings could not be confirmed. Check the connection and try again.', { exact: true }).waitFor()
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
   await reportHeap('after-socket-reattach')
 

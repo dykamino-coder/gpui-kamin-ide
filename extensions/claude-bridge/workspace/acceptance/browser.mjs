@@ -36,7 +36,8 @@ export async function turn(page, prompt) {
 // Full content stays in browser memory; only IDs/counts/tool names cross to Node.
 export async function transcript(page, nonce) {
   return page.evaluate(nonce => {
-    const id = window.bridgeCmd.state().activeTabId
+    const state = window.bridgeCmd.state()
+    const id = state.activeTabId
     const all = window.__jsonlEntries?.[id] ?? []
     const messages = all.filter(e => ['user', 'assistant'].includes(e.type))
     const blocks = e => typeof e.message?.content === 'string'
@@ -45,7 +46,9 @@ export async function transcript(page, nonce) {
     const ids = messages.map(e => e.uuid).filter(Boolean)
     const calls = messages.flatMap(blocks).filter(b => b.type === 'tool_use')
     const results = messages.flatMap(blocks).filter(b => b.type === 'tool_result')
-    return { ids, duplicateIds: ids.length - new Set(ids).size,
+    return { stateEntries: state.entryCount, renderedEntries: all.length, busy: state.busy,
+      working: state.working, promptReady: state.promptReady, settling: state.settling,
+      boundMatchesActive: state.boundTabId === id, ids, duplicateIds: ids.length - new Set(ids).size,
       users: messages.filter(e => e.type === 'user' && text(e).includes(nonce)).length,
       done: messages.some(e => e.type === 'assistant' && text(e).includes(`${nonce}:ok`)),
       tools: calls.map(b => b.name),
@@ -53,6 +56,10 @@ export async function transcript(page, nonce) {
   }, nonce)
 }
 export function complete(snapshot, { baseline = [], code = 'TRANSCRIPT' } = {}) {
+  if (!snapshot.ids.length) console.log('transcript-state:', JSON.stringify({
+    stateEntries: snapshot.stateEntries, renderedEntries: snapshot.renderedEntries, busy: snapshot.busy,
+    working: snapshot.working, promptReady: snapshot.promptReady, settling: snapshot.settling,
+    boundMatchesActive: snapshot.boundMatchesActive }))
   const assertions = [
     [snapshot.ids.length > 0, 'EMPTY'], [snapshot.duplicateIds === 0, 'DUPLICATE'],
     [snapshot.users === 1, 'USER_COUNT'], [snapshot.done, 'REPLY'],
