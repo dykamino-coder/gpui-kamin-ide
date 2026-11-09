@@ -46,7 +46,7 @@ impl Paragraph {
         let runs = self.selection_runs(id, window);
         // Строка неделима: в записи главной копии кусков она допускается целиком.
         let mut bands = Vec::with_capacity(count);
-        for (i, line) in self.lines.clone().into_iter().enumerate() {
+        for (i, line) in self.lines.iter().enumerate() {
             let band = (y + above(i), y + above(i) + self.line_height);
             bands.push(band);
             // Перевод строки в набор не отдаём: он уже сработал разрывом.
@@ -59,7 +59,7 @@ impl Paragraph {
             // табуляции обязаны совпасть с нерастянутой строкой
             // (css-text-4 §8.1, `text-align-justify-tabs-001`), а раздача
             // остатка их бы сдвинула.
-            let align = self.line_align(i, &line);
+            let align = self.line_align(i, line);
             // Отступ первой строки занимает место В колонке: остаток на
             // выключку считается уже без него. Правый вырез обтекания
             // (`shape-outside`) — тоже: прижатая вправо строка упирается в
@@ -116,7 +116,7 @@ impl Paragraph {
                 // остаётся на своей базовой линии.
                 line_admission::paint(window, band, |window| {
                     self.paint_justified_line(
-                        &line,
+                        line,
                         &range,
                         &segs,
                         free,
@@ -171,9 +171,9 @@ impl Paragraph {
             // Знак обрыва и знак переноса набираются вместе со строкой.
             let mark = if line.ellipsis && line.clamped && line.hyphen {
                 // Обрыв на мягком переносе: знак переноса, затем многоточие.
-                format!("{}{}", self.hyphen, self.line_mark(&line))
+                format!("{}{}", self.hyphen, self.line_mark(line))
             } else if line.ellipsis {
-                self.line_mark(&line).to_string()
+                self.line_mark(line).to_string()
             } else if line.hyphen {
                 self.hyphen.to_string()
             } else {

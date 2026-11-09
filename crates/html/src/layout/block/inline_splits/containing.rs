@@ -51,7 +51,8 @@ mod tests {
         let mut outer = inner.clone();
         outer.node_id = 11;
         outer.children = vec![Node::Element(inner)].into();
-        let split = super::super::split_block_in_inline(&[Node::Element(outer)]);
+        let nodes = [Node::Element(outer)];
+        let split = super::super::split_block_in_inline(&nodes);
         let block = split
             .iter()
             .find_map(|n| match n {

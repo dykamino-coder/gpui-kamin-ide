@@ -118,61 +118,31 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    pub(crate) fn linebreaks_uax(&self) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
-        // Распорка атома читается как U+FFFC: класс CB даёт разрыв до и после
-        // (UAX #14 LB20; css-text-3 §5.1 — для переноса атом как знак-
-        // заместитель объекта, Blink `inline_items_builder.cc`). Длина в
-        // UTF-8 у U+FEFF и U+FFFC одна — смещения не съезжают.
-        let replaced;
-        let text: &str = if self.atom_boxes.is_empty() {
-            &self.text
+    /// Точки `linebreaks` по порядку, без промежуточного списка там, где
+    /// атомов нет: разрывы UAX #14 идут прямо потребителю.
+    pub(crate) fn for_each_linebreak(
+        &self,
+        mut f: impl FnMut(usize, unicode_linebreak::BreakOpportunity),
+    ) {
+        if self.atom_boxes.is_empty() {
+            self.for_each_linebreak_uax(f);
         } else {
-            let mut t = self.text.to_string();
-            for b in &self.atom_boxes {
-                // Руби остаётся распоркой WJ: свои точки она получает от
-                // знаков баз (`linebreaks`).
-                if t.get(b.at..b.at + 3) == Some("\u{feff}") && self.ruby_edges(b.at).is_none() {
-                    t.replace_range(b.at..b.at + 3, "\u{fffc}");
-                }
+            for (at, kind) in self.linebreaks() {
+                f(at, kind);
             }
-            replaced = t;
-            &replaced
-        };
-        // CSS Text 3 §5.2: break-all tailors letter/number classes to ID,
-        // then applies UAX #14 unchanged (including BA, GL and punctuation).
-        let tailor = self.wrap.break_all || self.spans.iter().any(|(_, w)| w.break_all);
-        if self.spacers.is_empty() && !tailor {
-            return unicode_linebreak::linebreaks(text).collect();
         }
-        let mut clean = String::with_capacity(text.len());
-        let mut map: Vec<usize> = Vec::with_capacity(text.len() + 1);
-        let mut pending: Option<usize> = None;
-        for (at, ch) in text.char_indices() {
-            if self.spacers.binary_search(&at).is_ok() {
-                pending.get_or_insert(at);
-                continue;
-            }
-            map.push(pending.take().unwrap_or(at));
-            let resolved = if self.wrap_at(at).break_all {
-                break_all_class(ch)
-            } else {
-                ch
-            };
-            // UAX emits only character boundaries. Interior byte entries need
-            // no source correspondence when the tailored UTF-8 length differs.
-            map.extend(std::iter::repeat_n(at, resolved.len_utf8() - 1));
-            clean.push(resolved);
-        }
-        map.push(self.text.len());
-        unicode_linebreak::linebreaks(&clean)
-            .map(|(at, kind)| (map.get(at).copied().unwrap_or(self.text.len()), kind))
-            .collect()
+    }
+
+    pub(crate) fn linebreaks_uax(&self) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
+        let mut out = Vec::new();
+        self.for_each_linebreak_uax(|at, kind| out.push((at, kind)));
+        out
     }
 }
 
 impl Paragraph {
     /// Base-level edge characters of the ruby container atom at `at`.
-    fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
+    pub(super) fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
         crate::work::add!(ParagraphRubyQueries, 1);
         if self.atoms.is_empty() {
             // Щуп замера имеет коробки, но не живые элементы: как и прежде,

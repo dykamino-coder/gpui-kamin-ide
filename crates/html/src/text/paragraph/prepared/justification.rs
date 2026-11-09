@@ -15,13 +15,19 @@ impl Opportunities {
         let mut words = Vec::new();
         let mut boundaries = Vec::new();
         let mut previous = None;
-        let mut units = p.text.grapheme_indices(true).map(|(at, _)| at).peekable();
+        // Границы графем нужны только раздаче между знаками (`text-justify:
+        // inter-character`); без неё абзац не сегментируется вовсе.
+        let mut units = (p.justify_chars != 0 && !p.ruby_justify && !p.ruby_unit)
+            .then(|| p.text.grapheme_indices(true).map(|(at, _)| at).peekable());
         let plain =
             |c| !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}');
         for (at, b) in p.text.char_indices() {
-            while units.peek().is_some_and(|&i| i < at) {
-                units.next();
-            }
+            let unit = units.as_mut().and_then(|units| {
+                while units.peek().is_some_and(|&i| i < at) {
+                    units.next();
+                }
+                units.peek().copied()
+            });
             if word_separator(b) && !p.ruby_justify {
                 words.push(at);
             }
@@ -32,7 +38,7 @@ impl Opportunities {
                 && plain(a)
                 && plain(b)
                 && cluster_edge(&p.text, at)
-                && units.peek() == Some(&at)
+                && unit == Some(at)
                 && if p.justify_chars == 1 {
                     justify_ideograph(a) || justify_ideograph(b)
                 } else {

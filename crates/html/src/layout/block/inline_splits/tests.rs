@@ -57,7 +57,7 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
                 vcx,
             );
             let split = split_block_in_inline(&nodes);
-            let [Node::Element(item)] = split.as_slice() else {
+            let [Node::Element(item)] = &split[..] else {
                 panic!("вынесенный пункт списка")
             };
             let merged = inherit(&BoxStyle::default(), &item.style.used(), vcx);
@@ -124,7 +124,7 @@ fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
     copy.style.used_mut().inh.table_list.list_style_type =
         Some(crate::style::computed::MarkerType::Counter("circle".into()));
     let split = split_block_in_inline(&nodes);
-    let [Node::Element(item)] = split.as_slice() else {
+    let [Node::Element(item)] = &split[..] else {
         panic!("list item")
     };
     let boxed = box_style(&BoxStyle::default(), &item.style, vcx);
@@ -134,4 +134,26 @@ fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
     );
     let marker = marker::resolve(item, &Computed::default(), &boxed, vcx).unwrap();
     assert_eq!(marker.text.trim(), "▪");
+}
+
+#[test]
+fn steps_without_work_return_the_children_without_a_copy() {
+    // Anonymous tables and block-in-inline splits run on every block's
+    // children; a list they leave unchanged must not be cloned per step.
+    let doc = DocState::new(Default::default());
+    let vcx = doc.values();
+    let nodes = [
+        Node::Element(element("display:block", vec![], vcx)),
+        Node::Element(element("display:inline", vec![], vcx)),
+    ];
+    crate::style::cascade::materialize::materialize(
+        &nodes,
+        &std::rc::Rc::new(Computed::default()),
+        vcx,
+    );
+    let tables = crate::layout::table::anon::wrap_anon_tables(&nodes);
+    assert!(matches!(tables, std::borrow::Cow::Borrowed(_)));
+    let split = split_block_in_inline(&tables);
+    assert!(matches!(split, std::borrow::Cow::Borrowed(_)));
+    assert_eq!(split.len(), 2);
 }

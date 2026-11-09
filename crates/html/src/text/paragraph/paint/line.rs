@@ -22,7 +22,7 @@ impl Paragraph {
     pub(crate) fn paint_line(
         &self,
         range: &std::ops::Range<usize>,
-        runs: &PaintRuns,
+        runs: &PaintRuns<'_>,
         at: Point<Pixels>,
         suffix: &str,
         window: &mut Window,

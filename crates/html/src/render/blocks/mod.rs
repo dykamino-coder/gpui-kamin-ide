@@ -197,7 +197,6 @@ pub(crate) async fn blocks_stack_with_dimensions(
     if sticky {
         out.push(sticky_probe(frame.clone()));
     }
-    let pending: Vec<Node> = vec![];
     // Слой верхней отрисовки этого контейнера: позиционированные элементы
     // складывают сюда содержимое, а забирается оно последними детьми.
     let nodes = collapsed.as_slice();
@@ -205,7 +204,6 @@ pub(crate) async fn blocks_stack_with_dimensions(
         stk,
         nodes,
         run_breaks,
-        pending,
         out,
         letter_scope,
         inherited,

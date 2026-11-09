@@ -31,36 +31,42 @@ pub fn bidi_letter_spans(
     if existing.iter().all(|(_, v)| *v == block) {
         return Vec::new();
     }
-    let mut text = String::new();
-    let mut piece_of: Vec<(Range<usize>, usize)> = Vec::new();
-    for (k, p) in pieces.iter().enumerate() {
-        if let Piece::Text { text: t, .. } = p
-            && !t.is_empty()
-        {
-            piece_of.push((text.len()..text.len() + t.len(), k));
-            text.push_str(t);
-        }
-    }
-    let bidi = text.chars().any(|c| {
-        matches!(
-            unicode_bidi::bidi_class(c),
-            BidiClass::R
-                | BidiClass::AL
-                | BidiClass::AN
-                | BidiClass::RLE
-                | BidiClass::RLO
-                | BidiClass::RLI
-                | BidiClass::LRO
-                | BidiClass::LRE
-        )
+    let texts = || {
+        pieces.iter().enumerate().filter_map(|(k, p)| match p {
+            Piece::Text { text, .. } if !text.is_empty() => Some((k, text)),
+            _ => None,
+        })
+    };
+    // Без знаков справа налево переупорядочивания нет: абзац не склеивается.
+    let bidi = texts().any(|(_, t)| {
+        t.chars().any(|c| {
+            matches!(
+                unicode_bidi::bidi_class(c),
+                BidiClass::R
+                    | BidiClass::AL
+                    | BidiClass::AN
+                    | BidiClass::RLE
+                    | BidiClass::RLO
+                    | BidiClass::RLI
+                    | BidiClass::LRO
+                    | BidiClass::LRE
+            )
+        })
     });
     if !bidi {
         return Vec::new();
     }
+    let mut text = String::with_capacity(texts().map(|(_, t)| t.len()).sum());
+    // (end offset, piece index): the texts are concatenated without gaps, so
+    // the piece of an offset is the first one ending after it.
+    let mut piece_of: Vec<(usize, usize)> = Vec::with_capacity(texts().count());
+    for (k, t) in texts() {
+        text.push_str(t);
+        piece_of.push((text.len(), k));
+    }
     let piece = |at: usize| {
         piece_of
-            .iter()
-            .find(|(r, _)| r.contains(&at))
+            .get(piece_of.partition_point(|(end, _)| *end <= at))
             .map(|(_, k)| *k)
     };
     let current = |at: usize| {
@@ -69,56 +75,76 @@ pub fn bidi_letter_spans(
             .find(|(r, _)| r.contains(&at))
             .map_or(block, |(_, v)| *v)
     };
+    // Tracked units: zero-width controls and breaks take no tracking (§8.2).
+    let unit = |c: char| !super::spacing::zero_width_format(c) && c != '\n';
     let base = if rtl { Level::rtl() } else { Level::ltr() };
     let info = BidiInfo::new(&text, Some(base));
     let mut out = Vec::new();
     for para in &info.paragraphs {
         let (levels, runs) = info.visual_runs(para, para.range.clone());
-        // Visual sequence of tracked units (zero-width controls and breaks
-        // take no tracking and are skipped, §8.2).
-        let mut visual: Vec<usize> = Vec::new();
-        for run in runs {
-            let mut chars: Vec<usize> = text[run.clone()]
+        // Logical successor of a unit inside the paragraph.
+        let successor = |i: usize| {
+            let from = i + text[i..].chars().next().map_or(1, char::len_utf8);
+            text[from..para.range.end]
                 .char_indices()
-                .filter(|(_, c)| !super::spacing::zero_width_format(*c) && *c != '\n')
-                .map(|(i, _)| run.start + i)
-                .collect();
-            if levels[run.start].is_rtl() {
-                chars.reverse();
+                .find(|(_, c)| unit(*c))
+                .map(|(o, _)| from + o)
+        };
+        // Inside one level run logically consecutive units are visual
+        // neighbours (reversed together in an RTL run), so only the logical
+        // last unit of a run can be separated from its successor. Its
+        // trailing side faces the next visual run (LTR) or the previous one
+        // (RTL): the runs are walked in visual order, one pair at a time,
+        // without per-unit position tables.
+        let mut check = |i: usize, k: Option<usize>| {
+            let Some(j) = successor(i) else { return };
+            if k == Some(j) {
+                return;
             }
-            visual.extend(chars);
-        }
-        let mut logical = visual.clone();
-        logical.sort_unstable();
-        let order: std::collections::HashMap<usize, usize> =
-            visual.iter().enumerate().map(|(p, at)| (*at, p)).collect();
-        let pos = |at: usize| order.get(&at).copied();
-        for pair in logical.windows(2) {
-            let (i, j) = (pair[0], pair[1]);
-            let (Some(pi), Some(pj)) = (pos(i), pos(j)) else {
-                continue;
-            };
-            let rtl_i = levels[i].is_rtl();
-            let adjacent = if rtl_i { pj + 1 == pi } else { pi + 1 == pj };
-            if adjacent {
-                continue;
+            if let Some(k) = k
+                && piece(k) == piece(i)
+            {
+                return;
             }
-            // The letter's trailing side faces this visual neighbour.
-            let k = if rtl_i {
-                pi.checked_sub(1).map(|p| visual[p])
-            } else {
-                visual.get(pi + 1).copied()
-            };
-            let value = match k {
-                Some(k) if piece(k) == piece(i) => continue,
-                _ => block,
-            };
-            if value != current(i) {
+            if block != current(i) {
                 let len = text[i..].chars().next().map_or(1, char::len_utf8);
-                out.push((i..i + len, value));
+                out.push((i..i + len, block));
             }
+        };
+        // (logical first, logical last, rtl) of each run with tracked units.
+        let ends = runs.iter().filter_map(|run| {
+            let mut units = text[run.clone()]
+                .char_indices()
+                .filter(|(_, c)| unit(*c))
+                .map(|(o, _)| run.start + o);
+            let first = units.next()?;
+            Some((
+                first,
+                units.next_back().unwrap_or(first),
+                levels[run.start].is_rtl(),
+            ))
+        });
+        let visual_first =
+            |(first, last, rtl): (usize, usize, bool)| if rtl { last } else { first };
+        let visual_last = |(first, last, rtl): (usize, usize, bool)| if rtl { first } else { last };
+        let mut prev: Option<(usize, usize, bool)> = None;
+        for run in ends {
+            let (_, last, run_rtl) = run;
+            if let Some(a) = prev {
+                if !a.2 {
+                    check(a.1, Some(visual_first(run)));
+                }
+            }
+            if run_rtl {
+                check(last, prev.map(visual_last));
+            }
+            prev = Some(run);
+        }
+        if let Some((_, last, false)) = prev {
+            check(last, None);
         }
     }
+    out.sort_unstable_by_key(|(r, _)| r.start);
     out
 }
 
@@ -137,39 +163,4 @@ pub fn block_letter_spacing(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::style::computed::{BoxStyle, Computed};
-    use gpui::px;
-
-    fn text(t: &str) -> Piece {
-        Piece::Text {
-            text: t.into(),
-            style: BoxStyle::from(Computed::default()),
-        }
-    }
-
-    #[test]
-    fn letter_split_from_its_successor_by_reordering_takes_block_gap() {
-        // a<span>bA</span>B with Hebrew A/B: visually a b B A.
-        let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
-        let existing = [(1..4, px(10.))];
-        let out = bidi_letter_spans(&pieces, false, px(0.), &existing);
-        assert_eq!(out, vec![(1..2, px(0.))]);
-    }
-
-    #[test]
-    fn uniform_or_unidirectional_text_needs_no_override() {
-        let pieces = [text("ab"), text("cd")];
-        assert!(bidi_letter_spans(&pieces, false, px(0.), &[(0..4, px(5.))]).is_empty());
-        let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
-        assert!(bidi_letter_spans(&pieces, false, px(5.), &[]).is_empty());
-    }
-
-    #[test]
-    fn tracking_like_the_block_everywhere_needs_no_override() {
-        // Reordered as in the first test, but the span tracks like the block.
-        let pieces = [text("a"), text("b\u{5d0}"), text("\u{5d1}")];
-        assert!(bidi_letter_spans(&pieces, false, px(10.), &[(1..4, px(10.))]).is_empty());
-    }
-}
+mod tests;

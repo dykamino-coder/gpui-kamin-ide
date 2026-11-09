@@ -86,11 +86,15 @@ pub(crate) fn prepare_children(
     } else {
         // Анонимная таблица вокруг ПРОГОНА табличных братьев (§17.2.1 шаг 3)
         // — до разбиения блока в строчном и до схлопывания полей, как это
-        // делает и сборщик дерева в браузере.
+        // делает и сборщик дерева в браузере. Шаги без работы отдают список
+        // как есть: копия детей одна, а не по одной на шаг.
+        let tables = wrap_anon_tables(nodes);
+        let hoisted = hoist_inset_abs(&tables, inherited, vcx);
         crate::layout::block::inline_splits::split_block_in_inline_dir(
-            &hoist_inset_abs(&wrap_anon_tables(nodes), inherited, vcx),
+            &hoisted,
             inherited.wm().rtl(),
         )
+        .into_owned()
     };
     // Не снимать АВТОРСКИЙ `align-self` у блока в обычном потоке здесь, в
     // начале `blocks()` («до внутренних постановщиков»): замещаемому
@@ -174,22 +178,22 @@ pub(crate) fn prepare_children(
             })
             .collect()
     };
-    let nodes: &[Node] = &split;
     let collapsed = if ordered_context {
-        reorder(nodes.to_vec())
+        reorder(split)
     } else {
         let facts: &std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts> =
             &opts.cx.contracts.subtrees;
         let (unchanged, inline_preparation) = {
             let mut facts = facts.borrow_mut();
             (
-                facts.margins_unchanged(nodes),
-                !facts.inline_preparation_absent(nodes),
+                facts.margins_unchanged(&split),
+                !facts.inline_preparation_absent(&split),
             )
         };
         let mut out = if unchanged {
-            nodes.to_vec()
+            split
         } else {
+            let nodes: &[Node] = &split;
             // Входы нужны только при схлопывании: полный каскад анонимного
             // ребёнка не должен вычисляться на каждом уровне нулевой цепочки.
             // CSS2 §8.3: проценты полей — от ширины содержащего блока;

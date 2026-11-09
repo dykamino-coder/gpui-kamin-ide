@@ -3,6 +3,7 @@
 mod ancestor;
 mod engine;
 mod enter;
+mod kids;
 mod leave;
 mod marker;
 mod pending;

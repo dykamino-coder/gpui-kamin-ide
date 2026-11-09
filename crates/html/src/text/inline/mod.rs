@@ -69,6 +69,8 @@ pub(super) mod whitespace;
 pub use crate::text::inline::whitespace::*;
 pub(super) mod case;
 pub use crate::text::inline::case::*;
+pub(super) mod word_space;
+pub use crate::text::inline::word_space::*;
 pub(super) mod runs;
 pub use crate::text::inline::runs::*;
 

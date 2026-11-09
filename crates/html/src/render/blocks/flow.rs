@@ -19,7 +19,6 @@ pub(super) async fn blocks_flow(
     stk: &mut reblessive::Stk,
     nodes: &[Node],
     run_breaks: Vec<usize>,
-    mut pending: Vec<Node>,
     mut out: Vec<AnyElement>,
     mut letter_scope: crate::render::first_letter_scope::Scope,
     inherited: &BoxStyle,
@@ -73,29 +72,33 @@ pub(super) async fn blocks_flow(
         end: below_run_end,
         zs: below_zs,
     };
+    // The open inline run is always `nodes[start..idx]`: its nodes are not
+    // cloned into a separate list, the paragraph gets a slice of the children.
+    let mut start = 0;
     for (idx, n) in nodes.iter().enumerate() {
-        if run_breaks.contains(&idx) && !pending.is_empty() {
-            let taken = std::mem::take(&mut pending);
+        if run_breaks.contains(&idx) && start < idx {
+            let taken = &nodes[start..idx];
+            start = idx;
             let t = trim::para_flags(trim_own, std::mem::take(&mut first_para), false);
             out.push(paint_inline_step7(
                 letter_scope.paragraph(
-                    &taken,
+                    taken,
                     inherited,
                     &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
                 ),
                 opts,
             ));
         }
-        let is_inline = inline_node(n, inherited, ordered_context, &pending);
+        let is_inline = inline_node(n, inherited, ordered_context, &nodes[start..idx]);
         if is_inline {
             if let Some(flow) = &reuse {
                 flow.built(n);
             }
-            pending.push(n.clone());
             continue;
         }
-        if !pending.is_empty() {
-            let taken = std::mem::take(&mut pending);
+        let taken = &nodes[start..idx];
+        start = idx + 1;
+        if !taken.is_empty() {
             let t = trim::para_flags(
                 trim_own,
                 std::mem::take(&mut first_para),
@@ -103,7 +106,7 @@ pub(super) async fn blocks_flow(
             );
             out.push(paint_inline_step7(
                 letter_scope.paragraph(
-                    &taken,
+                    taken,
                     inherited,
                     &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
                 ),
@@ -190,11 +193,11 @@ pub(super) async fn blocks_flow(
             }
         }
     }
-    if !pending.is_empty() {
+    if start < nodes.len() {
         let t = trim::para_flags(trim_own, first_para, true);
         out.push(paint_inline_step7(
             letter_scope.paragraph(
-                &pending,
+                &nodes[start..],
                 inherited,
                 &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
             ),

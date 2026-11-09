@@ -76,7 +76,7 @@ async fn prepare_stack(
                 && !out_of_flow(&child.style.used()) && contains_block(&child.children))
             })
         {
-            let children = split_block_in_inline(&wrap_anon_tables(&element.children));
+            let children = split_block_in_inline(&wrap_anon_tables(&element.children)).into_owned();
             changed.get_or_insert_with(|| original.clone()).children = children.into();
         }
         if let Some(element) = changed {
