@@ -52,9 +52,9 @@ export class TabManager {
   onProjectOpened: ((cwd: string) => void) | null = null
   /** Invoked when a tab with a cwd is closed and no other tab references that cwd. */
   onProjectClosed: ((cwd: string) => void) | null = null
-  /** Fires just before a tab is deleted, so the caller can persist a saved
-   *  session record. Receiver may inspect tab.conversationId, sessionTitle,
-   *  model, etc. */
+  /** Fires before disconnect and deletion for every tab, including sessions
+   *  without a conversation ID. Used to clean up tab-owned background work;
+   *  callers may also inspect the optional session metadata. */
   onTabClosing: ((tab: Tab) => void) | null = null
   /** Fires right after a tab is created and registered. Used to start
    *  per-tab background work — plugin monitors, etc. — that needs to die
@@ -173,13 +173,9 @@ export class TabManager {
     const tab = this.tabs.get(tabId)
     if (!tab) return
 
-    // Persist the session BEFORE deletion so closing a tab mid-dialog moves
-    // it to "inactive" instead of silently dropping it. `configStore.addSavedSession`
-    // dedups by conversationId — if a save already happened via
-    // onConversationId, this is a no-op upsert with a fresher lastActivity.
-    if (tab.conversationId && this.onTabClosing) {
-      this.onTabClosing(tab)
-    }
+    // Tab-owned monitors and language servers can start before the CLI
+    // announces a conversation ID. Their cleanup must not depend on identity.
+    this.onTabClosing?.(tab)
 
     // Explicit close — end the server session (see disconnectTab).
     tab.connection.disconnect({ endSession: true })
