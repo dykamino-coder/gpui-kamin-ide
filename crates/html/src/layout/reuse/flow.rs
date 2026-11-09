@@ -104,6 +104,10 @@ impl FlowReuse {
             ),
             None => (false, false, false),
         };
+        // Replays compare exactly: after a paint-only change of the root boxes
+        // no block will match one, so none is kept or recorded for the next
+        // frame (as for a key changed outside its widths).
+        let settled_outside_widths = settled_outside_widths && last_exact != Some(false);
         let wm = inherited.wm();
         let resized = !settled && resized && !wm.rtl() && !wm.vertical();
         let warm = if self.again {
@@ -117,9 +121,7 @@ impl FlowReuse {
                 // Записи другого ключа не подойдут, а держат стили кадра записи.
                 self.store.reset();
             }
-            // Replays compare exactly: after a paint-only change of the root
-            // boxes they hold output and trees that no block will match.
-            if !settled_outside_widths || last_exact == Some(false) {
+            if !settled_outside_widths {
                 self.store.reset_replays();
             }
             let warm = self.store.settled.replace(settled) && settled;

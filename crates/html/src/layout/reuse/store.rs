@@ -76,6 +76,12 @@ impl Store {
             return Some((record, Damage::None));
         }
         if record.source.same_layout(e) {
+            // The caller keeps the layout under a record of this tree
+            // (`FlowCx::placeholder`): the previous subtree goes now, not at
+            // the end of the frame.
+            let mut records = self.records.take();
+            records.remove(&e.node_id);
+            self.records.replace(records);
             return Some((record, Damage::Paint));
         }
         // Записи держат стили: карта меняется целиком, без `&mut` на них.
