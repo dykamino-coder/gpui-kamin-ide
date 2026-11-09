@@ -1,6 +1,7 @@
 import WebSocket from 'ws'
 import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
+import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
@@ -870,6 +871,7 @@ export class ConnectionManager {
 
     this.mcpResults.detach()
     if (terminal) {
+      disposeBackgroundShells(this.tabId)
       this.mcpResults.dispose()
       this.mcpSessionId = null
       this.recentMcpCalls.clear()
@@ -901,7 +903,6 @@ export class ConnectionManager {
     if (this.disposed) return
     this.disposed = true
     this.disconnect()
-    disposeBackgroundShells(this.tabId)
   }
 
   /** Returns current connection state. Maps ExtendedConnectionState to
@@ -1032,6 +1033,21 @@ export class ConnectionManager {
     // ordered and bounded, and the point is to be on screen immediately.
     this.window.webContents.send('jsonl-entries', this.tabId, records)
     return records.length
+  }
+
+  /** Read the authoritative cache without broadcasting a replay to other views.
+   * Serialization by the caller detaches the disposable renderer projection. */
+  getViewSnapshot(maxRecords = 200): {
+    entries: any[]; streaming: any; status: any
+    subagents: { agentName: string; agentId: string; entries: any[] }[]
+    boundaries: { boundaries: { ts: string }[]; counts: number[] } | null
+  } {
+    const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords))
+    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0))
+    return { entries: ordered.slice(-count), streaming: this.cachedStreamingEntry,
+      subagents: [...this.cachedSubagentEntries].map(([key, slot]) => ({ ...slot, agentId: slot.agentId ?? key, entries: slot.entries.slice(-count) })),
+      boundaries: this.lastSegmentIndex,
+      status: this.cachedJsonlStatus ?? { status: 'watching', replayComplete: this.state.status !== 'authenticated' } }
   }
 
   replayJsonlToRenderer(): void {
@@ -1539,6 +1555,7 @@ export class ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e
       },
+      appendCachedStreamingDelta: (delta) => { appendStreamingText(this.cachedStreamingEntry, delta) },
       pushSubagentCache: (key, agentName, agentId, entries) => {
         const slot = this.cachedSubagentEntries.get(key) ?? {
           agentName,
