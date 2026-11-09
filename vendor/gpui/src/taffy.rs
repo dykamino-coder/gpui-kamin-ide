@@ -95,9 +95,12 @@ struct NodeContext {
     /// KaminIDE patch: index of this keyed leaf in its key's candidate list
     /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
     key_slot: u32,
+    /// KaminIDE patch: the next pass keeps this leaf's measure function
+    /// (`TaffyLayoutEngine::keep_measures`). Lives in the struct's padding.
+    keep_measure: bool,
 }
 
-// The retained-tree field above fills padding: every node of the frame tree has
+// The retained-tree fields above fill padding: every node of the frame tree has
 // a context slot (a dense secondary map), so a larger context costs every node.
 const _: () = assert!(
     std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()

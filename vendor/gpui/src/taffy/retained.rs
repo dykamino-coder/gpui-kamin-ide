@@ -123,9 +123,6 @@ pub(super) struct Retained {
     /// results computed from a stub: the host rebuilds the frame and the tree
     /// is dropped at the end of the pass.
     stale: Rc<std::cell::Cell<bool>>,
-    /// Leaves of this pass whose measure functions the next pass keeps
-    /// (`keep_measures`); emptied at the end of every pass, capacity kept.
-    keep: FxHashSet<NodeId>,
 }
 
 impl Retained {
@@ -328,17 +325,15 @@ impl TaffyLayoutEngine {
         // whole paragraph probe) need not outlive the frame. Leaves the host
         // keeps (`keep_measures`) keep their functions for one more pass.
         let stub = retired_measure(retained.stale.clone());
-        let mut keep = std::mem::take(&mut retained.keep);
         for node in &live {
-            if !keep.contains(node)
-                && self.taffy.has_node_context(*node)
+            if self.taffy.has_node_context(*node)
                 && let Some(context) = self.taffy.get_node_context_mut(*node)
             {
-                context.measure = stub.clone();
+                if !std::mem::take(&mut context.keep_measure) {
+                    context.measure = stub.clone();
+                }
             }
         }
-        keep.clear();
-        retained.keep = keep;
         retained.keys.retain(|node, _| live.contains(node));
         retained.by_key.clear();
         for (position, node) in retained.seq.iter().enumerate() {
@@ -462,8 +457,11 @@ impl TaffyLayoutEngine {
             return;
         }
         for &node in nodes {
-            if self.retained.live.contains(&node) && self.taffy.has_node_context(node) {
-                self.retained.keep.insert(node);
+            if self.retained.live.contains(&node)
+                && self.taffy.has_node_context(node)
+                && let Some(context) = self.taffy.get_node_context_mut(node)
+            {
+                context.keep_measure = true;
             }
         }
     }
