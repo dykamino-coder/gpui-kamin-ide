@@ -1,3 +1,5 @@
+if (process.platform === 'win32') throw new Error('Windows host browsers are forbidden; use test:browser:container with --report-dir outside checkout')
+
 // Production page and authenticated transport; fixture backend isolates the
 // browser primitives. Shared-handler acceptance lives in runtime.test.ts.
 import assert from 'node:assert/strict'

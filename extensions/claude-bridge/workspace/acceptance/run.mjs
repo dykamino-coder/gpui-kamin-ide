@@ -51,8 +51,8 @@ async function main() {
       check(config.Config?.User && !['root', '0', '0:0'].includes(config.Config.User), 'IMAGE_NONROOT')
       check((config.Healthcheck ?? config.Config?.Healthcheck)?.Test?.length, 'IMAGE_HEALTHCHECK_USE_DOCKER_FORMAT')
       const probe = JSON.parse(await command('podman', ['run', '--rm', '--name', `${owned.name}-probe`,
-        '--tmpfs', '/workspace:rw,uid=10001,gid=10001,mode=0755',
-        '--tmpfs', '/home/workspace:rw,uid=10001,gid=10001,mode=0755',
+        '--tmpfs', '/workspace:rw,mode=1777',
+        '--tmpfs', '/home/workspace:rw,mode=1777',
         '--entrypoint', 'node', values.image, '-e', imageProbe]))
       check(probe.uid !== 0 && probe.bundle.raw > 0, 'IMAGE_CONTRACT')
       cliReady = probe.cli
