@@ -38120,7 +38120,10 @@ async function lspDiagnostics(input, context) {
     pluginDiags = await pluginLspManager.getDiagnostics(file, context?.tabId);
   } catch {
   }
-  const combined = [...diags ?? [], ...pluginDiags];
+  const combined = [...diags ?? [], ...pluginDiags.map((d) => ({
+    ...d,
+    severity: typeof d.severity === "number" ? d.severity - 1 : void 0
+  }))];
   if (combined.length === 0) return textResult7(`No diagnostics for ${file}.`);
   const sev = ["Error", "Warning", "Info", "Hint"];
   const lines = combined.map((d) => {
