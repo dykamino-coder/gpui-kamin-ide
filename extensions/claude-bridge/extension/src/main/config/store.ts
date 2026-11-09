@@ -58,9 +58,11 @@ export class ConfigStore {
   private data: StoreData
   private readonly file: string
 
-  constructor(storageDir: string) {
+  constructor(storageDir: string, private readonly persistToken = true) {
     this.file = path.join(storageDir, "open-claude-bridge-config.json")
     this.data = this.load()
+    // Container credentials come from process configuration, never this file.
+    if (!persistToken) this.data.config = { ...this.data.config, token: "" }
   }
 
   private load(): StoreData {
@@ -85,7 +87,9 @@ export class ConfigStore {
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
       const tmp = `${this.file}.tmp`
-      fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8")
+      const snapshot = this.persistToken ? this.data
+        : { ...this.data, config: { ...this.data.config, token: "" } }
+      fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2), "utf8")
       fs.renameSync(tmp, this.file)
     } catch {
       /* best-effort */
@@ -189,7 +193,7 @@ export class ConfigStore {
    *  Resume works because the transcripts live on the server, resolved by
    *  conversationId. Runs once (guarded); best-effort. */
   migrateFromElectron(): void {
-    if (this.data.migratedFromElectron) return
+    if (!this.persistToken || this.data.migratedFromElectron) return
     const appData = process.env.APPDATA
     const candidates = appData
       ? [

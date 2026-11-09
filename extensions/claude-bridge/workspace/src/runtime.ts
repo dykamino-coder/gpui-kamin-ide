@@ -38,7 +38,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const host = new BridgeHost({
     globalStorageUri: { fsPath: storage },
     extension: { packageJSON: { version: options.version } },
-  } as ExtensionContext)
+  } as ExtensionContext, { persistConnectionToken: false })
   const config = host.getConfigStore()
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
