@@ -4,6 +4,12 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Status: proposed implementation plan; no capability below is claimed delivered.
 Source and rules baseline: `9f2db23aa2ce26246d7aee68b80ce68bec97f7f6`.
 
+Implementation sequencing note: the first Change PR isolates the authenticated
+HTTP/WebSocket boundary as a library, before wiring the shared runtime and UI.
+This makes the shell-access authentication boundary independently reviewable.
+It is a smaller first increment of the architecture below, not a deployable
+workspace or a claim of full parity. The README records its exact limits.
+
 ## Problem and completion contract
 
 The Bridge server owns Claude CLI PTYs, while the client owns project access
