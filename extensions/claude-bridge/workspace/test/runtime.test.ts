@@ -108,6 +108,15 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(persisted.config.token, 'synthetic-workspace-token')
     assert.equal(persisted.config.serverUrl, upstreamUrl)
   }
+  // Same header action and shared handler as the desktop webview, without
+  // loading native SessionsBridge. Malformed/stale tabs must not reach the CLI.
+  const activeTab = (await invoke('tab:get-active')).result
+  for (const tabId of [null, {}, 'missing-tab', activeTab]) {
+    a.send(JSON.stringify({ kind: 'send', channel: 'bridge:regenerate-title', args: [tabId] }))
+  }
+  await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.data === '/rename')
+  await invoke('get-version') // Ordered ingress barrier after the header action.
+  assert.equal(upstreamFrames.filter(frame => frame.type === 'session:submitText' && frame.data === '/rename').length, 1)
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {
     const requestId = `tool-${++id}`

@@ -50,7 +50,7 @@ export function spawnToast(
     // session (switches to it + opens its chat), rather than just raising the
     // window with no way to jump to the session that finished.
     void vscode.window.showInformationMessage(text, "Open").then((picked) => {
-      if (picked === "Open") activateSessionForTab(opts.tabId)
+      if (picked === "Open" && !activateSessionForTab(opts.tabId)) routeHandler?.({ tabId: opts.tabId })
     })
   }
 }

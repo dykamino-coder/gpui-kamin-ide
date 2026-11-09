@@ -132,6 +132,11 @@ export class BridgeHost {
     a.conn.submitText(text)
     return true
   }
+  cmdRegenerateTitle(tabId: string): boolean {
+    if (!this.tabManager.getTab(tabId)) return false
+    this.tabManager.submitText(tabId, '/rename')
+    return true
+  }
   cmdChangeModel(model: string): boolean {
     const a = this.activeConn()
     if (!a?.conn) return false
@@ -175,7 +180,7 @@ export class BridgeHost {
   private readonly configStore: ConfigStore
   private readonly mcpManager: McpServerManager
 
-  constructor(context: vscode.ExtensionContext, opts?: { onOpenChat?: () => void }) {
+  constructor(context: vscode.ExtensionContext, opts?: { onOpenChat?: () => void; onRegenerateTitle?: (tabId: string) => void }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
         recordBridgeOutbound(channel, args)
@@ -419,6 +424,11 @@ export class BridgeHost {
     // Settings (host app-pref, enforced in the host's showMessageFocusAware
     // away-branch), so the Bridge always emits — no extension-side gate.
     setToastRouteHandler((payload) => this.post({ kind: "event", channel: "toast:route", args: [payload] }))
+    ipcMain.on("bridge:regenerate-title", (_event, tabId: unknown) => {
+      if (typeof tabId !== "string" || !this.tabManager.getTab(tabId)) return
+      if (opts?.onRegenerateTitle) opts.onRegenerateTitle(tabId)
+      else this.cmdRegenerateTitle(tabId)
+    })
 
     // ui-tools delivers AskUserQuestion/ExitPlanMode answers back through the PTY.
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text))
