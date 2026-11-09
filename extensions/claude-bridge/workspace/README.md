@@ -11,6 +11,22 @@ for the existing App. It is not yet a runnable browser workspace: executable
 composition, environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
+Owner requirement (2026-11-09): the browser must be a thin view and closing it
+must not interrupt agent work. The container host owns all sessions, execution,
+queues, pending prompts, file watches and PTYs, including with zero browsers.
+Re-attach must deliver transcript/streaming/tool/prompt state, open files/watches
+and terminal scrollback, then live updates, without replaying mutations or
+duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
+tears down work. The merged browser entry does not yet meet this full contract:
+host presentation snapshots and authoritative state migration remain open.
+Acceptance must cover close/reopen during Bash/MCP, pending permission after
+reopen, two tabs, and report production bundle size and page JS heap.
+
+Pending increments remain tracked separately: #643 serves application assets;
+#642 needs host-owned file watches and re-attach refresh; #644 needs host-owned
+PTY lifetime and scrollback. The explicit Disconnect follow-up precedes #643,
+then corrected #642. None of these increments establishes full parity.
+
 Run the boundary checks with Node 22:
 
 ```sh
@@ -60,7 +76,15 @@ MCP requests and closes shared resources without sending `session:end`; the
 server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
 The test starts long-running foreground/background Bash processes and an actual
 loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
-process termination and natural client exit. A
+process termination and natural client exit. It also sends the public explicit
+Disconnect before shutdown: connections are terminally disposed before tabs are
+forgotten, and the owning call's cancellation reaches external HTTP/SSE requests.
+An SSE response still pending after POST 202 is cancelled without closing the
+shared stream or another call. Stdio/WS per-call remote cancellation remains a
+separate parity gap. A third case closes both browser sockets while Bash/MCP run,
+checks continued tools with zero browsers, re-attaches to the same three sessions,
+then verifies shutdown cleanup. This is socket-level lifecycle evidence, not the
+full transcript/prompt recovery acceptance. A
 synthetic upstream protocol peer supplies session/MCP frames; this does not
 prove browser UI, live model, external plugin or container acceptance. The test
 uses a disposable HOME and cannot load the operator's Claude profile.
@@ -98,9 +122,27 @@ owned by the server process.
 `webview/browser.html` mounts the existing full `App` (sessions, chat, settings
 and file panel) through the existing KaminBridgeApi channel tables. Build with
 `npm run build:browser` in `webview`; serve the entire `webview/dist/browser`
-directory at the HTTP origin root, with `/` mapped to `browser.html`. The
-embedding executable/static asset server is still pending. Never serve project
-files as application assets. The browser build preserves a deferred renderer
+directory at the HTTP origin root, with `/` mapped to `browser.html`. Supply the
+production asset handler to the HTTP boundary:
+
+```ts
+const serveApp = await createAppAssetHandler('/opt/bridge/webview/dist/browser')
+const server = await startWorkspaceServer({ auth, backend, serveApp })
+```
+
+`createAppAssetHandler` and `startWorkspaceServer` are package exports. Load the
+assets before listening; pass a dedicated, trusted browser build directory, never
+`/workspace` or client HOME. The handler snapshots `browser.html` and supported
+files under `assets/` into memory. It rejects symlinks, special files, missing
+entry/assets directories, files above 16 MiB, builds above 64 MiB, more than 4096
+asset entries or directory depth above eight. Project files, source maps, unknown
+routes and traversal paths return 404 without an HTML fallback. GET and HEAD
+preserve byte lengths and MIME types; all responses use `no-store`, so a restart
+cannot reuse stale application code. Changes to on-disk assets require a host
+restart. Only trusted application bytes are public before sign-in; API/socket
+authentication is unchanged. Executable/runtime composition is still pending.
+
+Never serve project files as application assets. The browser build preserves a deferred renderer
 chunk: desktop single-file bundling would execute its module initializers before
 the browser transport is installed.
 
@@ -121,7 +163,7 @@ without replacing the UI document. Connection deadlines, exponential backoff,
 frame/output byte limits and page-owned cleanup bound transport resources. An
 expired session returns to sign-in; protocol/overload closes require reload.
 
-The browser smoke uses production assets, the real HTTP/WS boundary, headless
+The browser smoke uses this production asset handler, the real HTTP/WS boundary, headless
 Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
 fail; this is startup/transport/UI composition evidence, not shared-handler,
 model or Podman parity. Run after building both packages:
@@ -134,7 +176,12 @@ npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI. Native window,
-file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+CI repeats this headlessly and captures only synthetic fixture UI.
+The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
+JS heap after GC at initial App mount and after socket re-attach. These are
+synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
+that the page is already thin. The design requires the remaining measurements.
+
+Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.

@@ -5,7 +5,7 @@ import { toolRegistry, type McpResult } from './tool-registry'
 // External MCP server manager (set by main process after creation)
 let externalManager: {
   hasExternalTool(name: string): boolean
-  callTool(name: string, input: Record<string, unknown>): Promise<McpResult>
+  callTool(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpResult>
   readCatalogResource(uri: string, templateServerId?: string): Promise<unknown>
   getCatalogPrompt(name: string, args?: Record<string, unknown>): Promise<unknown>
 } | null = null
@@ -77,7 +77,7 @@ export async function executeTool(
   // 2. Check external MCP servers
   if (externalManager?.hasExternalTool(toolName)) {
     try {
-      return await externalManager.callTool(toolName, input)
+      return await externalManager.callTool(toolName, input, context?.signal)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       return {

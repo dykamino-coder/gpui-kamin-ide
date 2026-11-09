@@ -136,6 +136,10 @@ export async function sseJsonRpcRequest(
     }, 60_000)
     state.pendingRequests.set(reqId, { resolve, reject, timer })
   })
+  // A call may be cancelled after POST has returned 202, while its response
+  // is still pending on the shared stream. Do not close that stream or peers.
+  const abort = () => state.pendingRequests.get(reqId)?.reject(new Error('MCP request cancelled'))
+  ctx.shutdownSignal?.addEventListener('abort', abort, { once: true })
   // Observe the response promise immediately: disposal rejects it even while
   // the POST itself is still waiting for headers.
   const posted = fetch(state.sseMessageEndpoint, {
@@ -147,6 +151,7 @@ export async function sseJsonRpcRequest(
     const [result] = await Promise.all([responsePromise, posted])
     return result
   } finally {
+    ctx.shutdownSignal?.removeEventListener('abort', abort)
     const pending = state.pendingRequests.get(reqId)
     if (pending?.timer) clearTimeout(pending.timer)
     state.pendingRequests.delete(reqId)
