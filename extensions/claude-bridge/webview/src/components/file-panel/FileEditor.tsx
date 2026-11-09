@@ -11,6 +11,7 @@ import { useBridge } from '../../hooks/useBridge'
 import { activeTabId } from '../../signals/tabs'
 import {
   activeOpenFilePath,
+  activeSelectionByTab,
   closeFileInTab,
   editorStates,
   getOpenFiles,
@@ -151,6 +152,12 @@ export function FileEditor(): JSX.Element {
       // the only spot where collision matters visually. Background
       // tabs sync on next open via the read in `loadFile`.
       if (path !== activePathRef.current) {
+        for (const [key] of editorStates) {
+          if (key.endsWith(`::${path}`)) {
+            const owner = key.slice(0, -path.length - 2)
+            if (!getOpenFiles(owner).find(file => file.path === path)?.dirty) editorStates.delete(key)
+          }
+        }
         markFileMtime(tab, path, mtimeMs)
         return
       }
@@ -204,6 +211,10 @@ export function FileEditor(): JSX.Element {
   // File / tab change → save current state to cache + load (or fetch)
   // the new file's state and mount it on the EditorView.
   useEffect(() => {
+    // A host snapshot can replace the signals before Preact flushes an
+    // earlier render's passive effect. That stale empty-file render must
+    // not erase the just-restored selection or start an obsolete read.
+    if (tabId !== activeTabId.peek() || filePath !== activeOpenFilePath.peek()) return
     const view = viewRef.current
     if (!view) return
     if (!tabId || !filePath) {
@@ -239,7 +250,9 @@ export function FileEditor(): JSX.Element {
     // event won't fire on `setState`, so without this the input bar
     // would keep showing the previous file's selection until the user
     // clicks inside the editor.
-    publishSelectionFor(tabId, filePath, editorStates.get(newKey) ?? null)
+    const retainedSelection = activeSelectionByTab.peek().get(tabId)
+    const restoreSelection = retainedSelection?.path === filePath ? retainedSelection : null
+    if (editorStates.has(newKey) || !restoreSelection) publishSelectionFor(tabId, filePath, editorStates.get(newKey) ?? null)
 
     // Save the outgoing state so reopening the same file restores undo
     // history, scroll, and selection. (CM6's EditorState is immutable,
@@ -283,8 +296,12 @@ export function FileEditor(): JSX.Element {
       if (activeKeyRef.current !== newKey) return
       const v2 = viewRef.current
       if (!v2) return
+      const doc = v2.state.toText(read.content)
       const newState = EditorState.create({
-        doc: read.content,
+        doc,
+        selection: restoreSelection?.anchor !== undefined && restoreSelection.head !== undefined
+          ? { anchor: Math.min(restoreSelection.anchor, doc.length), head: Math.min(restoreSelection.head, doc.length) }
+          : undefined,
         extensions: [
           themeCompartmentRef.current.of(buildEditorTheme()),
           langCompartmentRef.current.of(lang ?? []),
@@ -300,7 +317,7 @@ export function FileEditor(): JSX.Element {
       editorStates.set(newKey, newState)
       markFileMtime(localTabId, localPath, read.mtimeMs)
       markFileDirty(localTabId, localPath, false)
-      // Publish the freshly-loaded file's L1 caret to the selection
+      // Publish the freshly-loaded file's restored range (or L1 caret) to the selection
       // signal so the input-bar status bar swaps to the new file
       // without waiting for the user to click inside the editor.
       publishSelectionFor(localTabId, localPath, newState)
@@ -464,7 +481,7 @@ function buildBaseExtensions(
         const startLine = u.state.doc.lineAt(sel.from).number
         const endLine = u.state.doc.lineAt(sel.to).number
         const text = sel.empty ? '' : u.state.sliceDoc(sel.from, sel.to)
-        setActiveSelection(tabId, { path: filePath, startLine, endLine, text })
+        setActiveSelection(tabId, { path: filePath, startLine, endLine, text, anchor: sel.anchor, head: sel.head })
       }
     }),
     keymap.of([
@@ -532,7 +549,7 @@ function publishSelectionFor(tabId: string, filePath: string, state: EditorState
   const startLine = state.doc.lineAt(sel.from).number
   const endLine = state.doc.lineAt(sel.to).number
   const text = sel.empty ? '' : state.sliceDoc(sel.from, sel.to)
-  setActiveSelection(tabId, { path: filePath, startLine, endLine, text })
+  setActiveSelection(tabId, { path: filePath, startLine, endLine, text, anchor: sel.anchor, head: sel.head })
 }
 
 /** Add a cursor on the line above (-1) or below (+1) at the same

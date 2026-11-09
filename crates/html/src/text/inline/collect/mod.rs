@@ -33,7 +33,7 @@ mod tests {
         assert_ne!(parent.node_id, 0);
         let cx = LayoutCx {
             values: crate::layout::cx::ValueContext {
-                doc: BuildDoc(parsed.doc.clone()),
+                doc: BuildDoc::of(parsed.doc.clone()),
                 ..Default::default()
             },
             ..Default::default()

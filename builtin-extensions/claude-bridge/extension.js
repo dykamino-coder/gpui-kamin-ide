@@ -51,10 +51,15 @@ __export(host_compat_exports, {
   ipcMain: () => ipcMain,
   registerShimWindow: () => registerShimWindow,
   safeStorage: () => safeStorage,
-  shell: () => shell
+  shell: () => shell,
+  unregisterShimWindow: () => unregisterShimWindow
 });
 function registerShimWindow(win) {
   if (!_windows.includes(win)) _windows.push(win);
+}
+function unregisterShimWindow(win) {
+  const index = _windows.indexOf(win);
+  if (index >= 0) _windows.splice(index, 1);
 }
 var import_node_events, os, path, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
 var init_host_compat = __esm({
@@ -3931,7 +3936,12 @@ ${stderr}`);
             stdio: "ignore"
           });
           killer.on("error", () => {
+            signalTree("SIGTERM");
           });
+          killer.on("exit", (code) => {
+            if (code !== 0) signalTree("SIGTERM");
+          });
+          return;
         } catch {
         }
       }
@@ -4145,17 +4155,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key2, node, visitor, path46) {
-      const ctrl = callVisitor(key2, node, visitor, path46);
+    function visit_(key2, node, visitor, path47) {
+      const ctrl = callVisitor(key2, node, visitor, path47);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key2, path46, ctrl);
-        return visit_(key2, ctrl, visitor, path46);
+        replaceNode(key2, path47, ctrl);
+        return visit_(key2, ctrl, visitor, path47);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path46 = Object.freeze(path46.concat(node));
+          path47 = Object.freeze(path47.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path46);
+            const ci = visit_(i, node.items[i], visitor, path47);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -4166,13 +4176,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path46 = Object.freeze(path46.concat(node));
-          const ck = visit_("key", node.key, visitor, path46);
+          path47 = Object.freeze(path47.concat(node));
+          const ck = visit_("key", node.key, visitor, path47);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path46);
+          const cv = visit_("value", node.value, visitor, path47);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -4193,17 +4203,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key2, node, visitor, path46) {
-      const ctrl = await callVisitor(key2, node, visitor, path46);
+    async function visitAsync_(key2, node, visitor, path47) {
+      const ctrl = await callVisitor(key2, node, visitor, path47);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key2, path46, ctrl);
-        return visitAsync_(key2, ctrl, visitor, path46);
+        replaceNode(key2, path47, ctrl);
+        return visitAsync_(key2, ctrl, visitor, path47);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path46 = Object.freeze(path46.concat(node));
+          path47 = Object.freeze(path47.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path46);
+            const ci = await visitAsync_(i, node.items[i], visitor, path47);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -4214,13 +4224,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path46 = Object.freeze(path46.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path46);
+          path47 = Object.freeze(path47.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path47);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path46);
+          const cv = await visitAsync_("value", node.value, visitor, path47);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -4247,23 +4257,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key2, node, visitor, path46) {
+    function callVisitor(key2, node, visitor, path47) {
       if (typeof visitor === "function")
-        return visitor(key2, node, path46);
+        return visitor(key2, node, path47);
       if (identity.isMap(node))
-        return visitor.Map?.(key2, node, path46);
+        return visitor.Map?.(key2, node, path47);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key2, node, path46);
+        return visitor.Seq?.(key2, node, path47);
       if (identity.isPair(node))
-        return visitor.Pair?.(key2, node, path46);
+        return visitor.Pair?.(key2, node, path47);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key2, node, path46);
+        return visitor.Scalar?.(key2, node, path47);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key2, node, path46);
+        return visitor.Alias?.(key2, node, path47);
       return void 0;
     }
-    function replaceNode(key2, path46, node) {
-      const parent = path46[path46.length - 1];
+    function replaceNode(key2, path47, node) {
+      const parent = path47[path47.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key2] = node;
       } else if (identity.isPair(parent)) {
@@ -4875,10 +4885,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path46, value) {
+    function collectionFromPath(schema, path47, value) {
       let v = value;
-      for (let i = path46.length - 1; i >= 0; --i) {
-        const k = path46[i];
+      for (let i = path47.length - 1; i >= 0; --i) {
+        const k = path47[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -4897,7 +4907,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path46) => path46 == null || typeof path46 === "object" && !!path46[Symbol.iterator]().next().done;
+    var isEmptyPath = (path47) => path47 == null || typeof path47 === "object" && !!path47[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -4927,11 +4937,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path46, value) {
-        if (isEmptyPath(path46))
+      addIn(path47, value) {
+        if (isEmptyPath(path47))
           this.add(value);
         else {
-          const [key2, ...rest] = path46;
+          const [key2, ...rest] = path47;
           const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -4945,8 +4955,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path46) {
-        const [key2, ...rest] = path46;
+      deleteIn(path47) {
+        const [key2, ...rest] = path47;
         if (rest.length === 0)
           return this.delete(key2);
         const node = this.get(key2, true);
@@ -4960,8 +4970,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path46, keepScalar) {
-        const [key2, ...rest] = path46;
+      getIn(path47, keepScalar) {
+        const [key2, ...rest] = path47;
         const node = this.get(key2, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -4979,8 +4989,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path46) {
-        const [key2, ...rest] = path46;
+      hasIn(path47) {
+        const [key2, ...rest] = path47;
         if (rest.length === 0)
           return this.has(key2);
         const node = this.get(key2, true);
@@ -4990,8 +5000,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path46, value) {
-        const [key2, ...rest] = path46;
+      setIn(path47, value) {
+        const [key2, ...rest] = path47;
         if (rest.length === 0) {
           this.set(key2, value);
         } else {
@@ -7506,9 +7516,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path46, value) {
+      addIn(path47, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path46, value);
+          this.contents.addIn(path47, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -7583,14 +7593,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path46) {
-        if (Collection.isEmptyPath(path46)) {
+      deleteIn(path47) {
+        if (Collection.isEmptyPath(path47)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path46) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path47) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -7605,10 +7615,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path46, keepScalar) {
-        if (Collection.isEmptyPath(path46))
+      getIn(path47, keepScalar) {
+        if (Collection.isEmptyPath(path47))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path46, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path47, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -7619,10 +7629,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path46) {
-        if (Collection.isEmptyPath(path46))
+      hasIn(path47) {
+        if (Collection.isEmptyPath(path47))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path46) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path47) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -7639,13 +7649,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path46, value) {
-        if (Collection.isEmptyPath(path46)) {
+      setIn(path47, value) {
+        if (Collection.isEmptyPath(path47)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path46), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path47), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path46, value);
+          this.contents.setIn(path47, value);
         }
       }
       /**
@@ -9606,9 +9616,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path46) => {
+    visit.itemAtPath = (cst, path47) => {
       let item = cst;
-      for (const [field, index] of path46) {
+      for (const [field, index] of path47) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -9617,23 +9627,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path46) => {
-      const parent = visit.itemAtPath(cst, path46.slice(0, -1));
-      const field = path46[path46.length - 1][0];
+    visit.parentCollection = (cst, path47) => {
+      const parent = visit.itemAtPath(cst, path47.slice(0, -1));
+      const field = path47[path47.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path46, item, visitor) {
-      let ctrl = visitor(item, path46);
+    function _visit(path47, item, visitor) {
+      let ctrl = visitor(item, path47);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path46.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path47.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -9644,10 +9654,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path46);
+            ctrl = ctrl(item, path47);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path46) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path47) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -10949,14 +10959,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs41 = this.flowScalar(this.type);
+              const fs42 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs41, sep: [] });
+                map.items.push({ start, key: fs42, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs41);
+                this.stack.push(fs42);
               } else {
-                Object.assign(it, { key: fs41, sep: [] });
+                Object.assign(it, { key: fs42, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -11084,13 +11094,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs41 = this.flowScalar(this.type);
+              const fs42 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs41, sep: [] });
+                fc.items.push({ start: [], key: fs42, sep: [] });
               else if (it.sep)
-                this.stack.push(fs41);
+                this.stack.push(fs42);
               else
-                Object.assign(it, { key: fs41, sep: [] });
+                Object.assign(it, { key: fs42, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -12041,6 +12051,7 @@ function appendBounded(chunks, lengthRef, chunk) {
   }
 }
 function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env, context, tool = "Bash", displayCommand = command) {
+  if (context?.signal?.aborted) return errorResult2("Command cancelled");
   evictOldBackgroundOutput();
   const bgId = nextBgId++;
   const child = (0, import_node_child_process3.spawn)(shell2, [...shellFlags, command], {
@@ -12198,6 +12209,29 @@ async function stopLocalBackgroundShell(tabId, id) {
   const out = backgroundOutput.get(Number(id.slice(6)));
   if (out?.tabId !== tabId) return;
   await killBackgroundShell({ bash_id: Number(id.slice(6)) });
+}
+function disposeBackgroundShells(tabId) {
+  for (const [id, out] of backgroundOutput) {
+    if (out.tabId !== tabId || !out.running) continue;
+    const child = backgroundProcesses.get(id);
+    if (!child?.pid) continue;
+    out.stopped = true;
+    if (process.platform === "win32") {
+      const killer = (0, import_node_child_process3.spawn)("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      });
+      killer.on("error", () => {
+        child.kill("SIGKILL");
+      });
+    } else {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }
+  }
 }
 async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (!/^shell:[0-9]+$/.test(id)) return;
@@ -13019,7 +13053,7 @@ var require_path = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
     var os32 = require("os");
-    var path46 = require("path");
+    var path47 = require("path");
     var IS_WINDOWS_PLATFORM = os32.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
@@ -13031,7 +13065,7 @@ var require_path = __commonJS({
     }
     exports2.unixify = unixify;
     function makeAbsolute(cwd, filepath) {
-      return path46.resolve(cwd, filepath);
+      return path47.resolve(cwd, filepath);
     }
     exports2.makeAbsolute = makeAbsolute;
     function removeLeadingDotSegment(entry) {
@@ -14328,7 +14362,7 @@ var require_braces = __commonJS({
 var require_constants3 = __commonJS({
   "node_modules/picomatch/lib/constants.js"(exports2, module2) {
     "use strict";
-    var path46 = require("path");
+    var path47 = require("path");
     var WIN_SLASH = "\\\\/";
     var WIN_NO_SLASH = `[^${WIN_SLASH}]`;
     var DEFAULT_MAX_EXTGLOB_RECURSION = 0;
@@ -14502,7 +14536,7 @@ var require_constants3 = __commonJS({
       /* | */
       CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279,
       /* \uFEFF */
-      SEP: path46.sep,
+      SEP: path47.sep,
       /**
        * Create EXTGLOB_CHARS
        */
@@ -14529,7 +14563,7 @@ var require_constants3 = __commonJS({
 var require_utils2 = __commonJS({
   "node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
-    var path46 = require("path");
+    var path47 = require("path");
     var win32 = process.platform === "win32";
     var {
       REGEX_BACKSLASH,
@@ -14558,7 +14592,7 @@ var require_utils2 = __commonJS({
       if (options && typeof options.windows === "boolean") {
         return options.windows;
       }
-      return win32 === true || path46.sep === "\\";
+      return win32 === true || path47.sep === "\\";
     };
     exports2.escapeLast = (input, char, lastIdx) => {
       const idx = input.lastIndexOf(char, lastIdx);
@@ -15922,7 +15956,7 @@ var require_parse2 = __commonJS({
 var require_picomatch = __commonJS({
   "node_modules/picomatch/lib/picomatch.js"(exports2, module2) {
     "use strict";
-    var path46 = require("path");
+    var path47 = require("path");
     var scan = require_scan();
     var parse = require_parse2();
     var utils = require_utils2();
@@ -16007,7 +16041,7 @@ var require_picomatch = __commonJS({
     };
     picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
-      return regex.test(path46.basename(input));
+      return regex.test(path47.basename(input));
     };
     picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
     picomatch.parse = (pattern, options) => {
@@ -16234,7 +16268,7 @@ var require_pattern = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
-    var path46 = require("path");
+    var path47 = require("path");
     var globParent = require_glob_parent();
     var micromatch = require_micromatch();
     var GLOBSTAR = "**";
@@ -16329,7 +16363,7 @@ var require_pattern = __commonJS({
     }
     exports2.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename = path46.basename(pattern);
+      const basename = path47.basename(pattern);
       return endsWithSlashGlobStar(pattern) || isStaticPattern(basename);
     }
     exports2.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
@@ -16387,7 +16421,7 @@ var require_pattern = __commonJS({
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute(pattern) {
-      return path46.isAbsolute(pattern);
+      return path47.isAbsolute(pattern);
     }
     exports2.isAbsolute = isAbsolute;
   }
@@ -16562,10 +16596,10 @@ var require_utils3 = __commonJS({
     exports2.array = array;
     var errno = require_errno();
     exports2.errno = errno;
-    var fs41 = require_fs();
-    exports2.fs = fs41;
-    var path46 = require_path();
-    exports2.path = path46;
+    var fs42 = require_fs();
+    exports2.fs = fs42;
+    var path47 = require_path();
+    exports2.path = path47;
     var pattern = require_pattern();
     exports2.pattern = pattern;
     var stream = require_stream2();
@@ -16677,8 +16711,8 @@ var require_async = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path46, settings, callback) {
-      settings.fs.lstat(path46, (lstatError, lstat) => {
+    function read(path47, settings, callback) {
+      settings.fs.lstat(path47, (lstatError, lstat) => {
         if (lstatError !== null) {
           callFailureCallback(callback, lstatError);
           return;
@@ -16687,7 +16721,7 @@ var require_async = __commonJS({
           callSuccessCallback(callback, lstat);
           return;
         }
-        settings.fs.stat(path46, (statError, stat) => {
+        settings.fs.stat(path47, (statError, stat) => {
           if (statError !== null) {
             if (settings.throwErrorOnBrokenSymbolicLink) {
               callFailureCallback(callback, statError);
@@ -16719,13 +16753,13 @@ var require_sync = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path46, settings) {
-      const lstat = settings.fs.lstatSync(path46);
+    function read(path47, settings) {
+      const lstat = settings.fs.lstatSync(path47);
       if (!lstat.isSymbolicLink() || !settings.followSymbolicLink) {
         return lstat;
       }
       try {
-        const stat = settings.fs.statSync(path46);
+        const stat = settings.fs.statSync(path47);
         if (settings.markSymbolicLink) {
           stat.isSymbolicLink = () => true;
         }
@@ -16747,12 +16781,12 @@ var require_fs2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs41 = require("fs");
+    var fs42 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs41.lstat,
-      stat: fs41.stat,
-      lstatSync: fs41.lstatSync,
-      statSync: fs41.statSync
+      lstat: fs42.lstat,
+      stat: fs42.stat,
+      lstatSync: fs42.lstatSync,
+      statSync: fs42.statSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -16769,12 +16803,12 @@ var require_settings = __commonJS({
   "node_modules/@nodelib/fs.stat/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var fs41 = require_fs2();
+    var fs42 = require_fs2();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLink = this._getValue(this._options.followSymbolicLink, true);
-        this.fs = fs41.createFileSystemAdapter(this._options.fs);
+        this.fs = fs42.createFileSystemAdapter(this._options.fs);
         this.markSymbolicLink = this._getValue(this._options.markSymbolicLink, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
       }
@@ -16796,17 +16830,17 @@ var require_out = __commonJS({
     var sync = require_sync();
     var settings_1 = require_settings();
     exports2.Settings = settings_1.default;
-    function stat(path46, optionsOrSettingsOrCallback, callback) {
+    function stat(path47, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path46, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path47, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path46, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path47, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.stat = stat;
-    function statSync2(path46, optionsOrSettings) {
+    function statSync2(path47, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path46, settings);
+      return sync.read(path47, settings);
     }
     exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
@@ -16929,8 +16963,8 @@ var require_utils4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.fs = void 0;
-    var fs41 = require_fs3();
-    exports2.fs = fs41;
+    var fs42 = require_fs3();
+    exports2.fs = fs42;
   }
 });
 
@@ -17022,16 +17056,16 @@ var require_async2 = __commonJS({
           return;
         }
         const tasks = names.map((name) => {
-          const path46 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
+          const path47 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
           return (done) => {
-            fsStat.stat(path46, settings.fsStatSettings, (error, stats) => {
+            fsStat.stat(path47, settings.fsStatSettings, (error, stats) => {
               if (error !== null) {
                 done(error);
                 return;
               }
               const entry = {
                 name,
-                path: path46,
+                path: path47,
                 dirent: utils.fs.createDirentFromStats(name, stats)
               };
               if (settings.stats) {
@@ -17125,14 +17159,14 @@ var require_fs4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs41 = require("fs");
+    var fs42 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs41.lstat,
-      stat: fs41.stat,
-      lstatSync: fs41.lstatSync,
-      statSync: fs41.statSync,
-      readdir: fs41.readdir,
-      readdirSync: fs41.readdirSync
+      lstat: fs42.lstat,
+      stat: fs42.stat,
+      lstatSync: fs42.lstatSync,
+      statSync: fs42.statSync,
+      readdir: fs42.readdir,
+      readdirSync: fs42.readdirSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -17149,15 +17183,15 @@ var require_settings2 = __commonJS({
   "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path46 = require("path");
+    var path47 = require("path");
     var fsStat = require_out();
-    var fs41 = require_fs4();
+    var fs42 = require_fs4();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
-        this.fs = fs41.createFileSystemAdapter(this._options.fs);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path46.sep);
+        this.fs = fs42.createFileSystemAdapter(this._options.fs);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path47.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
         this.fsStatSettings = new fsStat.Settings({
@@ -17184,17 +17218,17 @@ var require_out2 = __commonJS({
     var sync = require_sync2();
     var settings_1 = require_settings2();
     exports2.Settings = settings_1.default;
-    function scandir(path46, optionsOrSettingsOrCallback, callback) {
+    function scandir(path47, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path46, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path47, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path46, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path47, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.scandir = scandir;
-    function scandirSync(path46, optionsOrSettings) {
+    function scandirSync(path47, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path46, settings);
+      return sync.read(path47, settings);
     }
     exports2.scandirSync = scandirSync;
     function getSettings(settingsOrOptions = {}) {
@@ -17841,7 +17875,7 @@ var require_settings3 = __commonJS({
   "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path46 = require("path");
+    var path47 = require("path");
     var fsScandir = require_out2();
     var Settings = class {
       constructor(_options = {}) {
@@ -17851,7 +17885,7 @@ var require_settings3 = __commonJS({
         this.deepFilter = this._getValue(this._options.deepFilter, null);
         this.entryFilter = this._getValue(this._options.entryFilter, null);
         this.errorFilter = this._getValue(this._options.errorFilter, null);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path46.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path47.sep);
         this.fsScandirSettings = new fsScandir.Settings({
           followSymbolicLinks: this._options.followSymbolicLinks,
           fs: this._options.fs,
@@ -17913,7 +17947,7 @@ var require_reader2 = __commonJS({
   "node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path46 = require("path");
+    var path47 = require("path");
     var fsStat = require_out();
     var utils = require_utils3();
     var Reader = class {
@@ -17926,7 +17960,7 @@ var require_reader2 = __commonJS({
         });
       }
       _getFullEntryPath(filepath) {
-        return path46.resolve(this._settings.cwd, filepath);
+        return path47.resolve(this._settings.cwd, filepath);
       }
       _makeEntry(stats, pattern) {
         const entry = {
@@ -18342,7 +18376,7 @@ var require_provider = __commonJS({
   "node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path46 = require("path");
+    var path47 = require("path");
     var deep_1 = require_deep();
     var entry_1 = require_entry();
     var error_1 = require_error();
@@ -18356,7 +18390,7 @@ var require_provider = __commonJS({
         this.entryTransformer = new entry_2.default(this._settings);
       }
       _getRootDirectory(task) {
-        return path46.resolve(this._settings.cwd, task.base);
+        return path47.resolve(this._settings.cwd, task.base);
       }
       _getReaderOptions(task) {
         const basePath = task.base === "." ? "" : task.base;
@@ -18537,16 +18571,16 @@ var require_settings4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = void 0;
-    var fs41 = require("fs");
+    var fs42 = require("fs");
     var os32 = require("os");
     var CPU_COUNT = Math.max(os32.cpus().length, 1);
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = {
-      lstat: fs41.lstat,
-      lstatSync: fs41.lstatSync,
-      stat: fs41.stat,
-      statSync: fs41.statSync,
-      readdir: fs41.readdir,
-      readdirSync: fs41.readdirSync
+      lstat: fs42.lstat,
+      lstatSync: fs42.lstatSync,
+      stat: fs42.stat,
+      statSync: fs42.statSync,
+      readdir: fs42.readdir,
+      readdirSync: fs42.readdirSync
     };
     var Settings = class {
       constructor(_options = {}) {
@@ -18693,12 +18727,12 @@ var require_out4 = __commonJS({
 });
 
 // src/main/mcp/tools/notebook.ts
-async function readNotebookCapped(path46) {
-  const st = await import_promises.default.stat(path46);
+async function readNotebookCapped(path47) {
+  const st = await import_promises.default.stat(path47);
   if (st.size > MAX_NOTEBOOK_BYTES) {
     throw new Error(`Notebook too large (${Math.round(st.size / 1024 / 1024)} MB > 50 MB cap)`);
   }
-  return import_promises.default.readFile(path46, "utf8");
+  return import_promises.default.readFile(path47, "utf8");
 }
 function textResult3(text) {
   return { content: [{ type: "text", text }] };
@@ -24564,32 +24598,32 @@ var require_URL = __commonJS({
           else
             return basepath.substring(0, lastslash + 1) + refpath;
         }
-        function remove_dot_segments(path46) {
-          if (!path46) return path46;
+        function remove_dot_segments(path47) {
+          if (!path47) return path47;
           var output = "";
-          while (path46.length > 0) {
-            if (path46 === "." || path46 === "..") {
-              path46 = "";
+          while (path47.length > 0) {
+            if (path47 === "." || path47 === "..") {
+              path47 = "";
               break;
             }
-            var twochars = path46.substring(0, 2);
-            var threechars = path46.substring(0, 3);
-            var fourchars = path46.substring(0, 4);
+            var twochars = path47.substring(0, 2);
+            var threechars = path47.substring(0, 3);
+            var fourchars = path47.substring(0, 4);
             if (threechars === "../") {
-              path46 = path46.substring(3);
+              path47 = path47.substring(3);
             } else if (twochars === "./") {
-              path46 = path46.substring(2);
+              path47 = path47.substring(2);
             } else if (threechars === "/./") {
-              path46 = "/" + path46.substring(3);
-            } else if (twochars === "/." && path46.length === 2) {
-              path46 = "/";
-            } else if (fourchars === "/../" || threechars === "/.." && path46.length === 3) {
-              path46 = "/" + path46.substring(4);
+              path47 = "/" + path47.substring(3);
+            } else if (twochars === "/." && path47.length === 2) {
+              path47 = "/";
+            } else if (fourchars === "/../" || threechars === "/.." && path47.length === 3) {
+              path47 = "/" + path47.substring(4);
               output = output.replace(/\/?[^\/]*$/, "");
             } else {
-              var segment = path46.match(/(\/?([^\/]*))/)[0];
+              var segment = path47.match(/(\/?([^\/]*))/)[0];
               output += segment;
-              path46 = path46.substring(segment.length);
+              path47 = path47.substring(segment.length);
             }
           }
           return output;
@@ -37400,7 +37434,9 @@ function setSessionActivateHandler(fn) {
   handler = fn;
 }
 function activateSessionForTab(tabId) {
-  handler?.(tabId);
+  if (!handler) return false;
+  handler(tabId);
+  return true;
 }
 var handler;
 var init_session_activation = __esm({
@@ -37423,7 +37459,7 @@ function spawnToast(opts, forceOpts) {
     });
   } else {
     void vscode2.window.showInformationMessage(text, "Open").then((picked) => {
-      if (picked === "Open") activateSessionForTab(opts.tabId);
+      if (picked === "Open" && !activateSessionForTab(opts.tabId)) routeHandler?.({ tabId: opts.tabId });
     });
   }
 }
@@ -37505,6 +37541,22 @@ async function showWidget(input) {
 var init_widget = __esm({
   "src/main/mcp/tools/widget.ts"() {
     "use strict";
+  }
+});
+
+// src/main/mcp/tools/preview.ts
+async function run(operation, input) {
+  const result = await import_vscode.commands.executeCommand(`kaminBridge.preview.${operation}`, input);
+  return { content: [{ type: "text", text: JSON.stringify(result ?? { mounted: false }) }] };
+}
+var import_vscode, previewMount, previewUpdate, previewUnmount;
+var init_preview = __esm({
+  "src/main/mcp/tools/preview.ts"() {
+    "use strict";
+    import_vscode = require("vscode");
+    previewMount = (input) => run("mount", input);
+    previewUpdate = (input) => run("update", input.props);
+    previewUnmount = () => run("unmount", void 0);
   }
 });
 
@@ -38215,6 +38267,7 @@ var init_tool_registry = __esm({
     init_ui_tools();
     init_notifications();
     init_widget();
+    init_preview();
     init_search_tools();
     init_lsp();
     toolRegistry = /* @__PURE__ */ new Map([
@@ -38257,6 +38310,9 @@ var init_tool_registry = __esm({
       ["Skill", skillLoad],
       ["PushNotification", pushNotification],
       ["ShowWidget", showWidget],
+      ["preview_mount", previewMount],
+      ["preview_update", previewUpdate],
+      ["preview_unmount", previewUnmount],
       ["TodoWrite", todoWrite],
       ["TodoList", todoList],
       // ── Search ──────────────────────────────────────────
@@ -38319,7 +38375,7 @@ ${stack}` : ""}`
   }
   if (externalManager?.hasExternalTool(toolName)) {
     try {
-      return await externalManager.callTool(toolName, input);
+      return await externalManager.callTool(toolName, input, context?.signal);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -40697,7 +40753,7 @@ var import_path35 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -40794,6 +40850,16 @@ var wrapper_default = import_websocket.default;
 // src/main/ws/connection-manager.ts
 var vscode4 = __toESM(require("vscode"), 1);
 var import_node_crypto4 = require("node:crypto");
+
+// src/shared/streaming-delta.ts
+function appendStreamingText(entry, delta) {
+  if (!entry || entry.__streaming === void 0 || entry.message?.id !== delta.msgId || !Number.isSafeInteger(delta.blockIdx) || delta.blockIdx < 0 || typeof delta.appendText !== "string") return false;
+  const block = entry.message?.content?.[delta.blockIdx];
+  if (delta.kind === "text" && block?.type === "text") block.text = (block.text ?? "") + delta.appendText;
+  else if (delta.kind === "thinking" && block?.type === "thinking") block.thinking = (block.thinking ?? "") + delta.appendText;
+  else return false;
+  return true;
+}
 
 // src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -41411,10 +41477,10 @@ var ClientCommands = class {
   list(sessionId) {
     const shells = localBackgroundShellSnapshot(this.tabId);
     const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5e3;
-    const commands6 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
+    const commands7 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
     for (const shell2 of shells) {
       if (!shell2.hiddenFromCommands) {
-        commands6.push({
+        commands7.push({
           id: shell2.id,
           tool: shell2.tool,
           command: shell2.command,
@@ -41427,10 +41493,10 @@ var ClientCommands = class {
         });
       }
     }
-    commands6.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
+    commands7.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
     this.publish("commands:snapshot", {
       sessionId,
-      commands: commands6,
+      commands: commands7,
       serverAvailable
     });
   }
@@ -41773,32 +41839,32 @@ var import_node_path9 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
 var import_node_fs6 = require("node:fs");
-function removeIfPresent(path46) {
+function removeIfPresent(path47) {
   try {
-    if ((0, import_node_fs6.existsSync)(path46)) (0, import_node_fs6.unlinkSync)(path46);
+    if ((0, import_node_fs6.existsSync)(path47)) (0, import_node_fs6.unlinkSync)(path47);
   } catch {
   }
 }
-function rotateLogFiles(path46, backups) {
+function rotateLogFiles(path47, backups) {
   if (backups <= 0) {
-    removeIfPresent(path46);
-    return !(0, import_node_fs6.existsSync)(path46);
+    removeIfPresent(path47);
+    return !(0, import_node_fs6.existsSync)(path47);
   }
-  removeIfPresent(`${path46}.${String(backups)}`);
+  removeIfPresent(`${path47}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
-    const from = `${path46}.${String(i)}`;
+    const from = `${path47}.${String(i)}`;
     if (!(0, import_node_fs6.existsSync)(from)) continue;
-    const to = `${path46}.${String(i + 1)}`;
+    const to = `${path47}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
       (0, import_node_fs6.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs6.existsSync)(path46)) {
-    removeIfPresent(`${path46}.1`);
+  if ((0, import_node_fs6.existsSync)(path47)) {
+    removeIfPresent(`${path47}.1`);
     try {
-      (0, import_node_fs6.renameSync)(path46, `${path46}.1`);
+      (0, import_node_fs6.renameSync)(path47, `${path47}.1`);
     } catch {
       return false;
     }
@@ -41806,8 +41872,8 @@ function rotateLogFiles(path46, backups) {
   return true;
 }
 var RollingLogWriter = class {
-  constructor(path46, options) {
-    this.path = path46;
+  constructor(path47, options) {
+    this.path = path47;
     this.options = options;
     if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
       throw new Error("rolling log maxBytes must be a positive safe integer");
@@ -41815,8 +41881,8 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path46) && (0, import_node_fs6.statSync)(path46).size > 0) {
-      rotateLogFiles(path46, options.backups);
+    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path47) && (0, import_node_fs6.statSync)(path47).size > 0) {
+      rotateLogFiles(path47, options.backups);
     }
     this.open();
   }
@@ -42263,8 +42329,9 @@ function handleServerMessage(msg, ctx) {
       break;
     }
     case "streaming:delta": {
-      if (ctx.isRendererMuted?.()) break;
       const d = msg;
+      ctx.appendCachedStreamingDelta?.(d);
+      if (ctx.isRendererMuted?.()) break;
       ctx.window.webContents.send("streaming-delta", ctx.tabId, {
         msgId: d.msgId,
         blockIdx: d.blockIdx,
@@ -42485,6 +42552,7 @@ var parsedHostGeneration = Number.parseInt(process.env.KAMIN_EXTHOST_GENERATION 
 var CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0 ? parsedHostGeneration : 0;
 var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
+  disposed = false;
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree = null;
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -42709,6 +42777,7 @@ var ConnectionManager = class _ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect() {
+    if (this.disposed) return;
     if (this.ws) this.disconnect();
     this.intentionalDisconnect = false;
     this.setState({ status: "connecting" });
@@ -43058,6 +43127,7 @@ var ConnectionManager = class _ConnectionManager {
    * process instead of killing + respawning on the same JSONL.
    */
   disconnect(opts = {}) {
+    const terminal = opts.endSession || this.disposed;
     this.intentionalDisconnect = true;
     this.cancelReconnect();
     this.stopHeartbeat();
@@ -43080,10 +43150,11 @@ var ConnectionManager = class _ConnectionManager {
     }
     this.batcher.flushMain();
     this.batcher.flushSubagent();
-    if (opts.endSession) void this.mirror?.close();
-    if (opts.endSession) this.idleTracker.dispose();
+    if (terminal) void this.mirror?.close();
+    if (terminal) this.idleTracker.dispose();
     this.mcpResults.detach();
-    if (opts.endSession) {
+    if (terminal) {
+      disposeBackgroundShells(this.tabId);
       this.mcpResults.dispose();
       this.mcpSessionId = null;
       this.recentMcpCalls.clear();
@@ -43099,6 +43170,12 @@ var ConnectionManager = class _ConnectionManager {
     this.pendingPermissions.clear();
     if (opts.endSession) this.reconnectAttempt = 0;
     this.setState({ status: "disconnected" });
+  }
+  /** Final host teardown: cancel local work without ending the server's CLI. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.disconnect();
   }
   /** Returns current connection state. Maps ExtendedConnectionState to
    *  ConnectionState for IPC compatibility. */
@@ -43211,6 +43288,19 @@ var ConnectionManager = class _ConnectionManager {
     if (records.length === 0) return 0;
     this.window.webContents.send("jsonl-entries", this.tabId, records);
     return records.length;
+  }
+  /** Read the authoritative cache without broadcasting a replay to other views.
+   * Serialization by the caller detaches the disposable renderer projection. */
+  getViewSnapshot(maxRecords = 200) {
+    const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords));
+    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0));
+    return {
+      entries: ordered.slice(-count),
+      streaming: this.cachedStreamingEntry,
+      subagents: [...this.cachedSubagentEntries].map(([key2, slot]) => ({ ...slot, agentId: slot.agentId ?? key2, entries: slot.entries.slice(-count) })),
+      boundaries: this.lastSegmentIndex,
+      status: this.cachedJsonlStatus ?? { status: "watching", replayComplete: this.state.status !== "authenticated" }
+    };
   }
   replayJsonlToRenderer() {
     this.requestedSegment = null;
@@ -43429,6 +43519,7 @@ var ConnectionManager = class _ConnectionManager {
       });
   }
   dispatchMessage(msg) {
+    if (this.disposed) return;
     if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
       if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
       this.pendingNewConversation = false;
@@ -43587,6 +43678,9 @@ var ConnectionManager = class _ConnectionManager {
       getCachedJsonl: () => this.cachedJsonlEntries,
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
+      },
+      appendCachedStreamingDelta: (delta) => {
+        appendStreamingText(this.cachedStreamingEntry, delta);
       },
       pushSubagentCache: (key2, agentName, agentId, entries2) => {
         const slot = this.cachedSubagentEntries.get(key2) ?? {
@@ -44047,7 +44141,7 @@ async function buildPluginSnapshots() {
     const themeSpec = experimental.themes ?? manifest.themes;
     const themeRefs = themeSpec !== void 0 ? manifestPathRefs(themeSpec) : ["themes"];
     const workflowRefs = manifest.workflows !== void 0 ? manifestPathRefs(manifest.workflows) : ["workflows"];
-    const [skills, agents, commands6, workflows, outputStyles, themes, hooks, monitorHooks, settings] = await Promise.all([
+    const [skills, agents, commands7, workflows, outputStyles, themes, hooks, monitorHooks, settings] = await Promise.all([
       collectComponentFiles(plugin.installPath, skillsRefs, "skills", options),
       collectComponentFiles(plugin.installPath, agentsRefs, "agents", options),
       collectComponentFiles(plugin.installPath, commandsRefs, "commands", options),
@@ -44071,7 +44165,7 @@ async function buildPluginSnapshots() {
       manifest: proxyManifest(manifest, plugin.name),
       skills,
       agents,
-      commands: commands6,
+      commands: commands7,
       workflows,
       outputStyles,
       themes,
@@ -44168,7 +44262,7 @@ async function syncUserDataOnce(serverUrl, token) {
   }
   const hash = tokenHash(token);
   const claudeDir = import_path8.default.join(import_os5.default.homedir(), ".claude");
-  const [skills, agents, commands6, plugins, settings, claudeMd, agentsMd] = await Promise.all([
+  const [skills, agents, commands7, plugins, settings, claudeMd, agentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(claudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(claudeDir, "agents"), "agents"),
     readEntrypointMd(import_path8.default.join(claudeDir, "commands"), "commands"),
@@ -44177,7 +44271,7 @@ async function syncUserDataOnce(serverUrl, token) {
     safeReadFile(import_path8.default.join(claudeDir, "CLAUDE.md")),
     safeReadFile(import_path8.default.join(claudeDir, "AGENTS.md"))
   ]);
-  const data = { skills, agents, commands: commands6, plugins, settings, claudeMd, agentsMd };
+  const data = { skills, agents, commands: commands7, plugins, settings, claudeMd, agentsMd };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`;
   try {
     const resp = await fetch(url, {
@@ -44220,7 +44314,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
   const hash = tokenHash(token);
   const dotClaudeDir = import_path8.default.join(projectPath, ".claude");
-  const [skills, rules, agents, commands6, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
+  const [skills, rules, agents, commands7, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "rules"), "commands"),
     // rules: flat .md, treat like commands
@@ -44237,7 +44331,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     skills,
     rules,
     agents,
-    commands: commands6,
+    commands: commands7,
     settings,
     claudeMd,
     dotClaudeMd,
@@ -44593,12 +44687,15 @@ var TabManager = class {
     return tabId;
   }
   /**
-   * Disconnect all tabs. Called on app quit / window close.
+   * Explicit Disconnect / app quit: cancel owned work before forgetting tabs.
+   * A browser view detaching must never call this terminal path.
    */
   disconnectAll() {
-    for (const tab of this.tabs.values()) {
-      tab.connection.disconnect();
-    }
+    this.dispose();
+  }
+  /** Terminal client disposal, without ending the server's CLI sessions. */
+  dispose() {
+    for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
     this.activeTabId = null;
   }
@@ -44721,12 +44818,15 @@ function tokenKey(token) {
   return import_crypto5.default.createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
 var ConfigStore = class {
-  data;
-  file;
-  constructor(storageDir) {
+  constructor(storageDir, persistToken = true) {
+    this.persistToken = persistToken;
     this.file = import_path10.default.join(storageDir, "open-claude-bridge-config.json");
     this.data = this.load();
+    if (!persistToken) this.data.config = { ...this.data.config, token: "" };
   }
+  persistToken;
+  data;
+  file;
   load() {
     const base = {
       config: { ...defaults },
@@ -44748,7 +44848,8 @@ var ConfigStore = class {
     try {
       import_fs9.default.mkdirSync(import_path10.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      import_fs9.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
+      const snapshot2 = this.persistToken ? this.data : { ...this.data, config: { ...this.data.config, token: "" } };
+      import_fs9.default.writeFileSync(tmp, JSON.stringify(snapshot2, null, 2), "utf8");
       import_fs9.default.renameSync(tmp, this.file);
     } catch {
     }
@@ -44836,7 +44937,7 @@ var ConfigStore = class {
    *  Resume works because the transcripts live on the server, resolved by
    *  conversationId. Runs once (guarded); best-effort. */
   migrateFromElectron() {
-    if (this.data.migratedFromElectron) return;
+    if (!this.persistToken || this.data.migratedFromElectron) return;
     const appData = process.env.APPDATA;
     const candidates = appData ? [
       import_path10.default.join(appData, "open-claude-bridge-electron", "open-claude-bridge-config.json"),
@@ -45557,7 +45658,7 @@ function registerSkillsAgentsIPC(ctx) {
         files = (await import_fs13.default.promises.readdir(commandsDir)).filter((f) => f.endsWith(".md"));
       } catch {
       }
-      const [commands6, skills] = await Promise.all([
+      const [commands7, skills] = await Promise.all([
         Promise.all(files.map(async (f) => {
           const filePath = import_path14.default.join(commandsDir, f);
           const content = await safeReadFile2(filePath);
@@ -45566,7 +45667,7 @@ function registerSkillsAgentsIPC(ctx) {
         })),
         scanSkillDirs(import_path14.default.join(projectClaudeDir, "skills"), "project")
       ]);
-      return [...skills, ...commands6.filter((r) => r !== null)];
+      return [...skills, ...commands7.filter((r) => r !== null)];
     })();
     const userPromise = scanSkillDirs(import_path14.default.join(userClaudeDir, "skills"), "user");
     const pluginsFile = import_path14.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
@@ -48910,7 +49011,7 @@ function registerMarketplaceIPC(getMainWindow) {
   ipcMain.handle("plugins:set-marketplace-autoupdate", (_event, name, autoUpdate) => {
     return setMarketplaceAutoUpdate(name, autoUpdate);
   });
-  setTimeout(() => {
+  const startupTimer = setTimeout(() => {
     refreshAllMarketplaces(getMainWindow() ?? void 0).then((sweep) => {
       for (const result of sweep.results) {
         if (!result.ok) console.warn(`[marketplaces] auto-refresh failed for "${result.name}": ${result.error ?? ""}`);
@@ -48919,6 +49020,7 @@ function registerMarketplaceIPC(getMainWindow) {
       console.warn("[marketplaces] auto-refresh failed:", err instanceof Error ? err.message : err);
     });
   }, 8e3);
+  return () => clearTimeout(startupTimer);
 }
 
 // src/main/ipc/monitors.ts
@@ -49809,6 +49911,9 @@ async function sseJsonRpcRequest(ctx, id, body) {
   const state = ctx.servers.get(id);
   if (!state.sseMessageEndpoint) throw new Error("SSE endpoint not yet negotiated");
   const reqId = body.id;
+  const headers = await ctx.buildHttpHeaders(id);
+  headers["Content-Type"] = "application/json";
+  ctx.shutdownSignal?.throwIfAborted();
   const responsePromise = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       state.pendingRequests.delete(reqId);
@@ -49816,21 +49921,37 @@ async function sseJsonRpcRequest(ctx, id, body) {
     }, 6e4);
     state.pendingRequests.set(reqId, { resolve, reject, timer });
   });
-  const headers = await ctx.buildHttpHeaders(id);
-  headers["Content-Type"] = "application/json";
-  const res = await fetch(state.sseMessageEndpoint, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok && res.status !== 202) {
+  const abort = () => state.pendingRequests.get(reqId)?.reject(new Error("MCP request cancelled"));
+  ctx.shutdownSignal?.addEventListener("abort", abort, { once: true });
+  const posted = fetch(state.sseMessageEndpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: ctx.shutdownSignal
+  }).then(async (res) => {
+    if (!res.ok && res.status !== 202) throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => "")}`);
+  });
+  try {
+    const [result] = await Promise.all([responsePromise, posted]);
+    return result;
+  } finally {
+    ctx.shutdownSignal?.removeEventListener("abort", abort);
+    const pending = state.pendingRequests.get(reqId);
+    if (pending?.timer) clearTimeout(pending.timer);
     state.pendingRequests.delete(reqId);
-    throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => "")}`);
   }
-  return responsePromise;
 }
 async function sseSendNotification(ctx, id, body) {
   const state = ctx.servers.get(id);
   if (!state.sseMessageEndpoint) throw new Error("SSE endpoint not yet negotiated");
   const headers = await ctx.buildHttpHeaders(id);
   headers["Content-Type"] = "application/json";
-  await fetch(state.sseMessageEndpoint, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => {
+  await fetch(state.sseMessageEndpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: ctx.shutdownSignal
+  }).catch(() => {
   });
 }
 
@@ -49899,7 +50020,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
   let headers = await ctx.buildHttpHeaders(id);
-  let res = await httpFetch(url, headers, body);
+  let res = await httpFetch(url, headers, body, ctx.shutdownSignal);
   if (res.status === 401) {
     if (!state.config.oauth) {
       const discovered = await tryDiscoverOAuthFrom401(ctx, id, res);
@@ -49913,7 +50034,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
       throw new Error("OAuth authorization required \u2014 please reconnect this server");
     }
     headers = await ctx.buildHttpHeaders(id);
-    res = await httpFetch(url, headers, body);
+    res = await httpFetch(url, headers, body, ctx.shutdownSignal);
     if (res.status === 401) {
       throw new Error("OAuth authorization expired \u2014 please reconnect this server");
     }
@@ -49955,7 +50076,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
   try {
     const prmParsed = new URL(prmUrl);
     if (prmParsed.protocol !== "http:" && prmParsed.protocol !== "https:") return null;
-    const prmRes = await fetch(prmUrl);
+    const prmRes = await fetch(prmUrl, { signal: ctx.shutdownSignal });
     if (!prmRes.ok) return null;
     const prm = await prmRes.json();
     const authServers = prm?.authorization_servers;
@@ -49977,7 +50098,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
     return null;
   }
 }
-async function httpFetch(url, headers, body) {
+async function httpFetch(url, headers, body, signal) {
   try {
     return await fetch(url, {
       method: "POST",
@@ -49986,7 +50107,8 @@ async function httpFetch(url, headers, body) {
         "Accept": "application/json, text/event-stream",
         ...headers
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
   } catch (err) {
     const cause = err?.cause;
@@ -50371,6 +50493,10 @@ async function handleServerRequest(ctx, serverId, msg) {
           clearTimeout(timer);
           timer = null;
         }
+        try {
+          ctx.window.webContents.send("mcp-elicitation-resolved", requestId);
+        } catch {
+        }
         resolve(value);
       };
       const listener = (_event, payload) => settle(payload);
@@ -50540,6 +50666,8 @@ function exposedToolName(state, rawToolName) {
   return rawToolName;
 }
 var McpServerManager = class _McpServerManager {
+  disposed = false;
+  shutdown = new AbortController();
   /** @internal */
   servers = /* @__PURE__ */ new Map();
   /** @internal */
@@ -50585,6 +50713,7 @@ var McpServerManager = class _McpServerManager {
   ctx() {
     const self = this;
     return {
+      shutdownSignal: this.shutdown.signal,
       window: this.window,
       servers: this.servers,
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
@@ -50607,6 +50736,7 @@ var McpServerManager = class _McpServerManager {
    *  + clears the attempt counter so toggling "enabled" off-then-on
    *  starts fresh. */
   scheduleReconnect(id, reason) {
+    if (this.disposed) return;
     const state = this.servers.get(id);
     if (!state) return;
     if (state.expectedDisconnect) {
@@ -50672,8 +50802,11 @@ var McpServerManager = class _McpServerManager {
   }
   /** Initialize: discover local MCP configs, then connect all enabled servers */
   async initAll() {
+    if (this.disposed) return;
     await this.saveChain;
+    if (this.disposed) return;
     await this.discoverLocalMcpConfigs();
+    if (this.disposed) return;
     try {
       const moved = migrateLegacyStore((tokens) => {
         if (!tokens.authServerUrl) return null;
@@ -50715,6 +50848,7 @@ var McpServerManager = class _McpServerManager {
   // All three sources are scanned concurrently with fs.promises to avoid
   // blocking the main process when the user has many plugins or projects.
   async discoverLocalMcpConfigs() {
+    if (this.disposed) return;
     const claudeDir = import_path33.default.join(import_os26.default.homedir(), ".claude");
     const existingNames = /* @__PURE__ */ new Set();
     for (const state of this.servers.values()) {
@@ -50776,6 +50910,7 @@ var McpServerManager = class _McpServerManager {
       discoverFromClaudeJsonAsync(claudeDir),
       discoverProjectConfigs(this.projectRoots)
     ]);
+    if (this.disposed) return;
     const discoveredNames = /* @__PURE__ */ new Set([
       ...pluginConfigs.map((c) => c.name),
       ...claudeJsonConfigs.map((c) => c.name),
@@ -51110,7 +51245,9 @@ var McpServerManager = class _McpServerManager {
     return false;
   }
   /** Execute a tool on an external server */
-  async callTool(toolName, input) {
+  async callTool(toolName, input, signal) {
+    if (this.disposed) throw new Error("MCP manager is disposed");
+    signal?.throwIfAborted();
     let hasLive = false;
     for (const state of this.servers.values()) {
       if (state.status === "connected" && state.tools.some((raw) => exposedToolName(state, raw) === toolName)) {
@@ -51131,11 +51268,14 @@ var McpServerManager = class _McpServerManager {
         }
       }
     }
+    const ctx = this.ctx();
+    if (signal) ctx.shutdownSignal = AbortSignal.any([this.shutdown.signal, signal]);
+    ctx.shutdownSignal?.throwIfAborted();
     for (const [id, state] of this.servers) {
       const rawToolName = state.status === "connected" ? state.tools.find((raw) => exposedToolName(state, raw) === toolName) : void 0;
       if (rawToolName) {
         if (state.config.type === "sse") {
-          const result = await sseJsonRpcRequest(this.ctx(), id, {
+          const result = await sseJsonRpcRequest(ctx, id, {
             jsonrpc: "2.0",
             id: state.nextRequestId++,
             method: "tools/call",
@@ -51144,11 +51284,11 @@ var McpServerManager = class _McpServerManager {
           if (result?.content && Array.isArray(result.content)) return result;
           return { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] };
         } else if (state.config.type === "http") {
-          return callHttpTool(this.ctx(), id, rawToolName, input);
+          return callHttpTool(ctx, id, rawToolName, input);
         } else if (state.config.type === "ws") {
-          return callWsTool(this.ctx(), id, rawToolName, input);
+          return callWsTool(ctx, id, rawToolName, input);
         } else {
-          return callStdioTool(this.ctx(), id, rawToolName, input);
+          return callStdioTool(ctx, id, rawToolName, input);
         }
       }
     }
@@ -51160,11 +51300,22 @@ var McpServerManager = class _McpServerManager {
       this.disconnectServer(id);
     }
   }
+  /** Final shutdown. In-flight discovery/connection completion must not respawn. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.shutdown.abort();
+    this.onToolsChanged = null;
+    if (this.notifyTimer) clearTimeout(this.notifyTimer);
+    this.notifyTimer = null;
+    this.disconnectAll();
+  }
   // ─── Private ────────────────────────────────────────
   /** Дедуп параллельных подключений: второй await того же сервера получает
    *  УЖЕ ИДУЩИЙ промис (иначе гонка ленивых callTool: первый ставит
    *  'connecting', второй не находит сервер и теряет тул-колл). */
   connectServer(id) {
+    if (this.disposed) return Promise.resolve();
     const inFlight = this.connectInFlight.get(id);
     if (inFlight) return inFlight;
     const p = this.doConnectServer(id).finally(() => {
@@ -51203,24 +51354,36 @@ var McpServerManager = class _McpServerManager {
       } else {
         await connectStdio(c, id);
       }
+      if (this.disposed) {
+        this.disconnectServer(id);
+        return;
+      }
       state.status = "connected";
       state.connectedAt = Date.now();
       try {
         const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
+        if (this.disposed) return;
         emitBridgeHookEvent2("ConnectorStatusChanged", { name: state.config.name, status: "connected" });
       } catch {
       }
       await this.fetchExtraCapabilities(id).catch((err) => {
+        if (this.disposed) return;
         const m = err instanceof Error ? err.message : String(err);
         console.warn(`[MCP] Failed to fetch resources/prompts for "${state.config.name}":`, m);
         this.appendLog(id, "warn", `[connect] resources/prompts fetch failed: ${m}`);
       });
+      if (this.disposed) return;
       this.appendLog(id, "info", `[connect] done \u2014 ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`);
       console.log(`[MCP] Connected to "${state.config.name}" \u2014 ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`);
     } catch (err) {
+      if (this.disposed) {
+        this.disconnectServer(id);
+        return;
+      }
       state.status = "error";
       try {
         const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
+        if (this.disposed) return;
         emitBridgeHookEvent2("ConnectorStatusChanged", { name: state.config.name, status: "error", error: err instanceof Error ? err.message : String(err) });
       } catch {
       }
@@ -51446,7 +51609,7 @@ var McpServerManager = class _McpServerManager {
     if (dirty) saveToolSchemaCache(this.lazySchemaCache);
   }
   notifyChanged() {
-    if (this.window.isDestroyed()) return;
+    if (this.disposed || this.window.isDestroyed()) return;
     if (this.notifyTimer) return;
     const wait = Math.max(0, _McpServerManager.NOTIFY_MIN_INTERVAL_MS - (Date.now() - this.notifyLastAt));
     this.notifyTimer = setTimeout(() => {
@@ -51486,7 +51649,57 @@ init_emit_bridge_event();
 var vscode5 = __toESM(require("vscode"), 1);
 var import_fs34 = __toESM(require("fs"), 1);
 var import_path34 = __toESM(require("path"), 1);
-var import_os27 = __toESM(require("os"), 1);
+
+// src/attachments.ts
+var import_promises7 = __toESM(require("node:fs/promises"), 1);
+var import_node_os4 = __toESM(require("node:os"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
+async function saveAttachment(base64, name, root = import_node_os4.default.tmpdir()) {
+  if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+    throw new Error("Invalid attachment encoding");
+  }
+  const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
+  await import_promises7.default.mkdir(root, { recursive: true });
+  const directory = await import_promises7.default.mkdtemp(import_node_path10.default.join(root, "bridge-upload-"));
+  const file = import_node_path10.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
+  await import_promises7.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
+  return file;
+}
+
+// src/transcription.ts
+async function transcribeAudio(config, base64, mimeType) {
+  try {
+    if (!config.whisperUrl) return { error: "Configure a Whisper API URL in settings" };
+    const url = new URL(config.whisperUrl);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid transcription URL");
+    const extensions = { "audio/wav": "wav", "audio/webm": "webm", "audio/mp4": "mp4", "audio/ogg": "ogg", "audio/mpeg": "mp3" };
+    const mime = String(mimeType).split(";")[0].trim().toLowerCase();
+    if (!extensions[mime]) throw new Error("Unsupported audio format");
+    if (typeof base64 !== "string" || base64.length > 11184812 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+      throw new Error("Invalid audio encoding or audio exceeds 8 MiB");
+    }
+    const bytes = Buffer.from(base64, "base64");
+    if (!bytes.length || bytes.length > 8 * 1024 * 1024) throw new Error("Audio must contain 1 byte to 8 MiB");
+    const body = new FormData();
+    body.append("file", new Blob([bytes], { type: mime }), `recording.${extensions[mime]}`);
+    body.append("model", config.whisperModel || "whisper-1");
+    const response = await fetch(url, {
+      method: "POST",
+      body,
+      redirect: "error",
+      headers: config.whisperToken ? { Authorization: `Bearer ${config.whisperToken}` } : void 0,
+      signal: AbortSignal.timeout(12e4)
+    });
+    if (!response.ok) return { error: `Transcription failed (HTTP ${response.status})` };
+    const result = await response.json();
+    if (typeof result.text !== "string") throw new Error("Transcription returned no text");
+    return { text: result.text };
+  } catch {
+    return { error: "Could not transcribe audio; check endpoint, format and connectivity" };
+  }
+}
+
+// src/core-ipc.ts
 init_host_compat();
 
 // src/main/tree-enrichment.ts
@@ -51534,11 +51747,87 @@ function enrichTreeWithTabs(tree, tabManager) {
 }
 
 // src/main/sync/request-auth.ts
-function withSyncAuthorization(path46, init, token) {
-  if (!path46.startsWith("/api/sync/") || !token) return init;
+function withSyncAuthorization(path47, init, token) {
+  if (!path47.startsWith("/api/sync/") || !token) return init;
   return {
     ...init,
     headers: { ...init?.headers ?? {}, Authorization: `Bearer ${token}` }
+  };
+}
+
+// src/server-http.ts
+function createServerHttp(httpBase, token, options = {}) {
+  const base = new URL(httpBase);
+  if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) throw new Error("Invalid Bridge HTTP origin");
+  function target(route) {
+    if (options.pinned && (!route.startsWith("/") || route.startsWith("//") || route.includes("\\"))) throw new Error("Expected a relative Bridge API path");
+    const url = new URL(`${base.href.replace(/\/$/, "")}${route}`);
+    if (options.pinned && url.origin !== base.origin) throw new Error("Bridge HTTP origin is pinned");
+    return url.href;
+  }
+  async function request(route, init) {
+    const authenticated = withSyncAuthorization(route, init, token);
+    const response = await fetch(target(route), {
+      method: authenticated?.method ?? "GET",
+      body: authenticated?.body,
+      headers: authenticated?.headers ?? (authenticated?.body ? { "Content-Type": "application/json" } : void 0),
+      signal: AbortSignal.timeout(8e3),
+      ...options.pinned ? { redirect: "error" } : {}
+    });
+    let text = "";
+    if (options.maxBytes && response.body) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let size = 0;
+      try {
+        for (; ; ) {
+          const next = await reader.read();
+          if (next.done) break;
+          size += next.value.byteLength;
+          if (size > options.maxBytes) throw new Error("Bridge response exceeds the browser limit");
+          chunks.push(next.value);
+        }
+        text = Buffer.concat(chunks).toString("utf8");
+      } finally {
+        await reader.cancel();
+      }
+    } else text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    return { ok: response.ok, status: response.status, data };
+  }
+  return {
+    async createToken(name) {
+      const result = await request("/api/dashboard/tokens", { method: "POST", body: JSON.stringify({ name }) });
+      if (!result.ok) throw new Error(`HTTP ${result.status}`);
+      return result.data;
+    },
+    async serverVersion() {
+      for (const route of ["/api/bridge-version", "/health"]) {
+        try {
+          const result = await request(route);
+          if (result.ok) return result.data;
+        } catch {
+        }
+      }
+      return null;
+    },
+    async serverFetch(route, init) {
+      try {
+        return await request(route, init);
+      } catch (error) {
+        return {
+          ok: false,
+          status: 0,
+          data: null,
+          error: options.pinned ? "Bridge server request failed" : error instanceof Error ? error.message : String(error)
+        };
+      }
+    }
   };
 }
 
@@ -51555,6 +51844,7 @@ var MIME = {
 function registerCoreIpc(context, configStore) {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""));
   ipcMain.handle("vscode:is-available", () => false);
+  ipcMain.handle("whisper:transcribe", (_e, base64, mime) => transcribeAudio(configStore.get(), base64, mime));
   ipcMain.on("vscode:open", () => {
   });
   ipcMain.on("theme:set", () => {
@@ -51615,17 +51905,10 @@ function registerCoreIpc(context, configStore) {
   ipcMain.handle("open-image-dialog", () => pickAttachments(true));
   ipcMain.handle("save-clipboard-image", async (_e, base64Data, mimeType) => {
     const ext = mimeType === "image/jpeg" ? ".jpg" : ".png";
-    const filePath = import_path34.default.join(import_os27.default.tmpdir(), `claude-paste-${String(Date.now())}${ext}`);
-    await import_fs34.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
-    return filePath;
+    return saveAttachment(base64Data, `pasted-image${ext}`);
   });
   ipcMain.handle("save-dropped-file", async (_e, base64Data, name) => {
-    const safe = (name || "attachment").replace(/[/\\]/g, "_").slice(-120);
-    const dir = import_path34.default.join(import_os27.default.tmpdir(), `claude-drop-${String(Date.now())}`);
-    await import_fs34.default.promises.mkdir(dir, { recursive: true });
-    const filePath = import_path34.default.join(dir, safe);
-    await import_fs34.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
-    return filePath;
+    return saveAttachment(base64Data, name);
   });
   const revealInOs = (_e, p) => {
     void vscode5.commands.executeCommand("revealFileInOS", vscode5.Uri.file(p)).then(void 0, () => {
@@ -51650,44 +51933,13 @@ function registerCoreIpc(context, configStore) {
     }
   });
   ipcMain.handle("bridge:create-token", async (_e, httpBase, name) => {
-    const resp = await fetch(`${httpBase}/api/dashboard/tokens`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name })
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return await resp.json();
+    return createServerHttp(httpBase).createToken(name);
   });
   ipcMain.handle("bridge:server-version", async (_e, httpBase) => {
-    for (const path46 of ["/api/bridge-version", "/health"]) {
-      try {
-        const resp = await fetch(`${httpBase}${path46}`, { signal: AbortSignal.timeout(8e3) });
-        if (resp.ok) return await resp.json();
-      } catch {
-      }
-    }
-    return null;
+    return createServerHttp(httpBase).serverVersion();
   });
-  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path46, init) => {
-    try {
-      const authenticatedInit = withSyncAuthorization(path46, init, configStore.get().token);
-      const resp = await fetch(`${httpBase}${path46}`, {
-        method: authenticatedInit?.method ?? "GET",
-        headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : void 0),
-        body: authenticatedInit?.body,
-        signal: AbortSignal.timeout(8e3)
-      });
-      const text = await resp.text();
-      let data = null;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = text;
-      }
-      return { ok: resp.ok, status: resp.status, data };
-    } catch (err) {
-      return { ok: false, status: 0, data: null, error: err instanceof Error ? err.message : String(err) };
-    }
+  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path47, init) => {
+    return createServerHttp(httpBase, configStore.get().token).serverFetch(path47, init);
   });
   ipcMain.handle("save-text-as", async (_e, opts) => {
     try {
@@ -51947,6 +52199,9 @@ var BridgeHost = class {
   deferredReplies = new DeferredReplies();
   onResyncNeeded;
   disposed = false;
+  startupTimers = /* @__PURE__ */ new Set();
+  releaseMcpReady;
+  cancelMarketplaceStartup;
   sink;
   event;
   tabManager;
@@ -51961,6 +52216,11 @@ var BridgeHost = class {
     const a = this.activeConn();
     if (!a?.conn) return false;
     a.conn.submitText(text);
+    return true;
+  }
+  cmdRegenerateTitle(tabId) {
+    if (!this.tabManager.getTab(tabId)) return false;
+    this.tabManager.submitText(tabId, "/rename");
     return true;
   }
   cmdChangeModel(model) {
@@ -52019,14 +52279,14 @@ var BridgeHost = class {
       ipcMain.on("diag:renderer-sample", (_event, sample) => listener(sample));
     });
     setPermissionStorageDir(context.globalStorageUri.fsPath);
-    this.configStore = new ConfigStore(context.globalStorageUri.fsPath);
+    this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken);
     this.configStore.migrateFromElectron();
     this.tabManager = new TabManager(this.sink);
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path10.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path10.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path10.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path11.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path11.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path11.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
@@ -52047,15 +52307,23 @@ var BridgeHost = class {
     const mcpReady = new Promise((r) => {
       resolveReady = r;
     });
+    this.releaseMcpReady = resolveReady;
+    const scheduleStartup = (run2, delay) => {
+      const timer = setTimeout(() => {
+        this.startupTimers.delete(timer);
+        if (!this.disposed) run2();
+      }, delay);
+      this.startupTimers.add(timer);
+    };
     const kickMcp = (delay) => {
-      if (mcpKicked) return;
+      if (mcpKicked || this.disposed) return;
       mcpKicked = true;
       if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === "1") {
         mcpSettled = true;
         resolveReady();
         return;
       }
-      setTimeout(() => {
+      scheduleStartup(() => {
         this.mcpManager.initAll().catch(() => {
         }).finally(() => {
           mcpSettled = true;
@@ -52063,7 +52331,7 @@ var BridgeHost = class {
         });
       }, delay);
     };
-    setTimeout(() => kickMcp(0), MCP_FALLBACK_MS);
+    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS);
     ConnectionManager.whenExternalToolsReady = () => {
       if (mcpSettled || !mcpKicked) return Promise.resolve();
       return new Promise((resolve) => {
@@ -52088,6 +52356,7 @@ var BridgeHost = class {
     setMonitorsWindow(this.sink);
     registerMonitorsIPC();
     const startTabMonitors = (tab) => {
+      if (this.disposed) return;
       void startMonitorsForTab(tab.id, tab.config.cwd, (pluginId, monitorName, line) => {
         if (tab.connection.getExtendedState().status !== "authenticated") return;
         tab.connection.submitText([
@@ -52108,11 +52377,15 @@ var BridgeHost = class {
       void pluginLspManager.stopTab(tab.id);
     };
     const reloadPluginRuntime = async () => {
+      if (this.disposed) return;
       resetSyncTimers();
       const cfg = this.configStore.get();
       if (cfg?.serverUrl && cfg?.token) await syncUserData(cfg.serverUrl, cfg.token);
+      if (this.disposed) return;
       await this.mcpManager.initAll();
+      if (this.disposed) return;
       await pluginLspManager.restart();
+      if (this.disposed) return;
       for (const tab of this.tabManager.listTabs()) {
         stopMonitorsForTab(tab.id);
         const live = this.tabManager.getConnection(tab.id);
@@ -52123,7 +52396,7 @@ var BridgeHost = class {
       }
     };
     registerPluginsIPC({ reloadPluginRuntime });
-    registerMarketplaceIPC(() => this.sink);
+    this.cancelMarketplaceStartup = registerMarketplaceIPC(() => this.sink);
     installConsoleCapture();
     registerLogsIPC(() => this.sink);
     registerSyncIPC({
@@ -52147,6 +52420,7 @@ var BridgeHost = class {
     ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt();
     const prevOnAuth = ConnectionManager.onAuthenticated;
     ConnectionManager.onAuthenticated = (connection) => {
+      if (this.disposed) return;
       prevOnAuth?.(connection);
       for (const info of this.tabManager.listTabs()) {
         if (this.tabManager.getConnection(info.id) !== connection) continue;
@@ -52175,6 +52449,11 @@ var BridgeHost = class {
     };
     wireConnectionCallbacks(this.tabManager, this.configStore);
     setToastRouteHandler((payload) => this.post({ kind: "event", channel: "toast:route", args: [payload] }));
+    ipcMain.on("bridge:regenerate-title", (_event, tabId) => {
+      if (typeof tabId !== "string" || !this.tabManager.getTab(tabId)) return;
+      if (opts?.onRegenerateTitle) opts.onRegenerateTitle(tabId);
+      else this.cmdRegenerateTitle(tabId);
+    });
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text));
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.());
   }
@@ -52188,6 +52467,7 @@ var BridgeHost = class {
    *  message listener; events broadcast to all, invoke replies target the
    *  originating webview. */
   attach(webview, role = "chat") {
+    if (this.disposed) throw new Error("Bridge host is disposed");
     this.webviews.add(webview);
     this.invokeDiagnostics.attach(webview);
     this.webviewRoles.set(webview, role);
@@ -52242,9 +52522,17 @@ var BridgeHost = class {
     return this.mcpManager;
   }
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
-    this.tabManager.disconnectAll();
+    for (const timer of this.startupTimers) clearTimeout(timer);
+    this.startupTimers.clear();
+    this.cancelMarketplaceStartup?.();
+    this.releaseMcpReady?.();
+    for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id);
+    this.tabManager.dispose();
+    this.mcpManager.dispose();
     void pluginLspManager.restart();
+    unregisterShimWindow(this.sink);
     for (const view of this.webviews) this.invokeDiagnostics.detach(view);
     this.webviews.clear();
   }
@@ -52553,7 +52841,7 @@ var SessionsBridge = class {
     const tm = this.host.getTabManager();
     if (!tm.getTab(tabId)) return;
     if (kaminId) void kaminide.sessions.updateSession(kaminId, { metadata: { nameSetByUser: false } });
-    tm.submitText(tabId, "/rename");
+    this.host.cmdRegenerateTitle(tabId);
   }
   /** From the native session context menu (host renderer → command). */
   regenerateTitleByKamin(kaminId) {
@@ -52669,6 +52957,13 @@ var SessionsBridge = class {
 
 // src/index.ts
 init_host_compat();
+
+// src/tool-usage-relay.ts
+function relayToolUsage(name, broadcast2) {
+  if (typeof name === "string") broadcast2("toolusage-open", name);
+}
+
+// src/index.ts
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [
@@ -52690,7 +52985,10 @@ function activate(context) {
   const openTools = () => {
     void vscode9.commands.executeCommand(`${TOOLS_VIEW_IDS[0]}.focus`);
   };
-  const host = new BridgeHost(context, { onOpenChat: openChat });
+  const host = new BridgeHost(context, {
+    onOpenChat: openChat,
+    onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
+  });
   const sessionsBridge = new SessionsBridge(host, openChat);
   sessionsBridge.install();
   context.subscriptions.push({ dispose: () => {
@@ -52747,7 +53045,7 @@ function activate(context) {
     vscode9.commands.registerCommand("claude-bridge.getSessionInfo", () => host.cmdGetSessionInfo()),
     // Панель Tools/e2e: раскрыть применения тула фуллскрином в чате.
     vscode9.commands.registerCommand("claude-bridge.openToolUsage", (name) => {
-      if (typeof name === "string") host.broadcast("toolusage-open", name);
+      relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool));
     }),
     // Жизненный цикл сессий (правило тестируемости): создание/активация идут
     // через нативный sessions-API хоста — sessionsBridge сам поднимет вкладку.
@@ -52760,9 +53058,8 @@ function activate(context) {
     vscode9.commands.registerCommand("claude-bridge.setPermissionMode", (mode) => typeof mode === "string" && host.cmdSetPermissionMode(mode))
   );
   ipcMain.on("toolusage:open", (_e, name) => {
-    if (typeof name === "string") host.broadcast("toolusage-open", name);
+    relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool));
   });
-  ipcMain.on("bridge:regenerate-title", (_e, tabId) => sessionsBridge.regenerateTitleByTab(tabId));
 }
 function deactivate() {
 }

@@ -3,6 +3,7 @@ import { setTabUsage } from '../signals/session-usage'
 import { useEffect, useRef } from 'preact/hooks'
 
 import type { KaminBridgeApi } from '../../shared/types'
+import { installWorkspaceFilePanel } from '../signals/workspace-file-panel'
 import type { TabInfo, TreeNode } from '../../shared/types'
 import type { ElicitationRequest, PermissionRequest } from '../../shared/types'
 
@@ -33,6 +34,7 @@ import { setReplayProgress } from '../signals/replay-progress'
 import { touchTab, sweepTabMemory, forgetTabRecency } from '../signals/jsonl-eviction'
 import { projectPlanTodoEntries } from '../signals/jsonl-project'
 import { recordToolUsage, resetToolUsage } from '../signals/tool-usage'
+import { vscodeApi } from '../lib/webview-api'
 import {
   applyConnectionEvent,
   ConnectionSnapshotRequestGate,
@@ -718,7 +720,29 @@ export function useBridgeListeners(
     // разу на соединение — до 5 циклов × панели × табы × тысячи записей,
     // мини-«reload storm» (аудит #70 C4). Пропущенные фоновые табы догонят
     // при переключении (lazy attach + watchdog).
-    if (reconnectNonce.peek() > 0 && role !== 'customize') {
+    const browserWorkspace = !!vscodeApi.onHostMessage
+    const unsubWorkspaceSnapshot = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const event = frame as { kind?: string; channel?: string; args?: unknown[] } | null
+      if (event?.kind !== 'event' || event.channel !== 'workspace:snapshot-start') return
+      const active = event.args?.[1]
+      // A disposable projection is replaced from one authoritative host point.
+      // Pending questions answered in another page must disappear as well.
+      activeWidgets.value = []
+      if (typeof active === 'string') {
+        clearJsonlEntries(active)
+        activeTabId.value = active
+      }
+    }) ?? (() => {})
+    const unsubWorkspaceQuestion = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const event = frame as { kind?: string; channel?: string; args?: unknown[] } | null
+      if (event?.kind !== 'event' || event.channel !== 'workspace:question-resolved') return
+      const requestId = event.args?.[0]
+      activeWidgets.value = activeWidgets.value.filter(widget => widget.requestId !== requestId)
+    }) ?? (() => {})
+    const unsubWorkspaceFiles = browserWorkspace ? installWorkspaceFilePanel() : () => {}
+    if (browserWorkspace) vscodeApi.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
+
+    if (!browserWorkspace && reconnectNonce.peek() > 0 && role !== 'customize') {
       const now = Date.now()
       if (now - lastReconnectReplayAt > RECONNECT_REPLAY_DEBOUNCE_MS) {
         lastReconnectReplayAt = now
@@ -764,6 +788,9 @@ export function useBridgeListeners(
         reconnectSnapshotRequests.current.invalidate(reconnectSnapshotRequest)
       }
       unsubEditorSel()
+      unsubWorkspaceSnapshot()
+      unsubWorkspaceQuestion()
+      unsubWorkspaceFiles()
       unsubTabCreated()
       unsubTabClosed()
       unsubTabSwitched()

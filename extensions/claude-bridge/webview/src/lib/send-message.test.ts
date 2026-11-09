@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ElectronBridge } from '../../shared/types'
+import { vscodeApi } from './webview-api'
 
 const mocked = vi.hoisted(() => ({
   lastSendAt: { value: new Map<string, number>() },
@@ -28,6 +29,7 @@ beforeEach(() => {
   mocked.tabPromptReady.value = new Map([['tab-1', true]])
   mocked.tabActivity.value = new Map()
   mocked.enqueueLocal.mockReset()
+  delete vscodeApi.onHostMessage
 })
 
 describe('sendMessageToTab', () => {
@@ -39,5 +41,14 @@ describe('sendMessageToTab', () => {
     expect(bridge.submitText).toHaveBeenCalledTimes(1)
     expect(bridge.submitText).toHaveBeenCalledWith('tab-1', 'hello')
     expect(mocked.tabPromptReady.value.get('tab-1')).toBe(false)
+  })
+
+  it('gives browser submissions a stable identity before upstream mod capabilities arrive', () => {
+    vscodeApi.onHostMessage = () => () => {}
+    const bridge = fakeBridge()
+    sendMessageToTab(bridge, 'tab-1', 'survives browser close')
+    expect(bridge.submitText).toHaveBeenCalledWith('tab-1', 'survives browser close', expect.any(String))
+    expect(mocked.enqueueLocal).not.toHaveBeenCalled()
+    delete vscodeApi.onHostMessage
   })
 })

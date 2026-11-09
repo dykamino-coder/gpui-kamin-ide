@@ -1,0 +1,19 @@
+[
+  {"id":"route:bridge:create-token","status":"supported-in-browser-host","provider":"server","sources":{"workspace/src/browser-server.ts":1}},
+  {"id":"route:bridge:reconnected","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
+  {"id":"route:bridge:server-version","status":"supported-in-browser-host","provider":"server","sources":{"workspace/src/browser-server.ts":1}},
+  {"id":"route:disconnect","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1,"workspace/src/terminals.ts":1}},
+  {"id":"route:pty-submit-text","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
+  {"id":"route:pty:data","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":2}},
+  {"id":"route:pty:exit","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
+  {"id":"route:pty:kill","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:pty:spawn","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:pty:write","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:tab:close","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:tab:disconnect","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:workspace:file-panel","status":"supported-in-browser-host","provider":"file-panel-control","sources":{"webview/src/browser/browser-socket.ts":1}},
+  {"id":"route:workspace:sync","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/browser/browser-socket.ts":1}},
+  {"id":"route:workspace:terminal-removed","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
+  {"id":"route:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
+  {"id":"route:workspace:terminal-sync","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
+]

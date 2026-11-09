@@ -30,13 +30,15 @@ bridge.ptyResize = (ptyId, cols, rows) => snd("pty:resize", { ptyId, cols, rows 
 bridge.ptyKill = (ptyId) => snd("pty:kill", { ptyId })
 // External-MCP elicitation reply uses a per-request dynamic channel.
 bridge.respondMcpElicitation = (requestId, payload) => snd(`mcp-elicitation-response:${requestId as string}`, payload)
+// Retained legacy generic invoke; the host enforces its registered channel set.
+bridge.invoke = (channel, ...args) => inv(String(channel), ...args)
 // getDroppedFilePath (Electron webUtils) удалён: не-image drop/paste ходят
 // байтами через save-dropped-file (аудит #70 A3).
 
 // getVersion() is synchronous in preload (sendSync). Prefetch once and serve
 // from cache; the version string is only shown in the About/header.
 let cachedVersion = ""
-void inv("get-version").then((v) => { cachedVersion = typeof v === "string" ? v : "" })
+void inv("get-version").then((v) => { cachedVersion = typeof v === "string" ? v : "" }).catch(() => {})
 bridge.getVersion = () => cachedVersion
 // KaminIDE owns the window chrome — the webview has no titlebar controls.
 bridge.windowIsMaximized = () => false

@@ -2,7 +2,7 @@
 import { signal } from '@preact/signals'
 import type { SubmissionUpdate } from '../../shared/types'
 import type { JsonlEntryData } from '../types/jsonl'
-import { enqueueLocal } from './queue'
+import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
 
 export interface Submission extends SubmissionUpdate { text: string; timestamp: string; committed?: boolean }
@@ -17,12 +17,16 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   if (!data.id) return
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
-  if (data.state === 'fallback') {
-    if (existing) enqueueLocal(tabId, existing.text)
-    submissions.value = new Map(submissions.value).set(tabId, current.filter(item => item.id !== data.id))
-    return
-  }
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning }
+  if (item.state === 'fallback') {
+    if (item.fallbackQueue?.consumed) removeLocalQueueItem(tabId, item.id)
+    else if (item.text && existing?.state !== 'fallback') {
+      enqueueLocal(tabId, item.text, { id: item.id, ...item.fallbackQueue, hostOwned: !!item.fallbackQueue })
+      // Старый host без метаданных использует desktop matcher. Browser host
+      // сам принимает решение, даже когда принявшая строка уже вне replay window.
+      reconcileQueueWithEntries(tabId)
+    }
+  }
   if (item.uuid && jsonlEntriesByTab.peek().get(tabId)?.some(row => row.uuid === item.uuid)) item.committed = true
   const next = existing ? current.map(old => old.id === item.id ? item : old) : [...current, item]
   // Receipt retention is bounded independently of the transcript window.
@@ -37,7 +41,7 @@ export function optimisticSubmission(tabId: string, text: string): string {
 
 export function pendingSubmissionRows(entries: JsonlEntryData[], items: Submission[]): JsonlEntryData[] {
   const uuids = new Set(entries.map(entry => entry.uuid))
-  return items.filter(item => item.state !== 'cancelled' && !item.committed && (!item.uuid || !uuids.has(item.uuid)))
+  return items.filter(item => item.state !== 'cancelled' && item.state !== 'fallback' && !item.committed && (!item.uuid || !uuids.has(item.uuid)))
     .map(item => ({ type: 'user', uuid: item.uuid ?? item.id, timestamp: item.timestamp,
       message: { role: 'user', content: item.text }, submissionId: item.id }))
 }

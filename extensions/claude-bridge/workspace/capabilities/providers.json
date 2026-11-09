@@ -1,0 +1,53 @@
+{
+  "preview": {
+    "file": "workspace/src/preview.ts",
+    "test": "workspace/test/preview.test.ts",
+    "requires": "preview-hmr",
+    "contract": "Host-owned trusted Module Federation descriptor and authenticated assets/HMR proxy; shared MCP tool dispatch, separate React root in thin browser panel."
+  },
+  "shared-host": {
+    "file": "extension/src/bridge-host.ts",
+    "test": "workspace/test/runtime.test.ts",
+    "contract": "Existing shared host modules, tools, hooks and MCP logic; source reachability is not behavioral acceptance."
+  },
+  "environment": {
+    "file": "workspace/src/browser-environment.ts",
+    "test": "workspace/test/browser-environment.test.ts",
+    "contract": "Host-owned effects, uploads into /workspace, browser downloads, clipboard and navigation."
+  },
+  "server": {
+    "file": "workspace/src/browser-server.ts",
+    "test": "workspace/test/browser-server.test.ts",
+    "contract": "Pinned upstream settings HTTP requests; configured credential remains host-owned."
+  },
+  "files": {
+    "file": "workspace/src/files.ts",
+    "test": "workspace/test/files-reconnect.test.ts",
+    "contract": "Bridge FilePanel container reads/writes/watches and host-owned logical view snapshots."
+  },
+  "file-panel-control": {
+    "file": "workspace/src/files.ts",
+    "test": "workspace/test/file-panel-state.test.ts",
+    "contract": "Validated process-local logical-view projection: per-chat open order, active file, main selection/context, attach toggle and preview choice. Does not retain drafts, undo, scroll or host-restart state."
+  },
+  "transport": {
+    "file": "webview/src/lib/bridge-transport.ts",
+    "test": "workspace/test/protocol.test.ts",
+    "contract": "Known-channel invocation and private authenticated wire forwarding."
+  },
+  "presentation": {
+    "file": "workspace/src/runtime.ts",
+    "test": "workspace/test/runtime.test.ts",
+    "contract": "Host-owned chat snapshots, prompts and read-only resync."
+  },
+  "terminal": {
+    "file": "workspace/src/terminals.ts",
+    "test": "workspace/test/terminal-reattach.test.ts",
+    "requires": "host-terminal",
+    "contract": "Shared host-owned PTY registry with 5000-line parsed screen and sequenced private reattach snapshots; page is a disposable projection. OSC palette/pixel/window reports remain unaccepted."
+  },
+  "title": {
+    "requires": "title-regeneration",
+    "contract": "Shared BridgeHost /rename ingress validates live tabs; native SessionsBridge keeps title metadata through its callback."
+  }
+}

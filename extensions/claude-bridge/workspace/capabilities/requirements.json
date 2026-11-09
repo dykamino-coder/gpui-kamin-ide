@@ -1,0 +1,30 @@
+{
+  "preview-hmr": {
+    "state": "implemented",
+    "owner": "bridgeweb3/lead",
+    "reason": "Host-owned Module Federation descriptor and authenticated HTTP/WebSocket proxy reuse shared MCP handlers; Linux browser acceptance exercises webpack HMR, rebuild fallback, zero-page updates/reopen and chat submission after HMR with a synthetic agent peer.",
+    "file": "workspace/src/preview.ts",
+    "test": "workspace/test/preview.smoke.mjs"
+  },
+  "host-terminal": {
+    "state": "implemented",
+    "owner": "bridgeweb/lead",
+    "reason": "#644 shared PTY registry retains processes and bounded parsed scrollback with zero pages; explicit kill/end/shutdown owns termination. Full terminal query-report compatibility remains unaccepted.",
+    "file": "workspace/src/terminals.ts",
+    "test": "workspace/test/terminal-reattach.test.ts"
+  },
+  "title-regeneration": {
+    "state": "implemented",
+    "owner": "bridgeweb/lead",
+    "reason": "Shared BridgeHost registers bridge:regenerate-title and reuses cmdRegenerateTitle /rename submission; the native metadata callback remains optional.",
+    "file": "extension/src/bridge-host.ts",
+    "test": "extension/src/sessions-bridge-title.test.ts"
+  },
+  "finished-toast-route": {
+    "state": "implemented",
+    "owner": "bridgeweb/lead",
+    "reason": "Finished notification Open uses the existing browser route when no native activation hook exists; native activation remains unchanged.",
+    "file": "extension/src/main/notifications/toast-window.ts",
+    "test": "extension/src/main/notifications/toast-window.test.ts"
+  }
+}

@@ -14,7 +14,7 @@ fn table_pieces(cx: &mut gpui::TestAppContext, width: f32) -> Vec<(usize, f32, f
         let rows = "<tr><td style='height:40px;padding:0'></td></tr>".repeat(3);
         let tree = crate::document::parsed::parse(&format!("<section style='columns:2;column-gap:0;column-fill:auto;height:100px'><table style='border-spacing:0'>{rows}</table></section>"), "");
         let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
-        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;
         crate::style::cascade::materialize::materialize(&tree, opts.root_style().style_rc(), opts.cx.vcx());
         let host = super::tests::section(&tree);

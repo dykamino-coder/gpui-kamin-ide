@@ -1,0 +1,66 @@
+# Standalone opt-in project. Does not extend/reconfigure the existing bridge.
+# Build with the explicit allowlist first (workspace/PACKAGING.md).
+# client: podman compose -p bridgeweb-acc-client -f docker-compose.workspace.yml --profile client up -d
+# combined: use --profile combined instead; server and client remain separate containers.
+name: bridgeweb-acc-workspace
+x-workspace: &workspace
+  image: localhost/bridgeweb-acc-workspace:local
+  ports:
+    - '${WORKSPACE_PUBLISH_BIND:-127.0.0.1}:${WORKSPACE_PORT:-3460}:3460'
+  volumes:
+    - workspace-project:/workspace
+    - workspace-home:/home/workspace
+  environment: &workspace-env
+    WORKSPACE_ORIGIN: '${WORKSPACE_ORIGIN:-http://127.0.0.1:3460}'
+    WORKSPACE_ALLOW_REMOTE: '${WORKSPACE_ALLOW_REMOTE:-0}'
+  init: true
+  restart: unless-stopped
+services:
+  workspace:
+    <<: *workspace
+    profiles: [client]
+    environment:
+      <<: *workspace-env
+      BRIDGE_SERVER_URL: '${BRIDGE_SERVER_URL:-ws://host.containers.internal:3462}'
+  workspace-combined:
+    <<: *workspace
+    profiles: [combined]
+    environment:
+      <<: *workspace-env
+      BRIDGE_SERVER_URL: ws://bridge:3456
+    depends_on:
+      bridge:
+        condition: service_healthy
+  bridge:
+    profiles: [combined]
+    # Use a previously built/approved local server image; never pull/publish a release here.
+    image: '${BRIDGE_SERVER_IMAGE:-localhost/opencode-claude-max-proxy_bridge:latest}'
+    ports:
+      - '127.0.0.1:${COMBINED_BRIDGE_PORT:-3463}:3456'
+    volumes:
+      - server-data:/app/data
+      - server-logs:/app/logs
+      - server-home:/home/bridge
+      - server-auth:/home/bridge/.claude
+    environment:
+      CLAUDE_PROXY_HOST: 0.0.0.0
+      CLAUDE_PROXY_PORT: '3456'
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3456/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  workspace-project:
+  workspace-home:
+  server-data:
+  server-logs:
+  server-auth:
+  server-home:

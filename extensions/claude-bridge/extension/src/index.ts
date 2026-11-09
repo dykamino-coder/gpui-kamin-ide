@@ -15,6 +15,7 @@ import { installEditorContext } from "./editor-context"
 import { installMcpStatusBar } from "./mcp-status-bar"
 import { SessionsBridge } from "./sessions-bridge"
 import { ipcMain } from "@kaminide/host-compat"
+import { relayToolUsage } from './tool-usage-relay'
 
 const CHAT_VIEW_ID = "claudeBridgeChat"
 // Plan / Todos / Agents / Console are SEPARATE tools (own auxiliarybar container
@@ -40,7 +41,10 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   const openTools = (): void => { void vscode.commands.executeCommand(`${TOOLS_VIEW_IDS[0]}.focus`) }
 
-  const host = new BridgeHost(context, { onOpenChat: openChat })
+  const host = new BridgeHost(context, {
+    onOpenChat: openChat,
+    onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
+  })
   const sessionsBridge = new SessionsBridge(host, openChat)
   sessionsBridge.install()
   context.subscriptions.push({ dispose: () => { sessionsBridge.dispose(); host.dispose() } })
@@ -126,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("claude-bridge.getSessionInfo", () => host.cmdGetSessionInfo()),
     // Панель Tools/e2e: раскрыть применения тула фуллскрином в чате.
     vscode.commands.registerCommand("claude-bridge.openToolUsage", (name: unknown) => {
-      if (typeof name === "string") host.broadcast("toolusage-open", name)
+      relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool))
     }),
     // Жизненный цикл сессий (правило тестируемости): создание/активация идут
     // через нативный sessions-API хоста — sessionsBridge сам поднимет вкладку.
@@ -144,10 +148,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // Кросс-вебвью relay: клик в панели Tools (свой iframe) → событие всем вью;
   // чат откроет fullscreen применений.
   ipcMain.on("toolusage:open", (_e: unknown, name: unknown) => {
-    if (typeof name === "string") host.broadcast("toolusage-open", name)
+    relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool))
   })
-  // Chat-panel header button → same, but keyed by the active Bridge tab id.
-  ipcMain.on("bridge:regenerate-title", (_e: unknown, tabId: string) => sessionsBridge.regenerateTitleByTab(tabId))
 }
 
 export function deactivate(): void {}

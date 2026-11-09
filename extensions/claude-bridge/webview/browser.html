@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kamin Bridge Workspace</title>
+  </head>
+  <body>
+    <div id="root" inert></div>
+    <section id="workspace-gate" aria-label="Workspace connection">
+      <p id="workspace-status" role="status">Checking workspace session…</p>
+      <form id="workspace-login" hidden>
+        <label for="workspace-token">Bridge client token</label>
+        <input id="workspace-token" type="password" required autocomplete="off" spellcheck="false" />
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+    <button id="workspace-logout" type="button" hidden>Sign out</button>
+    <script type="module" src="/src/browser/browser-entry.ts"></script>
+  </body>
+</html>

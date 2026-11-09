@@ -71,13 +71,23 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
         &resolved
     };
     let mut c = ComputedBuilder::from_cascaded(own);
-    c.reset_context.cq_box = parent.container_box_for_children();
+    // Равное значение не пишется: группа остаётся общей с каскадной (Blink
+    // `ComputedStyle` setters сравнивают перед записью). Так же ниже по стадии.
+    let cq_box = parent.container_box_for_children();
+    if c.reset_context.cq_box != cq_box {
+        c.reset_context.cq_box = cq_box;
+    }
     // Коробка раскладки своего зума не задаёт: она в зуме родителя.
     if !own.reset_cascade.zoom_pending && c.inh.font.zoom_eff.is_none() {
         let eff = zoom::parent_eff(parent);
-        c.inh.font.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
+        let zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
+        if zoom_eff.is_some() {
+            c.inh.font.zoom_eff = zoom_eff;
+        }
     }
-    c.reset_cascade.zoom_pending = false;
+    if c.reset_cascade.zoom_pending {
+        c.reset_cascade.zoom_pending = false;
+    }
     crate::style::computed::scroll::inherit(parent, &mut c);
     resolve_bidi_inheritance(parent, &mut c);
     fonts::inherit_writing_mode(parent, own, &mut c);

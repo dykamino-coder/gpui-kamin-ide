@@ -124,8 +124,14 @@ async fn element_inner(
         e.node_id,
         &merged,
     );
-    merged.reset_box_layout.scroll.used = gutters.used;
-    merged.reset_box_layout.scroll.native = gutters.native;
+    // Equal values are not written, so the box-layout group stays shared with
+    // the computed style (Blink `ComputedStyle` setters compare first).
+    if merged.reset_box_layout.scroll.used != gutters.used
+        || merged.reset_box_layout.scroll.native != gutters.native
+    {
+        merged.reset_box_layout.scroll.used = gutters.used;
+        merged.reset_box_layout.scroll.native = gutters.native;
+    }
     crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
     merged.inline_definite = crate::layout::writing_mode::inline_definite::own(
         &merged,

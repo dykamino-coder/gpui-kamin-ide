@@ -4,6 +4,9 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useBridge } from '../../hooks/useBridge'
+import { vscodeApi } from '../../lib/webview-api'
+import { guardTerminalQueries } from '../../browser/terminal-query-guards'
+import { attachWorkspaceTerminal } from '../../browser/workspace-terminal'
 import { resolvedTheme } from '../../theme/apply-theme'
 
 // FilePanel terminal palette is *always* dark — same Catppuccin-mocha
@@ -66,8 +69,9 @@ interface FilePanelTerminalProps {
  *  and toggles visibility, so each chat tab gets its own persistent
  *  terminal that never resets when switching away. */
 export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProps): JSX.Element {
-  void tabId // tabId is the React key — only used for instance identity
   const bridge = useBridge()
+  const browserWorkspace = !!vscodeApi.onHostMessage
+  const workspaceTerminal = useRef<ReturnType<typeof attachWorkspaceTerminal> | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -90,7 +94,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     bridge.shellsList().then((list) => {
       setShells(list)
       // Default = first list entry; user can switch via the dropdown.
-      if (list.length > 0 && !activeShellId) setActiveShellId(list[0]!.id)
+      if (!browserWorkspace && list.length > 0 && !activeShellId) setActiveShellId(list[0]!.id)
     }).catch(() => { /* no shells available */ })
   }, [mounted])
 
@@ -110,6 +114,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     // re-poke `term.options.theme` on every theme change below.
     const resolveBg = (): string => resolvedTheme.value === 'light' ? '#262626' : '#0b0c0f'
     const term = new Terminal({
+      allowProposedApi: browserWorkspace,
       fontFamily: "ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace",
       fontSize: 12,
       theme: { ...DARK_TERMINAL_PALETTE, background: resolveBg() },
@@ -120,6 +125,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     term.loadAddon(fit)
     term.open(containerRef.current)
     try { fit.fit() } catch { /* container not laid out yet */ }
+    const offQueries = browserWorkspace ? guardTerminalQueries(term.parser) : () => {}
     termRef.current = term
     fitRef.current = fit
 
@@ -201,13 +207,19 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     // Inbound: PTY data → xterm. Filter by ptyId so a stale spawn from
     // a previous shell doesn't write into the current terminal.
     const offData = bridge.onPtyData(({ ptyId, data }) => {
-      if (ptyId !== ptyIdRef.current) return
+      if (browserWorkspace || ptyId !== ptyIdRef.current) return
       term.write(data)
     })
     const offExit = bridge.onPtyExit(({ ptyId }) => {
-      if (ptyId !== ptyIdRef.current) return
+      if (browserWorkspace || ptyId !== ptyIdRef.current) return
       ptyIdRef.current = null
       term.write('\r\n\x1b[2m[shell exited]\x1b[0m\r\n')
+    })
+
+    if (browserWorkspace) workspaceTerminal.current = attachWorkspaceTerminal({
+      api: vscodeApi, bridge, tabId, cwd, terminal: term,
+      onIdentity: id => { ptyIdRef.current = id },
+      onProfile: id => { setActiveShellId(id) },
     })
 
     // Re-fit when the panel resizes — RO observes the host element.
@@ -227,11 +239,14 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     })
 
     return () => {
+      offQueries()
       offData()
       offExit()
       unsubTheme()
       ro.disconnect()
-      if (ptyIdRef.current) bridge.ptyKill(ptyIdRef.current)
+      workspaceTerminal.current?.dispose()
+      workspaceTerminal.current = null
+      if (!browserWorkspace && ptyIdRef.current) bridge.ptyKill(ptyIdRef.current)
       ptyIdRef.current = null
       term.dispose()
       termRef.current = null
@@ -245,7 +260,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
   // command). cwd is read fresh at spawn time as the *initial* directory
   // only; once the shell is running it owns its own cwd via `cd`.
   useEffect(() => {
-    if (!termRef.current || !activeShellId) return
+    if (browserWorkspace || !termRef.current || !activeShellId) return
     const term = termRef.current
     const fit = fitRef.current
     if (ptyIdRef.current) {
@@ -323,7 +338,11 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => { setActiveShellId(s.id); setMenuOpen(false) }}
+                  onClick={() => {
+                    if (browserWorkspace) workspaceTerminal.current?.selectShell(s.id)
+                    else setActiveShellId(s.id)
+                    setMenuOpen(false)
+                  }}
                   style={`display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:none;border-radius:var(--radius-sm);background:${s.id === activeShellId ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)' : 'transparent'};color:${s.id === activeShellId ? 'var(--accent-primary)' : 'var(--text-primary)'};font-size:11px;cursor:pointer;text-align:left`}
                 >
                   <i class={s.icon || 'fas fa-terminal'} style="font-size:11px;width:14px;text-align:center" />

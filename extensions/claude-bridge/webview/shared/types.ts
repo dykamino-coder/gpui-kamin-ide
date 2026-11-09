@@ -1,3 +1,6 @@
+import type { SubmissionUpdate } from './submission-queue'
+export type { SubmissionUpdate } from './submission-queue'
+
 // Server URL and connection state
 export interface SessionUsageWindow {
   /** `five_hour` | `seven_day` (status-line `rate_limits.*`) */
@@ -957,7 +960,7 @@ export interface KaminBridgeApi {
       icon?: string
     }>
   >
-  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number }): Promise<{
+  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number; tabId?: string }): Promise<{
     ptyId: string
     profile: {
       id: string
@@ -1018,13 +1021,3 @@ export interface KaminBridgeApi {
 
 /** @deprecated Use KaminBridgeApi. */
 export type ElectronBridge = KaminBridgeApi
-
-export interface SubmissionUpdate {
-  id: string
-  text?: string
-  state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
-  uuid?: string
-  cancelable?: boolean
-  warning?: string
-  capable?: boolean
-}
