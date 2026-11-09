@@ -37,23 +37,6 @@ scrollback. A page can disappear with zero attached browsers while work proceeds
 Reopening attaches to the same running workspace and renders its current state.
 The existing browser entry alone does not yet satisfy this contract.
 
-Scope clarification from the owner (verbatim): «мы бридж копируем а не камин».
-Bridge's own FilePanel, file viewer, attach-file/editor context, terminal,
-uploads/downloads and attachments remain in scope. Opening/revealing files in
-the IDE editor and openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not
-Bridge". The earlier temporary removal of FilePanel is superseded.
-
-The next core increment adds a targeted `workspace:sync` read handshake after
-the existing renderer installs its listeners. The host snapshots the shared
-connection caches (including accumulated streaming deltas), pending questions,
-submission receipts and activity. It sends reset, snapshot frames, then live
-updates on the same ordered socket. An internal host observer remains attached
-with zero browsers; it retains presentation metadata, never executes tools.
-Snapshots initially paint only the active conversation's newest 200 records;
-older records remain in the shared host/mirror and use existing paging. Sync
-never resubmits input or reconnects upstream sessions. File subscriptions and
-PTY scrollback are subsequent increments using the same host-owned lifetime.
-
 Completion means reviewed Change PRs with green applicable CI, an exhaustive
 capability gate, and real headless browser acceptance in Podman. The Claude lead
 merges implementation. Registration may be merged by its author. Release,
@@ -116,11 +99,8 @@ production bundle and page JS heap in acceptance and report both in the PR.
 On socket loss, detach delivery only and reconnect with backoff. A new document
 or second tab attaches to the same host state. Synchronization delivers a coherent
 snapshot of transcript, active turn/tool state, pending prompts, open files and
-watches, and terminal scrollback, followed by ordered live updates. The initial
-in-process implementation captures and enqueues each snapshot synchronously,
-without an await, on the same event loop and ordered socket as live events.
-This closes the capture/live race without a separate cursor or replay journal;
-an asynchronous snapshot producer must add a revision/cursor before yielding.
+watches, and terminal scrollback, followed by ordered live updates. A host revision
+and event cursor must close the snapshot/live race without gaps or duplicates.
 The host owns logical view state independently of a socket or document generation.
 
 Browser reload is never permission to replay a mutation. Use stable operation IDs,
@@ -235,15 +215,6 @@ callback alone is not a test. Test actual environment services and shared
 handlers, not a fake blanket success responder. Fixtures must name observable
 effects, cancellation, errors and cleanup as appropriate.
 
-The independent file-panel environment increment decorates `WorkspaceBackend`
-at the existing invoke/send boundary, leaving unknown frames and all agent tool
-logic to the underlying shared backend. File watches belong to each attached
-view, and asynchronous watch errors have a required host logging callback.
-Its actual-files and authenticated transport fixtures are partial capability
-evidence, not the exhaustive matrix or a browser/container acceptance claim.
-This separation allows review from fresh main while runtime/browser PRs await
-the lead; the executable must compose all three pieces before deployment.
-
 | Inventory group | Intended implementation | Required proof |
 | --- | --- | --- |
 | Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and host state/event pipeline | Create/resume/switch/close; host queue once; pending permission after reopen; complete turn snapshot; two tabs |
@@ -291,19 +262,6 @@ backend. It intentionally does not count toward the exhaustive handler matrix or
 live Podman gate below. Environment adapters/executable composition remain next.
 
 ### Full workspace gates
-
-The FilePanel watch revision makes subscriptions part of a bounded host logical
-view registry (32 views, each at most 64 files/8 tree roots). A socket only owns
-delivery. The existing read-only `workspace:sync` optionally carries a remembered
-opaque `fileViewId`; `workspace:files-state` returns the host ID and retained
-paths, followed by fresh text snapshots and tree invalidations. An ID-less
-reopen adopts the latest detached host view; a second attached page receives
-independent copied subscriptions, even if sessionStorage was copied by the
-browser. No write/rename history is retained or replayed. Shutdown disposes the
-registry, and explicit unwatch releases paths. This bounded increment restores
-watched files into a fresh page's active session; exact per-session file layout,
-dirty drafts, selection and previews still require the remaining host projection
-work. The existing Bridge FilePanel stays in scope; IDE integration does not.
 
 Use an isolated Podman project and headless Playwright, with synthetic content
 and private raw captures. Record source SHA, dependency locks, image ID, container
