@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver } from './index.js'
+import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles } from './index.js'
 import { createSharedBackend } from './runtime.js'
 declare const BRIDGE_VERSION: string
 
@@ -21,15 +21,19 @@ async function main(): Promise<void> {
   const serveApp = await createAppAssetHandler(path.resolve(__dirname, '../../webview/dist/browser'))
   const browser = createBrowserEnvironment({ root })
   const backend = createSharedBackend({ root, storage, serverUrl, token, version: BRIDGE_VERSION, environment: browser.environment })
+  const files = new WorkspaceFiles(browser.wrap(backend), { root,
+    onWatchError: () => { process.stderr.write('Bridge workspace file watch failed.\n') },
+  })
   let server: Awaited<ReturnType<typeof startWorkspaceServer>>
   try {
     server = await startWorkspaceServer({ bind, port, origin: process.env.WORKSPACE_ORIGIN,
-      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: browser.wrap(backend), serveApp })
-  } catch (error) { backend.dispose(); throw error }
+      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: files, serveApp })
+  } catch (error) { files.dispose(); backend.dispose(); throw error }
   let closing = false
   const close = () => {
     if (closing) return
     closing = true
+    files.dispose()
     backend.dispose()
     void server.close().catch(() => { process.exitCode = 1 })
   }

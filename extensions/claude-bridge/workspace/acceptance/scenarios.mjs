@@ -119,7 +119,8 @@ export function liveScenarios(state) {
       state.page = await context.newPage()
       await ready(state.page, owned.origin)
       try {
-        await state.page.waitForFunction(tab => window.bridgeCmd.state().activeTabId === tab, tab, { timeout: 15_000 })
+        check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
+        await state.page.evaluate(tab => window.bridgeCmd.switchTab(tab), tab)
         await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 15_000 })
         await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 })
       } catch { throw new CheckFailure('PERMISSION_REHYDRATION') }

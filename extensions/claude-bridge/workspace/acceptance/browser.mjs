@@ -55,12 +55,14 @@ export async function heap(context, page) {
 export async function requirePanel(page, path, expected) {
   try { check((await raw(page, 'fileViewerRead', path)).content.includes(expected), 'FILE_PANEL') }
   catch { throw new CheckFailure('FILE_PANEL') }
-  const show = page.locator('[data-tooltip="Show file column"]')
+  const show = page.locator('[data-tooltip="Show plan & files"]')
   if (await show.count()) await show.click()
-  // Bridge's own changed-file list opens its FilePanel, never an IDE editor.
-  const file = page.locator(`[data-tooltip="${path}"]`).first()
-  if (!(await file.isVisible())) throw new CheckFailure('FILE_PANEL')
-  await file.click()
+  // Select the real changed-file list; the panel initially shows its project tree.
+  const activity = page.locator('.right-panel-column')
+  await activity.getByRole('button', { name: /^Write\b/ }).click()
+  const file = activity.locator(`[data-tooltip="${path}"]`).first()
+  try { await file.waitFor({ state: 'visible', timeout: 10_000 }); await file.click() }
+  catch { throw new CheckFailure('FILE_PANEL_LIST') }
   try { await page.locator('.file-panel-column .cm-content').filter({ hasText: expected }).first().waitFor({ timeout: 10_000 }) }
-  catch { throw new CheckFailure('FILE_PANEL') }
+  catch { throw new CheckFailure('FILE_PANEL_CONTENT') }
 }
