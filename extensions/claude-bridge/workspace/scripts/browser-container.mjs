@@ -18,6 +18,8 @@ const script = `set -eu
 mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output
 mkdir -p /tmp/task/src/kamin-host
 cp /source/src/kamin-host/rolling-log.ts /tmp/task/src/kamin-host/rolling-log.ts
+mkdir -p /tmp/task/src/kamin-host/services
+cp /source/src/kamin-host/services/pty-sessions.ts /source/src/kamin-host/services/shells.ts /tmp/task/src/kamin-host/services/
 cd /source/extensions/claude-bridge
 tar --exclude=node_modules --exclude=dist -cf - extension webview workspace server/src/ui/src/lib/terminal-console | tar -xf - -C /tmp/task/extensions/claude-bridge
 cp -a /ms-playwright /tmp/bridgeweb-playwright

@@ -30,8 +30,10 @@
     "contract": "Host-owned chat snapshots, prompts and read-only resync."
   },
   "terminal": {
+    "file": "workspace/src/terminals.ts",
+    "test": "workspace/test/terminal-reattach.test.ts",
     "requires": "host-terminal",
-    "contract": "Required Bridge terminal adapter. #644 is held until host lifetime and scrollback work; no completed support claim."
+    "contract": "Shared host-owned PTY registry with 5000-line parsed screen and sequenced private reattach snapshots; page is a disposable projection. OSC palette/pixel/window reports remain unaccepted."
   },
   "title": {
     "requires": "title-regeneration",

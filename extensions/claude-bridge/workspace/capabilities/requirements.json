@@ -1,8 +1,10 @@
 {
   "host-terminal": {
-    "state": "pending",
+    "state": "implemented",
     "owner": "bridgeweb/lead",
-    "reason": "#644 is held: socket-owned PTY violates zero-browser continuation; integrate revised host-owned terminal + scrollback."
+    "reason": "#644 shared PTY registry retains processes and bounded parsed scrollback with zero pages; explicit kill/end/shutdown owns termination. Full terminal query-report compatibility remains unaccepted.",
+    "file": "workspace/src/terminals.ts",
+    "test": "workspace/test/terminal-reattach.test.ts"
   },
   "title-regeneration": {
     "state": "pending",

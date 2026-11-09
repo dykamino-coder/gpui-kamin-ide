@@ -138,8 +138,8 @@ export function capabilityInventory(base = fileURLToPath(new URL('../../', impor
   for (const file of all) {
     walk(source(file), node => {
       // Container adapters declare their dispatch sets outside ipcMain.
-      if (file.includes(path.join('workspace', 'src')) && ts.isVariableDeclaration(node) && /_(INVOKES|SENDS|EVENTS)$/.test(name(node.name) ?? '')) {
-        const kind = name(node.name)!.match(/_(INVOKES|SENDS|EVENTS)$/)![1].slice(0, -1).toLowerCase()
+      if (file.includes(path.join('workspace', 'src')) && ts.isVariableDeclaration(node) && /(?:^|_)(INVOKES|SENDS|EVENTS)$/.test(name(node.name) ?? '')) {
+        const kind = name(node.name)!.match(/(?:^|_)(INVOKES|SENDS|EVENTS)$/)![1].slice(0, -1).toLowerCase()
         let count = 0
         if (node.initializer) walk(node.initializer, child => {
           if (ts.isArrayLiteralExpression(child)) for (const value of child.elements) {

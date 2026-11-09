@@ -24,6 +24,9 @@ test('every API member, channel, forwarding site and client tool handler has an 
   for (const id of ['api:openInVscode', 'invoke:get-editor-selection', 'event:editor-selection', 'send:vscode:open']) {
     assert.equal(rows.get(id)?.reason, 'KaminIDE host feature, not Bridge')
   }
+  for (const id of ['send:workspace:terminal-sync', 'event:workspace:terminal-state', 'event:workspace:terminal-removed']) {
+    assert.equal(rows.get(id)?.provider, 'terminal', id)
+  }
 })
 
 test('mapping validation rejects stale rows, missing reasons, changed handlers and API route drift', () => {
@@ -72,6 +75,18 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   assert.throws(() => assertCapabilityMatrix(changed, matrix, fixture), /future-invoke/)
   fs.writeFileSync(probe, `ipcMain.handle(unknownChannel, () => true)`)
   assert.throws(() => capabilityInventory(fixture), /Unclassified dynamic IPC registration/)
+  fs.writeFileSync(probe, '')
+  const adapter = path.join(fixture, 'workspace/src/capability-probe.ts')
+  fs.writeFileSync(adapter, `
+    const INVOKES = new Set(['future-adapter-invoke'])
+    const SENDS = new Set(['future-adapter-send'])
+    const EVENTS = new Set(['future-adapter-event'])
+  `)
+  const adapters = capabilityInventory(fixture)
+  for (const id of ['invoke:future-adapter-invoke', 'send:future-adapter-send', 'event:future-adapter-event']) {
+    assert.ok(adapters.some(item => item.id === id), `Inventory omitted dispatch set ${id}`)
+  }
+  assert.throws(() => assertCapabilityMatrix(adapters, matrix, fixture), /future-adapter-invoke/)
 })
 
 test('a mapped capability cannot pass the full parity gate while its host adapter is pending', () => {

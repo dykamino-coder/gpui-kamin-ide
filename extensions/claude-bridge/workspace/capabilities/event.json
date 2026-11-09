@@ -46,8 +46,8 @@
   {"id":"event:plugins:browse-progress","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/plugins/handlers-browse.ts":4,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:pty-exit","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/handle-server-message.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:pty-output","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/handle-server-message.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:pty:data","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:pty:exit","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"event:pty:data","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/lib/bridge-channels.ts":1,"workspace/src/terminals.ts":1}},
+  {"id":"event:pty:exit","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/lib/bridge-channels.ts":1,"workspace/src/terminals.ts":2}},
   {"id":"event:saved-sessions:changed","status":"explicitly-not-applicable-with-reason","reason":"Legacy subscription has no current host producer. Current UI queries config/cwd/MCP/saved sessions and refreshes from connection/tab events.","evidence":"webview/src/hooks/useBridgeListeners.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:session-restarted","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/handle-server-message.ts":3,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:session:activity","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/handle-server-message.ts":1,"webview/src/lib/bridge-channels.ts":1,"workspace/src/presentation.ts":1}},
@@ -70,5 +70,7 @@
   {"id":"event:workspace:files-state","status":"supported-in-browser-host","provider":"files","sources":{"webview/src/browser/browser-socket.ts":1,"workspace/src/files.ts":1}},
   {"id":"event:workspace:question-resolved","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/presentation.ts":1}},
   {"id":"event:workspace:snapshot-end","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
-  {"id":"event:workspace:snapshot-start","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}}
+  {"id":"event:workspace:snapshot-start","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
+  {"id":"event:workspace:terminal-removed","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"event:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
 ]
