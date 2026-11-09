@@ -15,13 +15,36 @@ interface Subscription {
   dirty: boolean
 }
 
-/** A socket owns its subscriptions: another view cannot unwatch them. */
+/** Host-owned logical-view subscriptions, independent of socket lifetime. */
 export class FileWatches {
   private files = new Map<string, Subscription>()
   private trees = new Map<string, Subscription>()
   private disposed = false
 
   constructor(private view: ClientView, private onError: (error: Error) => void) {}
+
+  paths(): { files: string[]; trees: string[] } {
+    return { files: [...this.files.keys()], trees: [...this.trees.keys()] }
+  }
+
+  /** Fresh reads only, targeted to the attaching page; never replay mutations. */
+  async snapshot(view: ClientView): Promise<void> {
+    for (const path of this.files.keys()) {
+      try {
+        const { bytes, mtimeMs } = await readContainerFile(path)
+        if (!this.disposed && this.files.has(path)) await view.postMessage({ kind: 'event',
+          channel: 'file-viewer:external-change', args: [{ path, content: fileText(bytes), mtimeMs }] })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !this.disposed) {
+          this.onError(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+    }
+    for (const path of this.trees.keys()) {
+      if (!this.disposed) await view.postMessage({ kind: 'event', channel: 'file-tree:change',
+        args: [{ root: path, changedDir: path, resync: true }] })
+    }
+  }
 
   receive(channel: string, path: string): void {
     if (this.disposed) throw new Error('File view disposed')

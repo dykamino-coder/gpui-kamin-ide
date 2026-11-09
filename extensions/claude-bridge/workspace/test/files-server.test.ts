@@ -8,7 +8,7 @@ import { WorkspaceAuth } from '../src/auth.js'
 import { startWorkspaceServer } from '../src/server.js'
 import { fileFixture } from './file-fixture.js'
 
-test('authenticated sockets use real file services and logout releases their subscriptions', async t => {
+test('authenticated sockets use real file services and logout detaches their views', async t => {
   const f = await fileFixture(t)
   const server = await startWorkspaceServer({ backend: f.files, port: 0,
     auth: new WorkspaceAuth('synthetic-file-token', async () => ({ id: 'file-fixture' })) })

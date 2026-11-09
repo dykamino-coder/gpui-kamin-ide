@@ -35,7 +35,7 @@ it('installs the host snapshot receiver before sync, replaces stale projection a
   } }) as KaminBridgeApi
   state.postMessage.mockImplementation(frame => {
     if (frame.channel === 'workspace:sync') {
-      expect(state.receivers.size).toBe(2)
+      expect(state.receivers.size).toBe(3)
       for (const receiver of state.receivers) receiver({ kind: 'event', channel: 'workspace:snapshot-start', args: [[], 'host-tab'] })
     }
   })
