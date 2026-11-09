@@ -1,4 +1,9 @@
 {
+  "preview": {
+    "file": "workspace/src/preview.ts",
+    "test": "workspace/test/preview.test.ts",
+    "contract": "Host-owned trusted Module Federation descriptor and authenticated assets/HMR proxy; shared MCP tool dispatch, separate React root in thin browser panel."
+  },
   "shared-host": {
     "file": "extension/src/bridge-host.ts",
     "test": "workspace/test/runtime.test.ts",

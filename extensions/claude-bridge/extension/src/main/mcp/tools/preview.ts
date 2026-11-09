@@ -9,4 +9,4 @@ async function run(operation: string, input: unknown): Promise<McpResult> {
 
 export const previewMount = (input: Record<string, unknown>) => run('mount', input)
 export const previewUpdate = (input: Record<string, unknown>) => run('update', input.props)
-export const previewUnmount = () => run('unmount', undefined)
+export const previewUnmount = (): Promise<McpResult> => run('unmount', undefined)

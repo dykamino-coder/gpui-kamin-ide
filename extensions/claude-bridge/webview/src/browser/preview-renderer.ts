@@ -16,6 +16,10 @@ type RemoteModule = {
   mount?(element: HTMLElement, props: Record<string, unknown>): Mounted | (() => void) | Promise<Mounted | (() => void)>
 }
 const version = '19.3.1'
+// MF force registration evicts its container cache, but classic webpack keeps
+// replayable chunk factories on window. Retire only chunk globals introduced by
+// this remote, so a rebuilt entry cannot replay the previous exposed module.
+const chunkGlobals = new Map<string, Map<string, unknown>>()
 const shared = (lib: object) => ({ version, lib: () => lib,
   shareConfig: { singleton: true, requiredVersion: version, strictVersion: true } })
 init({ name: 'kamin_bridge_preview_host', remotes: [], shared: {
@@ -38,8 +42,19 @@ export async function renderRemote(element: HTMLElement, descriptor: RemoteDescr
   }
   entry.searchParams.set('build', build)
   entry.searchParams.set('revision', String(descriptor.revision))
+  const globals = globalThis as unknown as Record<string, unknown>
+  for (const [key, value] of chunkGlobals.get(descriptor.name) ?? []) {
+    if (globals[key] === value) delete globals[key]
+  }
+  const before = new Set(Object.keys(globals))
   registerRemotes([{ name: descriptor.name, entry: entry.href, type: descriptor.type }], { force: true })
-  const module = await loadRemote<RemoteModule>(`${descriptor.name}/${descriptor.exposedModule.slice(2)}`)
+  let module: RemoteModule | null
+  try { module = await loadRemote<RemoteModule>(`${descriptor.name}/${descriptor.exposedModule.slice(2)}`) }
+  finally {
+    chunkGlobals.set(descriptor.name, new Map(Object.keys(globals)
+      .filter(key => !before.has(key) && key.startsWith('webpackChunk') && Array.isArray(globals[key]))
+      .map(key => [key, globals[key]])))
+  }
   if (!module) throw new Error('The remote did not expose a module')
   if (typeof module.mount === 'function') {
     const mounted = await module.mount(element, descriptor.props)

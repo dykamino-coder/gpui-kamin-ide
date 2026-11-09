@@ -18,7 +18,7 @@ export class WorkspacePreview {
   private revision = 0
   private forbidden: number[] = []
 
-  blockPorts(ports: number[]): void { this.forbidden = ports }
+  blockPorts(ports: number[]): void { this.forbidden = [...new Set([...this.forbidden, ...ports])] }
 
   mount(input: PreviewMount): PreviewDescriptor {
     if (typeof input.name !== 'string' || !/^[A-Za-z][\w-]{0,63}$/.test(input.name)) throw new Error('Invalid federation remote name')

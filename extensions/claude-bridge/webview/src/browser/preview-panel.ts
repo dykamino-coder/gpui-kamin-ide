@@ -34,6 +34,11 @@ export function installPreviewPanel(): () => void {
   let disposed = false, epoch = 0, key = '', props = '', fingerprint = '', changedAt = 0
   let mounted: { update?(props: Record<string, unknown>): void; unmount(): void } | undefined
   let descriptor: RemoteDescriptor | null = null
+  let hotUpdate = 0
+  const observer = new PerformanceObserver(list => {
+    if (list.getEntries().some(entry => /(?:\.hot-update\.|[?&]t=\d+)/.test(entry.name))) hotUpdate = Date.now()
+  })
+  observer.observe({ type: 'resource', buffered: false })
   function clear() {
     ++epoch
     try { mounted?.unmount() } catch { /* a remote cleanup cannot stop chat */ }
@@ -91,11 +96,12 @@ export function installPreviewPanel(): () => void {
       // the container after a quiet window, covering rebuilds without HMR.
       if (fingerprint !== state.build) {
         if (!changedAt) changedAt = Date.now()
-        if (Date.now() - changedAt > 5000) { fingerprint = state.build; changedAt = 0; void mount(descriptor, state.build) }
+        if (hotUpdate >= changedAt - 2000) { fingerprint = state.build; changedAt = 0 }
+        else if (Date.now() - changedAt > 5000) { fingerprint = state.build; changedAt = 0; void mount(descriptor, state.build) }
       } else changedAt = 0
     } catch (error) { if (!disposed) fail(error) }
     finally { if (!disposed) timer = setTimeout(() => { void poll() }, 1000) }
   }
   void poll()
-  return () => { disposed = true; clearTimeout(timer); clear() }
+  return () => { disposed = true; clearTimeout(timer); observer.disconnect(); clear() }
 }
