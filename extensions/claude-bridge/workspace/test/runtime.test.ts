@@ -91,27 +91,38 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   assert.equal((await invoke('read-clipboard')).result, 'clipboard round trip')
   a.send(JSON.stringify({ kind: 'send', channel: 'layout:set', args: [{ filePanelVisible: true, sidebarWidth: 311 }] }))
   assert.equal((await invoke('layout:get')).result.sidebarWidth, 311)
-  const created = await invoke('tab:create', [{ token: 'browser-cannot-replace-token', serverUrl: 'ws://attacker.invalid' }])
+  await invoke('base-prompt:set', ['Synthetic project instruction: preserve this.'])
+  const created = await invoke('tab:create', [{ cwd: '', token: 'browser-cannot-replace-token', serverUrl: 'ws://attacker.invalid' }])
   assert.equal(created.ok, true)
   assert.equal(typeof created.result, 'string')
   const session = await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:create')
   assert.equal(session.token, 'synthetic-workspace-token')
   assert.equal(session.cwd, root)
+  assert.ok(session.basePrompt.includes('Synthetic project instruction: preserve this.'))
+  assert.ok(session.basePrompt.includes('tool host is the Linux workspace container'))
+  assert.ok(session.basePrompt.includes(JSON.stringify(root)))
   await wait(framesB, eventsB, frame => frame.channel === 'tab:created')
   assert.equal(framesB.some(frame => frame.kind === 'invoke-reply'), false)
   // The normal UI copies get-config into resume, including its redacted token.
   const browserConfig = (await invoke('get-config')).result
-  for (const [index, identity] of [browserConfig, { ...browserConfig, token: 'forged', serverUrl: 'ws://attacker.invalid' }].entries()) {
+  const project = path.join(root, 'chosen-project')
+  fs.mkdirSync(project)
+  for (const [index, identity] of [{ ...browserConfig, cwd: 'chosen-project', token: 'forged', serverUrl: 'ws://attacker.invalid' }, { ...browserConfig, cwd: '   ' }].entries()) {
     const conversationId = `00000000-0000-4000-8000-00000000000${index}`
     assert.equal((await invoke('session:resume', [{ ...identity, conversationId }])).ok, true)
     const resumed = await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:resume' && frame.conversationId === conversationId)
     assert.equal(resumed.token, 'synthetic-workspace-token')
-    assert.equal(resumed.cwd, root)
+    const expectedCwd = index === 0 ? project : root
+    assert.equal(resumed.cwd, expectedCwd)
+    assert.ok(resumed.basePrompt.includes(JSON.stringify(expectedCwd)))
+    assert.ok(resumed.basePrompt.includes('Synthetic project instruction: preserve this.'))
     const persisted = JSON.parse(fs.readFileSync(path.join(root, 'storage', 'open-claude-bridge-config.json'), 'utf8'))
     assert.equal(persisted.config.token, '')
     assert.equal(persisted.config.serverUrl, upstreamUrl)
     assertCredentialPrivate()
   }
+  assert.equal((await invoke('tab:create', [{ cwd: path.join(root, 'missing-project') }])).ok, false)
+  assert.equal((await invoke('tab:create', [{ cwd: 42 }])).ok, false)
   await assertTitleRegeneration(a, invoke, upstreamFrames, upstreamEvents)
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {

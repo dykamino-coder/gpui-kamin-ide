@@ -32,6 +32,12 @@ including absolute paths and symlink destinations outside `/workspace`.
 The container and its mounts provide isolation; `/workspace` is a project root,
 not a filesystem jail. Client HOME must remain separate from server CLI auth.
 
+New and resumed sessions default missing or blank browser cwd to the configured
+workspace root. A selected project must be an existing container directory;
+relative selections resolve against that root. Each session explains to the
+model that files, shell and client tools live in the workspace container, and
+includes the selected directory alongside the saved project instructions.
+
 The asset handler snapshots only the trusted browser build's entry and supported
 assets before listening. It rejects linked/special files and bounded-size/depth
 violations, and returns 404 for unknown paths, sources, maps and traversal.

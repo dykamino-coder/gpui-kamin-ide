@@ -6,7 +6,7 @@ export function check(value, code) { if (!value) throw new CheckFailure(code) }
 
 export const scenarios = [
   'image-contract', 'credential-storage', 'upstream-health', 'workspace-start', 'browser-login',
-  'chat', 'file-tools', 'bash', 'mcp', 'hook', 'file-panel',
+  'workspace-context', 'chat', 'file-tools', 'bash', 'mcp', 'hook', 'file-panel',
   'close-mid-turn', 'reopen-permission', 'two-browser-tabs', 'browser-metrics',
 ]
 // The integrated candidate includes executable/files/snapshots and the memory-only

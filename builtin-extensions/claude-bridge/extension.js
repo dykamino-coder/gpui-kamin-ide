@@ -42859,7 +42859,7 @@ var ConnectionManager = class _ConnectionManager {
     const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null;
     if (this.ws !== sock || sock.readyState !== wrapper_default.OPEN) return;
     const externalTools = _ConnectionManager.getExternalToolSchemas?.() ?? [];
-    const basePrompt = _ConnectionManager.getBasePrompt?.() ?? "";
+    const basePrompt = _ConnectionManager.getBasePrompt?.(this.config.cwd) ?? "";
     const cacheDir = process.env.KAMIN_CACHE_DIR;
     const transcriptMirrorDir = cacheDir ? import_path6.default.join(cacheDir, "transcripts") : void 0;
     this.logIdentity(this.conversationId && !this.pendingNewConversation ? "send-resume" : "send-create");
@@ -43392,6 +43392,7 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Resume a previous session by conversationId. */
   resume(conversationId) {
+    const basePrompt = _ConnectionManager.getBasePrompt?.(this.config.cwd) ?? "";
     this.send({
       type: "session:resume",
       noSpawnOnNotFound: true,
@@ -43401,7 +43402,8 @@ var ConnectionManager = class _ConnectionManager {
       cols: 120,
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
-      history: { mode: "paged" }
+      history: { mode: "paged" },
+      ...basePrompt ? { basePrompt } : {}
     });
   }
   /** Request raw JSONL file content from the server for download.
@@ -52417,7 +52419,7 @@ var BridgeHost = class {
       connection.sendRaw({ type: "mcp:register-external-content", ...catalog });
     };
     ConnectionManager.getExternalToolSchemas = buildPayload;
-    ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt();
+    ConnectionManager.getBasePrompt = (cwd) => [this.configStore.getBasePrompt(), opts?.sessionInstructions?.(cwd)].filter(Boolean).join("\n\n");
     const prevOnAuth = ConnectionManager.onAuthenticated;
     ConnectionManager.onAuthenticated = (connection) => {
       if (this.disposed) return;
