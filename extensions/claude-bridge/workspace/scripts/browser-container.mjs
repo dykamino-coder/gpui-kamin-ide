@@ -16,6 +16,8 @@ await fs.mkdir(output, { recursive: true })
 const run = args => spawnSync('podman', args, { stdio: 'inherit', windowsHide: true })
 const script = `set -eu
 mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output
+mkdir -p /tmp/task/src/kamin-host
+cp /source/src/kamin-host/rolling-log.ts /tmp/task/src/kamin-host/rolling-log.ts
 cd /source/extensions/claude-bridge
 tar --exclude=node_modules --exclude=dist -cf - extension webview workspace server/src/ui/src/lib/terminal-console | tar -xf - -C /tmp/task/extensions/claude-bridge
 cp -a /ms-playwright /tmp/bridgeweb-playwright

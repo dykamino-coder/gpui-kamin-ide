@@ -1,0 +1,7 @@
+[
+  {"id":"route:bridge:create-token","status":"supported-in-browser-host","provider":"server","sources":{"workspace/src/browser-server.ts":1}},
+  {"id":"route:bridge:server-version","status":"supported-in-browser-host","provider":"server","sources":{"workspace/src/browser-server.ts":1}},
+  {"id":"route:disconnect","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
+  {"id":"route:pty-submit-text","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
+  {"id":"route:workspace:sync","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/browser/browser-socket.ts":1}}
+]

@@ -1,0 +1,17 @@
+{
+  "host-terminal": {
+    "state": "pending",
+    "owner": "bridgeweb/lead",
+    "reason": "#644 is held: socket-owned PTY violates zero-browser continuation; integrate revised host-owned terminal + scrollback."
+  },
+  "title-regeneration": {
+    "state": "pending",
+    "owner": "bridgeweb/lead",
+    "reason": "bridge:regenerate-title requires shared host submit /rename hook; native SessionsBridge is not loaded in browser host."
+  },
+  "finished-toast-route": {
+    "state": "pending",
+    "owner": "bridgeweb/lead",
+    "reason": "Finished notification Open calls native session activation hook; browser question routing works but finished routing is not installed."
+  }
+}

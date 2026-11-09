@@ -6,12 +6,16 @@ on:
     paths:
       - extensions/claude-bridge/workspace/**
       - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   push:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
       - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   workflow_dispatch:
 

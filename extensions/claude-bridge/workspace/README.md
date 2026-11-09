@@ -326,3 +326,26 @@ The Tools usage action also reuses the native relay and targets currently
 attached browser views. It owns no session lifecycle state.
 
 Use `npm run test:browser:container` from Windows to run the suite in the official Linux Playwright image. The runner mounts source read-only, builds in container storage, uses a private browser cache and copies only test outputs back.
+
+## Capability inventory and parity gate
+
+`npm run test:capabilities` independently inventories both `KaminBridgeApi`
+interfaces, shim routes, IPC registrations, event producers, private workspace
+channels, dynamic forwarding sites and all exported client tool handlers. The
+checked-in `capabilities/*.json` files explicitly classify every item as
+`supported-in-browser-host` or `explicitly-not-applicable-with-reason`, with
+source-site counts and provider or exclusion evidence. Additions, removals,
+changed tool handlers and changed API routes fail until the affected entries
+are reviewed. The normal workspace suite and CI run this completeness test;
+advertised server MCP tools must have supported client handlers.
+
+The matrix records required Bridge scope, including adapters awaiting integration.
+`requires` entries make these dependencies explicit. `npm run test:parity` is
+the stricter readiness gate: it validates the inventory and fails while any
+required host adapter is pending. It currently reports host-owned terminal
+lifetime/scrollback, title regeneration and finished-notification activation.
+A passing inventory test is not completed browser parity or live acceptance.
+When integrating a pending adapter, update its requirement with implementation
+and regression-test evidence. Bridge FilePanel and PTY channels cannot be
+excluded as IDE features. IDE open/reveal/openInVscode alone use the exclusion
+reason **KaminIDE host feature, not Bridge**.

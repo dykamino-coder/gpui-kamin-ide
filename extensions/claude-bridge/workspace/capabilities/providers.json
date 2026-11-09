@@ -1,0 +1,40 @@
+{
+  "shared-host": {
+    "file": "extension/src/bridge-host.ts",
+    "test": "workspace/test/runtime.test.ts",
+    "contract": "Existing shared host modules, tools, hooks and MCP logic; source reachability is not behavioral acceptance."
+  },
+  "environment": {
+    "file": "workspace/src/browser-environment.ts",
+    "test": "workspace/test/browser-environment.test.ts",
+    "contract": "Host-owned effects, uploads into /workspace, browser downloads, clipboard and navigation."
+  },
+  "server": {
+    "file": "workspace/src/browser-server.ts",
+    "test": "workspace/test/browser-server.test.ts",
+    "contract": "Pinned upstream settings HTTP requests; configured credential remains host-owned."
+  },
+  "files": {
+    "file": "workspace/src/files.ts",
+    "test": "workspace/test/files-reconnect.test.ts",
+    "contract": "Bridge FilePanel container reads/writes/watches and host-owned logical view snapshots."
+  },
+  "transport": {
+    "file": "webview/src/lib/bridge-transport.ts",
+    "test": "workspace/test/protocol.test.ts",
+    "contract": "Known-channel invocation and private authenticated wire forwarding."
+  },
+  "presentation": {
+    "file": "workspace/src/runtime.ts",
+    "test": "workspace/test/runtime.test.ts",
+    "contract": "Host-owned chat snapshots, prompts and read-only resync."
+  },
+  "terminal": {
+    "requires": "host-terminal",
+    "contract": "Required Bridge terminal adapter. #644 is held until host lifetime and scrollback work; no completed support claim."
+  },
+  "title": {
+    "requires": "title-regeneration",
+    "contract": "Required shared /rename hook; currently installed only by native SessionsBridge."
+  }
+}
