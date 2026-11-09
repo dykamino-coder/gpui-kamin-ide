@@ -23,6 +23,11 @@ impl Gradient {
             }
     }
 
+    /// Есть ли длины, которые `resolve_lengths` читает: без них обход ничего не пишет.
+    pub fn has_lengths(&self) -> bool {
+        !self.stop_lengths.is_empty() || matches!(self.shape, GradientShape::Radial { .. })
+    }
+
     pub fn resolve_lengths(&mut self, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         if !self.stop_lengths.is_empty() {
             for (length, stop) in self.stop_lengths.iter_mut().zip(&mut self.stops_raw) {
@@ -111,26 +116,59 @@ impl Computed {
                 length.resolve_line_height(line, vcx);
             }
         };
-        for gradient in {
-            let group = &mut *self.reset_background;
-            [group.gradient.as_mut(), group.gradient_current.as_mut()]
-        }
+        // Группа фона пишется, только если в ней есть что сворачивать: общая
+        // группа без длин остаётся общей.
+        if [
+            self.reset_background.gradient.as_ref(),
+            self.reset_background.gradient_current.as_ref(),
+        ]
         .into_iter()
         .flatten()
+        .any(Gradient::has_lengths)
         {
-            gradient.resolve_lengths(&fix, vcx);
+            for gradient in {
+                let group = &mut *self.reset_background;
+                [group.gradient.as_mut(), group.gradient_current.as_mut()]
+            }
+            .into_iter()
+            .flatten()
+            {
+                gradient.resolve_lengths(&fix, vcx);
+            }
         }
         // Позиция и размер вычисляются и без изображения (css-backgrounds-3
         // §2.6, §2.9); процент остаётся для области позиционирования.
-        fix(&mut self.reset_background.bg_pos.x);
-        fix(&mut self.reset_background.bg_pos.y);
-        if let BgSize::Fixed(w, h) = &mut self.reset_background.bg_size {
-            fix(w);
-            fix(h);
+        let background = &*self.reset_background;
+        let pos = [background.bg_pos.x, background.bg_pos.y].map(|mut v| {
+            fix(&mut v);
+            v
+        });
+        let size = match background.bg_size {
+            BgSize::Fixed(w, h) => Some([w, h].map(|mut v| {
+                fix(&mut v);
+                v
+            })),
+            _ => None,
+        };
+        if pos != [background.bg_pos.x, background.bg_pos.y] {
+            let group = &mut *self.reset_background;
+            (group.bg_pos.x, group.bg_pos.y) = (pos[0], pos[1]);
         }
-        self.reset_background.bg_lists.resolve_lengths(&fix, vcx);
-        for image in self.image_operands() {
-            image.resolve_lengths(&fix, vcx);
+        if let Some([w, h]) = size
+            && self.reset_background.bg_size != BgSize::Fixed(w, h)
+        {
+            self.reset_background.bg_size = BgSize::Fixed(w, h);
+        }
+        if !self.reset_background.bg_lists.is_empty() {
+            self.reset_background.bg_lists.resolve_lengths(&fix, vcx);
+        }
+        if self
+            .image_operands_ref()
+            .any(crate::style::computed::ImageSource::has_lengths)
+        {
+            for image in self.image_operands() {
+                image.resolve_lengths(&fix, vcx);
+            }
         }
     }
 }

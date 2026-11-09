@@ -5,15 +5,18 @@ mod flex;
 pub(super) use flex::flex_child;
 
 use crate::dom::Node;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, Computed, Display, ResetFlex};
 use crate::style::values::value::Len;
+
+/// Правка used-стадии: блок потока не сжимается во flex-адаптере.
+struct FlowNoShrink;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn flow_children(
     collapsed: Vec<Node>,
     ordered_context: bool,
     inherited: &Computed,
-    _opts: &RenderOpts,
+    opts: &RenderOpts,
     flex_context: bool,
 ) -> Vec<Node> {
     let collapsed: Vec<Node> = if ordered_context {
@@ -36,7 +39,13 @@ pub(crate) fn flow_children(
             .map(|n| match n {
                 Node::Element(mut e) => {
                     if e.style.used().reset_flex.flex_shrink.is_none() {
-                        e.style.used_mut().reset_flex.flex_shrink = Some(0.0);
+                        // Одна правка общей группы у всех соседей: общий результат
+                        // документа вместо копии группы у каждого блока.
+                        e.style.used_mut().derive_used::<FlowNoShrink, ResetFlex>(
+                            &opts.cx.doc().values.derived,
+                            0,
+                            |flex| flex.flex_shrink = Some(0.0),
+                        );
                     }
                     // rtl: переполняющий блок с ЗАДАННОЙ шириной прижат к
                     // правому краю и вылезает влево (csswg-drafts#5572);

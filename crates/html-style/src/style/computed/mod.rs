@@ -59,12 +59,14 @@ pub use props::grid::values::area_name as grid_area_name;
 pub use props::inherited::MarkerType;
 mod queries;
 mod resolve;
-pub use resolve::{FontCx, LenCx, ViewportCx};
+pub use resolve::{FontCx, LenCx, LogicalSharing, ViewportCx};
 
 use crate::style::values::value::Len;
 mod box_style;
 mod fields;
 mod groups;
+mod used_groups;
+pub use used_groups::ResetGroup;
 mod initial;
 pub use groups::*;
 mod clone_audit;

@@ -12,7 +12,7 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
         values: crate::layout::cx::ValueContext {
-            doc: crate::layout::cx::BuildDoc(doc),
+            doc: crate::layout::cx::BuildDoc::of(doc),
             ..Default::default()
         },
         ..Default::default()
@@ -80,7 +80,7 @@ fn colored_numeric_scrollport_tracks_the_css_box() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
         values: crate::layout::cx::ValueContext {
-            doc: crate::layout::cx::BuildDoc(doc),
+            doc: crate::layout::cx::BuildDoc::of(doc),
             ..Default::default()
         },
         ..Default::default()

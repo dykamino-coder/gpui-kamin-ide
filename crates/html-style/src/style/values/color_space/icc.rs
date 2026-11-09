@@ -9,7 +9,7 @@ pub use resources::load_profiles_sheets;
 /// Профиль `@color-profile` документа по имени (`--foo`): имена
 /// придумывает страница, реестр — её (`values`).
 pub(super) fn profile(name: &str, vcx: ValueCx<'_>) -> Option<Vec<u8>> {
-    vcx.doc.profiles.borrow().get(name).cloned()
+    vcx.doc.profiles.borrow().as_ref()?.get(name).cloned()
 }
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.
