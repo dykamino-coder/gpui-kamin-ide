@@ -6,6 +6,23 @@ import { test } from 'node:test'
 import { createBrowserEnvironment } from '../src/browser-environment.js'
 import type { InvokeFrame, HostAttachment, HostFrame, WorkspaceBackend } from '../src/protocol.js'
 
+test('Tools usage relay reaches attached views and stops at detach', async () => {
+  let delegated = 0
+  const backend = createBrowserEnvironment({ root: os.tmpdir() }).wrap({ attach() { return {
+    async receive() { delegated++ }, dispose() {},
+  } } })
+  const outputs: HostFrame[][] = [[], []]
+  const views = outputs.map(out => backend.attach({ async postMessage(frame) { out.push(frame); return true } }))
+  await views[0].receive({ kind: 'send', channel: 'toolusage:open', args: ['Bash'] })
+  assert.deepEqual(outputs.map(out => out.at(-1)?.args), [['Bash'], ['Bash']])
+  views[1].dispose()
+  await views[0].receive({ kind: 'send', channel: 'toolusage:open', args: ['Read'] })
+  assert.equal(outputs[0].length, 2)
+  assert.equal(outputs[1].length, 1)
+  assert.equal(delegated, 0)
+  views[0].dispose()
+})
+
 test('browser environment owns file effects and replies per view without disposing the backend', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridgeweb-environment-'))
   t.after(async () => {

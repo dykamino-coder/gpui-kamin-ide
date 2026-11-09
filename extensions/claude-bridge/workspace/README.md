@@ -168,3 +168,23 @@ open/reveal/openInVscode operations are excluded: **KaminIDE host feature, not
 Bridge**. Native window controls belong to the browser. The production-bundle
 environment smoke proves actual upload/download bytes and clipboard round trips
 against an enumerated fixture; it does not prove live server/model parity.
+
+## Settings server requests and voice input
+
+Wrap the configured backend with `withBrowserServer(backend, { serverUrl, token })`
+using the same host-owned connection settings. The existing Settings HTTP helpers
+are shared with the native client; browser callers cannot choose a different
+upstream origin. Responses are bounded, redirects are rejected, and the configured
+credential is redacted. The existing settings credential placeholder is resolved
+only by the host. Tokens created explicitly for the user remain visible as results.
+Compose this inside `browser.wrap(...)` when using the environment adapter.
+
+Voice input uses the existing browser MediaRecorder/getUserMedia flow and the
+shared host `whisper:transcribe` handler. Configure the Whisper URL, token and
+model in Bridge settings. The host posts recorded bytes as multipart (up to
+8 MiB); the page receives recognized text or an explicit error. Microphone access
+requires a secure browser context, such as HTTPS or localhost. Native microphone
+and removed PWA-microphone channels do not run in the container host.
+
+The Tools usage action also reuses the native relay and targets currently
+attached browser views. It owns no session lifecycle state.
