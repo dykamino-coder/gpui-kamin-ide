@@ -7,7 +7,7 @@
 import * as vscode from "vscode"
 import fs from "fs"
 import path from "path"
-import os from "os"
+import { saveAttachment } from './attachments'
 import type { IpcMainInvokeEvent } from "@kaminide/host-compat"
 import { ipcMain } from "@kaminide/host-compat"
 import type { TabManager } from "./main/tab-manager"
@@ -94,9 +94,7 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
   // did nothing (the paste handler then threw on `null.split`).
   ipcMain.handle("save-clipboard-image", async (_e: IpcMainInvokeEvent, base64Data: string, mimeType: string) => {
     const ext = mimeType === "image/jpeg" ? ".jpg" : ".png"
-    const filePath = path.join(os.tmpdir(), `claude-paste-${String(Date.now())}${ext}`)
-    await fs.promises.writeFile(filePath, Buffer.from(base64Data, "base64"))
-    return filePath
+    return saveAttachment(base64Data, `pasted-image${ext}`)
   })
 
   // Non-image drop/paste attachment: the sandboxed webview can't resolve a
@@ -105,14 +103,7 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
   // CLI can reference a real path (audit #70 A3 — the old getDroppedFilePath
   // stub made these flows a silent no-op).
   ipcMain.handle("save-dropped-file", async (_e: IpcMainInvokeEvent, base64Data: string, name: string) => {
-    // Strip any path separators from the client-supplied name — it must stay
-    // a bare file name inside the temp drop dir.
-    const safe = (name || "attachment").replace(/[/\\]/g, "_").slice(-120)
-    const dir = path.join(os.tmpdir(), `claude-drop-${String(Date.now())}`)
-    await fs.promises.mkdir(dir, { recursive: true })
-    const filePath = path.join(dir, safe)
-    await fs.promises.writeFile(filePath, Buffer.from(base64Data, "base64"))
-    return filePath
+    return saveAttachment(base64Data, name)
   })
 
   const revealInOs = (_e: unknown, p: string): void => {
