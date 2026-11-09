@@ -1,18 +1,13 @@
 // Visibility/segment/interrupt/skip/api-error collapse helpers extracted
 // from JsonlViewer.tsx (Sprint 5 / Stage E1). Pure functions — no rendering.
 
-import { isInvisibleAssistantEntry, isToolResultEntry, isCaveatOnlyEntry, isVisibleAttachment, NON_RENDERING_ENTRY_TYPES } from './utils'
+import { isInvisibleAssistantEntry, isToolResultEntry, isCaveatOnlyEntry, isVisibleAttachment, NON_RENDERING_ENTRY_TYPES, RENDERABLE_ENTRY_TYPES } from './utils'
 import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
 import { taskNotificationText } from './task-notification'
 
 export interface CompactSegmentRange { from: number; to: number }
 
-/** Типы, для которых у JsonlEntry ЕСТЬ ветка рендера. Всё вне этого списка и
- *  вне NON_RENDERING_ENTRY_TYPES — новый тип CLI: скрываем (см. entryIsVisible),
- *  иначе он молча ест слоты render-окна, рисуя null. */
-const RENDERABLE_ENTRY_TYPES = new Set([
-  'user', 'assistant', 'system', 'attachment', 'tool_group',
-])
+/** Report each unknown CLI entry type once while keeping it out of render slots. */
 const warnedUnknownTypes = new Set<string>()
 
 /** UUID set of entries that fall in the active segment range. tool_group
