@@ -95,6 +95,7 @@ impl FlowReuse {
             self.store.prev.replace(last.clone());
             last
         };
+        let last_exact = last.as_ref().map(|last| last.same_paint(&key));
         let (settled, resized, settled_outside_widths) = match last {
             Some(last) => (
                 last.same(&key),
@@ -116,7 +117,9 @@ impl FlowReuse {
                 // Записи другого ключа не подойдут, а держат стили кадра записи.
                 self.store.reset();
             }
-            if !settled_outside_widths {
+            // Replays compare exactly: after a paint-only change of the root
+            // boxes they hold output and trees that no block will match.
+            if !settled_outside_widths || last_exact == Some(false) {
                 self.store.reset_replays();
             }
             let warm = self.store.settled.replace(settled) && settled;
@@ -183,8 +186,28 @@ impl FlowCx {
         if !fits {
             return None;
         }
+        // The block's paint changed: its record now compares with this tree
+        // and holds no recorded paint, so it keeps neither the previous tree
+        // nor its stale output alive (Blink drops the display items of a
+        // paint-invalidated object, keeping its layout result).
+        let record = match repaint {
+            true => Rc::new(super::Record {
+                source: self.reuse.shells.source(e),
+                key: record.key.clone(),
+                start: record.start,
+                end: record.end,
+                snapshot: record.snapshot,
+                ink: record.ink,
+                resizable: record.resizable,
+                stretch: record.stretch,
+                far: record.far,
+                replay: Default::default(),
+            }),
+            false => record,
+        };
         record.end.write(&opts.cx);
         let mut next = self.reuse.next.take();
+
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
         let slot = Rc::new(Slot::new(record, stretched, repaint));

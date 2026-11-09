@@ -81,6 +81,15 @@ impl FlowKey {
             && self.fonts == other.fonts
     }
 
+    /// The root style and boxes are equal in their paint-only values too.
+    pub(super) fn same_paint(&self, other: &Self) -> bool {
+        let boxes = |a: &Option<Element>, b: &Option<Element>| match (a, b) {
+            (None, None) => true,
+            (Some(a), Some(b)) => crate::dom::same_box(a, b),
+            _ => false,
+        };
+        *self.root == *other.root && boxes(&self.html, &other.html) && boxes(&self.body, &other.body)
+    }
     /// The widths of the flow (see `same_outside_widths`).
     pub(super) fn same_widths(&self, other: &Self) -> bool {
         self.constraints.key_widths() == other.constraints.key_widths()
