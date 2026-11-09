@@ -50,7 +50,10 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   })
   // Copy only production sources; never traverse server/data or dependencies.
   for (const directory of ['extension/src', 'webview/shared', 'webview/src', 'workspace/src']) {
-    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), { recursive: true })
+    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), {
+      recursive: true,
+      filter: file => fs.statSync(file).isDirectory() || /\.tsx?$/.test(file) && !/\.(test|spec)\./.test(file),
+    })
   }
   const api = path.join(fixture, 'webview/shared/types.ts')
   const original = fs.readFileSync(api, 'utf8')
