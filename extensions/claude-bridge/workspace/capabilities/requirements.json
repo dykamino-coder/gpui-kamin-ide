@@ -1,4 +1,11 @@
 {
+  "preview-hmr": {
+    "state": "implemented",
+    "owner": "bridgeweb3/lead",
+    "reason": "Host-owned Module Federation descriptor and authenticated HTTP/WebSocket proxy reuse shared MCP handlers; Linux browser acceptance exercises webpack HMR, rebuild fallback, zero-page updates/reopen and chat submission after HMR with a synthetic agent peer.",
+    "file": "workspace/src/preview.ts",
+    "test": "workspace/test/preview.smoke.mjs"
+  },
   "host-terminal": {
     "state": "implemented",
     "owner": "bridgeweb/lead",

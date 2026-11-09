@@ -11,6 +11,11 @@ export interface WorkspaceEnvironment {
   openExternal(url: string): Promise<boolean>
   openDocument(file: string): Promise<unknown>
   reveal(file: string): Promise<unknown>
+  preview?: {
+    mount(input: Record<string, unknown>): unknown
+    update(props: unknown): unknown
+    unmount(): unknown
+  }
 }
 
 let root: string | undefined
@@ -83,8 +88,15 @@ export const window = {
 }
 
 export const commands = {
-  async executeCommand(command: string, uri: { fsPath: string }, ..._args: unknown[]) {
-    if (command === 'revealFileInOS') return services().reveal(uri.fsPath)
+  async executeCommand(command: string, input: unknown, ..._args: unknown[]) {
+    if (command === 'revealFileInOS') return services().reveal((input as { fsPath: string }).fsPath)
+    if (command.startsWith('kaminBridge.preview.')) {
+      const preview = services().preview
+      if (!preview) throw new Error('Preview requires the browser workspace host')
+      if (command === 'kaminBridge.preview.mount') return preview.mount(input as Record<string, unknown>)
+      if (command === 'kaminBridge.preview.update') return preview.update(input)
+      if (command === 'kaminBridge.preview.unmount') return preview.unmount()
+    }
     throw new Error(`Workspace command is unavailable: ${command}`)
   },
 }
