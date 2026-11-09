@@ -1,4 +1,10 @@
 {
+  "preview": {
+    "file": "workspace/src/preview.ts",
+    "test": "workspace/test/preview.test.ts",
+    "requires": "preview-hmr",
+    "contract": "Host-owned trusted Module Federation descriptor and authenticated assets/HMR proxy; shared MCP tool dispatch, separate React root in thin browser panel."
+  },
   "shared-host": {
     "file": "extension/src/bridge-host.ts",
     "test": "workspace/test/runtime.test.ts",
@@ -37,6 +43,6 @@
   },
   "title": {
     "requires": "title-regeneration",
-    "contract": "Required shared /rename hook; currently installed only by native SessionsBridge."
+    "contract": "Shared BridgeHost /rename ingress validates live tabs; native SessionsBridge keeps title metadata through its callback."
   }
 }

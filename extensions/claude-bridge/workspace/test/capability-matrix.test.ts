@@ -39,6 +39,8 @@ test('mapping validation rejects stale rows, missing reasons, changed handlers a
   mutate(copy => { delete copy.rows.find(row => row.id === 'api:openInVscode')!.reason }, /Missing exclusion reason/)
   mutate(copy => { copy.rows.find(row => row.id === 'tool:Read')!.handler = 'writeFile' }, /Changed tool handler/)
   mutate(copy => { copy.rows.find(row => row.id === 'api:getConfig')!.routes = ['invoke:write-clipboard'] }, /Changed API routes/)
+  mutate(copy => { delete copy.rows.find(row => row.id === 'tool:preview_mount')!.requires }, /Missing provider prerequisite/)
+  mutate(copy => { delete copy.requirements['preview-hmr'] }, /Unknown provider prerequisite/)
 })
 
 test('new source APIs, channels, dynamic dispatchers and unregistered handlers fail without explicit mapping', t => {
@@ -50,7 +52,10 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   })
   // Copy only production sources; never traverse server/data or dependencies.
   for (const directory of ['extension/src', 'webview/shared', 'webview/src', 'workspace/src']) {
-    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), { recursive: true })
+    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), {
+      recursive: true,
+      filter: file => fs.statSync(file).isDirectory() || /\.tsx?$/.test(file) && !/\.(test|spec)\./.test(file),
+    })
   }
   const api = path.join(fixture, 'webview/shared/types.ts')
   const original = fs.readFileSync(api, 'utf8')

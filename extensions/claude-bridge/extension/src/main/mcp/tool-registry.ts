@@ -7,6 +7,7 @@ import { agentSpawn, teamCreate, teamDelete, sendMessage, taskCreate, taskGet, t
 import { askUserQuestion, enterPlanMode, exitPlanMode, skillLoad } from './tools/ui-tools'
 import { pushNotification, todoWrite, todoList } from './tools/notifications'
 import { showWidget } from './tools/widget'
+import { previewMount, previewUpdate, previewUnmount } from './tools/preview'
 import { toolSearch } from './tools/search-tools'
 import { lspDiagnostics, lspHover, lspDefinition, lspReferences } from './tools/lsp'
 
@@ -67,6 +68,9 @@ export const toolRegistry: Map<string, ToolHandler> = new Map<string, ToolHandle
   ['Skill', skillLoad],
   ['PushNotification', pushNotification],
   ['ShowWidget', showWidget],
+  ['preview_mount', previewMount],
+  ['preview_update', previewUpdate],
+  ['preview_unmount', previewUnmount],
   ['TodoWrite', todoWrite],
   ['TodoList', todoList],
 
