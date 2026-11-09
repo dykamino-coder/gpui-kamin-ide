@@ -1,10 +1,23 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CheckFailure, outcome, exitStatus, markdown } from './report.mjs'
+import { CheckFailure, outcome, exitStatus, markdown, assertImageSource } from './report.mjs'
 import { complete, used } from './browser.mjs'
 import { spawn } from 'node:child_process'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
+
+test('live acceptance rejects dirty runners and images from another source before execution', () => {
+  const source = 'a'.repeat(40)
+  const candidate = { source, sourceDirty: false, imageSource: source }
+  assertImageSource(candidate)
+  for (const imageSource of [undefined, 'unspecified', 'a'.repeat(8), 'b'.repeat(40)]) {
+    assert.throws(() => assertImageSource({ ...candidate, imageSource }), { code: 'IMAGE_SOURCE_MISMATCH' })
+  }
+  for (const sourceDirty of [true, undefined]) {
+    assert.throws(() => assertImageSource({ ...candidate, sourceDirty }), { code: 'RUNNER_SOURCE_DIRTY' })
+  }
+  assert.throws(() => assertImageSource({ ...candidate, source: '', imageSource: '' }), { code: 'IMAGE_SOURCE_MISMATCH' })
+})
 
 test('known feature gaps never hide unrelated exceptions or convert blocked prerequisites to success', () => {
   const pending = { 'file-panel': { FILE_PANEL: 'Fixture dependency is pending.' } }
