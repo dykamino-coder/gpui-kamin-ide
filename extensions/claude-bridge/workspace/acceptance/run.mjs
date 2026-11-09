@@ -33,11 +33,12 @@ async function main() {
   const report = { started: new Date().toISOString(), source: process.env.BRIDGEWEB_ACC_SOURCE,
     sourceDirty: process.env.BRIDGEWEB_ACC_SOURCE_DIRTY === '1',
     results: [], metrics: {}, cleanup: [] }
-  const record = async (name, fn) => {
+  const record = async (name, fn, blockedReason) => {
     const started = Date.now()
     let error
     try { await fn() } catch (e) { error = e }
     const result = { ...outcome(name, error, values.strict), durationMs: Date.now() - started }
+    if (error && blockedReason) { result.status = 'BLOCKED'; result.reason = blockedReason }
     report.results.push(result)
     process.stdout.write(`${name}: ${result.status}\n`)
     return !error
@@ -62,13 +63,7 @@ async function main() {
     if (imageReady && cliReady) await record('credential-storage', () => check(credentialsReady, 'TOKEN_PERSISTENCE'))
     const upstreamReady = await record('upstream-health', async () => {
       check(await upstreamHealth(server), 'UPSTREAM_UNREACHABLE')
-    })
-    // An unavailable external prerequisite is blocked, not a product regression.
-    if (!upstreamReady) {
-      const row = report.results.find(r => r.name === 'upstream-health')
-      row.status = 'BLOCKED'
-      row.reason = 'Supplied loopback Bridge server /health is unreachable; no token issued and no server resources changed.'
-    }
+    }, 'Supplied loopback Bridge server /health is unreachable; no token issued and no server resources changed.')
     let workspaceReady = false
     if (imageReady && !cliReady) await record('workspace-start', () => check(false, 'CORE_ENTRYPOINT'))
     if (imageReady && cliReady && credentialsReady && upstreamReady) {
