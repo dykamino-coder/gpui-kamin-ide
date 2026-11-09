@@ -1,6 +1,8 @@
 import { switchTabLocal, tabs } from '../../signals/tabs'
 import { activeCustomizePanel, sidebarMode } from '../../signals/ui'
 import { showToast } from '../../signals/toasts'
+import type { PersistedTabState } from '../../../shared/types'
+import { scheduleSaveTabsState, togglePinTab } from '../../lib/tabs-persist'
 
 export function activateSession(id: string): void {
   sidebarMode.value = 'sessions'; activeCustomizePanel.value = null
@@ -32,4 +34,18 @@ export function renameSession(id: string): void {
 }
 export function closeSession(id: string): void {
   window.kaminBridge.closeTab(id)
+}
+
+/** Empty pinned sessions have no conversation to resume; preserve their folder and pin. */
+export async function wakeSession(saved: PersistedTabState): Promise<void> {
+  if (saved.conversationId) { await resumeSession(saved.conversationId, saved.cwd, saved.title); return }
+  try {
+    const config = await window.kaminBridge.getConfig()
+    const id = await window.kaminBridge.createTab({ ...config, cwd: saved.cwd })
+    if (!id) return
+    ghostPinnedTabs.value = ghostPinnedTabs.value.filter(g => g.id !== saved.id)
+    if (!pinnedTabs.value.has(id)) togglePinTab(id)
+    scheduleSaveTabsState()
+    activateSession(id)
+  } catch { showToast({ type: 'error', title: 'Session could not be opened', message: 'Check the connection and workspace folder.' }) }
 }

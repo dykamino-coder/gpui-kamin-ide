@@ -1,7 +1,7 @@
 import { activeTabId, tabs, pinnedTabs, topTabsOrder, ghostPinnedTabs } from '../../signals/tabs'
 import { useState } from 'preact/hooks'
 import { togglePinTab, moveTopTab, scheduleSaveTabsState } from '../../lib/tabs-persist'
-import { activateSession, closeSession, newSession, renameSession, resumeSession } from './session-actions'
+import { activateSession, closeSession, newSession, renameSession, wakeSession } from './session-actions'
 
 export function SessionTabs() {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -12,7 +12,7 @@ export function SessionTabs() {
   })
   return <div class="ws-session-tabs" role="tablist" aria-label="Open sessions">
     {ghostPinnedTabs.value.map(g => <button class="ws-session-tab sleeping" role="tab" aria-selected="false" key={'ghost-' + g.id}
-      title={g.cwd} onClick={() => g.conversationId ? void resumeSession(g.conversationId, g.cwd, g.title) : void newSession(false)}
+      title={g.cwd} onClick={() => void wakeSession(g)}
       onContextMenu={e => { e.preventDefault(); ghostPinnedTabs.value = ghostPinnedTabs.value.filter(p => p.id !== g.id); scheduleSaveTabsState() }}>
       <i class="fas fa-thumbtack" /><span>{g.title || g.cwd.split('/').pop() || 'Session'}</span>
     </button>)}
