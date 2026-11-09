@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles, TerminalWorkspaceBackend, withBrowserServer } from './index.js'
+import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles, TerminalWorkspaceBackend, withBrowserServer, WorkspacePreview } from './index.js'
 import { createSharedBackend } from './runtime.js'
 declare const BRIDGE_VERSION: string
 
@@ -19,7 +19,8 @@ async function main(): Promise<void> {
   const port = Number(process.env.WORKSPACE_PORT || 3460)
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid workspace port')
   const serveApp = await createAppAssetHandler(path.resolve(__dirname, '../../webview/dist/browser'))
-  const browser = createBrowserEnvironment({ root })
+  const preview = new WorkspacePreview()
+  const browser = createBrowserEnvironment({ root, preview })
   const backend = createSharedBackend({ root, storage, serverUrl, token, version: BRIDGE_VERSION, environment: browser.environment })
   const files = new WorkspaceFiles(browser.wrap(withBrowserServer(backend, { serverUrl, token })), { root,
     onWatchError: () => { process.stderr.write('Bridge workspace file watch failed.\n') },
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
   let server: Awaited<ReturnType<typeof startWorkspaceServer>>
   try {
     server = await startWorkspaceServer({ bind, port, origin: process.env.WORKSPACE_ORIGIN,
-      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: terminals, serveApp })
+      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: terminals, serveApp, preview })
   } catch (error) { dispose(); throw error }
   let closing = false
   const close = () => {

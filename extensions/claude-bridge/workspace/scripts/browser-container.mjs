@@ -15,7 +15,9 @@ const output = process.env.BRIDGE_BROWSER_OUTPUT ?? await fs.mkdtemp(path.join(o
 await fs.mkdir(output, { recursive: true })
 const run = args => spawnSync('podman', args, { stdio: 'inherit', windowsHide: true })
 const script = `set -eu
-mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output
+mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output /workspace
+mkdir -p /tmp/task/builtin-extensions/claude-bridge
+cp /source/builtin-extensions/claude-bridge/package.json /tmp/task/builtin-extensions/claude-bridge/package.json
 mkdir -p /tmp/task/src/kamin-host
 cp /source/src/kamin-host/rolling-log.ts /tmp/task/src/kamin-host/rolling-log.ts
 mkdir -p /tmp/task/src/kamin-host/services
@@ -39,6 +41,7 @@ exit $result
 const created = run(['create', '--name', name, '--mount', `type=bind,source=${repo},target=/source,readonly`,
   '--env', 'PLAYWRIGHT_SKIP_BROWSER_GC=1', '--env', 'PLAYWRIGHT_BROWSERS_PATH=/tmp/bridgeweb-playwright',
   '--env', 'BRIDGE_BROWSER_SCREENSHOT=/tmp/browser-output/bridge-browser-fixture.png',
+  '--env', 'BRIDGE_PREVIEW_ROOT=/workspace',
   `mcr.microsoft.com/playwright:v${version}-noble`, 'sh', '-lc', script])
 if (created.error || created.status !== 0) throw new Error('Could not create the browser test container')
 try {
