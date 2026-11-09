@@ -9,19 +9,13 @@ export const scenarios = [
   'chat', 'file-tools', 'bash', 'mcp', 'hook', 'file-panel',
   'close-mid-turn', 'reopen-permission', 'two-browser-tabs', 'browser-metrics',
 ]
-export const expected = {
-  'workspace-start': { CORE_ENTRYPOINT: 'INC-2026-0087: executable composition/environment adapter is not merged.' },
-  'credential-storage': { TOKEN_PERSISTENCE: 'INC-2026-0087: runtime ConfigStore persists injected token; memory-only credential seam is pending. No real token issued.' },
-  'file-panel': { FILE_PANEL: '#642: Bridge FilePanel container adapter/reconnect watch is not merged.' },
-  'close-mid-turn': {
-    SNAPSHOT: 'INC-2026-0087: host snapshot/transcript rehydration and exactly-once reconciliation are not merged.',
-  },
-  'reopen-permission': { PERMISSION_REHYDRATION: 'INC-2026-0087: pending permission snapshot after closing the last page is not merged.' },
-  'two-browser-tabs': { SNAPSHOT: 'INC-2026-0087: targeted host snapshot for simultaneous browser views is not merged.' },
-}
-export function outcome(name, error, strict = false) {
+// The integrated candidate includes executable/files/snapshots and the memory-only
+// credential fix. Failures in those paths now signal regressions. Add only exact
+// assertion codes for genuinely pending features, with a dependency and reason.
+export const expected = {}
+export function outcome(name, error, strict = false, expectedFailures = expected) {
   if (!error) return { name, status: 'PASS' }
-  const reason = expected[name]?.[error.code]
+  const reason = expectedFailures[name]?.[error.code]
   return { name, status: reason && !strict ? 'XFAIL' : 'FAIL',
     reason: reason ?? `Check ${error instanceof CheckFailure ? error.code : 'UNEXPECTED_ERROR'} failed; raw error omitted.` }
 }

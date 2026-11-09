@@ -7,9 +7,11 @@ import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
 test('known feature gaps never hide unrelated exceptions or convert blocked prerequisites to success', () => {
-  assert.equal(outcome('file-panel', new CheckFailure('FILE_PANEL')).status, 'XFAIL')
-  assert.equal(outcome('file-panel', new CheckFailure('FILE_PANEL'), true).status, 'FAIL')
-  assert.equal(outcome('file-panel', new CheckFailure('MODEL_TIMEOUT')).status, 'FAIL')
+  const pending = { 'file-panel': { FILE_PANEL: 'Fixture dependency is pending.' } }
+  assert.equal(outcome('file-panel', new CheckFailure('FILE_PANEL'), false, pending).status, 'XFAIL')
+  assert.equal(outcome('file-panel', new CheckFailure('FILE_PANEL'), true, pending).status, 'FAIL')
+  assert.equal(outcome('file-panel', new CheckFailure('MODEL_TIMEOUT'), false, pending).status, 'FAIL')
+  assert.equal(outcome('file-panel', new CheckFailure('FILE_PANEL')).status, 'FAIL', 'Landed features must not retain stale XFAIL allowances')
   assert.equal(outcome('file-panel').status, 'PASS')
   assert.equal(exitStatus([{ status: 'PASS' }, { status: 'XFAIL' }, { status: 'BLOCKED' }]), 2)
   assert.equal(exitStatus([{ status: 'FAIL' }, { status: 'BLOCKED' }]), 1)
