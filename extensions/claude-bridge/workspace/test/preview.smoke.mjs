@@ -43,6 +43,11 @@ test('agent MCP mounts MF next to chat, HMR keeps the root, reopen restores and 
   assert.equal(await page.evaluate(() => window.__previewMounts), 1)
   assert.equal(await page.evaluate(() => window.__previewDocument), 'same-document')
   assert.equal(await page.evaluate(() => window.kaminBridge.getVersion()), 'fixture')
+  await page.evaluate(tabId => window.kaminBridge.submitText(tabId, 'Keep working while preview updates', 'preview-chat-after-hmr'), tab)
+  await fixture.wait(frame => frame.type === 'session:submitText' && frame.submissionId === 'preview-chat-after-hmr')
+  if (process.env.BRIDGE_BROWSER_SCREENSHOT) await page.screenshot({
+    path: process.env.BRIDGE_BROWSER_SCREENSHOT.replace(/\.png$/, '-preview.png'), fullPage: true,
+  })
   await fixture.tool('preview_update', { props: { label: 'two' } })
   await page.getByRole('button', { name: 'After two 0', exact: true }).waitFor()
   await page.close()
