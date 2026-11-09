@@ -11,6 +11,8 @@ export interface SendFrame {
   kind: 'send'
   channel: string
   args: unknown[]
+  /** Browser's opaque host logical file view; never authentication. */
+  fileViewId?: string
 }
 
 export interface DiagnosticFrame {

@@ -151,6 +151,12 @@ export function FileEditor(): JSX.Element {
       // the only spot where collision matters visually. Background
       // tabs sync on next open via the read in `loadFile`.
       if (path !== activePathRef.current) {
+        for (const [key] of editorStates) {
+          if (key.endsWith(`::${path}`)) {
+            const owner = key.slice(0, -path.length - 2)
+            if (!getOpenFiles(owner).find(file => file.path === path)?.dirty) editorStates.delete(key)
+          }
+        }
         markFileMtime(tab, path, mtimeMs)
         return
       }

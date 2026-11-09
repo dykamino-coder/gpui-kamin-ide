@@ -6,6 +6,7 @@ interface Options {
   url: string
   createSocket?: (url: string) => Socket
   onState?: (state: ConnectionState) => void
+  fileViewIdentity?: { get(): string | undefined; set(id: string): void }
 }
 const MAX_FRAME = 16 * 1024 * 1024
 const MAX_BUFFER = 32 * 1024 * 1024
@@ -73,6 +74,10 @@ export function createBrowserSocket(options: Options): WebviewApi & { connect():
         if (typeof event.data !== 'string' || new TextEncoder().encode(event.data).length > MAX_FRAME) throw new Error('Frame size')
         const frame: unknown = JSON.parse(event.data)
         if (!hostFrame(frame)) throw new Error('Frame shape')
+        const f = frame as { kind: string; channel?: string; args?: { id?: unknown }[] }
+        if (f.kind === 'event' && f.channel === 'workspace:files-state' && typeof f.args?.[0]?.id === 'string') {
+          options.fileViewIdentity?.set(f.args[0].id)
+        }
         for (const receive of messages) receive(frame)
       } catch { current.close(4002, 'Invalid host frame') }
     }
@@ -97,7 +102,12 @@ export function createBrowserSocket(options: Options): WebviewApi & { connect():
           && typeof diagnostic.channel === 'string' && diagnostic.channel.startsWith('diag:'))) return
         throw new Error('Workspace disconnected; command was not sent')
       }
-      const text = JSON.stringify(frame)
+      const f = frame as { kind?: string; channel?: string } | null
+      const identity = options.fileViewIdentity?.get()
+      const text = JSON.stringify(f?.kind === 'send' && identity
+        ? f.channel === 'workspace:sync' ? { ...f, args: [{ fileViewId: identity }] }
+          : /^(file-viewer|file-tree):(watch|unwatch)$/.test(f.channel ?? '') ? { ...f, fileViewId: identity } : frame
+        : frame)
       if (typeof text !== 'string') throw new Error('Invalid workspace frame')
       const size = new TextEncoder().encode(text).length
       if (size > MAX_FRAME || socket.bufferedAmount + size > MAX_BUFFER) throw new Error('Workspace output limit')

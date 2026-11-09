@@ -40829,6 +40829,16 @@ var wrapper_default = import_websocket.default;
 var vscode4 = __toESM(require("vscode"), 1);
 var import_node_crypto4 = require("node:crypto");
 
+// src/shared/streaming-delta.ts
+function appendStreamingText(entry, delta) {
+  if (!entry || entry.__streaming === void 0 || entry.message?.id !== delta.msgId || !Number.isSafeInteger(delta.blockIdx) || delta.blockIdx < 0 || typeof delta.appendText !== "string") return false;
+  const block = entry.message?.content?.[delta.blockIdx];
+  if (delta.kind === "text" && block?.type === "text") block.text = (block.text ?? "") + delta.appendText;
+  else if (delta.kind === "thinking" && block?.type === "thinking") block.thinking = (block.thinking ?? "") + delta.appendText;
+  else return false;
+  return true;
+}
+
 // src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
 var import_node_path = __toESM(require("node:path"), 1);
@@ -42297,8 +42307,9 @@ function handleServerMessage(msg, ctx) {
       break;
     }
     case "streaming:delta": {
-      if (ctx.isRendererMuted?.()) break;
       const d = msg;
+      ctx.appendCachedStreamingDelta?.(d);
+      if (ctx.isRendererMuted?.()) break;
       ctx.window.webContents.send("streaming-delta", ctx.tabId, {
         msgId: d.msgId,
         blockIdx: d.blockIdx,
@@ -43121,6 +43132,7 @@ var ConnectionManager = class _ConnectionManager {
     if (terminal) this.idleTracker.dispose();
     this.mcpResults.detach();
     if (terminal) {
+      disposeBackgroundShells(this.tabId);
       this.mcpResults.dispose();
       this.mcpSessionId = null;
       this.recentMcpCalls.clear();
@@ -43142,7 +43154,6 @@ var ConnectionManager = class _ConnectionManager {
     if (this.disposed) return;
     this.disposed = true;
     this.disconnect();
-    disposeBackgroundShells(this.tabId);
   }
   /** Returns current connection state. Maps ExtendedConnectionState to
    *  ConnectionState for IPC compatibility. */
@@ -43255,6 +43266,19 @@ var ConnectionManager = class _ConnectionManager {
     if (records.length === 0) return 0;
     this.window.webContents.send("jsonl-entries", this.tabId, records);
     return records.length;
+  }
+  /** Read the authoritative cache without broadcasting a replay to other views.
+   * Serialization by the caller detaches the disposable renderer projection. */
+  getViewSnapshot(maxRecords = 200) {
+    const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords));
+    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0));
+    return {
+      entries: ordered.slice(-count),
+      streaming: this.cachedStreamingEntry,
+      subagents: [...this.cachedSubagentEntries].map(([key2, slot]) => ({ ...slot, agentId: slot.agentId ?? key2, entries: slot.entries.slice(-count) })),
+      boundaries: this.lastSegmentIndex,
+      status: this.cachedJsonlStatus ?? { status: "watching", replayComplete: this.state.status !== "authenticated" }
+    };
   }
   replayJsonlToRenderer() {
     this.requestedSegment = null;
@@ -43632,6 +43656,9 @@ var ConnectionManager = class _ConnectionManager {
       getCachedJsonl: () => this.cachedJsonlEntries,
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
+      },
+      appendCachedStreamingDelta: (delta) => {
+        appendStreamingText(this.cachedStreamingEntry, delta);
       },
       pushSubagentCache: (key2, agentName, agentId, entries2) => {
         const slot = this.cachedSubagentEntries.get(key2) ?? {
@@ -50443,6 +50470,10 @@ async function handleServerRequest(ctx, serverId, msg) {
         if (timer) {
           clearTimeout(timer);
           timer = null;
+        }
+        try {
+          ctx.window.webContents.send("mcp-elicitation-resolved", requestId);
+        } catch {
         }
         resolve(value);
       };
