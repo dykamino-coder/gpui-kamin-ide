@@ -5,7 +5,7 @@ import path from 'node:path'
 if (process.platform !== 'linux' || process.env.BRIDGEWEB_ACC_CONTAINER !== '1') throw new Error('Linux acceptance container required')
 // Copy only source roots into the disposable Linux filesystem. Never use host
 // node_modules, build outputs, Git metadata, dotenv or credential files.
-const roots = ['src', 'builtin-extensions/claude-bridge/package.json', 'extensions/claude-bridge/extension', 'extensions/claude-bridge/workspace',
+const roots = ['src', 'builtin-extensions/claude-bridge/package.json', 'builtin-extensions/claude-bridge/chat.html', 'extensions/claude-bridge/extension', 'extensions/claude-bridge/workspace',
   'extensions/claude-bridge/webview', 'extensions/claude-bridge/server/src/ui/src/lib/terminal-console']
 const excluded = /^(node_modules|dist|\.git|test-results|playwright-report)$|^\.env|\.(log.*|pem|key)$/
 for (const relative of roots) {
