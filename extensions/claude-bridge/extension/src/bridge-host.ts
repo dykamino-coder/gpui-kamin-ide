@@ -1,7 +1,6 @@
 // BridgeHost — the VSIX postMessage router for the Kamin bridge API.
 //
-// The webview calls canonical `window.kaminBridge.*`; the deprecated
-// `window.electronBridge.*` alias is retained for compatibility. Calls serialise
+// The webview calls `window.kaminBridge.*`. Calls serialise
 // to postMessage frames: `{kind:'invoke',id,channel,args}` (request/response) and
 // `{kind:'send',channel,args}` (fire-and-forget). This host turns those back into
 // the exact `ipcMain.handle/.on` calls the vendored handlers expect, and turns

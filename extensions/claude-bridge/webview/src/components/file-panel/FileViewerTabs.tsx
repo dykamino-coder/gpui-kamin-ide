@@ -10,7 +10,7 @@ import {
   closeToRightInTab,
   setActiveFile,
 } from '../../signals/file-viewer'
-import tabStyles from '../titlebar/TabsBar.module.css'
+import tabStyles from '../overlays/ContextMenu.module.css'
 
 function basename(p: string): string {
   return p.replace(/^.*[/\\]/, '')

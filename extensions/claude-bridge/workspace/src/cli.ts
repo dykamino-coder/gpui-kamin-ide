@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles, TerminalWorkspaceBackend, withBrowserServer, WorkspacePreview } from './index.js'
 import { createSharedBackend } from './runtime.js'
+import { withWorkspaceShell } from './shell-state.js'
 import { loadCredentials, resetCredentials, SESSION_FILE } from './credentials.js'
 declare const BRIDGE_VERSION: string
 
@@ -28,7 +29,8 @@ async function main(): Promise<void> {
   const preview = new WorkspacePreview()
   const browser = createBrowserEnvironment({ root, preview })
   const backend = createSharedBackend({ root, storage, serverUrl, token, version: BRIDGE_VERSION, environment: browser.environment })
-  const files = new WorkspaceFiles(browser.wrap(withBrowserServer(backend, { serverUrl, token })), { root,
+  const shell = withWorkspaceShell(backend, path.join(storage, 'workspace-shell.json'))
+  const files = new WorkspaceFiles(browser.wrap(withBrowserServer(shell, { serverUrl, token })), { root,
     onWatchError: () => { process.stderr.write('Bridge workspace file watch failed.\n') },
   })
   const terminals = new TerminalWorkspaceBackend(files, root)

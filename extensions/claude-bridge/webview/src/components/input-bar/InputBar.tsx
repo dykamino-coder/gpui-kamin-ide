@@ -51,7 +51,6 @@ export function InputBar(): JSX.Element {
     bridge.getConfig().then((cfg: any) => {
       if (cfg.whisperUrl) voiceHandlers.setVisible(true)
     }).catch(() => {})
-    // micConnected-проверка Chrome-PWA моста вырезана (аудит #70 A2).
   }, [])
 
   const mcp = mcpLoading.value

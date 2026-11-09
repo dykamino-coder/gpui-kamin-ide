@@ -15,5 +15,6 @@
   {"id":"route:workspace:sync","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/browser/browser-socket.ts":1}},
   {"id":"route:workspace:terminal-removed","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
   {"id":"route:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},
-  {"id":"route:workspace:terminal-sync","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
+  {"id":"route:workspace:terminal-sync","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"route:workspace:shell:update","status":"supported-in-browser-host","provider":"shell","sources":{"workspace/src/shell-state.ts":1}}
 ]

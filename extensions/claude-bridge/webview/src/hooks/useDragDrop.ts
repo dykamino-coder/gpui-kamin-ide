@@ -74,7 +74,7 @@ export function useDragDrop(): DragDropState {
         continue
       }
 
-      // Non-image: у песочного вебвью нет OS-пути File (webUtils — Electron),
+      // Non-image: у песочного вебвью нет OS-пути File,
       // поэтому байты уезжают в temp через save-dropped-file и CLI получает
       // реальный путь (аудит #70 A3: прежний getDroppedFilePath="" делал
       // ветку тихим no-op).

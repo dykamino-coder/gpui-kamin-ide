@@ -1,4 +1,4 @@
-import { check, CheckFailure } from './report.mjs'
+import { check } from './report.mjs'
 
 export async function raw(page, method, ...args) {
   return page.evaluate(({ method, args }) => window.bridgeCmd.raw(method, ...args), { method, args })
@@ -30,13 +30,26 @@ export async function newTab(page, mode = 'bypassPermissions') {
   return id
 }
 export async function turn(page, prompt) {
-  await page.evaluate(prompt => window.bridgeCmd.sendAndWait(prompt, { timeoutMs: 180_000 }), prompt)
+  const marker = prompt.match(/acceptance-[a-f0-9-]+/)?.[0]
+  check(marker, 'TURN_MARKER')
+  const tab = await page.evaluate(prompt => window.bridgeCmd.send(prompt), prompt)
+  // An old prompt-ready frame can briefly precede the submitted turn. Require
+  // its own user entry before measuring quiescence, rather than pre-send calm.
+  await page.waitForFunction(({ tab, marker }) => {
+    const state = window.bridgeCmd.state()
+    const entries = window.__jsonlEntries?.[tab] ?? []
+    return state.activeTabId === tab && entries.some(e => e.type === 'user' &&
+      (typeof e.message?.content === 'string' ? e.message.content :
+        (e.message?.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n')).includes(marker))
+  }, { tab, marker }, { timeout: 180_000 })
+  await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 180_000 }))
 }
 // Inspect the real viewer store, rather than truncated entry previews or model prose.
 // Full content stays in browser memory; only IDs/counts/tool names cross to Node.
 export async function transcript(page, nonce) {
   return page.evaluate(nonce => {
-    const id = window.bridgeCmd.state().activeTabId
+    const state = window.bridgeCmd.state()
+    const id = state.activeTabId
     const all = window.__jsonlEntries?.[id] ?? []
     const messages = all.filter(e => ['user', 'assistant'].includes(e.type))
     const blocks = e => typeof e.message?.content === 'string'
@@ -45,7 +58,9 @@ export async function transcript(page, nonce) {
     const ids = messages.map(e => e.uuid).filter(Boolean)
     const calls = messages.flatMap(blocks).filter(b => b.type === 'tool_use')
     const results = messages.flatMap(blocks).filter(b => b.type === 'tool_result')
-    return { ids, duplicateIds: ids.length - new Set(ids).size,
+    return { stateEntries: state.entryCount, renderedEntries: all.length, busy: state.busy,
+      working: state.working, promptReady: state.promptReady, settling: state.settling,
+      boundMatchesActive: state.boundTabId === id, ids, duplicateIds: ids.length - new Set(ids).size,
       users: messages.filter(e => e.type === 'user' && text(e).includes(nonce)).length,
       done: messages.some(e => e.type === 'assistant' && text(e).includes(`${nonce}:ok`)),
       tools: calls.map(b => b.name),
@@ -53,8 +68,16 @@ export async function transcript(page, nonce) {
   }, nonce)
 }
 export function complete(snapshot, { baseline = [], code = 'TRANSCRIPT' } = {}) {
-  check(snapshot.ids.length > 0 && snapshot.duplicateIds === 0 && snapshot.users === 1 && snapshot.done &&
-    snapshot.unresolved === 0 && baseline.every(id => snapshot.ids.includes(id)), code)
+  if (!snapshot.ids.length) console.log('transcript-state:', JSON.stringify({
+    stateEntries: snapshot.stateEntries, renderedEntries: snapshot.renderedEntries, busy: snapshot.busy,
+    working: snapshot.working, promptReady: snapshot.promptReady, settling: snapshot.settling,
+    boundMatchesActive: snapshot.boundMatchesActive }))
+  const assertions = [
+    [snapshot.ids.length > 0, 'EMPTY'], [snapshot.duplicateIds === 0, 'DUPLICATE'],
+    [snapshot.users === 1, 'USER_COUNT'], [snapshot.done, 'REPLY'],
+    [snapshot.unresolved === 0, 'UNRESOLVED_TOOL'], [baseline.every(id => snapshot.ids.includes(id)), 'BASELINE'],
+  ]
+  for (const [valid, reason] of assertions) check(valid, code === 'TRANSCRIPT' ? `${code}_${reason}` : code)
 }
 export function used(snapshot, name) {
   check(snapshot.tools.some(n => n === name || n.endsWith(`__${name}`)), `TOOL_${name.toUpperCase()}`)
@@ -66,29 +89,4 @@ export async function heap(context, page) {
     const { usedSize, totalSize } = await session.send('Runtime.getHeapUsage')
     return { usedBytes: usedSize, totalBytes: totalSize, method: 'CDP Runtime.getHeapUsage after GC' }
   } finally { await session.detach() }
-}
-export async function requirePanel(page, path, expected) {
-  try { check((await raw(page, 'fileViewerRead', path)).content.includes(expected), 'FILE_PANEL') }
-  catch { throw new CheckFailure('FILE_PANEL') }
-  const show = page.locator('[data-tooltip="Show plan & files"]')
-  if (await show.count()) {
-    check(await show.count() === 1, 'FILE_PANEL_TOGGLE_COUNT')
-    check(await show.isVisible(), 'FILE_PANEL_TOGGLE_VISIBLE')
-    try { await show.click({ timeout: 10_000 }) }
-    catch (error) {
-      throw new CheckFailure(error.message.includes('intercepts pointer events') ? 'FILE_PANEL_TOGGLE_OBSCURED' : 'FILE_PANEL_TOGGLE_CLICK')
-    }
-  }
-  // Select the real changed-file list; the panel initially shows its project tree.
-  const activity = page.locator('.right-panel-column')
-  try {
-    await activity.waitFor({ state: 'visible', timeout: 10_000 })
-  } catch { throw new CheckFailure('FILE_PANEL_ACTIVITY') }
-  try { await activity.getByRole('button').filter({ has: page.getByText('Write', { exact: true }) }).click({ timeout: 10_000 }) }
-  catch { throw new CheckFailure('FILE_PANEL_WRITE_TAB') }
-  const file = activity.locator(`[data-tooltip="${path}"]`).first()
-  try { await file.waitFor({ state: 'visible', timeout: 10_000 }); await file.click() }
-  catch { throw new CheckFailure('FILE_PANEL_LIST') }
-  try { await page.locator('.file-panel-column .cm-content').filter({ hasText: expected }).first().waitFor({ timeout: 10_000 }) }
-  catch { throw new CheckFailure('FILE_PANEL_CONTENT') }
 }

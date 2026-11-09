@@ -1,36 +1,14 @@
-# theme/components/ — per-family CSS modules (E3)
+# Current webview root styles
 
-Migration target for `theme/legacy-global.css` — split the 2530-LOC monolith
-into focused per-family files for sidebar / chat / jsonl / widgets so each
-component's styles live near (or inside) the component itself.
+The chat, tools, customize and browser workspace entries import these shared
+styles in order after global/theme tokens:
 
-**Status: scaffolding only.** The legacy file still owns all the rules at
-runtime — these files are placeholders for the incremental migration.
-Each migration step:
+1. `chat.css`: root surfaces, overlays, agents, chat and terminal containers.
+2. `jsonl.css`: transcript entries, content blocks and viewer states.
+3. `widgets.css`: input, permissions, tools/customize panels and shared controls.
 
-1. Move 5–20 related rules from `legacy-global.css` to the matching
-   `components/<family>.css` file.
-2. Delete those rules from `legacy-global.css`.
-3. Verify visually with the dev server.
-4. Commit per family. Don't migrate the whole file at once — visual
-   regressions would be impossible to bisect.
-
-When each `components/<family>.css` is loaded the same way `legacy-global.css`
-is (via `main.tsx`), order matters — keep the import after `variables.css`
-and `global.css` so cascade resolution stays correct.
-
-## Family inventory (rule counts as of E3 scaffolding)
-
-| Family | Rules in legacy-global.css | Target file |
-|--------|----------------------------|-------------|
-| sidebar | 61 | `sidebar.css` |
-| chat / input / message | 24 | `chat.css` |
-| jsonl viewer (entries + tools + blocks) | 100 | `jsonl.css` |
-| widgets / modals / toasts / dropdowns | 26 | `widgets.css` |
-| (everything else: titlebar, agents, plugins, customize tabs) | ~270 | not yet split |
-
-## Theme tokens
-
-All component CSS files MUST consume colours / spacing / radii / fonts via
-the `var(--*)` tokens from `variables.css`. New colour values introduced in
-component CSS are bugs — they break light-theme parity (see `light-theme.css`).
+These are the styles used by current KaminIDE roots. The standalone client,
+window chrome and sidebar styles were removed. Keep colours, spacing, radii
+and fonts tied to the shared `var(--*)` theme tokens. Component-specific new
+styles should live next to their component; these files preserve the existing
+cascade for the shared roots.

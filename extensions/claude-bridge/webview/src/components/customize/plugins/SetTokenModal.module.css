@@ -6,7 +6,6 @@
   align-items: center;
   justify-content: center;
   z-index: 3000;
-  -webkit-app-region: no-drag;
 }
 
 .dialog {

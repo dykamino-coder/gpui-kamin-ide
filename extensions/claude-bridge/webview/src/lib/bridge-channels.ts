@@ -1,9 +1,9 @@
-// Method-name → bridge-channel maps retained from the legacy desktop client.
+// Kamin bridge method-name → host-channel maps.
 // Each table drives a generic postMessage transport call (see bridge-shim.ts).
 // Methods that reshape arguments, return synchronously, or use a dynamic
 // channel are handled as specials in bridge-shim.ts (NOT here).
 
-/** ipcRenderer.invoke → inv(channel, ...args) (returns Promise). */
+/** Request/response transport: inv(channel, ...args). */
 export const INVOKE: Record<string, string> = {
   getToolUsageEntries: 'toolusage:entries',
   createTab: 'tab:create',
@@ -24,8 +24,6 @@ export const INVOKE: Record<string, string> = {
   setBasePrompt: 'base-prompt:set',
   forceSync: 'sync:force',
   getMachineId: 'get-machine-id',
-  applyUpdate: 'update:apply',
-  quitAndInstallUpdate: 'update:quit-and-install',
   getLayout: 'layout:get',
   getNotifications: 'notifications:get',
   getTerminalPrefs: 'terminal:get-prefs',
@@ -39,7 +37,6 @@ export const INVOKE: Record<string, string> = {
   selectFolder: 'select-folder',
   saveClipboardImage: 'save-clipboard-image',
   // Не-image drop/paste: байты File → temp-файл с исходным именем → путь
-  // (замена мёртвого getDroppedFilePath Electron-эпохи, аудит #70 A3).
   saveDroppedFile: 'save-dropped-file',
   readFileAsBase64: 'fs:read-base64',
   hooksList: 'hooks:list',
@@ -57,11 +54,6 @@ export const INVOKE: Record<string, string> = {
   openImageDialog: 'open-image-dialog',
   openFileDialog: 'open-file-dialog',
   openExternal: 'open-external',
-  micStart: 'mic-start',
-  micStop: 'mic-stop',
-  micConnected: 'mic-connected',
-  micLaunchChrome: 'mic-launch-chrome',
-  micToggleVisible: 'mic-toggle-visible',
   resumeSession: 'session:resume',
   getSavedSessions: 'session:get-saved',
   removeSavedSession: 'session:remove-saved',
@@ -183,10 +175,6 @@ export const SEND: Record<string, string> = {
   changeModel: 'change-model',
   openFolder: 'open-folder',
   revealInExplorer: 'reveal-in-explorer',
-  windowMinimize: 'window:minimize',
-  windowMaximize: 'window:maximize',
-  windowClose: 'window:close',
-  windowToggleDevTools: 'window:devtools',
   fileViewerWatch: 'file-viewer:watch',
   fileViewerUnwatch: 'file-viewer:unwatch',
   fileTreeWatch: 'file-tree:watch',
@@ -223,11 +211,8 @@ export const EVENT: Record<string, string> = {
   onStreamingEntry: 'streaming-entry',
   onStreamingDelta: 'streaming-delta',
   onStreamingStatus: 'streaming-status',
-  onUpdateState: 'update:state',
   onToastRoute: 'toast:route',
   onToolUsageOpen: 'toolusage-open',
-  onMicAudio: 'mic-audio',
-  onMicLevels: 'mic-levels',
   onCwdChanged: 'cwd-changed',
   onConfigReady: 'config-ready',
   onElicitationRequest: 'elicitation-request',
@@ -254,7 +239,6 @@ export const EVENT: Record<string, string> = {
   onMonitorStopped: 'monitor:stopped',
   onMonitorStatus: 'monitor:status',
   onSessionActivity: 'session:activity',
-  onWindowMaximized: 'window:maximized',
   onPtyData: 'pty:data',
   onPtyExit: 'pty:exit',
   onFileViewerExternalChange: 'file-viewer:external-change',

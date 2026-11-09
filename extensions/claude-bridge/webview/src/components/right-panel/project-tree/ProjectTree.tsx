@@ -4,7 +4,7 @@ import { useBridge } from '../../../hooks/useBridge'
 import { activeTabId, tabs } from '../../../signals/tabs'
 import { openFileInTab } from '../../../signals/file-viewer'
 import { filePanelVisible } from '../../../signals/ui'
-import tabStyles from '../../titlebar/TabsBar.module.css'
+import tabStyles from '../../overlays/ContextMenu.module.css'
 import { useFileTree, type TreeEntry } from './useFileTree'
 import { TreeChildren } from './TreeNode'
 

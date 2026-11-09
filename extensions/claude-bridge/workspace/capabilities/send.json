@@ -48,12 +48,8 @@
   {"id":"send:toolusage:open","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/index.ts":1,"webview/src/lib/bridge-channels.ts":1,"workspace/src/browser-environment.ts":1}},
   {"id":"send:tree:request","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:vscode:open","status":"explicitly-not-applicable-with-reason","reason":"KaminIDE host feature, not Bridge","evidence":"extension/src/core-ipc.ts","sources":{"extension/src/core-ipc.ts":1}},
-  {"id":"send:window:close","status":"explicitly-not-applicable-with-reason","reason":"Native window chrome is owned by the browser; use browser close, resize and developer tools.","evidence":"webview/src/bridge-shim.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"send:window:devtools","status":"explicitly-not-applicable-with-reason","reason":"Native window chrome is owned by the browser; use browser close, resize and developer tools.","evidence":"webview/src/bridge-shim.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"send:window:maximize","status":"explicitly-not-applicable-with-reason","reason":"Native window chrome is owned by the browser; use browser close, resize and developer tools.","evidence":"webview/src/bridge-shim.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"send:window:minimize","status":"explicitly-not-applicable-with-reason","reason":"Native window chrome is owned by the browser; use browser close, resize and developer tools.","evidence":"webview/src/bridge-shim.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:workspace:effect-result","status":"supported-in-browser-host","provider":"environment","sources":{"webview/src/browser/browser-effects.ts":1,"workspace/src/browser-environment.ts":1}},
   {"id":"send:workspace:file-panel","status":"supported-in-browser-host","provider":"file-panel-control","sources":{"webview/src/signals/workspace-file-panel.ts":1,"workspace/src/files.ts":1}},
-  {"id":"send:workspace:sync","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/hooks/useBridgeListeners.ts":1,"workspace/src/files.ts":1,"workspace/src/runtime.ts":1}},
+  {"id":"send:workspace:sync","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/hooks/useBridgeListeners.ts":1,"workspace/src/files.ts":1,"workspace/src/runtime.ts":1,"workspace/src/shell-state.ts":1}},
   {"id":"send:workspace:terminal-sync","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1,"workspace/src/terminals.ts":1}}
 ]
