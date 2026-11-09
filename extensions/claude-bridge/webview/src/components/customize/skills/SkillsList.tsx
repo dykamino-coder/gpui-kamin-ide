@@ -1,5 +1,6 @@
 import type { JSX } from 'preact'
 import type { SkillItem } from '../../../signals/customize'
+import { isBrowserHost } from '../../../lib/webview-api'
 import { prettifyPluginName } from '../../../utils/prettify-plugin-name'
 import { SkillGroup } from './SkillGroup'
 import { SkillItem as SkillItemComponent } from './SkillItem'
@@ -35,7 +36,10 @@ export function SkillsList({ skills, filter, selectedPath, onSelect }: Props): J
   }
 
   if (filtered.length === 0) {
-    return <div class={styles.empty}>No skills found</div>
+    return <div class={styles.empty}>
+      {q ? 'No skills match your search.' : 'No skills found.'}
+      {!q && isBrowserHost() && <p style="color:var(--text-secondary);line-height:1.5">Choose New skill to add instructions in the workspace container, or install a plugin that provides skills.</p>}
+    </div>
   }
 
   return (
