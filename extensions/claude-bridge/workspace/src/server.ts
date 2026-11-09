@@ -156,13 +156,13 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
 
   server.on('upgrade', (request, socket, head) => {
     const refuse = () => socket.destroy()
-    const target = options.preview?.target(request.url ?? '')
+    const target = options.preview?.target(request.url ?? '', 'websocket')
     if (target) {
       if (closing || !sameOrigin(request) || previewSockets.size + pendingUpgrades >= 32) { refuse(); return }
       const cookie = readSessionCookie(request.headers.cookie)
       pendingUpgrades++
       void options.auth.validate(cookie).then(valid => {
-        if (!valid || closing || socket.destroyed || options.preview?.target(request.url ?? '')?.port !== target.port) { refuse(); return }
+        if (!valid || closing || socket.destroyed || options.preview?.target(request.url ?? '', 'websocket')?.port !== target.port) { refuse(); return }
         previewSockets.set(socket, cookie!)
         socket.once('close', () => previewSockets.delete(socket))
         proxyUpgrade(request, socket, head, target)

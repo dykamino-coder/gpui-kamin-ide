@@ -24,6 +24,7 @@ test('preview validates local entry and JSON contract and retains a detached des
   first.props.count = 99
   assert.equal(preview.copy()!.props.count, 1)
   assert.deepEqual(preview.target('/preview/remotes/fixture/chunk.js?x=1'), { port: 5173, path: '/chunk.js?x=1' })
+  assert.deepEqual(preview.target('/preview/remotes/fixture/ws?x=1', 'websocket'), { port: 5173, path: '/preview/remotes/fixture/ws?x=1' })
   assert.equal(preview.target('/preview/remotes/other/chunk.js'), undefined)
   assert.equal(preview.target('/preview/remotes/fixture//evil'), undefined)
   assert.equal(preview.update({ count: 2 }).revision, first.revision)
@@ -33,16 +34,21 @@ test('preview validates local entry and JSON contract and retains a detached des
   assert.throws(() => preview.update({}), /No remote/)
 })
 
-test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and revokes sockets', async t => {
+for (const prefixed of [false, true]) test(`same-origin preview proxies ${prefixed ? 'prefixed' : 'root'} HTTP assets and documented HMR path, strips credentials and revokes sockets`, async t => {
+  const base = '/preview/remotes/fixture'
+  const assetBase = prefixed ? base : ''
   const requests: Array<{ path: string; cookie?: string; authorization?: string }> = []
   let body = 'entry build one', valid = true
   const upstream = createServer((request, response) => {
     requests.push({ path: request.url!, cookie: request.headers.cookie, authorization: request.headers.authorization })
     response.setHeader('Set-Cookie', 'untrusted=1')
-    if (request.url === '/redirect') { response.writeHead(302, { Location: '/chunk.js' }); response.end(); return }
-    response.end(request.url?.startsWith('/remoteEntry.js') ? body : 'chunk')
+    if (request.url === assetBase + '/redirect') { response.writeHead(302, { Location: assetBase + '/chunk.js?build=1#asset' }); response.end(); return }
+    if (request.url === assetBase + '/relative-redirect') { response.writeHead(302, { Location: 'chunk.js' }); response.end(); return }
+    if (request.url?.startsWith(assetBase + '/remoteEntry.js')) response.end(body)
+    else if (request.url?.startsWith(assetBase + '/chunk.js')) response.end('chunk')
+    else { response.writeHead(404); response.end() }
   })
-  const wss = new WebSocketServer({ server: upstream })
+  const wss = new WebSocketServer({ server: upstream, path: base + '/ws' })
   wss.on('connection', (socket, request) => {
     requests.push({ path: request.url!, cookie: request.headers.cookie, authorization: request.headers.authorization })
     socket.on('message', data => socket.send(data))
@@ -55,7 +61,9 @@ test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and
     await new Promise<void>(resolve => upstream.close(() => resolve()))
   })
   const preview = new WorkspacePreview()
-  const descriptor = preview.mount({ name: 'fixture', entry: `http://127.0.0.1:${port}/remoteEntry.js`, exposedModule: './Panel' })
+  const mount = { name: 'fixture', entry: `http://127.0.0.1:${port}${assetBase}/remoteEntry.js`, exposedModule: './Panel' }
+  const descriptor = preview.mount(mount)
+  assert.equal(descriptor.entry, base + '/remoteEntry.js', 'An already prefixed entry must not gain a second prefix')
   const auth = new WorkspaceAuth('synthetic-preview-token', async () => valid ? { id: 'fixture' } : null)
   const server = await startWorkspaceServer({ auth, port: 0, preview, revalidateMs: 50,
     backend: { attach: () => ({ receive: async () => {}, dispose() {} }) } })
@@ -68,14 +76,18 @@ test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and
   const response = await fetch(url + '?build=abc', { headers: { Cookie: cookie, Authorization: 'not-forwarded' } })
   assert.equal(await response.text(), body)
   assert.equal(response.headers.get('set-cookie'), null)
-  assert.deepEqual(requests.at(-1), { path: '/remoteEntry.js?build=abc', cookie: undefined, authorization: undefined })
+  assert.deepEqual(requests.at(-1), { path: assetBase + '/remoteEntry.js?build=abc', cookie: undefined, authorization: undefined })
+  assert.equal(await (await fetch(server.origin + base + '/chunk.js?build=abc', { headers: { Cookie: cookie } })).text(), 'chunk')
+  assert.deepEqual(requests.at(-1), { path: assetBase + '/chunk.js?build=abc', cookie: undefined, authorization: undefined })
   const redirect = await fetch(server.origin + '/preview/remotes/fixture/redirect', { headers: { Cookie: cookie }, redirect: 'manual' })
-  assert.equal(redirect.headers.get('location'), server.origin + '/preview/remotes/fixture/chunk.js')
+  assert.equal(redirect.headers.get('location'), server.origin + base + '/chunk.js?build=1#asset')
+  const relative = await fetch(server.origin + base + '/relative-redirect', { headers: { Cookie: cookie }, redirect: 'manual' })
+  assert.equal(relative.headers.get('location'), server.origin + base + '/chunk.js')
   const initial = await preview.snapshot()
   assert.equal(initial.available, true)
   body = 'entry build two'
   assert.notEqual((await preview.snapshot()).build, initial.build)
-  const wsUrl = server.origin.replace('http:', 'ws:') + '/preview/remotes/fixture/ws'
+  const wsUrl = server.origin.replace('http:', 'ws:') + '/preview/remotes/fixture/ws?build=abc'
   const denied = new WebSocket(wsUrl, { headers: { Origin: 'http://attacker.invalid', Cookie: cookie } })
   await once(denied, 'error')
   const socket = new WebSocket(wsUrl, { headers: { Origin: server.origin, Cookie: cookie, Authorization: 'not-forwarded' } })
@@ -85,7 +97,7 @@ test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and
   const message = once(socket, 'message')
   socket.send('hmr-update')
   assert.equal((await message)[0].toString(), 'hmr-update')
-  assert.deepEqual(requests.at(-1), { path: '/ws', cookie: undefined, authorization: undefined })
+  assert.deepEqual(requests.at(-1), { path: base + '/ws?build=abc', cookie: undefined, authorization: undefined })
   valid = false
   await once(socket, 'close')
   assert.equal((await fetch(url, { headers: { Cookie: cookie } })).status, 401)
@@ -102,7 +114,7 @@ test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and
   const disconnected = once(replaced, 'close')
   preview.unmount()
   await disconnected
-  preview.mount({ name: 'fixture', entry: `http://127.0.0.1:${port}/remoteEntry.js`, exposedModule: './Panel' })
+  preview.mount(mount)
   await new Promise<void>(resolve => upstream.close(() => resolve()))
   assert.equal((await preview.snapshot()).available, false)
   assert.equal((await fetch(url, { headers: { Cookie: freshCookie } })).status, 502)

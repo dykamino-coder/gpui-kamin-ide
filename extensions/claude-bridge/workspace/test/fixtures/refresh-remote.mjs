@@ -34,10 +34,14 @@ export async function refreshRemote(t, root) {
       jsc: { parser: { syntax: 'ecmascript', jsx: true }, transform: { react: { runtime: 'automatic', development: true, refresh: true } } },
     } }] },
     plugins: [new RefreshPlugin(), new ModuleFederationPlugin({ name: 'refresh_demo', filename: 'remoteEntry.js',
-      exposes: { './App': './App.jsx' }, shared: { react: { singleton: true, requiredVersion: '19.3.1' }, 'react-dom': { singleton: true, requiredVersion: '19.3.1' } },
+      exposes: { './App': './App.jsx' }, shared: { react: { singleton: true, strictVersion: true, requiredVersion: '19.3.1' }, 'react-dom': { singleton: true, strictVersion: true, requiredVersion: '19.3.1' } },
     })], infrastructureLogging: { level: 'none' }, stats: 'errors-only',
   })
-  const server = new DevServer({ host: '127.0.0.1', port: 0 }, compiler)
+  // preview_mount предписывает publicPath:auto, root entry и полный HMR path.
+  // /ws намеренно не обслуживается: старый proxy должен провалить этот тест.
+  const server = new DevServer({ host: '127.0.0.1', port: 0,
+    webSocketServer: { type: 'ws', options: { path: '/preview/remotes/refresh_demo/ws' } },
+  }, compiler)
   const compiled = new Promise((resolve, reject) => compiler.hooks.done.tap('refresh-fixture', stats => stats.hasErrors() ? reject(new Error(stats.toString({ all: false, errors: true }))) : resolve()))
   await server.start()
   t.after(async () => { await server.stop(); await new Promise(resolve => compiler.close(resolve)) })
