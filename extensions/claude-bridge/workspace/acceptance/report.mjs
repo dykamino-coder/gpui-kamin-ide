@@ -4,6 +4,11 @@ export class CheckFailure extends Error {
 }
 export function check(value, code) { if (!value) throw new CheckFailure(code) }
 
+export function assertImageSource({ source, sourceDirty, imageSource }) {
+  check(sourceDirty === false, 'RUNNER_SOURCE_DIRTY')
+  check(/^[a-f0-9]{40}$/.test(source ?? '') && imageSource === source, 'IMAGE_SOURCE_MISMATCH')
+}
+
 export const scenarios = [
   'image-contract', 'credential-storage', 'upstream-health', 'workspace-start', 'browser-login',
   'workspace-context', 'chat', 'file-tools', 'bash', 'mcp', 'hook', 'workspace-shell',

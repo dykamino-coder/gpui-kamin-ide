@@ -1,10 +1,23 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CheckFailure, outcome, exitStatus, markdown } from './report.mjs'
-import { complete, used } from './browser.mjs'
+import { CheckFailure, outcome, exitStatus, markdown, assertImageSource } from './report.mjs'
+import { complete, used, turn } from './browser.mjs'
 import { spawn } from 'node:child_process'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
+
+test('live acceptance rejects dirty runners and images from another source before execution', () => {
+  const source = 'a'.repeat(40)
+  const candidate = { source, sourceDirty: false, imageSource: source }
+  assertImageSource(candidate)
+  for (const imageSource of [undefined, 'unspecified', 'a'.repeat(8), 'b'.repeat(40)]) {
+    assert.throws(() => assertImageSource({ ...candidate, imageSource }), { code: 'IMAGE_SOURCE_MISMATCH' })
+  }
+  for (const sourceDirty of [true, undefined]) {
+    assert.throws(() => assertImageSource({ ...candidate, sourceDirty }), { code: 'RUNNER_SOURCE_DIRTY' })
+  }
+  assert.throws(() => assertImageSource({ ...candidate, source: '', imageSource: '' }), { code: 'IMAGE_SOURCE_MISMATCH' })
+})
 
 test('known feature gaps never hide unrelated exceptions or convert blocked prerequisites to success', () => {
   const pending = { 'file-panel': { FILE_PANEL: 'Fixture dependency is pending.' } }
@@ -24,6 +37,28 @@ test('exception text cannot leak into a report, and IDE exclusion keeps the owne
   assert.ok(!JSON.stringify(report).includes(secret))
   assert.ok(!markdown(report).includes(secret))
   assert.match(markdown(report), /NOT-APPLICABLE \| KaminIDE host feature, not Bridge/)
+})
+
+test('turn wait failures identify the failed stage without leaking upstream error text', async t => {
+  t.mock.method(console, 'log', () => {})
+  const secret = 'synthetic-not-a-real-credential'
+  for (const stage of ['entry', 'idle']) {
+    let evaluations = 0
+    const page = {
+      async evaluate() {
+        evaluations++
+        if (evaluations === 1) return 'fixture-tab'
+        // Also exercise loss of the page while collecting diagnostic state.
+        throw new Error(secret)
+      },
+      async waitForFunction() { if (stage === 'entry') throw new Error(secret) },
+    }
+    await assert.rejects(turn(page, 'Reply acceptance-aaaaaaaa:ok'), error => {
+      assert.equal(error.code, stage === 'entry' ? 'TURN_ENTRY_WAIT' : 'TURN_IDLE_WAIT')
+      assert.ok(!error.message.includes(secret))
+      return true
+    })
+  }
 })
 
 test('persistence assertions reject duplicate/missing transcript entries and incomplete tool calls', () => {

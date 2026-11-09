@@ -154,6 +154,14 @@ checks. It does **not** encode the remaining full host-page behavior
 gates. A green command therefore cannot close the owner task. Add these requirements
 and exhaustive observable behavior coverage before claiming full parity.
 
+Live acceptance requires a clean runner checkout and an image whose
+`org.opencontainers.image.revision` label equals that runner's full HEAD SHA.
+A mismatch fails before probing the image or issuing a client token. After
+inspection the harness uses the immutable image ID so concurrent retagging
+cannot substitute another image. Commit first, then build with that SHA.
+MCP evidence records only discovery, call counts and the independent result
+check; transcript and file-byte assertions remain mandatory.
+
 The Linux Podman live harness exercises chat, file tools, Bash, MCP, hooks,
 session pinning, dock synchronization, close-mid-turn continuation, pending permissions after reopen and two
 browser tabs. It retains sanitized summaries outside the checkout. The latest
