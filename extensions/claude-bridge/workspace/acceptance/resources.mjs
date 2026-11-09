@@ -37,8 +37,8 @@ export async function freePort() {
   await new Promise(resolve => server.close(resolve))
   return port
 }
-export async function upstreamHealth(origin) {
-  try { return (await fetch(new URL('/health', origin), { signal: AbortSignal.timeout(5000), redirect: 'error' })).ok }
+export async function upstreamHealth(origin, pathname = '/health') {
+  try { return (await fetch(new URL(pathname, origin), { signal: AbortSignal.timeout(5000), redirect: 'error' })).ok }
   catch { return false }
 }
 export async function issueToken(origin, name) {
@@ -85,7 +85,7 @@ export class OwnedResources {
     await poll(async () => {
       check(!this.launchError, 'COMMAND_START')
       if (this.exitCode !== undefined) throw new CheckFailure(this.exitCode === 78 ? 'CORE_ENTRYPOINT' : 'CONTAINER_EXIT')
-      return upstreamHealth(this.origin)
+      return upstreamHealth(this.origin, '/auth/session')
     }, { timeout: 45_000, code: 'WORKSPACE_HEALTH' })
   }
   exec(script, input) { return command('podman', ['exec', '-i', this.name, 'node', '-e', script], { input }) }
