@@ -14,7 +14,7 @@ const { values } = parseArgs({ options: {
   'podman-socket': { type: 'string', default: '/run/podman/podman.sock' },
   strict: { type: 'boolean', default: false },
 } })
-if (!values['report-dir'] || !['live', 'fixture'].includes(values.mode)) throw new Error('Specify --report-dir outside the checkout and --mode live|fixture')
+if (!values['report-dir'] || !['live', 'fixture', 'credentials'].includes(values.mode)) throw new Error('Specify --report-dir outside the checkout and --mode live|fixture|credentials')
 if (!/^\/run\/(user\/\d+\/)?podman\/podman\.sock$/.test(values['podman-socket'])) throw new Error('Expected Podman VM socket path')
 const repo = await realpath(fileURLToPath(new URL('../../../../', import.meta.url)))
 await mkdir(path.resolve(values['report-dir']), { recursive: true })
@@ -29,10 +29,10 @@ const name = `bridgeweb-acc-browser-${randomUUID()}`
 const args = ['run', '--name', name, '--network', 'host', '--add-host', 'host.containers.internal:127.0.0.1', '--ipc', 'private', '--shm-size', '1g',
   '--mount', `type=bind,source=${repo},destination=/source,ro=true`,
   '-e', 'BRIDGEWEB_ACC_CONTAINER=1', '-e', `BRIDGEWEB_ACC_SOURCE=${source}`, '-e', `BRIDGEWEB_ACC_SOURCE_DIRTY=${dirty ? '1' : '0'}`]
-if (values.mode === 'live') args.push('--mount', `type=bind,source=${values['podman-socket']},destination=/run/bridgeweb-acc-podman.sock`,
+if (values.mode !== 'fixture') args.push('--mount', `type=bind,source=${values['podman-socket']},destination=/run/bridgeweb-acc-podman.sock`,
   '-e', 'CONTAINER_HOST=unix:///run/bridgeweb-acc-podman.sock')
 args.push(values['runner-image'], values.mode)
-if (values.mode === 'live') args.push('--image', values.image, ...(values.strict ? ['--strict'] : []))
+if (values.mode !== 'fixture') args.push('--image', values.image, ...(values.strict ? ['--strict'] : []))
 let started = false
 try {
   const child = spawn('podman', args, { windowsHide: true, stdio: 'inherit' })

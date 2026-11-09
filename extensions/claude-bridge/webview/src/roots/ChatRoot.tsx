@@ -20,8 +20,8 @@ import { ChatHeaderStrip } from '../components/chat-header/ChatHeaderStrip'
 import { ConversationSegmentTabs } from '../components/jsonl-viewer/ConversationSegmentTabs'
 import { NoSessionEmptyContent, RestoringContent } from '../components/layout/EmptyState'
 import { JsonlViewer } from '../components/jsonl-viewer/JsonlViewer'
-import { ToolCounterToast } from '../components/titlebar/ToolCounterToast'
-import { LiveLoopWarning } from '../components/titlebar/LoopWarning'
+import { ToolCounterToast } from '../components/chat-header/ToolCounterToast'
+import { LiveLoopWarning } from '../components/chat-header/LoopWarning'
 import { ActivityStrip } from '../components/chat-header/ActivityStrip'
 import { WidgetsPanel } from '../components/widgets/WidgetsPanel'
 import { InputBar } from '../components/input-bar/InputBar'
@@ -30,10 +30,11 @@ import { ConfirmModalHost } from '../components/overlays/ConfirmModalHost'
 import { DropOverlay } from '../components/overlays/DropOverlay'
 import { NoTokenGateModal } from '../components/overlays/NoTokenGateModal'
 import { PluginHookApprovalModal } from '../components/customize/hooks/PluginHookApprovalModal'
-const COLUMN = 'display:flex;flex-direction:column;flex:1;min-width:0;height:100%;overflow:hidden'
+// The host's dock can have a different surface; the shared chat owns its panel.
+const COLUMN = 'display:flex;flex-direction:column;flex:1;min-width:0;height:100%;overflow:hidden;background:var(--bg-primary)'
 
-// Center editor-area chat panel. Flush + transparent (no card/border) so it sits
-// directly on the KaminIDE panel surface and follows the IDE theme. Renders the
+// Center editor-area chat panel. Flush (no card/border), with the IDE theme's
+// editor surface shared by both hosts. Renders the
 // active KaminIDE session's Claude conversation — chat + tool renderers + CLI
 // terminal + input + widgets + agent tiles + plan/todos. Sessions themselves are
 // KaminIDE-native (bound by the extension's SessionsBridge); this panel just

@@ -3,25 +3,66 @@ import { check, CheckFailure } from './report.mjs'
 export async function raw(page, method, ...args) {
   return page.evaluate(({ method, args }) => window.bridgeCmd.raw(method, ...args), { method, args })
 }
+const notificationPages = new WeakSet()
+async function handleNotifications(page) {
+  if (notificationPages.has(page)) return
+  // Host notifications use modal browser effects. Acknowledge only their real
+  // Dismiss control; permission prompts and other browser actions stay intact.
+  const messages = page.locator('dialog[aria-label="Bridge workspace action"]').filter({
+    has: page.getByRole('button', { name: 'Dismiss', exact: true }),
+  }).last()
+  await page.addLocatorHandler(messages, async dialog => {
+    await dialog.getByRole('button', { name: 'Dismiss', exact: true }).click()
+  }, { noWaitAfter: true })
+  notificationPages.add(page)
+}
 export async function ready(page, origin) {
+  await handleNotifications(page)
   await page.goto(origin, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => !!window.bridgeCmd, null, { timeout: 30_000 })
 }
 export async function newTab(page, mode = 'bypassPermissions') {
+  await handleNotifications(page)
   const config = await raw(page, 'getConfig')
   const id = await raw(page, 'createTab', { ...config, cwd: '/workspace' })
   await page.evaluate(id => window.bridgeCmd.switchTab(id), id)
   await raw(page, 'changePermissionMode', id, mode)
   return id
 }
+async function turnWaitFailure(page, code) {
+  try {
+    const state = await page.evaluate(() => {
+      const s = window.bridgeCmd.state()
+      return { stateEntries: s.entryCount, busy: s.busy, working: s.working,
+        promptReady: s.promptReady, settling: s.settling, queued: s.queued,
+        boundMatchesActive: s.boundTabId === s.activeTabId }
+    })
+    console.log('turn-state:', JSON.stringify({ stage: code, ...state }))
+  } catch { /* A lost page must not replace the original fixed failure code. */ }
+  throw new CheckFailure(code)
+}
 export async function turn(page, prompt) {
-  await page.evaluate(prompt => window.bridgeCmd.sendAndWait(prompt, { timeoutMs: 180_000 }), prompt)
+  const marker = prompt.match(/acceptance-[a-f0-9-]+/)?.[0]
+  check(marker, 'TURN_MARKER')
+  const tab = await page.evaluate(prompt => window.bridgeCmd.send(prompt), prompt)
+  // An old prompt-ready frame can briefly precede the submitted turn. Require
+  // its own user entry before measuring quiescence, rather than pre-send calm.
+  await page.waitForFunction(({ tab, marker }) => {
+    const state = window.bridgeCmd.state()
+    const entries = window.__jsonlEntries?.[tab] ?? []
+    return state.activeTabId === tab && entries.some(e => e.type === 'user' &&
+      (typeof e.message?.content === 'string' ? e.message.content :
+        (e.message?.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n')).includes(marker))
+  }, { tab, marker }, { timeout: 180_000 }).catch(() => turnWaitFailure(page, 'TURN_ENTRY_WAIT'))
+  await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 180_000 }))
+    .catch(() => turnWaitFailure(page, 'TURN_IDLE_WAIT'))
 }
 // Inspect the real viewer store, rather than truncated entry previews or model prose.
 // Full content stays in browser memory; only IDs/counts/tool names cross to Node.
 export async function transcript(page, nonce) {
   return page.evaluate(nonce => {
-    const id = window.bridgeCmd.state().activeTabId
+    const state = window.bridgeCmd.state()
+    const id = state.activeTabId
     const all = window.__jsonlEntries?.[id] ?? []
     const messages = all.filter(e => ['user', 'assistant'].includes(e.type))
     const blocks = e => typeof e.message?.content === 'string'
@@ -30,7 +71,9 @@ export async function transcript(page, nonce) {
     const ids = messages.map(e => e.uuid).filter(Boolean)
     const calls = messages.flatMap(blocks).filter(b => b.type === 'tool_use')
     const results = messages.flatMap(blocks).filter(b => b.type === 'tool_result')
-    return { ids, duplicateIds: ids.length - new Set(ids).size,
+    return { stateEntries: state.entryCount, renderedEntries: all.length, busy: state.busy,
+      working: state.working, promptReady: state.promptReady, settling: state.settling,
+      boundMatchesActive: state.boundTabId === id, ids, duplicateIds: ids.length - new Set(ids).size,
       users: messages.filter(e => e.type === 'user' && text(e).includes(nonce)).length,
       done: messages.some(e => e.type === 'assistant' && text(e).includes(`${nonce}:ok`)),
       tools: calls.map(b => b.name),
@@ -38,8 +81,16 @@ export async function transcript(page, nonce) {
   }, nonce)
 }
 export function complete(snapshot, { baseline = [], code = 'TRANSCRIPT' } = {}) {
-  check(snapshot.ids.length > 0 && snapshot.duplicateIds === 0 && snapshot.users === 1 && snapshot.done &&
-    snapshot.unresolved === 0 && baseline.every(id => snapshot.ids.includes(id)), code)
+  if (!snapshot.ids.length) console.log('transcript-state:', JSON.stringify({
+    stateEntries: snapshot.stateEntries, renderedEntries: snapshot.renderedEntries, busy: snapshot.busy,
+    working: snapshot.working, promptReady: snapshot.promptReady, settling: snapshot.settling,
+    boundMatchesActive: snapshot.boundMatchesActive }))
+  const assertions = [
+    [snapshot.ids.length > 0, 'EMPTY'], [snapshot.duplicateIds === 0, 'DUPLICATE'],
+    [snapshot.users === 1, 'USER_COUNT'], [snapshot.done, 'REPLY'],
+    [snapshot.unresolved === 0, 'UNRESOLVED_TOOL'], [baseline.every(id => snapshot.ids.includes(id)), 'BASELINE'],
+  ]
+  for (const [valid, reason] of assertions) check(valid, code === 'TRANSCRIPT' ? `${code}_${reason}` : code)
 }
 export function used(snapshot, name) {
   check(snapshot.tools.some(n => n === name || n.endsWith(`__${name}`)), `TOOL_${name.toUpperCase()}`)
@@ -51,18 +102,4 @@ export async function heap(context, page) {
     const { usedSize, totalSize } = await session.send('Runtime.getHeapUsage')
     return { usedBytes: usedSize, totalBytes: totalSize, method: 'CDP Runtime.getHeapUsage after GC' }
   } finally { await session.detach() }
-}
-export async function requirePanel(page, path, expected) {
-  try { check((await raw(page, 'fileViewerRead', path)).content.includes(expected), 'FILE_PANEL') }
-  catch { throw new CheckFailure('FILE_PANEL') }
-  const show = page.locator('[data-tooltip="Show plan & files"]')
-  if (await show.count()) await show.click()
-  // Select the real changed-file list; the panel initially shows its project tree.
-  const activity = page.locator('.right-panel-column')
-  await activity.getByRole('button', { name: /^Write\b/ }).click()
-  const file = activity.locator(`[data-tooltip="${path}"]`).first()
-  try { await file.waitFor({ state: 'visible', timeout: 10_000 }); await file.click() }
-  catch { throw new CheckFailure('FILE_PANEL_LIST') }
-  try { await page.locator('.file-panel-column .cm-content').filter({ hasText: expected }).first().waitFor({ timeout: 10_000 }) }
-  catch { throw new CheckFailure('FILE_PANEL_CONTENT') }
 }

@@ -1,3 +1,6 @@
+import type { SubmissionUpdate } from './submission-queue'
+export type { SubmissionUpdate } from './submission-queue'
+
 // Server URL and connection state
 export interface SessionUsageWindow {
   /** `five_hour` | `seven_day` (status-line `rate_limits.*`) */
@@ -275,8 +278,7 @@ export interface MarketplacePlugin {
   hasCommands: boolean
 }
 
-// Kamin webview bridge API. The historical Electron name remains below as a
-// compatibility type only.
+// Kamin webview bridge API.
 export interface KaminBridgeApi {
   // ─── Tabs ──────────────────────────────────────────────
   createTab(config: ConnectionConfig): Promise<string>
@@ -499,9 +501,6 @@ export interface KaminBridgeApi {
     projectPath?: string | null
   }>
   getMachineId(): Promise<string>
-  applyUpdate(): Promise<{ ok: boolean; error?: string }>
-  quitAndInstallUpdate(): Promise<{ ok: boolean; error?: string }>
-  onUpdateState(cb: (state: { state: 'downloading' | 'ready' | 'error'; error?: string }) => void): () => void
 
   // ─── Working directory ────────────────────────────────
   getCwd(): Promise<string | null>
@@ -639,14 +638,6 @@ export interface KaminBridgeApi {
   ): () => void
   openExternal(url: string): Promise<void>
 
-  // ─── Chrome mic proxy (works around endpoint protection on Windows) ──
-  micStart(): Promise<boolean>
-  micStop(): Promise<boolean>
-  micConnected(): Promise<boolean>
-  micLaunchChrome(): Promise<boolean>
-  micToggleVisible(): Promise<boolean>
-  onMicAudio(cb: (data: { base64: string; mimeType: string }) => void): () => void
-  onMicLevels(cb: (bars: number[]) => void): () => void
 
   // ─── Voice input (Whisper) ──────────────────────────
   whisperTranscribe(audioBase64: string, mimeType: string): Promise<{ text?: string; error?: string }>
@@ -939,13 +930,6 @@ export interface KaminBridgeApi {
   // ─── Session activity (OSC spinner) ──────────────────────
   onSessionActivity(callback: (tabId: string, data: { rawTitle: string; isWorking: boolean }) => void): () => void
 
-  // ─── Window controls (custom titlebar) ──────────────────
-  windowMinimize(): void
-  windowMaximize(): void
-  windowClose(): void
-  windowToggleDevTools(): void
-  windowIsMaximized(): boolean
-  onWindowMaximized(callback: (maximized: boolean) => void): () => void
 
   // ─── FilePanel terminal (PTY) ────────────────────────
   shellsList(): Promise<
@@ -1014,17 +998,4 @@ export interface KaminBridgeApi {
    *  channels (whisper, plugin auth modals). New code should add a typed
    *  method instead — this exists for parity with preload's open invoke. */
   invoke(channel: string, ...args: unknown[]): Promise<unknown>
-}
-
-/** @deprecated Use KaminBridgeApi. */
-export type ElectronBridge = KaminBridgeApi
-
-export interface SubmissionUpdate {
-  id: string
-  text?: string
-  state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
-  uuid?: string
-  cancelable?: boolean
-  warning?: string
-  capable?: boolean
 }

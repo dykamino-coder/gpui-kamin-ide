@@ -24,8 +24,16 @@ export function readMatrix() {
 }
 export type Matrix = ReturnType<typeof readMatrix>
 
+// These accepted contracts must survive edits to either providers or requirements.
+// This list is a floor for the declared gate, not the owner's full parity scope.
+const requiredContracts = ['host-terminal', 'title-regeneration', 'finished-toast-route', 'preview-hmr']
+function assertRequiredContracts(matrix: Matrix) {
+  for (const id of requiredContracts) assert.ok(matrix.requirements[id], `Missing required browser-host contract: ${id}`)
+}
+
 /** Completeness is checked against an independent AST inventory, never a generated allow-all map. */
 export function assertCapabilityMatrix(inventory: CapabilityItem[], matrix: Matrix, base = bridgeRoot) {
+  assertRequiredContracts(matrix)
   const ids = inventory.map(x => x.id).sort()
   const mapped = matrix.rows.map(x => x.id).sort()
   assert.equal(new Set(mapped).size, mapped.length, 'Duplicate capability mapping')
@@ -91,8 +99,9 @@ export function assertCapabilityMatrix(inventory: CapabilityItem[], matrix: Matr
   }
 }
 
-/** Full parity cannot pass while required Bridge features are only mapped, not integrated. */
+/** Declared readiness cannot pass with a missing or pending required contract. */
 export function assertBrowserHostReady(matrix: Matrix) {
+  assertRequiredContracts(matrix)
   const pending = Object.entries(matrix.requirements).filter(([, requirement]) => requirement.state !== 'implemented')
   assert.equal(pending.length, 0, 'Browser-host parity remains OPEN:\n' + pending.map(([id, requirement]) =>
     `${id} (${requirement.owner}): ${requirement.reason}`).join('\n'))

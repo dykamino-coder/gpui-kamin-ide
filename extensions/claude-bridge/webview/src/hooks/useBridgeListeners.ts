@@ -3,6 +3,7 @@ import { setTabUsage } from '../signals/session-usage'
 import { useEffect, useRef } from 'preact/hooks'
 
 import type { KaminBridgeApi } from '../../shared/types'
+import { installWorkspaceFilePanel } from '../signals/workspace-file-panel'
 import type { TabInfo, TreeNode } from '../../shared/types'
 import type { ElicitationRequest, PermissionRequest } from '../../shared/types'
 
@@ -13,7 +14,7 @@ import { scheduleSaveTabsState, ghostifyClosedPinned, reclaimGhostIfMatch } from
 import { mcpLoading, tabPromptReady, lastSendAt, reconnectNonce } from '../signals/connection'
 import { mcpServers } from '../signals/customize'
 import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../signals/ui'
-import { hostEditorSelection, getOpenFiles, openFileInTab } from '../signals/file-viewer'
+import { hostEditorSelection } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
 import { tabAgentTrees, tabJsonlLive, ingestAgentEntries, clearAgentTabState } from '../signals/agents'
@@ -738,17 +739,7 @@ export function useBridgeListeners(
       const requestId = event.args?.[0]
       activeWidgets.value = activeWidgets.value.filter(widget => widget.requestId !== requestId)
     }) ?? (() => {})
-    const unsubWorkspaceFiles = vscodeApi.onHostMessage?.((frame: unknown) => {
-      const event = frame as { kind?: string; channel?: string; args?: { files?: unknown }[] } | null
-      if (event?.kind !== 'event' || event.channel !== 'workspace:files-state') return
-      const tab = activeTabId.peek()
-      const files = event.args?.[0]?.files
-      // Bootstrap a fresh document from the host's retained file view. Existing
-      // mounted views keep their active file and receive fresh bytes below.
-      if (tab && Array.isArray(files) && getOpenFiles(tab).length === 0) {
-        for (const path of files) if (typeof path === 'string') openFileInTab(tab, path)
-      }
-    }) ?? (() => {})
+    const unsubWorkspaceFiles = browserWorkspace ? installWorkspaceFilePanel() : () => {}
     if (browserWorkspace) vscodeApi.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
 
     if (!browserWorkspace && reconnectNonce.peek() > 0 && role !== 'customize') {

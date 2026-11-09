@@ -35,12 +35,18 @@ impl Intervals {
             ..Tree::default()
         };
         out.root = out.build(&entries);
-        let mut events: Vec<_> = entries
-            .iter()
-            .filter(|(_, r)| r.start < r.end)
-            .flat_map(|(i, r)| [(r.start, true, *i), (r.end, false, *i)])
-            .collect();
+        // Размеры известны заранее: события — по два на непустой диапазон,
+        // таблица первых стилей — по одной записи на различную точку. Точные
+        // блоки вместо цепочки удвоений и последующего ужатия.
+        let mut events = Vec::with_capacity(2 * entries.len());
+        events.extend(
+            entries
+                .iter()
+                .filter(|(_, r)| r.start < r.end)
+                .flat_map(|(i, r)| [(r.start, true, *i), (r.end, false, *i)]),
+        );
         events.sort_unstable();
+        out.first = Vec::with_capacity(events.chunk_by(|a, b| a.0 == b.0).count());
         let mut active = std::collections::BTreeSet::new();
         for (at, add, i) in events {
             if add {
@@ -55,7 +61,6 @@ impl Intervals {
                 out.first.push((at, value));
             }
         }
-        out.first.shrink_to_fit();
         Self(Some(Box::new(out)))
     }
 

@@ -39,6 +39,8 @@ test('mapping validation rejects stale rows, missing reasons, changed handlers a
   mutate(copy => { delete copy.rows.find(row => row.id === 'api:openInVscode')!.reason }, /Missing exclusion reason/)
   mutate(copy => { copy.rows.find(row => row.id === 'tool:Read')!.handler = 'writeFile' }, /Changed tool handler/)
   mutate(copy => { copy.rows.find(row => row.id === 'api:getConfig')!.routes = ['invoke:write-clipboard'] }, /Changed API routes/)
+  mutate(copy => { delete copy.rows.find(row => row.id === 'tool:preview_mount')!.requires }, /Missing provider prerequisite/)
+  mutate(copy => { delete copy.requirements['preview-hmr'] }, /Missing required browser-host contract/)
 })
 
 test('new source APIs, channels, dynamic dispatchers and unregistered handlers fail without explicit mapping', t => {
@@ -50,12 +52,17 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   })
   // Copy only production sources; never traverse server/data or dependencies.
   for (const directory of ['extension/src', 'webview/shared', 'webview/src', 'workspace/src']) {
-    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), { recursive: true })
+    fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), {
+      recursive: true,
+      filter: file => fs.statSync(file).isDirectory() || /\.tsx?$/.test(file) && !/\.(test|spec)\./.test(file),
+    })
   }
   const api = path.join(fixture, 'webview/shared/types.ts')
   const original = fs.readFileSync(api, 'utf8')
   fs.writeFileSync(api, original.replace('export interface KaminBridgeApi {', 'export interface KaminBridgeApi {\n futureApi(): void'))
   assert.throws(() => assertCapabilityMatrix(capabilityInventory(fixture), matrix, fixture), /api:futureApi/)
+  fs.writeFileSync(api, original.replace('export interface KaminBridgeApi {', 'export interface KaminBridgeApi extends FutureApi {'))
+  assert.throws(() => capabilityInventory(fixture), /Unclassified inherited API members/)
   fs.writeFileSync(api, original)
   const probe = path.join(fixture, 'extension/src/main/mcp/tools/capability-probe.ts')
   fs.writeFileSync(probe, `
@@ -87,11 +94,32 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
     assert.ok(adapters.some(item => item.id === id), `Inventory omitted dispatch set ${id}`)
   }
   assert.throws(() => assertCapabilityMatrix(adapters, matrix, fixture), /future-adapter-invoke/)
+  fs.writeFileSync(adapter, `
+    if ('future-reversed-route' === frame.channel) {}
+    switch (frame.channel) {
+      case 'future-switch-route': break
+      default: break
+    }
+  `)
+  const routes = capabilityInventory(fixture)
+  for (const id of ['route:future-reversed-route', 'route:future-switch-route']) {
+    assert.ok(routes.some(item => item.id === id), `Inventory omitted dispatcher ${id}`)
+  }
+  assert.throws(() => assertCapabilityMatrix(routes, matrix, fixture), /future-reversed-route/)
+  fs.writeFileSync(adapter, 'switch (frame.channel) { case unknownChannel: break }')
+  assert.throws(() => capabilityInventory(fixture), /Unclassified channel case/)
 })
 
-test('a mapped capability cannot pass the full parity gate while its host adapter is pending', () => {
+test('declared readiness rejects pending adapters and cannot be bypassed by deleting requirements', () => {
   const copy = structuredClone(matrix)
   copy.requirements['synthetic-missing-adapter'] = { state: 'pending', owner: 'fixture', reason: 'Required real host implementation' }
   assert.throws(() => assertBrowserHostReady(copy), /synthetic-missing-adapter/)
-  assert.doesNotThrow(() => assertBrowserHostReady({ ...copy, requirements: {} }))
+  assert.throws(() => assertBrowserHostReady({ ...copy, requirements: {} }), /Missing required browser-host contract/)
+  for (const id of ['host-terminal', 'title-regeneration', 'finished-toast-route', 'preview-hmr']) {
+    const missing = structuredClone(matrix)
+    delete missing.requirements[id]
+    assert.throws(() => assertBrowserHostReady(missing), new RegExp(`Missing required browser-host contract: ${id}`))
+    assert.throws(() => assertCapabilityMatrix(inventory, missing), new RegExp(`Missing required browser-host contract: ${id}`))
+  }
+  assert.doesNotThrow(() => assertBrowserHostReady(matrix))
 })

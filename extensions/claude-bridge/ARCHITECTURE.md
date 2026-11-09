@@ -26,13 +26,14 @@ runtime claims:
   `extension/src/shim/host-compat.ts`;
 - Electron-shaped members exposed by that facade are local VSIX adapters, not
   an Electron package dependency;
-- `window.electronBridge` and `ElectronBridge` are deprecated aliases retained
-  for the vendored webview and third-party integrations;
+- the standalone renderer, window chrome, updater and `window.electronBridge` /
+  `ElectronBridge` aliases have been removed; webviews use `KaminBridgeApi` only;
 - `ElectronToServerMsg`, old `electron-store` paths, `/download/electron`, and
   migration comments describe the legacy standalone Electron client or its
   persisted data and must not be blindly renamed.
 
-A full removal of the deprecated webview alias is a separate breaking migration.
+The supported entries are `chat-root`, `tools-root`, `customize-root` and the
+browser workspace entry. The browser uses the same current roots as KaminIDE.
 Do not infer Electron from structural names such as `BrowserWindow`, `ipcMain`,
 or `webContents`: those interfaces are implemented locally by the host facade.
 

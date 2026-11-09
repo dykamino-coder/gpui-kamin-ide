@@ -23,7 +23,7 @@ pub(super) fn enter<'a>(
     _counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
-    out: &mut Vec<Node>,
+    out: &mut super::kids::Kids,
 ) -> Option<Box<Pending<'a>>> {
     let handle = visit.handle();
     let NodeData::Element { name, attrs, .. } = &handle.data else {
@@ -198,7 +198,7 @@ pub(super) fn enter<'a>(
     let list_item = (!hidden && is_list_item).then(|| counters.value_of("list-item"));
     let style_scope = (!hidden && box_level && style.reset_context.contain_style == Some(true))
         .then(|| counters.enter_style_scope());
-    let mut children = vec![];
+    let mut children = super::kids::Kids::kept(handle, hidden);
     if !hidden {
         super::marker::apply(
             &mut style,

@@ -118,3 +118,62 @@ fn opportunities_after_atom_carriers_follow_box_index_in_any_order() {
     assert!(some.contains(&8), "{some:?}");
     assert!(!some.contains(&4) && !some.contains(&12), "{some:?}");
 }
+
+/// Offsets of the break iterator map back through spacers and through
+/// `break-all` substitutes of another UTF-8 length exactly like the former
+/// byte table: a character after spacers answers with the spacers' start,
+/// the end with the end of the text.
+#[test]
+fn streamed_offsets_match_the_byte_table() {
+    fn table(p: &Paragraph) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
+        let tailor = p.wrap.break_all;
+        let mut clean = String::new();
+        let mut map = Vec::new();
+        let mut pending = None;
+        for (at, ch) in p.text.char_indices() {
+            if p.spacers.binary_search(&at).is_ok() {
+                pending.get_or_insert(at);
+                continue;
+            }
+            map.push(pending.take().unwrap_or(at));
+            let resolved = if tailor {
+                super::break_all_class(ch)
+            } else {
+                ch
+            };
+            map.extend(std::iter::repeat_n(at, resolved.len_utf8() - 1));
+            clean.push(resolved);
+        }
+        map.push(p.text.len());
+        unicode_linebreak::linebreaks(&clean)
+            .map(|(at, kind)| (map.get(at).copied().unwrap_or(p.text.len()), kind))
+            .collect()
+    }
+    let s = crate::text::inline::SPACER;
+    for (text, spacers) in [
+        (format!("ab {s}cd ef{s}"), vec![3, 11]),
+        (format!("{s}{s}x y"), vec![0, 3]),
+        (format!("漢 {s}字a b,c"), vec![4]),
+        ("plain text, no spacers".to_string(), vec![]),
+    ] {
+        for break_all in [false, true] {
+            let p = Paragraph::new(
+                text.clone().into(),
+                vec![],
+                px(16.),
+                px(20.),
+                Align::Left,
+                Wrap {
+                    break_all,
+                    ..Default::default()
+                },
+            )
+            .spacers(spacers.clone());
+            assert_eq!(
+                p.linebreaks_uax(),
+                table(&p),
+                "{text:?} break_all={break_all}"
+            );
+        }
+    }
+}

@@ -2,6 +2,7 @@
 
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
+use std::borrow::Cow;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -22,7 +23,11 @@ use crate::style::values::value::{Len, px_strict};
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs<'a>(
+    nodes: &'a [Node],
+    inherited: &BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Cow<'a, [Node]> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -80,7 +85,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
         .iter()
         .any(|n| matches!(n, Node::Element(e) if passable(e) && has(e)))
     {
-        return nodes.to_vec();
+        return Cow::Borrowed(nodes);
     }
     let mut out = Vec::with_capacity(nodes.len() + 1);
     for n in nodes {
@@ -95,7 +100,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
             other => out.push(other.clone()),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 /// Сдвиг относительно позиционированной части таблицы.

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright'
-import { check, scenarios, outcome, exitStatus, markdown, CheckFailure } from './report.mjs'
+import { check, scenarios, outcome, exitStatus, markdown, CheckFailure, assertImageSource } from './report.mjs'
 import { command, OwnedResources, imageProbe, issueToken, upstreamHealth } from './resources.mjs'
 import { heap } from './browser.mjs'
 import { liveScenarios } from './scenarios.mjs'
@@ -49,12 +49,18 @@ async function main() {
       const [config] = JSON.parse(await command('podman', ['image', 'inspect', values.image]))
       report.imageId = config.Id
       report.imageSource = config.Config?.Labels?.['org.opencontainers.image.revision'] || 'unspecified'
+      // Reject an old/concurrently retagged image before probing it or issuing
+      // a token. A passing run must identify the same clean candidate twice.
+      assertImageSource(report)
+      // Tags can move while another build runs on the shared Podman engine.
+      // Probe and start the immutable image that was actually inspected.
+      owned.image = report.imageId
       check(config.Config?.User && !['root', '0', '0:0'].includes(config.Config.User), 'IMAGE_NONROOT')
       check((config.Healthcheck ?? config.Config?.Healthcheck)?.Test?.length, 'IMAGE_HEALTHCHECK_USE_DOCKER_FORMAT')
       const probe = JSON.parse(await command('podman', ['run', '--rm', '--name', `${owned.name}-probe`,
         '--tmpfs', '/workspace:rw,mode=1777',
         '--tmpfs', '/home/workspace:rw,mode=1777',
-        '--entrypoint', 'node', values.image, '-e', imageProbe]))
+        '--entrypoint', 'node', report.imageId, '-e', imageProbe]))
       check(probe.uid !== 0 && probe.bundle.raw > 0, 'IMAGE_CONTRACT')
       cliReady = probe.cli
       credentialsReady = probe.credentialsMemoryOnly
@@ -75,17 +81,15 @@ async function main() {
     if (workspaceReady) {
       const loggedIn = await record('browser-login', async () => {
         browser = await chromium.launch({ headless: true })
-        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+        const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, colorScheme: 'dark' })
         const page = await context.newPage()
         await page.goto(owned.origin, { waitUntil: 'domcontentloaded' })
-        await page.locator('#workspace-token').fill(token.token)
-        await page.locator('#workspace-login button').click()
         await page.waitForFunction(() => !!window.bridgeCmd, null, { timeout: 30_000 })
-        check(await page.locator('#workspace-token').inputValue() === '', 'TOKEN_FIELD_CLEARED')
+        check(!await page.locator('#workspace-login').isVisible(), 'LOOPBACK_AUTO_LOGIN')
         check(await page.evaluate(secret => ![...Object.values(localStorage), ...Object.values(sessionStorage)].some(v => v.includes(secret)), token.token), 'NO_TOKEN_IN_STORAGE')
         report.metrics.heapStartup = await heap(context, page)
         report.metrics.browser = browser.version()
-        report.state = { owned, context, page, metrics: report.metrics }
+        report.state = { owned, context, page, metrics: report.metrics, screenshot: path.join(reportDir, 'layout.png') }
       })
       if (loggedIn) {
         const tests = liveScenarios(report.state)

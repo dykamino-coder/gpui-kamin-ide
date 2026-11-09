@@ -32,13 +32,10 @@ impl Paragraph {
         if n == 0 {
             return;
         }
-        // Byte offsets of the runs in `out`.
-        let mut starts = Vec::with_capacity(n);
-        let mut at = range.start;
-        for r in out.iter() {
-            starts.push(at);
-            at += r.len;
-        }
+        // Byte offset of run `i` of `out` (only the two edge runs are asked).
+        let start_of = |out: &[TextRun], i: usize| -> usize {
+            range.start + out[..i].iter().map(|r| r.len).sum::<usize>()
+        };
         let (li, ri) = if rtl { (n - 1, 0) } else { (0, n - 1) };
         // A piece of zero-width bidi controls only (the marks of `direction`
         // and `unicode-bidi`) has no extent of its own to frame.
@@ -53,7 +50,7 @@ impl Paragraph {
                 continue;
             }
             let own = (edge.background_color, edge.background_border);
-            let pos = starts[idx];
+            let pos = start_of(out, idx);
             let index = &self.prepared().box_index;
             let holders: Vec<u32> = index
                 .extents

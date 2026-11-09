@@ -13,10 +13,10 @@ use super::{
 use crate::text::paragraph::*;
 
 impl Paragraph {
-    pub(crate) fn soft_opportunities(&self, out: &mut Vec<Stop>) {
+    pub(crate) fn soft_opportunities(&self, out: &mut impl super::opportunities::StopList) {
         if self.wrap.anywhere {
             for (i, _) in self.text.char_indices().skip(1) {
-                out.push(Stop {
+                out.push_stop(Stop {
                     at: i,
                     mandatory: false,
                 });
@@ -29,33 +29,35 @@ impl Paragraph {
                     continue;
                 }
                 for (i, _) in self.text[range.clone()].char_indices().skip(1) {
-                    out.push(Stop {
+                    out.push_stop(Stop {
                         at: range.start + i,
                         mandatory: false,
                     });
                 }
             }
-            for (at, kind) in self.linebreaks() {
+            let len = self.text.len();
+            self.for_each_linebreak(|at, kind| {
                 // Обязательные разрывы Юникода — это не только перевод
                 // строки: подача страницы, вертикальная табуляция,
                 // разделители строки и абзаца, NEL. Все они заканчивают
                 // строку принудительно (`line-breaking-022`).
                 match kind {
-                    unicode_linebreak::BreakOpportunity::Allowed => out.push(Stop {
+                    unicode_linebreak::BreakOpportunity::Allowed => out.push_stop(Stop {
                         at,
                         mandatory: false,
                     }),
                     // Конец текста переносчик тоже зовёт обязательным
                     // разрывом — но переносить там нечего, а лишняя точка
                     // ломает счёт строк.
-                    unicode_linebreak::BreakOpportunity::Mandatory if at < self.text.len() => out
-                        .push(Stop {
+                    unicode_linebreak::BreakOpportunity::Mandatory if at < len => {
+                        out.push_stop(Stop {
                             at,
                             mandatory: true,
-                        }),
+                        })
+                    }
                     unicode_linebreak::BreakOpportunity::Mandatory => {}
                 }
-            }
+            });
             {
                 // `line-break: normal`/`loose` (css-text-3 §5.2): перед
                 // малой каной и знаком долготы (класс CJ) разрыв
@@ -115,7 +117,7 @@ impl Paragraph {
                             && !no_break_after(before)
                             && !matches!(before, '\u{200B}' | '\u{2060}' | '\u{00A0}'))
                     {
-                        out.push(Stop {
+                        out.push_stop(Stop {
                             at: i,
                             mandatory: false,
                         });
@@ -129,7 +131,7 @@ impl Paragraph {
                 // «tú­’àn» не рвалось вовсе).
                 for (i, ch) in self.text.char_indices() {
                     if ch == SOFT_HYPHEN {
-                        out.push(Stop {
+                        out.push_stop(Stop {
                             at: i + ch.len_utf8(),
                             mandatory: false,
                         });
@@ -153,7 +155,7 @@ impl Paragraph {
                         && ch != '\r'
                         && self.wrap_at(i).break_spaces
                     {
-                        out.push(Stop {
+                        out.push_stop(Stop {
                             at: i + ch.len_utf8(),
                             mandatory: false,
                         });
@@ -164,7 +166,7 @@ impl Paragraph {
                 // Запрет действует только МЕЖДУ буквенными единицами:
                 // иероглифы друг от друга не отрываются, а после запятой
                 // или дефиса строка рвётся по-прежнему.
-                out.retain(|s| {
+                out.retain_stops(|s| {
                     if !self.wrap_at(s.at).keep_all {
                         return true;
                     }

@@ -2,6 +2,8 @@ import type { JSX } from 'preact'
 import { useState, useEffect } from 'preact/hooks'
 import type { ExternalMcpServerInfo } from '../../../../shared/types'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { ContainerPathButton } from '../shared/ContainerPathButton'
 import { ConnectorStatusDot } from './ConnectorStatusDot'
 import { ConnectorActions } from './ConnectorActions'
 import { ConnectorToolItem } from './ConnectorToolItem'
@@ -96,7 +98,7 @@ export function ConnectorDetail({ server, onRemoved, onEdit }: Props): JSX.Eleme
         )}
 
         {server.sourcePath && (
-          <div
+          isBrowserHost() ? <ContainerPathButton path={server.sourcePath} /> : <div
             class={styles.sourcePath}
             title="Click to open in editor"
             onClick={() => bridge.openFolder(server.sourcePath!)}

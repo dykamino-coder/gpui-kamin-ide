@@ -60,7 +60,9 @@ pub(super) fn collapse_kid_margins(
                     | Some(Display::GridLanes)
             )
         {
-            e.children = split_block_in_inline(&wrap_anon_tables(&e.children)).into();
+            e.children = split_block_in_inline(&wrap_anon_tables(&e.children))
+                .into_owned()
+                .into();
         }
         if e.style.used().reset_fragmentation.margin_trim & 1 != 0 {
             let mut eat = ZeroPaths::default();

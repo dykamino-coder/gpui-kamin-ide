@@ -36,30 +36,21 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            extensions/claude-bridge/webview/package-lock.json
-            extensions/claude-bridge/workspace/package-lock.json
-      - run: npm ci --no-audit --no-fund
-        working-directory: extensions/claude-bridge/webview
-      - run: npm run build:browser
-        working-directory: extensions/claude-bridge/webview
-      - run: npm ci --no-audit --no-fund
-        working-directory: extensions/claude-bridge/workspace
-      - run: npm run build
-        working-directory: extensions/claude-bridge/workspace
-      - run: npx playwright install --with-deps chromium --only-shell
+      - name: Install Podman when unavailable
+        run: |
+          if ! command -v podman >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y podman
+          fi
+      # The same bounded runner used for local acceptance. Chromium executes
+      # only inside its named Linux container, with a private browser cache.
+      - run: node scripts/browser-container.mjs
         working-directory: extensions/claude-bridge/workspace
         env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/bridgeweb-playwright
-      - run: npm run test:browser
-        working-directory: extensions/claude-bridge/workspace
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/bridgeweb-playwright
-          BRIDGE_BROWSER_SCREENSHOT: ${{ runner.temp }}/bridge-browser-fixture.png
+          BRIDGE_BROWSER_OUTPUT: ${{ runner.temp }}/bridge-browser-fixture
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: bridge-browser-fixture
-          path: ${{ runner.temp }}/bridge-browser-fixture.png
+          path: ${{ runner.temp }}/bridge-browser-fixture/
           if-no-files-found: ignore

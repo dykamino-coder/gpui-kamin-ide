@@ -68,10 +68,11 @@ impl Paragraph {
     /// across a side whose neighbour belongs to the same band, and that side
     /// gets no padding or border (css-break-3 §5.4 `box-decoration-break:
     /// slice`; mirror of `slice_runs_banded`).
-    pub(crate) fn mirrored_band_runs(&self, word: &std::ops::Range<usize>) -> Vec<TextRun> {
+    /// The runs are written into `out` (cleared first).
+    pub(crate) fn mirrored_band_runs(&self, word: &std::ops::Range<usize>, out: &mut Vec<TextRun>) {
         let left = self.band_at(word.end);
         let right = word.start.checked_sub(1).and_then(|a| self.band_at(a));
-        let mut out = self.own_runs(word);
+        self.own_runs_into(word, out);
         for run in out.iter_mut() {
             if run.background_color.is_none() {
                 continue;
@@ -79,7 +80,6 @@ impl Paragraph {
             let own = Some((run.background_color, run.background_border));
             cut_band_sides(run, left == own, right == own);
         }
-        out
     }
 }
 
@@ -91,19 +91,20 @@ impl Paragraph {
     /// rightmost one, where the line painter put its spacers; a fragment
     /// continued from or onto another line has no side there (CSS 2.1 §8.6,
     /// css-break-3 §5.4; Blink `NGInlineBoxFragmentPainter` paints sides
-    /// per `NGPhysicalBoxFragment::SidesToInclude`).
+    /// per `NGPhysicalBoxFragment::SidesToInclude`). The runs are written into
+    /// `out` (cleared first).
     pub(crate) fn visual_band_runs(
         &self,
         place: &[(usize, usize, bool, Pixels)],
         order: &prepared::visual_order::VisualOrder,
         k: usize,
         word: &std::ops::Range<usize>,
-    ) -> Vec<TextRun> {
+        out: &mut Vec<TextRun>,
+    ) {
         let rtl = place[k].2;
         let (left, right) = order.neighbours(word);
-        let mut out = self.own_runs(word);
-        self.cut_piece_sides(&mut out, word, rtl, left, right);
-        out
+        self.own_runs_into(word, out);
+        self.cut_piece_sides(out, word, rtl, left, right);
     }
 }
 

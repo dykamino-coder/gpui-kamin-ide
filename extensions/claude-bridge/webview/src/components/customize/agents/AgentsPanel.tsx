@@ -1,6 +1,8 @@
 import type { JSX } from 'preact'
 import { useState, useEffect } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { ContainerPathButton } from '../shared/ContainerPathButton'
 import { readPanelCache, writePanelCache } from '../../../lib/panel-cache'
 import { ListSkeleton } from '../../ui/ListSkeleton'
 import { PanelError } from '../../ui/PanelError'
@@ -194,7 +196,10 @@ export function AgentsPanel(): JSX.Element {
         ) : loadError && agents.length === 0 ? (
           <PanelError message="Could not load agents." onRetry={() => { setLoading(true); void refresh() }} />
         ) : filtered.length === 0 ? (
-          <div style="padding:16px;color:var(--text-disabled);font-size:12px">No agents found.</div>
+          <div style="padding:16px;color:var(--text-disabled);font-size:12px">
+            {q ? 'No agents match your search.' : 'No agents found.'}
+            {!q && isBrowserHost() && <p style="color:var(--text-secondary);line-height:1.5">Ask the agent in chat to create a subagent in the project's .claude/agents directory or ~/.claude/agents in this workspace container. Plugins can also provide agents.</p>}
+          </div>
         ) : (
           <>
             {groups.map(([groupName, items]) => (
@@ -255,6 +260,7 @@ export function AgentsPanel(): JSX.Element {
             )}
 
             <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+              {isBrowserHost() ? <ContainerPathButton path={selected.path} /> : <>
               <button
                 style="padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;cursor:pointer;border:1px solid var(--accent-action);background:var(--accent-action);color:var(--accent-action-fg);font-weight:500;transition:opacity .15s"
                 onClick={() => bridge.openSkill(selected.path)}
@@ -267,6 +273,7 @@ export function AgentsPanel(): JSX.Element {
               >
                 <i class="fas fa-folder-open" /> Show in Explorer
               </button>
+              </>}
             </div>
 
             {selected.tools.length > 0 && (

@@ -1,185 +1,180 @@
 # Browser workspace client
 
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
-Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
+Design and remaining acceptance: [DESIGN.md](DESIGN.md).
+Podman build, startup and acceptance: [PACKAGING.md](PACKAGING.md).
+Credential storage, automatic loopback access and reset: [CREDENTIALS.md](CREDENTIALS.md).
 
-This increment provides an HTTP/WebSocket boundary library and a headless
-composition of the real shared `BridgeHost`, alongside the merged browser entry
-for the existing App. It is not yet a runnable browser workspace: executable
-composition, environment services, capability matrix and Podman acceptance remain open.
-There is no second tool implementation or alternative chat UI in this package.
+The workspace is a Node Bridge **client** whose local machine is a Linux
+container. Its executable composes the same BridgeHost, client tool handlers,
+plugin hooks, MCP/LSP and monitors used by KaminIDE. It serves the existing
+current ChatRoot, Console and Agents components inside a thin browser shell,
+through an authenticated HTTP/WebSocket adapter implementing KaminBridgeApi. There is one UI and one tool implementation.
+Claude CLI and its login remain on the Bridge server.
 
-Owner requirement (2026-11-09): the browser must be a thin view and closing it
-must not interrupt agent work. The container host owns all sessions, execution,
-queues, pending prompts, file watches and PTYs, including with zero browsers.
-Re-attach must deliver transcript/streaming/tool/prompt state, open files/watches
-and terminal scrollback, then live updates, without replaying mutations or
-duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
-tears down work. The merged browser entry does not yet meet this full contract:
-host presentation snapshots and authoritative state migration remain open.
-Acceptance must cover close/reopen during Bash/MCP, pending permission after
-reopen, two tabs, and report production bundle size and page JS heap.
+Status: bounded implementations are available; the full owner request remains
+open. Capability classifications and synthetic browser tests are not proof of
+full live parity. The final acceptance evidence must identify the executed
+source revision and image, including failures and unrun scenarios.
 
-Pending increments remain tracked separately: #643 serves application assets;
-#642 needs host-owned file watches and re-attach refresh; #644 needs host-owned
-PTY lifetime and scrollback. The explicit Disconnect follow-up precedes #643,
-then corrected #642. None of these increments establishes full parity.
+## Runtime composition
 
-Run the boundary checks with Node 22:
+`src/cli.ts` builds the shared runtime, pins server administration requests to
+its configured upstream, installs browser environment services, then wraps it
+with persistent workspace-shell state, `WorkspaceFiles` and `TerminalWorkspaceBackend`. The resulting host serves
+the production browser bundle. Shutdown disposes terminals, file watches and
+the shared runtime; a lost browser socket only detaches delivery.
+
+`createSharedBackend` sets process cwd and initial project root to `/workspace`
+and supports one shared runtime per process. Project files and client settings
+persist in project/HOME volumes. Tools can access ordinary container paths,
+including absolute paths and symlink destinations outside `/workspace`.
+The container and its mounts provide isolation; `/workspace` is a project root,
+not a filesystem jail. Client HOME must remain separate from server CLI auth.
+
+New and resumed sessions default missing or blank browser cwd to the configured
+workspace root. A selected project must be an existing container directory;
+relative selections resolve against that root. Each session explains to the
+model that files, shell and client tools live in the workspace container, and
+includes the selected directory alongside the saved project instructions.
+
+The asset handler snapshots only the trusted browser build's entry and supported
+assets before listening. It rejects linked/special files and bounded-size/depth
+violations, and returns 404 for unknown paths, sources, maps and traversal.
+Application routes never publish project files. Asset changes require restart.
+
+## Authentication
+
+The configured Bridge token is validated with the existing server
+`/api/dashboard/tokens/resolve` endpoint. Login issues an opaque HttpOnly
+SameSite cookie. Identity is pinned: browser config, connect and resume requests
+cannot substitute another server/token. Host and Origin must match the configured
+origin; revocation, expiry or an upstream validation outage closes access.
+An auth-disabled dashboard response alone grants no workspace access.
+
+On first start the service registers its own Bridge client token, or imports a
+provided bootstrap secret once when registration requires authorization. Its
+private HOME volume stores that token and a generated browser secret in a 0600
+file. Session cookies survive restart and recreation with the same volume.
+Workspace ConfigStore still omits credentials from project settings, and browser
+events redact them. Dashboard-admin login remains a separate unimplemented path.
+
+Node defaults to `127.0.0.1:3460`. The image opts into a container-wide listener;
+Compose publishes the browser port on host loopback. Loopback visits receive an
+HttpOnly SameSite=Strict session cookie automatically after Host/Origin checks.
+Other origins require explicit `WORKSPACE_ALLOW_REMOTE=1` and retain token
+sign-in; HTTPS origins use Secure cookies. See the runbooks for reset and remote
+publication configuration.
+
+## Browser lifetime and host state
+
+Owner requirement (2026-11-09): closing the browser must not interrupt agent work.
+The host owns sessions, connections, foreground/background Bash, MCP calls,
+pending prompts, submission receipts, file subscriptions and local PTYs with
+zero browsers attached. Reopening synchronizes shared transcript/streaming caches
+and prompt/status state, then continues live delivery. Socket loss, reload,
+logout and a slow page do not terminate work. Explicit tab End, Disconnect and
+host shutdown are terminal boundaries.
+
+Lost invokes reject as unknown outcomes; the browser never automatically retries
+mutations. Stable-ID user submissions are deduplicated on the host (up to 10,000
+receipts/32 MiB, then explicit rejection). Re-attach uses read synchronization,
+not replay of writes or commands. Presentation snapshots remain process-owned;
+full host-authoritative transcript reducers and queued-message state remain open.
+
+The browser shell retains session/project navigation, tabs and pins, and a
+resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,
+active panels, project expansion and sidebar dimensions live in the host and
+synchronize across pages; validated layout operations persist across restart.
+The owner removed FilePanel and the project explorer from browser scope. The
+existing file services remain available for tools and attachments.
+
+Logical FileViews retain file/tree subscriptions with zero sockets and refresh
+watched bytes/directories on re-attach. Identity is an opaque sessionStorage value,
+not authoritative file content. There are at most 32 retained views, each with
+64 file and 8 tree subscriptions. FilePanel drafts, selections, scroll/undo and explorer projection are outside
+the revised browser scope.
+
+Terminals belong to host chat tabs. Spawn is coalesced per tab and re-attach
+receives a bounded headless-xterm screen/scrollback snapshot before live output.
+Detach does not respawn a shell. Explicit kill/tab close/disconnect/shutdown
+terminates owned processes. Limits include 32 records (including pending spawns),
+5000 scrollback lines and an 8 MiB serialized snapshot budget; omitted history is
+reported. Shells/screens survive browser loss, not host restart. Remaining OSC
+palette/pixel-window query compatibility has not been accepted as full TUI parity.
+
+The current ChatRoot and terminal components render the shared host services. Browser
+clipboard, downloads, uploads, path dialogs, notifications, links and audio use
+explicit environment adapters; missing services fail explicitly. Actual plugin
+LSP stays shared; unavailable native editor diagnostic commands reject. Native
+KaminIDE editor/reveal/openInVscode features are classified as native host
+operations in the matrix; browser attachments use the explicit environment adapter.
+
+PREVIEW/HMR adapters have their own behavioral coverage. The retired FilePanel
+is hidden in the browser shell; this layout does not expose an explorer or editor.
+
+## Verification and remaining gates
+
+Install repository-root dependencies with `npm ci --no-audit --no-fund` first.
+Then run checks from this directory with a Node version allowed by package.json:
 
 ```sh
 npm ci --no-audit --no-fund
 npm --prefix ../extension ci --no-audit --no-fund
 npm run typecheck
 npm test
-npm run build
+npm run test:acceptance
+npm run test:capabilities
+npm run test:parity
 ```
 
-`startWorkspaceServer` accepts one `WorkspaceBackend` and attaches an owned view
-per browser socket. Incoming `invoke`, `send` and `invoke-diagnostic` frames keep
-the existing BridgeHost message contract. Replies belong to the requesting view;
-the backend owns event fan-out. A disconnected view is disposed without closing
-the shared runtime. The embedding host must dispose its runtime on shutdown.
-The built `./runtime` export provides `createSharedBackend`. Supply an existing
-root directory, private global-storage directory, configured server URL/token,
-version and explicit `WorkspaceEnvironment` services. It sets process cwd to
-the root and composes the same client handlers and tool registry as KaminIDE.
-There is one runtime per process, even after disposal, because shared handlers
-have process-wide registrations. Run it in an isolated container HOME; shared
-plugin configuration uses that HOME. Dispose both server and backend on shutdown.
+The real shared-runtime integration uses authenticated HTTP/WebSocket transport,
+actual tools and temporary project/HOME directories. It verifies pinned identity,
+Read/Write/Edit/Glob, Bash, external MCP cancellation, zero-page lifetime,
+transcript/stream/prompt recovery, once-only submissions and terminal cleanup.
+Its upstream protocol peer is synthetic; it is not live Claude acceptance.
 
-The default cwd and initial project root are `/workspace`. Files and shell tools
-have container-wide access, including absolute paths and symlink destinations
-outside that directory. Isolation comes from the container and its mounts;
-`/workspace` is a project location, not a filesystem sandbox. Mount only the
-project and client state this workspace is intended to access.
+Production browser smoke uses the real asset handler and boundary with an
+explicit synthetic backend. Linux CI/Podman runs headless Chromium and reports
+all shipped JS chunks (raw/gzip/Brotli) and post-GC page heap. Startup metrics
+are baselines, not long-turn retention or thin-page proof. Never launch Chromium
+or Playwright natively on the shared Windows workstation, even headlessly.
 
-The configured upstream identity is pinned: browser config/connect/tab/resume requests
-cannot replace its server or token, and outgoing frames redact the configured
-credential. Unsupported invokes fail explicitly. The three desktop arbitrary-URL
-server helpers (`bridge:create-token`, `bridge:server-version`,
-`bridge:server-fetch`) currently fail explicitly pending a pinned browser proxy.
-Browser clipboard, dialogs, navigation and editor effects require supplied
-services; no default all-success adapter is installed. Headless mode has no
-VSIX-native diagnostic providers; actual plugin LSP remains shared, while native
-editor command fallback rejects as unavailable. This is not full LSP acceptance.
+The capability inventory must cover every KaminBridgeApi method, mapped/dynamic
+channel and client handler in both directions, with observable behavior tests.
+Source classification and named test paths alone do not establish behavioral
+coverage. The merged #650 inventory checks API/channel/tool mappings in both
+directions; see the [matrix manifests](capabilities/api.json),
+[providers](capabilities/providers.json), [requirements](capabilities/requirements.json)
+and [inventory extractor](test/capability-inventory.ts).
+Current `test:parity` passes its declared provider prerequisites:
+host terminals, title regeneration, finished-toast routing and PREVIEW/HMR.
+Deleting any of these four requirements fails both classification and readiness
+checks. It does **not** encode the remaining full host-page behavior
+gates. A green command therefore cannot close the owner task. Add these requirements
+and exhaustive observable behavior coverage before claiming full parity.
 
-The deterministic runtime test crosses authenticated HTTP/WS, two real host
-views and the shared server connection pipeline. It checks Read/Write/Edit/Glob
-against real bytes, pinned identity (including get-config → resume with the
-redacted token and forged resume credentials), private replies/event fan-out,
-clipboard round trip and persistent layout. Terminal disposal aborts foreground
-tool controllers, terminates owned background shells, cancels external HTTP/SSE
-MCP requests and closes shared resources without sending `session:end`; the
-server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
-The test starts long-running foreground/background Bash processes and an actual
-loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
-process termination and natural client exit. It also sends the public explicit
-Disconnect before shutdown: connections are terminally disposed before tabs are
-forgotten, and the owning call's cancellation reaches external HTTP/SSE requests.
-An SSE response still pending after POST 202 is cancelled without closing the
-shared stream or another call. Stdio/WS per-call remote cancellation remains a
-separate parity gap. A third case closes both browser sockets while Bash/MCP run,
-checks continued tools with zero browsers, re-attaches to the same three sessions,
-then verifies shutdown cleanup. This is socket-level lifecycle evidence, not the
-full transcript/prompt recovery acceptance. A
-synthetic upstream protocol peer supplies session/MCP frames; this does not
-prove browser UI, live model, external plugin or container acceptance. The test
-uses a disposable HOME and cannot load the operator's Claude profile.
+Live acceptance requires a clean runner checkout and an image whose
+`org.opencontainers.image.revision` label equals that runner's full HEAD SHA.
+A mismatch fails before probing the image or issuing a client token. After
+inspection the harness uses the immutable image ID so concurrent retagging
+cannot substitute another image. Commit first, then build with that SHA.
+MCP evidence records only discovery, call counts and the independent result
+check; transcript and file-byte assertions remain mandatory.
 
-`WorkspaceAuth` pins one configured Bridge token and verifies it through the
-existing `/api/dashboard/tokens/resolve` endpoint. `POST /auth/login` accepts
-`{"token":"..."}` in JSON and issues an opaque HttpOnly SameSite cookie;
-credentials never go into a URL. `GET /auth/session` reports authentication,
-and `POST /auth/logout` invalidates the cookie and closes its sockets. Token
-revocation and expiry are checked at upgrade and periodically (15 seconds by
-default). An upstream outage fails closed. An auth-disabled dashboard response
-does not grant access. Dashboard-admin login is still pending.
+The Linux Podman live harness exercises chat, file tools, Bash, MCP, hooks,
+session pinning, dock synchronization, close-mid-turn continuation, pending permissions after reopen and two
+browser tabs. It retains sanitized summaries outside the checkout. The latest
+executed source/image/report must be checked before marking these gates passed;
+historical failures are not waived by later source changes. The executed
+[#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653) records
+15/15 PASS for its listed scenarios on production sources matching main
+`65fa7467`, including #650's title/toast integration; see DESIGN.md for exact
+runner/image provenance and limitations. That historical run predates the
+current browser shell and does not establish its visual parity.
 
-Binding defaults to `127.0.0.1:3460`. Opting into a different bind requires an
-exact `origin` such as `https://workspace.example.test`. The TLS reverse proxy
-must preserve that Host and browser Origin; forwarded headers are not trusted.
-HTTPS origins set Secure cookies. The future Podman service will publish on
-host loopback by default. No public bind or deployment is performed by these
-library tests.
-
-The boundary enforces Host/Origin checks, bounded login attempts and sessions,
-32 sockets/upgrades, 64 concurrent dispatches per socket, 16 MiB frames and a
-32 MiB output buffer. Invalid/forged host frames are rejected. Backend failures
-close the view; adapters must return explicit invoke errors for unsupported
-channels.
-
-The workspace is a Bridge **client**. Claude CLI and its login belong solely to
-the server; never mount or copy a server auth volume into this client. The
-workspace needs its own Bridge client token plus persistent project files and
-client settings/plugin HOME. Combined packaging must still keep server auth
-owned by the server process.
-
-## Browser transport and shared UI
-
-`webview/browser.html` mounts the existing full `App` (sessions, chat, settings
-and file panel) through the existing KaminBridgeApi channel tables. Build with
-`npm run build:browser` in `webview`; serve the entire `webview/dist/browser`
-directory at the HTTP origin root, with `/` mapped to `browser.html`. Supply the
-production asset handler to the HTTP boundary:
-
-```ts
-const serveApp = await createAppAssetHandler('/opt/bridge/webview/dist/browser')
-const server = await startWorkspaceServer({ auth, backend, serveApp })
-```
-
-`createAppAssetHandler` and `startWorkspaceServer` are package exports. Load the
-assets before listening; pass a dedicated, trusted browser build directory, never
-`/workspace` or client HOME. The handler snapshots `browser.html` and supported
-files under `assets/` into memory. It rejects symlinks, special files, missing
-entry/assets directories, files above 16 MiB, builds above 64 MiB, more than 4096
-asset entries or directory depth above eight. Project files, source maps, unknown
-routes and traversal paths return 404 without an HTML fallback. GET and HEAD
-preserve byte lengths and MIME types; all responses use `no-store`, so a restart
-cannot reuse stale application code. Changes to on-disk assets require a host
-restart. Only trusted application bytes are public before sign-in; API/socket
-authentication is unchanged. Executable/runtime composition is still pending.
-
-Never serve project files as application assets. The browser build preserves a deferred renderer
-chunk: desktop single-file bundling would execute its module initializers before
-the browser transport is installed.
-
-The entry checks `/auth/session`, signs in via `/auth/login`, and uses only the
-opaque HttpOnly cookie for the same-origin `/bridge` socket. The token field is
-cleared when submitted; there is no token in browser storage, URLs or renderer
-state. UI state is document-local memory; durable client settings remain host
-responsibilities. Logout and reauthentication reload the document.
-
-Private socket subscriptions deliver replies/events; browser `window.postMessage`
-cannot settle invokes. The native VSIX receive path and its single API acquisition
-are preserved. A lost socket rejects pending invokes with an unknown-outcome
-error: the host may already have executed them. There is no command queue, startup
-queue or mutation replay. The UI mounts after connection and becomes inert while
-offline. Only best-effort diagnostics are discarded offline. Reconnect emits the
-existing `bridge:reconnected` event to refresh read snapshots/session replay
-without replacing the UI document. Connection deadlines, exponential backoff,
-frame/output byte limits and page-owned cleanup bound transport resources. An
-expired session returns to sign-in; protocol/overload closes require reload.
-
-The browser smoke uses this production asset handler, the real HTTP/WS boundary, headless
-Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
-fail; this is startup/transport/UI composition evidence, not shared-handler,
-model or Podman parity. Run after building both packages:
-
-```sh
-# In workspace; choose a private browser cache on a shared developer machine.
-export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
-export PLAYWRIGHT_SKIP_BROWSER_GC=1
-npx playwright install chromium --only-shell
-npm run test:browser
-```
-
-CI repeats this headlessly and captures only synthetic fixture UI.
-The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
-JS heap after GC at initial App mount and after socket re-attach. These are
-synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
-that the page is already thin. The design requires the remaining measurements.
-
-Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
-exhaustive capability gate and live Podman acceptance remain open. The presence
-of UI controls in this build is not a claim those adapters already exist.
+The owner task remains open for remaining host-authoritative page state,
+exhaustive behavior proof and final composed live acceptance. FilePanel state
+polish is explicitly outside the revised browser scope.
+No release, version bump or image publication is part of this work. Claude lead
+reviews/merges implementation and the consolidated documentation PR.

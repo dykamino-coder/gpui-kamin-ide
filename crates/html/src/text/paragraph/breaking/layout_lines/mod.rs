@@ -59,7 +59,9 @@ impl Paragraph {
         let mut clearance = px(0.);
         let mut shifts = 0;
         while i < opportunities.len() {
-            let Stop { at, mandatory } = opportunities[i];
+            let Some(Stop { at, mandatory }) = opportunities.get(i) else {
+                break;
+            };
             // Once the consecutive-line limit is reached, ignore conditional
             // opportunities until an ordinary line break resets the count.
             let limited = self.hyphen_limit_lines != usize::MAX

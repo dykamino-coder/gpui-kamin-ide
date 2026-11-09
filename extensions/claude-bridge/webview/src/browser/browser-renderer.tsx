@@ -4,13 +4,13 @@ import '@fortawesome/fontawesome-free/css/all.min.css'
 import '../theme/global.css'
 import '../theme/dark-theme.css'
 import '../theme/light-theme.css'
-import '../theme/legacy-global.css'
-import '../theme/components/sidebar.css'
 import '../theme/components/chat.css'
 import '../theme/components/jsonl.css'
 import '../theme/components/widgets.css'
+import '../theme/webview-overrides.css'
+import '../theme/kamin-bridge.css'
 import '../bridge-shim'
-import { App } from '../App'
+import { WorkspaceShell } from './WorkspaceShell'
 import { applyInitialTheme } from '../theme/apply-theme'
 import { installHljsThemeSwapper } from '../theme/highlight-theme'
 import { notifyHostReady } from '../lib/host-ready'
@@ -22,6 +22,7 @@ export function mount(root: HTMLElement): void {
   installHljsThemeSwapper()
   installExternalLinkHandler()
   installCommandApi(window.kaminBridge)
-  render(<App />, root)
+  root.style.cssText = 'display:flex;height:100%;width:100%;overflow:hidden'
+  render(<WorkspaceShell />, root)
   notifyHostReady()
 }

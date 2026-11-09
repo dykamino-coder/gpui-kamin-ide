@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { check, CheckFailure } from './report.mjs'
 import { poll } from './resources.mjs'
-import { raw, ready, newTab, turn, transcript, complete, used, heap, requirePanel } from './browser.mjs'
+import { raw, ready, newTab, turn, transcript, complete, used, heap } from './browser.mjs'
 
 const nonce = () => `acceptance-${randomUUID()}`
 const finish = n => `When finished reply with exactly ${n}:ok.`
@@ -10,6 +10,21 @@ export function liveScenarios(state) {
   const { owned, context, metrics } = state
   const file = '/workspace/bridgeweb-acc-file.txt'
   return {
+    async 'workspace-context'() {
+      await owned.exec("require('fs').mkdirSync('/workspace/chosen-project')")
+      for (const [cwd, expected] of [['', '/workspace'], ['chosen-project', '/workspace/chosen-project']]) {
+        const config = await raw(state.page, 'getConfig')
+        const id = await raw(state.page, 'createTab', { ...config, cwd })
+        await state.page.evaluate(id => window.bridgeCmd.switchTab(id), id)
+        await raw(state.page, 'changePermissionMode', id, 'bypassPermissions')
+        const n = nonce()
+        // Deliberately do not tell the model the host, cwd or an absolute path.
+        await turn(state.page, `Проверь текущую рабочую папку командой pwd через Bash и запиши её вывод в относительный файл ${n}.txt. Прочитай этот файл инструментом Read. ${finish(n)}`)
+        const t = await transcript(state.page, n)
+        complete(t); used(t, 'Bash'); used(t, 'Read')
+        check((await owned.read(`${expected}/${n}.txt`)).trim() === expected, 'CONTAINER_PROJECT_CWD')
+      }
+    },
     async chat() {
       await newTab(state.page)
       const n = nonce()
@@ -38,14 +53,26 @@ export function liveScenarios(state) {
       const server = await raw(state.page, 'addMcpServer', { name: 'acceptance', type: 'stdio',
         command: 'node', args: ['/workspace/bridgeweb-acc-mcp.mjs'], workingDirectory: '/workspace', enabled: true })
       check(typeof server.id === 'string', 'MCP_CONFIG')
-      check((await raw(state.page, 'testMcpServer', server.id)).ok, 'MCP_DISCOVERY')
+      const discovery = await raw(state.page, 'testMcpServer', server.id)
+      check(discovery.ok && discovery.tools.includes('acceptance_record'), 'MCP_DISCOVERY')
       await newTab(state.page)
       const n = nonce()
       await turn(state.page, `Find and call the acceptance MCP server's acceptance_record tool with nonce ${n}. Do not simulate it with Bash or Write. ${finish(n)}`)
       const t = await transcript(state.page, n)
+      const recorded = (await owned.read('/workspace/bridgeweb-acc-mcp-result')).trim() === n
+      const fixtureCalls = t.tools.filter(tool => tool === 'acceptance_record' || tool.endsWith('__acceptance_record')).length
+      // Keep independent execution evidence even if the transcript assertion
+      // fails. Only fixed booleans/counts enter the report, never model prose,
+      // tool arguments, connector logs or the generated nonce.
+      metrics.mcp = {
+        discovered: discovery.tools.includes('acceptance_record'),
+        searchCalls: t.tools.filter(tool => tool === 'ToolSearch' || tool.endsWith('__ToolSearch')).length,
+        fixtureCalls,
+        recorded,
+      }
       complete(t)
-      check(t.tools.some(tool => tool.includes('acceptance_record')), 'MCP_TOOL_TRACE')
-      check((await owned.read('/workspace/bridgeweb-acc-mcp-result')).trim() === n, 'MCP_BYTES')
+      check(fixtureCalls > 0, 'MCP_TOOL_TRACE')
+      check(recorded, 'MCP_BYTES')
     },
     async hook() {
       const n = nonce()
@@ -60,13 +87,30 @@ export function liveScenarios(state) {
       const log = await raw(state.page, 'hooksGetLog', 100)
       check(log.entries.some(e => e.event === 'PostToolUse' && e.exitCode === 0), 'HOOK_LOG')
     },
-    async 'file-panel'() {
-      // Produce a fresh changed-file event in the active session before opening its viewer.
-      const n = nonce()
-      await turn(state.page, `Use Read on ${file}, then Edit to replace beta with gamma. ${finish(n)}`)
-      complete(await transcript(state.page, n))
-      check((await owned.read(file)).trim() === 'gamma', 'FILE_BYTES')
-      await requirePanel(state.page, file, 'gamma')
+    async 'workspace-shell'() {
+      const page = state.page
+      const tab = await page.evaluate(() => window.bridgeCmd.state().activeTabId)
+      const strip = page.getByRole('tablist', { name: 'Open sessions', exact: true })
+      const current = strip.locator(`[data-tab-id="${tab}"]`)
+      await current.getByRole('button', { name: 'Pin tab', exact: true }).click()
+      await poll(async () => (await raw(page, 'restoreTabsState')).some(t => t.id === tab && t.pinned), { code: 'SHELL_PIN' })
+      await page.getByRole('button', { name: 'bottom panel menu', exact: true }).click()
+      await page.getByRole('button', { name: 'Move to right', exact: true }).click()
+      await page.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+      const second = await context.newPage()
+      try {
+        await ready(second, owned.origin)
+        await second.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+        await second.getByRole('button', { name: /Type a command/ }).click()
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).fill('layout.restore')
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).press('Enter')
+        await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+      } finally { await second.close() }
+      await current.getByRole('button', { name: 'Unpin tab', exact: true }).click()
+      // Await the shared terminal resize/repaint before capturing the restored dock.
+      await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 30_000 }))
+      // Private visual evidence includes the current real-agent transcript and CLI.
+      await page.screenshot({ path: state.screenshot })
     },
     async 'close-mid-turn'() {
       const page = state.page
@@ -105,7 +149,8 @@ export function liveScenarios(state) {
       await page.evaluate(() => {
         window.__acceptancePermission = undefined
         window.__acceptanceUnsubscribe = window.bridgeCmd.raw('onPermissionRequest', (id, req) => {
-          window.__acceptancePermission = { tab: id, id: req.requestId }
+          window.__acceptancePermission = { tab: id, id: req.requestId, shell: req.toolName === 'Bash',
+            expectedInput: JSON.stringify(req.input).includes('/workspace/bridgeweb-acc-permission') }
         })
       })
       const n = nonce()
@@ -113,17 +158,26 @@ export function liveScenarios(state) {
         `Use Bash to run: printf 'approved\\n' > /workspace/bridgeweb-acc-permission. ${finish(n)}`)
       await page.waitForFunction(() => !!window.__acceptancePermission, null, { timeout: 120_000 })
       const pending = await page.evaluate(() => window.__acceptancePermission)
-      check(pending.tab === tab && !(await owned.read('/workspace/bridgeweb-acc-permission')), 'PENDING_PERMISSION')
+      check(pending.tab === tab && pending.shell && pending.expectedInput &&
+        !(await owned.read('/workspace/bridgeweb-acc-permission')), 'PENDING_PERMISSION')
+      try { await page.getByRole('button', { name: 'Allow', exact: true }).waitFor({ timeout: 10_000 }) }
+      catch { throw new CheckFailure('PERMISSION_INITIAL_WIDGET') }
       check(context.pages().length === 1, 'SOLE_BROWSER_PAGE')
       await page.close()
       state.page = await context.newPage()
       await ready(state.page, owned.origin)
+      check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
       try {
-        check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
-        await state.page.evaluate(tab => window.bridgeCmd.switchTab(tab), tab)
-        await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 15_000 })
-        await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 })
-      } catch { throw new CheckFailure('PERMISSION_REHYDRATION') }
+        // switchTab normally awaits idle, which cannot happen before this prompt is answered.
+        await state.page.evaluate(tab => { void window.bridgeCmd.switchTab(tab).catch(() => {}) }, tab)
+        await state.page.waitForFunction(tab => window.bridgeCmd.state().activeTabId === tab, tab)
+      } catch { throw new CheckFailure('PERMISSION_BINDING') }
+      try { await state.page.getByRole('button', { name: 'Allow', exact: true }).waitFor({ timeout: 15_000 }) }
+      catch { throw new CheckFailure('PERMISSION_REOPEN_WIDGET') }
+      try { await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 5_000 }) }
+      catch { throw new CheckFailure('PERMISSION_REOPEN_INPUT') }
+      try { await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 }) }
+      catch { throw new CheckFailure('PERMISSION_ALLOW_CLICK') }
       await state.page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 120_000 }))
       check((await owned.read('/workspace/bridgeweb-acc-permission')).trim() === 'approved', 'PERMISSION_BYTES')
       complete(await transcript(state.page, n), { code: 'PERMISSION_REHYDRATION' })

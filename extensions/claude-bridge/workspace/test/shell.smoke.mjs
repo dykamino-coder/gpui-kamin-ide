@@ -1,0 +1,62 @@
+import './linux-browser-only.mjs'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { chromium } from 'playwright'
+import { previewFixture } from './fixtures/preview-fixture.mjs'
+
+// Real shared client, authenticated HTTP/WS and Chromium; synthetic CLI peer.
+test('shell session actions and dock commits survive another page and zero browser views', { timeout: 60000 }, async t => {
+  const fixture = await previewFixture(t)
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, colorScheme: 'dark' })
+  let page = await context.newPage()
+  page.setDefaultTimeout(15000)
+  await page.goto(fixture.origin)
+  await page.locator('#workspace-token').fill('synthetic-preview-token')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'No folder session', exact: true }).click()
+  const strip = page.getByRole('tablist', { name: 'Open sessions', exact: true })
+  await strip.locator('[data-tab-id]').waitFor()
+  const first = await strip.locator('[data-tab-id]').getAttribute('data-tab-id')
+  await strip.getByRole('button', { name: 'Pin tab', exact: true }).press('Enter')
+  await page.waitForFunction(async id => (await window.kaminBridge.restoreTabsState()).some(t => t.id === id && t.pinned), first)
+  await page.getByRole('button', { name: 'New session', exact: true }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.ws-session-tabs [data-tab-id]').length === 2)
+  await strip.locator(`[data-tab-id="${first}"]`).press('Enter')
+  await page.waitForFunction(id => window.kaminBridge.getActiveTab().then(active => active === id), first)
+
+  // Moving the console keeps the current chat listener/DOM instance alive.
+  await page.evaluate(() => { window.__chatRoot = document.querySelector('.chat-panel') })
+  await page.getByRole('button', { name: 'bottom panel menu', exact: true }).click()
+  await page.getByRole('button', { name: 'Move to right', exact: true }).click()
+  await page.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => window.__chatRoot === document.querySelector('.chat-panel')), true)
+  await page.getByRole('separator', { name: 'Resize sessions sidebar', exact: true }).press('ArrowRight')
+  await page.waitForFunction(() => Math.round(document.querySelector('.ws-sidebar-frame').getBoundingClientRect().width) === 290)
+  const second = await context.newPage()
+  await second.goto(fixture.origin)
+  await second.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+  await second.waitForFunction(() => Math.round(document.querySelector('.ws-sidebar-frame').getBoundingClientRect().width) === 290)
+  await second.getByRole('button', { name: /Type a command/ }).click()
+  await second.getByRole('combobox', { name: 'Type a command', exact: true }).fill('layout.restore')
+  await second.getByRole('combobox', { name: 'Type a command', exact: true }).press('Enter')
+  await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+  if (process.env.BRIDGEWEB_ACC_CONTAINER) await page.screenshot({ path: '/reports/browser-shell.png' })
+  await second.close(); await page.close()
+  page = await context.newPage()
+  await page.goto(fixture.origin)
+  await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+  await page.waitForFunction(() => Math.round(document.querySelector('.ws-sidebar-frame').getBoundingClientRect().width) === 290)
+  assert.equal((await page.evaluate(() => window.kaminBridge.listTabs())).length, 2)
+  // Pinning uses the shared client persistence contract, rather than browser storage.
+  assert.equal((await page.evaluate(() => window.kaminBridge.restoreTabsState())).find(t => t.id === first)?.pinned, true)
+  assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0)
+  await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator(`[data-tab-id="${first}"]`).getByRole('button', { name: 'Close tab', exact: true }).press('Space')
+  await page.waitForFunction(() => window.kaminBridge.listTabs().then(tabs => tabs.length === 1))
+  await page.evaluate(id => { window.__firstPinned = id }, first)
+  await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator('.sleeping').click()
+  await page.waitForFunction(() => window.kaminBridge.listTabs().then(tabs => tabs.length === 2))
+  await page.waitForFunction(() => window.kaminBridge.restoreTabsState().then(tabs => tabs.some(t => t.id !== window.__firstPinned && t.pinned)))
+  assert.equal(await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator('.sleeping').count(), 0)
+})

@@ -26,6 +26,7 @@ pub(crate) fn prepared(
     boxed.children = crate::layout::table::anon::wrap_anon_tables(
         &crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx()),
     )
+    .into_owned()
     .into();
     if !vertical {
         boxed.children =

@@ -1,10 +1,4 @@
-// Kamin bridge API for the webview. `window.kaminBridge` is canonical;
-// `window.electronBridge` remains a deprecated compatibility alias for the
-// vendored renderer. Every method maps to
-// a postMessage transport call (inv/snd/sub) routed to the extension host's
-// BridgeHost, which turns them back into the vendored ipcMain handlers. Runs
-// before main.tsx (script order in index.html), so the copied renderer sees a
-// fully-populated bridge at import time.
+// Kamin bridge API over the shared host postMessage transport.
 import { inv, snd, sub } from "./lib/bridge-transport.js"
 import { INVOKE, SEND, EVENT } from "./lib/bridge-channels.js"
 import { reconnectNonce } from "./signals/connection.js"
@@ -32,19 +26,14 @@ bridge.ptyKill = (ptyId) => snd("pty:kill", { ptyId })
 bridge.respondMcpElicitation = (requestId, payload) => snd(`mcp-elicitation-response:${requestId as string}`, payload)
 // Retained legacy generic invoke; the host enforces its registered channel set.
 bridge.invoke = (channel, ...args) => inv(String(channel), ...args)
-// getDroppedFilePath (Electron webUtils) удалён: не-image drop/paste ходят
-// байтами через save-dropped-file (аудит #70 A3).
 
 // getVersion() is synchronous in preload (sendSync). Prefetch once and serve
 // from cache; the version string is only shown in the About/header.
 let cachedVersion = ""
 void inv("get-version").then((v) => { cachedVersion = typeof v === "string" ? v : "" }).catch(() => {})
 bridge.getVersion = () => cachedVersion
-// KaminIDE owns the window chrome — the webview has no titlebar controls.
-bridge.windowIsMaximized = () => false
 
 ;(window as unknown as { kaminBridge: unknown }).kaminBridge = bridge
-;(window as unknown as { electronBridge: unknown }).electronBridge = bridge
 
 // Reconnect recovery. When the extension's WS to the server drops and reconnects
 // mid-session, the component-level event subs (registered by useBridgeListeners

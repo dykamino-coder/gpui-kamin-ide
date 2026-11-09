@@ -37544,6 +37544,22 @@ var init_widget = __esm({
   }
 });
 
+// src/main/mcp/tools/preview.ts
+async function run(operation, input) {
+  const result = await import_vscode.commands.executeCommand(`kaminBridge.preview.${operation}`, input);
+  return { content: [{ type: "text", text: JSON.stringify(result ?? { mounted: false }) }] };
+}
+var import_vscode, previewMount, previewUpdate, previewUnmount;
+var init_preview = __esm({
+  "src/main/mcp/tools/preview.ts"() {
+    "use strict";
+    import_vscode = require("vscode");
+    previewMount = (input) => run("mount", input);
+    previewUpdate = (input) => run("update", input.props);
+    previewUnmount = () => run("unmount", void 0);
+  }
+});
+
 // src/main/mcp/tools/search-tools.ts
 async function toolSearch(input) {
   const query = (input.query || "").toLowerCase();
@@ -38251,6 +38267,7 @@ var init_tool_registry = __esm({
     init_ui_tools();
     init_notifications();
     init_widget();
+    init_preview();
     init_search_tools();
     init_lsp();
     toolRegistry = /* @__PURE__ */ new Map([
@@ -38293,6 +38310,9 @@ var init_tool_registry = __esm({
       ["Skill", skillLoad],
       ["PushNotification", pushNotification],
       ["ShowWidget", showWidget],
+      ["preview_mount", previewMount],
+      ["preview_update", previewUpdate],
+      ["preview_unmount", previewUnmount],
       ["TodoWrite", todoWrite],
       ["TodoList", todoList],
       // ── Search ──────────────────────────────────────────
@@ -41457,10 +41477,10 @@ var ClientCommands = class {
   list(sessionId) {
     const shells = localBackgroundShellSnapshot(this.tabId);
     const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5e3;
-    const commands6 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
+    const commands7 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
     for (const shell2 of shells) {
       if (!shell2.hiddenFromCommands) {
-        commands6.push({
+        commands7.push({
           id: shell2.id,
           tool: shell2.tool,
           command: shell2.command,
@@ -41473,10 +41493,10 @@ var ClientCommands = class {
         });
       }
     }
-    commands6.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
+    commands7.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
     this.publish("commands:snapshot", {
       sessionId,
-      commands: commands6,
+      commands: commands7,
       serverAvailable
     });
   }
@@ -42839,7 +42859,7 @@ var ConnectionManager = class _ConnectionManager {
     const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null;
     if (this.ws !== sock || sock.readyState !== wrapper_default.OPEN) return;
     const externalTools = _ConnectionManager.getExternalToolSchemas?.() ?? [];
-    const basePrompt = _ConnectionManager.getBasePrompt?.() ?? "";
+    const basePrompt = _ConnectionManager.getBasePrompt?.(this.config.cwd) ?? "";
     const cacheDir = process.env.KAMIN_CACHE_DIR;
     const transcriptMirrorDir = cacheDir ? import_path6.default.join(cacheDir, "transcripts") : void 0;
     this.logIdentity(this.conversationId && !this.pendingNewConversation ? "send-resume" : "send-create");
@@ -43372,6 +43392,7 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Resume a previous session by conversationId. */
   resume(conversationId) {
+    const basePrompt = _ConnectionManager.getBasePrompt?.(this.config.cwd) ?? "";
     this.send({
       type: "session:resume",
       noSpawnOnNotFound: true,
@@ -43381,7 +43402,8 @@ var ConnectionManager = class _ConnectionManager {
       cols: 120,
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
-      history: { mode: "paged" }
+      history: { mode: "paged" },
+      ...basePrompt ? { basePrompt } : {}
     });
   }
   /** Request raw JSONL file content from the server for download.
@@ -44121,7 +44143,7 @@ async function buildPluginSnapshots() {
     const themeSpec = experimental.themes ?? manifest.themes;
     const themeRefs = themeSpec !== void 0 ? manifestPathRefs(themeSpec) : ["themes"];
     const workflowRefs = manifest.workflows !== void 0 ? manifestPathRefs(manifest.workflows) : ["workflows"];
-    const [skills, agents, commands6, workflows, outputStyles, themes, hooks, monitorHooks, settings] = await Promise.all([
+    const [skills, agents, commands7, workflows, outputStyles, themes, hooks, monitorHooks, settings] = await Promise.all([
       collectComponentFiles(plugin.installPath, skillsRefs, "skills", options),
       collectComponentFiles(plugin.installPath, agentsRefs, "agents", options),
       collectComponentFiles(plugin.installPath, commandsRefs, "commands", options),
@@ -44145,7 +44167,7 @@ async function buildPluginSnapshots() {
       manifest: proxyManifest(manifest, plugin.name),
       skills,
       agents,
-      commands: commands6,
+      commands: commands7,
       workflows,
       outputStyles,
       themes,
@@ -44242,7 +44264,7 @@ async function syncUserDataOnce(serverUrl, token) {
   }
   const hash = tokenHash(token);
   const claudeDir = import_path8.default.join(import_os5.default.homedir(), ".claude");
-  const [skills, agents, commands6, plugins, settings, claudeMd, agentsMd] = await Promise.all([
+  const [skills, agents, commands7, plugins, settings, claudeMd, agentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(claudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(claudeDir, "agents"), "agents"),
     readEntrypointMd(import_path8.default.join(claudeDir, "commands"), "commands"),
@@ -44251,7 +44273,7 @@ async function syncUserDataOnce(serverUrl, token) {
     safeReadFile(import_path8.default.join(claudeDir, "CLAUDE.md")),
     safeReadFile(import_path8.default.join(claudeDir, "AGENTS.md"))
   ]);
-  const data = { skills, agents, commands: commands6, plugins, settings, claudeMd, agentsMd };
+  const data = { skills, agents, commands: commands7, plugins, settings, claudeMd, agentsMd };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`;
   try {
     const resp = await fetch(url, {
@@ -44294,7 +44316,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
   const hash = tokenHash(token);
   const dotClaudeDir = import_path8.default.join(projectPath, ".claude");
-  const [skills, rules, agents, commands6, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
+  const [skills, rules, agents, commands7, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "rules"), "commands"),
     // rules: flat .md, treat like commands
@@ -44311,7 +44333,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     skills,
     rules,
     agents,
-    commands: commands6,
+    commands: commands7,
     settings,
     claudeMd,
     dotClaudeMd,
@@ -45638,7 +45660,7 @@ function registerSkillsAgentsIPC(ctx) {
         files = (await import_fs13.default.promises.readdir(commandsDir)).filter((f) => f.endsWith(".md"));
       } catch {
       }
-      const [commands6, skills] = await Promise.all([
+      const [commands7, skills] = await Promise.all([
         Promise.all(files.map(async (f) => {
           const filePath = import_path14.default.join(commandsDir, f);
           const content = await safeReadFile2(filePath);
@@ -45647,7 +45669,7 @@ function registerSkillsAgentsIPC(ctx) {
         })),
         scanSkillDirs(import_path14.default.join(projectClaudeDir, "skills"), "project")
       ]);
-      return [...skills, ...commands6.filter((r) => r !== null)];
+      return [...skills, ...commands7.filter((r) => r !== null)];
     })();
     const userPromise = scanSkillDirs(import_path14.default.join(userClaudeDir, "skills"), "user");
     const pluginsFile = import_path14.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
@@ -52288,10 +52310,10 @@ var BridgeHost = class {
       resolveReady = r;
     });
     this.releaseMcpReady = resolveReady;
-    const scheduleStartup = (run, delay) => {
+    const scheduleStartup = (run2, delay) => {
       const timer = setTimeout(() => {
         this.startupTimers.delete(timer);
-        if (!this.disposed) run();
+        if (!this.disposed) run2();
       }, delay);
       this.startupTimers.add(timer);
     };
@@ -52397,7 +52419,7 @@ var BridgeHost = class {
       connection.sendRaw({ type: "mcp:register-external-content", ...catalog });
     };
     ConnectionManager.getExternalToolSchemas = buildPayload;
-    ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt();
+    ConnectionManager.getBasePrompt = (cwd) => [this.configStore.getBasePrompt(), opts?.sessionInstructions?.(cwd)].filter(Boolean).join("\n\n");
     const prevOnAuth = ConnectionManager.onAuthenticated;
     ConnectionManager.onAuthenticated = (connection) => {
       if (this.disposed) return;

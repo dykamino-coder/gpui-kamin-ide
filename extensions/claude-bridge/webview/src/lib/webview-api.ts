@@ -21,6 +21,11 @@ function resolve(): WebviewApi {
 
 export let vscodeApi: WebviewApi = resolve()
 
+/** Presentation only: the workspace host owns the browser connection. */
+export function isBrowserHost(): boolean {
+  return browserInstalled
+}
+
 /** Called by the browser entry before importing the shared renderer. */
 export function installBrowserApi(api: WebviewApi): void {
   if (typeof acquire === 'function' || browserInstalled) throw new Error('Bridge API already installed')

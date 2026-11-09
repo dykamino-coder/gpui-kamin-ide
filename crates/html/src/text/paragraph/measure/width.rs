@@ -144,17 +144,20 @@ impl Paragraph {
         crate::work::add!(TextPositionQueries, 1);
         let i = i.min(self.text.len());
         let after_break = edge == Edge::End && i > 0 && self.text.as_bytes()[i - 1] == b'\n';
-        let index = if after_break {
-            segs.partition_point(|s| {
-                crate::work::add!(TextPositionSteps, 1);
+        // Шаги поиска копятся локально и сдаются одним вызовом: наблюдение
+        // на каждом шаге стоило дороже самого поиска.
+        #[cfg(feature = "work-counters")]
+        let steps = std::cell::Cell::new(0u64);
+        let index = segs.partition_point(|s| {
+            #[cfg(feature = "work-counters")]
+            steps.set(steps.get() + 1);
+            if after_break {
                 s.end + 1 < i
-            })
-        } else {
-            segs.partition_point(|s| {
-                crate::work::add!(TextPositionSteps, 1);
+            } else {
                 s.end < i
-            })
-        };
+            }
+        });
+        crate::work::add!(TextPositionSteps, steps.get());
         let Some(seg) = segs.get(index).or_else(|| segs.last()) else {
             return px(0.);
         };
@@ -209,22 +212,29 @@ mod tests {
                         .find(|s| if after { s.end + 1 == i } else { i <= s.end })
                         .or_else(|| segs.last())
                         .unwrap();
-                    let mut expected = if i >= seg.end {
+                    let glyph = if i >= seg.end {
                         seg.layout.width
                     } else if i <= seg.start {
                         px(0.)
                     } else {
                         seg.layout.x_for_index(i - seg.start)
                     } + seg.offset;
+                    // Трекинг кусков — точная сумма, округлённая один раз.
+                    let mut tracking = 0f64;
                     for (at, _) in text[seg.start..i.min(seg.end)].char_indices() {
                         if let Some((_, v)) = p
                             .letter_spans
                             .iter()
                             .find(|(r, _)| r.contains(&(seg.start + at)))
                         {
-                            expected += *v - p.letter_spacing;
+                            tracking += f64::from(f32::from(*v - p.letter_spacing));
                         }
                     }
+                    let expected = if tracking == 0.0 {
+                        glyph
+                    } else {
+                        px((f64::from(f32::from(glyph)) + tracking) as f32)
+                    };
                     assert_eq!(p.x_at(&segs, i, edge), expected, "{i}, after={after}");
                 }
             }

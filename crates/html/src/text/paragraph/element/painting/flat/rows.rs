@@ -13,7 +13,7 @@ impl Paragraph {
         &self,
         id: Option<&gpui::GlobalElementId>,
         window: &mut gpui::Window,
-    ) -> PaintRuns {
+    ) -> PaintRuns<'_> {
         let selection = id
             .map(|global| {
                 // Пустое выделение не меняет прогонов (см. `track_selection`).
@@ -26,8 +26,13 @@ impl Paragraph {
                 })
             })
             .unwrap_or((0, 0));
+        let decor = self.decor_on();
+        if selection.0 >= selection.1 && !decor {
+            // Nothing to cut or strip: paint straight from the paragraph's runs.
+            return PaintRuns::borrowed(&self.runs, &self.prepared().run_ends);
+        }
         let mut runs = self.runs_with_selection(selection.0, selection.1);
-        if self.decor_on() {
+        if decor {
             for r in runs.iter_mut() {
                 r.underline = None;
                 r.strikethrough = None;

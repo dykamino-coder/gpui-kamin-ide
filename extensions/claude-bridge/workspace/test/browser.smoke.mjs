@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
-import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
+import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler, withWorkspaceShell, createBrowserEnvironment } from '../dist/index.js'
 import './linux-browser-only.mjs'
 
-test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
+test('browser signs in, mounts current tools, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
   const files = new Map((await readdir(assets, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => {
@@ -37,20 +37,26 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
     ['get-version', 'fixture'], ['get-config', config],
     ['layout:get', { filePanelVisible: true, filePanelBottomVisible: false }],
     ['skills:list', []], ['session:get-saved', []], ['tab:list', []], ['tabs:restore-state', []],
-    ['vscode:is-available', false], ['mcp:status', []], ['mic-connected', false],
+    ['vscode:is-available', false], ['mcp:status', []],
     ['get-editor-selection', null], ['bridge:server-version', null],
     ['get-machine-id', 'browser-fixture-machine'], ['hooks:list-pending-plugin-approvals', []],
     ['base-prompt:get', ''], ['base-prompt:set', true],
     ['bridge:server-fetch', { ok: false, status: 404, data: null }],
     ['notifications:get', {}], ['terminal:get-prefs', {}],
   ])
+  const effects = createBrowserEnvironment({ root: '/workspace' })
   const server = await startWorkspaceServer({
     port: 0, revalidateMs: 500,
     auth: new WorkspaceAuth('browser-fixture-token', async () => valid ? { id: 'browser-fixture' } : null),
-    backend: { attach(view) {
+    backend: effects.wrap(withWorkspaceShell({ attach(view) {
       attachments++
       return {
         async receive(frame) {
+          if (frame.kind === 'send' && frame.channel === 'show-notification') {
+            const [severity, message] = frame.args
+            void effects.environment.message(severity, message, [])
+            return
+          }
           if (frame.kind !== 'invoke') return
           calls.push(frame)
           if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
@@ -63,7 +69,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         },
         dispose() {},
       }
-    } },
+    } })),
     serveApp: await createAppAssetHandler(assets),
   })
   t.after(() => server.close())
@@ -93,21 +99,20 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   async function signIn() {
     await page.locator('#workspace-token').fill('browser-fixture-token')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.locator('#app-wrapper').waitFor()
+    await page.waitForFunction(() => !!window.bridgeCmd)
     await page.locator('#workspace-gate[hidden]').waitFor({ state: 'attached' })
-    await page.getByText('No sessions', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'No folder session', exact: true }).waitFor()
   }
   await signIn()
-  await reportHeap('initial-shared-App')
+  await reportHeap('initial-current-roots')
   assert.equal(attachments, 1)
-  await page.locator('.file-panel-column').waitFor()
   // Synthetic fixture UI only; local captures must use a private destination.
   if (process.env.BRIDGE_BROWSER_SCREENSHOT) await page.screenshot({ path: process.env.BRIDGE_BROWSER_SCREENSHOT })
   assert.equal(await page.locator('iframe').count(), 0)
   assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0)
   assert.equal((await page.context().cookies()).find(cookie => cookie.name.includes('workspace'))?.httpOnly, true)
 
-  // Both sidebar/settings are the existing App components, not a test-only UI.
+  // Settings are the same section router loaded by KaminIDE's customize root.
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
   await page.locator('#sidebar-settings-item').waitFor()
   await page.locator('#sidebar-mcp-item').waitFor()

@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
-import { createBrowserEnvironment, WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
+import { createBrowserEnvironment, WorkspaceAuth, startWorkspaceServer, withWorkspaceShell } from '../dist/index.js'
 import './linux-browser-only.mjs'
 
 test('production browser uploads actual bytes, downloads exports and mediates clipboard', { timeout: 60_000 }, async t => {
@@ -52,7 +52,7 @@ test('production browser uploads actual bytes, downloads exports and mediates cl
     }, dispose() {},
   } } })
   const server = await startWorkspaceServer({
-    port: 0, backend,
+    port: 0, backend: withWorkspaceShell(backend),
     auth: new WorkspaceAuth('effects-fixture-token', async () => ({ id: 'fixture' })),
     async serveApp(request, response) {
       const name = request.url === '/' ? 'browser.html' : request.url.slice(1)

@@ -5,7 +5,7 @@ import path from 'node:path'
 if (process.platform !== 'linux' || process.env.BRIDGEWEB_ACC_CONTAINER !== '1') throw new Error('Linux acceptance container required')
 // Copy only source roots into the disposable Linux filesystem. Never use host
 // node_modules, build outputs, Git metadata, dotenv or credential files.
-const roots = ['src', 'builtin-extensions/claude-bridge/package.json', 'extensions/claude-bridge/extension', 'extensions/claude-bridge/workspace',
+const roots = ['src', 'builtin-extensions/claude-bridge/package.json', 'builtin-extensions/claude-bridge/chat.html', 'extensions/claude-bridge/extension', 'extensions/claude-bridge/workspace',
   'extensions/claude-bridge/webview', 'extensions/claude-bridge/server/src/ui/src/lib/terminal-console']
 const excluded = /^(node_modules|dist|\.git|test-results|playwright-report)$|^\.env|\.(log.*|pem|key)$/
 for (const relative of roots) {
@@ -30,9 +30,9 @@ await run(['run', 'build'], workspace)
 await run(['run', 'build:browser'], '/opt/bridge/extensions/claude-bridge/webview')
 await mkdir('/reports', { recursive: true })
 const mode = process.argv[2]
-if (!['fixture', 'live'].includes(mode)) throw new Error('Expected fixture or live')
-const args = mode === 'live'
-  ? ['acceptance/run.mjs', '--report-dir', '/reports', '--server-origin', 'http://host.containers.internal:3462', ...process.argv.slice(3)]
+if (!['fixture', 'live', 'credentials'].includes(mode)) throw new Error('Expected fixture, live or credentials')
+const args = mode !== 'fixture'
+  ? [`acceptance/${mode === 'credentials' ? 'credentials' : 'run'}.mjs`, '--report-dir', '/reports', '--server-origin', 'http://host.containers.internal:3462', ...process.argv.slice(3)]
   : ['--test', ...((await readdir(path.join(workspace, 'test'))).filter(n => n.endsWith('.smoke.mjs')).map(n => `test/${n}`))]
 const child = spawn('node', args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] })
 let fixtureOutput = ''

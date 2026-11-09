@@ -1,0 +1,74 @@
+/* Геометрия и токены crates/shell/src/ui/command_palette.rs и palette_row.rs. */
+.workspace-palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 84px;
+  background: var(--overlay-modal);
+}
+.workspace-palette {
+  width: min(640px, calc(100vw - 32px));
+  height: max(120px, min(60vh, calc(100vh - 84px)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--bg-mantle);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-modal);
+  font-size: 13px;
+}
+.workspace-palette-input-row {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--bg-surface) 60%, transparent);
+  color: var(--text-muted);
+}
+.workspace-palette-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+}
+.workspace-palette-input-row kbd {
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--bg-overlay) 50%, transparent);
+  font: 11px var(--font-mono);
+}
+.workspace-palette-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
+.workspace-palette-command {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 1px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.workspace-palette-command[aria-selected="true"] { background: color-mix(in srgb, var(--accent-primary) 12%, transparent); }
+.workspace-palette-command:hover { background: color-mix(in srgb, var(--accent-primary) 18%, transparent); }
+.workspace-palette-command[aria-disabled="true"] { cursor: wait; }
+.workspace-palette-title { flex: 1; overflow-wrap: anywhere; }
+.workspace-palette-category { color: var(--text-muted); font-weight: 500; }
+.workspace-palette-id { color: var(--text-muted); font: 11px var(--font-mono); overflow-wrap: anywhere; }
+.workspace-palette-empty { padding: 12px 16px; color: var(--text-muted); font-style: italic; }
+.workspace-palette-error { padding: 8px 16px; color: var(--accent-red); overflow-wrap: anywhere; }
+.workspace-palette-footer {
+  padding: 8px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--bg-surface) 60%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}

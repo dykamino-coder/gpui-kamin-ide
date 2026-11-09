@@ -4,4 +4,4 @@ import { assertBrowserHostReady, assertCapabilityMatrix, readMatrix } from './ca
 const matrix = readMatrix()
 assertCapabilityMatrix(capabilityInventory(), matrix)
 assertBrowserHostReady(matrix)
-console.log('Every required browser-host capability has an integrated provider.')
+console.log('Capability classifications and declared provider prerequisites pass; see README for remaining full-parity gates.')
