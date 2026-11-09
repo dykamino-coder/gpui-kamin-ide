@@ -23,9 +23,11 @@
 //! stays), and a fragment outside the cull rect is not painted
 //! (`BoxFragmentPainter`, `IntersectsCullRect`).
 
+mod candidate;
 mod element;
 mod state;
 
+pub(super) use candidate::far_replayable;
 pub(super) use element::{Far, FarRecorder};
 pub(crate) use state::FrameFar;
 

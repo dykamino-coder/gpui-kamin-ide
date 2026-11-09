@@ -59,6 +59,7 @@ impl crate::layout::reuse::compact::Compact for Shared {
 /// The fields of a layout probe that every probe takes from its paragraph
 /// (`request_layout_impl`): text and runs, line settings, the first-line
 /// indent, the `line-clamp` cut, struts and run metrics.
+#[derive(Clone)]
 pub(super) struct Settings {
     text: gpui::SharedString,
     text_hash: u64,
@@ -129,9 +130,14 @@ impl Settings {
 
     /// A probe with these fields, every other one being `Paragraph::new`'s.
     pub(super) fn probe(&self) -> Paragraph {
+        self.clone().into_probe()
+    }
+
+    /// The same probe, moving the fields instead of copying them.
+    pub(super) fn into_probe(self) -> Paragraph {
         let mut p = Paragraph::new(
-            self.text.clone(),
-            self.runs.clone(),
+            self.text,
+            self.runs,
             self.font_size,
             self.line_height,
             self.align,
@@ -142,16 +148,16 @@ impl Settings {
         p.clamp_tag = self.clamp_tag;
         p.clamp = self.clamp;
         p.clamp_force = self.clamp_force;
-        p.measures = self.measures.clone();
-        p.paint_context = self.paint_context.clone();
-        p.inline_measure = self.inline_measure.clone();
+        p.measures = self.measures;
+        p.paint_context = self.paint_context;
+        p.inline_measure = self.inline_measure;
         p.lines_reversed = self.lines_reversed;
         p.vertical_central_baseline = self.vertical_central_baseline;
         p.vertical_ccw = self.vertical_ccw;
-        p.tab_stop = self.tab_stop.clone();
+        p.tab_stop = self.tab_stop;
         p.indent = self.indent;
         p.hanging = self.hanging;
-        p.flow = self.flow.clone();
+        p.flow = self.flow;
         p.ruby_trim = self.ruby_trim;
         // Ruby's sub-line keeps trailing spaces and suppresses word
         // justification. Its intrinsic probe must use the same rules
@@ -159,8 +165,8 @@ impl Settings {
         p.ruby_unit = self.ruby_unit;
         p.ruby_justify = self.ruby_justify;
         p.strut_box = self.strut_box;
-        p.first_strut = self.first_strut.clone();
-        p.run_metrics = self.run_metrics.clone();
+        p.first_strut = self.first_strut;
+        p.run_metrics = self.run_metrics;
         p.strut = self.strut;
         p
     }

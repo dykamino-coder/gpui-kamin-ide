@@ -98,8 +98,8 @@ impl Paragraph {
         let normal_static = normal_static::NormalStatic::new(self, window, cx);
         let static_bind = normal_static.clone();
         let rebuild = fit.is_some() || !atom_fit.borrow().is_empty();
-        let make_probe = move |settings: &plain_probe::Settings| {
-            let mut probe = settings.probe();
+        // Completes a probe made from the settings (`plain_probe::Settings`).
+        let make_probe = move |mut probe: Paragraph| {
             probe.clamp_rows = clamp_rows.clone();
             probe.vertical = vertical;
             probe.vertical_inline = vertical_inline;
@@ -134,7 +134,7 @@ impl Paragraph {
         // far block lives in its own allocation and can shrink (`Shared`).
         let id = match compacts {
             Some(compacts) => {
-                let shared = plain_probe::Shared::new(make_probe(&settings), settings);
+                let shared = plain_probe::Shared::new(make_probe(settings.probe()), settings);
                 compacts.offer(shared.clone());
                 request(window, atom_fit, normal_static, move |f| {
                     shared.measure(|p| f(p))
@@ -144,7 +144,7 @@ impl Paragraph {
                 let mut source = if rebuild {
                     Probe::Rebuild(settings, make_probe)
                 } else {
-                    Probe::Built(make_probe(&settings))
+                    Probe::Built(make_probe(settings.into_probe()))
                 };
                 request(
                     window,
@@ -152,7 +152,9 @@ impl Paragraph {
                     normal_static,
                     move |f| match &mut source {
                         Probe::Built(probe) => f(probe),
-                        Probe::Rebuild(settings, make_probe) => f(&mut make_probe(settings)),
+                        Probe::Rebuild(settings, make_probe) => {
+                            f(&mut make_probe(settings.probe()))
+                        }
                     },
                 )
             }

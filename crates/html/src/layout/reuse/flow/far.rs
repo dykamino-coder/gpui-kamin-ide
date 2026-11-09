@@ -28,7 +28,7 @@ impl FlowCx {
     }
 
     /// Wrap the built element of child `e` for a far record when its subtree
-    /// may be claimed whole at another width (`plain::far_replayable`).
+    /// may be claimed whole at another width (`far::far_replayable`).
     pub(super) fn record_far(
         &self,
         e: &Element,

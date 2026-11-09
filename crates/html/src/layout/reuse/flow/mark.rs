@@ -69,13 +69,13 @@ impl super::FlowCx {
 
     /// Child `e` is wrapped for a far record after its build: worth it, not
     /// near in its last recording (`Store::far_near`), and its subtree can
-    /// be laid out again from kept nodes (`plain::far_replayable`). Decided
+    /// be laid out again from kept nodes (`far::far_replayable`). Decided
     /// before the build, so a child that cannot be far costs no width
     /// tracking (`Mark::child_opts`).
     fn far_candidate(&self, e: &Element, opts: &RenderOpts) -> bool {
         self.far_worth_recording(e)
             && !self.reuse.store.far_near(e.node_id)
-            && super::super::plain::far_replayable(e, opts.cx.vcx())
+            && super::super::far::far_replayable(e, opts.cx.vcx())
     }
 
     /// Запись повтора ребёнка `e` может подойти следующей сборке и окупиться.
