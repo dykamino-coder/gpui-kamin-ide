@@ -1,6 +1,7 @@
 import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
 import { Field } from '../../ui/Field'
 import { Button } from '../../ui/Button'
 import styles from './AddSkillForm.module.css'
@@ -15,15 +16,19 @@ export function AddSkillForm({ onCancel, onSaved }: Props): JSX.Element {
   const [name, setName] = useState('')
   const [skillContent, setSkillContent] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   async function handleCreate(): Promise<void> {
-    if (!name || !skillContent) return
+    if (saving || !name.trim() || !skillContent.trim()) return
     setError(null)
+    setSaving(true)
     try {
       await bridge.createSkill(name, skillContent)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       return
+    } finally {
+      setSaving(false)
     }
     setName('')
     setSkillContent('')
@@ -36,6 +41,7 @@ export function AddSkillForm({ onCancel, onSaved }: Props): JSX.Element {
         <h2>New Skill</h2>
       </div>
       <div class={styles.section}>
+        {isBrowserHost() && <p>Creates a skill in the workspace container: the current project's .claude/skills directory, or ~/.claude/skills when no project is open.</p>}
         <Field label="Skill name (invoked as /name)" required error={error}>
           <input
             class={styles.input}
@@ -55,8 +61,8 @@ export function AddSkillForm({ onCancel, onSaved }: Props): JSX.Element {
           />
         </Field>
         <div class={styles.buttons}>
-          <Button variant="primary" class={styles.grow} onClick={handleCreate}>Create</Button>
-          <Button variant="secondary" class={styles.grow} onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" class={styles.grow} disabled={saving || !name.trim() || !skillContent.trim()} onClick={handleCreate}>{saving ? 'Creating…' : 'Create'}</Button>
+          <Button variant="secondary" class={styles.grow} disabled={saving} onClick={onCancel}>Cancel</Button>
         </div>
       </div>
     </div>
