@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,6 +22,7 @@ export function alive(pid: number): boolean {
 
 export async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'bridgeweb-pty-'))
+  const ownedChildren = new Set<number>()
   const delegated: unknown[] = []
   let disposed = 0
   const next: WorkspaceBackend = {
@@ -29,6 +31,11 @@ export async function fixture(t: TestContext) {
   const backend = new TerminalWorkspaceBackend(next, root)
   t.after(async () => {
     backend.dispose()
+    // Fallback cleanup is restricted to child PIDs recorded by this fixture.
+    for (const pid of ownedChildren) if (alive(pid)) {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 10000 })
+      else try { process.kill(pid, 'SIGKILL') } catch { /* already exited */ }
+    }
     assert.equal(resolve(root).startsWith(resolve(tmpdir()) + '\\') ||
       resolve(root).startsWith(resolve(tmpdir()) + '/'), true)
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
@@ -44,15 +51,19 @@ export async function fixture(t: TestContext) {
       return frames.find(f => f.kind === 'invoke-reply' && f.id === id)!
     }
     const send = (channel: string, value: unknown) => view.receive({ kind: 'send', channel, args: [value] })
-    const spawn = async () => {
-      const reply = await invoke('pty:spawn', { cwd: root, cols: 80, rows: 24, shellId: process.platform === 'win32' ? 'cmd' : 'sh' })
+    const spawn = async (tabId = `fixture-tab-${++request}`) => {
+      const reply = await invoke('pty:spawn', { tabId, cwd: root, cols: 80, rows: 24, shellId: process.platform === 'win32' ? 'cmd' : 'sh' })
       assert.equal(reply.ok, true, String(reply.error))
       return (reply.result as { ptyId: string }).ptyId
     }
     return { view, frames, invoke, send, spawn, rejectOutput: () => { accepting = false } }
   }
   const read = async (name: string) => {
-    try { return await readFile(join(root, name), 'utf8') } catch { return '' }
+    try {
+      const value = await readFile(join(root, name), 'utf8')
+      if (name.endsWith('.pid') && /^[0-9]+$/.test(value) && Number(value) > 0) ownedChildren.add(Number(value))
+      return value
+    } catch { return '' }
   }
   return { backend, root, attach, read, delegated, disposed: () => disposed }
 }

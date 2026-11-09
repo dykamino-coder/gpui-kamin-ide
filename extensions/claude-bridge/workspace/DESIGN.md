@@ -388,7 +388,7 @@ Limits are 32 terminal records including pending spawns, 8 million reserved
 screen/scrollback cells, 500 columns, 200 rows, 64 KiB input and 2 MiB queued
 parser input per terminal. Resource exhaustion is explicit. A host parser
 backlog overflow terminates that terminal with an output error; browser
-backpressure only detaches the page. Serialized snapshots are capped at 8 MiB;
+backpressure only detaches the page. Serialized snapshot strings are capped at 8 MiB after JSON escaping;
 older scrollback can be omitted with an explicit truncation indicator. Exited
 screens remain until explicit termination or host shutdown. This is in-process
 persistence; restart recovery is not claimed.
@@ -400,3 +400,10 @@ End session, Disconnect and shutdown tree cleanup; browser projection tests
 without a local browser. The existing Linux CI browser gate must remain green.
 Actual composed-workspace terminal UX and full model/Podman acceptance remain
 required for INC-2026-0087.
+
+The host answers xterm CSI/DCS status queries even with zero pages. Browser
+replicas suppress those parser replies while preserving keyboard/paste input.
+Restoration waits for parser callbacks before reset, and live deltas queue behind
+the snapshot. Headless xterm has no browser color or pixel service; OSC palette
+queries and pixel/window reports are not accepted as full terminal emulation by
+this increment. Composed application/TUI parity remains part of the live gate.

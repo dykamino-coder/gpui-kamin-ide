@@ -196,10 +196,9 @@ of UI controls in this build is not a claim those adapters already exist.
 `pty:spawn`, `pty:write`, `pty:resize`, `pty:kill`, `pty:data` and `pty:exit`.
 It reuses the native host's extracted `PtySessions` and shell discovery, with
 the same packed argument/reply/event contract. The embedding executable must
-dispose the decorator at shutdown. The revision under test moves shell ownership
-and screen/scrollback into the host: socket detach, logout and backpressure must
-preserve shells, while explicit Kill/End session/Disconnect and shutdown must
-terminate them. `workspace:terminal-sync` restores a private sequenced xterm
+dispose the decorator at shutdown. Shell ownership and screen/scrollback belong
+to the host: socket detach, logout and backpressure preserve shells, while
+explicit Kill/End session/Disconnect and shutdown terminate them. `workspace:terminal-sync` restores a private sequenced xterm
 snapshot per chat tab without replaying mutations. The detailed resource and
 lifecycle contract is in DESIGN.md; live composed-workspace acceptance is open.
 Workspace root is the default cwd; other existing absolute container directories
@@ -301,7 +300,8 @@ This is real client/handler/WebSocket evidence with a synthetic upstream, not
 the required live model/Podman/headless lifecycle acceptance. Bridge FilePanel
 (including attach-file/context) remains in scope; only IDE open/reveal and
 openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not Bridge". Host-owned
-file watches, PTY scrollback, remaining page reducers and the full gates follow.
+file watches and PTY scrollback now have host-owned adapters; remaining page
+reducers and the full gates follow.
 
 Explicit session close now also disposes background shells before dropping the
 connection. The same real-process regression covers End session, Disconnect and
