@@ -8,13 +8,15 @@ import * as vscode from "vscode"
 import fs from "fs"
 import path from "path"
 import { saveAttachment } from './attachments'
+import { transcribeAudio } from './transcription'
 import type { IpcMainInvokeEvent } from "@kaminide/host-compat"
 import { ipcMain } from "@kaminide/host-compat"
 import type { TabManager } from "./main/tab-manager"
 import type { ConfigStore } from "./main/config/store"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { enrichTreeWithTabs } from "./main/tree-enrichment"
-import { withSyncAuthorization, type ServerFetchInit } from "./main/sync/request-auth"
+import type { ServerFetchInit } from "./main/sync/request-auth"
+import { createServerHttp } from './server-http'
 import { spawnToast, closeToastsMatching } from "./main/notifications/toast-window"
 import { getDisplayedTab } from "./displayed-tab"
 
@@ -26,6 +28,7 @@ const MIME: Record<string, string> = {
 export function registerCoreIpc(context: vscode.ExtensionContext, configStore: Pick<ConfigStore, "get">): void {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""))
   ipcMain.handle("vscode:is-available", () => false)
+  ipcMain.handle('whisper:transcribe', (_e: IpcMainInvokeEvent, base64: string, mime: string) => transcribeAudio(configStore.get(), base64, mime))
   ipcMain.on("vscode:open", () => {})
   ipcMain.on("theme:set", () => {})
 
@@ -132,23 +135,11 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
   // `connect-src 'self' https:`). The gate's token creation + the version
   // probe run here in the ext-host (Node, no CSP) instead.
   ipcMain.handle("bridge:create-token", async (_e: IpcMainInvokeEvent, httpBase: string, name: string) => {
-    const resp = await fetch(`${httpBase}/api/dashboard/tokens`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    })
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    return await resp.json()
+    return createServerHttp(httpBase).createToken(name)
   })
 
   ipcMain.handle("bridge:server-version", async (_e: IpcMainInvokeEvent, httpBase: string) => {
-    for (const path of ["/api/bridge-version", "/health"]) {
-      try {
-        const resp = await fetch(`${httpBase}${path}`, { signal: AbortSignal.timeout(8000) })
-        if (resp.ok) return await resp.json()
-      } catch { /* try next */ }
-    }
-    return null
+    return createServerHttp(httpBase).serverVersion()
   })
 
   // Generic Bridge-server fetch proxy (same CSP reason as above): the Settings
@@ -161,21 +152,7 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
     path: string,
     init?: ServerFetchInit,
   ) => {
-    try {
-      const authenticatedInit = withSyncAuthorization(path, init, configStore.get().token)
-      const resp = await fetch(`${httpBase}${path}`, {
-        method: authenticatedInit?.method ?? "GET",
-        headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : undefined),
-        body: authenticatedInit?.body,
-        signal: AbortSignal.timeout(8000),
-      })
-      const text = await resp.text()
-      let data: unknown = null
-      try { data = text ? JSON.parse(text) : null } catch { data = text }
-      return { ok: resp.ok, status: resp.status, data }
-    } catch (err) {
-      return { ok: false, status: 0, data: null, error: err instanceof Error ? err.message : String(err) }
-    }
+    return createServerHttp(httpBase, configStore.get().token).serverFetch(path, init)
   })
 
   ipcMain.handle("save-text-as", async (_e: IpcMainInvokeEvent, opts: { text: string; defaultName?: string }) => {
