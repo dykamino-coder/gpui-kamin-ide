@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
+import { createHash } from 'node:crypto'
 import { test } from 'node:test'
 import { withBrowserServer } from '../src/browser-server.js'
 import type { HostFrame } from '../src/protocol.js'
@@ -44,6 +45,16 @@ test('browser settings reuse shared HTTP helpers with a pinned destination and p
   assert.equal(JSON.stringify(resolved).includes('private-fixture-token'), false)
   await invoke('bridge:server-fetch', '', '/api/sync/test/tree', { headers: { Authorization: 'Bearer attacker' } })
   assert.equal(requests.at(-1)?.auth, 'Bearer private-fixture-token')
+  assert.equal(requests.at(-1)?.route, '/api/sync/test/tree', 'Unrelated namespaces retain server authorization checks')
+  const namespace = (token: string) => createHash('sha256').update(token).digest('hex').slice(0, 16)
+  for (const suffix of ['tree', 'file?path=skills%2Fhello%20world%2FSKILL.md']) {
+    await invoke('bridge:server-fetch', '', `/api/sync/${namespace('[workspace credential]')}/${suffix}`, {
+      headers: { Authorization: 'Bearer [workspace credential]' },
+    })
+    assert.equal(requests.at(-1)?.route, `/api/sync/${namespace('private-fixture-token')}/${suffix}`)
+    assert.equal(requests.at(-1)?.auth, 'Bearer private-fixture-token')
+    assert.equal(JSON.stringify(frames.at(-1)).includes('private-fixture-token'), false)
+  }
   const before = requests.length
   const escaped = await invoke('bridge:server-fetch', '', '//untrusted.invalid/escape')
   assert.equal((escaped.result as any).ok, false)

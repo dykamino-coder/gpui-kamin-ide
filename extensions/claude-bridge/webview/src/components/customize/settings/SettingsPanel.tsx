@@ -8,13 +8,16 @@ import { ConnectButton } from './ConnectButton'
 import { ExportTranscriptsButton } from './ExportTranscriptsButton'
 import { WhisperSettings } from './WhisperSettings'
 import { Switch } from '../../ui/Switch'
+import { Button } from '../../ui/Button'
 import { hasToken } from '../../../signals/ui'
 import { setConfigAndHandleTokenChange } from '../../../lib/tabs-persist'
 import { serverFetch } from '../../../lib/server-fetch'
+import { isBrowserHost } from '../../../lib/webview-api'
 import styles from './SettingsPanel.module.css'
 
 export function SettingsPanel(): JSX.Element {
   const bridge = useBridge()
+  const browserHost = isBrowserHost()
   const [serverUrl, setServerUrl] = useState('ws://localhost:3456')
   const [token, setToken] = useState('')
   const [whisperUrl, setWhisperUrl] = useState('')
@@ -87,6 +90,7 @@ export function SettingsPanel(): JSX.Element {
   // are gone" report. So: bound each attempt with a timeout and retry a few times.
   useEffect(() => {
     setTokenName(null)
+    setTokenIdResolved(null)
     if (!token || !serverUrl) return
     const httpUrl = serverUrl.replace(/^ws/, 'http').replace(/\/ws\/session$/, '')
     let cancelled = false
@@ -147,10 +151,11 @@ export function SettingsPanel(): JSX.Element {
     const httpUrl = serverUrl.replace(/^ws/, 'http').replace(/\/ws\/session$/, '')
     setStreamingSaveBusy(true)
     try {
-      await serverFetch(bridge, httpUrl, `/api/dashboard/tokens/${encodeURIComponent(tokenIdResolved)}/streaming-settings`, {
+      const response = await serverFetch(bridge, httpUrl, `/api/dashboard/tokens/${encodeURIComponent(tokenIdResolved)}/streaming-settings`, {
         method: 'PUT',
         body: JSON.stringify(next),
       })
+      if (!response.ok) throw new Error(response.error || `HTTP ${response.status}`)
     } catch {
       revert()
       showToast({ type: 'error', title: 'Setting not saved', message: 'Could not reach the server — reverted.' })
@@ -160,12 +165,14 @@ export function SettingsPanel(): JSX.Element {
   return (
     <div class={styles.panel}>
       <SettingsSection title="Connection">
+        {browserHost && <p style="font-size:12px;color:var(--text-muted)">The workspace host manages this connection. Agent processes and project files live in the Linux container. Start sessions from the session sidebar.</p>}
         <SettingsInput
           label="Server URL"
           type="text"
           placeholder="ws://localhost:3456"
           value={serverUrl}
           onChange={setServerUrl}
+          readOnly={browserHost}
         />
         <SettingsInput
           label="Token"
@@ -174,6 +181,7 @@ export function SettingsPanel(): JSX.Element {
           value={token}
           onChange={setToken}
           labelHint={tokenName ?? undefined}
+          readOnly={browserHost}
         />
         <ConnectButton
           serverUrl={serverUrl}
@@ -182,6 +190,7 @@ export function SettingsPanel(): JSX.Element {
           whisperUrl={whisperUrl}
           whisperModel={whisperModel}
           whisperToken={whisperToken}
+          managed={browserHost}
         />
       </SettingsSection>
 
@@ -200,11 +209,9 @@ export function SettingsPanel(): JSX.Element {
 
       <SettingsSection title="Base Prompt">
         <div style="font-size:12px;color:var(--text-muted);padding:0 0 8px">
-          Standing instructions sent with every session on this token. They are
-          ADDED to Bridge's own prompt (the one telling Claude your files live on
-          your machine, not the server) — they never replace it, and your
-          project's CLAUDE.md still applies on top. Takes effect on the next
-          session.
+          {browserHost
+            ? "Standing instructions for new sessions in this workspace container. They are added to Bridge's prompt; your project's CLAUDE.md still applies. Takes effect on the next session."
+            : "Standing instructions sent with every session on this token. They are added to Bridge's own prompt about files on your machine; your project's CLAUDE.md still applies. Takes effect on the next session."}
         </div>
         <textarea
           value={basePrompt}
@@ -214,27 +221,24 @@ export function SettingsPanel(): JSX.Element {
           style="width:100%;box-sizing:border-box;background:var(--bg-mantle);color:var(--text-primary);border:1px solid var(--bg-surface);border-radius:var(--radius-sm);padding:8px 10px;font-family:var(--font-mono);font-size:12px;resize:vertical"
         />
         <div style="display:flex;align-items:center;gap:10px;padding-top:8px">
-          <button
-            type="button"
-            class="btn"
+          <Button
             onClick={() => {
               void bridge.setBasePrompt(basePrompt).then(() => {
                 setBasePromptSaved(true)
                 showToast({ type: 'success', title: 'Base prompt saved', message: 'Applies to the next session.' })
-              })
+              }).catch(() => showToast({ type: 'error', title: 'Base prompt not saved', message: 'Check the connection and try again.' }))
             }}
           >
             Save
-          </button>
+          </Button>
           {basePromptSaved && <span style="font-size:12px;color:var(--accent-green)">Saved</span>}
         </div>
       </SettingsSection>
 
       <SettingsSection title="Session Logs">
         <div style="font-size:12px;color:var(--text-muted);padding:0 0 8px">
-          Download EVERY conversation transcript tied to this token into a folder
-          you choose — one <code style="color:var(--text-secondary)">&lt;id&gt;.jsonl</code>
-          per session, pulled in batches so large transcripts export reliably.
+          {browserHost ? 'Download conversation transcripts for this token through your browser. Your browser may ask permission to download multiple files — one ' : 'Download every conversation transcript tied to this token into a folder you choose — one '}
+          <code style="color:var(--text-secondary)">&lt;id&gt;.jsonl</code> per session.
         </div>
         {token.trim()
           ? <ExportTranscriptsButton />
@@ -259,8 +263,7 @@ export function SettingsPanel(): JSX.Element {
               label="Stream responses word-by-word"
               description={
                 <>
-                  Show assistant text as it arrives from Anthropic, like in CLI REPL.
-                  Bridge runs a per-session local TLS proxy to capture API responses.
+                  {browserHost ? 'Show assistant text as it arrives from the agent in the workspace container.' : 'Show assistant text as it arrives from Anthropic, like in CLI REPL. Bridge runs a per-session local TLS proxy to capture API responses.'}
                 </>
               }
             />
@@ -290,7 +293,7 @@ export function SettingsPanel(): JSX.Element {
             )}
             <div style="margin-top:10px;padding:8px 10px;background:var(--bg-mantle);border:1px solid var(--bg-surface);border-radius:var(--radius-sm);font-size:11px;color:var(--text-muted);line-height:1.5">
               <i class="fas fa-shield" style="margin-right:6px;color:var(--accent-primary)" />
-              The proxy listens on <code style="color:var(--text-secondary)">127.0.0.1</code>. CA cert is stored at <code style="color:var(--text-secondary)">~/.claude/open-claude-bridge/proxy-ca.pem</code> and trusted only by Bridge-spawned CLI processes (via <code>NODE_EXTRA_CA_CERTS</code>) — your system trust store is not modified. Settings apply to new sessions on next start.
+              {browserHost ? 'Streaming runs in the workspace container and continues when this browser page closes. Changes apply to new sessions.' : <>The proxy listens on <code style="color:var(--text-secondary)">127.0.0.1</code>. CA cert is stored at <code style="color:var(--text-secondary)">~/.claude/open-claude-bridge/proxy-ca.pem</code> and trusted only by Bridge-spawned CLI processes (via <code>NODE_EXTRA_CA_CERTS</code>) — your system trust store is not modified. Settings apply to new sessions on next start.</>}
             </div>
           </>
         )}

@@ -53,14 +53,26 @@ export function liveScenarios(state) {
       const server = await raw(state.page, 'addMcpServer', { name: 'acceptance', type: 'stdio',
         command: 'node', args: ['/workspace/bridgeweb-acc-mcp.mjs'], workingDirectory: '/workspace', enabled: true })
       check(typeof server.id === 'string', 'MCP_CONFIG')
-      check((await raw(state.page, 'testMcpServer', server.id)).ok, 'MCP_DISCOVERY')
+      const discovery = await raw(state.page, 'testMcpServer', server.id)
+      check(discovery.ok && discovery.tools.includes('acceptance_record'), 'MCP_DISCOVERY')
       await newTab(state.page)
       const n = nonce()
       await turn(state.page, `Find and call the acceptance MCP server's acceptance_record tool with nonce ${n}. Do not simulate it with Bash or Write. ${finish(n)}`)
       const t = await transcript(state.page, n)
+      const recorded = (await owned.read('/workspace/bridgeweb-acc-mcp-result')).trim() === n
+      const fixtureCalls = t.tools.filter(tool => tool === 'acceptance_record' || tool.endsWith('__acceptance_record')).length
+      // Keep independent execution evidence even if the transcript assertion
+      // fails. Only fixed booleans/counts enter the report, never model prose,
+      // tool arguments, connector logs or the generated nonce.
+      metrics.mcp = {
+        discovered: discovery.tools.includes('acceptance_record'),
+        searchCalls: t.tools.filter(tool => tool === 'ToolSearch' || tool.endsWith('__ToolSearch')).length,
+        fixtureCalls,
+        recorded,
+      }
       complete(t)
-      check(t.tools.some(tool => tool.includes('acceptance_record')), 'MCP_TOOL_TRACE')
-      check((await owned.read('/workspace/bridgeweb-acc-mcp-result')).trim() === n, 'MCP_BYTES')
+      check(fixtureCalls > 0, 'MCP_TOOL_TRACE')
+      check(recorded, 'MCP_BYTES')
     },
     async hook() {
       const n = nonce()

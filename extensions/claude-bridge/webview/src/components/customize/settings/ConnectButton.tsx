@@ -12,6 +12,7 @@ interface Props {
   whisperUrl: string
   whisperModel: string
   whisperToken: string
+  managed?: boolean
 }
 
 interface TestResult {
@@ -21,7 +22,7 @@ interface TestResult {
   error?: string
 }
 
-export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whisperModel, whisperToken }: Props): JSX.Element {
+export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whisperModel, whisperToken, managed = false }: Props): JSX.Element {
   const bridge = useBridge()
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const [testing, setTesting] = useState(false)
@@ -50,7 +51,7 @@ export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whi
       if (res.ok) {
         const match = res.data as { name: string; createdAt: string }
         setTestResult({ ok: true, tokenName: match.name, createdAt: match.createdAt })
-        saveConfig()
+        if (!managed) saveConfig()
       } else if (res.status === 404) {
         setTestResult({ ok: false, error: 'Token not found on server' })
       } else {
@@ -108,7 +109,7 @@ export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whi
           <button class={styles.btn} onClick={handleTestConnect} disabled={testing} style="flex:1">
             {testing ? <><i class="fas fa-spinner fa-spin" style="margin-right:6px" />Testing...</> : <><i class="fas fa-plug" style="margin-right:6px" />Test Connect</>}
           </button>
-        ) : (
+        ) : !managed && (
           <button
             class={styles.btn}
             onClick={async () => {
@@ -125,7 +126,7 @@ export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whi
             <i class="fas fa-key" style="margin-right:6px" />Create Token
           </button>
         )}
-        {hasToken && (
+        {hasToken && !managed && (
           <button class={styles.btn} onClick={handleNewSession} style="flex:1;background:var(--accent-green)">
             <i class="fas fa-circle-plus" style="margin-right:6px" />New Default Session
           </button>

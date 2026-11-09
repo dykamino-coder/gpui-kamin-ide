@@ -1,6 +1,8 @@
 import type { JSX } from 'preact'
 import { useState, useEffect } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { ContainerPathButton } from '../shared/ContainerPathButton'
 import { readPanelCache, writePanelCache } from '../../../lib/panel-cache'
 import { ListSkeleton } from '../../ui/ListSkeleton'
 import { PanelError } from '../../ui/PanelError'
@@ -255,6 +257,7 @@ export function AgentsPanel(): JSX.Element {
             )}
 
             <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+              {isBrowserHost() ? <ContainerPathButton path={selected.path} /> : <>
               <button
                 style="padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;cursor:pointer;border:1px solid var(--accent-action);background:var(--accent-action);color:var(--accent-action-fg);font-weight:500;transition:opacity .15s"
                 onClick={() => bridge.openSkill(selected.path)}
@@ -267,6 +270,7 @@ export function AgentsPanel(): JSX.Element {
               >
                 <i class="fas fa-folder-open" /> Show in Explorer
               </button>
+              </>}
             </div>
 
             {selected.tools.length > 0 && (
