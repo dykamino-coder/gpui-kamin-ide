@@ -133,3 +133,24 @@ it('settles pending invokes only through the private socket path and rejects los
   expect(sockets[1].sent).toEqual([])
   api.dispose()
 })
+
+it('retains only an opaque host file-view identity and adds it to read-only sync, never replays writes', () => {
+  const sockets: FakeSocket[] = []
+  let id: string | undefined
+  const api = createBrowserSocket({ url: 'ws://127.0.0.1:3460/bridge',
+    fileViewIdentity: { get: () => id, set: value => { id = value } },
+    createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket } })
+  api.connect(); sockets[0].open()
+  api.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
+  sockets[0].receive(JSON.stringify({ kind: 'event', channel: 'workspace:files-state', args: [{ id: 'host-opaque-id', files: ['/workspace/a'] }] }))
+  expect(id).toBe('host-opaque-id')
+  api.postMessage({ kind: 'invoke', channel: 'file-viewer:write', args: ['/workspace/a', 'once'] })
+  sockets[0].ended(); vi.advanceTimersByTime(250); sockets[1].open()
+  expect(sockets[1].sent).toEqual([])
+  api.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
+  expect(sockets[1].sent.map(text => JSON.parse(text))).toEqual([
+    { kind: 'send', channel: 'workspace:sync', args: [{ fileViewId: 'host-opaque-id' }] },
+  ])
+  expect(sockets[0].sent.filter(text => text.includes('file-viewer:write'))).toHaveLength(1)
+  api.dispose()
+})

@@ -5,6 +5,7 @@ import { BridgeHost } from '../../extension/src/bridge-host'
 import { ipcMain } from '../../extension/src/shim/host-compat'
 import { configureEnvironment, withEnvironment, type WorkspaceEnvironment } from './environment.js'
 import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
+import { WorkspacePresentation } from './presentation.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -42,6 +43,16 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
   const attachments = new Set<HostAttachment>()
+  const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args))
+  // This observer belongs to the process, not to a browser socket. Keep prompt,
+  // activity and receipt state while no browser exists. Large history stays in
+  // the shared connection caches and disk mirror.
+  const observer = {
+    postMessage(frame: HostFrame) { presentation.observe(frame); return Promise.resolve(true) },
+    onDidReceiveMessage() { return { dispose() {} } },
+  } as unknown as Webview
+  const observation = host.attach(observer)
+  host.setWebviewVisible(observer, true)
 
   // The shared core exposes desktop server administration helpers with arbitrary
   // HTTP destinations. Keep them closed until the browser's pinned proxy exists.
@@ -70,17 +81,50 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
     } as unknown as Webview
     const subscription = host.attach(webview)
     host.setWebviewVisible(webview, true)
+    function snapshot(tabId?: string, full = false): void {
+      const manager = host.getTabManager()
+      const tabs = manager.listTabs()
+      const active = manager.getActiveTabId()
+      const send = (channel: string, ...args: unknown[]) => { void webview.postMessage({ kind: 'event', channel, args }) }
+      // No await in this capture/send block: later live events cannot overtake
+      // the snapshot. The transport bounds its output; a slow view may detach.
+      if (full) {
+        send('workspace:snapshot-start', tabs, active)
+        send('tab:list-changed', tabs)
+      }
+      const id = tabId || active
+      if (id) {
+        const state = manager.getConnection(id)?.getViewSnapshot()
+        send('jsonl-status', id, { status: 'watching', replayComplete: false })
+        for (let offset = 0; offset < (state?.entries.length ?? 0); offset += 100) send('jsonl-entries', id, state!.entries.slice(offset, offset + 100))
+        for (const slot of state?.subagents ?? []) {
+          for (let offset = 0; offset < slot.entries.length; offset += 100) send('jsonl-subagent-entries', id, slot.agentName, slot.entries.slice(offset, offset + 100), slot.agentId)
+        }
+        if (state?.boundaries) send('jsonl:boundaries-result', id, state.boundaries)
+        send('jsonl-status', id, state?.status ?? { status: 'watching', replayComplete: true, unknownTab: true })
+        if (state?.streaming) send('streaming-entry', id, state.streaming)
+      }
+      if (full) {
+        for (const frame of presentation.snapshot()) void webview.postMessage(frame)
+        send('workspace:snapshot-end')
+      }
+    }
     const attachment: HostAttachment = {
       async receive(frame) {
         if (disposed || detached) throw new Error('Workspace view is closed')
         if (frame.kind === 'invoke-diagnostic') { await listener?.(frame); return }
         try {
+          if (frame.kind === 'send' && frame.channel === 'workspace:sync') { snapshot(undefined, true); return }
+          if (frame.kind === 'send' && frame.channel === 'jsonl:request-replay') { snapshot(typeof frame.args[0] === 'string' ? frame.args[0] : undefined); return }
           if (blocked.has(frame.channel)) throw new Error(`Browser adapter is pending for ${frame.channel}`)
           if (frame.kind === 'invoke' && !ipcMain.hasHandler(frame.channel)) throw new Error(`Unsupported workspace invoke: ${frame.channel}`)
           if (frame.kind === 'send' && ipcMain.listenerCount(frame.channel) === 0) throw new Error(`Unsupported workspace send: ${frame.channel}`)
           const args = [...frame.args]
           if (['set-config', 'connect', 'tab:create', 'session:resume'].includes(frame.channel)) args[0] = pinned(args[0])
+          if (frame.channel === 'pty-submit-text' && !host.getTabManager().getConnection(String(args[0]))) throw new Error('Unknown submission session')
+          if (!presentation.accept(frame)) return
           await withEnvironment(options.environment, () => listener?.({ ...frame, args }))
+          if (frame.channel === 'disconnect') presentation.forgetSessions()
         } catch (error) {
           if (frame.kind !== 'invoke') throw error
           await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation,
@@ -103,6 +147,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
       if (disposed) return
       disposed = true
       for (const attachment of [...attachments]) attachment.dispose()
+      observation.dispose()
       host.dispose()
     },
   }

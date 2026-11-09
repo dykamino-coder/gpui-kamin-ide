@@ -110,8 +110,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   await page.locator('#sidebar-settings-item').waitFor()
   await page.locator('#sidebar-mcp-item').waitFor()
   await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
-  // Keep the debounced settings save's config read pending across disconnect.
-  // Its failed send must be reported without an unhandled rejection or replay.
+  // Hold the delayed save's read across disconnect; never replay its mutation.
   holdSettingsSave = true
   await settingsSavePending
   holdSettingsSave = false
