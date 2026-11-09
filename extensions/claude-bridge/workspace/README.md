@@ -6,7 +6,7 @@ Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
 for the existing App. It is not yet a runnable browser workspace: executable
-composition, remaining environment services, capability matrix and Podman acceptance remain open.
+composition, environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -16,7 +16,8 @@ Re-attach must deliver transcript/streaming/tool/prompt state, open files/watche
 and terminal scrollback, then live updates, without replaying mutations or
 duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
 tears down work. The merged browser entry does not yet meet this full contract:
-host presentation snapshots and authoritative state migration remain open.
+the host snapshot increment below covers chat/prompt re-attachment, while the
+remaining authoritative state migration stays open.
 Acceptance must cover close/reopen during Bash/MCP, pending permission after
 reopen, two tabs, and report production bundle size and page JS heap.
 
@@ -120,9 +121,27 @@ owned by the server process.
 `webview/browser.html` mounts the existing full `App` (sessions, chat, settings
 and file panel) through the existing KaminBridgeApi channel tables. Build with
 `npm run build:browser` in `webview`; serve the entire `webview/dist/browser`
-directory at the HTTP origin root, with `/` mapped to `browser.html`. The
-embedding executable/static asset server is still pending. Never serve project
-files as application assets. The browser build preserves a deferred renderer
+directory at the HTTP origin root, with `/` mapped to `browser.html`. Supply the
+production asset handler to the HTTP boundary:
+
+```ts
+const serveApp = await createAppAssetHandler('/opt/bridge/webview/dist/browser')
+const server = await startWorkspaceServer({ auth, backend, serveApp })
+```
+
+`createAppAssetHandler` and `startWorkspaceServer` are package exports. Load the
+assets before listening; pass a dedicated, trusted browser build directory, never
+`/workspace` or client HOME. The handler snapshots `browser.html` and supported
+files under `assets/` into memory. It rejects symlinks, special files, missing
+entry/assets directories, files above 16 MiB, builds above 64 MiB, more than 4096
+asset entries or directory depth above eight. Project files, source maps, unknown
+routes and traversal paths return 404 without an HTML fallback. GET and HEAD
+preserve byte lengths and MIME types; all responses use `no-store`, so a restart
+cannot reuse stale application code. Changes to on-disk assets require a host
+restart. Only trusted application bytes are public before sign-in; API/socket
+authentication is unchanged. Executable/runtime composition is still pending.
+
+Never serve project files as application assets. The browser build preserves a deferred renderer
 chunk: desktop single-file bundling would execute its module initializers before
 the browser transport is installed.
 
@@ -143,32 +162,65 @@ without replacing the UI document. Connection deadlines, exponential backoff,
 frame/output byte limits and page-owned cleanup bound transport resources. An
 expired session returns to sign-in; protocol/overload closes require reload.
 
-The browser smoke uses production assets, the real HTTP/WS boundary, headless
+The browser smoke uses this production asset handler, the real HTTP/WS boundary, headless
 Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
 fail; this is startup/transport/UI composition evidence, not shared-handler,
-model or live-server parity. Browser processes must run in Linux; Windows host
-runs are rejected, including headless browsers. Run once in an isolated Podman
-container (repository mounted read-only; source copied to container storage):
+model or Podman parity. Run after building both packages:
 
 ```sh
-npm run test:browser:container
+# Inside a Linux Podman container or Linux CI, never on the Windows host.
+# Mount source read-only; put builds and the browser cache in container storage.
+export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
+export PLAYWRIGHT_SKIP_BROWSER_GC=1
+npx playwright install chromium --only-shell
+npm run test:browser
 ```
 
-The runner uses the official Playwright Linux image matching the lockfile,
-installs locked dependencies, builds both packages and runs the suite once.
-It copies logs/screenshots to a private temporary directory (or
-`BRIDGE_BROWSER_OUTPUT`) and removes only its exact `bridgeweb-acc-browser-*`
-container. Linux CI runs the same suite headlessly and captures only synthetic
-fixture UI.
-
+The test refuses Windows execution. Linux CI repeats this headlessly and captures
+only synthetic fixture UI. Browser/live acceptance runs belong inside Podman;
+never launch Chromium, including headless_shell, on the Windows host.
 The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
 JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-File/PTY integration, dashboard-admin login, the
+Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Host presentation and re-attachment increment
+
+The shared runtime keeps an internal observer with zero browser sockets. It
+retains pending permission/elicitation/question frames, activity, submission
+receipts and accepted submission identities. ConnectionManager accumulates
+streaming text/thinking deltas even while renderer delivery is muted. After its
+listeners mount, the browser requests `workspace:sync`: a targeted synchronous
+snapshot of tabs, the active transcript tail (200 records), subagent tails,
+boundaries, accumulated stream, statuses, receipts and pending questions. Older
+history stays in shared caches/disk and uses existing paging. A second page's
+snapshot never broadcasts transcript replay into the first page.
+
+Browser submissions carry IDs even before CLI-mod negotiation. The host rejects
+conflicting reuse, drops duplicate accepted submissions and duplicate prompt
+answers, and never replays mutations on attach. At 10,000 accepted identities or
+32 MiB of accepted text, new submissions fail explicitly until sessions end;
+identities are never evicted while a session remains live. This is in-process
+state, not crash recovery. Native-terminal fallback queue display still uses
+the existing UI projection; full queue/reducer migration remains open.
+
+The deterministic real-host regression closes all views with foreground and
+background Bash, an external HTTP MCP call, a permission prompt and a stream in
+flight. It records more history/deltas with zero views, re-attaches, answers the
+original prompt and attaches a second view without duplicate upstream submission.
+This is real client/handler/WebSocket evidence with a synthetic upstream, not
+the required live model/Podman/headless lifecycle acceptance. Bridge FilePanel
+(including attach-file/context) remains in scope; only IDE open/reveal and
+openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not Bridge". Host-owned
+file watches, PTY scrollback, remaining page reducers and the full gates follow.
+
+Explicit session close now also disposes background shells before dropping the
+connection. The same real-process regression covers End session, Disconnect and
+shutdown with foreground/background Bash and an external HTTP MCP call in flight.
 
 ## Browser environment effects
 
@@ -218,3 +270,5 @@ and removed PWA-microphone channels do not run in the container host.
 
 The Tools usage action also reuses the native relay and targets currently
 attached browser views. It owns no session lifecycle state.
+
+Use `npm run test:browser:container` from Windows to run the suite in the official Linux Playwright image. The runner mounts source read-only, builds in container storage, uses a private browser cache and copies only test outputs back.

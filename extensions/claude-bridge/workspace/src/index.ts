@@ -1,5 +1,6 @@
 export { WorkspaceAuth, serverTokenResolver } from './auth.js'
 export { startWorkspaceServer } from './server.js'
+export { createAppAssetHandler } from './assets.js'
 export { createBrowserEnvironment } from './browser-environment.js'
 export { withBrowserServer } from './browser-server.js'
 export type { WorkspaceEnvironment } from './environment.js'

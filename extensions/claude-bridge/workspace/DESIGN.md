@@ -11,6 +11,14 @@ launching KaminIDE. Browser services and host-owned presentation state follow.
 These are bounded increments of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
 
+The application-asset increment supplies `createAppAssetHandler`, used by the
+production-bundle browser smoke and later executable composition. It loads only
+the dedicated browser build's entry and supported assets, validates links and
+size/depth limits before listen, and snapshots bytes for the life of the process.
+Application HTTP routes never interpret project paths. This restriction applies
+to public application assets, not the container-wide agent filesystem described
+below. Shared runtime/file adapters remain separate increments awaiting lead merge.
+
 ## Problem and completion contract
 
 The Bridge server owns Claude CLI PTYs, while the client owns project access
@@ -20,14 +28,31 @@ machine is a Linux container with persistent `/workspace`. Serve the existing
 webview components to an ordinary browser, preserving the Kamin bridge API and
 server protocol.
 
-Owner requirement, 2026-11-09 (verbatim): В«РІР°Р¶РЅРѕ С‡С‚Рѕ Р±С‹ СЃС‚СЂР°РЅРёС†Р° РІ Р±СЂР°СѓР·РµСЂРµ
-С‚РѕРЅРєРѕР№ Р±С‹Р»Р° Рё РµСЃР»Рё РµРµ Р·Р°РєСЂС‹С‚СЊ Рё РѕС‚РєСЂС‹С‚СЊ СЂР°Р±РѕС‚Р° СЃ Р°РіРµРЅС‚РѕРј РЅРµ РїСЂРµСЂРІРµС‚СЃСЏВ».
+Owner requirement, 2026-11-09 (verbatim): «важно что бы страница в браузере
+тонкой была и если ее закрыть и открыть работа с агентом не прервется».
 The browser is only a view. All authoritative state and execution belong to the
 container host, including sessions, connections, transcript, streaming turns,
 tool status, permission prompts, queued messages, files/watches and terminal
 scrollback. A page can disappear with zero attached browsers while work proceeds.
 Reopening attaches to the same running workspace and renders its current state.
 The existing browser entry alone does not yet satisfy this contract.
+
+Scope clarification from the owner (verbatim): «мы бридж копируем а не камин».
+Bridge's own FilePanel, file viewer, attach-file/editor context, terminal,
+uploads/downloads and attachments remain in scope. Opening/revealing files in
+the IDE editor and openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not
+Bridge". The earlier temporary removal of FilePanel is superseded.
+
+The next core increment adds a targeted `workspace:sync` read handshake after
+the existing renderer installs its listeners. The host snapshots the shared
+connection caches (including accumulated streaming deltas), pending questions,
+submission receipts and activity. It sends reset, snapshot frames, then live
+updates on the same ordered socket. An internal host observer remains attached
+with zero browsers; it retains presentation metadata, never executes tools.
+Snapshots initially paint only the active conversation's newest 200 records;
+older records remain in the shared host/mirror and use existing paging. Sync
+never resubmits input or reconnects upstream sessions. File subscriptions and
+PTY scrollback are subsequent increments using the same host-owned lifetime.
 
 Completion means reviewed Change PRs with green applicable CI, an exhaustive
 capability gate, and real headless browser acceptance in Podman. The Claude lead
@@ -91,8 +116,11 @@ production bundle and page JS heap in acceptance and report both in the PR.
 On socket loss, detach delivery only and reconnect with backoff. A new document
 or second tab attaches to the same host state. Synchronization delivers a coherent
 snapshot of transcript, active turn/tool state, pending prompts, open files and
-watches, and terminal scrollback, followed by ordered live updates. A host revision
-and event cursor must close the snapshot/live race without gaps or duplicates.
+watches, and terminal scrollback, followed by ordered live updates. The initial
+in-process implementation captures and enqueues each snapshot synchronously,
+without an await, on the same event loop and ordered socket as live events.
+This closes the capture/live race without a separate cursor or replay journal;
+an asynchronous snapshot producer must add a revision/cursor before yielding.
 The host owns logical view state independently of a socket or document generation.
 
 Browser reload is never permission to replay a mutation. Use stable operation IDs,
@@ -302,20 +330,3 @@ a concrete prerequisite; it never becomes a request for owner testing.
 Complete applicable package typechecks/tests/builds, regenerated artifact checks,
 event routing check and GitHub CI on the final candidate. No Windows GUI launch
 or focus is necessary for this new browser-only contract.
-
-## Browser environment effects
-
-The host composes the shared Bridge handlers with a request-scoped browser
-environment. Clipboard, file chooser, download, notification and external-link
-effects target only the originating authenticated view. The page renders the
-requested primitive and returns its result; it does not choose host paths,
-implement tools, or own sessions. Closing the view cancels pending environment
-effects without disposing the shared runtime. Uploads land under the workspace;
-existing shared attachment and export handlers consume those paths. Container
-folder selection accepts container paths, including paths outside `/workspace`.
-
-Bridge's own FilePanel, attachment context and terminal remain in scope.
-IDE editor/reveal/openInVscode operations are not applicable: "KaminIDE host
-feature, not Bridge". Browser deployment replaces the desktop auto-updater and
-native window chrome. Browser audio capture reuses the existing voice-input
-hook, with transcription performed by the host.
