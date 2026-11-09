@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles } from './index.js'
+import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles, TerminalWorkspaceBackend, withBrowserServer } from './index.js'
 import { createSharedBackend } from './runtime.js'
 declare const BRIDGE_VERSION: string
 
@@ -21,20 +21,23 @@ async function main(): Promise<void> {
   const serveApp = await createAppAssetHandler(path.resolve(__dirname, '../../webview/dist/browser'))
   const browser = createBrowserEnvironment({ root })
   const backend = createSharedBackend({ root, storage, serverUrl, token, version: BRIDGE_VERSION, environment: browser.environment })
-  const files = new WorkspaceFiles(browser.wrap(backend), { root,
+  const files = new WorkspaceFiles(browser.wrap(withBrowserServer(backend, { serverUrl, token })), { root,
     onWatchError: () => { process.stderr.write('Bridge workspace file watch failed.\n') },
   })
+  const terminals = new TerminalWorkspaceBackend(files, root)
+  const dispose = () => {
+    try { terminals.dispose() } finally { try { files.dispose() } finally { backend.dispose() } }
+  }
   let server: Awaited<ReturnType<typeof startWorkspaceServer>>
   try {
     server = await startWorkspaceServer({ bind, port, origin: process.env.WORKSPACE_ORIGIN,
-      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: files, serveApp })
-  } catch (error) { files.dispose(); backend.dispose(); throw error }
+      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: terminals, serveApp })
+  } catch (error) { dispose(); throw error }
   let closing = false
   const close = () => {
     if (closing) return
     closing = true
-    files.dispose()
-    backend.dispose()
+    dispose()
     void server.close().catch(() => { process.exitCode = 1 })
   }
   process.once('SIGINT', close)

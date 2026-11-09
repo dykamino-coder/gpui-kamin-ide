@@ -20,8 +20,6 @@ RUN npm --prefix extensions/claude-bridge/workspace run build \
     && npm --prefix extensions/claude-bridge/workspace prune --omit=dev --no-audit --no-fund
 
 FROM node:22-bookworm-slim AS runtime
-ARG SOURCE_REVISION=unspecified
-LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates curl git jq python3 ripgrep tini \
     && curl --fail --silent --show-error --location \
@@ -41,6 +39,8 @@ COPY --from=build /opt/bridge/extensions/claude-bridge/workspace/package.json ./
 COPY --from=build /opt/bridge/extensions/claude-bridge/webview/dist/browser ../webview/dist/browser
 COPY --chmod=755 extensions/claude-bridge/workspace/container-entrypoint.sh ./container-entrypoint.sh
 COPY extensions/claude-bridge/workspace/container-healthcheck.mjs ./container-healthcheck.mjs
+ARG SOURCE_REVISION=unspecified
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 USER workspace
 ENV NODE_ENV=production HOME=/home/workspace WORKSPACE_ROOT=/workspace \
     WORKSPACE_STORAGE=/home/workspace/.local/state/bridge WORKSPACE_BIND=0.0.0.0 WORKSPACE_PORT=3460
