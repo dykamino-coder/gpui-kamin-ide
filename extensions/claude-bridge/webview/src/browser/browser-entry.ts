@@ -1,6 +1,7 @@
 import { installBrowserApi } from '../lib/webview-api'
 import { createBrowserSocket, type ConnectionState } from './browser-socket'
 import './browser.css'
+import { installBrowserEffects } from './browser-effects'
 
 // Authentication precedes importing the shared renderer: module initialization
 // reads the API and starts version requests. No token enters renderer state.
@@ -93,6 +94,7 @@ function start(): void {
     connection(state)
   } })
   installBrowserApi(transport)
+  installBrowserEffects(transport)
   transport.connect()
 }
 

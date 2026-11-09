@@ -1,3 +1,5 @@
+if (process.platform === 'win32') throw new Error('Windows host browsers are forbidden; use test:browser:container with --report-dir outside checkout')
+
 // Real Chromium + HTTP/WS boundary + production browser bundle. This deliberate
 // fixture peer proves browser startup/lifecycle, not shared-handler/model parity.
 import assert from 'node:assert/strict'
@@ -8,8 +10,7 @@ import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
-
-if (process.platform === 'win32') throw new Error('Browser tests must run in Linux Podman or Linux CI; Windows host browsers are prohibited')
+import './linux-browser-only.mjs'
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
@@ -77,7 +78,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   }
   page.setDefaultTimeout(10_000)
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', error => errors.push(error.stack))
   // Keep acceptance deterministic/offline; no remote fonts or external links.
   await page.route('**/*', route => new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort())
   await page.goto(server.origin)
@@ -111,7 +112,8 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   await page.locator('#sidebar-settings-item').waitFor()
   await page.locator('#sidebar-mcp-item').waitFor()
   await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
-  // Hold the delayed save's read across disconnect; never replay its mutation.
+  // Keep the debounced settings save's config read pending across disconnect.
+  // Its failed send must be reported without an unhandled rejection or replay.
   holdSettingsSave = true
   await settingsSavePending
   holdSettingsSave = false
