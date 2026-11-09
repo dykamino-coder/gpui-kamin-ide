@@ -163,6 +163,15 @@ callback alone is not a test. Test actual environment services and shared
 handlers, not a fake blanket success responder. Fixtures must name observable
 effects, cancellation, errors and cleanup as appropriate.
 
+The independent file-panel environment increment decorates `WorkspaceBackend`
+at the existing invoke/send boundary, leaving unknown frames and all agent tool
+logic to the underlying shared backend. File watches belong to each attached
+view, and asynchronous watch errors have a required host logging callback.
+Its actual-files and authenticated transport fixtures are partial capability
+evidence, not the exhaustive matrix or a browser/container acceptance claim.
+This separation allows review from fresh main while runtime/browser PRs await
+the lead; the executable must compose all three pieces before deployment.
+
 | Inventory group | Intended implementation | Required proof |
 | --- | --- | --- |
 | Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and WS pipeline | Create/resume/switch/close; queued text once; permission decision; reconnect/replay |
