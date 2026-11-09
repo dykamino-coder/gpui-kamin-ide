@@ -37,6 +37,7 @@ export function capabilityInventory(base = fileURLToPath(new URL('../../', impor
     const apiFile = path.join(base, apiPath)
     const api = source(apiFile).statements.find(node => ts.isInterfaceDeclaration(node) && node.name.text === 'KaminBridgeApi') as ts.InterfaceDeclaration
     if (!api) throw new Error(`Missing KaminBridgeApi in ${apiPath}`)
+    if (api.heritageClauses?.length) throw new Error(`Unclassified inherited API members in ${apiPath}`)
     const names = new Set<string>()
     for (const member of api.members) {
       const memberName = name(member.name)
@@ -137,6 +138,14 @@ export function capabilityInventory(base = fileURLToPath(new URL('../../', impor
   }
   for (const file of all) {
     walk(source(file), node => {
+      if (ts.isSwitchStatement(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'channel') {
+        for (const clause of node.caseBlock.clauses) {
+          if (!ts.isCaseClause(clause)) continue
+          const target = channel(file, clause.expression)
+          if (!target) throw new Error(`Unclassified channel case: ${file}:${clause.expression.getText()}`)
+          add('route', target, file, clause, shared.has(file))
+        }
+      }
       // Container adapters declare their dispatch sets outside ipcMain.
       if (file.includes(path.join('workspace', 'src')) && ts.isVariableDeclaration(node) && /(?:^|_)(INVOKES|SENDS|EVENTS)$/.test(name(node.name) ?? '')) {
         const kind = name(node.name)!.match(/(?:^|_)(INVOKES|SENDS|EVENTS)$/)![1].slice(0, -1).toLowerCase()
@@ -152,8 +161,8 @@ export function capabilityInventory(base = fileURLToPath(new URL('../../', impor
         if (!count) throw new Error(`Missing adapter dispatch set: ${file}`)
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-          ts.isPropertyAccessExpression(node.left) && node.left.name.text === 'channel') {
-        const target = channel(file, node.right)
+          [node.left, node.right].some(side => ts.isPropertyAccessExpression(side) && side.name.text === 'channel')) {
+        const target = channel(file, ts.isPropertyAccessExpression(node.left) && node.left.name.text === 'channel' ? node.right : node.left)
         if (target) {
           let context: ts.Node | undefined = node.parent
           while (context && !ts.isIfStatement(context)) context = context.parent
