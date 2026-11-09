@@ -18,6 +18,7 @@ const script = `set -eu
 mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output /workspace
 mkdir -p /tmp/task/builtin-extensions/claude-bridge
 cp /source/builtin-extensions/claude-bridge/package.json /tmp/task/builtin-extensions/claude-bridge/package.json
+cp /source/builtin-extensions/claude-bridge/chat.html /tmp/task/builtin-extensions/claude-bridge/chat.html
 mkdir -p /tmp/task/src/kamin-host
 cp /source/src/kamin-host/rolling-log.ts /tmp/task/src/kamin-host/rolling-log.ts
 mkdir -p /tmp/task/src/kamin-host/services
