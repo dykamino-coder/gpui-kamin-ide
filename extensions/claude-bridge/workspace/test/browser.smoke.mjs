@@ -8,8 +8,7 @@ import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
-
-if (process.platform === 'win32') throw new Error('Browser tests must run in Linux Podman or Linux CI; Windows host browsers are prohibited')
+import './linux-browser-only.mjs'
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
@@ -77,7 +76,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   }
   page.setDefaultTimeout(10_000)
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', error => errors.push(error.stack))
   // Keep acceptance deterministic/offline; no remote fonts or external links.
   await page.route('**/*', route => new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort())
   await page.goto(server.origin)
