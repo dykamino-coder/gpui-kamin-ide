@@ -1,5 +1,23 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Выборочная сверка browser workspace INC-0087 — 2026-11-09
+
+Source `origin/main` `4bf69698`: [INC-0087](runtime-issues/INC-2026-0087.md)
+остаётся **in progress**. #639–#646, #648 и #650 слиты; #647/#649/#654
+закрыты как covered. #652 обновлён обычным merge до дерева main, его
+memory-token source уже включён через #648. #653 содержит follow-up live harness.
+
+Реализованы shared client host, тот же browser App, файлы/watches, host PTY,
+browser adapters, executable/Podman packaging и source-derived capability gate.
+Live subset #653: 15/15 PASS на отдельно указанном image/source, до последних
+title/toast hooks; это не финальная приёмка полного паритета. Текущий
+`test:parity` проверяет три declared implemented prerequisites, но не кодирует
+оставшиеся host-page/FilePanel state и PREVIEW/HMR. Следующий шаг исполнителей:
+добавить эти readiness gates, поведенческое доказательство всех capabilities и
+финальный composed Linux Podman прогон; Claude lead принимает/мержит результаты.
+Owner не выполняет тестирование. Release/publication не проводились. Другие
+исторические строки обзора этим не пересчитаны.
+
 ## Выборочная сверка INC-0080 retention — 2026-11-03
 
 Source `origin/main` `d1206b79d2836d028090f16457315d3db14716c7`.
