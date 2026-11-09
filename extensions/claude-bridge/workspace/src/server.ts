@@ -4,6 +4,9 @@ import type { AddressInfo } from 'node:net'
 import { WebSocketServer, WebSocket } from 'ws'
 import { WorkspaceAuth, readSessionCookie } from './auth.js'
 import { parseClientFrame, type HostAttachment, type WorkspaceBackend } from './protocol.js'
+import type { WorkspacePreview } from './preview.js'
+import { proxyHttp, proxyUpgrade } from './preview-proxy.js'
+import type { Duplex } from 'node:stream'
 
 const MAX_FRAME = 16 * 1024 * 1024
 const MAX_BUFFER = 32 * 1024 * 1024
@@ -17,6 +20,8 @@ export interface WorkspaceServerOptions {
   bind?: string
   port?: number
   revalidateMs?: number
+  /** Trusted Module Federation remote; state is owned by this host process. */
+  preview?: WorkspacePreview
   /** Serve only trusted application assets; this callback never receives API routes. */
   serveApp?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>
 }
@@ -47,6 +52,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   if (options.origin && (origin !== options.origin || !/^https?:/.test(origin))) throw new Error('Invalid browser origin')
   const sockets = new Map<WebSocket, string>()
   const alive = new Set<WebSocket>()
+  const previewSockets = new Map<Duplex, string>()
   const attempts = new Map<string, { count: number; reset: number }>()
   let closing = false
   let pendingUpgrades = 0
@@ -91,6 +97,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       const cookie = readSessionCookie(request.headers.cookie)
       options.auth.logout(cookie)
       for (const [socket, id] of sockets) if (id === cookie) socket.close(4001, 'Session ended')
+      for (const [socket, id] of previewSockets) if (id === cookie) socket.destroy()
       response.setHeader('Set-Cookie', options.auth.cookieHeader('', origin.startsWith('https:')).replace(/Max-Age=\d+/, 'Max-Age=0'))
       json(response, 200, { authenticated: false })
       return
@@ -98,6 +105,24 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     if (request.url === '/auth/session' && request.method === 'GET') {
       json(response, 200, { authenticated: await options.auth.validate(readSessionCookie(request.headers.cookie)) })
       return
+    }
+    if (request.url?.startsWith('/preview/')) {
+      if (!options.preview) { json(response, 404, { error: 'Preview is not configured' }); return }
+      const session = readSessionCookie(request.headers.cookie)
+      if (!await options.auth.validate(session)) { json(response, 401, { error: 'Authentication required' }); return }
+      if (request.url === '/preview/state' && request.method === 'GET') {
+        json(response, 200, await options.preview.snapshot()); return
+      }
+      const target = options.preview.target(request.url)
+      if (target) {
+        if (!['GET', 'HEAD'].includes(request.method ?? '') && !sameOrigin(request)) {
+          json(response, 403, { error: 'Invalid preview origin' }); return
+        }
+        proxyHttp(request, response, target, origin, `/preview/remotes/${options.preview.copy()!.name}`); return
+      }
+      if (request.method !== 'POST' || !sameOrigin(request)) { json(response, 403, { error: 'Invalid preview origin' }); return }
+      if (request.url === '/preview/unmount') { options.preview.unmount(); json(response, 200, null); return }
+      json(response, 404, { error: 'Unknown preview endpoint' }); return
     }
     if (request.url?.startsWith('/auth/') || request.url?.startsWith('/bridge')) {
       json(response, 404, { error: 'Unknown endpoint' }); return
@@ -109,6 +134,19 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
 
   server.on('upgrade', (request, socket, head) => {
     const refuse = () => socket.destroy()
+    const target = options.preview?.target(request.url ?? '')
+    if (target) {
+      if (closing || !sameOrigin(request) || previewSockets.size + pendingUpgrades >= 32) { refuse(); return }
+      const cookie = readSessionCookie(request.headers.cookie)
+      pendingUpgrades++
+      void options.auth.validate(cookie).then(valid => {
+        if (!valid || closing || socket.destroyed) { refuse(); return }
+        previewSockets.set(socket, cookie!)
+        socket.once('close', () => previewSockets.delete(socket))
+        proxyUpgrade(request, socket, head, target)
+      }, refuse).finally(() => { pendingUpgrades-- })
+      return
+    }
     if (closing || request.url !== '/bridge' || !sameOrigin(request) || sockets.size + pendingUpgrades >= 32) { refuse(); return }
     const cookie = readSessionCookie(request.headers.cookie)
     pendingUpgrades++
@@ -160,9 +198,10 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       else if (socket.readyState === WebSocket.OPEN) socket.ping()
     }
     validating = true
-    void Promise.all([...new Set(sockets.values())].map(async cookie => {
+    void Promise.all([...new Set([...sockets.values(), ...previewSockets.values()])].map(async cookie => {
       if (!await options.auth.validate(cookie)) {
         for (const [socket, id] of sockets) if (id === cookie) socket.close(4001, 'Session ended')
+        for (const [socket, id] of previewSockets) if (id === cookie) socket.destroy()
       }
     })).finally(() => { validating = false })
   }, options.revalidateMs ?? 15_000)
@@ -175,6 +214,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   } catch (error) { clearInterval(timer); wss.close(); throw error }
   const address = server.address() as AddressInfo
   if (!origin) origin = `http://${bind === '::1' ? '[::1]' : bind}:${address.port}`
+  options.preview?.blockPorts([address.port])
 
   return {
     origin,
@@ -182,6 +222,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     async close(): Promise<void> {
       closing = true
       clearInterval(timer)
+      for (const socket of previewSockets.keys()) socket.destroy()
       for (const socket of sockets.keys()) socket.terminate()
       await new Promise<void>(resolve => wss.close(() => resolve()))
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))

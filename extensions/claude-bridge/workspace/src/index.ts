@@ -1,5 +1,7 @@
 export { WorkspaceAuth, serverTokenResolver } from './auth.js'
 export { startWorkspaceServer } from './server.js'
+export { WorkspacePreview } from './preview.js'
+export type { PreviewDescriptor, PreviewMount } from './preview.js'
 export { createBrowserEnvironment } from './browser-environment.js'
 export type { WorkspaceEnvironment } from './environment.js'
 export { WorkspaceFiles } from './files.js'

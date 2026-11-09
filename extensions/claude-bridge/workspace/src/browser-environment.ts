@@ -16,7 +16,7 @@ interface Request {
 }
 
 /** Environment effects have view/request ownership, independent of session lifetime. */
-export function createBrowserEnvironment(options: { root: string; timeoutMs?: number }) {
+export function createBrowserEnvironment(options: { root: string; timeoutMs?: number; preview?: WorkspaceEnvironment['preview'] }) {
   const root = path.resolve(options.root)
   const requests = new AsyncLocalStorage<Request>()
   const viewers = new Set<Request['effect']>()
@@ -43,6 +43,7 @@ export function createBrowserEnvironment(options: { root: string; timeoutMs?: nu
   }
   const unavailable = async (): Promise<never> => { throw new Error('KaminIDE host feature, not Bridge') }
   const environment: WorkspaceEnvironment = {
+    preview: options.preview,
     clipboard: {
       async readText() {
         const value = await effect('clipboard-read', {})
