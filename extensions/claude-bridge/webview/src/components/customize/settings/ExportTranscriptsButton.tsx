@@ -3,6 +3,8 @@ import { useState, useEffect } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { showToast } from '../../../signals/toasts'
 import { setHostBusy } from '../../../lib/host-ready'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { Button } from '../../ui/Button'
 
 type Phase =
   | { k: 'idle' }
@@ -31,13 +33,15 @@ export function ExportTranscriptsButton(): JSX.Element {
     let res: { success: boolean; dir?: string; count?: number; error?: string }
     try {
       res = await bridge.downloadAllJsonl()
+    } catch (error) {
+      res = { success: false, error: error instanceof Error ? error.message : 'Download could not be confirmed. Try again.' }
     } finally {
       setHostBusy(false)
     }
     if (!res.success && res.error === 'Cancelled') { setPhase({ k: 'idle' }); return }
     if (res.success) {
       setPhase({ k: 'done', count: res.count ?? 0 })
-      showToast({ type: 'success', title: 'Export complete', message: `${String(res.count ?? 0)} session log(s) saved to ${res.dir ?? 'the folder'}.` })
+      showToast({ type: 'success', title: 'Export complete', message: isBrowserHost() ? `${String(res.count ?? 0)} session log(s) downloaded through your browser.` : `${String(res.count ?? 0)} session log(s) saved to ${res.dir ?? 'the folder'}.` })
     } else {
       setPhase({ k: 'idle' })
       showToast({ type: 'error', title: 'Export failed', message: res.error ?? 'Unknown error' })
@@ -52,8 +56,8 @@ export function ExportTranscriptsButton(): JSX.Element {
   const icon = busy ? 'fas fa-spinner fa-spin' : phase.k === 'done' ? 'fas fa-check' : 'fas fa-download'
 
   return (
-    <button type="button" class="btn" disabled={busy} onClick={() => { void run() }}>
+    <Button disabled={busy} onClick={() => { void run() }}>
       <i class={icon} style="margin-right:6px" />{label}
-    </button>
+    </Button>
   )
 }

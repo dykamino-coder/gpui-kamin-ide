@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { useId } from 'preact/hooks'
 import styles from './SettingsInput.module.css'
 
 interface Props {
@@ -9,9 +10,11 @@ interface Props {
   onChange: (value: string) => void
   /** Optional inline badge shown next to the label (e.g. resolved token name). */
   labelHint?: string
+  readOnly?: boolean
 }
 
-export function SettingsInput({ label, type, placeholder, value, onChange, labelHint }: Props): JSX.Element {
+export function SettingsInput({ label, type, placeholder, value, onChange, labelHint, readOnly }: Props): JSX.Element {
+  const id = useId()
   function handleKeyDown(e: KeyboardEvent): void {
     // Allow all keyboard shortcuts in inputs (Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A)
     e.stopPropagation()
@@ -19,7 +22,7 @@ export function SettingsInput({ label, type, placeholder, value, onChange, label
 
   return (
     <>
-      <label class={styles.label}>
+      <label class={styles.label} htmlFor={id}>
         {label}
         {labelHint && (
           <span style="margin-left:8px;padding:1px 6px;border-radius:var(--radius-xs);background:var(--bg-surface);color:var(--accent-green);font-size:10px;font-weight:500;letter-spacing:0.2px">
@@ -29,6 +32,8 @@ export function SettingsInput({ label, type, placeholder, value, onChange, label
       </label>
       <div style="position:relative">
         <input
+          id={id}
+          readOnly={readOnly}
           class={styles.input}
           {...(type === 'password' ? { type: 'password' as const } : { type: 'text' as const })}
           placeholder={placeholder}
@@ -37,7 +42,7 @@ export function SettingsInput({ label, type, placeholder, value, onChange, label
           onKeyDown={handleKeyDown}
           style={value ? 'padding-right:28px' : undefined}
         />
-        {value && (
+        {value && !readOnly && (
           <button
             onClick={() => onChange('')}
             style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-disabled);cursor:pointer;font-size:11px;padding:2px 4px"

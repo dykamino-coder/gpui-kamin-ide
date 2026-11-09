@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { isBrowserHost } from '../../../lib/webview-api'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { ListSkeleton } from '../../ui/ListSkeleton'
@@ -97,7 +98,7 @@ export function MonitorsPanel(): JSX.Element {
   return (
     <div class={styles.panel}>
       <h2 class={styles.title}>Plugin monitors</h2>
-      <p class={styles.subtitle}>Long-running background processes declared by enabled plugins. Each spawns when a tab opens and dies when it closes.</p>
+      <p class={styles.subtitle}>{isBrowserHost() ? 'Long-running background processes declared by enabled plugins. Each starts with an agent session and stops when that session is explicitly closed. Closing this browser page leaves the session running.' : 'Long-running background processes declared by enabled plugins. Each spawns when a tab opens and dies when it closes.'}</p>
 
       {loading && monitors.length === 0 ? (
         <ListSkeleton rows={4} />
