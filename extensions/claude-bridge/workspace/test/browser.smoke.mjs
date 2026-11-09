@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
-import { WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
+import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
+
+if (process.platform === 'win32') throw new Error('Browser tests must run in Linux Podman or Linux CI; Windows host browsers are prohibited')
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
@@ -26,6 +28,9 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   const calls = []
   const unexpected = new Set()
   let held
+  let holdSettingsSave = false
+  let settingsSaveRead
+  const settingsSavePending = new Promise(resolve => { settingsSaveRead = resolve })
   const config = { serverUrl: 'ws://fixture.invalid', token: '[workspace credential]', cwd: '/workspace' }
   const replies = new Map([
     ['get-version', 'fixture'], ['get-config', config],
@@ -47,6 +52,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         async receive(frame) {
           if (frame.kind !== 'invoke') return
           calls.push(frame)
+          if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
           if (frame.channel === 'read-clipboard') { held = frame; return }
           if (frame.channel === 'logs:clear') throw new Error('Fixture disconnect')
           const known = replies.has(frame.channel)
@@ -57,13 +63,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         dispose() {},
       }
     } },
-    async serveApp(request, response) {
-      const filename = files.get(request.url === '/' ? '/browser.html' : request.url)
-      if (!filename) { response.writeHead(404); response.end(); return }
-      const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[path.extname(filename)]
-      response.writeHead(200, { 'Content-Type': mime ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
-      response.end(await readFile(filename))
-    },
+    serveApp: await createAppAssetHandler(assets),
   })
   t.after(() => server.close())
   const browser = await chromium.launch({ headless: true })
@@ -110,6 +110,11 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
   await page.locator('#sidebar-settings-item').waitFor()
   await page.locator('#sidebar-mcp-item').waitFor()
+  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
+  // Hold the delayed save's read across disconnect; never replay its mutation.
+  holdSettingsSave = true
+  await settingsSavePending
+  holdSettingsSave = false
   await page.evaluate(() => { window.__workspaceDocument = 'same-document' })
   await page.evaluate(() => window.kaminBridge.setBasePrompt('one fixture mutation'))
   await page.evaluate(() => {
@@ -132,6 +137,8 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   assert.equal(await page.evaluate(() => window.__workspaceDocument), 'same-document')
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
+  assert.equal(calls.filter(frame => frame.channel === 'set-config').length, 0)
+  await page.getByText('Settings could not be confirmed. Check the connection and try again.', { exact: true }).waitFor()
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
   await reportHeap('after-socket-reattach')
 

@@ -21,8 +21,10 @@ export function showToast(opts: Omit<Toast, 'id'>): string {
   const bridge = (window as { kaminBridge?: { showNotification?: (severity: string, message: string) => void } }).kaminBridge
   if (bridge?.showNotification) {
     const severity = opts.type === 'error' ? 'error' : 'info'
-    bridge.showNotification(severity, opts.message ? `${opts.title}: ${opts.message}` : opts.title)
-    return ''
+    try {
+      bridge.showNotification(severity, opts.message ? `${opts.title}: ${opts.message}` : opts.title)
+      return ''
+    } catch { /* disconnected browser: show the existing local toast instead */ }
   }
   const id = `toast-${nextId++}`
   toasts.value = [...toasts.value, { ...opts, id }]
