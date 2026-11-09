@@ -43,7 +43,8 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
   const attachments = new Set<HostAttachment>()
-  const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args))
+  const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args),
+    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [])
   // This observer belongs to the process, not to a browser socket. Keep prompt,
   // activity and receipt state while no browser exists. Large history stays in
   // the shared connection caches and disk mirror.

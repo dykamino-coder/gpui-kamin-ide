@@ -158,6 +158,12 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     send('pty-submit-text', [activeTab, 'message once', 'stable-submission'])
     await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.submissionId === 'stable-submission')
     peer!.send(JSON.stringify({ type: 'session:submission', id: 'stable-submission', state: 'native' }))
+    for (const [identity, text] of [['fallback-accepted', 'fallback accepted with zero views'], ['fallback-pending', 'fallback still waiting']]) {
+      send('pty-submit-text', [activeTab, text, identity])
+      await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.submissionId === identity)
+      peer!.send(JSON.stringify({ type: 'session:submission', id: identity, state: 'fallback' }))
+      await wait(framesA, eventsA, frame => frame.channel === 'session:submission' && frame.args[1].id === identity && frame.args[1].state === 'fallback')
+    }
     send('change-permission-mode', [activeTab, 'acceptEdits'])
     await invoke('tab:list') // ingress barrier before the tool asks for permission
     peer!.send(JSON.stringify({ type: 'mcp:call', requestId: 'reopen-permission', toolName: 'Bash', input: { command: 'echo permission-after-reopen' } }))
@@ -178,8 +184,10 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(peer!.readyState, WebSocket.OPEN, 'Socket loss must keep the upstream connection')
     assert.match(JSON.stringify((await tool('Read', { file_path: file })).result), /after/)
     peer!.send(JSON.stringify({ type: 'streaming:delta', msgId: 'stream-turn', blockIdx: 0, appendText: ' during absence', kind: 'text' }))
-    peer!.send(JSON.stringify({ type: 'jsonl:entries', entries: [{ type: 'user', uuid: 'closed-history', _ord: 1,
-      message: { role: 'user', content: 'recorded with zero views' } }] }))
+    peer!.send(JSON.stringify({ type: 'jsonl:entries', entries: [
+      { type: 'user', uuid: 'fallback-history', _ord: 1, message: { role: 'user', content: 'fallback accepted with zero views' } },
+      { type: 'user', uuid: 'closed-history', _ord: 2, message: { role: 'user', content: 'recorded with zero views' } },
+    ] }))
     peer!.send(JSON.stringify({ type: 'jsonl:status', status: 'watching', replayComplete: true }))
     // The subsequent tool result is an upstream ordering barrier.
     await tool('Read', { file_path: file })
@@ -196,6 +204,9 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(snapshot.find(frame => frame.channel === 'streaming-entry').args[1].message.content[0].text, 'before during absence')
     assert.ok(snapshot.some(frame => frame.channel === 'permission-request' && frame.args[1].requestId === 'reopen-permission'))
     assert.ok(snapshot.some(frame => frame.channel === 'session:submission' && frame.args[1].text === 'message once' && frame.args[1].state === 'native'))
+    const fallback = (frames: any[], id: string) => frames.find(frame => frame.channel === 'session:submission' && frame.args[1].id === id).args[1]
+    assert.equal(fallback(snapshot, 'fallback-accepted').fallbackQueue.consumed, true, 'Host must reconcile fallback receipts while no browser exists')
+    assert.equal(fallback(snapshot, 'fallback-pending').fallbackQueue.consumed, undefined)
     send('pty-submit-text', [activeTab, 'message once', 'stable-submission'])
     send('permission-response', ['reopen-permission', 'allow'])
     const permitted = await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'mcp:response' && frame.requestId === 'reopen-permission')
@@ -209,6 +220,8 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     const aLength = framesA.length
     c.send(JSON.stringify({ kind: 'send', channel: 'workspace:sync', args: [] }))
     await wait(framesC, eventsC, frame => frame.channel === 'workspace:snapshot-end')
+    assert.equal(fallback(framesC, 'fallback-accepted').fallbackQueue.consumed, true, 'A second page must retain the consumed marker')
+    assert.equal(fallback(framesC, 'fallback-pending').text, 'fallback still waiting')
     assert.equal(framesA.slice(aLength).some(frame => frame.channel === 'workspace:snapshot-start' || frame.channel === 'jsonl-entries'), false,
       'A second page must not replay/reset the first page')
     assert.equal(framesC.some(frame => frame.channel === 'permission-request'), false, 'Resolved prompts must not return in a later page')
