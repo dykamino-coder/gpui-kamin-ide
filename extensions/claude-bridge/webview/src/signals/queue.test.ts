@@ -87,6 +87,22 @@ describe('reconcileQueueWithEntries', () => {
     expect(queued()).toBe(1)
   })
 
+  it('does not let a tool_result accept an image-only submission', () => {
+    enqueueLocal(TAB, '/tmp/image.png')
+    setEntries([row({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(1)
+  })
+
+  it('counts duplicate rows in one replay only once', () => {
+    enqueueLocal(TAB, 'repeat this queued message')
+    enqueueLocal(TAB, 'repeat this queued message')
+    const accepted = row({ type: 'user', uuid: 'same-row', message: { content: 'repeat this queued message' } })
+    setEntries([accepted, accepted])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(1)
+  })
+
   it('is not consumed by an unrelated later user row', () => {
     // The row for the message this item was queued BEHIND is written when that
     // turn starts — after the enqueue — so any "newer than" rule sees it as the
@@ -114,5 +130,29 @@ describe('reconcileQueueWithEntries', () => {
     setEntries([row({ type: 'attachment', attachment: { type: 'queued_command', prompt: 'уточни где виджет по траншам' } })])
     reconcileQueueWithEntries(TAB)
     expect(queued()).toBe(0)
+  })
+
+  it('does not consume two identical queue items from the same replayed user row', () => {
+    enqueueLocal(TAB, 'repeat this queued message')
+    enqueueLocal(TAB, 'repeat this queued message')
+    const accepted = row({ type: 'user', uuid: 'accepted-one', message: { content: 'repeat this queued message' } })
+    setEntries([accepted])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(1)
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(1)
+    setEntries([accepted, row({ type: 'user', uuid: 'accepted-two', message: { content: 'repeat this queued message' } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(0)
+  })
+
+  it('counts a multi-block user message as one accepted submission', () => {
+    enqueueLocal(TAB, 'repeat this queued message')
+    enqueueLocal(TAB, 'repeat this queued message')
+    setEntries([row({ type: 'user', message: { content: [
+      { type: 'text', text: 'repeat this queued message' }, { type: 'text', text: 'repeat this queued message' },
+    ] } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(1)
   })
 })
