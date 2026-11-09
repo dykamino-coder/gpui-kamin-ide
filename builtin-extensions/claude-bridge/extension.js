@@ -44796,12 +44796,15 @@ function tokenKey(token) {
   return import_crypto5.default.createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
 var ConfigStore = class {
-  data;
-  file;
-  constructor(storageDir) {
+  constructor(storageDir, persistToken = true) {
+    this.persistToken = persistToken;
     this.file = import_path10.default.join(storageDir, "open-claude-bridge-config.json");
     this.data = this.load();
+    if (!persistToken) this.data.config = { ...this.data.config, token: "" };
   }
+  persistToken;
+  data;
+  file;
   load() {
     const base = {
       config: { ...defaults },
@@ -44823,7 +44826,8 @@ var ConfigStore = class {
     try {
       import_fs9.default.mkdirSync(import_path10.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      import_fs9.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
+      const snapshot2 = this.persistToken ? this.data : { ...this.data, config: { ...this.data.config, token: "" } };
+      import_fs9.default.writeFileSync(tmp, JSON.stringify(snapshot2, null, 2), "utf8");
       import_fs9.default.renameSync(tmp, this.file);
     } catch {
     }
@@ -44911,7 +44915,7 @@ var ConfigStore = class {
    *  Resume works because the transcripts live on the server, resolved by
    *  conversationId. Runs once (guarded); best-effort. */
   migrateFromElectron() {
-    if (this.data.migratedFromElectron) return;
+    if (!this.persistToken || this.data.migratedFromElectron) return;
     const appData = process.env.APPDATA;
     const candidates = appData ? [
       import_path10.default.join(appData, "open-claude-bridge-electron", "open-claude-bridge-config.json"),
@@ -52248,7 +52252,7 @@ var BridgeHost = class {
       ipcMain.on("diag:renderer-sample", (_event, sample) => listener(sample));
     });
     setPermissionStorageDir(context.globalStorageUri.fsPath);
-    this.configStore = new ConfigStore(context.globalStorageUri.fsPath);
+    this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken);
     this.configStore.migrateFromElectron();
     this.tabManager = new TabManager(this.sink);
     setPluginLspProjectResolver((tabId, file) => {

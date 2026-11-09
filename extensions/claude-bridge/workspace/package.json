@@ -17,7 +17,9 @@
     "test:capabilities": "tsx --test test/capability-matrix.test.ts",
     "test:parity": "tsx test/capability-readiness.ts",
     "test:browser": "node --import ./test/linux-browser-only.mjs --test test/*.smoke.mjs",
-    "test:browser:container": "node scripts/browser-container.mjs"
+    "test:acceptance": "node --test acceptance/*.test.mjs",
+    "test:live": "node acceptance/container-runner.mjs --mode live",
+    "test:browser:container": "node acceptance/container-runner.mjs --mode fixture"
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.14.1",
