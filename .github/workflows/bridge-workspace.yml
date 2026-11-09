@@ -5,12 +5,20 @@ on:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
       - extensions/claude-bridge/extension/**
       - .github/workflows/bridge-workspace.yml
   push:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
       - extensions/claude-bridge/extension/**
       - .github/workflows/bridge-workspace.yml
   workflow_dispatch:
@@ -42,8 +50,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             extensions/claude-bridge/workspace/package-lock.json
             extensions/claude-bridge/extension/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .
       - run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
         working-directory: extensions/claude-bridge/extension
