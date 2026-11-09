@@ -13,7 +13,11 @@ use crate::layout::block::struts::{
 };
 use crate::layout::box_kind::{in_flow, inline_level_box};
 use crate::layout::float::band_clearance;
+use crate::style::computed::ResetBoxLayout;
 use crate::style::values::value::Len;
+
+/// Правка used-стадии: верхнее поле после схлопывания струны.
+struct CollapsedTop;
 
 pub(crate) fn emit_margin_struts(
     out: &mut [Node],
@@ -70,7 +74,18 @@ pub(crate) fn emit_margin_struts(
                 // строка даёт это и обычной коробке: нижнее поле соседа
                 // раскладка уже поставила, верхнему достаётся разница.
                 pin_inherited_margins(e, true, false, vcx);
-                e.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(solve(m) - *emitted));
+                let pinned = solve(m) - *emitted;
+                if e.style.used().reset_box_layout.margin.top != Some(Len::Px(pinned)) {
+                    // Та же правка общей группы у соседей с равными полями — общий
+                    // результат документа, а не копия группы у каждого блока.
+                    e.style
+                        .used_mut()
+                        .derive_used::<CollapsedTop, ResetBoxLayout>(
+                            &vcx.values.doc.derived,
+                            u64::from(pinned.to_bits()),
+                            |layout| layout.margin.top = Some(Len::Px(pinned)),
+                        );
+                }
                 *emitted = solve(m);
                 m
             }

@@ -29,6 +29,32 @@ impl<T> StyleGroup<T> {
         payload.allocation = crate::work::style_storage::Allocation::new::<T>(owner);
     }
 
+    /// Адрес владельца: ключ кэша, который держит саму группу (`DerivedGroups`).
+    pub(crate) fn addr(&self) -> usize {
+        Rc::as_ptr(&self.0) as *const () as usize
+    }
+
+    /// Тот же владелец без типа группы: запись кэша без новой аллокации.
+    pub(crate) fn erase(&self) -> Rc<dyn std::any::Any>
+    where
+        T: 'static,
+    {
+        self.0.clone()
+    }
+
+    /// Владелец, стёртый [`Self::erase`], если он той же группы.
+    pub(crate) fn restore(erased: &Rc<dyn std::any::Any>) -> Option<Self>
+    where
+        T: 'static,
+    {
+        erased.clone().downcast::<Payload<T>>().ok().map(Self)
+    }
+
+    /// Группу держит только этот владелец: запись в неё не копирует группу.
+    pub(crate) fn is_unique(&self) -> bool {
+        Rc::strong_count(&self.0) == 1
+    }
+
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }

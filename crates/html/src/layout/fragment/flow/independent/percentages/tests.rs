@@ -35,7 +35,7 @@ fn opts(tree: &crate::document::parsed::Parsed) -> RenderOpts {
         cx: Default::default(),
         frag: Default::default(),
     };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
     opts.cx.values.viewport = opts.viewport;
     opts
 }

@@ -3,11 +3,26 @@ import { check, CheckFailure } from './report.mjs'
 export async function raw(page, method, ...args) {
   return page.evaluate(({ method, args }) => window.bridgeCmd.raw(method, ...args), { method, args })
 }
+const notificationPages = new WeakSet()
+async function handleNotifications(page) {
+  if (notificationPages.has(page)) return
+  // Host notifications use modal browser effects. Acknowledge only their real
+  // Dismiss control; permission prompts and other browser actions stay intact.
+  const messages = page.locator('dialog[aria-label="Bridge workspace action"]').filter({
+    has: page.getByRole('button', { name: 'Dismiss', exact: true }),
+  }).last()
+  await page.addLocatorHandler(messages, async dialog => {
+    await dialog.getByRole('button', { name: 'Dismiss', exact: true }).click()
+  }, { noWaitAfter: true })
+  notificationPages.add(page)
+}
 export async function ready(page, origin) {
+  await handleNotifications(page)
   await page.goto(origin, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => !!window.bridgeCmd, null, { timeout: 30_000 })
 }
 export async function newTab(page, mode = 'bypassPermissions') {
+  await handleNotifications(page)
   const config = await raw(page, 'getConfig')
   const id = await raw(page, 'createTab', { ...config, cwd: '/workspace' })
   await page.evaluate(id => window.bridgeCmd.switchTab(id), id)
@@ -56,10 +71,21 @@ export async function requirePanel(page, path, expected) {
   try { check((await raw(page, 'fileViewerRead', path)).content.includes(expected), 'FILE_PANEL') }
   catch { throw new CheckFailure('FILE_PANEL') }
   const show = page.locator('[data-tooltip="Show plan & files"]')
-  if (await show.count()) await show.click()
+  if (await show.count()) {
+    check(await show.count() === 1, 'FILE_PANEL_TOGGLE_COUNT')
+    check(await show.isVisible(), 'FILE_PANEL_TOGGLE_VISIBLE')
+    try { await show.click({ timeout: 10_000 }) }
+    catch (error) {
+      throw new CheckFailure(error.message.includes('intercepts pointer events') ? 'FILE_PANEL_TOGGLE_OBSCURED' : 'FILE_PANEL_TOGGLE_CLICK')
+    }
+  }
   // Select the real changed-file list; the panel initially shows its project tree.
   const activity = page.locator('.right-panel-column')
-  await activity.getByRole('button', { name: /^Write\b/ }).click()
+  try {
+    await activity.waitFor({ state: 'visible', timeout: 10_000 })
+  } catch { throw new CheckFailure('FILE_PANEL_ACTIVITY') }
+  try { await activity.getByRole('button').filter({ has: page.getByText('Write', { exact: true }) }).click({ timeout: 10_000 }) }
+  catch { throw new CheckFailure('FILE_PANEL_WRITE_TAB') }
   const file = activity.locator(`[data-tooltip="${path}"]`).first()
   try { await file.waitFor({ state: 'visible', timeout: 10_000 }); await file.click() }
   catch { throw new CheckFailure('FILE_PANEL_LIST') }
