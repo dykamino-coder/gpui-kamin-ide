@@ -94,6 +94,15 @@ test('same-origin preview proxies HTTP/chunks and HMR WS, strips credentials and
     headers: { Origin: server.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'synthetic-preview-token' }) })
   const freshCookie = again.headers.get('set-cookie')!.split(';')[0]
   assert.equal((await fetch(server.origin + '/preview/unmount', { method: 'POST', headers: { Cookie: freshCookie, Origin: 'http://attacker.invalid' } })).status, 403)
+  const replaced = new WebSocket(wsUrl, { headers: { Origin: server.origin, Cookie: freshCookie } })
+  replaced.on('error', () => {})
+  await once(replaced, 'open')
+  preview.update({ label: 'updated' })
+  assert.equal(replaced.readyState, WebSocket.OPEN, 'Props updates retain the HMR connection')
+  const disconnected = once(replaced, 'close')
+  preview.unmount()
+  await disconnected
+  preview.mount({ name: 'fixture', entry: `http://127.0.0.1:${port}/remoteEntry.js`, exposedModule: './Panel' })
   await new Promise<void>(resolve => upstream.close(() => resolve()))
   assert.equal((await preview.snapshot()).available, false)
   assert.equal((await fetch(url, { headers: { Cookie: freshCookie } })).status, 502)

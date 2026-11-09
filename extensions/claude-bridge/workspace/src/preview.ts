@@ -17,6 +17,9 @@ export class WorkspacePreview {
   private upstream?: URL
   private revision = 0
   private forbidden: number[] = []
+  private listeners = new Set<() => void>()
+
+  onRemount(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
 
   blockPorts(ports: number[]): void { this.forbidden = [...new Set([...this.forbidden, ...ports])] }
 
@@ -40,6 +43,7 @@ export class WorkspacePreview {
     this.upstream = url
     this.descriptor = { name: input.name, entry: `/preview/remotes/${input.name}${url.pathname}`,
       exposedModule: input.exposedModule, props, type: input.type === 'module' ? 'module' : 'global', revision: ++this.revision }
+    for (const listener of this.listeners) listener()
     return this.copy()!
   }
 
@@ -49,7 +53,7 @@ export class WorkspacePreview {
     return this.copy()!
   }
 
-  unmount(): void { this.descriptor = null; this.upstream = undefined }
+  unmount(): void { this.descriptor = null; this.upstream = undefined; for (const listener of this.listeners) listener() }
   copy(): PreviewDescriptor | null { return this.descriptor ? structuredClone(this.descriptor) : null }
 
   private props(value: unknown): Record<string, unknown> {

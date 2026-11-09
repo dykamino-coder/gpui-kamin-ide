@@ -53,6 +53,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   const sockets = new Map<WebSocket, string>()
   const alive = new Set<WebSocket>()
   const previewSockets = new Map<Duplex, string>()
+  const detachPreview = options.preview?.onRemount(() => { for (const socket of previewSockets.keys()) socket.destroy() })
   const attempts = new Map<string, { count: number; reset: number }>()
   let closing = false
   let pendingUpgrades = 0
@@ -140,7 +141,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       const cookie = readSessionCookie(request.headers.cookie)
       pendingUpgrades++
       void options.auth.validate(cookie).then(valid => {
-        if (!valid || closing || socket.destroyed) { refuse(); return }
+        if (!valid || closing || socket.destroyed || options.preview?.target(request.url ?? '')?.port !== target.port) { refuse(); return }
         previewSockets.set(socket, cookie!)
         socket.once('close', () => previewSockets.delete(socket))
         proxyUpgrade(request, socket, head, target)
@@ -211,7 +212,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       server.once('error', reject)
       server.listen(options.port ?? 3460, bind, () => { server.off('error', reject); resolve() })
     })
-  } catch (error) { clearInterval(timer); wss.close(); throw error }
+  } catch (error) { clearInterval(timer); detachPreview?.(); wss.close(); throw error }
   const address = server.address() as AddressInfo
   if (!origin) origin = `http://${bind === '::1' ? '[::1]' : bind}:${address.port}`
   options.preview?.blockPorts([address.port])
@@ -221,6 +222,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     address,
     async close(): Promise<void> {
       closing = true
+      detachPreview?.()
       clearInterval(timer)
       for (const socket of previewSockets.keys()) socket.destroy()
       for (const socket of sockets.keys()) socket.terminate()

@@ -12,13 +12,22 @@ import { WebSocketServer } from 'ws'
 const require = createRequire(new URL('../../../webview/package.json', import.meta.url))
 const webpack = require('webpack')
 const DevServer = require('webpack-dev-server')
+const cleanups = new Map()
 
 export async function previewFixture(t) {
   const base = process.env.BRIDGE_PREVIEW_ROOT || os.tmpdir()
   const root = await fs.mkdtemp(path.join(base, 'bridgeweb-acc-preview-'))
+  const cleanup = []
+  cleanups.set(root, cleanup)
+  t.after(async () => {
+    const errors = []
+    for (const dispose of cleanup.reverse()) { try { await dispose() } catch (error) { errors.push(error) } }
+    cleanups.delete(root)
+    if (errors.length) throw new AggregateError(errors, 'Preview fixture cleanup failed')
+  })
   const home = path.join(root, 'home'), tmp = path.join(root, 'tmp')
   await Promise.all([fs.mkdir(home), fs.mkdir(tmp)])
-  t.after(async () => {
+  cleanup.push(async () => {
     assert.equal(path.dirname(root), path.resolve(base))
     assert.ok(path.basename(root).startsWith('bridgeweb-acc-preview-'))
     await fs.rm(root, { recursive: true })
@@ -37,7 +46,7 @@ export async function previewFixture(t) {
       if (frame.type === 'mcp:response') socket.send(JSON.stringify({ type: 'mcp:result-ack', sessionId: 'preview-session', requestId: frame.requestId, accepted: true }))
     })
   })
-  t.after(async () => {
+  cleanup.push(async () => {
     for (const client of ws.clients) client.terminate()
     await new Promise(resolve => ws.close(() => resolve()))
     await new Promise(resolve => http.close(() => resolve()))
@@ -50,7 +59,7 @@ export async function previewFixture(t) {
   // Output is deliberately consumed without printing shared runtime payloads.
   child.stdout.resume(); child.stderr.resume()
   const exited = once(child, 'exit')
-  t.after(async () => {
+  cleanup.push(async () => {
     if (child.exitCode !== null || child.signalCode !== null) return
     if (child.connected) child.send('shutdown')
     try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
@@ -105,7 +114,7 @@ export async function remoteFixture(t, root, { name = 'preview_fixture', require
   const server = new DevServer({ host: '127.0.0.1', port: 0, hot: hot ? 'only' : false, liveReload: false,
     client: false, allowedHosts: 'all', webSocketServer: hot ? { type: 'ws', options: { path: '/ws' } } : false }, compiler)
   await server.start()
-  t.after(async () => { await server.stop(); await new Promise(resolve => compiler.close(() => resolve())) })
+  cleanups.get(root).push(async () => { await server.stop(); await new Promise(resolve => compiler.close(() => resolve())) })
   const port = server.server.address().port
   await new Promise((resolve, reject) => compiler.hooks.done.tap('fixture-ready', stats => stats.hasErrors() ? reject(new Error(stats.toString({ all: false, errors: true }))) : resolve()))
   return { name, entry: `http://127.0.0.1:${port}/remoteEntry.js`, exposedModule: './Panel',
