@@ -49,4 +49,5 @@ jobs:
         working-directory: extensions/claude-bridge/extension
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:acceptance
       - run: npm run build

@@ -18,7 +18,7 @@ export function liveScenarios(state) {
     },
     async 'file-tools'() {
       const n = nonce()
-      await turn(state.page, `Use the Write tool to write exactly alpha\\n into ${file}. Use Read to read it, then Edit to replace alpha with beta, then Read again. Do not use Bash for these operations. ${finish(n)}`)
+      await turn(state.page, `Use the Write tool to write alpha followed by one newline into ${file}. Use Read to read it, then Edit to replace alpha with beta, then Read again. Do not use Bash for these operations. ${finish(n)}`)
       const t = await transcript(state.page, n)
       complete(t)
       for (const tool of ['Read', 'Write', 'Edit']) used(t, tool)

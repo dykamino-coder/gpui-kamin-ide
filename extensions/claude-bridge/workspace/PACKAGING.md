@@ -14,6 +14,7 @@ is in scope. IDE editor open/reveal/openInVscode is NOT-APPLICABLE:
 
 ```sh
 podman build --format docker \
+  --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
   --ignorefile extensions/claude-bridge/workspace/containerignore \
   -f extensions/claude-bridge/workspace/Dockerfile \
   -t localhost/bridgeweb-acc-workspace:local .

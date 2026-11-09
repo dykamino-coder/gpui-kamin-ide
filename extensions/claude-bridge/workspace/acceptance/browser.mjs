@@ -58,7 +58,7 @@ export async function requirePanel(page, path, expected) {
   const show = page.locator('[data-tooltip="Show file column"]')
   if (await show.count()) await show.click()
   // Bridge's own changed-file list opens its FilePanel, never an IDE editor.
-  const file = page.locator(`[title="${path}"]`).first()
+  const file = page.locator(`[data-tooltip="${path}"]`).first()
   if (!(await file.isVisible())) throw new CheckFailure('FILE_PANEL')
   await file.click()
   try { await page.locator('.file-panel-column .cm-content').filter({ hasText: expected }).first().waitFor({ timeout: 10_000 }) }

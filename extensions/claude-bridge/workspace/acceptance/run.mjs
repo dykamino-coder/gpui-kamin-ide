@@ -29,6 +29,7 @@ async function main() {
   const reportDir = path.join(reportRoot, owned.name)
   await mkdir(reportDir, { mode: 0o700 })
   const report = { started: new Date().toISOString(), source: (await command('git', ['rev-parse', 'HEAD'])).trim(),
+    sourceDirty: !!(await command('git', ['status', '--porcelain'])).trim(),
     results: [], metrics: {}, cleanup: [] }
   const record = async (name, fn) => {
     const started = Date.now()
@@ -44,9 +45,12 @@ async function main() {
     imageReady = await record('image-contract', async () => {
       const [config] = JSON.parse(await command('podman', ['image', 'inspect', values.image]))
       report.imageId = config.Id
+      report.imageSource = config.Config?.Labels?.['org.opencontainers.image.revision'] || 'unspecified'
       check(config.Config?.User && !['root', '0', '0:0'].includes(config.Config.User), 'IMAGE_NONROOT')
-      check(config.Config?.Healthcheck?.Test?.length, 'IMAGE_HEALTHCHECK_USE_DOCKER_FORMAT')
+      check((config.Healthcheck ?? config.Config?.Healthcheck)?.Test?.length, 'IMAGE_HEALTHCHECK_USE_DOCKER_FORMAT')
       const probe = JSON.parse(await command('podman', ['run', '--rm', '--name', `${owned.name}-probe`,
+        '--tmpfs', '/workspace:rw,uid=10001,gid=10001,mode=0755',
+        '--tmpfs', '/home/workspace:rw,uid=10001,gid=10001,mode=0755',
         '--entrypoint', 'node', values.image, '-e', imageProbe]))
       check(probe.uid !== 0 && probe.bundle.raw > 0, 'IMAGE_CONTRACT')
       cliReady = probe.cli
@@ -90,8 +94,8 @@ async function main() {
       }
     }
   } finally {
-    await browser?.close()
-    report.cleanup = await owned.cleanup()
+    try { await browser?.close() } catch { report.cleanup.push('BROWSER_CLOSE') }
+    report.cleanup.push(...await owned.cleanup())
     if (token) {
       try {
         const response = await fetch(new URL(`/api/dashboard/tokens/${encodeURIComponent(token.id)}`, server), {

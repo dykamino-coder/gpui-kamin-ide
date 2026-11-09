@@ -19,6 +19,8 @@ RUN npm --prefix extensions/claude-bridge/workspace run build \
     && npm --prefix extensions/claude-bridge/workspace prune --omit=dev --no-audit --no-fund
 
 FROM node:22-bookworm-slim AS runtime
+ARG SOURCE_REVISION=unspecified
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates curl git jq python3 ripgrep tini \
     && curl --fail --silent --show-error --location \

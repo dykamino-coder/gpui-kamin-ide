@@ -13,7 +13,6 @@ export const expected = {
   'workspace-start': { CORE_ENTRYPOINT: 'INC-2026-0087: executable composition/environment adapter is not merged.' },
   'file-panel': { FILE_PANEL: '#642: Bridge FilePanel container adapter/reconnect watch is not merged.' },
   'close-mid-turn': {
-    CONTINUATION: '#645: retaining in-flight tools after the last browser detaches is not merged.',
     SNAPSHOT: 'INC-2026-0087: host snapshot/transcript rehydration and exactly-once reconciliation are not merged.',
   },
   'reopen-permission': { PERMISSION_REHYDRATION: 'INC-2026-0087: pending permission snapshot after closing the last page is not merged.' },
@@ -33,7 +32,7 @@ export function exitStatus(results) {
 export function markdown(report) {
   return [
     '# Bridge workspace live acceptance', '',
-    `Run: ${report.started}; source: ${report.source}; image: ${report.imageId ?? 'unavailable'}.`, '',
+    `Run: ${report.started}; runner source: ${report.source}${report.sourceDirty ? ' (dirty)' : ''}; image: ${report.imageId ?? 'unavailable'}; image source: ${report.imageSource ?? 'unspecified'}.`, '',
     'Headless Chromium; isolated client HOME/project; no server volume access. No raw logs, transcripts, credentials, screenshots or traces retained.', '',
     '| Scenario | Result | Reason |', '| --- | --- | --- |',
     ...report.results.map(r => `| ${r.name} | ${r.status} | ${r.reason ?? ''} |`),
