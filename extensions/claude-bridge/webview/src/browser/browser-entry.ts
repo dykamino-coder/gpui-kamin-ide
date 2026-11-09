@@ -85,7 +85,10 @@ function unlock(): void {
 function start(): void {
   const url = new URL('/bridge', location.href)
   url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  transport = createBrowserSocket({ url: url.href, onState(state) {
+  transport = createBrowserSocket({ url: url.href, fileViewIdentity: {
+    get() { try { return sessionStorage.getItem('workspace-file-view') ?? undefined } catch { return undefined } },
+    set(id) { try { sessionStorage.setItem('workspace-file-view', id) } catch { /* host adopts detached views */ } },
+  }, onState(state) {
     online = state === 'connected'
     connection(state)
   } })
