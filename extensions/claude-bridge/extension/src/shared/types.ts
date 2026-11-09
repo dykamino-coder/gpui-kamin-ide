@@ -874,7 +874,7 @@ export interface KaminBridgeApi {
       icon?: string
     }>
   >
-  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number }): Promise<{
+  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number; tabId?: string }): Promise<{
     ptyId: string
     profile: {
       id: string
