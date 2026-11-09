@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { activeTabId, activeSessionTitle } from '../../signals/tabs'
 import { tabActivity, pinnedTitleColors } from '../../signals/ui'
 import { activeThinkingPreview } from '../../signals/jsonl'
-import { ActivityIndicator } from '../titlebar/ActivityIndicator'
+import { ActivityIndicator } from './ActivityIndicator'
 import { getAgentColor, resolvePinnedColor } from '../../utils/agent-color'
 
 /** Полоса активности над инпутом — ОТДЕЛЬНЫЙ компонент. Читает per-frame

@@ -21,7 +21,7 @@ body {
   height: 100%;
 }
 
-/* The chat column carried a 550px min-width from the wide Electron window; in the
+/* The chat column carried a 550px min-width from the standalone layout; in the
    narrow activity panel that forced a horizontal scrollbar. Let it fit the tool. */
 .chat-panel {
   min-width: 0 !important;
