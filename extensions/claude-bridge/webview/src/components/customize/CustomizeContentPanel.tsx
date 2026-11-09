@@ -11,9 +11,7 @@ export function sectionFromPageUrl(): CustomizePanel | null {
 }
 
 export function CustomizeContentPanel(): JSX.Element | null {
-  // In the VSIX each section is its own always-alive page; if anything nulls
-  // the signal (legacy Electron navigation paths), fall back to the section
-  // encoded in this iframe's URL instead of rendering a blank page forever.
+  // Each section is its own page; resolve the URL while its signal initializes.
   const panel = activeCustomizePanel.value ?? sectionFromPageUrl()
 
   if (!panel || panel === 'landing') return null

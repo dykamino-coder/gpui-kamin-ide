@@ -1,5 +1,9 @@
 # Claude Bridge terminology
 
+Electron-клиент удалён. Единственные webview entry: `chat-root`, `tools-root`,
+`customize-root` и browser workspace entry. Не возвращать Electron-код из истории:
+старый `App`, chrome окна, updater, preload aliases и mic/PWA-мост удалены.
+
 KaminIDE is not an Electron application. The current desktop runtime is the
 native Rust/GPUI shell with offscreen CEF, a Node `kamin-host` parent, and a
 forked extension-host child.
@@ -21,8 +25,7 @@ Use current-runtime names in new code and comments:
 Use `Electron` only when referring to one of these compatibility boundaries:
 
 - the removed standalone Electron Bridge client and its migration data;
-- deprecated public aliases such as `window.electronBridge`, `ElectronBridge`,
-  `ElectronToServerMsg`, and `ServerToElectronMsg`;
+- historical protocol aliases `ElectronToServerMsg` and `ServerToElectronMsg`;
 - legacy filesystem paths, download URLs, and uninstall identifiers that must
   remain stable for upgrades.
 
