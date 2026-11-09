@@ -71,9 +71,10 @@ export class OwnedResources {
       this.volumes.push(name)
     }
     this.child = spawn('podman', ['run', '--rm', '--name', this.name, '-i',
-      '-p', `127.0.0.1:${port}:3460`,
+      '--network', 'host', '--add-host', 'host.containers.internal:127.0.0.1',
       '-v', `${this.volumes[0]}:/workspace`, '-v', `${this.volumes[1]}:/home/workspace`,
       '-e', `BRIDGE_SERVER_URL=${upstream}`, '-e', `WORKSPACE_ORIGIN=${this.origin}`,
+      '-e', 'WORKSPACE_BIND=127.0.0.1', '-e', `WORKSPACE_PORT=${port}`,
       this.image, '--token-stdin'], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
     this.started = true
     this.child.on('error', () => { this.launchError = true })
