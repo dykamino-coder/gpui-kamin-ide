@@ -43,6 +43,7 @@ export interface HandlerCtx {
   pushJsonlCache: (entries: any[], replay?: boolean) => void
   getCachedJsonl: () => any[]
   setCachedStreamingEntry: (entry: any) => void
+  appendCachedStreamingDelta?: (delta: import('../../shared/streaming-delta').StreamingTextDelta) => void
   pushSubagentCache: (key: string, agentName: string, agentId: string | undefined, entries: any[]) => void
   setCachedJsonlStatus: (status: any) => void
   /** Server's authoritative compact-segment index (arrives with replayComplete).
@@ -173,8 +174,10 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     case 'streaming:delta': {
       // Incremental text/thinking append between boundary snapshots (new stream
       // protocol). Forward immediately — same latency rationale as entry.
-      if (ctx.isRendererMuted?.()) break // background tab: no live render target
       const d = msg as any
+      // The client owns the live turn even with no renderer (or a muted tab).
+      ctx.appendCachedStreamingDelta?.(d)
+      if (ctx.isRendererMuted?.()) break // background tab: no live render target
       ctx.window.webContents.send('streaming-delta', ctx.tabId, {
         msgId: d.msgId, blockIdx: d.blockIdx, appendText: d.appendText, kind: d.kind,
       })

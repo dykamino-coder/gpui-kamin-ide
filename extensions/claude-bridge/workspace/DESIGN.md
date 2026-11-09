@@ -37,6 +37,23 @@ scrollback. A page can disappear with zero attached browsers while work proceeds
 Reopening attaches to the same running workspace and renders its current state.
 The existing browser entry alone does not yet satisfy this contract.
 
+Scope clarification from the owner (verbatim): «мы бридж копируем а не камин».
+Bridge's own FilePanel, file viewer, attach-file/editor context, terminal,
+uploads/downloads and attachments remain in scope. Opening/revealing files in
+the IDE editor and openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not
+Bridge". The earlier temporary removal of FilePanel is superseded.
+
+The next core increment adds a targeted `workspace:sync` read handshake after
+the existing renderer installs its listeners. The host snapshots the shared
+connection caches (including accumulated streaming deltas), pending questions,
+submission receipts and activity. It sends reset, snapshot frames, then live
+updates on the same ordered socket. An internal host observer remains attached
+with zero browsers; it retains presentation metadata, never executes tools.
+Snapshots initially paint only the active conversation's newest 200 records;
+older records remain in the shared host/mirror and use existing paging. Sync
+never resubmits input or reconnects upstream sessions. File subscriptions and
+PTY scrollback are subsequent increments using the same host-owned lifetime.
+
 Completion means reviewed Change PRs with green applicable CI, an exhaustive
 capability gate, and real headless browser acceptance in Podman. The Claude lead
 merges implementation. Registration may be merged by its author. Release,
@@ -99,8 +116,11 @@ production bundle and page JS heap in acceptance and report both in the PR.
 On socket loss, detach delivery only and reconnect with backoff. A new document
 or second tab attaches to the same host state. Synchronization delivers a coherent
 snapshot of transcript, active turn/tool state, pending prompts, open files and
-watches, and terminal scrollback, followed by ordered live updates. A host revision
-and event cursor must close the snapshot/live race without gaps or duplicates.
+watches, and terminal scrollback, followed by ordered live updates. The initial
+in-process implementation captures and enqueues each snapshot synchronously,
+without an await, on the same event loop and ordered socket as live events.
+This closes the capture/live race without a separate cursor or replay journal;
+an asynchronous snapshot producer must add a revision/cursor before yielding.
 The host owns logical view state independently of a socket or document generation.
 
 Browser reload is never permission to replay a mutation. Use stable operation IDs,

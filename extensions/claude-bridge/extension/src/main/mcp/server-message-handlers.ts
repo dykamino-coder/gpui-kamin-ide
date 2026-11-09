@@ -86,6 +86,7 @@ async function handleServerRequest(ctx: MessageHandlerCtx, serverId: string, msg
         settled = true
         try { ipcMain.removeListener(responseChannel, listener) } catch { /* noop */ }
         if (timer) { clearTimeout(timer); timer = null }
+        try { ctx.window.webContents.send('mcp-elicitation-resolved', requestId) } catch { /* view may be gone */ }
         resolve(value)
       }
       const listener = (_event: IpcMainEvent, payload: any) => settle(payload)
