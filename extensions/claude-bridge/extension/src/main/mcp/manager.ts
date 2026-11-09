@@ -114,6 +114,8 @@ function exposedToolName(state: McpServerState, rawToolName: string): string {
 }
 
 export class McpServerManager {
+  private disposed = false
+  private readonly shutdown = new AbortController()
   /** @internal */
   servers = new Map<string, McpServerState>()
   /** @internal */
@@ -169,6 +171,7 @@ export class McpServerManager {
   private ctx(): TransportContext {
     const self = this
     return {
+      shutdownSignal: this.shutdown.signal,
       window: this.window,
       servers: this.servers,
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
@@ -190,6 +193,7 @@ export class McpServerManager {
    *  + clears the attempt counter so toggling "enabled" off-then-on
    *  starts fresh. */
   private scheduleReconnect(id: string, reason: string): void {
+    if (this.disposed) return
     const state = this.servers.get(id)
     if (!state) return
     if (state.expectedDisconnect) {
@@ -261,12 +265,15 @@ export class McpServerManager {
 
   /** Initialize: discover local MCP configs, then connect all enabled servers */
   async initAll(): Promise<void> {
+    if (this.disposed) return
     // Wait for any pending ~/.claude.json writes (e.g. the constructor's
     // one-shot migration from the legacy electron-store) to land on disk,
     // otherwise discovery below races the write and misses migrated entries.
     await this.saveChain
+    if (this.disposed) return
     // Discover local MCP configs from Claude settings
     await this.discoverLocalMcpConfigs()
+    if (this.disposed) return
 
     // One-shot migration of OAuth tokens from the pre-unified encrypted store
     // (`<userData>/mcp-oauth-tokens.json`) into `~/.claude/.credentials.json`.
@@ -330,6 +337,7 @@ export class McpServerManager {
   // All three sources are scanned concurrently with fs.promises to avoid
   // blocking the main process when the user has many plugins or projects.
   private async discoverLocalMcpConfigs(): Promise<void> {
+    if (this.disposed) return
     const claudeDir = path.join(os.homedir(), '.claude')
 
     // Existing manually-added server names (to avoid duplicates)
@@ -422,6 +430,7 @@ export class McpServerManager {
       discoverProjectConfigs(this.projectRoots),
     ])
 
+    if (this.disposed) return
     // Stale manual duplicates: if a name now appears in the discovered
     // claude.json configs but also exists in memory as a non-autoDiscovered
     // entry (leftover from a previous version that stored manual servers
@@ -819,7 +828,9 @@ export class McpServerManager {
   }
 
   /** Execute a tool on an external server */
-  async callTool(toolName: string, input: Record<string, unknown>): Promise<McpResult> {
+  async callTool(toolName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpResult> {
+    if (this.disposed) throw new Error('MCP manager is disposed')
+    signal?.throwIfAborted()
     // Ленивый сервер: тул значится в диск-кэше, процесс ещё не поднят —
     // поднимаем СЕЙЧАС (первое обращение) и продолжаем обычным путём.
     let hasLive = false
@@ -843,13 +854,18 @@ export class McpServerManager {
         }
       }
     }
+    const ctx = this.ctx()
+    // A session can terminate while other sessions still use this manager.
+    // Abort that call's HTTP request/body without disposing shared transports.
+    if (signal) ctx.shutdownSignal = AbortSignal.any([this.shutdown.signal, signal])
+    ctx.shutdownSignal?.throwIfAborted()
     for (const [id, state] of this.servers) {
       const rawToolName = state.status === 'connected'
         ? state.tools.find(raw => exposedToolName(state, raw) === toolName)
         : undefined
       if (rawToolName) {
         if (state.config.type === 'sse') {
-          const result = await sseJsonRpcRequest(this.ctx(), id, {
+          const result = await sseJsonRpcRequest(ctx, id, {
             jsonrpc: '2.0',
             id: state.nextRequestId++,
             method: 'tools/call',
@@ -858,11 +874,11 @@ export class McpServerManager {
           if (result?.content && Array.isArray(result.content)) return result
           return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] }
         } else if (state.config.type === 'http') {
-          return callHttpTool(this.ctx(), id, rawToolName, input)
+          return callHttpTool(ctx, id, rawToolName, input)
         } else if (state.config.type === 'ws') {
-          return callWsTool(this.ctx(), id, rawToolName, input)
+          return callWsTool(ctx, id, rawToolName, input)
         } else {
-          return callStdioTool(this.ctx(), id, rawToolName, input)
+          return callStdioTool(ctx, id, rawToolName, input)
         }
       }
     }
@@ -876,12 +892,24 @@ export class McpServerManager {
     }
   }
 
+  /** Final shutdown. In-flight discovery/connection completion must not respawn. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.shutdown.abort()
+    this.onToolsChanged = null
+    if (this.notifyTimer) clearTimeout(this.notifyTimer)
+    this.notifyTimer = null
+    this.disconnectAll()
+  }
+
   // ─── Private ────────────────────────────────────────
 
   /** Дедуп параллельных подключений: второй await того же сервера получает
    *  УЖЕ ИДУЩИЙ промис (иначе гонка ленивых callTool: первый ставит
    *  'connecting', второй не находит сервер и теряет тул-колл). */
   private connectServer(id: string): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     const inFlight = this.connectInFlight.get(id)
     if (inFlight) return inFlight
     const p = this.doConnectServer(id).finally(() => { this.connectInFlight.delete(id) })
@@ -923,6 +951,7 @@ export class McpServerManager {
       } else {
         await connectStdio(c, id)
       }
+      if (this.disposed) { this.disconnectServer(id); return }
       state.status = 'connected'
       // NOT a counter reset. Connecting only proves the transport came up, not
       // that the server works — and resetting here made the backoff unreachable:
@@ -936,21 +965,26 @@ export class McpServerManager {
       state.connectedAt = Date.now()
       try {
         const { emitBridgeHookEvent } = await import('../hooks/emit-bridge-event')
+        if (this.disposed) return
         emitBridgeHookEvent('ConnectorStatusChanged', { name: state.config.name, status: 'connected' })
       } catch { /* ignore */ }
       // Fetch auxiliary capabilities (resources, prompts) if the server advertised
       // them during initialize. Failures here are non-fatal — tools still work.
       await this.fetchExtraCapabilities(id).catch(err => {
+        if (this.disposed) return
         const m = err instanceof Error ? err.message : String(err)
         console.warn(`[MCP] Failed to fetch resources/prompts for "${state.config.name}":`, m)
         this.appendLog(id, 'warn', `[connect] resources/prompts fetch failed: ${m}`)
       })
+      if (this.disposed) return
       this.appendLog(id, 'info', `[connect] done — ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`)
       console.log(`[MCP] Connected to "${state.config.name}" — ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`)
     } catch (err) {
+      if (this.disposed) { this.disconnectServer(id); return }
       state.status = 'error'
       try {
         const { emitBridgeHookEvent } = await import('../hooks/emit-bridge-event')
+        if (this.disposed) return
         emitBridgeHookEvent('ConnectorStatusChanged', { name: state.config.name, status: 'error', error: err instanceof Error ? err.message : String(err) })
       } catch { /* ignore */ }
       const baseMsg = err instanceof Error ? err.message : String(err)
@@ -1213,7 +1247,7 @@ export class McpServerManager {
   }
 
   private notifyChanged(): void {
-    if (this.window.isDestroyed()) return
+    if (this.disposed || this.window.isDestroyed()) return
     // A trailing fire is already scheduled — it will pick up the latest state.
     if (this.notifyTimer) return
     const wait = Math.max(0, McpServerManager.NOTIFY_MIN_INTERVAL_MS - (Date.now() - this.notifyLastAt))

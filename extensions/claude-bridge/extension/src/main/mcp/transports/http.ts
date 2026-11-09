@@ -99,7 +99,7 @@ export async function httpJsonRpcAuth(
   const url = state.config.url!
 
   let headers = await ctx.buildHttpHeaders(id)
-  let res = await httpFetch(url, headers, body)
+  let res = await httpFetch(url, headers, body, ctx.shutdownSignal)
 
   if (res.status === 401) {
     // RFC 9728: server may advertise its authorization server via the
@@ -118,7 +118,7 @@ export async function httpJsonRpcAuth(
       throw new Error('OAuth authorization required — please reconnect this server')
     }
     headers = await ctx.buildHttpHeaders(id)
-    res = await httpFetch(url, headers, body)
+    res = await httpFetch(url, headers, body, ctx.shutdownSignal)
     if (res.status === 401) {
       throw new Error('OAuth authorization expired — please reconnect this server')
     }
@@ -178,7 +178,7 @@ async function tryDiscoverOAuthFrom401(
     // Same mild check as for the AS URL below — accept http(s) only.
     const prmParsed = new URL(prmUrl)
     if (prmParsed.protocol !== 'http:' && prmParsed.protocol !== 'https:') return null
-    const prmRes = await fetch(prmUrl)
+    const prmRes = await fetch(prmUrl, { signal: ctx.shutdownSignal })
     if (!prmRes.ok) return null
     const prm = await prmRes.json() as any
     const authServers: unknown = prm?.authorization_servers
@@ -202,7 +202,7 @@ async function tryDiscoverOAuthFrom401(
   }
 }
 
-async function httpFetch(url: string, headers: Record<string, string>, body: Record<string, unknown>) {
+async function httpFetch(url: string, headers: Record<string, string>, body: Record<string, unknown>, signal?: AbortSignal) {
   try {
     return await fetch(url, {
       method: 'POST',
@@ -212,6 +212,7 @@ async function httpFetch(url: string, headers: Record<string, string>, body: Rec
         ...headers,
       },
       body: JSON.stringify(body),
+      signal,
     })
   } catch (err: any) {
     // Node's undici throws a bare `TypeError: fetch failed` with the real
