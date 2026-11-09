@@ -1,4 +1,4 @@
-import { switchTabLocal, tabs } from '../../signals/tabs'
+import { switchTabLocal, tabs, ghostPinnedTabs, pinnedTabs } from '../../signals/tabs'
 import { activeCustomizePanel, sidebarMode } from '../../signals/ui'
 import { showToast } from '../../signals/toasts'
 import type { PersistedTabState } from '../../../shared/types'
