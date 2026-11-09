@@ -10,6 +10,8 @@ on:
       - package.json
       - package-lock.json
       - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   push:
     branches: [main]
@@ -20,6 +22,8 @@ on:
       - package.json
       - package-lock.json
       - extensions/claude-bridge/extension/**
+      - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   workflow_dispatch:
 
