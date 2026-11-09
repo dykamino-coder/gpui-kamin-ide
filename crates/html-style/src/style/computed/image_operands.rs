@@ -30,36 +30,73 @@ impl Computed {
     }
 
     pub fn image_operands(&mut self) -> impl Iterator<Item = &mut ImageSource> {
-        // Пустой обход не меняет CSS-операндов и не должен отделять COW-группы.
-        let present = self.image_operands_ref().next().is_some();
-        present.then_some(self).into_iter().flat_map(|style| {
-            let group = &mut *style.reset_background;
-            group
-                .bg_image
-                .iter_mut()
-                .chain(group.gradient_raw.iter_mut())
-                .chain(group.bg_lists.images())
-                .chain(
-                    style
-                        .reset_generated
-                        .content
-                        .iter_mut()
-                        .flatten()
-                        .filter_map(|item| match item {
-                            super::ContentItem::Image(image) => Some(image),
-                            _ => None,
-                        }),
-                )
-                .chain(style.reset_mask.mask_image.iter_mut().flatten())
-                .chain(
-                    style
-                        .reset_border
-                        .border_image
-                        .iter_mut()
-                        .filter_map(|b| b.src.as_mut()),
-                )
-                .chain(style.reset_shapes.shape_image.iter_mut())
-        })
+        // Обход без операндов в группе не меняет её и не должен отделять COW-группу:
+        // каждая группа берётся на запись, только если в ней есть изображение.
+        let background = {
+            let group = &*self.reset_background;
+            group.bg_image.is_some()
+                || group.gradient_raw.is_some()
+                || group.bg_lists.images_ref().next().is_some()
+        };
+        let generated = self
+            .reset_generated
+            .content
+            .iter()
+            .flatten()
+            .any(|item| matches!(item, super::ContentItem::Image(_)));
+        let mask = self.reset_mask.mask_image.iter().flatten().next().is_some();
+        let border = self
+            .reset_border
+            .border_image
+            .as_ref()
+            .is_some_and(|b| b.src.is_some());
+        let shapes = self.reset_shapes.shape_image.is_some();
+        let Self {
+            reset_background,
+            reset_generated,
+            reset_mask,
+            reset_border,
+            reset_shapes,
+            ..
+        } = self;
+        let background = background.then(|| &mut **reset_background);
+        background
+            .into_iter()
+            .flat_map(|group| {
+                group
+                    .bg_image
+                    .iter_mut()
+                    .chain(group.gradient_raw.iter_mut())
+                    .chain(group.bg_lists.images())
+            })
+            .chain(
+                generated
+                    .then(|| &mut **reset_generated)
+                    .into_iter()
+                    .flat_map(|group| group.content.iter_mut().flatten())
+                    .filter_map(|item| match item {
+                        super::ContentItem::Image(image) => Some(image),
+                        _ => None,
+                    }),
+            )
+            .chain(
+                mask.then(|| &mut **reset_mask)
+                    .into_iter()
+                    .flat_map(|group| group.mask_image.iter_mut().flatten()),
+            )
+            .chain(
+                border
+                    .then(|| &mut **reset_border)
+                    .into_iter()
+                    .flat_map(|group| group.border_image.iter_mut())
+                    .filter_map(|b| b.src.as_mut()),
+            )
+            .chain(
+                shapes
+                    .then(|| &mut **reset_shapes)
+                    .into_iter()
+                    .flat_map(|group| group.shape_image.iter_mut()),
+            )
     }
 }
 
