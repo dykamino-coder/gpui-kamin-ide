@@ -38120,7 +38120,10 @@ async function lspDiagnostics(input, context) {
     pluginDiags = await pluginLspManager.getDiagnostics(file, context?.tabId);
   } catch {
   }
-  const combined = [...diags ?? [], ...pluginDiags];
+  const combined = [...diags ?? [], ...pluginDiags.map((d) => ({
+    ...d,
+    severity: typeof d.severity === "number" ? d.severity - 1 : void 0
+  }))];
   if (combined.length === 0) return textResult7(`No diagnostics for ${file}.`);
   const sev = ["Error", "Warning", "Info", "Hint"];
   const lines = combined.map((d) => {
@@ -44413,9 +44416,9 @@ var TabManager = class {
   onProjectOpened = null;
   /** Invoked when a tab with a cwd is closed and no other tab references that cwd. */
   onProjectClosed = null;
-  /** Fires just before a tab is deleted, so the caller can persist a saved
-   *  session record. Receiver may inspect tab.conversationId, sessionTitle,
-   *  model, etc. */
+  /** Fires before disconnect and deletion for every tab, including sessions
+   *  without a conversation ID. Used to clean up tab-owned background work;
+   *  callers may also inspect the optional session metadata. */
   onTabClosing = null;
   /** Fires right after a tab is created and registered. Used to start
    *  per-tab background work — plugin monitors, etc. — that needs to die
@@ -44504,9 +44507,7 @@ var TabManager = class {
   closeTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
-    if (tab.conversationId && this.onTabClosing) {
-      this.onTabClosing(tab);
-    }
+    this.onTabClosing?.(tab);
     tab.connection.disconnect({ endSession: true });
     const closedCwd = tab.config.cwd;
     this.tabs.delete(tabId);

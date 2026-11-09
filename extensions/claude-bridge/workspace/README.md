@@ -132,6 +132,9 @@ The real shared-runtime integration uses authenticated HTTP/WebSocket transport,
 actual tools and temporary project/HOME directories. It verifies pinned identity,
 Read/Write/Edit/Glob, Bash, external MCP cancellation, zero-page lifetime,
 transcript/stream/prompt recovery, once-only submissions and terminal cleanup.
+The LSP integration installs an isolated synthetic stdio plugin and exercises
+discovery, hover/definition/references/diagnostics, document changes, shared and
+separate project processes, zero-page continuation and identified-session cleanup.
 Its upstream protocol peer is synthetic; it is not live Claude acceptance.
 
 Production browser smoke uses the real asset handler and boundary with an

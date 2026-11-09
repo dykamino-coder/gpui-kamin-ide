@@ -45,7 +45,11 @@ export async function lspDiagnostics(input: Record<string, unknown>, context?: T
   }>
   let pluginDiags: any[] = []
   try { pluginDiags = await pluginLspManager.getDiagnostics(file, context?.tabId) } catch { /* fall back to host providers */ }
-  const combined = [...(diags ?? []), ...pluginDiags]
+  // LSP uses 1..4; vscode.DiagnosticSeverity uses 0..3. Normalize only
+  // plugin results so native diagnostics retain their existing labels.
+  const combined = [...(diags ?? []), ...pluginDiags.map(d => ({
+    ...d, severity: typeof d.severity === 'number' ? d.severity - 1 : undefined,
+  }))]
   if (combined.length === 0) return textResult(`No diagnostics for ${file}.`)
   const sev = ['Error', 'Warning', 'Info', 'Hint']
   const lines = combined.map((d) => {
