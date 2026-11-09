@@ -63,7 +63,7 @@ export function installPreviewPanel(): () => void {
   }
   retry.onclick = () => { if (descriptor) void mount(descriptor, fingerprint) }
   close.onclick = () => { void fetch('/preview/unmount', { method: 'POST', credentials: 'same-origin' }).catch(fail) }
-  const width = (value: number) => { panel.style.width = `${Math.max(240, Math.min(innerWidth - 280, value))}px` }
+  const width = (value: number) => { panel.style.width = `${Math.max(240, Math.min(innerWidth - 1106, value))}px` }
   separator.onpointerdown = event => { separator.setPointerCapture(event.pointerId) }
   separator.onpointermove = event => { if (separator.hasPointerCapture(event.pointerId)) width(innerWidth - event.clientX) }
   separator.onkeydown = event => {

@@ -2,6 +2,7 @@ import { signal, computed } from '@preact/signals'
 import { activeTabId } from './tabs'
 import type { JsonlEntryData } from '../types/jsonl'
 import { orderEntries } from './order-entries'
+import { mergeAssistantEntry, foldAssistantEntries } from './merge-assistant'
 import { setReplayProgress } from './replay-progress'
 import { dropRenderModelCache } from '../components/jsonl-viewer/derived-cache'
 import { trimHeavyToolResults } from './heavy-tool-result'
@@ -385,50 +386,6 @@ function sweepOrphanStubs(): void {
   if (!anyStubsLeft && stubSweeper) { clearInterval(stubSweeper); stubSweeper = null }
 }
 
-/** Merge a watcher-delivered assistant entry into a previously-stored one
- *  that carries the same `message.id`. CLI v2.1.x splits a single model
- *  turn into separate JSONL lines per content block (thinking → text →
- *  tool_use), each with a fresh uuid but the shared message.id. The
- *  Anthropic API model treats them as ONE message with multiple blocks,
- *  and the streaming proxy renders them as one bubble — we want the same
- *  view after the watcher catches up. Without merging, the previous code
- *  pushed all three watcher entries into `replacements[]` at the same
- *  streaming-stub index and last-write-wins clobbered text + thinking,
- *  leaving only the tool_use bubble visible (the bug fixed here). */
-function mergeAssistantEntry(target: JsonlEntryData, incoming: JsonlEntryData): JsonlEntryData {
-  const targetContent = Array.isArray(target.message?.content) ? target.message!.content : []
-  const incomingContent = Array.isArray(incoming.message?.content) ? incoming.message!.content : []
-  // First real watcher entry replacing a streaming stub: drop the
-  // proxy-synthesized blocks (they were partial guesses) and adopt the
-  // canonical CLI-persisted ones. Subsequent in-batch merges concat to
-  // the already-canonical content.
-  const wasStreaming = target.__streaming !== undefined
-  const baseContent = wasStreaming ? [] : targetContent
-  // Always adopt the incoming (latest) uuid. Subsequent CLI entries point
-  // their `parentUuid` at the LAST piece of the model turn (tool_use or
-  // trailing text), so keeping the first piece's uuid would orphan the
-  // chain walk in `computeChainUuids` and `entryIsVisible` would drop the
-  // merged bubble entirely. The synthetic `stream-<msgId>` uuid was
-  // ephemeral anyway. ...incoming spread already does this, but make it
-  // explicit so the reasoning isn't buried in object-spread order.
-  // Carry EVERY folded uuid forward, so trim can forget all of them from `seen`.
-  // `.uuid` below is only the LAST one; the earlier blocks' uuids are already in
-  // `seen` and would otherwise orphan there and drop those blocks on a re-replay.
-  const uuids = new Set<string>(target.__uuids ?? (target.uuid ? [target.uuid] : []))
-  if (incoming.uuid) uuids.add(incoming.uuid)
-  return {
-    ...target,
-    ...incoming,
-    message: {
-      ...target.message,
-      ...incoming.message,
-      content: baseContent.concat(incomingContent),
-    },
-    __streaming: undefined,
-    __uuids: [...uuids],
-  } as JsonlEntryData
-}
-
 /** Types the chat stores but nothing ever reads.
  *
  *  Measured on a real 30 971-record session: 3569 records, 11.5% of the store —
@@ -473,12 +430,8 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   if (!ordSeen) { ordSeen = new Set<number>(); seenOrdsByTab.set(tabId, ordSeen) }
   const existing = jsonlEntriesByTab.value.get(tabId) ?? []
 
-  // Trust JSONL file order — that's the canonical source of truth. CLI
-  // sometimes back-dates timestamps on synthetic attachments (e.g. an
-  // edited_text_file attach gets ts(parent_user) - 1ms), and a naive
-  // ts-based sort then floats the attachment ABOVE the parent user
-  // message in the chat. Watcher always reads JSONL files linearly so
-  // batches arrive pre-ordered; trust that and don't second-guess.
+  // Reconcile UUIDs and split messages first; order their source rows and the
+  // resulting bubbles below, independently of replay/page delivery order.
   const ordered = entries
 
   // Walk the batch building a NEW list lazily. Track per-batch
@@ -529,14 +482,8 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   }
   if (!mutated) return false
 
-  // Order the merged array: a STABLE topological sort (order-entries.ts) —
-  // `_ord` primary key (correct for reverse-emitted replay segments + compaction
-  // boundaries) tie-broken by arrival, with the parentUuid→uuid chain used only
-  // to keep a child after its parent. This fixes the two live-append drifts (a
-  // streaming stub sitting above its own prompt; live entries shoved below newer
-  // `_ord` entries after a reattach) WITHOUT the per-token full re-sort that
-  // froze large sessions — appendJsonlEntries runs on batch delivery only (a few
-  // times/sec), never on streaming deltas.
+  // Batch-only ordering preserves file positions when complete, timestamp
+  // chronology for mixed legacy history, and parent-before-child edges.
   nextEntries = orderEntries(nextEntries)
 
   const nextMap = new Map(jsonlEntriesByTab.value)
@@ -682,9 +629,9 @@ function enforceTabCap(tabId: string): void {
 export function replaceWindowWithSegment(tabId: string, records: JsonlEntryData[]): number {
   const kept = records.filter((e) => !UNREAD_ENTRY_TYPES.has(e.type))
   kept.forEach((e, i) => { (e as { _ord?: number })._ord = i; trimHeavyToolResults(e) })
-  const ordered = orderEntries(kept)
+  const ordered = orderEntries(foldAssistantEntries(orderEntries(kept)))
   const seen = new Set<string>()
-  for (const e of ordered) { if (e.uuid) seen.add(e.uuid) }
+  for (const e of ordered) for (const uuid of e.__uuids ?? (e.uuid ? [e.uuid] : [])) seen.add(uuid)
 
   const nextMap = new Map(jsonlEntriesByTab.value)
   nextMap.set(tabId, ordered)
@@ -698,23 +645,14 @@ export function replaceWindowWithSegment(tabId: string, records: JsonlEntryData[
   return ordered.length
 }
 
-/** Prepend an OLDER page (from the scroll-up loader) to the front of the store.
- *
- *  The page comes from the mirror keyed on `_pos` — every record in it is
- *  strictly older than the window's current oldest, and it is already in file
- *  order. So it belongs at the front as-is; no full re-sort.
- *
- *  BUT the store's ordering key is `_ord`, and the mirror's stored `_ord` is from
- *  the session that wrote it — inconsistent with the window's fresh `_ord` from
- *  this session's replay. Left alone, the next append's `orderEntries` would
- *  interleave the page into the middle. So the page is RE-TAGGED with `_ord`
- *  values placed just below the window's minimum: legitimate (`_ord` is only ever
- *  a sort key, re-tagged on every replay) and it keeps the array valid for every
- *  later sort. Dedup on uuid so a page overlapping the window can't double a row. */
+/** Reconcile an older mirror page through the live ingest path. A page can
+ *  begin/end inside a split assistant message; raw concatenation would leave
+ *  its prefix outside the canonical bubble. Rebase replay-local ordinals only
+ *  for legacy rows without persistent file positions or timestamps. */
 export function prependJsonlEntries(tabId: string, older: JsonlEntryData[]): boolean {
   if (older.length === 0) return false
   const existing = jsonlEntriesByTab.value.get(tabId) ?? []
-  let seen = jsonlSeenUuidsByTab.value.get(tabId)
+  const seen = jsonlSeenUuidsByTab.value.get(tabId)
   // Dedup against the store's seen-set AND within the page itself: a page that
   // ever contained two lines with the same uuid (a duplicate write) must not
   // double the row — the outer `seen` check alone would pass both, as neither is
@@ -734,26 +672,15 @@ export function prependJsonlEntries(tabId: string, older: JsonlEntryData[]): boo
   // via scroll-up instead of live append (matches appendJsonlEntries).
   for (const e of fresh) trimHeavyToolResults(e)
 
-  // Place the page's `_ord` just below the window's current minimum, ascending,
-  // so the whole store stays `_ord`-ordered and orderEntries' fast path holds.
+  // Rebase the legacy ordinal fallback below the current window.
   let minOrd = Number.MAX_SAFE_INTEGER
   for (const e of existing) { const o = (e as { _ord?: number })._ord; if (typeof o === 'number' && o < minOrd) minOrd = o }
   const base = (minOrd === Number.MAX_SAFE_INTEGER ? 0 : minOrd) - fresh.length
   fresh.forEach((e, i) => { (e as { _ord?: number })._ord = base + i })
 
-  if (!seen) {
-    seen = new Set<string>()
-    const nextSeen = new Map(jsonlSeenUuidsByTab.value)
-    nextSeen.set(tabId, seen)
-    jsonlSeenUuidsByTab.value = nextSeen
-  }
-  for (const e of fresh) if (e.uuid) seen.add(e.uuid)
-
-  const nextMap = new Map(jsonlEntriesByTab.value)
-  nextMap.set(tabId, fresh.concat(existing))
-  bumpStructureVersion(tabId) // the segment/render model must recompute over the grown range
-  jsonlEntriesByTab.value = nextMap
-  return true
+  // Use the same reconciliation as live/replay ingestion. In particular, the
+  // page boundary can cut through a split assistant message already in-store.
+  return appendJsonlEntries(tabId, fresh)
 }
 
 // ── Last thinking preview for ActivityIndicator ─────────────────────────

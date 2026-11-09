@@ -71,11 +71,10 @@ export function JsonlViewer(): JSX.Element {
   // so a stream frame only rebuilds the live tail, not all ~150 shown rows.
   // Invalidated wholesale on tab switch (Preact mutates vnodes on diff, so a
   // vnode mounted then unmounted by a switch can't be safely re-used across the
-  // remount); per-entry on a tool-result/interrupt/skip version bump (the only
-  // things that change a committed row's output).
+  // remount); per-entry on immutable row replacement or tool-result/flag changes.
   // A cached `null` remembers that a committed row draws nothing, so the
   // drawable window (render-window.ts) can skip it without re-rendering.
-  const vnodeCacheRef = useRef(new Map<string, { vnode: JSX.Element | null; ver: string }>())
+  const vnodeCacheRef = useRef(new Map<string, { entry: JsonlEntryData; vnode: JSX.Element | null; ver: string }>())
   // Tab whose JSONL is still replaying (no entries yet). Lets us show a
   // "Loading conversation…" cue instead of the "empty session" placeholder —
   // a large session's replay otherwise looks identical to a brand-new session.
@@ -466,8 +465,8 @@ export function JsonlViewer(): JSX.Element {
           const total = visibleMerged.length
 
           // Per-entry vnode cache (see vnodeCacheRef). A committed row's rendered
-          // output only changes when `ver` (tool-result text sum + interrupt/skip
-          // counts, computed in the render model) changes.
+          // output changes when its immutable entry changes (including older-page
+          // fusion under the same UUID), or when tool results/flags change.
           const cache = vnodeCacheRef.current
           // The in-flight turn — last assistant + any trailing attachment/system
           // rows the CLI appends after it — churns through the stub→canonical
@@ -487,9 +486,9 @@ export function JsonlViewer(): JSX.Element {
             if (cacheable && cacheKey != null) {
               usedCacheKeys.add(cacheKey)
               const hit = cache.get(cacheKey)
-              if (hit && hit.ver === ver) return hit.vnode
+              if (hit && hit.entry === e && hit.ver === ver) return hit.vnode
               const rendered = JsonlEntry({ entry: e, toolResults })
-              cache.set(cacheKey, { vnode: rendered, ver })
+              cache.set(cacheKey, { entry: e, vnode: rendered, ver })
               return rendered
             }
             return JsonlEntry({ entry: e, toolResults })

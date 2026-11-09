@@ -1,7 +1,8 @@
 html, body, #root { width: 100%; height: 100%; }
 .workspace-layout { display: flex; width: 100%; height: 100%; overflow: hidden; }
-.workspace-layout > #root { flex: 1; min-width: 280px; width: 0; }
-.workspace-preview { width: 40vw; min-width: 240px; display: flex; flex-direction: column; background: #fff; color: #17191e; overflow: auto; }
+.workspace-layout > #root { flex: 1; min-width: 1100px; width: 0; }
+/* Reserve space for chat AND the shell's session/agents columns. */
+.workspace-preview { width: 40vw; max-width: calc(100% - 1106px); min-width: 240px; flex-shrink: 0; display: flex; flex-direction: column; background: #fff; color: #17191e; overflow: auto; }
 .workspace-preview[hidden], .preview-resize[hidden] { display: none; }
 .workspace-preview > header { display: flex; align-items: center; gap: 8px; padding: 8px; font: 13px system-ui; background: #252932; color: #eee; }
 .workspace-preview > header strong { flex: 1; }
@@ -9,6 +10,14 @@ html, body, #root { width: 100%; height: 100%; }
 .workspace-preview > [role=status]:empty { display: none; }
 .preview-content { flex: 1; min-height: 0; overflow: auto; }
 .preview-resize { width: 6px; flex-shrink: 0; cursor: col-resize; background: #454953; touch-action: none; }
+/* At laptop widths a second column starves chat. Keep both panels usable by
+   placing Preview below the complete workspace instead of narrowing chat. */
+@media (max-width: 1439px) {
+  .workspace-layout { flex-direction: column; }
+  .workspace-layout > #root { width: 100%; min-width: 0; min-height: 0; }
+  .workspace-preview { width: 100% !important; max-width: none; min-width: 0; height: 40%; }
+  .preview-resize { display: none; }
+}
 #workspace-gate {
   position: fixed; inset: 0; z-index: 100000; display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 16px;
