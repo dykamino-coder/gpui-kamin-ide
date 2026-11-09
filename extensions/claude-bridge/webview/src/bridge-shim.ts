@@ -36,7 +36,7 @@ bridge.respondMcpElicitation = (requestId, payload) => snd(`mcp-elicitation-resp
 // getVersion() is synchronous in preload (sendSync). Prefetch once and serve
 // from cache; the version string is only shown in the About/header.
 let cachedVersion = ""
-void inv("get-version").then((v) => { cachedVersion = typeof v === "string" ? v : "" })
+void inv("get-version").then((v) => { cachedVersion = typeof v === "string" ? v : "" }).catch(() => {})
 bridge.getVersion = () => cachedVersion
 // KaminIDE owns the window chrome — the webview has no titlebar controls.
 bridge.windowIsMaximized = () => false
