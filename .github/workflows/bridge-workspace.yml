@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
       - extensions/claude-bridge/extension/**
       - extensions/claude-bridge/webview/**
       - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
@@ -13,6 +17,10 @@ on:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - src/kamin-host/services/pty*.ts
+      - src/kamin-host/services/shells.ts
+      - package.json
+      - package-lock.json
       - extensions/claude-bridge/extension/**
       - extensions/claude-bridge/webview/**
       - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
@@ -46,8 +54,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             extensions/claude-bridge/workspace/package-lock.json
             extensions/claude-bridge/extension/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .
       - run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
         working-directory: extensions/claude-bridge/extension

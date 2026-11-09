@@ -29,6 +29,8 @@ then corrected #642. None of these increments establishes full parity.
 Run the boundary checks with Node 22:
 
 ```sh
+# Install root dependencies too: the shared native PTY source resolves them here.
+npm --prefix ../../.. ci --no-audit --no-fund
 npm ci --no-audit --no-fund
 npm --prefix ../extension ci --no-audit --no-fund
 npm run typecheck
@@ -184,9 +186,37 @@ JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-Native window/PTY/editor/browser environment adaptations, dashboard-admin login, the
+Native window/file/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Terminal environment adapter
+
+`TerminalWorkspaceBackend` decorates another backend with `shells:list`,
+`pty:spawn`, `pty:write`, `pty:resize`, `pty:kill`, `pty:data` and `pty:exit`.
+It reuses the native host's extracted `PtySessions` and shell discovery, with
+the same packed argument/reply/event contract. The embedding executable must
+dispose the decorator at shutdown. Shell ownership and screen/scrollback belong
+to the host: socket detach, logout and backpressure preserve shells, while
+explicit Kill/End session/Disconnect and shutdown terminate them. `workspace:terminal-sync` restores a private sequenced xterm
+snapshot per chat tab without replaying mutations. The detailed resource and
+lifecycle contract is in DESIGN.md; live composed-workspace acceptance is open.
+Workspace root is the default cwd; other existing absolute container directories
+are allowed. Container/mount isolation determines filesystem access.
+
+The native facade retains its environment collections and ConPTY preference.
+Disposal now terminates the owned process tree before releasing ConPTY, avoiding
+the race where the parent disappears before tree enumeration. Natural Windows
+exit also disposes the output worker so the headless host can exit. With the
+system ConPTY backend, the dependency's console-list helper can print an
+`AttachConsole failed` warning after shell exit and takes up to its five-second
+fallback to finish cleanup. The optional bundled ConPTY preference has not been
+accepted by these workspace tests. The adapter is not yet wired to a runnable
+workspace; browser file-panel terminal acceptance remains open.
+
+The browser lifecycle smoke also holds a debounced Settings config read across
+disconnect. A failed autosave reports an unconfirmed outcome to the user;
+neither the settings mutation nor another pending command is replayed.
 
 ## Container file-panel services
 
@@ -270,7 +300,8 @@ This is real client/handler/WebSocket evidence with a synthetic upstream, not
 the required live model/Podman/headless lifecycle acceptance. Bridge FilePanel
 (including attach-file/context) remains in scope; only IDE open/reveal and
 openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not Bridge". Host-owned
-file watches, PTY scrollback, remaining page reducers and the full gates follow.
+file watches and PTY scrollback now have host-owned adapters; remaining page
+reducers and the full gates follow.
 
 Explicit session close now also disposes background shells before dropping the
 connection. The same real-process regression covers End session, Disconnect and
