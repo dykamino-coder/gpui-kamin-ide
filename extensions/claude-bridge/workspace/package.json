@@ -16,7 +16,8 @@
     "test": "npm run build && node --import tsx --test --test-timeout=30000 --test-concurrency=1 test/*.test.ts",
     "test:browser": "node --test test/*.smoke.mjs",
     "test:acceptance": "node --test acceptance/*.test.mjs",
-    "test:live": "node acceptance/run.mjs"
+    "test:live": "node acceptance/container-runner.mjs --mode live",
+    "test:browser:container": "node acceptance/container-runner.mjs --mode fixture"
   },
   "dependencies": {
     "fast-glob": "^3.3.3",

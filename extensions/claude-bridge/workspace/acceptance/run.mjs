@@ -9,6 +9,7 @@ import { heap } from './browser.mjs'
 import { liveScenarios } from './scenarios.mjs'
 
 async function main() {
+  check(process.platform === 'linux' && process.env.BRIDGEWEB_ACC_CONTAINER === '1', 'USE_PODMAN_CONTAINER_RUNNER')
   const { values } = parseArgs({ options: {
     image: { type: 'string', default: 'localhost/bridgeweb-acc-workspace:local' },
     'server-origin': { type: 'string', default: 'http://127.0.0.1:3462' },
@@ -23,13 +24,14 @@ async function main() {
   const relative = path.relative(repo, reportRoot)
   check(relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative), 'REPORT_MUST_BE_OUTSIDE_REPO')
   const server = new URL(values['server-origin'])
-  check(server.protocol === 'http:' && server.hostname === '127.0.0.1' && !server.username && !server.password &&
+  check(server.protocol === 'http:' && ['127.0.0.1', 'host.containers.internal'].includes(server.hostname) && !server.username && !server.password &&
     server.pathname === '/' && !server.search && !server.hash, 'EXPECTED_LOOPBACK_SERVER_ORIGIN')
   const owned = new OwnedResources(values.image)
   const reportDir = path.join(reportRoot, owned.name)
   await mkdir(reportDir, { mode: 0o700 })
-  const report = { started: new Date().toISOString(), source: (await command('git', ['rev-parse', 'HEAD'])).trim(),
-    sourceDirty: !!(await command('git', ['status', '--porcelain'])).trim(),
+  check(/^[a-f0-9]{40}$/.test(process.env.BRIDGEWEB_ACC_SOURCE ?? ''), 'SOURCE_REVISION_REQUIRED')
+  const report = { started: new Date().toISOString(), source: process.env.BRIDGEWEB_ACC_SOURCE,
+    sourceDirty: process.env.BRIDGEWEB_ACC_SOURCE_DIRTY === '1',
     results: [], metrics: {}, cleanup: [] }
   const record = async (name, fn) => {
     const started = Date.now()
@@ -40,7 +42,7 @@ async function main() {
     process.stdout.write(`${name}: ${result.status}\n`)
     return !error
   }
-  let browser, token, imageReady = false, cliReady = false
+  let browser, token, imageReady = false, cliReady = false, credentialsReady = false
   try {
     imageReady = await record('image-contract', async () => {
       const [config] = JSON.parse(await command('podman', ['image', 'inspect', values.image]))
@@ -54,8 +56,10 @@ async function main() {
         '--entrypoint', 'node', values.image, '-e', imageProbe]))
       check(probe.uid !== 0 && probe.bundle.raw > 0, 'IMAGE_CONTRACT')
       cliReady = probe.cli
+      credentialsReady = probe.credentialsMemoryOnly
       report.metrics.bundle = { ...probe.bundle, method: 'all shipped .js files; individual gzip/Brotli sums' }
     })
+    if (imageReady && cliReady) await record('credential-storage', () => check(credentialsReady, 'TOKEN_PERSISTENCE'))
     const upstreamReady = await record('upstream-health', async () => {
       check(await upstreamHealth(server), 'UPSTREAM_UNREACHABLE')
     })
@@ -67,7 +71,7 @@ async function main() {
     }
     let workspaceReady = false
     if (imageReady && !cliReady) await record('workspace-start', () => check(false, 'CORE_ENTRYPOINT'))
-    if (imageReady && cliReady && upstreamReady) {
+    if (imageReady && cliReady && credentialsReady && upstreamReady) {
       workspaceReady = await record('workspace-start', async () => {
         token = await issueToken(server, owned.name)
         await owned.start(token.token, `ws://host.containers.internal:${server.port || 80}`)

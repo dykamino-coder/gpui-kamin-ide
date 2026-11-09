@@ -1,6 +1,7 @@
 **
 !package.json
 !package-lock.json
+!builtin-extensions/claude-bridge/package.json
 !src
 !src/**
 !extensions

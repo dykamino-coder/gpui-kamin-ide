@@ -7,8 +7,8 @@ Container build, compose profiles and repeatable live acceptance:
 
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
-for the existing App. It is not yet a runnable browser workspace: executable
-composition, remaining environment services, capability matrix and Podman acceptance remain open.
+for the existing App. The container CLI composes these services; remaining
+environment services, capability matrix and live Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -68,7 +68,7 @@ editor command fallback rejects as unavailable. This is not full LSP acceptance.
 
 The deterministic runtime test crosses authenticated HTTP/WS, two real host
 views and the shared server connection pipeline. It checks Read/Write/Edit/Glob
-against real bytes, pinned identity (including get-config → resume with the
+against real bytes, pinned identity (including get-config в†’ resume with the
 redacted token and forged resume credentials), private replies/event fan-out,
 clipboard round trip and persistent layout. Terminal disposal aborts foreground
 tool controllers, terminates owned background shells, cancels external HTTP/SSE
@@ -172,11 +172,11 @@ model or Podman parity. Run after building both packages:
 # In workspace; choose a private browser cache on a shared developer machine.
 export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
 export PLAYWRIGHT_SKIP_BROWSER_GC=1
-npx playwright install chromium --only-shell
-npm run test:browser
+npm run test:browser:container -- --report-dir /private/bridgeweb2/reports
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI.
+Windows host browser launches are forbidden. Build the Linux runner and follow
+[PACKAGING.md](PACKAGING.md); Linux CI also repeats this headlessly with synthetic fixture UI.
 The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
 JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof

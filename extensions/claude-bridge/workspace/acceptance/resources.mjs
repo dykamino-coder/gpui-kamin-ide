@@ -127,4 +127,12 @@ walk(root+'/webview/dist/browser');
 fs.writeFileSync('/workspace/bridgeweb-acc-probe','ok');fs.unlinkSync('/workspace/bridgeweb-acc-probe');
 fs.writeFileSync(process.env.HOME+'/bridgeweb-acc-probe','ok');fs.unlinkSync(process.env.HOME+'/bridgeweb-acc-probe');
 cp.execFileSync('bash',['-c','true']);cp.execFileSync('pwsh',['-NoProfile','-Command','exit 0']);
-process.stdout.write(JSON.stringify({uid:process.getuid(),cli:fs.existsSync(root+'/workspace/dist/cli.cjs'),bundle:{chunks,raw,gzip,brotli}}));`
+const cli=fs.existsSync(root+'/workspace/dist/cli.cjs');
+let credentialsMemoryOnly=false;
+if(cli){
+ const script="const fs=require('fs');const marker='bridgeweb-acc-synthetic-not-a-credential';const backend=require('./dist/runtime.cjs').createSharedBackend({root:'/workspace',storage:process.env.HOME+'/probe-state',serverUrl:'ws://127.0.0.1:1',token:marker,version:'0.0.0',environment:{}});function scan(p){return fs.readdirSync(p,{withFileTypes:true}).some(e=>e.isDirectory()?scan(p+'/'+e.name):e.isFile()&&fs.readFileSync(p+'/'+e.name).includes(marker))}const leaked=scan(process.env.HOME);backend.dispose();process.exit(leaked?42:0)";
+ const result=cp.spawnSync('node',['-e',script],{cwd:root+'/workspace',timeout:15000,stdio:'ignore'});
+ if(![0,42].includes(result.status))throw new Error('Credential probe failed');
+ credentialsMemoryOnly=result.status===0;
+}
+process.stdout.write(JSON.stringify({uid:process.getuid(),cli,credentialsMemoryOnly,bundle:{chunks,raw,gzip,brotli}}));`

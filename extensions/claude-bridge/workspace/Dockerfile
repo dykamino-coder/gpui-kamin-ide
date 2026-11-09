@@ -2,6 +2,7 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /opt/bridge
 COPY package.json package-lock.json ./
+COPY builtin-extensions/claude-bridge/package.json builtin-extensions/claude-bridge/package.json
 COPY extensions/claude-bridge/extension/package*.json extensions/claude-bridge/extension/
 COPY extensions/claude-bridge/workspace/package*.json extensions/claude-bridge/workspace/
 COPY extensions/claude-bridge/webview/package*.json extensions/claude-bridge/webview/

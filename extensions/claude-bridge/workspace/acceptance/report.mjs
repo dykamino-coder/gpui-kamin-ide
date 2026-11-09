@@ -5,12 +5,13 @@ export class CheckFailure extends Error {
 export function check(value, code) { if (!value) throw new CheckFailure(code) }
 
 export const scenarios = [
-  'image-contract', 'upstream-health', 'workspace-start', 'browser-login',
+  'image-contract', 'credential-storage', 'upstream-health', 'workspace-start', 'browser-login',
   'chat', 'file-tools', 'bash', 'mcp', 'hook', 'file-panel',
   'close-mid-turn', 'reopen-permission', 'two-browser-tabs', 'browser-metrics',
 ]
 export const expected = {
   'workspace-start': { CORE_ENTRYPOINT: 'INC-2026-0087: executable composition/environment adapter is not merged.' },
+  'credential-storage': { TOKEN_PERSISTENCE: 'INC-2026-0087: runtime ConfigStore persists injected token; memory-only credential seam is pending. No real token issued.' },
   'file-panel': { FILE_PANEL: '#642: Bridge FilePanel container adapter/reconnect watch is not merged.' },
   'close-mid-turn': {
     SNAPSHOT: 'INC-2026-0087: host snapshot/transcript rehydration and exactly-once reconciliation are not merged.',

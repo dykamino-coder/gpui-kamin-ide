@@ -2,10 +2,10 @@
 
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 
-This increment packages the shared client and its production browser assets.
-Executable composition and browser environment services are being integrated
-separately. Until `dist/cli.cjs` is present, startup exits 78 with an explicit
-message; an image build alone is not deployable/full-parity acceptance.
+This increment composes the shared client, browser environment and production
+browser assets in `dist/cli.cjs`. It includes the published #643 and #646 heads;
+those dependencies must land before this PR. An image build alone does not
+establish full-parity acceptance.
 Known missing features remain visible in the live report. Bridge's own FilePanel
 is in scope. IDE editor open/reveal/openInVscode is NOT-APPLICABLE:
 "KaminIDE host feature, not Bridge".
@@ -94,33 +94,53 @@ Tini forwards workspace signals and reaps children.
 
 ## Automated live acceptance
 
-Use Node 22+ on the host with Podman available and an existing authenticated
-`kamin-acc-302` at `127.0.0.1:3462`. Never stop/recreate it or read its volumes.
-The runner creates one unique `bridgeweb-acc-*` client, project and HOME, and
-revokes only the token it created. It never lists tokens or reads CLI auth.
-Token issuance and browser login stay in memory. The container receives its
-token once over stdin, avoiding credentials in Podman's configured environment,
-command arguments or temporary files. Raw stdout/stderr from child commands is
-not reported. No traces, screenshots, HARs or transcripts are retained.
+All browser processes run headlessly **inside Linux Podman**, never on the
+Windows host (including headless_shell). The host needs Node 22+ and Podman only.
+The runner mounts the checkout read-only, copies allowlisted source to its
+container filesystem and copies sanitized reports back before removing its exact
+container name. It never uses host node_modules or browser caches. The private
+browser cache belongs to the runner image; garbage collection is disabled.
 
-```powershell
-# From workspace; choose private paths outside every checkout.
-$env:PLAYWRIGHT_BROWSERS_PATH = 'C:/private/bridgeweb2/playwright'
-$env:PLAYWRIGHT_SKIP_BROWSER_GC = '1'
-npm ci --no-audit --no-fund
-npx playwright install chromium --only-shell
-node acceptance/run.mjs --report-dir C:/private/bridgeweb2/reports
+Build the runner from the repository root:
+
+```sh
+podman build --ignorefile extensions/claude-bridge/workspace/containerignore \
+  -f extensions/claude-bridge/workspace/acceptance/Dockerfile \
+  -t localhost/bridgeweb-acc-playwright:local .
 ```
 
-Use `--image <local-tag>` for another built image, `--server-origin
-http://127.0.0.1:<port>` only when the lead supplies a different server, and
-`--strict` to make known missing-feature assertions fail the run. The default
-report labels a known missing assertion XFAIL with its issue/reason; a passing
-assertion always becomes PASS, even if an older build lacked it. Remove stale
-entries in `acceptance/report.mjs` as the corresponding PRs merge. A prerequisite
-outage produces BLOCKED, never PASS or XFAIL. Exit codes: 0 no failures/blocks,
-1 unexpected failure (or strict expected failure), 2 blocked. XFAIL is still
-incomplete owner acceptance.
+Then from `extensions/claude-bridge/workspace`:
+
+```powershell
+npm run test:browser:container -- --report-dir C:/private/bridgeweb2/reports
+npm run test:live -- --report-dir C:/private/bridgeweb2/reports
+```
+
+Each invocation performs one run, without browser retry loops. Linux GitHub CI
+may also run the fixture command directly. The live script itself refuses to run
+outside the Linux acceptance container. Default live prerequisite is the existing
+`kamin-acc-302` at `host.containers.internal:3462`; never stop/recreate it or read
+its volumes. Live mode mounts the Podman VM API socket into this trusted runner
+so it can create only its unique `bridgeweb-acc-*` client/project/HOME and revoke
+only its issued token. Default rootful socket is `/run/podman/podman.sock`; pass
+`--podman-socket /run/user/1000/podman/podman.sock` for the explicitly selected
+rootless connection. The runner uses VM host networking to reach the workspace's
+loopback port. Fixture mode does not mount the Podman socket.
+
+Token issuance and browser login stay in memory. The client receives the token
+once over stdin, avoiding credentials in Podman's configured environment,
+arguments or temporary files. Before issuance a synthetic non-credential probe
+checks whether runtime ConfigStore persists its injected value. Until that core
+seam is corrected, credential-storage is XFAIL and real-token scenarios BLOCKED.
+No traces, screenshots, HARs or real transcripts are retained.
+
+Use `--image <local-tag>` for another built workspace image, `--runner-image
+<local-tag>` for the Linux browser runner, and `--strict` to make known missing
+assertions fail. A passing assertion is PASS even if an older build lacked it.
+A known missing assertion is XFAIL with a clear reason; a prerequisite outage is
+BLOCKED. Exit codes: 0 no failures/blocks, 1 unexpected/strict failure, 2 blocked.
+XFAIL remains incomplete owner acceptance. Source identity includes dirty status;
+image identity is reported separately. Reports must be outside the checkout.
 
 The suite drives the real shared App command API and the actual model/server;
 it does not replace the host with a fake backend. It checks a chat reply,
