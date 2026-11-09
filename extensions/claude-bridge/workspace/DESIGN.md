@@ -74,7 +74,7 @@ generation protects document identity. Replies return only to their requester,
 while workspace events reach subscribed views. Bound payload sizes, reject
 malformed frames, and return errors for unknown invokes instead of null success.
 
-Until the socket opens, queue a bounded set of startup calls. On disconnect,
+Mount the UI after the socket opens, without queuing commands. On disconnect,
 reject pending calls, preserve the shared host and server sessions, reconnect
 with backoff and resynchronize tabs/history. Browser reload is a new document,
 not permission to replay writes or submissions. Persist only UI state in browser
@@ -116,8 +116,12 @@ filesystem boundary is the container, not a claimed sandbox around `/workspace`.
 
 ## Persistent state and lifecycle
 
-Set cwd and the initial project root to `/workspace`. Keep workspace user HOME
-and shared client global storage in explicit persistent volumes. That HOME holds
+Set cwd and the initial project root to `/workspace`. Treat HOME and project
+paths as ordinary container paths: file tools and shell have
+container-wide access, including absolute paths and symlink destinations outside
+`/workspace`. Isolation is supplied by the container and its mounts, not by a
+directory jail in the client. Keep workspace user HOME and shared client global
+storage in explicit persistent volumes. That HOME holds
 client plugin configuration, not a Claude CLI login. The server alone owns CLI
 auth, including its `.claude/` and `.claude.json`; separate-server mode never
 mounts the server's auth into the workspace. Combined mode preserves the owned
@@ -131,6 +135,11 @@ and subscriptions without destroying a live conversation. Shutdown disposes
 watchers, PTYs, MCP/LSP/monitor children, timers and client connections; combined
 mode forwards signals to both owned processes and reaps them. Persisted sessions
 can be resumed after restart; do not automatically repeat a pending command.
+Final client disposal aborts in-flight local tool controllers and owned shell
+processes, and aborts the MCP manager's HTTP/SSE requests before tearing down
+transports. It detaches from the server without ending its CLI sessions. This
+terminal path is distinct from transient desktop disconnect/reconnect, which
+continues to retain in-flight work for acknowledged result delivery.
 
 ## Packaging and bounded changes
 

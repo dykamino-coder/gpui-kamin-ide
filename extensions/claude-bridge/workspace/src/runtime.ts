@@ -79,7 +79,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
           if (frame.kind === 'invoke' && !ipcMain.hasHandler(frame.channel)) throw new Error(`Unsupported workspace invoke: ${frame.channel}`)
           if (frame.kind === 'send' && ipcMain.listenerCount(frame.channel) === 0) throw new Error(`Unsupported workspace send: ${frame.channel}`)
           const args = [...frame.args]
-          if (['set-config', 'connect', 'tab:create'].includes(frame.channel)) args[0] = pinned(args[0])
+          if (['set-config', 'connect', 'tab:create', 'session:resume'].includes(frame.channel)) args[0] = pinned(args[0])
           await withEnvironment(options.environment, () => listener?.({ ...frame, args }))
         } catch (error) {
           if (frame.kind !== 'invoke') throw error

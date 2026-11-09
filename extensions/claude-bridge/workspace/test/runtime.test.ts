@@ -8,6 +8,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { WebSocket, WebSocketServer } from 'ws'
+import { assertProcessStopped, deadline, externalMcp } from './fixtures/external-mcp.js'
 
 // Protocol peer only: the CLIENT, handlers, filesystem and socket routing are
 // real. This is deliberately not live Claude/Podman/browser acceptance.
@@ -42,7 +43,7 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
       const frame = JSON.parse(raw.toString())
       upstreamFrames.push(frame)
       upstreamEvents.emit('frame')
-      if (frame.type === 'session:create') socket.send(JSON.stringify({ type: 'session:created', sessionId: 'fixture-session' }))
+      if (['session:create', 'session:resume'].includes(frame.type)) socket.send(JSON.stringify({ type: 'session:created', sessionId: 'fixture-session' }))
       if (frame.type === 'mcp:response') socket.send(JSON.stringify({ type: 'mcp:result-ack', sessionId: 'fixture-session', requestId: frame.requestId, accepted: true }))
     })
   })
@@ -54,6 +55,7 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   const child = fork(fileURLToPath(new URL('./fixtures/runtime-child.cjs', import.meta.url)), [root, upstreamUrl], {
     cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec,
+      ProgramFiles: process.env.ProgramFiles, CLAUDE_CODE_GIT_BASH_PATH: process.env.CLAUDE_CODE_GIT_BASH_PATH,
       HOME: home, USERPROFILE: home, TEMP: tmp, TMP: tmp, TMPDIR: tmp,
       KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
   })
@@ -112,6 +114,18 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   assert.equal(session.cwd, root)
   await wait(framesB, eventsB, frame => frame.channel === 'tab:created')
   assert.equal(framesB.some(frame => frame.kind === 'invoke-reply'), false)
+  // The normal UI copies get-config into resume, including its redacted token.
+  const browserConfig = (await invoke('get-config')).result
+  for (const [index, identity] of [browserConfig, { ...browserConfig, token: 'forged', serverUrl: 'ws://attacker.invalid' }].entries()) {
+    const conversationId = `00000000-0000-4000-8000-00000000000${index}`
+    assert.equal((await invoke('session:resume', [{ ...identity, conversationId }])).ok, true)
+    const resumed = await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:resume' && frame.conversationId === conversationId)
+    assert.equal(resumed.token, 'synthetic-workspace-token')
+    assert.equal(resumed.cwd, root)
+    const persisted = JSON.parse(fs.readFileSync(path.join(root, 'storage', 'open-claude-bridge-config.json'), 'utf8'))
+    assert.equal(persisted.config.token, 'synthetic-workspace-token')
+    assert.equal(persisted.config.serverUrl, upstreamUrl)
+  }
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {
     const requestId = `tool-${++id}`
@@ -129,7 +143,30 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   const persisted = JSON.parse(fs.readFileSync(path.join(root, 'storage', 'open-claude-bridge-config.json'), 'utf8'))
   assert.equal(persisted.layout.sidebarWidth, 311)
   assert.equal(persisted.config.serverUrl, upstreamUrl)
+  const external = await externalMcp()
+  cleanup.push(() => external.close())
+  const added = await invoke('mcp:add-server', [{ name: 'shutdown-fixture', type: 'http', url: external.url, enabled: true }])
+  assert.equal(added.ok, true)
+  await wait(framesA, eventsA, frame => frame.channel === 'mcp-servers-changed' &&
+    frame.args[0].some((server: any) => server.id === added.result.id && server.status === 'connected'))
+  peer!.send(JSON.stringify({ type: 'mcp:call', requestId: 'external-wait', toolName: 'fixture_wait', input: {} }))
+  await deadline(external.started, 'External MCP call did not start')
+  // Both shells would keep running for a minute if final teardown only detached.
+  const longCommand = (file: string) => `node -e 'require("node:fs").writeFileSync("${file}",String(process.pid)); setTimeout(()=>{},60000)'`
+  const bg = await tool('Bash', { command: longCommand('background.pid'), run_in_background: true })
+  assert.match(JSON.stringify(bg.result), /Background process started/)
+  peer!.send(JSON.stringify({ type: 'mcp:call', requestId: 'shell-wait', toolName: 'Bash',
+    input: { command: longCommand('foreground.pid') } }))
+  const pidFiles = ['foreground.pid', 'background.pid'].map(name => path.join(root, name))
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (pidFiles.every(file => fs.existsSync(file) && fs.readFileSync(file, 'utf8').trim())) break
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.ok(pidFiles.every(file => fs.existsSync(file)), 'Long-running Bash commands did not start')
+  const shellPids = pidFiles.map(file => Number(fs.readFileSync(file, 'utf8').trim()))
+  assert.ok(shellPids.every(pid => Number.isSafeInteger(pid) && pid > 0))
   child.send('shutdown')
+  await deadline(external.cancelled, 'External MCP request survived terminal shutdown')
   const [code, signal] = await Promise.race([
     exited,
     new Promise<never>((_resolve, reject) => {
@@ -140,4 +177,6 @@ test('real BridgeHost pins identity, runs file tools, persists settings and shut
   ])
   assert.equal(code, 0, 'shared runtime should exit naturally after disposal')
   assert.equal(signal, null)
+  for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
+  assert.equal(upstreamFrames.some(frame => frame.type === 'session:end'), false)
 })

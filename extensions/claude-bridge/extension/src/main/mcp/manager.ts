@@ -115,6 +115,7 @@ function exposedToolName(state: McpServerState, rawToolName: string): string {
 
 export class McpServerManager {
   private disposed = false
+  private readonly shutdown = new AbortController()
   /** @internal */
   servers = new Map<string, McpServerState>()
   /** @internal */
@@ -170,6 +171,7 @@ export class McpServerManager {
   private ctx(): TransportContext {
     const self = this
     return {
+      shutdownSignal: this.shutdown.signal,
       window: this.window,
       servers: this.servers,
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
@@ -827,6 +829,7 @@ export class McpServerManager {
 
   /** Execute a tool on an external server */
   async callTool(toolName: string, input: Record<string, unknown>): Promise<McpResult> {
+    if (this.disposed) throw new Error('MCP manager is disposed')
     // Ленивый сервер: тул значится в диск-кэше, процесс ещё не поднят —
     // поднимаем СЕЙЧАС (первое обращение) и продолжаем обычным путём.
     let hasLive = false
@@ -887,6 +890,7 @@ export class McpServerManager {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.shutdown.abort()
     this.onToolsChanged = null
     if (this.notifyTimer) clearTimeout(this.notifyTimer)
     this.notifyTimer = null

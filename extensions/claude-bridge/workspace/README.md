@@ -32,7 +32,13 @@ There is one runtime per process, even after disposal, because shared handlers
 have process-wide registrations. Run it in an isolated container HOME; shared
 plugin configuration uses that HOME. Dispose both server and backend on shutdown.
 
-The configured upstream identity is pinned: browser config/connect/tab requests
+The default cwd and initial project root are `/workspace`. Files and shell tools
+have container-wide access, including absolute paths and symlink destinations
+outside that directory. Isolation comes from the container and its mounts;
+`/workspace` is a project location, not a filesystem sandbox. Mount only the
+project and client state this workspace is intended to access.
+
+The configured upstream identity is pinned: browser config/connect/tab/resume requests
 cannot replace its server or token, and outgoing frames redact the configured
 credential. Unsupported invokes fail explicitly. The three desktop arbitrary-URL
 server helpers (`bridge:create-token`, `bridge:server-version`,
@@ -44,8 +50,15 @@ editor command fallback rejects as unavailable. This is not full LSP acceptance.
 
 The deterministic runtime test crosses authenticated HTTP/WS, two real host
 views and the shared server connection pipeline. It checks Read/Write/Edit/Glob
-against real bytes, pinned identity, private replies/event fan-out, clipboard
-round trip, persistent layout and natural process exit after disposal. A
+against real bytes, pinned identity (including get-config → resume with the
+redacted token and forged resume credentials), private replies/event fan-out,
+clipboard round trip and persistent layout. Terminal disposal aborts foreground
+tool controllers, terminates owned background shells, cancels external HTTP/SSE
+MCP requests and closes shared resources without sending `session:end`; the
+server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
+The test starts long-running foreground/background Bash processes and an actual
+loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
+process termination and natural client exit. A
 synthetic upstream protocol peer supplies session/MCP frames; this does not
 prove browser UI, live model, external plugin or container acceptance. The test
 uses a disposable HOME and cannot load the operator's Claude profile.

@@ -3936,7 +3936,12 @@ ${stderr}`);
             stdio: "ignore"
           });
           killer.on("error", () => {
+            signalTree("SIGTERM");
           });
+          killer.on("exit", (code) => {
+            if (code !== 0) signalTree("SIGTERM");
+          });
+          return;
         } catch {
         }
       }
@@ -12046,6 +12051,7 @@ function appendBounded(chunks, lengthRef, chunk) {
   }
 }
 function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env, context, tool = "Bash", displayCommand = command) {
+  if (context?.signal?.aborted) return errorResult2("Command cancelled");
   evictOldBackgroundOutput();
   const bgId = nextBgId++;
   const child = (0, import_node_child_process3.spawn)(shell2, [...shellFlags, command], {
@@ -12203,6 +12209,29 @@ async function stopLocalBackgroundShell(tabId, id) {
   const out = backgroundOutput.get(Number(id.slice(6)));
   if (out?.tabId !== tabId) return;
   await killBackgroundShell({ bash_id: Number(id.slice(6)) });
+}
+function disposeBackgroundShells(tabId) {
+  for (const [id, out] of backgroundOutput) {
+    if (out.tabId !== tabId || !out.running) continue;
+    const child = backgroundProcesses.get(id);
+    if (!child?.pid) continue;
+    out.stopped = true;
+    if (process.platform === "win32") {
+      const killer = (0, import_node_child_process3.spawn)("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      });
+      killer.on("error", () => {
+        child.kill("SIGKILL");
+      });
+    } else {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }
+  }
 }
 async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (!/^shell:[0-9]+$/.test(id)) return;
@@ -42490,6 +42519,7 @@ var parsedHostGeneration = Number.parseInt(process.env.KAMIN_EXTHOST_GENERATION 
 var CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0 ? parsedHostGeneration : 0;
 var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
+  disposed = false;
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree = null;
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -42714,6 +42744,7 @@ var ConnectionManager = class _ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect() {
+    if (this.disposed) return;
     if (this.ws) this.disconnect();
     this.intentionalDisconnect = false;
     this.setState({ status: "connecting" });
@@ -43063,6 +43094,7 @@ var ConnectionManager = class _ConnectionManager {
    * process instead of killing + respawning on the same JSONL.
    */
   disconnect(opts = {}) {
+    const terminal = opts.endSession || this.disposed;
     this.intentionalDisconnect = true;
     this.cancelReconnect();
     this.stopHeartbeat();
@@ -43085,10 +43117,10 @@ var ConnectionManager = class _ConnectionManager {
     }
     this.batcher.flushMain();
     this.batcher.flushSubagent();
-    if (opts.endSession) void this.mirror?.close();
-    if (opts.endSession) this.idleTracker.dispose();
+    if (terminal) void this.mirror?.close();
+    if (terminal) this.idleTracker.dispose();
     this.mcpResults.detach();
-    if (opts.endSession) {
+    if (terminal) {
       this.mcpResults.dispose();
       this.mcpSessionId = null;
       this.recentMcpCalls.clear();
@@ -43104,6 +43136,13 @@ var ConnectionManager = class _ConnectionManager {
     this.pendingPermissions.clear();
     if (opts.endSession) this.reconnectAttempt = 0;
     this.setState({ status: "disconnected" });
+  }
+  /** Final host teardown: cancel local work without ending the server's CLI. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.disconnect();
+    disposeBackgroundShells(this.tabId);
   }
   /** Returns current connection state. Maps ExtendedConnectionState to
    *  ConnectionState for IPC compatibility. */
@@ -43434,6 +43473,7 @@ var ConnectionManager = class _ConnectionManager {
       });
   }
   dispatchMessage(msg) {
+    if (this.disposed) return;
     if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
       if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
       this.pendingNewConversation = false;
@@ -44604,6 +44644,12 @@ var TabManager = class {
     for (const tab of this.tabs.values()) {
       tab.connection.disconnect();
     }
+    this.tabs.clear();
+    this.activeTabId = null;
+  }
+  /** Terminal client shutdown; transient disconnectAll keeps resumable work. */
+  dispose() {
+    for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
     this.activeTabId = null;
   }
@@ -49815,6 +49861,9 @@ async function sseJsonRpcRequest(ctx, id, body) {
   const state = ctx.servers.get(id);
   if (!state.sseMessageEndpoint) throw new Error("SSE endpoint not yet negotiated");
   const reqId = body.id;
+  const headers = await ctx.buildHttpHeaders(id);
+  headers["Content-Type"] = "application/json";
+  ctx.shutdownSignal?.throwIfAborted();
   const responsePromise = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       state.pendingRequests.delete(reqId);
@@ -49822,21 +49871,34 @@ async function sseJsonRpcRequest(ctx, id, body) {
     }, 6e4);
     state.pendingRequests.set(reqId, { resolve, reject, timer });
   });
-  const headers = await ctx.buildHttpHeaders(id);
-  headers["Content-Type"] = "application/json";
-  const res = await fetch(state.sseMessageEndpoint, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok && res.status !== 202) {
+  const posted = fetch(state.sseMessageEndpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: ctx.shutdownSignal
+  }).then(async (res) => {
+    if (!res.ok && res.status !== 202) throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => "")}`);
+  });
+  try {
+    const [result] = await Promise.all([responsePromise, posted]);
+    return result;
+  } finally {
+    const pending = state.pendingRequests.get(reqId);
+    if (pending?.timer) clearTimeout(pending.timer);
     state.pendingRequests.delete(reqId);
-    throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => "")}`);
   }
-  return responsePromise;
 }
 async function sseSendNotification(ctx, id, body) {
   const state = ctx.servers.get(id);
   if (!state.sseMessageEndpoint) throw new Error("SSE endpoint not yet negotiated");
   const headers = await ctx.buildHttpHeaders(id);
   headers["Content-Type"] = "application/json";
-  await fetch(state.sseMessageEndpoint, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => {
+  await fetch(state.sseMessageEndpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: ctx.shutdownSignal
+  }).catch(() => {
   });
 }
 
@@ -49905,7 +49967,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
   let headers = await ctx.buildHttpHeaders(id);
-  let res = await httpFetch(url, headers, body);
+  let res = await httpFetch(url, headers, body, ctx.shutdownSignal);
   if (res.status === 401) {
     if (!state.config.oauth) {
       const discovered = await tryDiscoverOAuthFrom401(ctx, id, res);
@@ -49919,7 +49981,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
       throw new Error("OAuth authorization required \u2014 please reconnect this server");
     }
     headers = await ctx.buildHttpHeaders(id);
-    res = await httpFetch(url, headers, body);
+    res = await httpFetch(url, headers, body, ctx.shutdownSignal);
     if (res.status === 401) {
       throw new Error("OAuth authorization expired \u2014 please reconnect this server");
     }
@@ -49961,7 +50023,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
   try {
     const prmParsed = new URL(prmUrl);
     if (prmParsed.protocol !== "http:" && prmParsed.protocol !== "https:") return null;
-    const prmRes = await fetch(prmUrl);
+    const prmRes = await fetch(prmUrl, { signal: ctx.shutdownSignal });
     if (!prmRes.ok) return null;
     const prm = await prmRes.json();
     const authServers = prm?.authorization_servers;
@@ -49983,7 +50045,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
     return null;
   }
 }
-async function httpFetch(url, headers, body) {
+async function httpFetch(url, headers, body, signal) {
   try {
     return await fetch(url, {
       method: "POST",
@@ -49992,7 +50054,8 @@ async function httpFetch(url, headers, body) {
         "Accept": "application/json, text/event-stream",
         ...headers
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
   } catch (err) {
     const cause = err?.cause;
@@ -50547,6 +50610,7 @@ function exposedToolName(state, rawToolName) {
 }
 var McpServerManager = class _McpServerManager {
   disposed = false;
+  shutdown = new AbortController();
   /** @internal */
   servers = /* @__PURE__ */ new Map();
   /** @internal */
@@ -50592,6 +50656,7 @@ var McpServerManager = class _McpServerManager {
   ctx() {
     const self = this;
     return {
+      shutdownSignal: this.shutdown.signal,
       window: this.window,
       servers: this.servers,
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
@@ -51124,6 +51189,7 @@ var McpServerManager = class _McpServerManager {
   }
   /** Execute a tool on an external server */
   async callTool(toolName, input) {
+    if (this.disposed) throw new Error("MCP manager is disposed");
     let hasLive = false;
     for (const state of this.servers.values()) {
       if (state.status === "connected" && state.tools.some((raw) => exposedToolName(state, raw) === toolName)) {
@@ -51177,6 +51243,7 @@ var McpServerManager = class _McpServerManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.shutdown.abort();
     this.onToolsChanged = null;
     if (this.notifyTimer) clearTimeout(this.notifyTimer);
     this.notifyTimer = null;
@@ -52301,9 +52368,9 @@ var BridgeHost = class {
     this.startupTimers.clear();
     this.cancelMarketplaceStartup?.();
     this.releaseMcpReady?.();
-    this.mcpManager.dispose();
     for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id);
-    this.tabManager.disconnectAll();
+    this.tabManager.dispose();
+    this.mcpManager.dispose();
     void pluginLspManager.restart();
     unregisterShimWindow(this.sink);
     for (const view of this.webviews) this.invokeDiagnostics.detach(view);
