@@ -7,10 +7,10 @@ import '../theme/light-theme.css'
 import '../theme/components/chat.css'
 import '../theme/components/jsonl.css'
 import '../theme/components/widgets.css'
-import '../bridge-shim'
 import '../theme/webview-overrides.css'
 import '../theme/kamin-bridge.css'
-import { ChatRoot } from '../roots/ChatRoot'
+import '../bridge-shim'
+import { WorkspaceShell } from './WorkspaceShell'
 import { applyInitialTheme } from '../theme/apply-theme'
 import { installHljsThemeSwapper } from '../theme/highlight-theme'
 import { notifyHostReady } from '../lib/host-ready'
@@ -22,7 +22,7 @@ export function mount(root: HTMLElement): void {
   installHljsThemeSwapper()
   installExternalLinkHandler()
   installCommandApi(window.kaminBridge)
-  root.style.cssText = 'display:flex;flex-direction:row;height:100vh;width:100%;overflow:hidden'
-  render(<ChatRoot />, root)
+  root.style.cssText = 'display:flex;height:100%;width:100%;overflow:hidden'
+  render(<WorkspaceShell />, root)
   notifyHostReady()
 }

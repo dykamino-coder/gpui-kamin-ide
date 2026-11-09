@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { check, CheckFailure } from './report.mjs'
 import { poll } from './resources.mjs'
-import { raw, ready, newTab, turn, transcript, complete, used, heap, requirePanel } from './browser.mjs'
+import { raw, ready, newTab, turn, transcript, complete, used, heap } from './browser.mjs'
 
 const nonce = () => `acceptance-${randomUUID()}`
 const finish = n => `When finished reply with exactly ${n}:ok.`
@@ -60,13 +60,30 @@ export function liveScenarios(state) {
       const log = await raw(state.page, 'hooksGetLog', 100)
       check(log.entries.some(e => e.event === 'PostToolUse' && e.exitCode === 0), 'HOOK_LOG')
     },
-    async 'file-panel'() {
-      // Produce a fresh changed-file event in the active session before opening its viewer.
-      const n = nonce()
-      await turn(state.page, `Use Read on ${file}, then Edit to replace beta with gamma. ${finish(n)}`)
-      complete(await transcript(state.page, n))
-      check((await owned.read(file)).trim() === 'gamma', 'FILE_BYTES')
-      await requirePanel(state.page, file, 'gamma')
+    async 'workspace-shell'() {
+      const page = state.page
+      const tab = await page.evaluate(() => window.bridgeCmd.state().activeTabId)
+      const strip = page.getByRole('tablist', { name: 'Open sessions', exact: true })
+      const current = strip.locator(`[data-tab-id="${tab}"]`)
+      await current.getByRole('button', { name: 'Pin tab', exact: true }).click()
+      await poll(async () => (await raw(page, 'restoreTabsState')).some(t => t.id === tab && t.pinned), { code: 'SHELL_PIN' })
+      await page.getByRole('button', { name: 'bottom panel menu', exact: true }).click()
+      await page.getByRole('button', { name: 'Move to right', exact: true }).click()
+      await page.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+      const second = await context.newPage()
+      try {
+        await ready(second, owned.origin)
+        await second.getByRole('tablist', { name: 'right panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+        await second.getByRole('button', { name: /Type a command/ }).click()
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).fill('layout.restore')
+      await second.getByRole('combobox', { name: 'Type a command', exact: true }).press('Enter')
+        await page.getByRole('tablist', { name: 'bottom panels', exact: true }).getByRole('tab', { name: 'Bridge Console', exact: true }).waitFor()
+      } finally { await second.close() }
+      await current.getByRole('button', { name: 'Unpin tab', exact: true }).click()
+      // Await the shared terminal resize/repaint before capturing the restored dock.
+      await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 30_000 }))
+      // Private visual evidence includes the current real-agent transcript and CLI.
+      await page.screenshot({ path: state.screenshot })
     },
     async 'close-mid-turn'() {
       const page = state.page

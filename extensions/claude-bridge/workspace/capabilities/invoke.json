@@ -119,5 +119,7 @@
   {"id":"invoke:toolusage:entries","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:vscode:is-available","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:whisper:transcribe","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"invoke:write-clipboard","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}}
+  {"id":"invoke:write-clipboard","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"invoke:workspace:shell:get","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}},
+  {"id":"invoke:workspace:shell:update","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}}
 ]

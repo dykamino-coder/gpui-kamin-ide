@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
-import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
+import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler, withWorkspaceShell, createBrowserEnvironment } from '../dist/index.js'
 import './linux-browser-only.mjs'
 
-test('browser signs in, mounts the current ChatRoot, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
+test('browser signs in, mounts current tools, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
   const files = new Map((await readdir(assets, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => {
@@ -29,6 +29,9 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
   const calls = []
   const unexpected = new Set()
   let held
+  let holdSettingsSave = false
+  let settingsSaveRead
+  const settingsSavePending = new Promise(resolve => { settingsSaveRead = resolve })
   const config = { serverUrl: 'ws://fixture.invalid', token: '[workspace credential]', cwd: '/workspace' }
   const replies = new Map([
     ['get-version', 'fixture'], ['get-config', config],
@@ -41,15 +44,22 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
     ['bridge:server-fetch', { ok: false, status: 404, data: null }],
     ['notifications:get', {}], ['terminal:get-prefs', {}],
   ])
+  const effects = createBrowserEnvironment({ root: '/workspace' })
   const server = await startWorkspaceServer({
     port: 0, revalidateMs: 500,
     auth: new WorkspaceAuth('browser-fixture-token', async () => valid ? { id: 'browser-fixture' } : null),
-    backend: { attach(view) {
+    backend: effects.wrap(withWorkspaceShell({ attach(view) {
       attachments++
       return {
         async receive(frame) {
+          if (frame.kind === 'send' && frame.channel === 'show-notification') {
+            const [severity, message] = frame.args
+            void effects.environment.message(severity, message, [])
+            return
+          }
           if (frame.kind !== 'invoke') return
           calls.push(frame)
+          if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
           if (frame.channel === 'read-clipboard') { held = frame; return }
           if (frame.channel === 'logs:clear') throw new Error('Fixture disconnect')
           const known = replies.has(frame.channel)
@@ -59,7 +69,7 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
         },
         dispose() {},
       }
-    } },
+    } })),
     serveApp: await createAppAssetHandler(assets),
   })
   t.after(() => server.close())
@@ -91,10 +101,10 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await page.waitForFunction(() => !!window.bridgeCmd)
     await page.locator('#workspace-gate[hidden]').waitFor({ state: 'attached' })
-
+    await page.getByRole('button', { name: 'No folder session', exact: true }).waitFor()
   }
   await signIn()
-  await reportHeap('initial-ChatRoot')
+  await reportHeap('initial-current-roots')
   assert.equal(attachments, 1)
   // Synthetic fixture UI only; local captures must use a private destination.
   if (process.env.BRIDGE_BROWSER_SCREENSHOT) await page.screenshot({ path: process.env.BRIDGE_BROWSER_SCREENSHOT })
@@ -102,6 +112,16 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
   assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0)
   assert.equal((await page.context().cookies()).find(cookie => cookie.name.includes('workspace'))?.httpOnly, true)
 
+  // Settings are the same section router loaded by KaminIDE's customize root.
+  await page.getByRole('button', { name: 'Customize', exact: true }).click()
+  await page.locator('#sidebar-settings-item').waitFor()
+  await page.locator('#sidebar-mcp-item').waitFor()
+  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
+  // Keep the debounced settings save's config read pending across disconnect.
+  // Its failed send must be reported without an unhandled rejection or replay.
+  holdSettingsSave = true
+  await settingsSavePending
+  holdSettingsSave = false
   await page.evaluate(() => { window.__workspaceDocument = 'same-document' })
   await page.evaluate(() => window.kaminBridge.setBasePrompt('one fixture mutation'))
   await page.evaluate(() => {
@@ -125,6 +145,7 @@ test('browser signs in, mounts the current ChatRoot, rejects forged replies and 
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'set-config').length, 0)
+  await page.getByText('Settings could not be confirmed. Check the connection and try again.', { exact: true }).waitFor()
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
   await reportHeap('after-socket-reattach')
 
