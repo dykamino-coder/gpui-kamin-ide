@@ -8,6 +8,8 @@ mod geometry_key;
 mod min_content;
 mod padding;
 mod width;
+#[cfg(test)]
+mod width_tests;
 
 use crate::text::paragraph::{Line, Seg};
 use frame_cache::FrameCache;
