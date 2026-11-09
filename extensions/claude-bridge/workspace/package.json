@@ -14,6 +14,8 @@
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.runtime.json",
     "test": "npm run build && node --import tsx --test --test-timeout=30000 --test-concurrency=1 test/*.test.ts",
+    "test:capabilities": "tsx --test test/capability-matrix.test.ts",
+    "test:parity": "tsx test/capability-readiness.ts",
     "test:browser": "node --import ./test/linux-browser-only.mjs --test test/*.smoke.mjs",
     "test:acceptance": "node --test acceptance/*.test.mjs",
     "test:live": "node acceptance/container-runner.mjs --mode live",
