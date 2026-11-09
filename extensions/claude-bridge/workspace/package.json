@@ -2,19 +2,24 @@
   "name": "claude-bridge-workspace",
   "private": true,
   "type": "module",
-  "exports": "./dist/index.js",
+  "exports": { ".": "./dist/index.js", "./runtime": "./dist/runtime.cjs" },
   "engines": { "node": ">=22" },
   "description": "Browser workspace client host for the shared Kamin bridge runtime.",
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-timeout=15000 --test-concurrency=1 test/*.test.ts"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.runtime.json",
+    "test": "npm run build && node --import tsx --test --test-timeout=30000 --test-concurrency=1 test/*.test.ts"
   },
   "dependencies": {
+    "fast-glob": "^3.3.3",
+    "semver": "^7.8.5",
+    "turndown": "^7.2.4",
+    "yaml": "^2.9.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/vscode": "^1.140.0",
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
     "tsx": "^4.21.0",

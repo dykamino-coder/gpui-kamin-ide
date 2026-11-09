@@ -51,10 +51,15 @@ __export(host_compat_exports, {
   ipcMain: () => ipcMain,
   registerShimWindow: () => registerShimWindow,
   safeStorage: () => safeStorage,
-  shell: () => shell
+  shell: () => shell,
+  unregisterShimWindow: () => unregisterShimWindow
 });
 function registerShimWindow(win) {
   if (!_windows.includes(win)) _windows.push(win);
+}
+function unregisterShimWindow(win) {
+  const index = _windows.indexOf(win);
+  if (index >= 0) _windows.splice(index, 1);
 }
 var import_node_events, os, path, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
 var init_host_compat = __esm({
@@ -48910,7 +48915,7 @@ function registerMarketplaceIPC(getMainWindow) {
   ipcMain.handle("plugins:set-marketplace-autoupdate", (_event, name, autoUpdate) => {
     return setMarketplaceAutoUpdate(name, autoUpdate);
   });
-  setTimeout(() => {
+  const startupTimer = setTimeout(() => {
     refreshAllMarketplaces(getMainWindow() ?? void 0).then((sweep) => {
       for (const result of sweep.results) {
         if (!result.ok) console.warn(`[marketplaces] auto-refresh failed for "${result.name}": ${result.error ?? ""}`);
@@ -48919,6 +48924,7 @@ function registerMarketplaceIPC(getMainWindow) {
       console.warn("[marketplaces] auto-refresh failed:", err instanceof Error ? err.message : err);
     });
   }, 8e3);
+  return () => clearTimeout(startupTimer);
 }
 
 // src/main/ipc/monitors.ts
@@ -50540,6 +50546,7 @@ function exposedToolName(state, rawToolName) {
   return rawToolName;
 }
 var McpServerManager = class _McpServerManager {
+  disposed = false;
   /** @internal */
   servers = /* @__PURE__ */ new Map();
   /** @internal */
@@ -50607,6 +50614,7 @@ var McpServerManager = class _McpServerManager {
    *  + clears the attempt counter so toggling "enabled" off-then-on
    *  starts fresh. */
   scheduleReconnect(id, reason) {
+    if (this.disposed) return;
     const state = this.servers.get(id);
     if (!state) return;
     if (state.expectedDisconnect) {
@@ -50672,8 +50680,11 @@ var McpServerManager = class _McpServerManager {
   }
   /** Initialize: discover local MCP configs, then connect all enabled servers */
   async initAll() {
+    if (this.disposed) return;
     await this.saveChain;
+    if (this.disposed) return;
     await this.discoverLocalMcpConfigs();
+    if (this.disposed) return;
     try {
       const moved = migrateLegacyStore((tokens) => {
         if (!tokens.authServerUrl) return null;
@@ -50715,6 +50726,7 @@ var McpServerManager = class _McpServerManager {
   // All three sources are scanned concurrently with fs.promises to avoid
   // blocking the main process when the user has many plugins or projects.
   async discoverLocalMcpConfigs() {
+    if (this.disposed) return;
     const claudeDir = import_path33.default.join(import_os26.default.homedir(), ".claude");
     const existingNames = /* @__PURE__ */ new Set();
     for (const state of this.servers.values()) {
@@ -50776,6 +50788,7 @@ var McpServerManager = class _McpServerManager {
       discoverFromClaudeJsonAsync(claudeDir),
       discoverProjectConfigs(this.projectRoots)
     ]);
+    if (this.disposed) return;
     const discoveredNames = /* @__PURE__ */ new Set([
       ...pluginConfigs.map((c) => c.name),
       ...claudeJsonConfigs.map((c) => c.name),
@@ -51160,11 +51173,21 @@ var McpServerManager = class _McpServerManager {
       this.disconnectServer(id);
     }
   }
+  /** Final shutdown. In-flight discovery/connection completion must not respawn. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.onToolsChanged = null;
+    if (this.notifyTimer) clearTimeout(this.notifyTimer);
+    this.notifyTimer = null;
+    this.disconnectAll();
+  }
   // ─── Private ────────────────────────────────────────
   /** Дедуп параллельных подключений: второй await того же сервера получает
    *  УЖЕ ИДУЩИЙ промис (иначе гонка ленивых callTool: первый ставит
    *  'connecting', второй не находит сервер и теряет тул-колл). */
   connectServer(id) {
+    if (this.disposed) return Promise.resolve();
     const inFlight = this.connectInFlight.get(id);
     if (inFlight) return inFlight;
     const p = this.doConnectServer(id).finally(() => {
@@ -51203,24 +51226,36 @@ var McpServerManager = class _McpServerManager {
       } else {
         await connectStdio(c, id);
       }
+      if (this.disposed) {
+        this.disconnectServer(id);
+        return;
+      }
       state.status = "connected";
       state.connectedAt = Date.now();
       try {
         const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
+        if (this.disposed) return;
         emitBridgeHookEvent2("ConnectorStatusChanged", { name: state.config.name, status: "connected" });
       } catch {
       }
       await this.fetchExtraCapabilities(id).catch((err) => {
+        if (this.disposed) return;
         const m = err instanceof Error ? err.message : String(err);
         console.warn(`[MCP] Failed to fetch resources/prompts for "${state.config.name}":`, m);
         this.appendLog(id, "warn", `[connect] resources/prompts fetch failed: ${m}`);
       });
+      if (this.disposed) return;
       this.appendLog(id, "info", `[connect] done \u2014 ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`);
       console.log(`[MCP] Connected to "${state.config.name}" \u2014 ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`);
     } catch (err) {
+      if (this.disposed) {
+        this.disconnectServer(id);
+        return;
+      }
       state.status = "error";
       try {
         const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
+        if (this.disposed) return;
         emitBridgeHookEvent2("ConnectorStatusChanged", { name: state.config.name, status: "error", error: err instanceof Error ? err.message : String(err) });
       } catch {
       }
@@ -51446,7 +51481,7 @@ var McpServerManager = class _McpServerManager {
     if (dirty) saveToolSchemaCache(this.lazySchemaCache);
   }
   notifyChanged() {
-    if (this.window.isDestroyed()) return;
+    if (this.disposed || this.window.isDestroyed()) return;
     if (this.notifyTimer) return;
     const wait = Math.max(0, _McpServerManager.NOTIFY_MIN_INTERVAL_MS - (Date.now() - this.notifyLastAt));
     this.notifyTimer = setTimeout(() => {
@@ -51947,6 +51982,9 @@ var BridgeHost = class {
   deferredReplies = new DeferredReplies();
   onResyncNeeded;
   disposed = false;
+  startupTimers = /* @__PURE__ */ new Set();
+  releaseMcpReady;
+  cancelMarketplaceStartup;
   sink;
   event;
   tabManager;
@@ -52047,15 +52085,23 @@ var BridgeHost = class {
     const mcpReady = new Promise((r) => {
       resolveReady = r;
     });
+    this.releaseMcpReady = resolveReady;
+    const scheduleStartup = (run, delay) => {
+      const timer = setTimeout(() => {
+        this.startupTimers.delete(timer);
+        if (!this.disposed) run();
+      }, delay);
+      this.startupTimers.add(timer);
+    };
     const kickMcp = (delay) => {
-      if (mcpKicked) return;
+      if (mcpKicked || this.disposed) return;
       mcpKicked = true;
       if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === "1") {
         mcpSettled = true;
         resolveReady();
         return;
       }
-      setTimeout(() => {
+      scheduleStartup(() => {
         this.mcpManager.initAll().catch(() => {
         }).finally(() => {
           mcpSettled = true;
@@ -52063,7 +52109,7 @@ var BridgeHost = class {
         });
       }, delay);
     };
-    setTimeout(() => kickMcp(0), MCP_FALLBACK_MS);
+    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS);
     ConnectionManager.whenExternalToolsReady = () => {
       if (mcpSettled || !mcpKicked) return Promise.resolve();
       return new Promise((resolve) => {
@@ -52088,6 +52134,7 @@ var BridgeHost = class {
     setMonitorsWindow(this.sink);
     registerMonitorsIPC();
     const startTabMonitors = (tab) => {
+      if (this.disposed) return;
       void startMonitorsForTab(tab.id, tab.config.cwd, (pluginId, monitorName, line) => {
         if (tab.connection.getExtendedState().status !== "authenticated") return;
         tab.connection.submitText([
@@ -52108,11 +52155,15 @@ var BridgeHost = class {
       void pluginLspManager.stopTab(tab.id);
     };
     const reloadPluginRuntime = async () => {
+      if (this.disposed) return;
       resetSyncTimers();
       const cfg = this.configStore.get();
       if (cfg?.serverUrl && cfg?.token) await syncUserData(cfg.serverUrl, cfg.token);
+      if (this.disposed) return;
       await this.mcpManager.initAll();
+      if (this.disposed) return;
       await pluginLspManager.restart();
+      if (this.disposed) return;
       for (const tab of this.tabManager.listTabs()) {
         stopMonitorsForTab(tab.id);
         const live = this.tabManager.getConnection(tab.id);
@@ -52123,7 +52174,7 @@ var BridgeHost = class {
       }
     };
     registerPluginsIPC({ reloadPluginRuntime });
-    registerMarketplaceIPC(() => this.sink);
+    this.cancelMarketplaceStartup = registerMarketplaceIPC(() => this.sink);
     installConsoleCapture();
     registerLogsIPC(() => this.sink);
     registerSyncIPC({
@@ -52147,6 +52198,7 @@ var BridgeHost = class {
     ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt();
     const prevOnAuth = ConnectionManager.onAuthenticated;
     ConnectionManager.onAuthenticated = (connection) => {
+      if (this.disposed) return;
       prevOnAuth?.(connection);
       for (const info of this.tabManager.listTabs()) {
         if (this.tabManager.getConnection(info.id) !== connection) continue;
@@ -52188,6 +52240,7 @@ var BridgeHost = class {
    *  message listener; events broadcast to all, invoke replies target the
    *  originating webview. */
   attach(webview, role = "chat") {
+    if (this.disposed) throw new Error("Bridge host is disposed");
     this.webviews.add(webview);
     this.invokeDiagnostics.attach(webview);
     this.webviewRoles.set(webview, role);
@@ -52242,9 +52295,17 @@ var BridgeHost = class {
     return this.mcpManager;
   }
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
+    for (const timer of this.startupTimers) clearTimeout(timer);
+    this.startupTimers.clear();
+    this.cancelMarketplaceStartup?.();
+    this.releaseMcpReady?.();
+    this.mcpManager.dispose();
+    for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id);
     this.tabManager.disconnectAll();
     void pluginLspManager.restart();
+    unregisterShimWindow(this.sink);
     for (const view of this.webviews) this.invokeDiagnostics.detach(view);
     this.webviews.clear();
   }

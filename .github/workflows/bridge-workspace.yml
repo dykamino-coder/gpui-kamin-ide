@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - extensions/claude-bridge/extension/**
       - .github/workflows/bridge-workspace.yml
   push:
     branches: [main]
     paths:
       - extensions/claude-bridge/workspace/**
+      - extensions/claude-bridge/extension/**
       - .github/workflows/bridge-workspace.yml
   workflow_dispatch:
 
@@ -22,7 +24,7 @@ concurrency:
 
 jobs:
   transport:
-    name: Bridge workspace transport
+    name: Bridge workspace runtime
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -39,8 +41,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/claude-bridge/workspace/package-lock.json
+          cache-dependency-path: |
+            extensions/claude-bridge/workspace/package-lock.json
+            extensions/claude-bridge/extension/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: extensions/claude-bridge/extension
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
