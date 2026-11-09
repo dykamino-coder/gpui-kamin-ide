@@ -6,7 +6,7 @@ import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../.
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import { JsonlBatcher } from './jsonl-batcher'
-import { backgroundShellSnapshot, stopBackgroundShellForOwner } from '../mcp/tools/shell'
+import { backgroundShellSnapshot, disposeBackgroundShells, stopBackgroundShellForOwner } from '../mcp/tools/shell'
 import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { ClientCommands } from './client-commands'
@@ -113,6 +113,7 @@ const CONNECTION_AUTHORITY_GENERATION =
 let lastConnectionAuthoritySequence = 0
 
 export class ConnectionManager {
+  private disposed = false
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree: unknown[] | null = null
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -375,6 +376,7 @@ export class ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect(): void {
+    if (this.disposed) return
     if (this.ws) this.disconnect()
 
     this.intentionalDisconnect = false
@@ -822,6 +824,7 @@ export class ConnectionManager {
    * process instead of killing + respawning on the same JSONL.
    */
   disconnect(opts: { endSession?: boolean } = {}): void {
+    const terminal = opts.endSession || this.disposed
     this.intentionalDisconnect = true
     this.cancelReconnect()
     this.stopHeartbeat()
@@ -860,13 +863,13 @@ export class ConnectionManager {
     // close / free-from-memory) — a transient disconnect keeps it so the reopened
     // socket keeps appending. Without this, its file descriptor leaked for every
     // opened-then-closed tab over a long app session.
-    if (opts.endSession) void this.mirror?.close()
+    if (terminal) void this.mirror?.close()
     // Висящий idle-debounce умирает вместе с сессией: иначе тост «Session
     // finished» стрелял для уже закрытого таба (аудит #70 C14).
-    if (opts.endSession) this.idleTracker.dispose()
+    if (terminal) this.idleTracker.dispose()
 
     this.mcpResults.detach()
-    if (opts.endSession) {
+    if (terminal) {
       this.mcpResults.dispose()
       this.mcpSessionId = null
       this.recentMcpCalls.clear()
@@ -891,6 +894,14 @@ export class ConnectionManager {
     // (endSession).
     if (opts.endSession) this.reconnectAttempt = 0
     this.setState({ status: 'disconnected' })
+  }
+
+  /** Final host teardown: cancel local work without ending the server's CLI. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.disconnect()
+    disposeBackgroundShells(this.tabId)
   }
 
   /** Returns current connection state. Maps ExtendedConnectionState to
@@ -1335,6 +1346,7 @@ export class ConnectionManager {
   }
 
   private dispatchMessage(msg: ServerMessage): void {
+    if (this.disposed) return
     if (msg.type === 'session:resume-not-found' || (msg.type === 'session:created' && msg.resumeNotFound)) {
       // Old servers ignored the opt-in and already spawned: end the temporary
       // CLI before exposing any authenticated state, output, or identity.

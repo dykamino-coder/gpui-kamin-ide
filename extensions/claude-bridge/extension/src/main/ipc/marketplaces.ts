@@ -11,7 +11,7 @@ import {
 
 /** Get main window reference lazily — caller passes a getter because
  *  mainWindow may be recreated (e.g. after macOS dock re-open). */
-export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null): void {
+export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null): () => void {
   ipcMain.handle('plugins:list-marketplaces', () => {
     try { return listMarketplaces() } catch { return [] }
   })
@@ -58,7 +58,7 @@ export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null
   // Kick off auto-refresh once per app launch, in the background. Delay a
   // bit so the window is up and the user isn't competing with a burst of
   // git requests at cold start. Matches CLI's at-session-start behaviour.
-  setTimeout(() => {
+  const startupTimer = setTimeout(() => {
     refreshAllMarketplaces(getMainWindow() ?? undefined).then(sweep => {
       // Обычный отказ `git pull` — разрешённое обещание, до внешнего `catch`
       // он не доходил. Стойкий след теперь остаётся и для фонового прогона.
@@ -69,4 +69,5 @@ export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null
       console.warn('[marketplaces] auto-refresh failed:', err instanceof Error ? err.message : err)
     })
   }, 8_000)
+  return () => clearTimeout(startupTimer)
 }

@@ -71,6 +71,8 @@ export interface McpServerState {
 
 /** Surface of the manager that transports need to call back into. */
 export interface TransportContext {
+  /** Aborted only on final manager disposal, never on a transient reconnect. */
+  shutdownSignal?: AbortSignal
   window: BrowserWindow
   servers: Map<string, McpServerState>
   appendLog(id: string, level: McpTestLogEntry['level'], msg: string): void
