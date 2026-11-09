@@ -8,7 +8,7 @@ import { viteSingleFile } from "vite-plugin-singlefile"
 export default defineConfig(({ mode }) => ({
   // Browser startup must install its private transport before renderer modules
   // execute. Inlining dynamic imports would eagerly evaluate those modules.
-  plugins: mode === 'browser' ? [preact()] : [preact(), viteSingleFile()],
+  plugins: mode === 'browser' ? [preact({ reactAliasesEnabled: false })] : [preact(), viteSingleFile()],
   resolve: {
     alias: {
       // Persisted KV for the webview UI (replaces the renderer's localStorage,

@@ -2,6 +2,7 @@ import { installBrowserApi } from '../lib/webview-api'
 import { createBrowserSocket, type ConnectionState } from './browser-socket'
 import './browser.css'
 import { installBrowserEffects } from './browser-effects'
+import { installPreviewPanel } from './preview-panel'
 
 // Authentication precedes importing the shared renderer: module initialization
 // reads the API and starts version requests. No token enters renderer state.
@@ -16,6 +17,7 @@ let transport: ReturnType<typeof createBrowserSocket> | undefined
 let mounting = false
 let mounted = false
 let renderer: typeof import('./browser-renderer') | undefined
+let disposePreview: (() => void) | undefined
 
 function mountWhenReady(): void {
   if (!online || !renderer) return
@@ -95,6 +97,7 @@ function start(): void {
   } })
   installBrowserApi(transport)
   installBrowserEffects(transport)
+  disposePreview = installPreviewPanel()
   transport.connect()
 }
 
@@ -129,7 +132,7 @@ logout.addEventListener('click', () => {
     locked('Sign-out failed. Reload to try again.')
   })
 })
-window.addEventListener('pagehide', () => transport?.dispose())
+window.addEventListener('pagehide', () => { disposePreview?.(); transport?.dispose() })
 locked('Checking workspace session…')
 void session().then(valid => {
   if (valid) start()

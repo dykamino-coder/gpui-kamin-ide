@@ -1,4 +1,7 @@
 [
+  {"id":"handler:previewMount","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"sources":{"extension/src/main/mcp/tools/preview.ts":1}},
+  {"id":"handler:previewUpdate","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"sources":{"extension/src/main/mcp/tools/preview.ts":1}},
+  {"id":"handler:previewUnmount","status":"supported-in-browser-host","provider":"preview","requires":["preview-hmr"],"sources":{"extension/src/main/mcp/tools/preview.ts":1}},
   {"id":"handler:agentSpawn","status":"explicitly-not-applicable-with-reason","reason":"CLI native tool, deliberately not advertised as a client MCP tool; execution stays in the server container.","evidence":"server/src/core/pty/mcp-tools-defs.ts","sources":{"extension/src/main/mcp/tools/agent-tools.ts":1}},
   {"id":"handler:askUserQuestion","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/ui-tools.ts":1}},
   {"id":"handler:bashExecute","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/shell.ts":1}},
