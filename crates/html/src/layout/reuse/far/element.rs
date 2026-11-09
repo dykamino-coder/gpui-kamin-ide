@@ -30,10 +30,7 @@ impl Wrap for FarRecorder {
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let start = window.layout_request_position();
-        let compacts = self.pending.compacts.clone();
-        let id = super::super::compact::with(compacts, window, |window| {
-            self.child.request_layout(window, cx)
-        });
+        let id = self.child.request_layout(window, cx);
         self.pending
             .layout
             .replace(window.capture_layout(start, id));
@@ -81,7 +78,8 @@ impl Wrap for FarRecorder {
         let excess: Excess = ink_beyond(boxes, ink);
         if clear_of(boxes, excess, screen_of(window)) {
             self.pending.excess.set(Some(excess));
-            self.pending.compacts.compact_all();
+            // Kept for the next pass, the leaves' measures shrink to what a
+            // new measure reads (`gpui::CompactMeasure`).
             window.keep_retained_measures(&layout);
         }
     }

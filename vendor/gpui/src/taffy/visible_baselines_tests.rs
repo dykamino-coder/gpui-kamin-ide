@@ -12,9 +12,9 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
     tree.disable_rounding();
     let context = NodeContext {
         static_positions: Vec::new(),
-        measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| {
+        measure: Rc::new(RefCell::new(node_measure(|_, _, _, _, _| {
             unreachable!("native fixture supplies its own measurement callback")
-        })))),
+        }))),
         layout_lines: Some(vec![px(5.0), px(15.0), px(25.0)]),
         layout_lines_x: None,
         layout_lines_x_from_right: false,
@@ -70,9 +70,9 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
             },
             NodeContext {
                 static_positions: Vec::new(),
-                measure: Rc::new(RefCell::new(node_measure(Box::new(
+                measure: Rc::new(RefCell::new(node_measure(
                     |_, _, _, _, _| unreachable!(),
-                )))),
+                ))),
                 layout_lines: Some(vec![px(22.0)]),
                 layout_lines_x: None,
                 layout_lines_x_from_right: false,
@@ -128,9 +128,9 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
 fn copied_line_metadata_is_independent_while_callbacks_are_shared() {
     let original = NodeContext {
         static_positions: Vec::new(),
-        measure: Rc::new(RefCell::new(node_measure(Box::new(
+        measure: Rc::new(RefCell::new(node_measure(
             |_, _, _, _, _| unreachable!(),
-        )))),
+        ))),
         layout_lines: Some(vec![px(5.0), px(15.0)]),
         layout_lines_x: Some(vec![px(23.0), px(11.0)]),
         layout_lines_x_from_right: false,

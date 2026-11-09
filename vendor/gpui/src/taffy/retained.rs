@@ -452,6 +452,8 @@ impl TaffyLayoutEngine {
     /// a fresh request of the same subtree, and the pass does not go stale.
     /// The host vouches that the functions read nothing that changes between
     /// the passes; it keeps them pass by pass, as long as it claims them.
+    /// A kept function that has a smaller form (Measure::compacted) is
+    /// replaced by it.
     pub fn keep_measures(&mut self, nodes: &[NodeId]) {
         if !self.frame_tree {
             return;
@@ -462,6 +464,11 @@ impl TaffyLayoutEngine {
                 && let Some(context) = self.taffy.get_node_context_mut(node)
             {
                 context.keep_measure = true;
+                // The kept function gives way to its compacted form, if any.
+                let compacted = context.measure.borrow_mut().compacted();
+                if let Some(measure) = compacted {
+                    *context.measure.borrow_mut() = super::boxed_measure(measure);
+                }
             }
         }
     }
@@ -495,11 +502,11 @@ impl TaffyLayoutEngine {
 fn retired_measure(
     stale: Rc<std::cell::Cell<bool>>,
 ) -> std::rc::Rc<std::cell::RefCell<NodeMeasureFn>> {
-    std::rc::Rc::new(std::cell::RefCell::new(node_measure(Box::new(
+    std::rc::Rc::new(std::cell::RefCell::new(node_measure(
         move |_, _, _, _: &mut crate::Window, _: &mut crate::App| {
             stale.set(true);
             let none = crate::size(crate::Pixels(0.), crate::Pixels(0.));
             crate::MeasuredContent::from((none, None, None, None))
         },
-    ))))
+    )))
 }

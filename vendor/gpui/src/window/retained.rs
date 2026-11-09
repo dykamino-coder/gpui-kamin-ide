@@ -383,7 +383,8 @@ impl Window {
     /// claimed in this pass) for the next pass: claimed whole there, the
     /// subtree is laid out at new constraints by those functions instead of
     /// going stale. The caller vouches that they read nothing else that
-    /// changes between the passes, and keeps them pass by pass.
+    /// changes between the passes, and keeps them pass by pass. A host measure
+    /// with a smaller form (CompactMeasure) is replaced by it.
     pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree) {
         if let Some(engine) = self.layout_engine.as_mut() {
             engine.keep_measures(&layout.nodes);

@@ -76,8 +76,6 @@ pub(super) struct PendingFar {
     /// boxes and of its hitboxes, if any.
     placed: Cell<Option<(Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>)>>,
     sink: Rc<InkSink>,
-    /// Leaf states its build offered to shrink once the block is far.
-    compacts: Rc<super::compact::Compacts>,
     /// Set when the block painted far from the screen.
     excess: Cell<Option<Excess>>,
 }
@@ -97,7 +95,6 @@ impl PendingFar {
             layout: RefCell::new(None),
             placed: Cell::new(None),
             sink: Rc::default(),
-            compacts: Rc::default(),
             excess: Cell::new(None),
         }
     }

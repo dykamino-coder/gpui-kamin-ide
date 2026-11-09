@@ -13,7 +13,7 @@ fn clipped_right_origin_lines_include_final_width_insets_and_scrollbar_gutter() 
         tree.disable_rounding();
         let context = NodeContext {
             static_positions: Vec::new(),
-            measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| unreachable!())))),
+            measure: Rc::new(RefCell::new(node_measure(|_, _, _, _, _| unreachable!()))),
             layout_lines: None,
             layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)]),
             layout_lines_x_from_right: true,
