@@ -8,11 +8,12 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { createBrowserEnvironment, WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
+import './linux-browser-only.mjs'
 
 test('production browser uploads actual bytes, downloads exports and mediates clipboard', { timeout: 60_000 }, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridgeweb-browser-effects-'))
   t.after(async () => {
-    assert.equal(path.dirname(root), await fs.realpath(os.tmpdir()))
+    assert.equal(await fs.realpath(path.dirname(root)), await fs.realpath(os.tmpdir()))
     assert.ok(path.basename(root).startsWith('bridgeweb-browser-effects-'))
     await fs.rm(root, { recursive: true, force: true })
   })

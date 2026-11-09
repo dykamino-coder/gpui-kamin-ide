@@ -122,17 +122,20 @@ expired session returns to sign-in; protocol/overload closes require reload.
 The browser smoke uses production assets, the real HTTP/WS boundary, headless
 Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
 fail; this is startup/transport/UI composition evidence, not shared-handler,
-model or Podman parity. Run after building both packages:
+model or live-server parity. Browser processes must run in Linux; Windows host
+runs are rejected, including headless browsers. Run once in an isolated Podman
+container (repository mounted read-only; source copied to container storage):
 
 ```sh
-# In workspace; choose a private browser cache on a shared developer machine.
-export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
-export PLAYWRIGHT_SKIP_BROWSER_GC=1
-npx playwright install chromium --only-shell
-npm run test:browser
+npm run test:browser:container
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI. File/PTY and
+The runner uses the official Playwright Linux image matching the lockfile,
+installs locked dependencies, builds both packages and runs the suite once.
+It copies logs/screenshots to a private temporary directory (or
+`BRIDGE_BROWSER_OUTPUT`) and removes only its exact `bridgeweb-acc-browser-*`
+container. Linux CI runs the same suite headlessly and captures only synthetic
+fixture UI. File/PTY and
 audio adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer } from '../dist/index.js'
+import './linux-browser-only.mjs'
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
