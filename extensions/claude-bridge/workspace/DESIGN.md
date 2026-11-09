@@ -4,13 +4,20 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Status: implementation in progress; the README records the tested increment.
 Source and rules baseline: `9f2db23aa2ce26246d7aee68b80ce68bec97f7f6`.
 
-Implementation sequencing note: merged PR #639 provides the authenticated
-HTTP/WebSocket boundary library. The next increment composes the real shared
-BridgeHost. An explicit
-build-time VS Code adapter and shared host lifecycle cleanup make the client
-testable without launching KaminIDE. Browser services and UI follow separately.
+Implementation sequencing note: merged PRs #639, #640 and #641 provide the
+authenticated HTTP/WebSocket boundary, shared BridgeHost composition and browser
+entry. An explicit build-time VS Code adapter makes the client testable without
+launching KaminIDE. Browser services and host-owned presentation state follow.
 These are bounded increments of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
+
+The application-asset increment supplies `createAppAssetHandler`, used by the
+production-bundle browser smoke and later executable composition. It loads only
+the dedicated browser build's entry and supported assets, validates links and
+size/depth limits before listen, and snapshots bytes for the life of the process.
+Application HTTP routes never interpret project paths. This restriction applies
+to public application assets, not the container-wide agent filesystem described
+below. Shared runtime/file adapters remain separate increments awaiting lead merge.
 
 ## Problem and completion contract
 
@@ -20,6 +27,15 @@ a client. Add `extensions/claude-bridge/workspace`, a Node client whose local
 machine is a Linux container with persistent `/workspace`. Serve the existing
 webview components to an ordinary browser, preserving the Kamin bridge API and
 server protocol.
+
+Owner requirement, 2026-11-09 (verbatim): «важно что бы страница в браузере
+тонкой была и если ее закрыть и открыть работа с агентом не прервется».
+The browser is only a view. All authoritative state and execution belong to the
+container host, including sessions, connections, transcript, streaming turns,
+tool status, permission prompts, queued messages, files/watches and terminal
+scrollback. A page can disappear with zero attached browsers while work proceeds.
+Reopening attaches to the same running workspace and renders its current state.
+The existing browser entry alone does not yet satisfy this contract.
 
 Completion means reviewed Change PRs with green applicable CI, an exhaustive
 capability gate, and real headless browser acceptance in Podman. The Claude lead
@@ -74,11 +90,25 @@ generation protects document identity. Replies return only to their requester,
 while workspace events reach subscribed views. Bound payload sizes, reject
 malformed frames, and return errors for unknown invokes instead of null success.
 
-Mount the UI after the socket opens, without queuing commands. On disconnect,
-reject pending calls, preserve the shared host and server sessions, reconnect
-with backoff and resynchronize tabs/history. Browser reload is a new document,
-not permission to replay writes or submissions. Persist only UI state in browser
-storage; credentials and host runtime state belong to the host.
+Mount the existing UI after authentication and host snapshot synchronization.
+Keep only disposable render state and transport bookkeeping in the page. Move
+authoritative reducers, queues, prompt state and heavy processing to the host,
+reusing the existing logic rather than introducing a second UI. Measure the
+production bundle and page JS heap in acceptance and report both in the PR.
+
+On socket loss, detach delivery only and reconnect with backoff. A new document
+or second tab attaches to the same host state. Synchronization delivers a coherent
+snapshot of transcript, active turn/tool state, pending prompts, open files and
+watches, and terminal scrollback, followed by ordered live updates. A host revision
+and event cursor must close the snapshot/live race without gaps or duplicates.
+The host owns logical view state independently of a socket or document generation.
+
+Browser reload is never permission to replay a mutation. Use stable operation IDs,
+host acknowledgements and deduplicated outcomes to resolve lost replies without
+executing a submission twice. Host-owned queued messages survive detachment;
+accepted user messages must neither disappear nor be submitted twice. The merged
+transport currently rejects lost invokes as unknown outcomes and never replays
+them; that is a useful boundary but is not the completed delivery contract.
 
 Browser adaptations must preserve useful behavior: upload bytes for attachments,
 download files for save/export, Clipboard API for text, browser audio capture for
@@ -130,15 +160,24 @@ write access without changing arbitrary host directories. Do not mount host
 home, Podman socket or unrelated worktrees.
 
 One process owns one client runtime. Multiple browser tabs view that runtime,
-not separate client identities. Disconnecting a browser releases its watchers
-and subscriptions without destroying a live conversation. Shutdown disposes
-watchers, PTYs, MCP/LSP/monitor children, timers and client connections; combined
+not separate client identities. Closing/reloading a page, socket loss, network
+failure, logout or opening another tab releases only delivery subscriptions.
+It must never call disconnectAll, abort work, clear host view state or dispose
+file watches and PTYs. Those resources belong to host-side logical views and
+remain active with zero browsers attached. Re-attach refreshes file/tree snapshots
+and restores their subscriptions before live updates continue.
+
+Explicit End session/Disconnect and host shutdown are the terminal boundaries.
+An explicit Disconnect must dispose the affected local connections and abort
+their work before removing them from tracking. Automatic transport reconnects
+retain resumable work. Shutdown disposes watchers, PTYs, MCP/LSP/monitor children,
+timers and client connections; combined
 mode forwards signals to both owned processes and reaps them. Persisted sessions
 can be resumed after restart; do not automatically repeat a pending command.
 Final client disposal aborts in-flight local tool controllers and owned shell
 processes, and aborts the MCP manager's HTTP/SSE requests before tearing down
 transports. It detaches from the server without ending its CLI sessions. This
-terminal path is distinct from transient desktop disconnect/reconnect, which
+terminal path is distinct from transient upstream disconnect/reconnect, which
 continues to retain in-flight work for acknowledged result delivery.
 
 ## Packaging and bounded changes
@@ -187,11 +226,11 @@ the lead; the executable must compose all three pieces before deployment.
 
 | Inventory group | Intended implementation | Required proof |
 | --- | --- | --- |
-| Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and WS pipeline | Create/resume/switch/close; queued text once; permission decision; reconnect/replay |
+| Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and host state/event pipeline | Create/resume/switch/close; host queue once; pending permission after reopen; complete turn snapshot; two tabs |
 | JSONL, streaming, subagents, tree, usage, commands | Shared connection dispatch/event sink | Routed events, pagination/segments, correct tab, export/download |
 | Config, layout, notifications, theme, logs, sync, base prompt | Shared config/sync handlers with browser environment | Durable settings, restore, notifications/logs and scoped sync |
-| Files, editor selection, path chooser, watches | Container environment services and existing file panel | Real read/binary/write/rename/list/watch; edit context attached to chat |
-| Interactive PTY and shell listing | Container PTY service | Input/output, resize, exit/kill, lifecycle ownership |
+| Files, editor selection, path chooser, watches | Host-owned container services and existing file panel | Real read/binary/write/rename/list/watch; edit context; watches and refreshed snapshots after re-attach; no mutation replay |
+| Interactive PTY and shell listing | Host-owned container PTY service and scrollback | Input/output, resize, exit/kill; zero-browser lifetime; scrollback after re-attach |
 | Read, Write, Edit, Glob, Grep, NotebookEdit | Exact shared toolRegistry handlers | Filesystem mutations/search/errors against temporary workspace |
 | Bash, PowerShell, BashOutput, KillShell | Exact shared shell handlers; image supplies required executables | Cwd/env, stdout/stderr, background output, cancellation |
 | WebFetch, EnterWorktree, ExitWorktree | Exact shared handlers | Local HTTP/Git fixtures; owned disposable repository only |
@@ -218,8 +257,9 @@ The independent browser entry reuses `App` and the same shim/channel tables.
 The browser build uses deferred HTTP assets instead of the desktop single-file
 format, because inlining dynamic imports evaluates renderer initializers before
 authentication and transport installation. This is a packaging difference, not a
-second UI or a fork of handlers. UI state is document-local; host settings remain
-persistent. Mount occurs after socket open, so no startup command queue is needed.
+second UI or a fork of handlers. This merged increment still has document-local
+UI state; migrating authoritative state to the host remains required. Mount
+currently occurs after socket open, so there is no startup command queue.
 Lost invokes reject as unknown outcomes; commands are never buffered or replayed.
 Reconnect requests the existing UI read/session resync. Private socket delivery
 does not register the native window-message receive path in browser mode.
@@ -246,6 +286,27 @@ manifest. Never record credentials. Two layers are required:
   attach selection, then reload/reconnect/resume. Assert observable file bytes
   and UI state, rather than relying only on model prose. Recreate owned
   containers with the same volumes and prove files/settings/auth survive.
+
+Both layers must also exercise the thin-page lifecycle contract:
+
+- Start a long streaming turn with a running Bash and external MCP call; close
+  the page mid-turn, wait with zero browsers, then reopen. Assert the work
+  continued or completed, transcript/tool state are complete, and message IDs
+  and transcript entries contain no duplicates or omissions.
+- Leave a permission prompt pending, close and reopen, then answer it once and
+  verify the original operation proceeds. A second simultaneously attached tab
+  receives the same prompt/result and cannot settle it twice.
+- Keep two tabs attached and detach either one without interrupting the other
+  or agent work. Restore open files, live tree/editor watches and terminal
+  scrollback after re-attach; external changes remain observable. No write,
+  terminal input, permission answer or user submission is replayed.
+- Separately send explicit Disconnect while Bash and external MCP are in flight,
+  then shut down. Verify cancellation, owned process termination and natural
+  host exit. Also verify shutdown alone with no browser attached.
+- Report production JS bundle sizes (raw and compressed) and headless Chromium
+  JS heap for initial view, a long turn, zero-browser continuation and re-attach.
+  Compare repeated detach/attach runs for retained page resources. All sessions,
+  queues and execution must remain host-owned regardless of these measurements.
 
 Local fixture MCP/LSP/hook/monitor processes exercise the executable plugin
 boundary without requiring a private marketplace. A mock model or protocol peer

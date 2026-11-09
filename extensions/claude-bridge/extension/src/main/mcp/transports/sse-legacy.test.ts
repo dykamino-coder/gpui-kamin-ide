@@ -49,3 +49,19 @@ it('cleans the reply timer when an SSE POST fails before a stream reply', async 
     .rejects.toThrow('SSE POST 503')
   expect(pendingRequests.size).toBe(0)
 })
+
+it('cancels a reply after POST 202 without cancelling another call on the stream', async () => {
+  const { pendingRequests, context } = fixture()
+  const owner = new AbortController()
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 202 })))
+  const cancelled = sseJsonRpcRequest({ ...context, shutdownSignal: owner.signal }, 'fixture', { id: 1, method: 'tools/call' })
+  const rejected = expect(cancelled).rejects.toThrow('MCP request cancelled')
+  const other = sseJsonRpcRequest(context, 'fixture', { id: 2, method: 'tools/call' })
+  await vi.waitFor(() => expect(pendingRequests.size).toBe(2))
+  owner.abort()
+  await rejected
+  expect(pendingRequests.has(1)).toBe(false)
+  pendingRequests.get(2)!.resolve('other result')
+  await expect(other).resolves.toBe('other result')
+  expect(pendingRequests.size).toBe(0)
+})
