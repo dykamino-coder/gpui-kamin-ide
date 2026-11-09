@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import { vscodeApi } from './webview-api'
 
 const mocked = vi.hoisted(() => ({
@@ -17,11 +17,11 @@ vi.mock('../signals/queue', () => ({ enqueueLocal: mocked.enqueueLocal }))
 
 const { sendMessageToTab } = await import('./send-message')
 
-function fakeBridge(): ElectronBridge {
+function fakeBridge(): KaminBridgeApi {
   return {
     sendInput: vi.fn(),
     submitText: vi.fn(),
-  } as unknown as ElectronBridge
+  } as unknown as KaminBridgeApi
 }
 
 beforeEach(() => {

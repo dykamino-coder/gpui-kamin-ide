@@ -1,10 +1,427 @@
-/* JSONL viewer family — entry cards, tool blocks, code blocks, segment tabs.
- *
- * E3 scaffolding (Sprint 5 / Stage E3). Currently EMPTY — rules still live
- * in `theme/legacy-global.css`. Selectors that belong here:
- *   `.jsonl-entry`, `.jsonl-entry-user`, `.jsonl-entry-assistant`,
- *   `.jsonl-entry-system`, `.entry-header`, `.entry-role`, `.entry-tokens`,
- *   `.tool-burst-*`, `.asst-merge-*`,
- *   `.block-text`, `.block-text pre`, `.block-text code`, `.block-thinking`.
- *
- * 100 rules total — biggest family in legacy-global.css. */
+/* ─── JSONL Entry Cards ──────────────────────── */
+.jsonl-entry {
+  margin: 6px;
+  /* Level-1 card inside the chat panel — outer panel is 16px, with
+     6px gap, so inner ≈ 12px keeps corners concentric. */
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+.jsonl-entry-user {
+  padding: 8px 14px 10px;
+  background: var(--bg-base);
+  border-radius: var(--radius-md);
+}
+/* Shared role-line layout — colour overrides go per type below. */
+.jsonl-entry-user .entry-role,
+.jsonl-entry-system .entry-role {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-feature-settings: 'ss01';
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.jsonl-entry-user .entry-role { color: var(--accent-primary); font-weight: 600; flex-wrap: wrap; }
+.jsonl-entry-assistant .entry-role { color: var(--accent-maroon); font-weight: 600; }
+/* Shared text body — type-specific tone overrides below. */
+.jsonl-entry-user .entry-text,
+.jsonl-entry-system .entry-text {
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.jsonl-entry-user .entry-text { color: var(--text-primary); }
+.jsonl-entry-system {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--bg-mantle);
+  padding: 8px 0 10px;
+}
+.jsonl-entry-system .entry-role { color: var(--text-disabled); }
+.jsonl-entry-system .entry-text {
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+}
+.jsonl-entry-assistant {
+  background: var(--bg-sidebar);
+}
+/* Real merge container — wraps a run of consecutive assistant entries so
+   the bg + sunken shadow + rounded corners are owned by ONE element rather
+   than juggled across N siblings. Inner entries shed their own bg/shadow
+   and become transparent rows inside the fused card. */
+.asst-merge-container {
+  margin: 6px;
+  /* Level-1 card. Match other chat-panel cards (12px) instead of the
+     outer 16px panel — outer 16 + gap 6 = inner 12 by the concentric rule. */
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-sidebar);
+}
+.asst-merge-container .jsonl-entry-assistant {
+  background: transparent;
+  box-shadow: none;
+  margin: 0;
+  border-radius: 0;
+}
+/* Inside the merge container only the first row shows the "ASSISTANT"
+   label — JsonlViewer tags subsequent rows with `asst-merge-top`. Time-
+   stamp + tokens stay on every row. */
+.asst-merge-top .entry-role-label {
+  display: none;
+}
+/* Inside an expanded Tool burst the nested .jsonl-entry cards should
+   read as continuous content, not nested bubbles. Strip all border,
+   background, margin, and the ASSISTANT role chrome. The outer burst
+   card already provides the accent and padding. `width:100%` overrides
+   the assistant bubble's default `margin-right:40px` so inner tool rows
+   hug the burst's right edge. */
+.tool-burst-expanded .jsonl-entry {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Scope to nested .jsonl-entry only — the burst's own entry-header
+   stays visible so TOOL BURST label + timestamp + counts remain shown
+   in the expanded view (just like in the collapsed one). */
+.tool-burst-expanded .jsonl-entry .entry-role,
+.tool-burst-expanded .jsonl-entry .entry-tokens {
+  display: none;
+}
+.jsonl-entry-assistant .entry-header {
+  padding: 16px 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.jsonl-entry-assistant .entry-role {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--accent-green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-feature-settings: 'ss01';
+}
+/* Identity chip in every entry header: agent-color dot + name. The dot's
+   colour is set inline from the session's computed agentColor so each
+   agent reads as its own hue. */
+.entry-role-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.entry-role-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.jsonl-entry-teammate {
+  background: var(--bg-tint-primary);
+  border: 1px solid var(--bg-overlay-hover);
+  padding: 8px 12px;
+  margin-right: 40px;
+}
+.entry-model {
+  font-size: var(--fs-10); color: var(--text-disabled); font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.entry-tokens {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  margin-left: 10px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.entry-sidechain {
+  font-size: var(--fs-10); background: var(--bg-overlay); color: var(--text-primary);
+  padding: 1px 6px; border-radius: var(--radius-xs);
+}
+
+/* Content blocks */
+.block-text {
+  padding: 6px 0 12px;
+  font-size: var(--fs-md);
+  line-height: var(--lh-relaxed);
+  color: var(--text-primary);
+}
+.streaming-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: ocb-streaming-blink 1s steps(2, start) infinite;
+  border-radius: 1px;
+  font-style: normal;
+  user-select: none;
+}
+@keyframes ocb-streaming-blink {
+  to { opacity: 0; }
+}
+/* Fresh streaming tokens — each char fades in from blur to focus. Animation
+ * fill-mode forwards so the final state (opaque, sharp) sticks even when the
+ * delay window passes. delay capped at 240ms so a long tail doesn't hold
+ * tokens unrendered for too long. */
+.stream-fresh { display: inline; }
+.stream-token {
+  display: inline-block;
+  white-space: pre;
+  opacity: 0;
+  filter: blur(8px);
+  animation: ocb-token-focus 280ms ease-out forwards;
+}
+@keyframes ocb-token-focus {
+  to { opacity: 1; filter: blur(0); }
+}
+.stream-stable { display: inline; }
+.block-tool-use.streaming .tool-summary {
+  color: var(--text-muted);
+}
+.block-text p { margin: 0 0 8px 0; }
+.block-text p:last-child { margin: 0; }
+.block-text code {
+  background: var(--bg-surface);
+  padding: 2px 10px;
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-md);
+  font-family: var(--font-mono);
+  color: var(--accent-yellow);
+}
+.block-text pre {
+  background: var(--bg-mantle);
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 8px 0;
+  padding: 8px 16px 10px;
+  /* Level-2 card inside chat bubble (level-1, 12px) — concentric rule
+     gives ~8px here. */
+  border-radius: var(--radius-sm);
+  line-height: var(--lh-normal);
+}
+.block-text .hljs { background: var(--bg-mantle); }
+.block-text pre code {
+  background: none; padding: 0; font-size: var(--fs-base); color: var(--text-primary);
+}
+.block-text h1, .block-text h2, .block-text h3 {
+  color: var(--text-primary); margin: 12px 0 6px 0;
+}
+.block-text h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.block-text h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.block-text h3 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1.3;
+}
+.block-text ul, .block-text ol { padding-left: 20px; margin: 4px 0; }
+.block-text li { margin: 2px 0; }
+.block-text a { color: var(--accent-primary); text-decoration: none; }
+.block-text a:hover { text-decoration: underline; }
+.block-text blockquote {
+  border-left: 3px solid var(--bg-overlay); padding-left: 12px;
+  color: var(--text-secondary); margin: 8px 0;
+}
+
+.block-thinking {
+  margin: 4px 12px; border-left: 4px solid var(--bg-overlay);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0; overflow: hidden;
+}
+.block-thinking .thinking-toggle {
+  padding: 6px 10px; cursor: pointer; display: flex;
+  align-items: center; gap: 6px; font-size: var(--fs-sm);
+  color: var(--text-muted); background: var(--bg-sidebar);
+  transition: background 0.15s;
+}
+.block-thinking .thinking-toggle:hover { background: var(--bg-mantle); }
+.block-thinking .thinking-toggle .arrow {
+  transition: transform 0.2s; font-size: var(--fs-10);
+}
+.block-thinking.expanded .thinking-toggle .arrow { transform: rotate(90deg); }
+.block-thinking .thinking-content {
+  display: none; padding: 8px 10px; font-size: var(--fs-base);
+  font-style: italic; color: var(--text-disabled); line-height: var(--lh-base);
+  max-height: 300px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+.block-thinking.expanded .thinking-content { display: block; }
+
+.block-tool-use {
+  margin: 6px 12px; border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--bg-mantle);
+}
+.block-tool-use .tool-header {
+  padding: 7px 12px; background: transparent; display: flex;
+  align-items: center; gap: 8px; cursor: pointer;
+  font-size: var(--fs-base); transition: background 0.15s;
+}
+.block-tool-use .tool-header:hover { background: var(--bg-surface-hover); }
+.tool-icon { font-size: var(--fs-base); flex-shrink: 0; color: var(--agent-color, var(--accent-blue)); }
+/* Neutral name in the UI font — the icon carries the accent, so the header
+ * reads as app chrome, not a terminal line. Sub-agent calls still tint via
+ * --agent-color (set on the block by the agent renderer). */
+.tool-name { color: var(--agent-color, var(--text-primary)); font-weight: 600; }
+.tool-summary {
+  color: var(--text-muted); font-size: var(--fs-sm); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; flex: 1;
+  font-family: var(--font-mono);
+}
+.tool-arrow { transition: transform 0.2s; font-size: var(--fs-10); color: var(--text-muted); flex-shrink: 0; }
+.block-tool-use.expanded .tool-arrow { transform: rotate(90deg); }
+.block-tool-use .tool-body {
+  display: none; padding: 8px 12px; font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  max-height: 320px; overflow-y: auto; background: var(--bg-sidebar);
+  white-space: pre-wrap; word-break: break-all; color: var(--text-secondary);
+  border-top: 1px solid var(--bg-surface);
+}
+.block-tool-use.expanded .tool-body { display: block; }
+
+/* Grouped run of parallel tool_use blocks within one assistant message. */
+.block-tool-group {
+  margin: 6px 12px; border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-mantle);
+}
+/* Un-scoped from .block-tool-group: the entry-level tool group (ToolGroupEntry)
+   wears the assistant-bubble shell instead of that card, and both must render
+   the SAME header. */
+.tool-group-header {
+  padding: 7px 12px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: var(--fs-base); transition: background 0.15s;
+}
+.tool-group-header:hover { background: var(--bg-surface-hover); }
+.tool-group-icon { color: var(--agent-color, var(--accent-blue)); font-size: 11px; flex-shrink: 0; }
+.tool-group-title { color: var(--text-primary); font-weight: 600; flex-shrink: 0; }
+/* "· N turns" — secondary to the call count, and only rendered when the run
+   actually spans several assistant messages (see ToolGroupSummary). */
+.tool-group-turns { color: var(--text-muted); font-weight: 400; }
+.tool-group-chips { display: flex; gap: 6px; flex-wrap: nowrap; overflow: hidden; flex: 1; }
+.tool-group-chip {
+  background: var(--bg-surface); color: var(--text-secondary); white-space: nowrap;
+  padding: 1px 8px; border-radius: var(--radius-xs);
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+}
+.tool-group-x { color: var(--text-primary); font-weight: 600; }
+.tool-group-more { color: var(--text-muted); font-size: var(--fs-sm); align-self: center; flex-shrink: 0; }
+.tool-group-header .tool-arrow { flex-shrink: 0; margin-left: auto; }
+.tool-group-header[aria-expanded="true"] .tool-arrow { transform: rotate(90deg); }
+.tool-group-body { border-top: 1px solid var(--bg-surface); }
+
+/* Fallback render for an unrecognised content block (e.g. a new Anthropic type)
+ * — visible so nothing is silently dropped, but visually low-key. */
+.unknown-block {
+  margin: 6px 12px; padding: 8px 12px;
+  border: 1px dashed var(--bg-surface); border-radius: var(--radius-sm);
+  background: var(--bg-mantle); color: var(--text-muted);
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 320px; overflow: auto;
+}
+
+.block-tool-result {
+  margin: 6px 12px; border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--bg-mantle);
+}
+.block-tool-result .result-header {
+  padding: 7px 12px; background: transparent; font-size: var(--fs-base);
+  cursor: pointer; color: var(--text-muted); display: flex;
+  align-items: center; gap: 8px;
+  transition: background 0.15s;
+}
+.block-tool-result .result-header:hover { background: var(--bg-surface-hover); }
+.result-arrow { transition: transform 0.2s; font-size: var(--fs-10); flex-shrink: 0; }
+.block-tool-result.expanded .result-arrow { transform: rotate(90deg); }
+.block-tool-result .result-body {
+  display: none; padding: 8px 12px; font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  max-height: 320px; overflow-y: auto; background: var(--bg-sidebar);
+  white-space: pre-wrap; word-break: break-all; color: var(--text-secondary);
+  border-top: 1px solid var(--bg-surface);
+}
+.block-tool-result.expanded .result-body { display: block; }
+
+/* Уведомление задачи — служебная строка без карточки пользователя. */
+.task-notification { margin: 6px 12px; color: var(--text-primary); font-size: var(--fs-base); }
+.task-notification-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 0;
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.task-notification-summary { flex: 1; overflow-wrap: anywhere; }
+.task-notification-header small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.task-notification-status { border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--fs-sm); background: var(--bg-surface); }
+.task-notification-status.completed { color: var(--accent-green); }
+.task-notification-status.failed { color: var(--accent-red); }
+.task-notification-status.running { color: var(--accent-blue); }
+.task-notification-details .block-tool-result { margin: 4px 0; }
+.task-notification-details .result-body { color: var(--text-primary); word-break: normal; overflow-wrap: anywhere; }
+.task-notification-details dl { margin: 8px 0; font-size: var(--fs-sm); }
+.task-notification-details dl > div { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 12px; padding: 3px 0; }
+.task-notification-details dt { color: var(--text-secondary); }
+.task-notification-details dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Inline tool result (merged into tool_use block) — sits under the body with a
+ * soft divider; no second surface colour so the whole block reads as one card. */
+.tool-result-inline {
+  border-top: 1px solid var(--bg-surface);
+}
+.tool-result-inline .result-header {
+  padding: 6px 12px; font-size: var(--fs-sm);
+  cursor: pointer; color: var(--text-muted); display: flex;
+  align-items: center; gap: 8px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.tool-result-inline .result-header:hover { background: var(--bg-surface-hover); }
+.tool-result-inline .result-arrow { transition: transform 0.2s; font-size: var(--fs-10); flex-shrink: 0; }
+.tool-result-inline.expanded .result-arrow { transform: rotate(90deg); }
+.tool-result-inline .result-body {
+  padding: 6px 12px; font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  max-height: 320px; overflow-y: auto; background: var(--bg-sidebar);
+  white-space: pre-wrap; word-break: break-all; color: var(--text-secondary);
+  border-top: 1px solid var(--bg-surface);
+}
+
+/* ─── Viewer states ──────────────────────────── */
+.jsonl-searching {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; flex: 1; gap: var(--space-3); color: var(--text-disabled);
+}
+.jsonl-searching .spinner {
+  animation: spin 1s steps(10) infinite; font-size: var(--fs-2xl); /* ~10 fps */
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.jsonl-error {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; flex: 1; gap: var(--space-2); color: var(--accent-red);
+  font-size: var(--fs-md); text-align: center; padding: var(--space-5);
+}
+
+.tab-terminal {
+  position: absolute;
+  inset: 0;
+  padding: var(--space-1);
+  display: none;
+}
+.tab-terminal.active { display: block; }
+.tab-terminal .xterm { height: 100%; }

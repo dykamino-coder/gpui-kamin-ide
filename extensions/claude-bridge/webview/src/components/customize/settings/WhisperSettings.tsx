@@ -63,10 +63,8 @@ export function WhisperSettings({ url, model, token, onUrlChange, onModelChange,
     })
   }
 
-  // Test Mic живёт на НАТИВНОМ getUserMedia + MediaRecorder — тем же путём,
-  // что и голосовой ввод в чате. Chrome-PWA mic-мост Electron-эпохи вырезан
-  // (аудит #70 A2: mic-* каналы в KaminIDE никем не слушались). Бары уровня —
-  // WebAudio AnalyserNode вместо onMicLevels.
+  // Test Mic uses the same getUserMedia + MediaRecorder path as chat voice
+  // input, with WebAudio AnalyserNode for the level bars.
   async function handleTestMic(): Promise<void> {
     if (micStatus === 'waiting') {
       recRef.current?.stop()

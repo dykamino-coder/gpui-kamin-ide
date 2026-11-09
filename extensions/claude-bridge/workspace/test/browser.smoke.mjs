@@ -37,7 +37,7 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
     ['get-version', 'fixture'], ['get-config', config],
     ['layout:get', { filePanelVisible: true, filePanelBottomVisible: false }],
     ['skills:list', []], ['session:get-saved', []], ['tab:list', []], ['tabs:restore-state', []],
-    ['vscode:is-available', false], ['mcp:status', []], ['mic-connected', false],
+    ['vscode:is-available', false], ['mcp:status', []],
     ['get-editor-selection', null], ['bridge:server-version', null],
     ['get-machine-id', 'browser-fixture-machine'], ['hooks:list-pending-plugin-approvals', []],
     ['base-prompt:get', ''], ['base-prompt:set', true],
@@ -99,7 +99,7 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
   async function signIn() {
     await page.locator('#workspace-token').fill('browser-fixture-token')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.locator('#app-wrapper').waitFor()
+    await page.waitForFunction(() => !!window.bridgeCmd)
     await page.locator('#workspace-gate[hidden]').waitFor({ state: 'attached' })
     await page.getByRole('button', { name: 'No folder session', exact: true }).waitFor()
   }

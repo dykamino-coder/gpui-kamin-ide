@@ -94,10 +94,7 @@ export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whi
       saveConfig()
       const cwd = await bridge.getCwd()
       await bridge.createTab({ serverUrl, token, cwd: cwd || undefined })
-      // In the Electron app this navigated to the sessions view. Here each
-      // customize section is its own always-alive page — nulling
-      // activeCustomizePanel just blanked THIS page forever (the URL effect
-      // runs once). The tab is created; the user opens the chat panel.
+      // Keep this settings page open after creating the chat session.
       setTestResult({ ok: true, tokenName: 'Session created — open the Claude chat panel' })
     } catch (err) {
       setTestResult({ ok: false, error: err instanceof Error ? err.message : String(err) })

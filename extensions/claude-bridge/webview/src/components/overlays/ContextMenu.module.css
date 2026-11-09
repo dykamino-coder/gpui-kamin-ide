@@ -1,0 +1,57 @@
+.ctxMenu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-tab);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+}
+
+.ctxItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  transition: background .12s, color .12s;
+}
+
+.ctxItem > i {
+  width: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ctxItem:hover:not(:disabled) {
+  background: var(--bg-surface);
+}
+
+.ctxItem:disabled {
+  color: var(--bg-overlay);
+  cursor: default;
+}
+
+.ctxItem:disabled > i {
+  color: var(--bg-overlay);
+}
+
+.ctxDanger:hover:not(:disabled) {
+  background: var(--tint-red-medium);
+  color: var(--accent-red);
+}
+
+.ctxDanger:hover:not(:disabled) > i {
+  color: var(--accent-red);
+}
