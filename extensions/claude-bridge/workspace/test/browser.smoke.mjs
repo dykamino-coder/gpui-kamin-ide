@@ -77,7 +77,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   }
   page.setDefaultTimeout(10_000)
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', error => errors.push(error.stack))
   // Keep acceptance deterministic/offline; no remote fonts or external links.
   await page.route('**/*', route => new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort())
   await page.goto(server.origin)
