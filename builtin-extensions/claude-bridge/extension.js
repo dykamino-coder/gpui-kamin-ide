@@ -37434,7 +37434,9 @@ function setSessionActivateHandler(fn) {
   handler = fn;
 }
 function activateSessionForTab(tabId) {
-  handler?.(tabId);
+  if (!handler) return false;
+  handler(tabId);
+  return true;
 }
 var handler;
 var init_session_activation = __esm({
@@ -37457,7 +37459,7 @@ function spawnToast(opts, forceOpts) {
     });
   } else {
     void vscode2.window.showInformationMessage(text, "Open").then((picked) => {
-      if (picked === "Open") activateSessionForTab(opts.tabId);
+      if (picked === "Open" && !activateSessionForTab(opts.tabId)) routeHandler?.({ tabId: opts.tabId });
     });
   }
 }
@@ -52196,6 +52198,11 @@ var BridgeHost = class {
     a.conn.submitText(text);
     return true;
   }
+  cmdRegenerateTitle(tabId) {
+    if (!this.tabManager.getTab(tabId)) return false;
+    this.tabManager.submitText(tabId, "/rename");
+    return true;
+  }
   cmdChangeModel(model) {
     const a = this.activeConn();
     if (!a?.conn) return false;
@@ -52422,6 +52429,11 @@ var BridgeHost = class {
     };
     wireConnectionCallbacks(this.tabManager, this.configStore);
     setToastRouteHandler((payload) => this.post({ kind: "event", channel: "toast:route", args: [payload] }));
+    ipcMain.on("bridge:regenerate-title", (_event, tabId) => {
+      if (typeof tabId !== "string" || !this.tabManager.getTab(tabId)) return;
+      if (opts?.onRegenerateTitle) opts.onRegenerateTitle(tabId);
+      else this.cmdRegenerateTitle(tabId);
+    });
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text));
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.());
   }
@@ -52809,7 +52821,7 @@ var SessionsBridge = class {
     const tm = this.host.getTabManager();
     if (!tm.getTab(tabId)) return;
     if (kaminId) void kaminide.sessions.updateSession(kaminId, { metadata: { nameSetByUser: false } });
-    tm.submitText(tabId, "/rename");
+    this.host.cmdRegenerateTitle(tabId);
   }
   /** From the native session context menu (host renderer → command). */
   regenerateTitleByKamin(kaminId) {
@@ -52953,7 +52965,10 @@ function activate(context) {
   const openTools = () => {
     void vscode9.commands.executeCommand(`${TOOLS_VIEW_IDS[0]}.focus`);
   };
-  const host = new BridgeHost(context, { onOpenChat: openChat });
+  const host = new BridgeHost(context, {
+    onOpenChat: openChat,
+    onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
+  });
   const sessionsBridge = new SessionsBridge(host, openChat);
   sessionsBridge.install();
   context.subscriptions.push({ dispose: () => {
@@ -53025,7 +53040,6 @@ function activate(context) {
   ipcMain.on("toolusage:open", (_e, name) => {
     relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool));
   });
-  ipcMain.on("bridge:regenerate-title", (_e, tabId) => sessionsBridge.regenerateTitleByTab(tabId));
 }
 function deactivate() {
 }
