@@ -4,10 +4,9 @@ import { storage } from "@bridge/storage"
 // per (tabId, filePath) so undo/redo + scroll position survive tab and
 // file switches without resetting.
 //
-// Only the path lists persist via the webview storage adapter between sessions.
-// Editor state itself (history stack, scroll, selection) is renderer-
-// only — restoring file content from disk on next session is enough,
-// undo across reloads would require a much bigger persistence model.
+// Desktop storage persists path lists. In the browser workspace the logical
+// host view also retains active files, main selection/context and view modes.
+// Documents, undo history and scroll remain renderer-only; reload reads disk.
 
 import { signal, computed, effect } from '@preact/signals'
 import type { EditorState } from '@codemirror/state'
@@ -37,6 +36,9 @@ export interface SelectionInfo {
   endLine: number
   /** Selected text (may be empty when caret only). */
   text: string
+  /** Browser host recovery offsets; clamped to current document length on reload. */
+  anchor?: number
+  head?: number
 }
 /** Latest selection per chat tab — refreshed on every CodeMirror cursor
  *  change. Used by the input-bar attach toggle so the message can carry

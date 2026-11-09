@@ -3,6 +3,7 @@ import { FILE_INVOKES, filePath, invokeFile } from './file-operations.js'
 import { FILE_SENDS } from './file-watches.js'
 import { FileViews } from './file-views.js'
 import type { ClientView, HostAttachment, WorkspaceBackend } from './protocol.js'
+import { readFilePanelState } from '../../webview/shared/file-panel-state.js'
 
 export interface WorkspaceFilesOptions {
   root?: string
@@ -38,9 +39,14 @@ export class WorkspaceFiles implements WorkspaceBackend {
           await child.receive(frame)
           if (!disposed) {
             await view.postMessage({ kind: 'event', channel: 'workspace:files-state',
-              args: [{ id: logical.id, ...logical.watches.paths() }] })
+              args: [{ id: logical.id, ...logical.watches.paths(), panel: logical.panel }] })
             await logical.watches.snapshot({ postMessage: frame => disposed ? Promise.resolve(false) : view.postMessage(frame) })
           }
+        } else if (frame.kind === 'send' && frame.channel === 'workspace:file-panel') {
+          if (frame.args.length !== 1) throw new Error('Expected one FilePanel state')
+          const panel = readFilePanelState(frame.args[0])
+          if (!logical) logical = this.fileViews.attach(view, frame.fileViewId)
+          logical.panel = panel
         } else if (frame.kind === 'invoke' && (FILE_INVOKES as readonly string[]).includes(frame.channel)) {
           let reply: Record<string, unknown>
           try { reply = { ok: true, result: await invokeFile(this.root, frame.channel, frame.args) } }
