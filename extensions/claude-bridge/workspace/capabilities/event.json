@@ -72,5 +72,6 @@
   {"id":"event:workspace:snapshot-end","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
   {"id":"event:workspace:snapshot-start","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
   {"id":"event:workspace:terminal-removed","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
-  {"id":"event:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
+  {"id":"event:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"event:workspace:shell:state","status":"supported-in-browser-host","provider":"shell","sources":{"workspace/src/shell-state.ts":2,"webview/src/browser/shell/state.ts":1}}
 ]

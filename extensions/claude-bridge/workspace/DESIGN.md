@@ -211,7 +211,30 @@ The task stays open until full host state, strict behavioral parity, PREVIEW/HMR
 and the final composed live candidate pass. The agent performs acceptance and
 reports exact residual blockers to the lead; the owner is never asked to test.
 
-## Latest executed live subset
+## Browser shell scope correction
+
+The browser entry previously mounted the imported standalone `App`, whereas
+KaminIDE registers `chat.html` (`ChatRoot`), `tools.html` (`ToolsRoot`) and the
+customize roots. The browser now needs its own small shell around those current
+tools. It must not reuse the standalone titlebar, updater or window controls.
+The shell follows GPUI's titlebar, activity rail, sessions list and panel slots:
+42 px top bar, 48 px rail, 270 px resizable sessions sidebar, 8 px dock gutters,
+session tabs and movable Claude Bridge, Bridge Console and Agents panels.
+FilePanel and the explorer are outside the corrected browser layout scope.
+
+The shared `ChatRoot` remains mounted once, including while settings or another
+dock tool is selected. Its existing listeners initialize and route chat, terminal
+and agent state. The console uses the same `TerminalPanel` as `ToolsRoot` and
+settings use the current customize section router. Existing BridgeHost APIs own
+sessions, saved sessions, pins and tab order. A browser-specific host wrapper owns
+validated dock/sidebar preferences and broadcasts revisions to all views; atomic
+storage commits precede acknowledgement. Disconnected pages never replay layout
+mutations. Layout is checked visually in Linux Podman; tests cover meaningful
+state transitions, malformed operations, persistence and multi-view delivery.
+The first shell deliverable does not claim pixel parity with an unavailable
+full reference capture or completion of the remaining live acceptance matrix.
+
+## Latest executed live subset (historical)
 
 The [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653)
 records **15/15 PASS, exit 0**, run `2026-11-09T14:49:15.369Z`, runner and

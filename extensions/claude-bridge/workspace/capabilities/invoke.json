@@ -126,5 +126,7 @@
   {"id":"invoke:update:quit-and-install","status":"explicitly-not-applicable-with-reason","reason":"Desktop installer updater does not apply to the container host; update the deployed container image.","evidence":"workspace/DESIGN.md","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:vscode:is-available","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:whisper:transcribe","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"invoke:write-clipboard","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}}
+  {"id":"invoke:write-clipboard","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"invoke:workspace:shell:get","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}},
+  {"id":"invoke:workspace:shell:update","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}}
 ]
