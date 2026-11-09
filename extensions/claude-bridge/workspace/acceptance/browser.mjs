@@ -53,8 +53,12 @@ export async function transcript(page, nonce) {
   }, nonce)
 }
 export function complete(snapshot, { baseline = [], code = 'TRANSCRIPT' } = {}) {
-  check(snapshot.ids.length > 0 && snapshot.duplicateIds === 0 && snapshot.users === 1 && snapshot.done &&
-    snapshot.unresolved === 0 && baseline.every(id => snapshot.ids.includes(id)), code)
+  const assertions = [
+    [snapshot.ids.length > 0, 'EMPTY'], [snapshot.duplicateIds === 0, 'DUPLICATE'],
+    [snapshot.users === 1, 'USER_COUNT'], [snapshot.done, 'REPLY'],
+    [snapshot.unresolved === 0, 'UNRESOLVED_TOOL'], [baseline.every(id => snapshot.ids.includes(id)), 'BASELINE'],
+  ]
+  for (const [valid, reason] of assertions) check(valid, code === 'TRANSCRIPT' ? `${code}_${reason}` : code)
 }
 export function used(snapshot, name) {
   check(snapshot.tools.some(n => n === name || n.endsWith(`__${name}`)), `TOOL_${name.toUpperCase()}`)

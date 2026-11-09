@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import kaminoid from '../assets/kaminoid.svg'
 import { ChatRoot } from '../roots/ChatRoot'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
-import { AgentsToolPanel } from '../components/agent-tiles/AgentsToolPanel'
+import { AgentsPanel } from './shell/AgentsPanel'
+import { CommandPalette, type WorkspaceCommand } from './shell/CommandPalette'
+import { tabs, activeTabId } from '../signals/tabs'
+import { togglePinTab } from '../lib/tabs-persist'
+import { activateSession, closeSession, newSession, renameSession } from './shell/session-actions'
 import { CustomizeContentPanel } from '../components/customize/CustomizeContentPanel'
 import { SECTIONS } from '../components/customize/sections'
 import { toasts, dismissToast } from '../signals/toasts'
@@ -27,6 +31,28 @@ export function WorkspaceShell() {
     sidebarMode.value = 'sessions'; activeCustomizePanel.value = null
     updateShell({ type: 'activate', panel })
   }
+  const restoreLayout = () => {
+    updateShell({ type: 'move', panel: 'chat', slot: 'main' })
+    updateShell({ type: 'move', panel: 'console', slot: 'bottom' })
+    updateShell({ type: 'move', panel: 'agents', slot: 'right' })
+  }
+  const toggleTheme = () => setTheme(resolvedTheme.value === 'dark' ? 'light' : 'dark')
+  const commands: WorkspaceCommand[] = [
+    { id: 'session.new', title: 'New session', category: 'Sessions', run: () => newSession(false) },
+    { id: 'session.folder', title: 'New session (folder…)', category: 'Sessions', run: () => newSession(true) },
+    { id: 'settings', title: 'Open settings', run: showSettings },
+    { id: 'sidebar.toggle', title: 'Toggle sessions sidebar', run: () => updateShell({ type: 'sidebar', visible: !state.sidebarVisible }) },
+    { id: 'layout.restore', title: 'Restore panel layout', run: restoreLayout },
+    { id: 'theme.toggle', title: 'Toggle theme', run: toggleTheme },
+    ...(['chat', 'console', 'agents'] as const).map(panel => ({ id: 'panel.' + panel,
+      title: 'Show ' + ({ chat: 'Claude Bridge', console: 'Bridge Console', agents: 'Agents' })[panel], category: 'Panels', run: () => showPanel(panel) })),
+    ...tabs.value.map(tab => ({ id: 'session.switch.' + tab.id, title: tab.sessionTitle || tab.label || tab.folderName || 'Session', category: 'Switch session', run: () => activateSession(tab.id) })),
+    ...(activeTabId.value ? [
+      { id: 'session.pin', title: 'Toggle session pin', category: 'Sessions', run: () => togglePinTab(activeTabId.value!) },
+      { id: 'session.rename', title: 'Rename session', category: 'Sessions', run: () => renameSession(activeTabId.value!) },
+      { id: 'session.close', title: 'Close session', category: 'Sessions', run: () => closeSession(activeTabId.value!) },
+    ] : []),
+  ]
   function resizeSidebar(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement
     el.setPointerCapture(e.pointerId)
@@ -42,10 +68,11 @@ export function WorkspaceShell() {
       <div class="ws-logo" title="KaminIDE"><img src={kaminoid} alt="KaminIDE" width={26} height={26} /></div>
       <button class="ws-icon" aria-label="Toggle sessions sidebar" onClick={() => updateShell({ type: 'sidebar', visible: !state.sidebarVisible })}><i class="fas fa-table-columns" /></button>
       <SessionTabs />
-      <button class="ws-command-search" onClick={() => window.dispatchEvent(new CustomEvent('workspace:command-palette'))}><i class="fas fa-magnifying-glass" />Type a command…<kbd>Ctrl K</kbd></button>
-      <button class="ws-icon" title="Restore panel layout" aria-label="Restore panel layout" onClick={() => { updateShell({ type: 'move', panel: 'chat', slot: 'main' }); updateShell({ type: 'move', panel: 'console', slot: 'bottom' }); updateShell({ type: 'move', panel: 'agents', slot: 'right' }) }}><i class="fas fa-border-all" /></button>
-      <button class="ws-icon" title="Toggle theme" aria-label="Toggle theme" onClick={() => setTheme(resolvedTheme.value === 'dark' ? 'light' : 'dark')}><i class={'fas ' + (resolvedTheme.value === 'dark' ? 'fa-moon' : 'fa-sun')} /></button>
+      <button class="ws-command-search" onClick={() => window.dispatchEvent(new CustomEvent('workspace:command-palette'))}><i class="fas fa-magnifying-glass" />Type a command…<kbd>Ctrl Shift P</kbd></button>
+      <button class="ws-icon" title="Restore panel layout" aria-label="Restore panel layout" onClick={restoreLayout}><i class="fas fa-border-all" /></button>
+      <button class="ws-icon" title="Toggle theme" aria-label="Toggle theme" onClick={toggleTheme}><i class={'fas ' + (resolvedTheme.value === 'dark' ? 'fa-moon' : 'fa-sun')} /></button>
     </header>
+    <CommandPalette commands={commands} />
     <div class="ws-body">
       <nav class="ws-rail" aria-label="Workspace navigation">
         <button class={'ws-icon' + (settings ? ' selected' : '')} aria-label="Customize" title="Settings" onClick={showSettings}><i class="fas fa-gear" /></button>
@@ -64,7 +91,7 @@ export function WorkspaceShell() {
       </div>}
       <main class="ws-main">
         {shellError.value && <div class="ws-layout-error" role="status">{shellError.value}</div>}
-        <div class="ws-work-area" hidden={settings}><PanelDock>{{ chat: <ChatRoot />, console: <TerminalPanel visible showResizeHandle={false} fill />, agents: <div class="ws-agents"><AgentsToolPanel /></div> }}</PanelDock></div>
+        <div class="ws-work-area" hidden={settings}><PanelDock>{{ chat: <ChatRoot />, console: <TerminalPanel visible showResizeHandle={false} fill />, agents: <div class="ws-agents"><AgentsPanel /></div> }}</PanelDock></div>
         {settings && <div class="ws-settings-content"><CustomizeContentPanel /></div>}
       </main>
       <nav class="ws-right-rail" aria-label="Panels">
