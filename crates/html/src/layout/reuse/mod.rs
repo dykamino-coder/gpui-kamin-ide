@@ -83,11 +83,9 @@ pub(crate) struct FlowReuse {
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
     pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
-    replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
-    /// Far blocks claimed in this build (`far`), recorded and slots.
-    next_far: RefCell<HashMap<u64, Rc<far::FarRecord>>>,
-    pending_far: RefCell<Vec<(Rc<far::PendingFar>, Source)>>,
-    far_slots: RefCell<Vec<Rc<far::FarSlot>>>,
+    replay_slots: Cell<Vec<Rc<replay::ReplaySlot>>>,
+    /// Far blocks of this build (`far`), made with the first one.
+    far: Cell<Option<Box<far::FrameFar>>>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
@@ -142,9 +140,7 @@ impl FlowReuse {
             next_replays: Default::default(),
             pending_replays: Default::default(),
             replay_slots: Default::default(),
-            next_far: Default::default(),
-            pending_far: Default::default(),
-            far_slots: Default::default(),
+            far: Default::default(),
             screen: Cell::new(None),
             mask: Cell::new(None),
         }))
@@ -168,6 +164,12 @@ impl FlowReuse {
 }
 
 /// Добавить в конец списка в ячейке, не держа её заём.
+fn push_cell<T>(cell: &Cell<Vec<T>>, value: T) {
+    let mut all = cell.take();
+    all.push(value);
+    cell.set(all);
+}
+
 fn push<T>(cell: &RefCell<Vec<T>>, value: T) {
     let mut all = cell.take();
     all.push(value);

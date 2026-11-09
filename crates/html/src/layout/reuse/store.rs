@@ -16,17 +16,23 @@ pub(crate) struct Store {
     /// (`replay`), by node id.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
     /// Records of far blocks laid out from their kept layout subtree
-    /// (`far`), by node id.
-    pub(super) far: RefCell<HashMap<u64, Rc<FarRecord>>>,
+    /// (`far`), by node id; allocated while there are any.
+    pub(super) far: Cell<Option<Box<HashMap<u64, Rc<FarRecord>>>>>,
+    /// The last blocks whose far recording failed (near the screen, not
+    /// quiet or reading an outside width; 0 is empty): they are not wrapped
+    /// again while the flow key holds outside the widths, so a block on
+    /// screen costs no far wrapper per frame. Two slots cover the single
+    /// on-screen root block of a page; more near blocks just record again.
+    pub(super) far_near: Cell<[u64; 2]>,
     /// Blocks whose replay failed the frame check (moved, or their layout
     /// needed a new measurement): they are built until the flow key changes.
-    pub(super) banned: RefCell<HashSet<u64>>,
+    pub(super) banned: Cell<HashSet<u64>>,
     /// Blocks whose last replay recording read a width from outside: their
     /// records fit only the same widths.
-    pub(super) reads_widths: RefCell<HashSet<u64>>,
+    pub(super) reads_widths: Cell<HashSet<u64>>,
     /// Blocks whose last skip wrap (`recorder::Pending`) ended without a
     /// record: a build at a changed width wraps them for subtree replay too.
-    pub(super) unrecorded: RefCell<HashSet<u64>>,
+    pub(super) unrecorded: Cell<HashSet<u64>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
     /// иначе (ширина меняется каждый кадр) запись не окупается.
     pub(super) last: RefCell<Option<Rc<FlowKey>>>,
@@ -110,20 +116,55 @@ impl Store {
     pub(super) fn reset_replays(&self) {
         self.replays.take();
         self.far.take();
+        self.far_near.take();
         self.banned.take();
         self.reads_widths.take();
     }
 
     pub(super) fn banned(&self, node: u64) -> bool {
-        self.banned.borrow().contains(&node)
+        let banned = self.banned.take();
+        let found = banned.contains(&node);
+        self.banned.set(banned);
+        found
+    }
+
+    /// The far record of block `node`.
+    pub(super) fn far_record(&self, node: u64) -> Option<Rc<FarRecord>> {
+        let far = self.far.take();
+        let record = far.as_ref().and_then(|far| far.get(&node).cloned());
+        self.far.set(far);
+        record
+    }
+
+    /// The last far recording of block `node` failed (`far_near`).
+    pub(super) fn far_near(&self, node: u64) -> bool {
+        node != 0 && self.far_near.get().contains(&node)
+    }
+
+    pub(super) fn note_near(&self, node: u64) {
+        let [a, b] = self.far_near.get();
+        if node != 0 && a != node && b != node {
+            self.far_near.set([node, a]);
+        }
+    }
+
+    pub(super) fn forget_near(&self, node: u64) {
+        let near = self.far_near.get().map(|n| if n == node { 0 } else { n });
+        self.far_near.set(near);
     }
 
     pub(super) fn reads_widths(&self, node: u64) -> bool {
-        self.reads_widths.borrow().contains(&node)
+        let reads = self.reads_widths.take();
+        let found = reads.contains(&node);
+        self.reads_widths.set(reads);
+        found
     }
 
     pub(super) fn unrecorded(&self, node: u64) -> bool {
-        self.unrecorded.borrow().contains(&node)
+        let unrecorded = self.unrecorded.take();
+        let found = unrecorded.contains(&node);
+        self.unrecorded.set(unrecorded);
+        found
     }
 }
 

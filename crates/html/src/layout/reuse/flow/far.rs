@@ -14,16 +14,16 @@ impl FlowCx {
     /// caller (`replay`) has checked what a subtree claim needs: no repeated
     /// build of the frame, no float before, no ban or refusal.
     pub(super) fn far(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-        let record = self.reuse.store.far.borrow().get(&e.node_id).cloned()?;
+        let record = self.reuse.store.far_record(e.node_id)?;
         if !record.fits(&self.key, Counters::read(&opts.cx), e) {
             return None;
         }
         record.end.write(&opts.cx);
-        let mut next = self.reuse.next_far.take();
-        next.insert(e.node_id, record.clone());
-        self.reuse.next_far.replace(next);
-        let slot = Rc::new(FarSlot::new(record));
-        super::super::push(&self.reuse.far_slots, slot.clone());
+        let slot = Rc::new(FarSlot::new(record.clone()));
+        self.reuse.with_far(|far| {
+            far.next.insert(e.node_id, record);
+            far.slots.push(slot.clone());
+        });
         Some(Far::new(slot).hooked())
     }
 
@@ -40,13 +40,17 @@ impl FlowCx {
         let Some(widths) = mark.widths.clone() else {
             return;
         };
-        if !self.far_worth_recording(e) || !super::super::plain::far_replayable(e, opts.cx.vcx()) {
+        if !self.far_worth_recording(e)
+            || self.reuse.store.far_near(e.node_id)
+            || !super::super::plain::far_replayable(e, opts.cx.vcx())
+        {
             return;
         }
         let Some(child) = out.pop() else { return };
         let pending = Rc::new(PendingFar::new(self.key.clone(), mark.start, end, widths));
         let source = self.reuse.shells.source(e);
-        super::super::push(&self.reuse.pending_far, (pending.clone(), source));
+        self.reuse
+            .with_far(|far| far.pending.push((pending.clone(), source)));
         out.push(FarRecorder::new(child, pending).hooked());
     }
 }

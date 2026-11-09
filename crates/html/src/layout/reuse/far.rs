@@ -24,8 +24,10 @@
 //! (`BoxFragmentPainter`, `IntersectsCullRect`).
 
 mod element;
+mod state;
 
 pub(super) use element::{Far, FarRecorder};
+pub(crate) use state::FrameFar;
 
 use super::{Counters, FlowKey, FlowReuse, Source, scaled};
 use crate::dom::Element;
@@ -179,7 +181,11 @@ impl FlowReuse {
     /// Far blocks of this frame that are no longer far at their new place
     /// (or whose layout went stale or was not claimed): they must be built.
     pub(super) fn validate_far(&self, window: &mut Window, root: bool) -> Vec<u64> {
-        let slots = self.far_slots.take();
+        let Some(mut far) = self.far.take() else {
+            return Vec::new();
+        };
+        let slots = std::mem::take(&mut far.slots);
+        self.far.set(Some(far));
         if slots.is_empty() {
             return Vec::new();
         }
@@ -199,21 +205,5 @@ impl FlowReuse {
             }
         }
         failed
-    }
-
-    /// After paint: far records claimed in this frame and those recorded.
-    pub(super) fn finish_far(&self) {
-        let mut far = self.next_far.take();
-        let claimed = far.len() as u64;
-        for (pending, source) in self.pending_far.take() {
-            let node = source.id();
-            if let Some(record) = pending.finish(source) {
-                far.insert(node, Rc::new(record));
-            }
-        }
-        self.store.far.replace(far);
-        let mut stats = self.store.stats.get();
-        stats.far += claimed;
-        self.store.stats.set(stats);
     }
 }

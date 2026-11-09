@@ -36,7 +36,7 @@ impl FlowCx {
         next.insert(e.node_id, record.clone());
         self.reuse.next_replays.replace(next);
         let slot = Rc::new(ReplaySlot::new(record));
-        super::super::push(&self.reuse.replay_slots, slot.clone());
+        super::super::push_cell(&self.reuse.replay_slots, slot.clone());
         Some(Replay::new(slot).hooked())
     }
 
