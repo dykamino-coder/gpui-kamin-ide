@@ -45,6 +45,8 @@ export function MarketplaceAddButton({ onGithubOrUrl, onLocal }: Props): JSX.Ele
       <button
         ref={btnRef}
         class={styles.btn}
+        aria-label="Add plugin or marketplace"
+        title="Add plugin or marketplace"
         onClick={(e) => { e.stopPropagation(); setVisible((v) => !v) }}
       >
         <i class="fas fa-plus" />
