@@ -143,7 +143,7 @@ export class ConnectionManager {
   // too) and APPENDED server-side to the technical system prompt. A hook rather
   // than a config field so an edit applies to the next session without
   // rebuilding the connection.
-  static getBasePrompt: (() => string) | null = null
+  static getBasePrompt: ((cwd?: string) => string) | null = null
   // Optional gate resolved once the external MCP servers have settled (connected
   // or failed), bounded so a hung server can't stall session start. Awaited
   // BEFORE session:create/resume so the CLI's initial context already carries the
@@ -512,7 +512,7 @@ export class ConnectionManager {
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
     const externalTools = ConnectionManager.getExternalToolSchemas?.() ?? []
-    const basePrompt = ConnectionManager.getBasePrompt?.() ?? ''
+    const basePrompt = ConnectionManager.getBasePrompt?.(this.config.cwd) ?? ''
     // Where THIS machine mirrors the full transcript (uncapped, append-only). The
     // server embeds it in the CLI's system prompt so Claude — whose file tools run
     // on the user's machine (user-tools MCP), the same machine — can read back its
@@ -1205,6 +1205,7 @@ export class ConnectionManager {
 
   /** Resume a previous session by conversationId. */
   resume(conversationId: string): void {
+    const basePrompt = ConnectionManager.getBasePrompt?.(this.config.cwd) ?? ''
     this.send({
       type: 'session:resume',
       noSpawnOnNotFound: true,
@@ -1215,6 +1216,7 @@ export class ConnectionManager {
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
       history: { mode: 'paged' },
+      ...(basePrompt ? { basePrompt } : {}),
     })
   }
 

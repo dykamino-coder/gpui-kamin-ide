@@ -10,6 +10,21 @@ export function liveScenarios(state) {
   const { owned, context, metrics } = state
   const file = '/workspace/bridgeweb-acc-file.txt'
   return {
+    async 'workspace-context'() {
+      await owned.exec("require('fs').mkdirSync('/workspace/chosen-project')")
+      for (const [cwd, expected] of [['', '/workspace'], ['chosen-project', '/workspace/chosen-project']]) {
+        const config = await raw(state.page, 'getConfig')
+        const id = await raw(state.page, 'createTab', { ...config, cwd })
+        await state.page.evaluate(id => window.bridgeCmd.switchTab(id), id)
+        await raw(state.page, 'changePermissionMode', id, 'bypassPermissions')
+        const n = nonce()
+        // Deliberately do not tell the model the host, cwd or an absolute path.
+        await turn(state.page, `Проверь текущую рабочую папку командой pwd через Bash и запиши её вывод в относительный файл ${n}.txt. Прочитай этот файл инструментом Read. ${finish(n)}`)
+        const t = await transcript(state.page, n)
+        complete(t); used(t, 'Bash'); used(t, 'Read')
+        check((await owned.read(`${expected}/${n}.txt`)).trim() === expected, 'CONTAINER_PROJECT_CWD')
+      }
+    },
     async chat() {
       await newTab(state.page)
       const n = nonce()

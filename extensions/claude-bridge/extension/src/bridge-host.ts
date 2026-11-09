@@ -183,6 +183,7 @@ export class BridgeHost {
     onOpenChat?: () => void
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
+    sessionInstructions?: (cwd?: string) => string
   }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
@@ -390,7 +391,8 @@ export class BridgeHost {
     // APPENDED server-side to the technical prompt. Read through the store on
     // each session so an edit takes effect on the next one, and so it follows
     // the CURRENT token (the store keys it by token).
-    ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt()
+    ConnectionManager.getBasePrompt = (cwd) => [this.configStore.getBasePrompt(), opts?.sessionInstructions?.(cwd)]
+      .filter(Boolean).join("\n\n")
     const prevOnAuth = ConnectionManager.onAuthenticated
     ConnectionManager.onAuthenticated = (connection) => {
       if (this.disposed) return
