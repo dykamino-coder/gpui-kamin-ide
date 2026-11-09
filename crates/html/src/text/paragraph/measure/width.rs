@@ -22,11 +22,15 @@ impl Paragraph {
         if let Some((segs, chunks)) = hit {
             // Части держатся в памяти, пока держится их замер.
             let mut shaped = self.measures.shaped.borrow_mut();
-            chunks.iter().for_each(|k| _ = shaped.get(k));
+            chunks
+                .iter()
+                .flat_map(|c| c.iter())
+                .for_each(|k| _ = shaped.get(k));
             return segs;
         }
         let (out, chunks) = self.measure_uncached(window);
-        let chunks = chunks.into();
+        // Абзац без частей не платит за пустой список.
+        let chunks = (!chunks.is_empty()).then(|| chunks.into());
         self.measures
             .measured
             .borrow_mut()

@@ -127,7 +127,8 @@ fn bleed(p: &Paragraph, segs: &[Seg], window: &mut Window) -> Pixels {
     let mut glyph = p.font_size;
     let mut offset = px(0.);
     let text = window.text_system().clone();
-    let mut seen: Vec<(gpui::FontId, Pixels)> = Vec::new();
+    // Соседние прогоны чаще всего одного шрифта: повтор не спрашивается (без памяти на список).
+    let mut last: Option<(gpui::FontId, Pixels)> = None;
     for seg in segs {
         for run in &seg.layout.runs {
             let size = if run.font_size > px(0.) {
@@ -135,8 +136,8 @@ fn bleed(p: &Paragraph, segs: &[Seg], window: &mut Window) -> Pixels {
             } else {
                 seg.layout.font_size
             };
-            if !seen.contains(&(run.font_id, size)) {
-                seen.push((run.font_id, size));
+            if last != Some((run.font_id, size)) {
+                last = Some((run.font_id, size));
                 let b = text.bounding_box(run.font_id, size);
                 let reach = b.origin.y.abs().max((b.origin.y + b.size.height).abs());
                 // Synthetic emboldening and oblique grow the outline by a

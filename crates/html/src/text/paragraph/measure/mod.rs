@@ -14,7 +14,7 @@ use frame_cache::FrameCache;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 /// Положения знаков абзаца и ключи наборов частей его длинных кусков.
-pub(in crate::text::paragraph) type Measured = (Vec<Seg>, Rc<[u64]>);
+pub(in crate::text::paragraph) type Measured = (Vec<Seg>, Option<Rc<[u64]>>);
 
 /// Paragraphs and their layout probes share only their document's measurements.
 #[derive(Default)]
