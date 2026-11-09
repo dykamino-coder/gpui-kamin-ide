@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createServerHttp } from '../../extension/src/server-http.js'
 import type { ServerFetchInit } from '../../extension/src/main/sync/request-auth.js'
 import type { WorkspaceBackend } from './protocol.js'
@@ -8,6 +9,11 @@ export function withBrowserServer(backend: WorkspaceBackend, options: { serverUr
   url.protocol = url.protocol === 'wss:' ? 'https:' : url.protocol === 'ws:' ? 'http:' : url.protocol
   url.pathname = '/'; url.search = ''; url.hash = ''
   const http = createServerHttp(url.href, options.token, { pinned: true, maxBytes: 8 * 1024 * 1024 })
+  // The shared sync UI hashes its config token. Browser config contains only a
+  // placeholder; translate that namespace here without exposing the credential.
+  const namespace = (token: string) => createHash('sha256').update(token).digest('hex').slice(0, 16)
+  const browserSync = `/api/sync/${namespace('[workspace credential]')}/`
+  const hostSync = `/api/sync/${namespace(options.token)}/`
   function redact(value: unknown): unknown {
     if (typeof value === 'string') return value.split(options.token).join('[workspace credential]')
     if (Array.isArray(value)) return value.map(redact)
@@ -31,8 +37,10 @@ export function withBrowserServer(backend: WorkspaceBackend, options: { serverUr
             result = await http.createToken(frame.args[1])
           } else if (frame.channel === 'bridge:server-version') result = await http.serverVersion()
           else {
-            const route = frame.args[1]
-            if (typeof route !== 'string') throw new Error('Expected a Bridge API path')
+            const requestedRoute = frame.args[1]
+            if (typeof requestedRoute !== 'string') throw new Error('Expected a Bridge API path')
+            const route = requestedRoute.startsWith(browserSync)
+              ? hostSync + requestedRoute.slice(browserSync.length) : requestedRoute
             let init = frame.args[2] as ServerFetchInit | undefined
             if (init && (typeof init !== 'object' || Array.isArray(init))) throw new Error('Invalid HTTP request')
             if (init?.headers) init = { ...init, headers: Object.fromEntries(Object.entries(init.headers).map(([key, value]) => [key,

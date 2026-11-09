@@ -1,5 +1,7 @@
 import type { JSX } from 'preact'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { ContainerPathButton } from '../shared/ContainerPathButton'
 import styles from './SkillActions.module.css'
 
 interface Props {
@@ -18,12 +20,14 @@ export function SkillActions({ path, canDelete, onDeleted }: Props): JSX.Element
 
   return (
     <div class={styles.actions}>
-      <button class={styles.primary} onClick={() => bridge.openSkill(path)}>
-        Open in editor
-      </button>
-      <button class={styles.secondary} onClick={() => bridge.showSkillInFolder(path)}>
-        <i class="fas fa-folder-open" /> Show in Explorer
-      </button>
+      {isBrowserHost() ? <ContainerPathButton path={path} /> : <>
+        <button class={styles.primary} onClick={() => bridge.openSkill(path)}>
+          Open in editor
+        </button>
+        <button class={styles.secondary} onClick={() => bridge.showSkillInFolder(path)}>
+          <i class="fas fa-folder-open" /> Show in Explorer
+        </button>
+      </>}
       {canDelete && (
         <button class={styles.danger} onClick={handleDelete}>Delete</button>
       )}

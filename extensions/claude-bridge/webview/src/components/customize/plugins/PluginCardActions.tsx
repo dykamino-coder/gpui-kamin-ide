@@ -3,6 +3,9 @@ import { useEffect, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { PluginOptionsModal } from './PluginOptionsModal'
 import { showToast } from '../../../signals/toasts'
+import { isBrowserHost } from '../../../lib/webview-api'
+import { copyWithToast } from '../../../lib/clipboard'
+import { ContainerPathButton } from '../shared/ContainerPathButton'
 import styles from './PluginCardActions.module.css'
 
 interface Props {
@@ -70,8 +73,12 @@ export function PluginCardActions({ name, marketplace, isCached, installPath, is
   async function handleOpenSource(): Promise<void> {
     try {
       const sourcePath = await bridge.getPluginSourcePath(name, marketplace)
-      if (sourcePath) bridge.openFolder(sourcePath)
-    } catch {}
+      if (!sourcePath) throw new Error('Plugin source path is unavailable. Refresh the plugin and try again.')
+      if (isBrowserHost()) await copyWithToast(sourcePath, 'Container source path copied')
+      else await bridge.openFolder(sourcePath)
+    } catch (err) {
+      showToast({ type: 'error', title: 'Plugin source', message: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   async function handleToggle(): Promise<void> {
@@ -111,11 +118,11 @@ export function PluginCardActions({ name, marketplace, isCached, installPath, is
           </button>
         )}
         {isCached && installPath && (
-          <button class={styles.btn} onClick={handleOpenCache} title="Open cache folder">
+          isBrowserHost() ? <ContainerPathButton path={installPath} /> : <button class={styles.btn} onClick={handleOpenCache} title="Open cache folder">
             <i class="fas fa-folder-open" />
           </button>
         )}
-        <button class={styles.btn} onClick={handleOpenSource} title="Open source folder">
+        <button class={styles.btn} onClick={handleOpenSource} title={isBrowserHost() ? 'Copy container source path' : 'Open source folder'} aria-label={isBrowserHost() ? 'Copy container source path' : 'Open source folder'}>
           <i class="fas fa-store" />
         </button>
       </div>

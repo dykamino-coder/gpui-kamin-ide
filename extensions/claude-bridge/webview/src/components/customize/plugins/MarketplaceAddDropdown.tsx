@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { isBrowserHost } from '../../../lib/webview-api'
 import styles from './MarketplaceAddDropdown.module.css'
 
 interface Props {
@@ -21,14 +22,14 @@ export function MarketplaceAddDropdown({ visible, anchor, onGithub, onUrl, onLoc
 
   return (
     <div class={styles.dropdown} style={style}>
-      <button class={styles.option} onClick={(e) => { e.stopPropagation(); onGithub() }}>
+      {!isBrowserHost() && <button class={styles.option} onClick={(e) => { e.stopPropagation(); onGithub() }}>
         <i class="fab fa-github" /> Add marketplace from GitHub
-      </button>
+      </button>}
       <button class={styles.option} onClick={(e) => { e.stopPropagation(); onUrl() }}>
-        <i class="fas fa-link" /> Add marketplace by URL
+        <i class="fas fa-link" /> {isBrowserHost() ? 'Add marketplace from GitHub or Git URL' : 'Add marketplace by URL'}
       </button>
       <button class={styles.option} onClick={(e) => { e.stopPropagation(); onLocal() }}>
-        <i class="fas fa-folder-open" /> Add plugin from local folder
+        <i class="fas fa-folder-open" /> {isBrowserHost() ? 'Add plugin from container directory' : 'Add plugin from local folder'}
       </button>
     </div>
   )

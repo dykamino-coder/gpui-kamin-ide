@@ -2,6 +2,7 @@ import type { JSX } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { showToast } from '../../../signals/toasts'
+import { isBrowserHost } from '../../../lib/webview-api'
 import { SettingsSection } from './SettingsSection'
 import { SettingsInput } from './SettingsInput'
 import styles from './WhisperSettings.module.css'
@@ -20,15 +21,21 @@ export function WhisperSettings({ url, model, token, onUrlChange, onModelChange,
   const [saveLabel, setSaveLabel] = useState('Save')
 
   async function handleSave(): Promise<void> {
-    const cfg = await bridge.getConfig()
-    bridge.setConfig({
-      ...cfg,
-      whisperUrl: url || undefined,
-      whisperModel: model || undefined,
-      whisperToken: token || undefined,
-    })
-    setSaveLabel('Saved!')
-    setTimeout(() => setSaveLabel('Save'), 1500)
+    setSaveLabel('Saving…')
+    try {
+      const cfg = await bridge.getConfig()
+      await bridge.setConfig({
+        ...cfg,
+        whisperUrl: url || undefined,
+        whisperModel: model || undefined,
+        whisperToken: token || undefined,
+      })
+      setSaveLabel('Saved!')
+      setTimeout(() => setSaveLabel('Save'), 1500)
+    } catch {
+      setSaveLabel('Save')
+      showToast({ type: 'error', title: 'Voice settings not saved', message: 'Check the connection and try again.' })
+    }
   }
 
   const [micStatus, setMicStatus] = useState<'idle' | 'waiting' | 'transcribing'>('idle')
@@ -72,9 +79,15 @@ export function WhisperSettings({ url, model, token, onUrlChange, onModelChange,
     }
     let stream: MediaStream
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access requires a secure browser connection (HTTPS or localhost).')
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (err) {
-      showToast({ type: 'error', title: 'Mic', message: err instanceof Error ? err.message : 'Microphone unavailable' })
+      const message = err instanceof Error && err.name === 'NotFoundError'
+        ? 'No microphone is available to this browser. Connect a microphone and try again.'
+        : err instanceof Error && err.name === 'NotAllowedError'
+          ? 'Allow microphone access in your browser site permissions, then try again.'
+          : err instanceof Error ? err.message : 'Microphone unavailable'
+      showToast({ type: 'error', title: 'Mic', message })
       return
     }
     setMicStatus('waiting')
@@ -118,7 +131,7 @@ export function WhisperSettings({ url, model, token, onUrlChange, onModelChange,
       <SettingsInput label="Model" type="text" placeholder="whisper-1" value={model} onChange={onModelChange} />
       <SettingsInput label="Whisper API Token" type="password" placeholder="Bearer token or API key" value={token} onChange={onTokenChange} />
       <div style="display:flex;gap:8px;margin-top:4px">
-        <button class={styles.saveBtn} onClick={handleSave} style="flex:1">{saveLabel}</button>
+        <button class={styles.saveBtn} onClick={handleSave} disabled={saveLabel === 'Saving…'} style="flex:1">{saveLabel}</button>
         <button
           onClick={handleTestMic}
           style={`flex:1;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;border:none;color:var(--bg-primary);font-weight:500;background:${micStatus === 'waiting' ? 'var(--accent-red)' : 'var(--accent-purple)'}`}
@@ -155,7 +168,7 @@ export function WhisperSettings({ url, model, token, onUrlChange, onModelChange,
           )}
         </div>
       )}
-      <p class={styles.hint}>Records via the system microphone (getUserMedia).</p>
+      <p class={styles.hint}>{isBrowserHost() ? 'Records from your browser microphone with your permission. Transcription is sent from the workspace container to the configured Whisper API.' : 'Records via the system microphone (getUserMedia).'}</p>
     </SettingsSection>
   )
 }

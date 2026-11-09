@@ -1,6 +1,7 @@
 import type { JSX } from 'preact'
 import { useState, useEffect, useRef } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { isBrowserHost } from '../../../lib/webview-api'
 import type { MarketplaceInfo, MarketplacePlugin } from '../../../../shared/types'
 import { PluginsTabs } from './PluginsTabs'
 import { MarketplaceRow } from './MarketplaceRow'
@@ -212,7 +213,12 @@ export function PluginsPanel(): JSX.Element {
   async function handleLocalPlugin(): Promise<void> {
     try {
       const result = await bridge.installLocalPlugin()
-      if (result) await handleRefresh()
+      if (result) {
+        if (isBrowserHost()) {
+          setSearch('')
+          handleTabChange('active')
+        } else await handleRefresh()
+      }
     } catch (err: any) {
       showToast({ type: 'error', title: 'Plugin install failed', message: err?.message || String(err), duration: 5000 })
     }
