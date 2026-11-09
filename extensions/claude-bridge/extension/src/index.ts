@@ -41,7 +41,10 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   const openTools = (): void => { void vscode.commands.executeCommand(`${TOOLS_VIEW_IDS[0]}.focus`) }
 
-  const host = new BridgeHost(context, { onOpenChat: openChat })
+  const host = new BridgeHost(context, {
+    onOpenChat: openChat,
+    onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
+  })
   const sessionsBridge = new SessionsBridge(host, openChat)
   sessionsBridge.install()
   context.subscriptions.push({ dispose: () => { sessionsBridge.dispose(); host.dispose() } })
@@ -147,8 +150,6 @@ export function activate(context: vscode.ExtensionContext): void {
   ipcMain.on("toolusage:open", (_e: unknown, name: unknown) => {
     relayToolUsage(name, (channel, tool) => host.broadcast(channel, tool))
   })
-  // Chat-panel header button → same, but keyed by the active Bridge tab id.
-  ipcMain.on("bridge:regenerate-title", (_e: unknown, tabId: string) => sessionsBridge.regenerateTitleByTab(tabId))
 }
 
 export function deactivate(): void {}

@@ -1,7 +1,7 @@
 [
   {"id":"send:ask-user-response","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/ui-tools.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:bridge:open-chat","status":"explicitly-not-applicable-with-reason","reason":"KaminIDE host feature, not Bridge","evidence":"extension/src/core-ipc.ts","sources":{"extension/src/bridge-host.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"send:bridge:regenerate-title","status":"supported-in-browser-host","provider":"title","requires":["title-regeneration"],"sources":{"extension/src/index.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"send:bridge:regenerate-title","status":"supported-in-browser-host","provider":"title","requires":["title-regeneration"],"sources":{"extension/src/bridge-host.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:change-effort","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:change-model","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:change-permission-mode","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
