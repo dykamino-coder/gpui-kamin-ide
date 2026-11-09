@@ -133,9 +133,10 @@ directions; see the [matrix manifests](capabilities/api.json),
 [providers](capabilities/providers.json), [requirements](capabilities/requirements.json)
 and [inventory extractor](test/capability-inventory.ts).
 Current `test:parity` passes its declared provider prerequisites:
-host terminals, title regeneration and finished-toast routing. It does **not**
-encode the remaining host-page state, FilePanel state or PREVIEW/HMR gates.
-A green command therefore cannot close the owner task. Add these requirements
+host terminals, title regeneration, finished-toast routing and PREVIEW/HMR.
+Deleting any of these four requirements fails both classification and readiness
+checks. It does **not** encode the remaining full host-page or FilePanel state
+gates. A green command therefore cannot close the owner task. Add these requirements
 and exhaustive observable behavior coverage before claiming full parity.
 
 The Linux Podman live harness exercises chat, file tools, Bash, MCP, hooks,
