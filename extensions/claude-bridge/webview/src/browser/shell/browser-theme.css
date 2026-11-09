@@ -11,6 +11,13 @@
   --vscode-focusBorder: #89b4fa;
   --vscode-editor-background: #313240;
   --vscode-editor-foreground: #cfd4e2;
+  --editor-bg: #1d1c25;
+  --editor-fg: #dcdce4;
+  --editor-cursor: #a0a0d0;
+  --kamin-menu-background: #3d3f51;
+  --kamin-menu-border: rgba(207,212,226,0.06);
+  --vscode-terminal-background: #1d1d28;
+  --vscode-terminal-foreground: #cfd4e2;
   --vscode-editorWidget-background: #262533;
   --vscode-dropdown-background: #262533;
   --vscode-button-background: #89b4fa;
@@ -31,6 +38,13 @@
   --vscode-focusBorder: #da8343;
   --vscode-editor-background: #f6efeb;
   --vscode-editor-foreground: #322e28;
+  --editor-bg: #fcfaf6;
+  --editor-fg: #48433c;
+  --editor-cursor: #48433c;
+  --kamin-menu-background: #e6e1d4;
+  --kamin-menu-border: rgba(50,46,40,0.06);
+  --vscode-terminal-background: #f4f1ea;
+  --vscode-terminal-foreground: #48433c;
   --vscode-editorWidget-background: #fbf7f4;
   --vscode-dropdown-background: #fbf7f4;
   --vscode-button-background: #da8343;
