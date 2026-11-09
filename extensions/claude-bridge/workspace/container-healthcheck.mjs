@@ -4,7 +4,7 @@ url.protocol = 'http:'
 url.hostname = '127.0.0.1'
 url.port = process.env.WORKSPACE_PORT || '3460'
 // This endpoint reports process readiness without initiating upstream login.
-url.pathname = '/auth/session'
+url.pathname = '/health'
 try {
   const response = await fetch(url, {
     headers: { Host: new URL(process.env.WORKSPACE_ORIGIN).host },

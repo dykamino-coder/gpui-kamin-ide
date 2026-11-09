@@ -30,9 +30,9 @@ await run(['run', 'build'], workspace)
 await run(['run', 'build:browser'], '/opt/bridge/extensions/claude-bridge/webview')
 await mkdir('/reports', { recursive: true })
 const mode = process.argv[2]
-if (!['fixture', 'live'].includes(mode)) throw new Error('Expected fixture or live')
-const args = mode === 'live'
-  ? ['acceptance/run.mjs', '--report-dir', '/reports', '--server-origin', 'http://host.containers.internal:3462', ...process.argv.slice(3)]
+if (!['fixture', 'live', 'credentials'].includes(mode)) throw new Error('Expected fixture, live or credentials')
+const args = mode !== 'fixture'
+  ? [`acceptance/${mode === 'credentials' ? 'credentials' : 'run'}.mjs`, '--report-dir', '/reports', '--server-origin', 'http://host.containers.internal:3462', ...process.argv.slice(3)]
   : ['--test', ...((await readdir(path.join(workspace, 'test'))).filter(n => n.endsWith('.smoke.mjs')).map(n => `test/${n}`))]
 const child = spawn('node', args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] })
 let fixtureOutput = ''

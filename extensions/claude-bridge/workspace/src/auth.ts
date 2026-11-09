@@ -1,11 +1,14 @@
 // Reuse possession of the upstream Bridge token; keep browser sessions opaque.
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import fs from 'node:fs'
+import { privateRead, privateWrite } from './credentials.js'
 
 export const SESSION_COOKIE = 'kamin_workspace'
 
 export interface TokenIdentity { id: string }
 export type ResolveToken = (token: string) => Promise<TokenIdentity | null>
 interface Session { identity: string; expiresAt: number }
+export interface PersistentAuth { secret: string; file: string }
 
 export function serverTokenResolver(serverUrl: string): ResolveToken {
   const base = new URL(serverUrl)
@@ -42,13 +45,27 @@ export class WorkspaceAuth {
     private readonly resolve: ResolveToken,
     private readonly ttlMs = 60 * 60 * 1000,
     private readonly now: () => number = Date.now,
+    private readonly persistent?: PersistentAuth,
   ) {
     if (!token.trim() || token.length > 4096) throw new Error('A configured Bridge token is required')
     if (!Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error('Invalid session lifetime')
     this.digest = this.hash(token)
+    if (persistent && fs.existsSync(persistent.file)) {
+      const records = privateRead(persistent.file)
+      if (!Array.isArray(records) || records.length > 128) throw new Error('Invalid browser sessions')
+      for (const record of records) {
+        if (!Array.isArray(record) || record.length !== 2 || !/^[a-f0-9]{64}$/.test(record[0]) ||
+          typeof record[1]?.identity !== 'string' || !Number.isFinite(record[1]?.expiresAt)) throw new Error('Invalid browser session')
+        if (record[1].expiresAt > this.now()) this.sessions.set(record[0], record[1])
+      }
+    }
   }
 
   private hash(value: string): Buffer { return createHash('sha256').update(value).digest() }
+  private key(cookie: string): string {
+    return this.persistent ? createHmac('sha256', this.persistent.secret).update(cookie).digest('hex') : cookie
+  }
+  private save(): void { if (this.persistent) privateWrite(this.persistent.file, [...this.sessions]) }
   private async resolveIdentity(): Promise<TokenIdentity | null> {
     try { return await this.resolve(this.token) } catch { return null }
   }
@@ -67,26 +84,32 @@ export class WorkspaceAuth {
     this.prune()
     if (this.sessions.size >= 128) return null
     const cookie = randomBytes(32).toString('base64url')
-    this.sessions.set(cookie, { identity: identity.id, expiresAt: this.now() + this.ttlMs })
+    this.sessions.set(this.key(cookie), { identity: identity.id, expiresAt: this.now() + this.ttlMs })
+    this.save()
     return cookie
   }
+
+  /** Only the checked loopback HTTP boundary may call this. */
+  async loginLocal(): Promise<string | null> { return this.login(this.token) }
 
   /** Revalidate with the server, including for existing sockets. Fail closed. */
   async validate(cookie: string | undefined): Promise<boolean> {
     this.prune()
-    const session = cookie ? this.sessions.get(cookie) : undefined
+    const key = cookie ? this.key(cookie) : ''
+    const session = this.sessions.get(key)
     if (!session) return false
     const identity = await this.resolveIdentity()
     // Logout/expiry can occur while the upstream request is outstanding.
     if (!identity || identity.id !== session.identity || session.expiresAt <= this.now() ||
-      this.sessions.get(cookie!) !== session) {
-      this.sessions.delete(cookie!)
+      this.sessions.get(key) !== session) {
+      this.sessions.delete(key)
+      this.save()
       return false
     }
     return true
   }
 
-  logout(cookie: string | undefined): void { if (cookie) this.sessions.delete(cookie) }
+  logout(cookie: string | undefined): void { if (cookie) { this.sessions.delete(this.key(cookie)); this.save() } }
 
   cookieHeader(cookie: string, secure: boolean): string {
     return `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(this.ttlMs / 1000)}${secure ? '; Secure' : ''}`
