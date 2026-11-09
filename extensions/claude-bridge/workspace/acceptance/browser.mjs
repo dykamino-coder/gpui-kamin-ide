@@ -30,7 +30,19 @@ export async function newTab(page, mode = 'bypassPermissions') {
   return id
 }
 export async function turn(page, prompt) {
-  await page.evaluate(prompt => window.bridgeCmd.sendAndWait(prompt, { timeoutMs: 180_000 }), prompt)
+  const marker = prompt.match(/acceptance-[a-f0-9-]+/)?.[0]
+  check(marker, 'TURN_MARKER')
+  const tab = await page.evaluate(prompt => window.bridgeCmd.send(prompt), prompt)
+  // An old prompt-ready frame can briefly precede the submitted turn. Require
+  // its own user entry before measuring quiescence, rather than pre-send calm.
+  await page.waitForFunction(({ tab, marker }) => {
+    const state = window.bridgeCmd.state()
+    const entries = window.__jsonlEntries?.[tab] ?? []
+    return state.activeTabId === tab && entries.some(e => e.type === 'user' &&
+      (typeof e.message?.content === 'string' ? e.message.content :
+        (e.message?.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n')).includes(marker))
+  }, { tab, marker }, { timeout: 180_000 })
+  await page.evaluate(() => window.bridgeCmd.waitForIdle({ timeoutMs: 180_000 }))
 }
 // Inspect the real viewer store, rather than truncated entry previews or model prose.
 // Full content stays in browser memory; only IDs/counts/tool names cross to Node.
