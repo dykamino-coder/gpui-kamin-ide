@@ -27,5 +27,5 @@ export async function startRuntimeProcess(root: string, tmp: string, home: strin
   const exited = once(child, 'exit')
   const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(10000) }) as [{ origin: string }]
   assert.ok(ready.origin)
-  return { child, exited, ready, getOutput: () => output }
+  return { child, exited, ready, runtimeOutput: () => output }
 }

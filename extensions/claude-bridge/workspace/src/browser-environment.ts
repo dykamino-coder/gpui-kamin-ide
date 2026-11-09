@@ -4,8 +4,9 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { saveAttachment } from '../../extension/src/attachments.js'
+import { relayToolUsage } from '../../extension/src/tool-usage-relay.js'
 import type { WorkspaceEnvironment } from './environment.js'
-import type { InvokeFrame, HostFrame, WorkspaceBackend } from './protocol.js'
+import type { ClientView, InvokeFrame, HostFrame, WorkspaceBackend } from './protocol.js'
 
 const MAX_BYTES = 8 * 1024 * 1024
 const EFFECT = 'workspace:effect'
@@ -92,6 +93,7 @@ export function createBrowserEnvironment(options: { root: string; timeoutMs?: nu
   }
 
   function wrap(backend: WorkspaceBackend): WorkspaceBackend {
+    const views = new Set<ClientView>()
     return { attach(view) {
       let closed = false
       const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
@@ -154,9 +156,16 @@ export function createBrowserEnvironment(options: { root: string; timeoutMs?: nu
         return view.postMessage(frame)
       } })
       viewers.add(effect)
+      views.add(view)
       return {
         async receive(frame) {
           if (closed) throw new Error('Browser view closed')
+          if (frame.kind === 'send' && frame.channel === 'toolusage:open') {
+            relayToolUsage(frame.args[0], (channel, name) => {
+              for (const target of views) void target.postMessage({ kind: 'event', channel, args: [name] }).catch(() => false)
+            })
+            return
+          }
           if (frame.kind === 'send' && frame.channel === RESULT) {
             const [id, value, error] = frame.args
             if (typeof id !== 'string' || (error !== undefined && typeof error !== 'string')) throw new Error('Invalid browser effect result')
@@ -186,6 +195,7 @@ export function createBrowserEnvironment(options: { root: string; timeoutMs?: nu
           if (closed) return
           closed = true
           viewers.delete(effect)
+          views.delete(view)
           for (const id of pending.keys()) settle(id, undefined, 'Browser view closed')
           inner.dispose()
         },

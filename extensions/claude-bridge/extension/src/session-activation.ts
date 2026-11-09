@@ -13,8 +13,10 @@ export function setSessionActivateHandler(fn: ActivateSessionForTab): void {
   handler = fn
 }
 
-/** No-op before SessionsBridge installs the hook, and for a tab with no owning
- *  session (a Bridge tab created outside the host's session list). */
-export function activateSessionForTab(tabId: string): void {
-  handler?.(tabId)
+/** Whether a native session hook handled activation. Browser hosts use their
+ *  existing chat route when no native session integration is installed. */
+export function activateSessionForTab(tabId: string): boolean {
+  if (!handler) return false
+  handler(tabId)
+  return true
 }

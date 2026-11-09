@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import { WebSocket, WebSocketServer } from 'ws'
 import { assertProcessStopped, deadline, externalMcp } from './fixtures/external-mcp.js'
 import { startRuntimeProcess } from './fixtures/runtime-process.js'
+import { assertTitleRegeneration, waitFrame as wait } from './fixtures/runtime-protocol.js'
 
 // Protocol peer only: the CLIENT, handlers, filesystem and socket routing are
 // real. This is deliberately not live Claude/Podman/browser acceptance.
@@ -52,7 +53,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     await new Promise<void>(resolve => upstream.close(() => resolve()))
     await new Promise<void>(resolve => http.close(() => resolve()))
   })
-  const { child, exited, ready, getOutput } = await startRuntimeProcess(root, tmp, home, upstreamUrl, cleanup)
+  const { child, exited, ready, runtimeOutput } = await startRuntimeProcess(root, tmp, home, upstreamUrl, cleanup)
   const login = await fetch(`${ready.origin}/auth/login`, { method: 'POST', headers: { Origin: ready.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'synthetic-workspace-token' }) })
   const cookie = login.headers.get('set-cookie')!.split(';')[0]
   const connect = () => new WebSocket(ready.origin.replace('http:', 'ws:') + '/bridge', { headers: { Origin: ready.origin, Cookie: cookie } })
@@ -64,14 +65,6 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   b.on('message', raw => { framesB.push(JSON.parse(raw.toString())); eventsB.emit('frame') })
   await Promise.all([once(a, 'open'), once(b, 'open')])
   cleanup.push(() => { a.terminate(); b.terminate() })
-  async function wait(frames: any[], events: EventEmitter, predicate: (value: any) => boolean) {
-    const signal = AbortSignal.timeout(5000)
-    while (true) {
-      const result = frames.find(predicate)
-      if (result) return result
-      await once(events, 'frame', { signal })
-    }
-  }
   let id = 0
   async function invoke(channel: string, args: unknown[] = []) {
     const requestId = ++id
@@ -86,7 +79,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     const stored = fs.readFileSync(configFile, 'utf8')
     assert.equal(JSON.parse(stored).config.token, '')
     assert.equal(stored.includes('synthetic-workspace-token'), false)
-    assert.equal(getOutput().includes('synthetic-workspace-token'), false, 'Runtime output must omit the credential')
+    assert.equal(runtimeOutput().includes('synthetic-workspace-token'), false, 'Runtime output must omit the credential')
   }
   assertCredentialPrivate()
   await invoke('set-config', [{ token: 'forged', serverUrl: 'ws://attacker.invalid' }])
@@ -119,6 +112,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(persisted.config.serverUrl, upstreamUrl)
     assertCredentialPrivate()
   }
+  await assertTitleRegeneration(a, invoke, upstreamFrames, upstreamEvents)
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {
     const requestId = `tool-${++id}`
