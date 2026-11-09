@@ -10,13 +10,9 @@ x-workspace: &workspace
   volumes:
     - workspace-project:/workspace
     - workspace-home:/home/workspace
-    - type: bind
-      source: '${BRIDGE_TOKEN_FILE:?Set a readable client token file}'
-      target: /run/secrets/bridge-token
-      read_only: true
   environment: &workspace-env
     WORKSPACE_ORIGIN: '${WORKSPACE_ORIGIN:-http://127.0.0.1:3460}'
-    BRIDGE_TOKEN_FILE: /run/secrets/bridge-token
+    WORKSPACE_ALLOW_REMOTE: '${WORKSPACE_ALLOW_REMOTE:-0}'
   init: true
   restart: unless-stopped
 services:

@@ -3,6 +3,7 @@
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Design and remaining acceptance: [DESIGN.md](DESIGN.md).
 Podman build, startup and acceptance: [PACKAGING.md](PACKAGING.md).
+Credential storage, automatic loopback access and reset: [CREDENTIALS.md](CREDENTIALS.md).
 
 The workspace is a Node Bridge **client** whose local machine is a Linux
 container. Its executable composes the same BridgeHost, client tool handlers,
@@ -45,18 +46,19 @@ cannot substitute another server/token. Host and Origin must match the configure
 origin; revocation, expiry or an upstream validation outage closes access.
 An auth-disabled dashboard response alone grants no workspace access.
 
-The token is injected from environment, stdin or a read-only mounted file,
-then retained in host memory only. Workspace ConfigStore omits it from persistent
-JSON and atomic temporary files, ignores stale stored credentials, and skips
-legacy desktop credential migration. Browser events redact it. This policy does
-not claim secure erasure of files written by an older build. Native KaminIDE's
-ConfigStore policy remains unchanged. Dashboard-admin login is still a separate
-unimplemented path; current workspace sign-in uses its configured client token.
+On first start the service registers its own Bridge client token, or imports a
+provided bootstrap secret once when registration requires authorization. Its
+private HOME volume stores that token and a generated browser secret in a 0600
+file. Session cookies survive restart and recreation with the same volume.
+Workspace ConfigStore still omits credentials from project settings, and browser
+events redact them. Dashboard-admin login remains a separate unimplemented path.
 
 Node defaults to `127.0.0.1:3460`. The image opts into a container-wide listener;
-Compose publishes the browser port on host loopback. Other binds require an
-explicit exact origin; HTTPS origins use Secure cookies. See the runbook for
-remote publication and reverse-proxy configuration.
+Compose publishes the browser port on host loopback. Loopback visits receive an
+HttpOnly SameSite=Strict session cookie automatically after Host/Origin checks.
+Other origins require explicit `WORKSPACE_ALLOW_REMOTE=1` and retain token
+sign-in; HTTPS origins use Secure cookies. See the runbooks for reset and remote
+publication configuration.
 
 ## Browser lifetime and host state
 

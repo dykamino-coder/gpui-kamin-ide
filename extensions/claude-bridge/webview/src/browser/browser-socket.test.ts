@@ -144,6 +144,9 @@ it('retains only an opaque host file-view identity and adds it to read-only sync
   api.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
   sockets[0].receive(JSON.stringify({ kind: 'event', channel: 'workspace:files-state', args: [{ id: 'host-opaque-id', files: ['/workspace/a'] }] }))
   expect(id).toBe('host-opaque-id')
+  api.postMessage({ kind: 'send', channel: 'workspace:file-panel', args: [{ version: 1 }] })
+  expect(JSON.parse(sockets[0].sent.at(-1)!)).toEqual({ kind: 'send', channel: 'workspace:file-panel',
+    args: [{ version: 1 }], fileViewId: 'host-opaque-id' })
   api.postMessage({ kind: 'invoke', channel: 'file-viewer:write', args: ['/workspace/a', 'once'] })
   sockets[0].ended(); vi.advanceTimersByTime(250); sockets[1].open()
   expect(sockets[1].sent).toEqual([])
