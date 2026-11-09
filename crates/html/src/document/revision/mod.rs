@@ -7,6 +7,7 @@ mod commit;
 mod mentions;
 mod mutation;
 mod patch;
+mod restyle;
 mod shape;
 #[cfg(test)]
 mod tests;
@@ -111,13 +112,12 @@ impl Document {
             Err(failure) => return Err(record(failure, self)),
         };
         // The same source shape gives the same node ids (traversal counters):
-        // the block records may hold for the restyled tree, and each is checked
-        // by value before use (`layout::reuse`).
-        let reuse = same_shape.then(|| self.reuse.clone());
-        *self = candidate;
-        if let Some(reuse) = reuse {
-            self.reuse = reuse;
+        // the block records may hold for the restyled tree (`restyle`).
+        let mut candidate = candidate;
+        if same_shape {
+            self.hand_over_reuse(&mut candidate);
         }
+        *self = candidate;
         Ok(self.report())
     }
 

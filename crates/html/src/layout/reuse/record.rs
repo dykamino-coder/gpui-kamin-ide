@@ -4,8 +4,12 @@ use super::*;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 pub(crate) struct Record {
-    /// What a later build of the block is compared with (`source`).
-    pub(super) source: Source,
+    /// The block's node id.
+    pub(super) id: u64,
+    /// What a later build of the block is compared with (`source`); `None`:
+    /// the block was compared at a rebuild of the document, by its document
+    /// boxes (`Store::rebase`), and has not been built since.
+    pub(super) source: Option<Source>,
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
@@ -36,8 +40,9 @@ impl Record {
     /// `repaint`: the block differs in paint-only values, so the recorded
     /// output is dropped (Blink keeps the layout result of a
     /// paint-invalidated object and drops its display items).
-    pub(super) fn moved_to(&self, source: Source, repaint: bool) -> Self {
+    pub(super) fn moved_to(&self, source: Option<Source>, repaint: bool) -> Self {
         Self {
+            id: self.id,
             source,
             key: self.key.clone(),
             start: self.start,

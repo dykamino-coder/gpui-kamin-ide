@@ -94,6 +94,21 @@ fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Elem
     })
 }
 
+/// The block children of the root flow of `nodes` by node id (`Root`).
+fn flow_blocks(nodes: &[Node]) -> HashMap<u64, &Element> {
+    let flow = match find(nodes.iter(), "html") {
+        Some(html) => find(html.children.iter(), "body").map(|b| b.children.as_slice()),
+        None => find(nodes.iter(), "body")
+            .map(|b| b.children.as_slice())
+            .or(Some(nodes)),
+    };
+    let elements = flow.unwrap_or_default().iter().filter_map(|n| match n {
+        Node::Element(e) => Some((e.node_id, e)),
+        _ => None,
+    });
+    elements.collect()
+}
+
 impl FlowReuse {
     /// Повтор для сборки дерева `nodes`: корень `html` с `body`, `body` без
     /// снятого `html` или блоки снятых обёрток.

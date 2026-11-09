@@ -98,3 +98,44 @@ fn a_recoloured_block_keeps_its_record_for_layout_only(cx: &mut TestAppContext) 
         Some(crate::style::values::value::Len::Px(1.0));
     assert_eq!(damage(&moved), None, "a new margin is layout damage");
 }
+
+#[gpui::test]
+fn a_restyle_compares_the_records_at_the_rebuild_and_drops_their_frame_tree(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = settled(cx);
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    let marks: Vec<_> = store.recorded().iter().map(|e| e.children.mark()).collect();
+    assert!(marks.len() > 400, "settled blocks were recorded");
+    let html = page("paint", "row");
+    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
+    // The records compared at the rebuild hold no block of a frame tree.
+    assert!(store.recorded().is_empty(), "a record kept its frame block");
+    frame(cx);
+    let alive = marks.iter().filter(|m| m.is_alive()).count();
+    assert_eq!(alive, 0, "the previous frame tree outlived the rebuild");
+    let (_, skipped, rebuilt) = reused(&view, cx);
+    assert!(
+        skipped > 400 && rebuilt == 0,
+        "skipped {skipped}, rebuilt {rebuilt}"
+    );
+}
+
+#[gpui::test]
+fn a_patch_after_a_restyle_drops_the_verdicts_of_the_rebuild(cx: &mut TestAppContext) {
+    let (view, cx) = settled(cx);
+    let (_, skipped_before, _) = reused(&view, cx);
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    let restyled = page("paint", "row");
+    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&restyled, "").unwrap()));
+    // A patch of the restyled tree before any frame (`Document::commit`):
+    // the verdicts taken at the rebuild no longer hold.
+    store.patch();
+    frame(cx);
+    let (_, skipped, rebuilt) = reused(&view, cx);
+    assert_eq!(
+        skipped, skipped_before,
+        "a block was skipped on a stale verdict"
+    );
+    assert_eq!(rebuilt, 0);
+}

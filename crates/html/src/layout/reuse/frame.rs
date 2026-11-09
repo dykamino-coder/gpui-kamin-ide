@@ -69,7 +69,7 @@ impl FlowReuse {
                         || painted.is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
-                refused.insert(record.source.id());
+                refused.insert(record.id);
             }
         }
         let ok = refused.is_empty();
@@ -92,6 +92,8 @@ impl FlowReuse {
             return;
         };
         self.store.refused.take();
+        // This frame compared the records with the patched document.
+        self.store.patched.set(false);
         let mut next = self.next.take();
         let skipped = next.len() as u64;
         let replayed = self

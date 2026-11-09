@@ -184,7 +184,8 @@ impl Pending {
         }
         let snapshot = self.snapshot.take()?;
         Some(Record {
-            source,
+            id: source.id(),
+            source: Some(source),
             key: self.key.clone(),
             start: self.start,
             end: self.end,

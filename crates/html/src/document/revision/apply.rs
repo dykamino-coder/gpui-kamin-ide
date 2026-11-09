@@ -129,12 +129,11 @@ impl Document {
             &fonts,
             revision,
         ) {
-            Ok(next) => {
+            Ok(mut next) => {
                 // Same source DOM, same node ids: the block records may hold
-                // for the restyled tree (each is checked by value before use).
-                let reuse = self.reuse.clone();
+                // for the restyled tree (`restyle`).
+                self.hand_over_reuse(&mut next);
                 *self = next;
-                self.reuse = reuse;
                 Ok(self.report())
             }
             Err((failure, source)) => Err(refused(self, failure, source.input)),

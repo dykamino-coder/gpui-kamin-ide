@@ -44,6 +44,9 @@ pub(crate) struct Store {
     pub(super) epoch: Cell<u64>,
     /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
     pub(crate) stats: Cell<ReuseStats>,
+    /// The document was patched since the last frame (`Document::commit`):
+    /// the records are known to hold only by the next build's comparison.
+    pub(super) patched: Cell<bool>,
 }
 
 impl Store {
@@ -72,17 +75,21 @@ impl Store {
     /// the recorded layout leaf, not the recorded paint, holds.
     pub(crate) fn same_tree(&self, e: &Element) -> Option<(Rc<Record>, Damage)> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
-        if record.source.same(e) {
-            let damage = match record.repaint {
-                true => Damage::Paint,
-                false => Damage::None,
-            };
+        let damage = match record.repaint {
+            true => Damage::Paint,
+            false => Damage::None,
+        };
+        // Compared at the rebuild of the document (`rebase`).
+        let Some(source) = &record.source else {
+            return Some((record, damage));
+        };
+        if source.same(e) {
             return Some((record, damage));
         }
         // A repainted block stands only off screen (`FlowCx::placeholder`):
         // the layout compare of a near one, a walk of its whole subtree,
         // would only find a record its build cannot use.
-        if record.far && record.source.same_layout(e) {
+        if record.far && source.same_layout(e) {
             // The caller keeps the layout under a record of this tree
             // (`FlowCx::placeholder`): the previous subtree goes now, not at
             // the end of the frame.
@@ -102,7 +109,63 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        records.values().map(|r| r.source.element()).collect()
+        let sources = records.values().filter_map(|r| r.source.as_ref());
+        sources.map(|s| s.element()).collect()
+    }
+
+    /// The document `old` was rebuilt as `new` from the same source DOM
+    /// (`Document::apply`, same-shape `Document::update`): the node ids are
+    /// the same. A record's source is its block in the frame tree, which the
+    /// layout passes rewrite from the document's box (zoom, flow item values)
+    /// as a function of that box's subtree and the flow key: so the document
+    /// boxes of the two trees decide here, and the record drops its source.
+    /// Its previous frame tree then goes with the previous document, as for a
+    /// fresh one, instead of living into the next build. A block equal but for
+    /// paint-only values keeps its record only if it was far from the screen
+    /// (`Damage::Paint` stands only there); replay records, which hold their
+    /// output and compare exactly, go. After a patch since the last frame
+    /// (`patch`), the records hold only by the next build's comparison.
+    pub(crate) fn rebase(&self, old: &[crate::dom::Node], new: &[crate::dom::Node]) {
+        if self.patched.get() {
+            return;
+        }
+        self.reset_replays();
+        let (was, now) = (super::flow_blocks(old), super::flow_blocks(new));
+        let records = self.records.take().into_iter();
+        let records = records.filter_map(|(id, record)| {
+            let (a, b) = (was.get(&id)?, now.get(&id)?);
+            let exact = crate::dom::same_tree(a, b);
+            let styles = || crate::dom::BoxStyles::of(a);
+            let repaint = !exact
+                && record.far
+                && crate::dom::same_layout_tree_as(a, &styles(), &a.children, b);
+            (exact || repaint).then(|| (id, Rc::new(record.moved_to(None, repaint))))
+        });
+        self.records.replace(records.collect());
+    }
+
+    /// The root style, viewport and text style of the last build of the flow
+    /// (`FlowKey`): the inputs its style pass computed the document under.
+    pub(crate) fn frame_inputs(
+        &self,
+    ) -> Option<(
+        crate::style::computed::BoxStyle,
+        (f32, f32),
+        gpui::SharedString,
+    )> {
+        let last = self.last.borrow();
+        let key = last.as_ref()?;
+        Some((key.root.clone(), key.viewport, key.text.font_family.clone()))
+    }
+
+    /// The document was patched (`Document::commit`): records compared at a
+    /// rebuild (`rebase`) no longer hold, the others are compared by the
+    /// next build.
+    pub(crate) fn patch(&self) {
+        self.patched.set(true);
+        let mut records = self.records.take();
+        records.retain(|_, r| r.source.is_some());
+        self.records.replace(records);
     }
 
     /// Ширина потока сменилась: годны только записи, чья раскладка от неё

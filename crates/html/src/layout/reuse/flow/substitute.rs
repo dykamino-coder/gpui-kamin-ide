@@ -53,8 +53,10 @@ impl FlowCx {
         // The block's paint changed here: its record now compares with this
         // tree and holds no recorded paint, so it keeps neither the previous
         // tree nor its stale output alive (`Record::moved_to`).
-        let record = match repaint && !record.repaint {
-            true => Rc::new(record.moved_to(self.reuse.shells.source(e), true)),
+        // A record compared at a rebuild takes this build's block as its
+        // source for the next builds.
+        let record = match record.source.is_none() || repaint && !record.repaint {
+            true => Rc::new(record.moved_to(Some(self.reuse.shells.source(e)), repaint)),
             false => record,
         };
         record.end.write(&opts.cx);
