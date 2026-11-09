@@ -198,7 +198,7 @@ export function AgentsPanel(): JSX.Element {
         ) : filtered.length === 0 ? (
           <div style="padding:16px;color:var(--text-disabled);font-size:12px">
             {q ? 'No agents match your search.' : 'No agents found.'}
-            {!q && isBrowserHost() && <p>Ask the agent in chat to create a subagent in the project's .claude/agents directory or ~/.claude/agents in this workspace container. Plugins can also provide agents.</p>}
+            {!q && isBrowserHost() && <p style="color:var(--text-secondary);line-height:1.5">Ask the agent in chat to create a subagent in the project's .claude/agents directory or ~/.claude/agents in this workspace container. Plugins can also provide agents.</p>}
           </div>
         ) : (
           <>

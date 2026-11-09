@@ -38,7 +38,7 @@ export function SkillsList({ skills, filter, selectedPath, onSelect }: Props): J
   if (filtered.length === 0) {
     return <div class={styles.empty}>
       {q ? 'No skills match your search.' : 'No skills found.'}
-      {!q && isBrowserHost() && <p>Choose New skill to add instructions in the workspace container, or install a plugin that provides skills.</p>}
+      {!q && isBrowserHost() && <p style="color:var(--text-secondary);line-height:1.5">Choose New skill to add instructions in the workspace container, or install a plugin that provides skills.</p>}
     </div>
   }
 

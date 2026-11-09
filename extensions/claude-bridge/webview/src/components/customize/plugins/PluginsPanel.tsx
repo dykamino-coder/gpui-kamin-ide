@@ -250,7 +250,7 @@ export function PluginsPanel(): JSX.Element {
       content = <div class={styles.placeholder}>
         {search ? 'No installed plugins match your search.' : 'No active plugins installed.'}
         {!search && isBrowserHost() && <>
-          <p>Browse a marketplace, or import a plugin directory from the workspace container.</p>
+          <p style="color:var(--text-secondary);line-height:1.5">Browse a marketplace, or import a plugin directory from the workspace container.</p>
           <Button onClick={() => handleTabChange('personal')}>Add a plugin</Button>
         </>}
       </div>
@@ -284,7 +284,7 @@ export function PluginsPanel(): JSX.Element {
       content = <div class={styles.placeholder}>
         {search ? 'No plugins match your search.' : 'No plugins found.'}
         {!search && isBrowserHost() && <>
-          <p>{tab === 'personal' && marketplaces.length === 0
+          <p style="color:var(--text-secondary);line-height:1.5">{tab === 'personal' && marketplaces.length === 0
             ? 'Use Add marketplace or plugin to add a Git URL or import a directory from the workspace container.'
             : 'Refresh this marketplace to load its available plugins.'}</p>
           {marketplaces.length > 0 && <Button onClick={() => void handleRefresh()}>Refresh marketplace</Button>}
