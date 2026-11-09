@@ -1,7 +1,6 @@
 export { WorkspaceAuth, serverTokenResolver } from './auth.js'
 export { startWorkspaceServer } from './server.js'
 export { TerminalWorkspaceBackend } from './terminals.js'
-
 export { WorkspaceFiles } from './files.js'
 export type { WorkspaceFilesOptions } from './files.js'
 export { createAppAssetHandler } from './assets.js'
