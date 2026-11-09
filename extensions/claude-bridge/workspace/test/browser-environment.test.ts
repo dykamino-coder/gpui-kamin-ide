@@ -9,7 +9,7 @@ import type { InvokeFrame, HostAttachment, HostFrame, WorkspaceBackend } from '.
 test('browser environment owns file effects and replies per view without disposing the backend', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridgeweb-environment-'))
   t.after(async () => {
-    assert.equal(path.dirname(root), await fs.realpath(os.tmpdir()))
+    assert.equal(await fs.realpath(path.dirname(root)), await fs.realpath(os.tmpdir()))
     assert.ok(path.basename(root).startsWith('bridgeweb-environment-'))
     await fs.rm(root, { recursive: true, force: true })
   })
