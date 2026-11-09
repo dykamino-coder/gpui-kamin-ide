@@ -16,6 +16,7 @@
     "test": "npm run build && node --import tsx --test --test-timeout=30000 --test-concurrency=1 test/*.test.ts",
     "test:capabilities": "tsx --test test/capability-matrix.test.ts",
     "test:parity": "tsx test/capability-readiness.ts",
+    "test:parity:complete": "tsx test/full-parity-readiness.ts",
     "test:browser": "node --import ./test/linux-browser-only.mjs --test test/*.smoke.mjs",
     "test:acceptance": "node --test acceptance/*.test.mjs",
     "test:live": "node acceptance/container-runner.mjs --mode live",

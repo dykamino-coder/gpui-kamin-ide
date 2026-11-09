@@ -29,6 +29,26 @@ Claude lead merges implementation and final documentation. Registration #638
 was merged separately; it did not accept the product. Release, version bumps,
 image publication and owner-performed testing are outside this task.
 
+### Strict completion gate follow-up
+
+The existing `test:parity` validates source classifications and four implemented
+provider prerequisites. Preserve that CI contract. A separate
+`test:parity:complete` must reject absent observable evidence for every supported
+inventory item, remaining host-state/lifetime contracts and final composed live
+scenarios. Its input is an external sanitized execution receipt for the exact
+clean runner/image revision, with individually named passing assertions and
+successful cleanup. Missing, skipped, failed, duplicate, stale or unknown proof
+IDs fail. Native exclusions retain the reviewed matrix reasons; FilePanel and
+explorer UI remain outside the corrected scope.
+
+This bounded follow-up implements receipt validation, negative regression
+coverage and a partial receipt from the existing live harness. It preserves
+executed scenario outcomes and never invents capability/remaining-contract proof.
+No current receipt is sufficient to close INC-0087. Execution harnesses must emit assertions
+after exercising behavior; hand-authored PASS receipts and test-path existence
+are not acceptance evidence. The lead reviews this Change PR; the full task
+remains open until the remaining suites actually run on the composed candidate.
+
 ## Browser shell scope correction
 
 The browser entry previously mounted the imported standalone `App`, whereas
@@ -196,14 +216,13 @@ supplies the executable dependencies it advertises, including PowerShell.
 Native editor LSP fallback commands reject explicitly; this does not replace
 testing the shared plugin LSP path.
 
-At main `65fa7467`, #650 supplies the bidirectional source inventory and
-mutation tests. Its readiness manifest declares only `host-terminal`,
-`title-regeneration` and `finished-toast-route`, all implemented. Thus the current
-`test:parity` checks its declared implemented prerequisites; exhaustive host-page
-and actual-model behavior coverage remains open. Provider/test-file existence is checked; executing an
-observable contract for every classified operation is a separate outstanding
-gate. Extend readiness to encode the missing completion requirements rather
-than interpreting the current success message as full parity.
+#650 supplies the bidirectional source inventory and mutation tests. The current
+`test:parity` checks four implemented provider prerequisites: `host-terminal`,
+`title-regeneration`, `finished-toast-route` and `preview-hmr`. Provider/test-file
+existence is checked; executing an observable contract for every classified
+operation remains outstanding. The separate `test:parity:complete` encodes that
+missing proof and the remaining completion contracts. It rejects absent evidence;
+the current prerequisite success message does not establish full parity.
 
 ## Acceptance and remaining work
 

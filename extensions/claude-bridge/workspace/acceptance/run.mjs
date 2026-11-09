@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright'
-import { check, scenarios, outcome, exitStatus, markdown, CheckFailure, assertImageSource } from './report.mjs'
+import { check, scenarios, outcome, exitStatus, markdown, CheckFailure, assertImageSource, completionReceipt } from './report.mjs'
 import { command, OwnedResources, imageProbe, issueToken, upstreamHealth } from './resources.mjs'
 import { heap } from './browser.mjs'
 import { liveScenarios } from './scenarios.mjs'
@@ -117,6 +117,7 @@ async function main() {
     report.exitCode = exitStatus(report.results)
     await writeFile(path.join(reportDir, 'summary.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
     await writeFile(path.join(reportDir, 'summary.md'), markdown(report), { flag: 'wx', mode: 0o600 })
+    await writeFile(path.join(reportDir, 'completion.json'), `${JSON.stringify(completionReceipt(report), null, 2)}\n`, { flag: 'wx', mode: 0o600 })
     process.stdout.write(`Sanitized summary: ${path.join(reportDir, 'summary.md')}\n`)
     process.exitCode = report.exitCode
   }
