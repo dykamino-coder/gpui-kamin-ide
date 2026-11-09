@@ -74,7 +74,15 @@ MCP requests and closes shared resources without sending `session:end`; the
 server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
 The test starts long-running foreground/background Bash processes and an actual
 loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
-process termination and natural client exit. A
+process termination and natural client exit. It also sends the public explicit
+Disconnect before shutdown: connections are terminally disposed before tabs are
+forgotten, and the owning call's cancellation reaches external HTTP/SSE requests.
+An SSE response still pending after POST 202 is cancelled without closing the
+shared stream or another call. Stdio/WS per-call remote cancellation remains a
+separate parity gap. A third case closes both browser sockets while Bash/MCP run,
+checks continued tools with zero browsers, re-attaches to the same three sessions,
+then verifies shutdown cleanup. This is socket-level lifecycle evidence, not the
+full transcript/prompt recovery acceptance. A
 synthetic upstream protocol peer supplies session/MCP frames; this does not
 prove browser UI, live model, external plugin or container acceptance. The test
 uses a disposable HOME and cannot load the operator's Claude profile.
@@ -148,7 +156,12 @@ npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI. Native window,
-file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+CI repeats this headlessly and captures only synthetic fixture UI.
+The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
+JS heap after GC at initial App mount and after socket re-attach. These are
+synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
+that the page is already thin. The design requires the remaining measurements.
+
+Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
