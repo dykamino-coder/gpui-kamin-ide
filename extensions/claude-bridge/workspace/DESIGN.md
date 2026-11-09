@@ -116,8 +116,11 @@ production bundle and page JS heap in acceptance and report both in the PR.
 On socket loss, detach delivery only and reconnect with backoff. A new document
 or second tab attaches to the same host state. Synchronization delivers a coherent
 snapshot of transcript, active turn/tool state, pending prompts, open files and
-watches, and terminal scrollback, followed by ordered live updates. A host revision
-and event cursor must close the snapshot/live race without gaps or duplicates.
+watches, and terminal scrollback, followed by ordered live updates. The initial
+in-process implementation captures and enqueues each snapshot synchronously,
+without an await, on the same event loop and ordered socket as live events.
+This closes the capture/live race without a separate cursor or replay journal;
+an asynchronous snapshot producer must add a revision/cursor before yielding.
 The host owns logical view state independently of a socket or document generation.
 
 Browser reload is never permission to replay a mutation. Use stable operation IDs,

@@ -16,7 +16,8 @@ Re-attach must deliver transcript/streaming/tool/prompt state, open files/watche
 and terminal scrollback, then live updates, without replaying mutations or
 duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
 tears down work. The merged browser entry does not yet meet this full contract:
-host presentation snapshots and authoritative state migration remain open.
+the host snapshot increment below covers chat/prompt re-attachment, while the
+remaining authoritative state migration stays open.
 Acceptance must cover close/reopen during Bash/MCP, pending permission after
 reopen, two tabs, and report production bundle size and page JS heap.
 
@@ -167,14 +168,17 @@ fail; this is startup/transport/UI composition evidence, not shared-handler,
 model or Podman parity. Run after building both packages:
 
 ```sh
-# In workspace; choose a private browser cache on a shared developer machine.
+# Inside a Linux Podman container or Linux CI, never on the Windows host.
+# Mount source read-only; put builds and the browser cache in container storage.
 export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
 export PLAYWRIGHT_SKIP_BROWSER_GC=1
 npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-CI repeats this headlessly and captures only synthetic fixture UI.
+The test refuses Windows execution. Linux CI repeats this headlessly and captures
+only synthetic fixture UI. Browser/live acceptance runs belong inside Podman;
+never launch Chromium, including headless_shell, on the Windows host.
 The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
 JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
@@ -183,3 +187,37 @@ that the page is already thin. The design requires the remaining measurements.
 Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Host presentation and re-attachment increment
+
+The shared runtime keeps an internal observer with zero browser sockets. It
+retains pending permission/elicitation/question frames, activity, submission
+receipts and accepted submission identities. ConnectionManager accumulates
+streaming text/thinking deltas even while renderer delivery is muted. After its
+listeners mount, the browser requests `workspace:sync`: a targeted synchronous
+snapshot of tabs, the active transcript tail (200 records), subagent tails,
+boundaries, accumulated stream, statuses, receipts and pending questions. Older
+history stays in shared caches/disk and uses existing paging. A second page's
+snapshot never broadcasts transcript replay into the first page.
+
+Browser submissions carry IDs even before CLI-mod negotiation. The host rejects
+conflicting reuse, drops duplicate accepted submissions and duplicate prompt
+answers, and never replays mutations on attach. At 10,000 accepted identities or
+32 MiB of accepted text, new submissions fail explicitly until sessions end;
+identities are never evicted while a session remains live. This is in-process
+state, not crash recovery. Native-terminal fallback queue display still uses
+the existing UI projection; full queue/reducer migration remains open.
+
+The deterministic real-host regression closes all views with foreground and
+background Bash, an external HTTP MCP call, a permission prompt and a stream in
+flight. It records more history/deltas with zero views, re-attaches, answers the
+original prompt and attaches a second view without duplicate upstream submission.
+This is real client/handler/WebSocket evidence with a synthetic upstream, not
+the required live model/Podman/headless lifecycle acceptance. Bridge FilePanel
+(including attach-file/context) remains in scope; only IDE open/reveal and
+openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not Bridge". Host-owned
+file watches, PTY scrollback, remaining page reducers and the full gates follow.
+
+Explicit session close now also disposes background shells before dropping the
+connection. The same real-process regression covers End session, Disconnect and
+shutdown with foreground/background Bash and an external HTTP MCP call in flight.

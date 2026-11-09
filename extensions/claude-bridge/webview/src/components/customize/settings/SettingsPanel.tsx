@@ -62,6 +62,10 @@ export function SettingsPanel(): JSX.Element {
         whisperUrl: whisperUrl || undefined,
         whisperModel: whisperModel || undefined,
         whisperToken: whisperToken || undefined,
+      }).catch(() => {
+        // A delayed save can finish its config read after browser disconnect.
+        // Do not replay the mutation; make its unconfirmed outcome visible.
+        showToast({ type: 'error', title: 'Settings', message: 'Settings could not be confirmed. Check the connection and try again.' })
       })
       if (!tok) hasToken.value = false
     }, 600)

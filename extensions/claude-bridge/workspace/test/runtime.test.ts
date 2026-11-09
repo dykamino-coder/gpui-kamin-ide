@@ -1,18 +1,17 @@
 import assert from 'node:assert/strict'
-import { fork, spawnSync } from 'node:child_process'
 import { once, EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
 import { WebSocket, WebSocketServer } from 'ws'
 import { assertProcessStopped, deadline, externalMcp } from './fixtures/external-mcp.js'
+import { startRuntimeProcess } from './fixtures/runtime-process.js'
 
 // Protocol peer only: the CLIENT, handlers, filesystem and socket routing are
 // real. This is deliberately not live Claude/Podman/browser acceptance.
-for (const lifecycle of ['shutdown', 'disconnect then shutdown', 'detach then shutdown']) {
+for (const lifecycle of ['shutdown', 'disconnect then shutdown', 'tab close then shutdown', 'detach then shutdown']) {
 test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned work`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-runtime-'))
   const home = path.join(root, 'home')
@@ -53,26 +52,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     await new Promise<void>(resolve => upstream.close(() => resolve()))
     await new Promise<void>(resolve => http.close(() => resolve()))
   })
-  const child = fork(fileURLToPath(new URL('./fixtures/runtime-child.cjs', import.meta.url)), [root, upstreamUrl], {
-    cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec,
-      ProgramFiles: process.env.ProgramFiles, CLAUDE_CODE_GIT_BASH_PATH: process.env.CLAUDE_CODE_GIT_BASH_PATH,
-      HOME: home, USERPROFILE: home, TEMP: tmp, TMP: tmp, TMPDIR: tmp,
-      KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
-  })
-  // Keep output private; assertion messages never dump runtime logs/credentials.
-  child.stdout!.resume()
-  child.stderr!.resume()
-  cleanup.push(async () => {
-    if (child.exitCode === null && child.signalCode === null) {
-      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-      else child.kill()
-      await once(child, 'exit', { signal: AbortSignal.timeout(5000) })
-    }
-  })
-  const exited = once(child, 'exit')
-  const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(10000) }) as [{ origin: string }]
-  assert.ok(ready.origin)
+  const { child, exited, ready } = await startRuntimeProcess(root, tmp, home, upstreamUrl, cleanup)
   const login = await fetch(`${ready.origin}/auth/login`, { method: 'POST', headers: { Origin: ready.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'synthetic-workspace-token' }) })
   const cookie = login.headers.get('set-cookie')!.split(';')[0]
   const connect = () => new WebSocket(ready.origin.replace('http:', 'ws:') + '/bridge', { headers: { Origin: ready.origin, Cookie: cookie } })
@@ -168,6 +148,18 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   const shellPids = pidFiles.map(file => Number(fs.readFileSync(file, 'utf8').trim()))
   assert.ok(shellPids.every(pid => Number.isSafeInteger(pid) && pid > 0))
   if (lifecycle === 'detach then shutdown') {
+    const activeTab = (await invoke('tab:get-active')).result
+    const send = (channel: string, args: unknown[]) => a.send(JSON.stringify({ kind: 'send', channel, args }))
+    send('pty-submit-text', [activeTab, 'message once', 'stable-submission'])
+    await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.submissionId === 'stable-submission')
+    peer!.send(JSON.stringify({ type: 'session:submission', id: 'stable-submission', state: 'native' }))
+    send('change-permission-mode', [activeTab, 'acceptEdits'])
+    await invoke('tab:list') // ingress barrier before the tool asks for permission
+    peer!.send(JSON.stringify({ type: 'mcp:call', requestId: 'reopen-permission', toolName: 'Bash', input: { command: 'echo permission-after-reopen' } }))
+    await wait(framesA, eventsA, frame => frame.channel === 'permission-request' && frame.args[1].requestId === 'reopen-permission')
+    peer!.send(JSON.stringify({ type: 'streaming:entry', entry: { type: 'assistant', uuid: 'stream-turn', __streaming: true,
+      message: { id: 'stream-turn', role: 'assistant', content: [{ type: 'text', text: 'before' }] } } }))
+    await wait(framesA, eventsA, frame => frame.channel === 'streaming-entry')
     let cancelled = false
     void external.cancelled.then(() => { cancelled = true })
     const closed = Promise.all([once(a, 'close'), once(b, 'close')])
@@ -180,16 +172,49 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     for (const pid of shellPids) assert.doesNotThrow(() => process.kill(pid, 0))
     assert.equal(peer!.readyState, WebSocket.OPEN, 'Socket loss must keep the upstream connection')
     assert.match(JSON.stringify((await tool('Read', { file_path: file })).result), /after/)
+    peer!.send(JSON.stringify({ type: 'streaming:delta', msgId: 'stream-turn', blockIdx: 0, appendText: ' during absence', kind: 'text' }))
+    peer!.send(JSON.stringify({ type: 'jsonl:entries', entries: [{ type: 'user', uuid: 'closed-history', _ord: 1,
+      message: { role: 'user', content: 'recorded with zero views' } }] }))
+    peer!.send(JSON.stringify({ type: 'jsonl:status', status: 'watching', replayComplete: true }))
+    // The subsequent tool result is an upstream ordering barrier.
+    await tool('Read', { file_path: file })
     a = connect()
     a.on('message', raw => { framesA.push(JSON.parse(raw.toString())); eventsA.emit('frame') })
     await once(a, 'open')
     assert.equal((await invoke('tab:list')).result.length, 3)
+    const start = framesA.length
+    send('workspace:sync', [])
+    await wait(framesA, eventsA, frame => framesA.indexOf(frame) >= start && frame.channel === 'workspace:snapshot-end')
+    const snapshot = framesA.slice(start)
+    assert.ok(snapshot.some(frame => frame.channel === 'workspace:snapshot-end'))
+    assert.equal(snapshot.filter(frame => frame.channel === 'jsonl-entries').flatMap(frame => frame.args[1]).filter(row => row.uuid === 'closed-history').length, 1)
+    assert.equal(snapshot.find(frame => frame.channel === 'streaming-entry').args[1].message.content[0].text, 'before during absence')
+    assert.ok(snapshot.some(frame => frame.channel === 'permission-request' && frame.args[1].requestId === 'reopen-permission'))
+    assert.ok(snapshot.some(frame => frame.channel === 'session:submission' && frame.args[1].text === 'message once' && frame.args[1].state === 'native'))
+    send('pty-submit-text', [activeTab, 'message once', 'stable-submission'])
+    send('permission-response', ['reopen-permission', 'allow'])
+    const permitted = await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'mcp:response' && frame.requestId === 'reopen-permission')
+    assert.match(JSON.stringify(permitted.result), /permission-after-reopen/)
+    assert.equal(upstreamFrames.filter(frame => frame.type === 'session:submitText' && frame.submissionId === 'stable-submission').length, 1)
+    const c = connect()
+    const framesC: any[] = [], eventsC = new EventEmitter()
+    c.on('message', raw => { framesC.push(JSON.parse(raw.toString())); eventsC.emit('frame') })
+    cleanup.push(() => c.terminate())
+    await once(c, 'open')
+    const aLength = framesA.length
+    c.send(JSON.stringify({ kind: 'send', channel: 'workspace:sync', args: [] }))
+    await wait(framesC, eventsC, frame => frame.channel === 'workspace:snapshot-end')
+    assert.equal(framesA.slice(aLength).some(frame => frame.channel === 'workspace:snapshot-start' || frame.channel === 'jsonl-entries'), false,
+      'A second page must not replay/reset the first page')
+    assert.equal(framesC.some(frame => frame.channel === 'permission-request'), false, 'Resolved prompts must not return in a later page')
     assert.equal(cancelled, false)
   }
-  if (lifecycle === 'disconnect then shutdown') {
+  if (lifecycle === 'disconnect then shutdown' || lifecycle === 'tab close then shutdown') {
     // This is the public browser message, not a direct ConnectionManager call.
-    a.send(JSON.stringify({ kind: 'send', channel: 'disconnect', args: [] }))
-    assert.deepEqual((await invoke('tab:list')).result, [])
+    const channel = lifecycle === 'tab close then shutdown' ? 'tab:close' : 'disconnect'
+    const active = (await invoke('tab:get-active')).result
+    a.send(JSON.stringify({ kind: 'send', channel, args: channel === 'tab:close' ? [active] : [] }))
+    assert.equal((await invoke('tab:list')).result.some((tab: any) => tab.id === active), false)
     await deadline(external.cancelled, 'External MCP request survived explicit browser disconnect')
     for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
   }
@@ -206,6 +231,6 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   assert.equal(code, 0, 'shared runtime should exit naturally after disposal')
   assert.equal(signal, null)
   for (const [index, pid] of shellPids.entries()) await assertProcessStopped(pid, index === 0 ? 'foreground' : 'background')
-  assert.equal(upstreamFrames.some(frame => frame.type === 'session:end'), false)
+  assert.equal(upstreamFrames.some(frame => frame.type === 'session:end'), lifecycle === 'tab close then shutdown')
 })
 }
