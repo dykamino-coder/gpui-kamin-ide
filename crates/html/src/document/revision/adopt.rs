@@ -1,37 +1,41 @@
-//! Ревизия без перерасчёта стиля: новая разметка той же формы, отличие которой
-//! не может изменить ни одного каскадного значения.
+//! Ревизия без перерасчёта стиля: пакет записей мутаций, ни одна из которых не
+//! может изменить ни одного каскадного значения.
 //!
 //! Так браузер обрабатывает мутацию атрибута: Blink сверяет изменённые классы и
 //! атрибуты с `RuleFeatureSet` и не ставит перерасчёт, если ни одно правило их не
-//! упоминает; Gecko/Stylo делают то же через карту инвалидации. Здесь отличие
-//! ревизии — только атрибуты `class` и `data-*` элементов HTML (`shape`), а такие
-//! атрибуты движок читает лишь селекторами и `attr()`: каскад их не видит, если
-//! ни один лист и собственный `style` элемента их не упоминают (`mentions`).
-//! Тогда каскадный результат — прежнее дерево, в котором у этих элементов (и их
-//! копий-коробок с тем же `node_id`) атрибуты новой ревизии; узлы без изменений
-//! остаются теми же (`Children` делится, копируется только путь к правке), а
-//! значения документа (арены, шрифты, at-правила, картинки) — прежними.
+//! упоминает (`style_engine.cc:1867`); Gecko/Stylo делают то же через карту
+//! инвалидации, а смену текста проверяют только по флагам `:empty` родителя
+//! (`RestyleManager.cpp:345`). Здесь отличие — только атрибуты `class` и
+//! `data-*` элементов HTML и тексты, а такие атрибуты движок читает лишь
+//! селекторами и `attr()`: каскад их не видит, если ни один лист и собственный
+//! `style` элемента их не упоминают (`mentions`). Тогда каскадный результат —
+//! прежнее дерево, в котором у этих элементов (и их копий-коробок с тем же
+//! `node_id`) атрибуты и тексты пакета; узлы без изменений остаются теми же
+//! (`Children` делится, копируется только путь к правке), а значения документа
+//! (арены, шрифты, at-правила, картинки) и соответствие исходных узлов узлам
+//! коробок — прежними: записи пишутся в тот же исходный DOM.
 
-use super::build::Source;
+use super::commit::Plan;
 use super::mentions::mentions;
-use super::patch::{Attrs, Target, patch};
-use super::shape::{self, Changed};
-use super::text::{TextEdit, editable, patch_texts};
-use crate::document::{Document, state::DocState};
+use super::mutation::{AttrChange, Batch, open};
+use super::patch::{Target, attr_paths, patch};
+use super::text::{TextEdits, editable, patch_texts, text_paths};
+use crate::document::Document;
+use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 impl Document {
-    /// Следующая ревизия из `source` без каскада; иначе вход возвращается для
-    /// полной сборки. Ничего в прежней ревизии не меняется до решения.
-    pub(super) fn adopt(
+    /// Дерево коробок после пакета `batch` без каскада, если ни одна правка не
+    /// меняет каскад (`Plan`); `sheets` — тексты всех `<style>` документа, если
+    /// уже известны. Ничего в ревизии не меняется.
+    pub(super) fn plan(
         &self,
-        source: Source,
+        batch: &Batch,
         theme_css: &str,
+        sheets: Option<&[String]>,
         revision: &crate::budget::RevisionBudget,
-    ) -> Result<Document, Box<Source>> {
-        #[cfg(feature = "engine-bench")]
-        let started = std::time::Instant::now();
+    ) -> Option<Plan> {
         let values = &self.state.values;
         let (records, suppressed) = values.diagnostics_snapshot();
         let quiet = records.is_empty()
@@ -41,116 +45,93 @@ impl Document {
             && self.embedded_failure().is_none()
             && revision.failure().is_none();
         if !quiet || *self.theme_css != *theme_css {
-            return Err(Box::new(source));
+            return None;
         }
-        let Some(old) = values.source_dom() else {
-            return Err(Box::new(source));
-        };
-        let Some(shape) = shape::compare(&old, &source.input.dom.document) else {
-            return Err(Box::new(source));
-        };
-        let mut sheets = vec![crate::style::ua::user_agent_css(), theme_css];
-        if values.quirks() {
-            sheets.push(crate::style::ua::QUIRKS_CSS);
-        }
-        sheets.extend(shape.sheets.iter().map(String::as_str));
-        let ids = source_ids(&values.traversal.elements());
+        let root = values.source_dom()?;
         let mut targets = HashMap::new();
-        for changed in &shape.changed {
-            let id = ids.get(&(Rc::as_ptr(&changed.old) as usize)).copied();
-            match id.filter(|id| *id != AMBIGUOUS) {
-                Some(id) if neutral(changed, &sheets) => {
-                    targets.insert(
-                        id,
-                        Target {
-                            tag: tag_of(&changed.old),
-                            old: attrs_of(&changed.old),
-                            new: attrs_of(&changed.new),
-                        },
-                    );
+        if !batch.elements.is_empty() {
+            let collected;
+            let sheets = match sheets {
+                Some(sheets) => sheets,
+                None => {
+                    collected = super::shape::sheets(&root);
+                    &collected
                 }
-                _ => return Err(Box::new(source)),
+            };
+            let mut all = vec![crate::style::ua::user_agent_css(), theme_css];
+            if values.quirks() {
+                all.push(crate::style::ua::QUIRKS_CSS);
+            }
+            all.extend(sheets.iter().map(String::as_str));
+            let handles = batch.elements.iter().map(|change| &change.element);
+            let ids = source_ids(&values.traversal.elements(), handles);
+            for (change, id) in batch.elements.iter().zip(ids) {
+                match id {
+                    Some(id) if open(&change.element, &root) && neutral(change, &all) => {
+                        targets.insert(
+                            id,
+                            Target {
+                                tag: tag_of(&change.element),
+                                old: crate::dom::element_attrs(&change.old),
+                                new: crate::dom::element_attrs(&change.new),
+                            },
+                        );
+                    }
+                    _ => return None,
+                }
             }
         }
-        let text_ids = source_ids(&values.traversal.texts());
+        let handles = batch.texts.iter().map(|change| &change.node);
+        let text_ids = source_ids(&values.traversal.texts(), handles);
         let read = values.traversal.read_texts();
-        let mut texts: HashMap<crate::dom::TextId, TextEdit> = HashMap::new();
-        for edit in &shape.texts {
-            let id = text_ids
-                .get(&edit.node)
-                .copied()
-                .filter(|id| *id != AMBIGUOUS)
+        let mut texts: TextEdits<'_> = HashMap::new();
+        for (change, id) in batch.texts.iter().zip(text_ids) {
+            let id = id
                 .and_then(|id| u32::try_from(id).ok())
                 .and_then(crate::dom::TextId::new);
             match id {
-                Some(id) if editable(edit, &read) => {
-                    let edit = TextEdit {
-                        old: edit.old.clone(),
-                        new: edit.new.clone(),
-                    };
-                    texts.insert(id, edit);
+                Some(id) if open(&change.node, &root) && editable(change, &read) => {
+                    texts.insert(id, change);
                 }
-                _ => return Err(Box::new(source)),
+                _ => return None,
             }
         }
-        let mut nodes = (*self.nodes).clone();
-        if !patch(&mut nodes, &targets) || !patch_texts(&mut nodes, &texts) {
-            return Err(Box::new(source));
+        // Пути к правкам ищутся в текущем дереве; без единого пути дерево
+        // коробок после пакета то же самое, и копировать нечего.
+        let attrs = attr_paths(&self.nodes, &targets)?;
+        let found = text_paths(&self.nodes, &texts)?;
+        if attrs.is_empty() && found.is_empty() {
+            return Some(Plan::Clean(None));
         }
-        let moved: HashMap<usize, usize> = shape.nodes.iter().copied().collect();
-        let remap = |old: &[usize]| -> Vec<usize> {
-            old.iter()
-                .map(|old| moved.get(old).copied().unwrap_or(0))
-                .collect()
-        };
-        let elements = remap(&values.traversal.elements());
-        let source_texts = remap(&values.traversal.texts());
-        let read_next = read
-            .iter()
-            .filter_map(|old| moved.get(old).copied())
-            .collect();
-        drop(read);
-        let state = DocState::adopting(&self.state);
-        state
-            .values
-            .admit_revision(revision.clone(), source.base.as_ref());
-        state
-            .values
-            .traversal
-            .readopt(source.input, elements, source_texts, read_next);
-        Ok(Document {
-            state,
-            nodes: Rc::new(nodes),
-            retained: Default::default(),
-            reuse: self.reuse.clone(),
-            root: self.root.clone(),
-            key: source.key,
-            theme_css: self.theme_css.clone(),
-            base_url: self.base_url.clone(),
-            xml: self.xml,
-            last_failure: None,
-            #[cfg(feature = "engine-bench")]
-            timings: crate::document::BuildTimings {
-                parse: source.parse,
-                style: started.elapsed(),
-            },
+        let mut nodes = (*self.nodes).clone();
+        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+            return None;
+        }
+        // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
+        // лишь селекторы и `attr()` каскада, а не сборка кадра.
+        Some(if texts.is_empty() {
+            Plan::Clean(Some(nodes))
+        } else {
+            Plan::Patched(nodes)
         })
     }
 }
 
-/// Один адрес у двух узлов коробок: такой узел правкой не адресуется.
-const AMBIGUOUS: u64 = u64::MAX;
-
-fn source_ids(elements: &[usize]) -> HashMap<usize, u64> {
-    let mut ids = HashMap::with_capacity(elements.len());
-    for (slot, &address) in elements.iter().enumerate() {
-        if address != 0 {
-            ids.entry(address)
-                .and_modify(|id| *id = AMBIGUOUS)
-                .or_insert(slot as u64 + 1);
+/// Номера коробок (позиция в списке адресов сборки плюс один) исходных узлов
+/// `handles`, в их порядке. Один проход по списку без карты всех узлов:
+/// карта — только из адресов пакета. `None` — узел не построен или его адрес у
+/// двух номеров (такой узел правкой не адресуется).
+fn source_ids<'a>(list: &[usize], handles: impl Iterator<Item = &'a Handle>) -> Vec<Option<u64>> {
+    let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
+    let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
+    let mut seen = std::collections::HashSet::with_capacity(wanted.len());
+    for (slot, address) in list.iter().enumerate() {
+        if let Some(id) = found.get_mut(address) {
+            // Второе появление адреса делает узел неадресуемым.
+            *id = seen.insert(*address).then_some(slot as u64 + 1);
         }
     }
-    ids
+    wanted.iter().map(|a| found[a]).collect()
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).
@@ -161,28 +142,12 @@ fn tag_of(handle: &markup5ever_rcdom::Handle) -> String {
     }
 }
 
-fn attrs_of(handle: &markup5ever_rcdom::Handle) -> Attrs {
-    match &handle.data {
-        markup5ever_rcdom::NodeData::Element { attrs, .. } => {
-            crate::dom::element_attrs(&attrs.borrow())
-        }
-        _ => Vec::new(),
-    }
-}
-
 /// Не меняет ли отличие атрибутов элемента ни одного каскадного значения:
 /// изменены только `class` и `data-*` без пространства имён, и ни один лист
 /// (и собственный `style`, где `attr()` читает атрибуты элемента) не упоминает
 /// ни имя изменённого атрибута, ни добавленный или снятый класс.
-fn neutral(changed: &Changed, sheets: &[&str]) -> bool {
-    let (
-        markup5ever_rcdom::NodeData::Element { attrs: old, .. },
-        markup5ever_rcdom::NodeData::Element { attrs: new, .. },
-    ) = (&changed.old.data, &changed.new.data)
-    else {
-        return false;
-    };
-    let (old, new) = (old.borrow(), new.borrow());
+fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
+    let (old, new) = (&change.old, &change.new);
     let value = |list: &[html5ever::Attribute], name: &html5ever::QualName| {
         list.iter()
             .find(|a| a.name == *name)
@@ -190,7 +155,7 @@ fn neutral(changed: &Changed, sheets: &[&str]) -> bool {
     };
     let (mut names, mut classes) = (Vec::new(), Vec::new());
     for attr in old.iter().chain(new.iter()) {
-        let (was, is) = (value(&old, &attr.name), value(&new, &attr.name));
+        let (was, is) = (value(old, &attr.name), value(new, &attr.name));
         if was == is {
             continue;
         }
@@ -215,7 +180,7 @@ fn neutral(changed: &Changed, sheets: &[&str]) -> bool {
         names.push(local.to_ascii_lowercase());
     }
     let own = value(
-        &new,
+        new,
         &html5ever::QualName::new(None, html5ever::ns!(), "style".into()),
     );
     !sheets

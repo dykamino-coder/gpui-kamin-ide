@@ -140,7 +140,7 @@ deferred!(
     |_: &PaintInline, child, pass: &CssPaintPass, window: &Window| {
         let job = Inline {
             paint: InlinePaint::Element(child),
-            context: window.raster_paint_ctx(),
+            context: window.raster_paint_ctx(&pass.raster),
             captures: capture::claim(window, pass),
         };
         pass.jobs.admit_inline(job);

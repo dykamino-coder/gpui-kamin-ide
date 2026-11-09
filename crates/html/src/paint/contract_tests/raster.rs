@@ -3,7 +3,8 @@
 use super::draw_at_scale;
 use crate::text::raster::{Background, ReplicatedBackground, background_offset};
 use gpui::{
-    Bounds, ChildPaintContext, RasterFrame, Style, TransformationMatrix, canvas, point, px, size,
+    Bounds, ChildPaintContext, RasterCaptures, RasterFrame, Style, TransformationMatrix, canvas,
+    point, px, size,
 };
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -16,6 +17,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
+                let captures = RasterCaptures::default();
                 let captured = Rc::new(17u32);
                 let caller = Rc::new(23u32);
                 let mut frame = RasterFrame::new(point(px(0.125), px(0.375)), None);
@@ -28,7 +30,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
                     window.with_raster_frame(frame.clone(), |window| {
                         (
                             window.paint_ctx(),
-                            window.raster_paint_ctx(),
+                            window.raster_paint_ctx(&captures),
                             window.snapshot_paint_state(),
                         )
                     });
@@ -57,7 +59,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
                     let mut expected = frame.clone();
                     expected.fill_transform = outer.fill_transform;
                     window
-                        .with_raster_paint_ctx(raster, |window| {
+                        .with_raster_paint_ctx(raster, &captures, |window| {
                             assert_eq!(window.raster_frame().clone(), expected);
                             assert!(Rc::ptr_eq(
                                 &window.raster_context::<u32>().unwrap(),

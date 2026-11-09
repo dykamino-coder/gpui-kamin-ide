@@ -38,6 +38,12 @@ impl TraversalState {
         self.texts.replace(exact);
     }
 
+    /// Забрать исходный DOM: следующая ревизия собирается из него же
+    /// (`retain` возвращает его этой ревизии, если сборка отвергнута).
+    pub fn take_source(&self) -> Option<Admitted> {
+        self.source.take()
+    }
+
     /// Обход дошёл до исходного текста `handle`: его номер, следующий по
     /// порядку обхода (`None` после `u32::MAX` текстов).
     pub fn record_text(&self, handle: &Handle) -> Option<crate::dom::TextId> {

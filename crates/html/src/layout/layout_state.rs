@@ -18,4 +18,20 @@ pub(crate) struct LayoutState {
     /// box). The body writes it at prepaint, the canvas layer reads it at
     /// paint of the same frame; the previous frame's value is the fallback.
     pub(crate) root_left: Cell<Option<f32>>,
+    /// Element styles converted in the current build of this document.
+    pub(crate) conversions: crate::layout::cx::conversions::StyleConversions,
+}
+
+impl LayoutState {
+    /// Состояние ревизии, дерево которой — копия путей к правкам прошлого
+    /// (`Document::adopted`): из прошлого переходит только основа подготовки
+    /// дерева (`PreparationCache::continuing`), остальное начинается заново.
+    pub(crate) fn continuing(previous: &Self) -> Self {
+        Self {
+            preparation: crate::layout::cx::subtree::PreparationCache::continuing(
+                &previous.preparation,
+            ),
+            ..Self::default()
+        }
+    }
 }

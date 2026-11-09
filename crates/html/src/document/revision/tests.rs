@@ -55,7 +55,9 @@ fn state(doc: &Document) -> String {
     )
 }
 
+mod damage;
 mod differential;
+mod records;
 mod text_edits;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\

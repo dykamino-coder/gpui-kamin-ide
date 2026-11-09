@@ -173,3 +173,33 @@ fn a_rebuilt_frame_reuses_the_previous_frames_line_splits(cx: &mut TestAppContex
     let (builds, _) = frames(&view, cx);
     assert!(builds >= 1);
 }
+
+/// A revision whose records change no box (a class on `html` that no sheet
+/// names) keeps the recorded frame: the next frame replays it, nothing is built.
+#[gpui::test]
+fn a_clean_revision_replays_the_recorded_frame(cx: &mut TestAppContext) {
+    let page =
+        "<!doctype html><html><head></head><body><p style='color:red'>hello</p></body></html>";
+    let (view, cx) = open(cx, page);
+    frame(cx);
+    frame(cx);
+    let (builds, replays) = frames(&view, cx);
+    cx.update(|_, cx| {
+        view.update(cx, |v, _| {
+            let dom = v.doc.source_dom();
+            let html = dom.children.borrow().last().cloned().unwrap();
+            let record = crate::Mutation::Attribute {
+                element: html,
+                name: html5ever::QualName::new(None, html5ever::ns!(), "class".into()),
+                value: Some("alt".into()),
+            };
+            assert!(v.doc.apply(&[record], "").unwrap().changed());
+        })
+    });
+    frame(cx);
+    assert_eq!(
+        frames(&view, cx),
+        (builds, replays + 1),
+        "a clean revision rebuilt its frame"
+    );
+}

@@ -27,8 +27,10 @@ pub(super) enum Step<'a> {
     Cold(Option<&'a str>),
     /// Тот же документ, принудительная перерисовка.
     Warm,
-    /// `Document::update` данной разметкой (локальная правка).
-    Update(&'a str),
+    /// Локальная правка: записи мутаций отличия данной разметки от документа
+    /// (`Document::mutations` до начала замера, как DOM-вызов пробы JS у
+    /// браузеров), применённые `Document::apply`.
+    Edit(&'a str),
 }
 
 async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
@@ -56,6 +58,14 @@ pub(super) async fn sample(
 )> {
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
+            let records = match step {
+                Step::Edit(html) => Some(
+                    view.doc
+                        .mutations(html)
+                        .ok_or("the edit changes the shape of the document")?,
+                ),
+                _ => None,
+            };
             let started = Instant::now();
             let work = work::Capture::begin(luid)?;
             let observer_setup = started.elapsed();
@@ -64,20 +74,21 @@ pub(super) async fn sample(
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
-            if let Step::Update(html) = step {
+            if let Some(records) = &records {
                 let t = Instant::now();
                 kamin_html::work::phase!(_document, DocumentOther);
-                view.doc.update(html, BROWSER_CSS)?;
+                view.doc.apply(records, BROWSER_CSS)?;
                 build_time = Some(t.elapsed());
                 timings = Some(view.doc.build_timings());
             }
             if let Step::Cold(markup) = step {
                 let t = Instant::now();
+                let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
                     match markup {
-                        Some(html) => html.to_owned(),
-                        None => resources::read(&args.path)?,
+                        Some(html) => html.into(),
+                        None => resources::read_into(&args.path, &mut source)?,
                     }
                 };
                 resources_time = Some(t.elapsed());
@@ -112,7 +123,8 @@ pub(super) async fn sample(
     let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
     let work = window.read_with(cx, |view, _| {
-        work.finish(matches!(step, Step::Cold(_)), &view.doc)
+        // Document phases ran in cold and in edit (`Document::update`) samples.
+        work.finish(!matches!(step, Step::Warm), &view.doc)
     })?;
     let after = Counters::read(capture);
     let frame = capture
@@ -220,10 +232,7 @@ pub(super) async fn run(
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
-        let mut mode = report::mode(&samples);
-        mode["diagnostic_scopes"] = report::mode(&diagnostics);
-        mode["work_counters"] = serde_json::json!({"samples": work});
-        mode["process_resources"] = serde_json::json!({"samples": usage});
+        let mode = report::measured_mode(&samples, &diagnostics, work, usage);
         modes.insert(name.into(), mode);
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,

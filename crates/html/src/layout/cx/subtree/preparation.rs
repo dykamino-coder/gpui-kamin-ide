@@ -9,23 +9,56 @@ pub(crate) struct Preparation {
     pub(crate) facts: Rc<SubtreeFacts>,
     pub(crate) unkeyed: Rc<Unkeyed>,
     pub(crate) clearance_possible: bool,
+    /// Сколько подготовок продолжено от последней полной (`continued`).
+    depth: u8,
 }
+
+/// Предел цепочки продолжений: глубже факты собираются полным обходом, чтобы
+/// поиск по слоям и удержанные ими метки снимков не росли с числом правок.
+const MAX_DEPTH: u8 = 4;
 
 type Snapshot = ((usize, usize), Rc<Preparation>);
 
+/// Ключ снимка-основы (`continuing`): адрес корневого списка не бывает нулевым,
+/// поэтому основа не совпадает ни с одним деревом и не требует своего поля.
+const BASE: (usize, usize) = (0, 0);
+
 #[derive(Default)]
 pub(crate) struct PreparationCache {
+    /// Подготовка последнего дерева или, под ключом `BASE`, подготовка дерева
+    /// прошлой ревизии той же формы и стилей (`continuing`).
     snapshot: std::cell::Cell<Option<Snapshot>>,
 }
 
 impl PreparationCache {
+    /// Кэш ревизии, дерево которой — копия путей к правкам атрибутов и
+    /// текстов прошлого (`Document::adopted`): та же форма, те же стили и
+    /// номера узлов. Подготовка прошлого дерева — основа первой подготовки:
+    /// индексы краски и возможность прояснения те же, а факты нужны только
+    /// новым спискам детей на путях к правкам (Servo `traversal.rs:87`: обход
+    /// ниже грязного корня, чистые поддеревья не посещаются).
+    pub(crate) fn continuing(previous: &Self) -> Self {
+        let snapshot = previous.snapshot.take();
+        let base = snapshot
+            .as_ref()
+            .map(|(_, prepared)| (BASE, prepared.clone()));
+        previous.snapshot.set(snapshot);
+        Self {
+            snapshot: std::cell::Cell::new(base),
+        }
+    }
+
     /// Только Document гарантирует неизменность корневого списка. Для raw
     /// render адрес не доказывает неизменность элементов и кэш не применяется.
     pub(crate) fn get(&self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
         let key = (nodes.as_ptr() as usize, nodes.len());
         let snapshot = self.snapshot.take();
+        let fresh = stable && !changed;
         let prepared = match snapshot {
-            Some((old, prepared)) if stable && !changed && old == key => prepared,
+            Some((old, prepared)) if fresh && old == key => prepared,
+            Some((BASE, base)) if fresh && base.depth < MAX_DEPTH => {
+                Rc::new(Preparation::continued(&base, nodes))
+            }
             _ => Rc::new(Preparation::new(nodes)),
         };
         if stable {
@@ -36,6 +69,19 @@ impl PreparationCache {
 }
 
 impl Preparation {
+    /// Подготовка дерева той же формы и стилей, что у `base`: факты — слой
+    /// над фактами `base` с записями только для новых списков детей.
+    fn continued(base: &Self, nodes: &[Node]) -> Self {
+        let mut facts = SubtreeFacts::overlay(base.facts.clone());
+        let clearance_possible = facts.clearance_possible(nodes);
+        Self {
+            facts: Rc::new(facts),
+            unkeyed: base.unkeyed.clone(),
+            clearance_possible,
+            depth: base.depth + 1,
+        }
+    }
+
     fn new(nodes: &[Node]) -> Self {
         crate::work::add!(FullTreeWalks, 1);
         let mut facts = SubtreeFacts::default();
@@ -81,63 +127,10 @@ impl Preparation {
             facts: Rc::new(facts),
             unkeyed: Rc::new((map, last)),
             clearance_possible,
+            depth: 0,
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::table::anon::anon_element;
-    use crate::style::computed::Position;
-
-    #[test]
-    fn stable_snapshot_reuses_preparation_until_computed_publication_changes() {
-        let nodes = vec![Node::Element(anon_element("div", vec![]))];
-        let cache = PreparationCache::default();
-        let first = cache.get(&nodes, true, true);
-        assert!(Rc::ptr_eq(&first, &cache.get(&nodes, true, false)));
-        let changed = cache.get(&nodes, true, true);
-        assert!(!Rc::ptr_eq(&first, &changed));
-        assert!(Rc::ptr_eq(&changed, &cache.get(&nodes, true, false)));
-    }
-
-    #[test]
-    fn raw_tree_is_recomputed_even_if_its_address_does_not_change() {
-        let mut nodes = vec![Node::Element(anon_element("div", vec![]))];
-        let cache = PreparationCache::default();
-        let first = cache.get(&nodes, false, false);
-        assert!(!first.clearance_possible);
-        let Node::Element(e) = &mut nodes[0] else {
-            unreachable!()
-        };
-        e.style.used_mut().reset_box_layout.float = Some(1);
-        let next = cache.get(&nodes, false, false);
-        assert!(next.clearance_possible);
-        assert!(!Rc::ptr_eq(&first, &next));
-    }
-
-    #[test]
-    fn paint_indices_use_preorder_entries_and_subtree_ends() {
-        let mut positioned = anon_element("span", vec![]);
-        positioned.node_id = 2;
-        positioned.style.used_mut().reset_positioned.position = Some(Position::Relative);
-        let positioned_id = positioned.node_id;
-        let mut root = anon_element("div", vec![Node::Element(positioned)]);
-        root.node_id = 1;
-        let root_id = root.node_id;
-        let mut sibling = anon_element("div", vec![]);
-        sibling.node_id = 3;
-        let sibling_id = sibling.node_id;
-        let nodes = [
-            Node::Element(root),
-            Node::Text("ignored".into()),
-            Node::Element(sibling),
-        ];
-        let prepared = Preparation::new(&nodes);
-        assert_eq!(prepared.unkeyed.1, Some(1));
-        assert_eq!(prepared.unkeyed.0[&positioned_id], 2);
-        assert_eq!(prepared.unkeyed.0[&root_id], 2);
-        assert_eq!(prepared.unkeyed.0[&sibling_id], 3);
-    }
-}
+mod tests;

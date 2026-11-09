@@ -86,7 +86,7 @@ pub use text_style_scope::TextStyleScope;
 mod raster_frame;
 mod scoped;
 pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
-pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
+pub use paint_snapshot::{PaintCtx, PaintState, RasterCaptures, RasterPaintCtx};
 pub use raster_frame::RasterFrame;
 mod line_baselines;
 mod text_rendering;
@@ -3577,7 +3577,10 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
-        self.with_paint_pass(|window| window.draw_frame(cx))
+        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        // KaminIDE patch: the empty base style new elements share must not outlive them.
+        crate::elements::refinement_share::release_empty();
+        drawn
     }
 
     fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {

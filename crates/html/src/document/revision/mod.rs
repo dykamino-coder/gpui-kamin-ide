@@ -1,13 +1,19 @@
 //! Транзакционная смена committed revision и постоянный исход отклонённого update.
 
 mod adopt;
+mod apply;
 mod build;
+mod commit;
 mod mentions;
+mod mutation;
 mod patch;
 mod shape;
 #[cfg(test)]
 mod tests;
 mod text;
+
+pub use apply::ApplyError;
+pub use mutation::Mutation;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
 
@@ -65,13 +71,29 @@ impl Document {
             Ok(source) => source,
             Err(failure) => return Err(record(failure, self)),
         };
-        let source = match self.adopt(source, theme_css, &revision) {
-            Ok(next) => {
-                *self = next;
+        // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
+        // общий с `apply`; иначе новая разметка собирается целиком.
+        if let Some(old) = self.state.values.source_dom()
+            && let Some(shape) = shape::compare(&old, &source.input.dom.document)
+            && let Some(batch) = mutation::Batch::new(&shape.records())
+        {
+            #[cfg(feature = "engine-bench")]
+            let started = std::time::Instant::now();
+            if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
+                batch.write();
+                self.commit(
+                    plan,
+                    source.key,
+                    &revision,
+                    #[cfg(feature = "engine-bench")]
+                    super::BuildTimings {
+                        parse: source.parse,
+                        style: started.elapsed(),
+                    },
+                );
                 return Ok(self.report());
             }
-            Err(source) => *source,
-        };
+        }
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let candidate = match Self::from_source(

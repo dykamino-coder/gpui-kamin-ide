@@ -40,6 +40,22 @@ pub(super) fn mode(samples: &[Sample]) -> Value {
     json!({"summary": summary, "samples_ms": samples})
 }
 
+/// Режим с замерами, счётчиками работы и ресурсами процесса каждого образца.
+/// Один формат для cold/warm/relayout и edit: без него edit-фазы не судимы по
+/// памяти и CPU (verdict.py читает `process_resources`).
+pub(super) fn measured_mode(
+    samples: &[Sample],
+    diagnostics: &[Sample],
+    work: Vec<Value>,
+    usage: Vec<Value>,
+) -> Value {
+    let mut out = mode(samples);
+    out["diagnostic_scopes"] = mode(diagnostics);
+    out["work_counters"] = json!({"samples": work});
+    out["process_resources"] = json!({"samples": usage});
+    out
+}
+
 pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json::Error> {
     if json_output {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -104,5 +120,28 @@ mod tests {
         let report = mode(&[Sample::from([("parse", None), ("paint", Some(0.5))])]);
         assert!(report["summary"]["parse"].is_null());
         assert!(report["samples_ms"][0]["parse"].is_null());
+    }
+
+    #[test]
+    fn every_measured_mode_carries_per_sample_work_and_process_resources() {
+        let samples = [
+            Sample::from([("paint", Some(0.5))]),
+            Sample::from([("paint", Some(0.7))]),
+        ];
+        let usage = vec![json!({"phases": {"paint": {"process_cpu_100ns": 0}}}); 2];
+        let work = vec![json!({"phases": {}}); 2];
+        let mode = measured_mode(&samples, &samples, work, usage);
+        assert_eq!(
+            mode["process_resources"]["samples"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            mode["work_counters"]["samples"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(mode["diagnostic_scopes"]["summary"]["paint"]["count"], 2);
+        assert_eq!(mode["summary"]["paint"]["count"], 2);
     }
 }

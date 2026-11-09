@@ -52,6 +52,8 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
             crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
         ));
     });
+    // Переводы стилей коробок — общие в пределах этой сборки (`layout::cx::conversions`).
+    let _conversions = opts.cx.layout().conversions.build();
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
@@ -77,9 +79,14 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.deferred.unkeyed = prepared.unkeyed.clone();
         cx.contracts.in_render = true;
     });
+    // Строковые задания этого документа: вложенный документ уносит свои в свой
+    // сборщик и возвращает счёт внешнего.
+    let inline_jobs = &opts.cx.deferred.paint.inline_jobs;
+    let outer_jobs = inline_jobs.get();
     let mut out = blocks(nodes, &root, opts);
     out.extend(icb_layer.finish());
-    let (open, close) = crate::paint::coordinator::PaintCollect::pair();
+    let own_jobs = inline_jobs.replace(outer_jobs).saturating_sub(outer_jobs);
+    let (open, close) = crate::paint::coordinator::PaintCollect::pair_reserving(own_jobs);
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
     crate::paint::coordinator::roots(out)
@@ -122,7 +129,9 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     });
     let icb_layer =
         crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+    let conversions = opts.cx.layout().conversions.build();
     let out = blocks(std::slice::from_ref(node), &root, opts);
+    drop(conversions);
     let layer = icb_layer.finish();
     let first = out.into_iter().next()?;
     if layer.is_empty() {

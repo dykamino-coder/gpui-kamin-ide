@@ -1,6 +1,7 @@
-//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`) через
-//! `Document::update`, по очереди правка и возврат, затем проверка, что каждый
-//! вариант совпадает по пикселям со свежим документом той же разметки.
+//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`),
+//! применённой записями мутаций DOM (`Document::apply`), по очереди правка и
+//! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
+//! документом той же разметки.
 
 use super::{
     args::Args,
@@ -29,21 +30,25 @@ pub(super) async fn run(
     let variants = [base.as_str(), edited.as_str()];
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
+    let mut work = Vec::with_capacity(args.runs);
+    let mut usage = Vec::with_capacity(args.runs);
     let mut last = [None, None];
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, _) = sample(
+        let (measured, frame, (counts, process)) = sample(
             cx,
             window,
             fonts,
             args,
-            Step::Update(variants[variant]),
+            Step::Edit(variants[variant]),
             capture,
             luid,
         )
         .await?;
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
+        work.push(counts);
+        usage.push(process);
         last[variant] = Some(frame.pixels);
     }
     let mut checks = Vec::new();
@@ -96,9 +101,9 @@ pub(super) async fn run(
         }
         checks.push(check);
     }
-    let mut mode = report::mode(&samples);
-    mode["diagnostic_scopes"] = report::mode(&diagnostics);
+    let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
+    mode["edit_input"] = json!("mutation_records");
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
     Ok(mode)

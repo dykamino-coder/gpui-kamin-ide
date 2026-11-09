@@ -36,11 +36,11 @@ impl PaintJobQueue {
                 .is_some_and(|frame| frame.scope == scope)
     }
 
-    pub fn open(&self, scope: PaintScopeId) -> (usize, bool) {
+    pub fn open(&self, scope: PaintScopeId, inline_capacity: u32) -> (usize, bool) {
         self.update(|state| {
             let previous = state.open;
             let depth = state.frames.len();
-            state.frames.push(Frame::new(scope));
+            state.frames.push(Frame::new(scope, inline_capacity));
             state.open = true;
             (depth, previous)
         })
@@ -127,6 +127,12 @@ impl PaintJobQueue {
             .sum()
     }
 
+    #[cfg(test)]
+    pub fn inline_capacities(&self) -> Vec<usize> {
+        let state = self.0.borrow();
+        state.frames.iter().map(|f| f.inline.capacity()).collect()
+    }
+
     pub fn depth(&self) -> usize {
         self.0.borrow().frames.len()
     }
@@ -170,6 +176,7 @@ impl PassOwner {
                     id,
                     failed: Cell::new(false),
                     jobs: PaintJobQueue::default(),
+                    raster: Default::default(),
                 })
             }));
         }
