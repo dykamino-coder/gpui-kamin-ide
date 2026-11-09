@@ -8,7 +8,6 @@ import { test } from 'node:test'
 import { gzipSync, brotliCompressSync } from 'node:zlib'
 import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
-
 import './linux-browser-only.mjs'
 
 test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {

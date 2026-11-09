@@ -11,17 +11,6 @@ launching KaminIDE. Browser services and host-owned presentation state follow.
 These are bounded increments of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
 
-The terminal increment extracts native PTY ownership and shell selection into
-`src/kamin-host/services/pty-sessions.ts`; both hosts use that implementation.
-Its workspace decorator owns terminal IDs and xterm screen/scrollback in the
-host process, keyed by chat tab, independently of browser sockets. It enforces
-resource/input limits without duplicating shell execution. Desktop environment collections and
-ConPTY preferences remain injected by the native facade. Tree termination now
-precedes ConPTY release; real child-process tests guard teardown and natural
-host exit. This is the planned environment-adapter boundary, with no deviation
-from the shared-handler architecture. Executable composition, exhaustive parity
-and browser/Podman terminal acceptance remain required.
-
 The application-asset increment supplies `createAppAssetHandler`, used by the
 production-bundle browser smoke and later executable composition. It loads only
 the dedicated browser build's entry and supported assets, validates links and
@@ -47,23 +36,6 @@ tool status, permission prompts, queued messages, files/watches and terminal
 scrollback. A page can disappear with zero attached browsers while work proceeds.
 Reopening attaches to the same running workspace and renders its current state.
 The existing browser entry alone does not yet satisfy this contract.
-
-Scope clarification from the owner (verbatim): «мы бридж копируем а не камин».
-Bridge's own FilePanel, file viewer, attach-file/editor context, terminal,
-uploads/downloads and attachments remain in scope. Opening/revealing files in
-the IDE editor and openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not
-Bridge". The earlier temporary removal of FilePanel is superseded.
-
-The next core increment adds a targeted `workspace:sync` read handshake after
-the existing renderer installs its listeners. The host snapshots the shared
-connection caches (including accumulated streaming deltas), pending questions,
-submission receipts and activity. It sends reset, snapshot frames, then live
-updates on the same ordered socket. An internal host observer remains attached
-with zero browsers; it retains presentation metadata, never executes tools.
-Snapshots initially paint only the active conversation's newest 200 records;
-older records remain in the shared host/mirror and use existing paging. Sync
-never resubmits input or reconnects upstream sessions. File subscriptions and
-PTY scrollback are subsequent increments using the same host-owned lifetime.
 
 Completion means reviewed Change PRs with green applicable CI, an exhaustive
 capability gate, and real headless browser acceptance in Podman. The Claude lead
@@ -127,11 +99,8 @@ production bundle and page JS heap in acceptance and report both in the PR.
 On socket loss, detach delivery only and reconnect with backoff. A new document
 or second tab attaches to the same host state. Synchronization delivers a coherent
 snapshot of transcript, active turn/tool state, pending prompts, open files and
-watches, and terminal scrollback, followed by ordered live updates. The initial
-in-process implementation captures and enqueues each snapshot synchronously,
-without an await, on the same event loop and ordered socket as live events.
-This closes the capture/live race without a separate cursor or replay journal;
-an asynchronous snapshot producer must add a revision/cursor before yielding.
+watches, and terminal scrollback, followed by ordered live updates. A host revision
+and event cursor must close the snapshot/live race without gaps or duplicates.
 The host owns logical view state independently of a socket or document generation.
 
 Browser reload is never permission to replay a mutation. Use stable operation IDs,
@@ -246,15 +215,6 @@ callback alone is not a test. Test actual environment services and shared
 handlers, not a fake blanket success responder. Fixtures must name observable
 effects, cancellation, errors and cleanup as appropriate.
 
-The independent file-panel environment increment decorates `WorkspaceBackend`
-at the existing invoke/send boundary, leaving unknown frames and all agent tool
-logic to the underlying shared backend. File watches belong to each attached
-view, and asynchronous watch errors have a required host logging callback.
-Its actual-files and authenticated transport fixtures are partial capability
-evidence, not the exhaustive matrix or a browser/container acceptance claim.
-This separation allows review from fresh main while runtime/browser PRs await
-the lead; the executable must compose all three pieces before deployment.
-
 | Inventory group | Intended implementation | Required proof |
 | --- | --- | --- |
 | Tabs, connect, chat, permissions, submissions, sessions | Shared TabManager/session IPC and host state/event pipeline | Create/resume/switch/close; host queue once; pending permission after reopen; complete turn snapshot; two tabs |
@@ -303,19 +263,6 @@ live Podman gate below. Environment adapters/executable composition remain next.
 
 ### Full workspace gates
 
-The FilePanel watch revision makes subscriptions part of a bounded host logical
-view registry (32 views, each at most 64 files/8 tree roots). A socket only owns
-delivery. The existing read-only `workspace:sync` optionally carries a remembered
-opaque `fileViewId`; `workspace:files-state` returns the host ID and retained
-paths, followed by fresh text snapshots and tree invalidations. An ID-less
-reopen adopts the latest detached host view; a second attached page receives
-independent copied subscriptions, even if sessionStorage was copied by the
-browser. No write/rename history is retained or replayed. Shutdown disposes the
-registry, and explicit unwatch releases paths. This bounded increment restores
-watched files into a fresh page's active session; exact per-session file layout,
-dirty drafts, selection and previews still require the remaining host projection
-work. The existing Bridge FilePanel stays in scope; IDE integration does not.
-
 Use an isolated Podman project and headless Playwright, with synthetic content
 and private raw captures. Record source SHA, dependency locks, image ID, container
 names, commands, browser version, test results and volume names in the acceptance
@@ -363,47 +310,3 @@ a concrete prerequisite; it never becomes a request for owner testing.
 Complete applicable package typechecks/tests/builds, regenerated artifact checks,
 event routing check and GitHub CI on the final candidate. No Windows GUI launch
 or focus is necessary for this new browser-only contract.
-
-### Host-owned file-panel terminals (#644 revision)
-
-One shared `PtySessions` registry belongs to the workspace process. Authenticated
-pages are views of the same workspace, not owners of shell processes. Closing a
-page, logout or rejected socket output detaches delivery only. Explicit
-`pty:kill`, `tab:close`, `tab:disconnect`, global `disconnect`, and host shutdown
-terminate the corresponding owned process trees. Accepted spawns survive a lost
-reply. Concurrent spawns carrying the same optional `tabId` share one terminal;
-existing callers without it can still create an independent workspace terminal.
-
-The host maintains a headless xterm with 5,000 scrollback lines per terminal.
-Read-only `workspace:terminal-sync` takes a tab ID and replies privately with
-`workspace:terminal-state` (tab ID plus nullable snapshot). Snapshots contain
-PTY/profile identity, dimensions, serialized screen/modes, sequence and exit
-status. Ordered `pty:data`/`pty:exit` events carry a sequence. The same file-panel
-component restores a targeted snapshot on mount/reconnect and accepts later
-sequences exactly once. It never replays writes, resize, kill or spawn on
-reconnect. Renderer disposal only disposes xterm; native host behavior stays
-unchanged. A shell change is an explicit kill followed by a new spawn.
-
-Limits are 32 terminal records including pending spawns, 8 million reserved
-screen/scrollback cells, 500 columns, 200 rows, 64 KiB input and 2 MiB queued
-parser input per terminal. Resource exhaustion is explicit. A host parser
-backlog overflow terminates that terminal with an output error; browser
-backpressure only detaches the page. Serialized snapshot strings are capped at 8 MiB after JSON escaping;
-older scrollback can be omitted with an explicit truncation indicator. Exited
-screens remain until explicit termination or host shutdown. This is in-process
-persistence; restart recovery is not claimed.
-
-Acceptance for this increment: real PTY/process tests on Linux and Windows;
-zero-page output and same-ID reattachment; ordered/private snapshots with two
-pages; accepted spawn with lost reply; natural exit retention; explicit Kill,
-End session, Disconnect and shutdown tree cleanup; browser projection tests
-without a local browser. The existing Linux CI browser gate must remain green.
-Actual composed-workspace terminal UX and full model/Podman acceptance remain
-required for INC-2026-0087.
-
-The host answers xterm CSI/DCS status queries even with zero pages. Browser
-replicas suppress those parser replies while preserving keyboard/paste input.
-Restoration waits for parser callbacks before reset, and live deltas queue behind
-the snapshot. Headless xterm has no browser color or pixel service; OSC palette
-queries and pixel/window reports are not accepted as full terminal emulation by
-this increment. Composed application/TUI parity remains part of the live gate.
