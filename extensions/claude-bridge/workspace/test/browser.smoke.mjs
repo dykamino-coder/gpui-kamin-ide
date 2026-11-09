@@ -20,6 +20,9 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   const calls = []
   const unexpected = new Set()
   let held
+  let holdSettingsSave = false
+  let settingsSaveRead
+  const settingsSavePending = new Promise(resolve => { settingsSaveRead = resolve })
   const config = { serverUrl: 'ws://fixture.invalid', token: '[workspace credential]', cwd: '/workspace' }
   const replies = new Map([
     ['get-version', 'fixture'], ['get-config', config],
@@ -41,6 +44,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         async receive(frame) {
           if (frame.kind !== 'invoke') return
           calls.push(frame)
+          if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
           if (frame.channel === 'read-clipboard') { held = frame; return }
           if (frame.channel === 'logs:clear') throw new Error('Fixture disconnect')
           const known = replies.has(frame.channel)
@@ -65,7 +69,7 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   page.setDefaultTimeout(10_000)
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', error => errors.push(error.stack))
   // Keep acceptance deterministic/offline; no remote fonts or external links.
   await page.route('**/*', route => new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort())
   await page.goto(server.origin)
@@ -97,6 +101,12 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   await page.getByRole('button', { name: 'Customize', exact: true }).click()
   await page.locator('#sidebar-settings-item').waitFor()
   await page.locator('#sidebar-mcp-item').waitFor()
+  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
+  // Keep the debounced settings save's config read pending across disconnect.
+  // Its failed send must be reported without an unhandled rejection or replay.
+  holdSettingsSave = true
+  await settingsSavePending
+  holdSettingsSave = false
   await page.evaluate(() => { window.__workspaceDocument = 'same-document' })
   await page.evaluate(() => window.kaminBridge.setBasePrompt('one fixture mutation'))
   await page.evaluate(() => {
@@ -119,6 +129,8 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   assert.equal(await page.evaluate(() => window.__workspaceDocument), 'same-document')
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
+  assert.equal(calls.filter(frame => frame.channel === 'set-config').length, 0)
+  await page.getByText('Settings could not be confirmed. Check the connection and try again.', { exact: true }).waitFor()
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
 
   valid = false

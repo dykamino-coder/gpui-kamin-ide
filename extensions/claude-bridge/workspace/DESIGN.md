@@ -10,6 +10,16 @@ This makes the shell-access authentication boundary independently reviewable.
 It is a smaller first increment of the architecture below, not a deployable
 workspace or a claim of full parity. The README records its exact limits.
 
+The terminal increment extracts native PTY ownership and shell selection into
+`src/kamin-host/services/pty-sessions.ts`; both hosts use that implementation.
+Its workspace decorator owns terminal IDs per view and enforces resource/input
+limits without duplicating shell execution. Desktop environment collections and
+ConPTY preferences remain injected by the native facade. Tree termination now
+precedes ConPTY release; real child-process tests guard teardown and natural
+host exit. This is the planned environment-adapter boundary, with no deviation
+from the shared-handler architecture. Executable composition, exhaustive parity
+and browser/Podman terminal acceptance remain required.
+
 ## Problem and completion contract
 
 The Bridge server owns Claude CLI PTYs, while the client owns project access

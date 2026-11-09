@@ -11,6 +11,8 @@ There is no second tool implementation or alternative chat UI in this package.
 Run the boundary checks with Node 22:
 
 ```sh
+# Install root dependencies too: the shared native PTY source resolves them here.
+npm --prefix ../../.. ci --no-audit --no-fund
 npm ci --no-audit --no-fund
 npm run typecheck
 npm test
@@ -89,6 +91,39 @@ npm run test:browser
 ```
 
 CI repeats this headlessly and captures only synthetic fixture UI. Native window,
-file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+file/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Terminal environment adapter
+
+`TerminalWorkspaceBackend` decorates another backend with `shells:list`,
+`pty:spawn`, `pty:write`, `pty:resize`, `pty:kill`, `pty:data` and `pty:exit`.
+It reuses the native host's extracted `PtySessions` and shell discovery, with
+the same packed argument/reply/event contract. The embedding executable must
+dispose the decorator at shutdown; disconnect or logout releases that view's
+PTYs without ending shared chat sessions. Workspace root is the default cwd;
+other existing absolute container directories are allowed. Container/mount
+isolation determines filesystem access, rather than a pathname sandbox.
+
+Each view owns at most four terminals, with 32 total including pending spawns.
+Dimensions, profiles, cwd, ownership and 64 KiB input limits are checked before
+execution. Output uses the boundary's bounded transport; backpressure tears down
+the view and its terminals. Real PTY tests execute Node inside the discovered
+shell, observe cwd/TTY size and output, and verify child termination on explicit
+kill, disconnect, logout, shutdown and output rejection. CI runs on Linux and
+Windows. These are actual local shell tests, not browser or Podman acceptance.
+
+The native facade retains its environment collections and ConPTY preference.
+Disposal now terminates the owned process tree before releasing ConPTY, avoiding
+the race where the parent disappears before tree enumeration. Natural Windows
+exit also disposes the output worker so the headless host can exit. With the
+system ConPTY backend, the dependency's console-list helper can print an
+`AttachConsole failed` warning after shell exit and takes up to its five-second
+fallback to finish cleanup. The optional bundled ConPTY preference has not been
+accepted by these workspace tests. The adapter is not yet wired to a runnable
+workspace; browser file-panel terminal acceptance remains open.
+
+The browser lifecycle smoke also holds a debounced Settings config read across
+disconnect. A failed autosave reports an unconfirmed outcome to the user;
+neither the settings mutation nor another pending command is replayed.
