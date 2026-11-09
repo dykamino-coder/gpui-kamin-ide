@@ -305,6 +305,19 @@ impl Window {
         result
     }
 
+    /// KaminIDE patch: offer `bounds` (window coordinates of the root paint
+    /// environment) to the open ink sinks as the ink of paint the caller
+    /// skipped because the content mask would cull all of it.
+    pub fn offer_ink(&mut self, bounds: Bounds<Pixels>) {
+        if self.next_frame.scene.ink.is_empty() {
+            return;
+        }
+        let scaled = bounds.scale(self.scale_factor());
+        for sink in &self.next_frame.scene.ink {
+            sink.add(scaled);
+        }
+    }
+
     /// Run paint `f`, which reports whether its mouse listeners and element
     /// state reads are inert while nothing it guards is visible: listeners
     /// that act only on a hit of a hitbox under the mouse or on a gesture the

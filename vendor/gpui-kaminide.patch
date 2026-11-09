@@ -26522,10 +26522,10 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f681f803659
+index 0000000000000000000000000000000000000000..1e2eaef8a3ff1c0ae9f411f4c7cef6f87f804513
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,411 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -26831,6 +26831,19 @@ index 0000000000000000000000000000000000000000..8b6734b40ed357eac8cb71bd38c91f68
 +        }
 +        self.next_frame.scene.ink.pop();
 +        result
++    }
++
++    /// KaminIDE patch: offer `bounds` (window coordinates of the root paint
++    /// environment) to the open ink sinks as the ink of paint the caller
++    /// skipped because the content mask would cull all of it.
++    pub fn offer_ink(&mut self, bounds: Bounds<Pixels>) {
++        if self.next_frame.scene.ink.is_empty() {
++            return;
++        }
++        let scaled = bounds.scale(self.scale_factor());
++        for sink in &self.next_frame.scene.ink {
++            sink.add(scaled);
++        }
 +    }
 +
 +    /// Run paint `f`, which reports whether its mouse listeners and element
