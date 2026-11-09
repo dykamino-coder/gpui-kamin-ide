@@ -3,21 +3,27 @@ import os from 'node:os'
 import path from 'node:path'
 import { createBrowserEnvironment, createAppAssetHandler, startWorkspaceServer, WorkspaceAuth, serverTokenResolver, WorkspaceFiles, TerminalWorkspaceBackend, withBrowserServer, WorkspacePreview } from './index.js'
 import { createSharedBackend } from './runtime.js'
+import { loadCredentials, resetCredentials, SESSION_FILE } from './credentials.js'
 declare const BRIDGE_VERSION: string
 
 async function main(): Promise<void> {
-  const root = fs.realpathSync(process.env.WORKSPACE_ROOT || '/workspace')
   const storage = path.resolve(process.env.WORKSPACE_STORAGE || path.join(os.homedir(), '.local/state/bridge'))
-  if (process.env.BRIDGE_TOKEN && process.env.BRIDGE_TOKEN_FILE) throw new Error('Ambiguous token source')
-  const token = process.env.BRIDGE_TOKEN || (process.env.BRIDGE_TOKEN_FILE
-    ? fs.readFileSync(process.env.BRIDGE_TOKEN_FILE, 'utf8').trim() : '')
+  if (process.argv.includes('--reset-credentials')) { resetCredentials(storage); return }
+  const root = fs.realpathSync(process.env.WORKSPACE_ROOT || '/workspace')
   const serverUrl = process.env.BRIDGE_SERVER_URL || ''
-  if (!token || !serverUrl) throw new Error('Bridge server and token are required')
-  delete process.env.BRIDGE_TOKEN
-  delete process.env.BRIDGE_TOKEN_FILE
+  if (!serverUrl) throw new Error('Bridge server is required')
   const bind = process.env.WORKSPACE_BIND || '127.0.0.1'
   const port = Number(process.env.WORKSPACE_PORT || 3460)
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid workspace port')
+  const origin = process.env.WORKSPACE_ORIGIN || `http://${bind === '::1' ? '[::1]' : bind}:${port}`
+  const publicUrl = new URL(origin)
+  if (publicUrl.origin !== origin || !['http:', 'https:'].includes(publicUrl.protocol)) throw new Error('Invalid browser origin')
+  const loopback = ['127.0.0.1', '[::1]', 'localhost'].includes(publicUrl.hostname)
+  if (!loopback && process.env.WORKSPACE_ALLOW_REMOTE !== '1') throw new Error('Remote publication requires WORKSPACE_ALLOW_REMOTE=1')
+  const credentials = await loadCredentials(storage, serverUrl)
+  const { token } = credentials
+  delete process.env.BRIDGE_TOKEN
+  delete process.env.BRIDGE_TOKEN_FILE
   const serveApp = await createAppAssetHandler(path.resolve(__dirname, '../../webview/dist/browser'))
   const preview = new WorkspacePreview()
   const browser = createBrowserEnvironment({ root, preview })
@@ -31,8 +37,9 @@ async function main(): Promise<void> {
   }
   let server: Awaited<ReturnType<typeof startWorkspaceServer>>
   try {
-    server = await startWorkspaceServer({ bind, port, origin: process.env.WORKSPACE_ORIGIN,
-      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl)), backend: terminals, serveApp, preview })
+    server = await startWorkspaceServer({ bind, port, origin, autoLogin: loopback,
+      auth: new WorkspaceAuth(token, serverTokenResolver(serverUrl), 30 * 24 * 60 * 60 * 1000, Date.now,
+        { secret: credentials.browserSecret, file: path.join(storage, SESSION_FILE) }), backend: terminals, serveApp, preview })
   } catch (error) { dispose(); throw error }
   let closing = false
   const close = () => {
