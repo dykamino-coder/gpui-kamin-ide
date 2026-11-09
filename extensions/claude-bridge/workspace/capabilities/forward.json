@@ -1,0 +1,12 @@
+[
+  {"id":"forward:extension/src/bridge-host.ts#channel","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/bridge-host.ts":2}},
+  {"id":"forward:extension/src/index.ts#channel","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/index.ts":2}},
+  {"id":"forward:extension/src/main/plugin-monitors.ts#channel","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":1}},
+  {"id":"forward:extension/src/main/ws/connection-manager.ts#event","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/connection-manager.ts":1}},
+  {"id":"forward:extension/src/main/ws/connection-manager.ts#msg.type","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/connection-manager.ts":1}},
+  {"id":"forward:webview/src/lib/bridge-transport.ts#channel","status":"supported-in-browser-host","provider":"transport","sources":{"webview/src/lib/bridge-transport.ts":2}},
+  {"id":"forward:workspace/src/browser-environment.ts#channel","status":"supported-in-browser-host","provider":"environment","sources":{"workspace/src/browser-environment.ts":1}},
+  {"id":"forward:workspace/src/file-watches.ts#channel","status":"supported-in-browser-host","provider":"files","sources":{"workspace/src/file-watches.ts":1}},
+  {"id":"forward:workspace/src/runtime.ts#channel","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":2}},
+  {"id":"forward:workspace/src/terminals.ts#channel","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
+]
