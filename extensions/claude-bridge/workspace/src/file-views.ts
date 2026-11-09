@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { FileWatches } from './file-watches.js'
 import type { ClientView } from './protocol.js'
+import type { FilePanelState } from '../../webview/shared/file-panel-state.js'
 
 interface FileView {
   id: string
   sockets: Set<ClientView>
   watches: FileWatches
+  panel?: FilePanelState
 }
 
 /** Logical views survive detach; pages retain only an opaque re-attachment ID. */
@@ -37,6 +39,7 @@ export class FileViews {
       view = this.create()
       try {
         if (previous) {
+          view.panel = previous.panel && structuredClone(previous.panel)
           const paths = previous.watches.paths()
           for (const path of paths.files) view.watches.receive('file-viewer:watch', path)
           for (const path of paths.trees) view.watches.receive('file-tree:watch', path)

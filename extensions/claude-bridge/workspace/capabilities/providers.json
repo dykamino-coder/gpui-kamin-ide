@@ -19,6 +19,11 @@
     "test": "workspace/test/files-reconnect.test.ts",
     "contract": "Bridge FilePanel container reads/writes/watches and host-owned logical view snapshots."
   },
+  "file-panel-control": {
+    "file": "workspace/src/files.ts",
+    "test": "workspace/test/file-panel-state.test.ts",
+    "contract": "Validated process-local logical-view projection: per-chat open order, active file, main selection/context, attach toggle and preview choice. Does not retain drafts, undo, scroll or host-restart state."
+  },
   "transport": {
     "file": "webview/src/lib/bridge-transport.ts",
     "test": "workspace/test/protocol.test.ts",
