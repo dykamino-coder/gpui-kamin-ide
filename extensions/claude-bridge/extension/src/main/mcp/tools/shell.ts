@@ -235,6 +235,8 @@ function runBackgroundCommand(
   tool = 'Bash',
   displayCommand = command,
 ): McpResult {
+  // Async shell/plugin initialization can complete after terminal shutdown.
+  if (context?.signal?.aborted) return errorResult('Command cancelled')
   evictOldBackgroundOutput()
   const bgId = nextBgId++
 
@@ -424,6 +426,25 @@ export async function stopLocalBackgroundShell(tabId: string, id: string): Promi
   const out = backgroundOutput.get(Number(id.slice(6)))
   if (out?.tabId !== tabId) return
   await killBackgroundShell({ bash_id: Number(id.slice(6)) })
+}
+
+/** Terminal host cleanup only. Do not change reconnect or ordinary KillShell. */
+export function disposeBackgroundShells(tabId: string): void {
+  for (const [id, out] of backgroundOutput) {
+    if (out.tabId !== tabId || !out.running) continue
+    const child = backgroundProcesses.get(id)
+    if (!child?.pid) continue
+    out.stopped = true
+    if (process.platform === 'win32') {
+      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        windowsHide: true, stdio: 'ignore',
+      })
+      killer.on('error', () => { child.kill('SIGKILL') })
+    } else {
+      try { process.kill(-child.pid, 'SIGKILL') }
+      catch { child.kill('SIGKILL') }
+    }
+  }
 }
 export async function stopBackgroundShellForOwner(tabId: string, owner: string | undefined, id: string): Promise<void> {
   if (!/^shell:[0-9]+$/.test(id)) return

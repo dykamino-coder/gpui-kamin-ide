@@ -110,8 +110,14 @@ export function runForegroundCommand(
             stdio: 'ignore',
           })
           killer.on('error', () => {
-            /* bounded settlement still runs if taskkill is unavailable */
+            signalTree('SIGTERM')
           })
+          killer.on('exit', (code) => {
+            if (code !== 0) signalTree('SIGTERM')
+          })
+          // Let taskkill enumerate the live parent before terminating it.
+          // Killing the shell first can orphan its descendants on Windows.
+          return
         } catch {
           /* bounded settlement still runs */
         }

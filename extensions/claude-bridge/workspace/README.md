@@ -3,9 +3,10 @@
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 
-This package provides the HTTP/WebSocket boundary library and a browser entry
-for the existing App. It is not yet a runnable browser workspace: executable shared `BridgeHost` composition,
-environment services, capability matrix and Podman packaging follow in bounded PRs.
+This increment provides an HTTP/WebSocket boundary library and a headless
+composition of the real shared `BridgeHost`, alongside the merged browser entry
+for the existing App. It is not yet a runnable browser workspace: executable
+composition, environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Run the boundary checks with Node 22:
@@ -14,6 +15,7 @@ Run the boundary checks with Node 22:
 # Install root dependencies too: the shared native PTY source resolves them here.
 npm --prefix ../../.. ci --no-audit --no-fund
 npm ci --no-audit --no-fund
+npm --prefix ../extension ci --no-audit --no-fund
 npm run typecheck
 npm test
 npm run build
@@ -24,8 +26,44 @@ per browser socket. Incoming `invoke`, `send` and `invoke-diagnostic` frames kee
 the existing BridgeHost message contract. Replies belong to the requesting view;
 the backend owns event fan-out. A disconnected view is disposed without closing
 the shared runtime. The embedding host must dispose its runtime on shutdown.
-The tests use an explicitly synthetic transport peer; they do not prove shared
-handler, UI, model, plugin or container acceptance.
+The built `./runtime` export provides `createSharedBackend`. Supply an existing
+root directory, private global-storage directory, configured server URL/token,
+version and explicit `WorkspaceEnvironment` services. It sets process cwd to
+the root and composes the same client handlers and tool registry as KaminIDE.
+There is one runtime per process, even after disposal, because shared handlers
+have process-wide registrations. Run it in an isolated container HOME; shared
+plugin configuration uses that HOME. Dispose both server and backend on shutdown.
+
+The default cwd and initial project root are `/workspace`. Files and shell tools
+have container-wide access, including absolute paths and symlink destinations
+outside that directory. Isolation comes from the container and its mounts;
+`/workspace` is a project location, not a filesystem sandbox. Mount only the
+project and client state this workspace is intended to access.
+
+The configured upstream identity is pinned: browser config/connect/tab/resume requests
+cannot replace its server or token, and outgoing frames redact the configured
+credential. Unsupported invokes fail explicitly. The three desktop arbitrary-URL
+server helpers (`bridge:create-token`, `bridge:server-version`,
+`bridge:server-fetch`) currently fail explicitly pending a pinned browser proxy.
+Browser clipboard, dialogs, navigation and editor effects require supplied
+services; no default all-success adapter is installed. Headless mode has no
+VSIX-native diagnostic providers; actual plugin LSP remains shared, while native
+editor command fallback rejects as unavailable. This is not full LSP acceptance.
+
+The deterministic runtime test crosses authenticated HTTP/WS, two real host
+views and the shared server connection pipeline. It checks Read/Write/Edit/Glob
+against real bytes, pinned identity (including get-config → resume with the
+redacted token and forged resume credentials), private replies/event fan-out,
+clipboard round trip and persistent layout. Terminal disposal aborts foreground
+tool controllers, terminates owned background shells, cancels external HTTP/SSE
+MCP requests and closes shared resources without sending `session:end`; the
+server's CLI can reattach. Transient desktop disconnect behavior is unchanged.
+The test starts long-running foreground/background Bash processes and an actual
+loopback HTTP MCP call with an unfinished body, then checks cancellation, owned
+process termination and natural client exit. A
+synthetic upstream protocol peer supplies session/MCP frames; this does not
+prove browser UI, live model, external plugin or container acceptance. The test
+uses a disposable HOME and cannot load the operator's Claude profile.
 
 `WorkspaceAuth` pins one configured Bridge token and verifies it through the
 existing `/api/dashboard/tokens/resolve` endpoint. `POST /auth/login` accepts
@@ -48,6 +86,12 @@ The boundary enforces Host/Origin checks, bounded login attempts and sessions,
 32 MiB output buffer. Invalid/forged host frames are rejected. Backend failures
 close the view; adapters must return explicit invoke errors for unsupported
 channels.
+
+The workspace is a Bridge **client**. Claude CLI and its login belong solely to
+the server; never mount or copy a server auth volume into this client. The
+workspace needs its own Bridge client token plus persistent project files and
+client settings/plugin HOME. Combined packaging must still keep server auth
+owned by the server process.
 
 ## Browser transport and shared UI
 

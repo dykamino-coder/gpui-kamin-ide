@@ -26,6 +26,10 @@ const _windows: BrowserWindow[] = []
 export function registerShimWindow(win: BrowserWindow): void {
   if (!_windows.includes(win)) _windows.push(win)
 }
+export function unregisterShimWindow(win: BrowserWindow): void {
+  const index = _windows.indexOf(win)
+  if (index >= 0) _windows.splice(index, 1)
+}
 export const BrowserWindow = {
   getAllWindows(): BrowserWindow[] { return _windows },
 }
