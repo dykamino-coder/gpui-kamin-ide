@@ -14,6 +14,8 @@
 //! Иначе кадр собирается заново, как `Document::render`.
 
 mod element;
+#[cfg(test)]
+mod paint_damage_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;

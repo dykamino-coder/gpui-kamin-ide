@@ -73,12 +73,14 @@ impl Document {
         };
         // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
         // общий с `apply`; иначе новая разметка собирается целиком.
+        let mut same_shape = false;
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
             && let Some(batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
             let started = std::time::Instant::now();
+            same_shape = true;
             if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
                 batch.write();
                 self.commit(
@@ -108,7 +110,14 @@ impl Document {
             Ok(candidate) => candidate,
             Err(failure) => return Err(record(failure, self)),
         };
+        // The same source shape gives the same node ids (traversal counters):
+        // the block records may hold for the restyled tree, and each is checked
+        // by value before use (`layout::reuse`).
+        let reuse = same_shape.then(|| self.reuse.clone());
         *self = candidate;
+        if let Some(reuse) = reuse {
+            self.reuse = reuse;
+        }
         Ok(self.report())
     }
 

@@ -33,7 +33,7 @@ impl FlowReuse {
                 && slot.layout().is_some_and(|id| {
                     let origin = scaled(window.layout_origin_unrounded(id), scale);
                     let replay = replayable
-                        && !slot.stretched()
+                        && slot.paint_holds()
                         && record.replay.borrow().as_ref().is_some_and(|r| {
                             r.follows(epoch)
                                 && r.origin == origin

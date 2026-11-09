@@ -65,10 +65,18 @@ impl Store {
     /// изменённого блока (`Document::update`) не подойдёт ему никогда, а держит
     /// прежнее поддерево (узлы, стили) всю сборку нового: она удаляется сразу,
     /// до сборки блока, а не в конце кадра.
-    pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
+    ///
+    /// A block whose subtree differs only in paint-only style values
+    /// (`Computed::same_layout`, Blink paint invalidation without layout) keeps
+    /// its record for its layout: the answer is then `Damage::Paint`, and only
+    /// the recorded layout leaf, not the recorded paint, holds.
+    pub(crate) fn same_tree(&self, e: &Element) -> Option<(Rc<Record>, Damage)> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
         if record.source.same(e) {
-            return Some(record);
+            return Some((record, Damage::None));
+        }
+        if record.source.same_layout(e) {
+            return Some((record, Damage::Paint));
         }
         // Записи держат стили: карта меняется целиком, без `&mut` на них.
         let mut records = self.records.take();
@@ -118,6 +126,15 @@ impl Store {
     pub(super) fn unrecorded(&self, node: u64) -> bool {
         self.unrecorded.borrow().contains(&node)
     }
+}
+
+/// What changed in a recorded block since its record (`Store::same_tree`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Damage {
+    /// Nothing: the recorded layout and paint hold.
+    None,
+    /// Paint-only values: the recorded layout holds, its paint does not.
+    Paint,
 }
 
 /// Счётчики наблюдения повтора блоков.

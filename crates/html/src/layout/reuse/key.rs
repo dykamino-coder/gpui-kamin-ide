@@ -48,10 +48,14 @@ pub(crate) struct FlowKey {
     pub(super) fonts: u64,
 }
 
+/// The `html`/`body` boxes give the flow the same layout inputs. Their
+/// paint-only values (`dom::same_layout_box`) do not reach a child's layout:
+/// an inherited one (`color`) is in the child's own style, which its record
+/// compares, and the others paint only these boxes, which every build builds.
 fn same_boxes(a: &Option<Element>, b: &Option<Element>) -> bool {
     match (a, b) {
         (None, None) => true,
-        (Some(a), Some(b)) => crate::dom::same_box(a, b),
+        (Some(a), Some(b)) => crate::dom::same_layout_box(a, b),
         _ => false,
     }
 }
@@ -65,7 +69,8 @@ impl FlowKey {
     /// available widths of its children and the viewport width.
     pub(super) fn same_outside_widths(&self, other: &Self) -> bool {
         let (a, b) = (&self.constraints, &other.constraints);
-        *self.root == *other.root
+        // The root style folds the unwrapped `html`/`body` (see `same_boxes`).
+        self.root.same_layout(&other.root)
             && same_boxes(&self.html, &other.html)
             && same_boxes(&self.body, &other.body)
             && a.avail_h == b.avail_h

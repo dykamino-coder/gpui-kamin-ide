@@ -40,20 +40,29 @@ pub(super) struct Slot {
     /// Лист берёт ширину от потока (`Record::stretch` при другой ширине):
     /// краска записи не повторяется, а чернила шире записанных.
     stretched: bool,
+    /// The block's paint-only values changed since the record
+    /// (Store::same_tree): the leaf holds, the recorded paint does not.
+    repaint: bool,
 }
 
 impl Slot {
-    pub(super) fn new(record: Rc<Record>, stretched: bool) -> Self {
+    pub(super) fn new(record: Rc<Record>, stretched: bool, repaint: bool) -> Self {
         Self {
             record,
             layout: Cell::new(None),
             replay: Cell::new(None),
             stretched,
+            repaint,
         }
     }
 
     pub(super) fn stretched(&self) -> bool {
         self.stretched
+    }
+
+    /// The recorded paint of the block may be replayed in place.
+    pub(super) fn paint_holds(&self) -> bool {
+        !self.stretched && !self.repaint
     }
 
     pub(super) fn record(&self) -> &Record {

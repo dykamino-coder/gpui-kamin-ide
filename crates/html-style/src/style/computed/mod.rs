@@ -70,6 +70,7 @@ pub use used_groups::ResetGroup;
 mod initial;
 pub use groups::*;
 mod clone_audit;
+mod damage;
 pub use clone_audit::CloneAudit;
 pub mod scroll;
 pub mod snap;

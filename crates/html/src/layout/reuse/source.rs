@@ -36,6 +36,13 @@ impl Source {
             && crate::dom::same_tree_as(&self.shell, &self.styles, &self.children, e)
     }
 
+    /// The subtree of `e` lays out like the recorded one: equal values but
+    /// for paint-only style values (`dom::same_layout_tree_as`).
+    pub(super) fn same_layout(&self, e: &Element) -> bool {
+        self.id == e.node_id
+            && crate::dom::same_layout_tree_as(&self.shell, &self.styles, &self.children, e)
+    }
+
     /// The recorded element, for tests.
     #[cfg(test)]
     pub(super) fn element(&self) -> Element {

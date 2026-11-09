@@ -22,15 +22,49 @@ pub fn same_values(a: &Element, b: &Element) -> bool {
 /// The values of two elements that compare in a few words: everything but
 /// marks and style stages.
 fn same_shape(a: &Element, b: &Element) -> bool {
+    same_kind(a, b) && a.attrs == b.attrs
+}
+
+/// `same_shape` without the attributes.
+fn same_kind(a: &Element, b: &Element) -> bool {
     let anim = match (&a.anim, &b.anim) {
         (None, None) => true,
         (Some(x), Some(y)) => Rc::ptr_eq(x, y),
         _ => false,
     };
-    anim && a.list_item == b.list_item
-        && a.inline == b.inline
-        && a.tag == b.tag
-        && a.attrs == b.attrs
+    anim && a.list_item == b.list_item && a.inline == b.inline && a.tag == b.tag
+}
+
+/// Whether two elements give their children the same layout inputs apart
+/// from their children: equal but for paint-only style values
+/// (`Computed::same_layout`) and for `class` and `data-*` attributes, which
+/// only the cascade reads (an HTML root box is never inside SVG, whose
+/// serialization would carry them).
+pub fn same_layout_box(a: &Element, b: &Element) -> bool {
+    let read = |(name, _): &&(String, String)| name != "class" && !name.starts_with("data-");
+    a.node_id == b.node_id
+        && same_kind(a, b)
+        && (a.attrs == b.attrs || a.attrs.iter().filter(read).eq(b.attrs.iter().filter(read)))
+        && a.marks == b.marks
+        && BoxStyles::same_layout_as(&a.style, layers(a), b)
+}
+
+/// Whether the subtree of `b` lays out like the recorded one of `same_tree_as`:
+/// the same values throughout but for paint-only style values
+/// (`Computed::same_layout`). Attributes and texts compare exactly.
+pub fn same_layout_tree_as(
+    shell: &Element,
+    styles: &BoxStyles,
+    children: &Children,
+    b: &Element,
+) -> bool {
+    let root = || shell.marks == b.marks && styles.same_layout(b);
+    walk(same_shape(shell, b), children, b, same_shape)
+        && walk(root(), children, b, same_layout_styles)
+}
+
+fn same_layout_styles(a: &Element, b: &Element) -> bool {
+    a.marks == b.marks && BoxStyles::same_layout_as(&a.style, layers(a), b)
 }
 
 /// Whether two elements carry the same values apart from their children,
@@ -92,6 +126,23 @@ impl BoxStyles {
             _ => false,
         };
         style.same(&b.style) && own.into_iter().zip(layers(b)).all(|(x, y)| layer(x, y))
+    }
+
+    fn same_layout(&self, b: &Element) -> bool {
+        let layers = self
+            .layers
+            .as_deref()
+            .map(|l| l.each_ref().map(Option::as_ref));
+        Self::same_layout_as(&self.style, layers.unwrap_or_default(), b)
+    }
+
+    fn same_layout_as(style: &SharedStyle, own: [Option<&SharedStyle>; 3], b: &Element) -> bool {
+        let layer = |x: Option<&SharedStyle>, y: Option<&SharedStyle>| match (x, y) {
+            (None, None) => true,
+            (Some(x), Some(y)) => x.same_layout(y),
+            _ => false,
+        };
+        style.same_layout(&b.style) && own.into_iter().zip(layers(b)).all(|(x, y)| layer(x, y))
     }
 }
 
@@ -166,84 +217,7 @@ fn same_children<'a>(
     }
     true
 }
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::{Marks, Text};
-    use crate::style::computed::Computed;
+mod tests;
 
-    fn text(s: &str) -> Node {
-        Node::Text(Text::from_source(s.into(), None))
-    }
-
-    fn block(children: Vec<Node>) -> Element {
-        let mut e = Element::synthetic("div", Computed::default(), Marks::default(), children);
-        e.node_id = 7;
-        e
-    }
-
-    #[test]
-    fn copies_with_equal_values_are_the_same_tree() {
-        let a = block(vec![text("one"), Node::Element(block(vec![text("two")]))]);
-        assert!(same_tree(&a, &a.clone()));
-        let rebuilt = block(vec![text("one"), Node::Element(block(vec![text("two")]))]);
-        assert!(same_tree(&a, &rebuilt));
-    }
-
-    #[test]
-    fn a_shared_shell_compares_like_its_box() {
-        let a = block(vec![text("one")]);
-        let mut shell = a.clone();
-        shell.node_id = 0;
-        let styles = BoxStyles::of(&a);
-        assert!(same_tree_as(&shell, &styles, &a.children, &a));
-        let onf = block(vec![text("onf")]);
-        assert!(!same_tree_as(&shell, &styles, &onf.children, &a));
-        let mut other = a.clone();
-        other.tag = "p".into();
-        assert!(!same_tree_as(&other, &styles, &a.children, &a));
-        let mut restyled = a.clone();
-        restyled.style = Computed {
-            decor_box: 1,
-            ..Computed::default()
-        }
-        .into();
-        assert!(same_shell(&shell, &restyled), "styles are not the shell's");
-        assert!(!same_tree_as(
-            &shell,
-            &BoxStyles::of(&restyled),
-            &a.children,
-            &a
-        ));
-        let layered = Element {
-            hover: Some(Computed::default().into()),
-            ..a.clone()
-        };
-        assert!(!same_tree_as(
-            &shell,
-            &BoxStyles::of(&layered),
-            &a.children,
-            &a
-        ));
-        assert!(same_tree_as(
-            &shell,
-            &BoxStyles::of(&layered),
-            &a.children,
-            &layered
-        ));
-        assert!(same_tree(
-            &BoxStyles::of(&layered).apply(&layered),
-            &layered
-        ));
-    }
-
-    #[test]
-    fn a_changed_text_or_attribute_differs() {
-        let a = block(vec![text("one")]);
-        assert!(!same_tree(&a, &block(vec![text("onf")])));
-        let mut b = a.clone();
-        b.attrs.push(("class".into(), "x".into()));
-        assert!(!same_tree(&a, &b));
-        assert!(!same_tree(&a, &block(vec![text("one"), text("")])));
-    }
-}

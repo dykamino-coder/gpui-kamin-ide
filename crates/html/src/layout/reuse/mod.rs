@@ -46,7 +46,7 @@ use source::{Shells, Source};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-pub(crate) use store::Store;
+pub(crate) use store::{Damage, Store};
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]

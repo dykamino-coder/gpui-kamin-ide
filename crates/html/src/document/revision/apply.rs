@@ -130,7 +130,11 @@ impl Document {
             revision,
         ) {
             Ok(next) => {
+                // Same source DOM, same node ids: the block records may hold
+                // for the restyled tree (each is checked by value before use).
+                let reuse = self.reuse.clone();
                 *self = next;
+                self.reuse = reuse;
                 Ok(self.report())
             }
             Err((failure, source)) => Err(refused(self, failure, source.input)),

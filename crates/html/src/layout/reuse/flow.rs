@@ -158,7 +158,7 @@ impl FlowCx {
         if self.reuse.store.refused.borrow().contains(&e.node_id) {
             return None;
         }
-        let record = self.reuse.store.same_tree(e)?;
+        let (record, damage) = self.reuse.store.same_tree(e)?;
         let width = || {
             self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
         };
@@ -166,13 +166,19 @@ impl FlowCx {
         // Растянутый блок при другой ширине — та же раскладка в коробке
         // другой ширины: лист по потоку, краска записи не годна.
         let stretched = !same && record.stretch;
+        // Блок с другими значениями краски: раскладка записи годна, краска нет.
+        let repaint = damage == super::Damage::Paint;
         // Ближний блок без свежего повтора почти наверняка попадёт на экран,
         // а отказ заместителя на экране собирает кадр второй раз. Растянутый
-        // блок не повторяется никогда, поэтому заменяется только далёкий.
-        // Блок, уже отказанный на экране при этом ключе (`Store::banned`),
-        // замещается только далёким: повтор на месте его снова сдвинул бы.
+        // и перекрашенный блоки не повторяются, поэтому заменяется только
+        // далёкий. Блок, уже отказанный на экране при этом ключе
+        // (`Store::banned`), замещается только далёким: повтор на месте его
+        // снова сдвинул бы.
         let paintable = record.far
-            || (!stretched && !self.reuse.store.banned(e.node_id) && record.current(&self.reuse));
+            || (!stretched
+                && !repaint
+                && !self.reuse.store.banned(e.node_id)
+                && record.current(&self.reuse));
         let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
         if !fits {
             return None;
@@ -181,7 +187,7 @@ impl FlowCx {
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);
-        let slot = Rc::new(Slot::new(record, stretched));
+        let slot = Rc::new(Slot::new(record, stretched, repaint));
         super::push(&self.reuse.placeholders, slot.clone());
         Some(Placeholder::new(slot).hooked())
     }
