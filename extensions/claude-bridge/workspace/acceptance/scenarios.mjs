@@ -120,7 +120,9 @@ export function liveScenarios(state) {
       await ready(state.page, owned.origin)
       try {
         check((await raw(state.page, 'listTabs')).some(t => t.id === tab), 'PERMISSION_TAB')
-        await state.page.evaluate(tab => window.bridgeCmd.switchTab(tab), tab)
+        // switchTab normally awaits idle, which cannot happen before this prompt is answered.
+        await state.page.evaluate(tab => { void window.bridgeCmd.switchTab(tab).catch(() => {}) }, tab)
+        await state.page.waitForFunction(tab => window.bridgeCmd.state().activeTabId === tab, tab)
         await state.page.getByText('/workspace/bridgeweb-acc-permission', { exact: false }).first().waitFor({ timeout: 15_000 })
         await state.page.getByRole('button', { name: 'Allow', exact: true }).click({ timeout: 10_000 })
       } catch { throw new CheckFailure('PERMISSION_REHYDRATION') }

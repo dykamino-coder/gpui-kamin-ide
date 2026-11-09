@@ -56,10 +56,15 @@ export async function requirePanel(page, path, expected) {
   try { check((await raw(page, 'fileViewerRead', path)).content.includes(expected), 'FILE_PANEL') }
   catch { throw new CheckFailure('FILE_PANEL') }
   const show = page.locator('[data-tooltip="Show plan & files"]')
-  if (await show.count()) await show.click()
+  try { if (await show.count()) await show.click({ timeout: 10_000 }) }
+  catch { throw new CheckFailure('FILE_PANEL_SHOW') }
   // Select the real changed-file list; the panel initially shows its project tree.
   const activity = page.locator('.right-panel-column')
-  await activity.getByRole('button', { name: /^Write\b/ }).click()
+  try {
+    await activity.waitFor({ state: 'visible', timeout: 10_000 })
+  } catch { throw new CheckFailure('FILE_PANEL_ACTIVITY') }
+  try { await activity.getByRole('button', { name: /^Write\b/ }).click({ timeout: 10_000 }) }
+  catch { throw new CheckFailure('FILE_PANEL_WRITE_TAB') }
   const file = activity.locator(`[data-tooltip="${path}"]`).first()
   try { await file.waitFor({ state: 'visible', timeout: 10_000 }); await file.click() }
   catch { throw new CheckFailure('FILE_PANEL_LIST') }
