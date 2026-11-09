@@ -3,10 +3,10 @@
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 
-This package provides the HTTP/WebSocket boundary, the existing App browser
-entry, headless composition of the real shared `BridgeHost` and file-panel
-environment services. It is not yet a runnable browser workspace: executable composition,
-remaining environment services, the full matrix and Podman acceptance remain open.
+This increment provides an HTTP/WebSocket boundary library and a headless
+composition of the real shared `BridgeHost`, alongside the merged browser entry
+for the existing App. It is not yet a runnable browser workspace: executable
+composition, environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -16,8 +16,7 @@ Re-attach must deliver transcript/streaming/tool/prompt state, open files/watche
 and terminal scrollback, then live updates, without replaying mutations or
 duplicating/losing messages. Only explicit End session/Disconnect or host shutdown
 tears down work. The merged browser entry does not yet meet this full contract:
-the host snapshot increment below covers chat/prompt re-attachment, while the
-remaining authoritative state migration stays open.
+host presentation snapshots and authoritative state migration remain open.
 Acceptance must cover close/reopen during Bash/MCP, pending permission after
 reopen, two tabs, and report production bundle size and page JS heap.
 
@@ -29,8 +28,6 @@ then corrected #642. None of these increments establishes full parity.
 Run the boundary checks with Node 22:
 
 ```sh
-# Install root dependencies too: the shared native PTY source resolves them here.
-npm --prefix ../../.. ci --no-audit --no-fund
 npm ci --no-audit --no-fund
 npm --prefix ../extension ci --no-audit --no-fund
 npm run typecheck
@@ -170,139 +167,19 @@ fail; this is startup/transport/UI composition evidence, not shared-handler,
 model or Podman parity. Run after building both packages:
 
 ```sh
-# Inside a Linux Podman container or Linux CI, never on the Windows host.
-# Mount source read-only; put builds and the browser cache in container storage.
+# In workspace; choose a private browser cache on a shared developer machine.
 export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
 export PLAYWRIGHT_SKIP_BROWSER_GC=1
 npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-The test refuses Windows execution. Linux CI repeats this headlessly and captures
-only synthetic fixture UI. Browser/live acceptance runs belong inside Podman;
-never launch Chromium, including headless_shell, on the Windows host.
+CI repeats this headlessly and captures only synthetic fixture UI.
 The smoke also reports all production JS chunks (raw/gzip/Brotli) and Chromium
 JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-Native window/file/editor/browser environment adaptations, dashboard-admin login, the
+Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
-
-## Terminal environment adapter
-
-`TerminalWorkspaceBackend` decorates another backend with `shells:list`,
-`pty:spawn`, `pty:write`, `pty:resize`, `pty:kill`, `pty:data` and `pty:exit`.
-It reuses the native host's extracted `PtySessions` and shell discovery, with
-the same packed argument/reply/event contract. The embedding executable must
-dispose the decorator at shutdown. Shell ownership and screen/scrollback belong
-to the host: socket detach, logout and backpressure preserve shells, while
-explicit Kill/End session/Disconnect and shutdown terminate them. `workspace:terminal-sync` restores a private sequenced xterm
-snapshot per chat tab without replaying mutations. The detailed resource and
-lifecycle contract is in DESIGN.md; live composed-workspace acceptance is open.
-Workspace root is the default cwd; other existing absolute container directories
-are allowed. Container/mount isolation determines filesystem access.
-
-The native facade retains its environment collections and ConPTY preference.
-Disposal now terminates the owned process tree before releasing ConPTY, avoiding
-the race where the parent disappears before tree enumeration. Natural Windows
-exit also disposes the output worker so the headless host can exit. With the
-system ConPTY backend, the dependency's console-list helper can print an
-`AttachConsole failed` warning after shell exit and takes up to its five-second
-fallback to finish cleanup. The optional bundled ConPTY preference has not been
-accepted by these workspace tests. The adapter is not yet wired to a runnable
-workspace; browser file-panel terminal acceptance remains open.
-
-The browser lifecycle smoke also holds a debounced Settings config read across
-disconnect. A failed autosave reports an unconfirmed outcome to the user;
-neither the settings mutation nor another pending command is replayed.
-
-## Container file-panel services
-
-`WorkspaceFiles` decorates a `WorkspaceBackend`. It intercepts only the existing
-`file-viewer:read`, `read-binary`, `write`, `watch`, `unwatch` and
-`file-tree:list-dir`, `rename`, `watch`, `unwatch` channels. Every other frame
-continues to the underlying shared backend. These are environment services for
-the existing file panel; the agent's Read/Write/Edit/Glob tools stay in the
-shared client registry.
-
-Set `root` to the container workspace (default `/workspace`). Relative paths
-resolve against that root, while absolute paths and symlinks retain container
-filesystem semantics. This is not a filesystem sandbox around one directory.
-The authenticated container is the user's local machine; never give it host
-home or unrelated host mounts. Writes preserve supplied UTF-8 text, truncate
-existing files, and create files without creating missing parent directories.
-Rename uses the container filesystem's normal replacement semantics.
-
-Reads/writes accept regular files up to 8 MiB. Text additionally has a 12 MiB
-JSON-encoded limit so control characters cannot overflow the transport frame;
-binary reads return base64. Concurrently changing reads fail with a retry error.
-Listings return directories first and reject more than 10,000 entries. Errors
-are explicit invoke replies, retaining the request ID and document generation.
-
-Each view owns up to 64 file watches and 8 recursive directory watches. Watching
-a file's parent preserves updates across atomic replacement. File events are
-debounced; unlink never invents empty file content, and recreation is observed.
-Directory events carry the original root and the changed parent/path. Required
-`onWatchError` forwards asynchronous failures to the embedding host's logger/UI;
-errors never masquerade as successful empty content. A future executable must
-wire that callback to the shared logging surface.
-
-Watch ownership belongs to logical host views, not sockets. Socket loss only
-detaches delivery; watches and debounce/read work survive with zero pages.
-`workspace:sync` accepts an optional `{fileViewId}` and replies privately with
-`workspace:files-state` (`id`, `files`, `trees`), fresh watched text and tree
-invalidation events. The browser remembers only this opaque ID in sessionStorage.
-A new document without an ID adopts the latest detached view; a concurrent page,
-including a tab with copied sessionStorage, gets independent copied subscriptions.
-Mounted trees refresh every loaded directory, including expanded descendants.
-Only current read snapshots are sent; writes and renames are never replayed.
-
-At most 32 logical file views are retained until host shutdown; new views beyond
-that limit fail explicitly. Explicit unwatch removes a path from its logical
-view. Dispose the file decorator before disposing the shared runtime on shutdown;
-this releases every retained watcher/timer. Watches do not keep Node alive.
-
-Tests execute every file channel against real temporary files, including an
-authenticated HTTP/WebSocket integration, atomic saves, watcher ownership,
-deletion/recreation, limits, explicit errors and lifecycle cleanup. The upstream
-fixture rejects unknown invokes. This proves this adapter only; actual browser
-file-panel rendering, complete host-owned layout/selection context and live container acceptance remain
-required after executable composition. Linux CI also checks FIFO rejection and
-symlinks; Windows skips FIFO and skips symlinks if the identity lacks privilege.
-
-## Host presentation and re-attachment increment
-
-The shared runtime keeps an internal observer with zero browser sockets. It
-retains pending permission/elicitation/question frames, activity, submission
-receipts and accepted submission identities. ConnectionManager accumulates
-streaming text/thinking deltas even while renderer delivery is muted. After its
-listeners mount, the browser requests `workspace:sync`: a targeted synchronous
-snapshot of tabs, the active transcript tail (200 records), subagent tails,
-boundaries, accumulated stream, statuses, receipts and pending questions. Older
-history stays in shared caches/disk and uses existing paging. A second page's
-snapshot never broadcasts transcript replay into the first page.
-
-Browser submissions carry IDs even before CLI-mod negotiation. The host rejects
-conflicting reuse, drops duplicate accepted submissions and duplicate prompt
-answers, and never replays mutations on attach. At 10,000 accepted identities or
-32 MiB of accepted text, new submissions fail explicitly until sessions end;
-identities are never evicted while a session remains live. This is in-process
-state, not crash recovery. Native-terminal fallback queue display still uses
-the existing UI projection; full queue/reducer migration remains open.
-
-The deterministic real-host regression closes all views with foreground and
-background Bash, an external HTTP MCP call, a permission prompt and a stream in
-flight. It records more history/deltas with zero views, re-attaches, answers the
-original prompt and attaches a second view without duplicate upstream submission.
-This is real client/handler/WebSocket evidence with a synthetic upstream, not
-the required live model/Podman/headless lifecycle acceptance. Bridge FilePanel
-(including attach-file/context) remains in scope; only IDE open/reveal and
-openInVscode are NOT-APPLICABLE: "KaminIDE host feature, not Bridge". Host-owned
-file watches and PTY scrollback now have host-owned adapters; remaining page
-reducers and the full gates follow.
-
-Explicit session close now also disposes background shells before dropping the
-connection. The same real-process regression covers End session, Disconnect and
-shutdown with foreground/background Bash and an external HTTP MCP call in flight.
