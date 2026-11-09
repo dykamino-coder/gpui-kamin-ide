@@ -28,7 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/bridgeweb-playwright
       PLAYWRIGHT_SKIP_BROWSER_GC: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -51,9 +50,12 @@ jobs:
         working-directory: extensions/claude-bridge/workspace
       - run: npx playwright install --with-deps chromium --only-shell
         working-directory: extensions/claude-bridge/workspace
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/bridgeweb-playwright
       - run: npm run test:browser
         working-directory: extensions/claude-bridge/workspace
         env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/bridgeweb-playwright
           BRIDGE_BROWSER_SCREENSHOT: ${{ runner.temp }}/bridge-browser-fixture.png
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
