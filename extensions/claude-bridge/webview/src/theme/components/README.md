@@ -23,11 +23,10 @@ and `global.css` so cascade resolution stays correct.
 
 | Family | Rules in legacy-global.css | Target file |
 |--------|----------------------------|-------------|
-| sidebar | 61 | `sidebar.css` |
 | chat / input / message | 24 | `chat.css` |
 | jsonl viewer (entries + tools + blocks) | 100 | `jsonl.css` |
 | widgets / modals / toasts / dropdowns | 26 | `widgets.css` |
-| (everything else: titlebar, agents, plugins, customize tabs) | ~270 | not yet split |
+| (everything else: agents, plugins, customize tabs) | ~270 | not yet split |
 
 ## Theme tokens
 

@@ -155,9 +155,6 @@ export function useVoiceInput(
   async function startRecording(): Promise<void> {
     if (stateRef.current !== 'idle') return
 
-    // Chrome-PWA mic-мост Electron-эпохи вырезан (аудит #70 A2): в KaminIDE
-    // mic-* каналы никем не слушались, micConnected всегда был falsy —
-    // остался только нативный getUserMedia.
     let stream: MediaStream | null = null
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })

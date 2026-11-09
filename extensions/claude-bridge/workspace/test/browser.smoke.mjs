@@ -12,7 +12,7 @@ import { chromium } from 'playwright'
 import { WorkspaceAuth, startWorkspaceServer, createAppAssetHandler } from '../dist/index.js'
 import './linux-browser-only.mjs'
 
-test('browser signs in, mounts the shared App, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
+test('browser signs in, mounts the current ChatRoot, rejects forged replies and resyncs without replay', { timeout: 60_000 }, async t => {
   const assets = fileURLToPath(new URL('../../webview/dist/browser/', import.meta.url))
   const files = new Map((await readdir(assets, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => {
@@ -29,15 +29,12 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   const calls = []
   const unexpected = new Set()
   let held
-  let holdSettingsSave = false
-  let settingsSaveRead
-  const settingsSavePending = new Promise(resolve => { settingsSaveRead = resolve })
   const config = { serverUrl: 'ws://fixture.invalid', token: '[workspace credential]', cwd: '/workspace' }
   const replies = new Map([
     ['get-version', 'fixture'], ['get-config', config],
     ['layout:get', { filePanelVisible: true, filePanelBottomVisible: false }],
     ['skills:list', []], ['session:get-saved', []], ['tab:list', []], ['tabs:restore-state', []],
-    ['vscode:is-available', false], ['mcp:status', []], ['mic-connected', false],
+    ['vscode:is-available', false], ['mcp:status', []],
     ['get-editor-selection', null], ['bridge:server-version', null],
     ['get-machine-id', 'browser-fixture-machine'], ['hooks:list-pending-plugin-approvals', []],
     ['base-prompt:get', ''], ['base-prompt:set', true],
@@ -53,7 +50,6 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
         async receive(frame) {
           if (frame.kind !== 'invoke') return
           calls.push(frame)
-          if (frame.channel === 'get-config' && holdSettingsSave) { settingsSaveRead(); return }
           if (frame.channel === 'read-clipboard') { held = frame; return }
           if (frame.channel === 'logs:clear') throw new Error('Fixture disconnect')
           const known = replies.has(frame.channel)
@@ -93,30 +89,19 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   async function signIn() {
     await page.locator('#workspace-token').fill('browser-fixture-token')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.locator('#app-wrapper').waitFor()
+    await page.waitForFunction(() => !!window.bridgeCmd)
     await page.locator('#workspace-gate[hidden]').waitFor({ state: 'attached' })
-    await page.getByText('No sessions', { exact: true }).waitFor()
+
   }
   await signIn()
-  await reportHeap('initial-shared-App')
+  await reportHeap('initial-ChatRoot')
   assert.equal(attachments, 1)
-  await page.locator('.file-panel-column').waitFor()
   // Synthetic fixture UI only; local captures must use a private destination.
   if (process.env.BRIDGE_BROWSER_SCREENSHOT) await page.screenshot({ path: process.env.BRIDGE_BROWSER_SCREENSHOT })
   assert.equal(await page.locator('iframe').count(), 0)
   assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0)
   assert.equal((await page.context().cookies()).find(cookie => cookie.name.includes('workspace'))?.httpOnly, true)
 
-  // Both sidebar/settings are the existing App components, not a test-only UI.
-  await page.getByRole('button', { name: 'Customize', exact: true }).click()
-  await page.locator('#sidebar-settings-item').waitFor()
-  await page.locator('#sidebar-mcp-item').waitFor()
-  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'ws://fixture.invalid'))
-  // Keep the debounced settings save's config read pending across disconnect.
-  // Its failed send must be reported without an unhandled rejection or replay.
-  holdSettingsSave = true
-  await settingsSavePending
-  holdSettingsSave = false
   await page.evaluate(() => { window.__workspaceDocument = 'same-document' })
   await page.evaluate(() => window.kaminBridge.setBasePrompt('one fixture mutation'))
   await page.evaluate(() => {
@@ -140,7 +125,6 @@ test('browser signs in, mounts the shared App, rejects forged replies and resync
   assert.equal(calls.filter(frame => frame.channel === 'base-prompt:set').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'read-clipboard').length, 1)
   assert.equal(calls.filter(frame => frame.channel === 'set-config').length, 0)
-  await page.getByText('Settings could not be confirmed. Check the connection and try again.', { exact: true }).waitFor()
   assert.ok(calls.filter(frame => frame.channel === 'tab:list').length > listsBefore)
   await reportHeap('after-socket-reattach')
 
