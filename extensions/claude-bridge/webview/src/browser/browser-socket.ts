@@ -106,7 +106,8 @@ export function createBrowserSocket(options: Options): WebviewApi & { connect():
       const identity = options.fileViewIdentity?.get()
       const text = JSON.stringify(f?.kind === 'send' && identity
         ? f.channel === 'workspace:sync' ? { ...f, args: [{ fileViewId: identity }] }
-          : /^(file-viewer|file-tree):(watch|unwatch)$/.test(f.channel ?? '') ? { ...f, fileViewId: identity } : frame
+          : f.channel === 'workspace:file-panel' || /^(file-viewer|file-tree):(watch|unwatch)$/.test(f.channel ?? '')
+            ? { ...f, fileViewId: identity } : frame
         : frame)
       if (typeof text !== 'string') throw new Error('Invalid workspace frame')
       const size = new TextEncoder().encode(text).length

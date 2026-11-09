@@ -40,7 +40,7 @@ test('mapping validation rejects stale rows, missing reasons, changed handlers a
   mutate(copy => { copy.rows.find(row => row.id === 'tool:Read')!.handler = 'writeFile' }, /Changed tool handler/)
   mutate(copy => { copy.rows.find(row => row.id === 'api:getConfig')!.routes = ['invoke:write-clipboard'] }, /Changed API routes/)
   mutate(copy => { delete copy.rows.find(row => row.id === 'tool:preview_mount')!.requires }, /Missing provider prerequisite/)
-  mutate(copy => { delete copy.requirements['preview-hmr'] }, /Unknown provider prerequisite/)
+  mutate(copy => { delete copy.requirements['preview-hmr'] }, /Missing required browser-host contract/)
 })
 
 test('new source APIs, channels, dynamic dispatchers and unregistered handlers fail without explicit mapping', t => {
@@ -110,9 +110,16 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
   assert.throws(() => capabilityInventory(fixture), /Unclassified channel case/)
 })
 
-test('a mapped capability cannot pass the full parity gate while its host adapter is pending', () => {
+test('declared readiness rejects pending adapters and cannot be bypassed by deleting requirements', () => {
   const copy = structuredClone(matrix)
   copy.requirements['synthetic-missing-adapter'] = { state: 'pending', owner: 'fixture', reason: 'Required real host implementation' }
   assert.throws(() => assertBrowserHostReady(copy), /synthetic-missing-adapter/)
-  assert.doesNotThrow(() => assertBrowserHostReady({ ...copy, requirements: {} }))
+  assert.throws(() => assertBrowserHostReady({ ...copy, requirements: {} }), /Missing required browser-host contract/)
+  for (const id of ['host-terminal', 'title-regeneration', 'finished-toast-route', 'preview-hmr']) {
+    const missing = structuredClone(matrix)
+    delete missing.requirements[id]
+    assert.throws(() => assertBrowserHostReady(missing), new RegExp(`Missing required browser-host contract: ${id}`))
+    assert.throws(() => assertCapabilityMatrix(inventory, missing), new RegExp(`Missing required browser-host contract: ${id}`))
+  }
+  assert.doesNotThrow(() => assertBrowserHostReady(matrix))
 })

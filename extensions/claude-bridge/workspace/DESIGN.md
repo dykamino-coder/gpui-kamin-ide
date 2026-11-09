@@ -260,3 +260,28 @@ final documentation author. It does not include pending #655 PREVIEW/HMR or
 state, host/container restart, or every desktop tool behavior. The committed
 readiness manifest does not yet encode these remaining completion requirements;
 the inventory's passing state is a narrower result.
+
+## Bounded follow-up: host-owned FilePanel controls (2026-11-09)
+
+The watch list is not the open-file model: it cannot recover per-chat file
+order, an explicitly closed file, active editor, selection context, attach
+toggle or code/preview choice. Retain a versioned data projection in the
+existing logical host file-view, delivered with `workspace:files-state` on
+read-only sync. A private `workspace:file-panel` send replaces that projection;
+the browser keeps only the opaque view identity. Reuse the existing FilePanel
+and file operations; no new public API or second editor is introduced.
+
+Validate/whitelist before replacement: at most 64 chats, 128 files per chat,
+256 preview choices and 2 MiB of UTF-8 state. Retain selected context and main
+cursor offsets, not editor instances or whole documents. Concurrent pages
+clone controls into independent logical views; closing all pages leaves the
+host projection available. Recovery reads current disk content and clamps
+cursor offsets, without writing content or replaying commands.
+
+Acceptance: schema rejection preserves the previous projection; host tests
+cover zero-page recovery, chat mapping/order, closed files and independent
+pages; renderer tests cover restoration without feedback sends; Linux Podman
+Chromium runs the production App and real file adapter across close/reopen.
+This increment does not retain unsaved drafts, undo history, scroll, multiple
+selection ranges or state after host restart. Those gaps keep full FilePanel
+and full browser-client parity open.
