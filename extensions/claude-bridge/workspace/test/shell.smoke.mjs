@@ -19,11 +19,11 @@ test('shell session actions and dock commits survive another page and zero brows
   const strip = page.getByRole('tablist', { name: 'Open sessions', exact: true })
   await strip.locator('[data-tab-id]').waitFor()
   const first = await strip.locator('[data-tab-id]').getAttribute('data-tab-id')
-  await strip.getByRole('button', { name: 'Pin tab', exact: true }).click()
+  await strip.getByRole('button', { name: 'Pin tab', exact: true }).press('Enter')
   await page.waitForFunction(async id => (await window.kaminBridge.restoreTabsState()).some(t => t.id === id && t.pinned), first)
   await page.getByRole('button', { name: 'New session', exact: true }).click()
   await page.waitForFunction(() => document.querySelectorAll('.ws-session-tabs [data-tab-id]').length === 2)
-  await strip.locator(`[data-tab-id="${first}"]`).click()
+  await strip.locator(`[data-tab-id="${first}"]`).press('Enter')
   await page.waitForFunction(id => window.kaminBridge.getActiveTab().then(active => active === id), first)
 
   // Moving the console keeps the current chat listener/DOM instance alive.
@@ -52,7 +52,7 @@ test('shell session actions and dock commits survive another page and zero brows
   // Pinning uses the shared client persistence contract, rather than browser storage.
   assert.equal((await page.evaluate(() => window.kaminBridge.restoreTabsState())).find(t => t.id === first)?.pinned, true)
   assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0)
-  await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator(`[data-tab-id="${first}"]`).getByRole('button', { name: 'Close tab', exact: true }).click()
+  await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator(`[data-tab-id="${first}"]`).getByRole('button', { name: 'Close tab', exact: true }).press('Space')
   await page.waitForFunction(() => window.kaminBridge.listTabs().then(tabs => tabs.length === 1))
   await page.evaluate(id => { window.__firstPinned = id }, first)
   await page.getByRole('tablist', { name: 'Open sessions', exact: true }).locator('.sleeping').click()

@@ -23,7 +23,7 @@ export function SessionTabs() {
       onDrop={e => { e.preventDefault(); const id = e.dataTransfer?.getData('application/x-workspace-session'); if (id) moveTopTab(id, tab.id) }}
       onClick={() => activateSession(tab.id)} onDblClick={() => renameSession(tab.id)}
       onContextMenu={e => { e.preventDefault(); setMenu({ id: tab.id, x: e.clientX, y: e.clientY }) }}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateSession(tab.id) } }}>
+      onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activateSession(tab.id) } }}>
       <button class="ws-pin" aria-label={pinnedTabs.value.has(tab.id) ? 'Unpin tab' : 'Pin tab'}
         onClick={e => { e.stopPropagation(); togglePinTab(tab.id) }}><i class={'fas ' + (pinnedTabs.value.has(tab.id) ? 'fa-thumbtack' : 'fa-circle')} /></button>
       <span>{tab.sessionTitle || tab.label || tab.folderName || 'Session'}</span>
