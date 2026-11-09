@@ -58,12 +58,11 @@ pub(super) fn frame_opts(
 ) -> crate::RenderOpts {
     state.begin_frame();
     crate::values::image_values::refresh(state.frame_values());
-    let mut opts = opts.clone();
+    let mut opts = opts.with_doc(state.clone());
     opts.cx.clamp.input = None;
     opts.cx.values.inert_clear = false;
     opts.cx.contracts.document_root = Some((nodes.as_ptr() as usize, nodes.len()));
     opts.cx.contracts.paragraph_frame_started = true;
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(state.clone());
     opts
 }
 

@@ -34,12 +34,17 @@ pub use arena::ArenaKey;
 pub use arena::{Arena, load, store};
 pub use value_cx::{ValueCx, ValueDoc};
 
+/// Профили `@color-profile` документа: имя → байты ICC.
+pub type IccProfiles = HashMap<String, Vec<u8>>;
+
 /// Нижние данные одного документа: арены значений, at-правила, метрики корня,
 /// носитель, ресурсы, готовность кадра и провайдер шрифтовых фактов (ADR3).
 /// Поля пишет его разбор, читают разбор, сборка кадра и фазы GPUI; состояния
 /// фаз раскладки и текста держит верхний `DocState`.
 pub struct DocumentValues {
     initial_styles: style_storage::InitialStyles,
+    /// Группы used-стадии, выведенные из общих групп правками раскладки.
+    pub derived: crate::style::computed::DerivedGroups,
     /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
     pub budget: RefCell<Option<crate::budget::RevisionBudget>>,
     pub font_facts: font_facts::DocumentFonts,
@@ -74,8 +79,9 @@ pub struct DocumentValues {
     pub property_rules: RefCell<property_registry::PropertyRegistry>,
     /// `@counter-style` (css-counter-styles-3 §3).
     pub counter_styles: RefCell<CounterStyles>,
-    /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile).
-    pub profiles: RefCell<HashMap<String, Vec<u8>>>,
+    /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile). Правило редкое:
+    /// карта вне структуры и появляется с первым профилем.
+    pub profiles: RefCell<Option<Box<IccProfiles>>>,
     /// Запросы картинок документа, его база и политика доступа; декодированное — в
     /// общем процессном кэше по содержимому (`resources::images::store`).
     pub images: RefCell<crate::resources::images::store::ImageStore>,
@@ -90,6 +96,8 @@ pub struct DocumentValues {
     frame_owner: Cell<u32>,
     /// Документ красился после последнего сброса области кадра.
     painted: Cell<bool>,
+    /// Живые документы этих значений (`hold_document`).
+    documents: Cell<u32>,
     /// Наблюдение за незавершённой работой кадра; не управляет раскладкой.
     readiness: readiness::FrameState,
     this: Weak<DocumentValues>,
@@ -108,6 +116,7 @@ impl DocumentValues {
         let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             initial_styles: Default::default(),
+            derived: Default::default(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),
             frame_owner: Cell::new(arena::new_owner()),
@@ -134,6 +143,7 @@ impl DocumentValues {
             calc: Default::default(),
             anchor: Default::default(),
             painted: Default::default(),
+            documents: Default::default(),
             readiness: Default::default(),
         });
         doc.install_font_facts(None);
@@ -144,6 +154,7 @@ impl DocumentValues {
     /// Начало сборки кадра: наблюдение готовности и перепроверка картинок.
     pub fn begin_frame_inputs(&self) {
         self.readiness.begin();
+        self.derived.begin_frame();
         self.revalidate_images();
     }
 
@@ -165,6 +176,21 @@ impl DocumentValues {
     /// Документ покрашен: следующая сборка кадра может сбросить область кадра.
     pub fn mark_painted(&self) {
         self.painted.set(true);
+    }
+
+    /// Документ этих значений создан: его дерево владеет выведенными группами.
+    pub fn hold_document(&self) {
+        self.documents.set(self.documents.get() + 1);
+    }
+
+    /// Документ отпущен. Значения переживают его в отложенных кадрах; когда отпущен последний
+    /// документ этих значений, выведенные группы отпускаются сразу, а не вместе со значениями.
+    pub fn release_document(&self) {
+        let left = self.documents.get().saturating_sub(1);
+        self.documents.set(left);
+        if left == 0 {
+            self.derived.clear();
+        }
     }
 
     /// Нижние данные без верхнего документа: шрифтовых фактов нет, читатели

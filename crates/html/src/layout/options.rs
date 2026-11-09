@@ -34,6 +34,17 @@ pub struct RenderOpts {
 }
 
 impl RenderOpts {
+    /// A copy that builds into the document `doc` (`LayoutCx::with_doc`).
+    pub(crate) fn with_doc(&self, doc: std::rc::Rc<crate::document::state::DocState>) -> Self {
+        Self {
+            text: self.text.clone(),
+            viewport: self.viewport,
+            normal_line_height: self.normal_line_height,
+            cx: self.cx.with_doc(crate::layout::cx::BuildDoc::of(doc)),
+            frag: self.frag.clone(),
+        }
+    }
+
     /// Цвет подложки выделения.
     ///
     /// Отдельного поля в настройках нет, чтобы не ломать вызывающих: берём

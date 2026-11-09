@@ -11,7 +11,7 @@ fn sample(html: &str, width: f32, window: &mut Window, app: &mut App) -> (Rc<Sna
         cx: Default::default(),
         frag: Default::default(),
     };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
     opts.cx.values.viewport = opts.viewport;
     crate::style::cascade::materialize::materialize(
         &tree,

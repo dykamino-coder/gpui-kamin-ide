@@ -31,8 +31,13 @@ pub fn parse_gradient_with_current(
 impl Computed {
     pub fn resolve_gradient_current_color(&mut self, _vcx: ValueCx<'_>) {
         let current = self.inh.ui.color.unwrap_or(BLACK);
-        for image in self.image_operands() {
-            image.resolve_colors(current);
+        if self
+            .image_operands_ref()
+            .any(crate::style::computed::ImageSource::has_color_expressions)
+        {
+            for image in self.image_operands() {
+                image.resolve_colors(current);
+            }
         }
         if (self.reset_background.gradient.is_some()
             || self
