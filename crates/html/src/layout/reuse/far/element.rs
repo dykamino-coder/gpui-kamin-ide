@@ -66,7 +66,10 @@ impl Wrap for FarRecorder {
         let Some((boxes, hits)) = self.pending.placed.get() else {
             return;
         };
-        if self.pending.sink.tainted() || callbacks != window.next_frame_callback_count() {
+        if self.pending.widths.get()
+            || self.pending.sink.tainted()
+            || callbacks != window.next_frame_callback_count()
+        {
             return;
         }
         let layout = self.pending.layout.borrow().clone();

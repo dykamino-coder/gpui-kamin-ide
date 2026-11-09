@@ -154,7 +154,7 @@ impl FlowCx {
         if !self.reuse.allow || edge && !self.edges || e.node_id == 0 || self.floats.get() {
             return None;
         }
-        if self.reuse.store.refused.borrow().contains(&e.node_id) {
+        if self.reuse.store.refused(e.node_id) {
             return None;
         }
         let record = self.reuse.store.same_tree(e)?;
@@ -242,7 +242,7 @@ impl FlowCx {
             && (self.settled && !self.warm
                 || !store.unrecorded(e.node_id)
                     && (self.resized || self.settled && same_widths_only()));
-        self.record_far(e, &mark, now.start, opts, out);
+        self.record_far(e, &mark, now.start, out);
         if !skipped {
             self.record_replay(e, mark, now.start, opts, out);
         }

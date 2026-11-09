@@ -69,7 +69,7 @@ impl FlowReuse {
         // Повторная сборка кадра проверяется снова: отказы копятся до `finish`.
         let mut all = self.store.refused.take();
         all.extend(refused);
-        self.store.refused.replace(all);
+        self.store.refused.set(all);
         self.validate_replays(window) && ok
     }
 

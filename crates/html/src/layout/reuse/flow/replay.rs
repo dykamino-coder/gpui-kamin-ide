@@ -23,7 +23,7 @@ impl FlowCx {
             || e.node_id == 0
             || self.floats.get()
             || store.banned(e.node_id)
-            || store.refused.borrow().contains(&e.node_id)
+            || store.refused(e.node_id)
         {
             return None;
         }

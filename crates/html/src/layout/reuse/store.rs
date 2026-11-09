@@ -47,7 +47,7 @@ pub(crate) struct Store {
     /// Blocks whose text wrapped: not recorded in a flow no wider (`narrow`).
     pub(super) narrow: narrow::Wraps,
     /// Блоки, отказанные `FlowReuse::validate`: пересборка кадра их собирает.
-    pub(super) refused: RefCell<HashSet<u64>>,
+    pub(super) refused: Cell<HashSet<u64>>,
     /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
     /// годны только в кадре сразу после своего.
     pub(super) epoch: Cell<u64>,
@@ -157,6 +157,13 @@ impl Store {
         let reads = self.reads_widths.take();
         let found = reads.contains(&node);
         self.reads_widths.set(reads);
+        found
+    }
+
+    pub(super) fn refused(&self, node: u64) -> bool {
+        let refused = self.refused.take();
+        let found = refused.contains(&node);
+        self.refused.set(refused);
         found
     }
 

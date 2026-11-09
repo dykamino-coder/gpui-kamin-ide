@@ -34,18 +34,12 @@ impl FlowCx {
         e: &Element,
         mark: &Mark,
         end: Counters,
-        opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
     ) {
-        let Some(widths) = mark.widths.clone() else {
+        // A build that read an outside width gives no far record.
+        let Some(widths) = mark.widths.clone().filter(|w| mark.far && !w.get()) else {
             return;
         };
-        if !self.far_worth_recording(e)
-            || self.reuse.store.far_near(e.node_id)
-            || !super::super::plain::far_replayable(e, opts.cx.vcx())
-        {
-            return;
-        }
         let Some(child) = out.pop() else { return };
         let pending = Rc::new(PendingFar::new(self.key.clone(), mark.start, end, widths));
         let source = self.reuse.shells.source(e);

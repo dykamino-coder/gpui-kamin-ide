@@ -17,6 +17,8 @@ pub(crate) struct Mark {
     pub(super) widths: Option<Rc<std::cell::Cell<bool>>>,
     /// The child's subtree replay record may pay off (`replay_worth_recording`).
     pub(super) replay: bool,
+    /// The child may be recorded as a far block (`FlowCx::far_candidate`).
+    pub(super) far: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
 }
@@ -39,6 +41,7 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         late: opts.cx.position.state.late_pending(),
         widths: None,
         replay: false,
+        far: false,
         inert: Default::default(),
     }
 }
@@ -50,7 +53,8 @@ impl super::FlowCx {
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
         mark.replay = self.replay_worth_recording(e);
-        if mark.replay || self.far_worth_recording(e) {
+        mark.far = self.far_candidate(e, opts);
+        if mark.replay || mark.far {
             mark.widths = Some(Rc::default());
         }
         mark
@@ -61,6 +65,17 @@ impl super::FlowCx {
     /// after its paint; a near one costs the wrapper and a node list.
     pub(super) fn far_worth_recording(&self, e: &Element) -> bool {
         self.settled_outside_widths && !self.floats.get() && !self.reuse.store.banned(e.node_id)
+    }
+
+    /// Child `e` is wrapped for a far record after its build: worth it, not
+    /// near in its last recording (`Store::far_near`), and its subtree can
+    /// be laid out again from kept nodes (`plain::far_replayable`). Decided
+    /// before the build, so a child that cannot be far costs no width
+    /// tracking (`Mark::child_opts`).
+    fn far_candidate(&self, e: &Element, opts: &RenderOpts) -> bool {
+        self.far_worth_recording(e)
+            && !self.reuse.store.far_near(e.node_id)
+            && super::super::plain::far_replayable(e, opts.cx.vcx())
     }
 
     /// Запись повтора ребёнка `e` может подойти следующей сборке и окупиться.
