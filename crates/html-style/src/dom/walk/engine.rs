@@ -152,13 +152,13 @@ pub fn walk_children(
     }
     drop(jobs);
     let mut output = Buffer::default();
-    output.push(std::mem::take(out), &admission)?;
+    output.push(super::kids::Kids::from_vec(std::mem::take(out)), &admission)?;
     while let Some(next) = work.pop() {
         admission.work(1)?;
         match next {
             Work::Leave(p, restore) => {
                 restore.apply(path);
-                let children = output.pop().expect("children output");
+                let children = output.pop().expect("children output").into_vec();
                 leave(
                     p,
                     path,
@@ -227,6 +227,6 @@ pub fn walk_children(
             }
         }
     }
-    *out = output.pop().expect("root output");
+    *out = output.pop().expect("root output").into_vec();
     Ok(())
 }

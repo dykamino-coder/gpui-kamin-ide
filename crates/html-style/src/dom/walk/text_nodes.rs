@@ -15,7 +15,7 @@ pub(super) fn walk_text(
     preserve: bool,
     level: &[Handle],
     level_pos: usize,
-    out: &mut Vec<Node>,
+    out: &mut super::kids::Kids,
 ) {
     // Пустой узел ПО CSS — только схлопываемые пробелы
     // (`space`/`tab`/`CR`/`LF`). `str::trim` снимает весь юникодный

@@ -13,7 +13,7 @@ pub(super) fn leave(
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     mut children: Vec<Node>,
-    out: &mut Vec<Node>,
+    out: &mut super::kids::Kids,
 ) -> Result<(), crate::budget::admission::Error> {
     let rules = &p.visit.scope.rules;
     let frames = &p.visit.scope.frames;

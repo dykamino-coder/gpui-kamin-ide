@@ -24,7 +24,7 @@ pub(super) fn finish_element(
     first_letter: Option<Box<Computed>>,
     first_line: Option<Box<Computed>>,
     scroll_pseudos: ScrollPseudos,
-    out: &mut Vec<Node>,
+    out: &mut super::kids::Kids,
     vcx: ValueCx<'_>,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());

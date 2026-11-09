@@ -1,6 +1,5 @@
 //! Продолжение сборки: всё состояние ожидающего родителя лежит в куче.
 use super::sibling_survey::Visit;
-use crate::dom::Node;
 use crate::dom::shadow::Shadow;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, VarMap};
@@ -25,7 +24,7 @@ pub(super) struct Pending<'a> {
     pub box_level: bool,
     pub style_scope: Option<Scope>,
     pub hidden: bool,
-    pub children: Vec<Node>,
+    pub children: super::kids::Kids,
     /// Номер разделения стиля элемента для его детей.
     pub share: u64,
 }
