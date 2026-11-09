@@ -89,7 +89,8 @@ test('IDE chat and browser share assistant surfaces, gutters and telemetry-spann
   // GPUI injects these theme keys into the document; browser-theme emulates them.
   await ide.addStyleTag({ content: `:root { --vscode-editor-background:#313240; --vscode-editorWidget-background:#262533;
     --vscode-input-background:#3d3f51; --vscode-font-size:13px; --vscode-foreground:#cfd4e2;
-    --vscode-descriptionForeground:#838aa0; --vscode-disabledForeground:#60667b; --vscode-focusBorder:#89b4fa; }
+    --vscode-descriptionForeground:#838aa0; --vscode-disabledForeground:#60667b; --vscode-focusBorder:#89b4fa;
+    --vscode-list-hoverBackground:rgba(61,63,81,0.5); }
     html,body { background-color:var(--vscode-editor-background); color:var(--vscode-foreground); }` })
   const measurements = []
   for (const [name, page] of [['ide-chat-html', ide], ['browser-shell', web]]) {
@@ -123,6 +124,7 @@ test('IDE chat and browser share assistant surfaces, gutters and telemetry-spann
     assert.deepEqual(await page.locator('.tool-group-body .tool-name').allTextContents(), ['ToolSearch', 'Bash', 'Read'])
     assert.equal(await page.locator('.tool-group-body .tool-result-inline').count(), 3)
     await page.locator('.tool-group-header').first().click()
+    await page.mouse.move(0, 0)
     if (process.env.BRIDGEWEB_ACC_CONTAINER) {
       const panel = name === 'browser-shell' ? webPanel : page.locator('#root')
       await panel.screenshot({ path: `/reports/${name}.png` })
