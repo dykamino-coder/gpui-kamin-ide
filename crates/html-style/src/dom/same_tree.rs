@@ -218,5 +218,8 @@ fn same_children<'a>(
     true
 }
 
+mod cascaded;
+pub use cascaded::{same_cascaded_box, same_cascaded_tree};
+
 #[cfg(test)]
 mod tests;

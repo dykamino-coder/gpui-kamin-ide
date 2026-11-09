@@ -115,47 +115,41 @@ impl Store {
 
     /// The document `old` was rebuilt as `new` from the same source DOM
     /// (`Document::apply`, same-shape `Document::update`): the node ids are
-    /// the same. A record's source is its block in the frame tree, which the
-    /// layout passes rewrite from the document's box (zoom, flow item values)
-    /// as a function of that box's subtree and the flow key: so the document
-    /// boxes of the two trees decide here, and the record drops its source.
-    /// Its previous frame tree then goes with the previous document, as for a
-    /// fresh one, instead of living into the next build. A block equal but for
-    /// paint-only values keeps its record only if it was far from the screen
-    /// (`Damage::Paint` stands only there); replay records, which hold their
-    /// output and compare exactly, go. After a patch since the last frame
-    /// (`patch`), the records hold only by the next build's comparison.
+    /// the same. Each record's block is compared in the two trees by its
+    /// cascaded values (`dom::same_cascaded_tree`: both computed from them
+    /// under the root boxes, whose layout values the flow key compares), and
+    /// the record drops its source, a block of the previous frame tree, which
+    /// then goes with the previous document, as for a fresh one, instead of
+    /// living into the next build. A block is equal only if the `html`/`body`
+    /// boxes cascade equal values too (their paint-only values reach it as
+    /// its own); a block equal but for paint-only values keeps its record only
+    /// if it was far from the screen (`Damage::Paint` stands only there).
+    /// Replay records, which hold their output, go. After a patch since the
+    /// last frame (`patch`), the records hold only by the next build's
+    /// comparison.
     pub(crate) fn rebase(&self, old: &[crate::dom::Node], new: &[crate::dom::Node]) {
         if self.patched.get() {
             return;
         }
         self.reset_replays();
-        let (was, now) = (super::flow_blocks(old), super::flow_blocks(new));
+        let ((was, a), (now, b)) = (super::flow_blocks(old), super::flow_blocks(new));
+        let roots = match (a, b) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len()
+                    && a.iter()
+                        .zip(&b)
+                        .all(|(x, y)| crate::dom::same_cascaded_box(x, y, false))
+            }
+            _ => false,
+        };
         let records = self.records.take().into_iter();
         let records = records.filter_map(|(id, record)| {
             let (a, b) = (was.get(&id)?, now.get(&id)?);
-            let exact = crate::dom::same_tree(a, b);
-            let styles = || crate::dom::BoxStyles::of(a);
-            let repaint = !exact
-                && record.far
-                && crate::dom::same_layout_tree_as(a, &styles(), &a.children, b);
+            let exact = roots && crate::dom::same_cascaded_tree(a, b, false);
+            let repaint = !exact && record.far && crate::dom::same_cascaded_tree(a, b, true);
             (exact || repaint).then(|| (id, Rc::new(record.moved_to(None, repaint))))
         });
         self.records.replace(records.collect());
-    }
-
-    /// The root style, viewport and text style of the last build of the flow
-    /// (`FlowKey`): the inputs its style pass computed the document under.
-    pub(crate) fn frame_inputs(
-        &self,
-    ) -> Option<(
-        crate::style::computed::BoxStyle,
-        (f32, f32),
-        gpui::SharedString,
-    )> {
-        let last = self.last.borrow();
-        let key = last.as_ref()?;
-        Some((key.root.clone(), key.viewport, key.text.font_family.clone()))
     }
 
     /// The document was patched (`Document::commit`): records compared at a
