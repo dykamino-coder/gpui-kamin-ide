@@ -1,0 +1,4 @@
+export { WorkspaceAuth, serverTokenResolver } from './auth.js'
+export { startWorkspaceServer } from './server.js'
+export type { WorkspaceServerOptions } from './server.js'
+export type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
