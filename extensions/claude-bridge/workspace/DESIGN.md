@@ -190,6 +190,26 @@ advertised; do not silently claim an installed executable that is absent.
 
 ## Acceptance
 
+### Browser transport increment
+
+The independent browser entry reuses `App` and the same shim/channel tables.
+The browser build uses deferred HTTP assets instead of the desktop single-file
+format, because inlining dynamic imports evaluates renderer initializers before
+authentication and transport installation. This is a packaging difference, not a
+second UI or a fork of handlers. UI state is document-local; host settings remain
+persistent. Mount occurs after socket open, so no startup command queue is needed.
+Lost invokes reject as unknown outcomes; commands are never buffered or replayed.
+Reconnect requests the existing UI read/session resync. Private socket delivery
+does not register the native window-message receive path in browser mode.
+
+The production-bundle Chromium smoke proves authentication, shared App composition,
+forged-reply rejection, reconnect without document replacement/mutation replay,
+revocation and logout against the real HTTP/WS boundary with an enumerated fixture
+backend. It intentionally does not count toward the exhaustive handler matrix or
+live Podman gate below. Environment adapters/executable composition remain next.
+
+### Full workspace gates
+
 Use an isolated Podman project and headless Playwright, with synthetic content
 and private raw captures. Record source SHA, dependency locks, image ID, container
 names, commands, browser version, test results and volume names in the acceptance

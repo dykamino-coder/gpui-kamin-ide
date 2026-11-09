@@ -3,9 +3,9 @@
 Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Architecture and remaining acceptance: [DESIGN.md](DESIGN.md).
 
-This first implementation is the HTTP/WebSocket boundary library. It is not yet
-a runnable browser workspace: the shared `BridgeHost` environment adapter,
-browser entry, capability matrix and Podman packaging follow in bounded PRs.
+This package provides the HTTP/WebSocket boundary library and a browser entry
+for the existing App. It is not yet a runnable browser workspace: executable shared `BridgeHost` composition,
+environment services, capability matrix and Podman packaging follow in bounded PRs.
 There is no second tool implementation or alternative chat UI in this package.
 
 Run the boundary checks with Node 22:
@@ -45,5 +45,50 @@ The boundary enforces Host/Origin checks, bounded login attempts and sessions,
 32 sockets/upgrades, 64 concurrent dispatches per socket, 16 MiB frames and a
 32 MiB output buffer. Invalid/forged host frames are rejected. Backend failures
 close the view; adapters must return explicit invoke errors for unsupported
-channels. The browser adapter's startup queue, pending-call rejection and
-reconnect/replay policy remain part of the next implementation stage.
+channels.
+
+## Browser transport and shared UI
+
+`webview/browser.html` mounts the existing full `App` (sessions, chat, settings
+and file panel) through the existing KaminBridgeApi channel tables. Build with
+`npm run build:browser` in `webview`; serve the entire `webview/dist/browser`
+directory at the HTTP origin root, with `/` mapped to `browser.html`. The
+embedding executable/static asset server is still pending. Never serve project
+files as application assets. The browser build preserves a deferred renderer
+chunk: desktop single-file bundling would execute its module initializers before
+the browser transport is installed.
+
+The entry checks `/auth/session`, signs in via `/auth/login`, and uses only the
+opaque HttpOnly cookie for the same-origin `/bridge` socket. The token field is
+cleared when submitted; there is no token in browser storage, URLs or renderer
+state. UI state is document-local memory; durable client settings remain host
+responsibilities. Logout and reauthentication reload the document.
+
+Private socket subscriptions deliver replies/events; browser `window.postMessage`
+cannot settle invokes. The native VSIX receive path and its single API acquisition
+are preserved. A lost socket rejects pending invokes with an unknown-outcome
+error: the host may already have executed them. There is no command queue, startup
+queue or mutation replay. The UI mounts after connection and becomes inert while
+offline. Only best-effort diagnostics are discarded offline. Reconnect emits the
+existing `bridge:reconnected` event to refresh read snapshots/session replay
+without replacing the UI document. Connection deadlines, exponential backoff,
+frame/output byte limits and page-owned cleanup bound transport resources. An
+expired session returns to sign-in; protocol/overload closes require reload.
+
+The browser smoke uses production assets, the real HTTP/WS boundary, headless
+Chromium and an explicitly enumerated synthetic backend. Unknown fixture invokes
+fail; this is startup/transport/UI composition evidence, not shared-handler,
+model or Podman parity. Run after building both packages:
+
+```sh
+# In workspace; choose a private browser cache on a shared developer machine.
+export PLAYWRIGHT_BROWSERS_PATH=/private/task/browser-cache
+export PLAYWRIGHT_SKIP_BROWSER_GC=1
+npx playwright install chromium --only-shell
+npm run test:browser
+```
+
+CI repeats this headlessly and captures only synthetic fixture UI. Native window,
+file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+exhaustive capability gate and live Podman acceptance remain open. The presence
+of UI controls in this build is not a claim those adapters already exist.
