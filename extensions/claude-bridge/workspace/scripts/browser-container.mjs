@@ -17,7 +17,7 @@ const run = args => spawnSync('podman', args, { stdio: 'inherit', windowsHide: t
 const script = `set -eu
 mkdir -p /tmp/task/extensions/claude-bridge /tmp/browser-output
 cd /source/extensions/claude-bridge
-tar --exclude=node_modules --exclude=dist -cf - extension webview workspace | tar -xf - -C /tmp/task/extensions/claude-bridge
+tar --exclude=node_modules --exclude=dist -cf - extension webview workspace server/src/ui/src/lib/terminal-console | tar -xf - -C /tmp/task/extensions/claude-bridge
 cp -a /ms-playwright /tmp/bridgeweb-playwright
 cd /tmp/task/extensions/claude-bridge/extension
 npm ci --no-audit --no-fund
