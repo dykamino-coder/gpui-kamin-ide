@@ -1,4 +1,9 @@
 {
+  "shell": {
+    "file": "workspace/src/shell-state.ts",
+    "test": "workspace/test/shell-state.test.ts",
+    "contract": "Host-owned validated dock, project expansion and sidebar preferences; atomic persistence, revisioned broadcasts and concurrent-view operations."
+  },
   "preview": {
     "file": "workspace/src/preview.ts",
     "test": "workspace/test/preview.test.ts",

@@ -34,8 +34,6 @@
   {"id":"event:mcp:ready","status":"explicitly-not-applicable-with-reason","reason":"Legacy subscription has no current host producer. Current UI queries config/cwd/MCP/saved sessions and refreshes from connection/tab events.","evidence":"webview/src/hooks/useBridgeListeners.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:mcp:test-log","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/test-log.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:mcp:test-log-cleared","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/test-log.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:mic-audio","status":"explicitly-not-applicable-with-reason","reason":"Removed native/PWA microphone transport; browser getUserMedia and shared whisper:transcribe provide Bridge voice input.","evidence":"webview/src/hooks/useVoiceInput.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:mic-levels","status":"explicitly-not-applicable-with-reason","reason":"Removed native/PWA microphone transport; browser getUserMedia and shared whisper:transcribe provide Bridge voice input.","evidence":"webview/src/hooks/useVoiceInput.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:monitor:error","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":2}},
   {"id":"event:monitor:output","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:monitor:started","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":2,"webview/src/lib/bridge-channels.ts":1}},
@@ -64,13 +62,12 @@
   {"id":"event:toast:route","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/bridge-host.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:toolusage-open","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/tool-usage-relay.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:tree-update","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"extension/src/main/ws/connection-manager.ts":2,"webview/src/lib/bridge-channels.ts":1,"workspace/src/presentation.ts":1}},
-  {"id":"event:update:state","status":"explicitly-not-applicable-with-reason","reason":"Desktop installer updater does not apply to the container host; update the deployed container image.","evidence":"workspace/DESIGN.md","sources":{"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:window:maximized","status":"explicitly-not-applicable-with-reason","reason":"Native window chrome is owned by the browser; use browser close, resize and developer tools.","evidence":"webview/src/bridge-shim.ts","sources":{"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:workspace:effect","status":"supported-in-browser-host","provider":"environment","sources":{"workspace/src/browser-environment.ts":1}},
   {"id":"event:workspace:files-state","status":"supported-in-browser-host","provider":"files","sources":{"webview/src/browser/browser-socket.ts":1,"workspace/src/files.ts":1}},
   {"id":"event:workspace:question-resolved","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/presentation.ts":1}},
   {"id":"event:workspace:snapshot-end","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
   {"id":"event:workspace:snapshot-start","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
   {"id":"event:workspace:terminal-removed","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
-  {"id":"event:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}}
+  {"id":"event:workspace:terminal-state","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"workspace/src/terminals.ts":1}},
+  {"id":"event:workspace:shell:state","status":"supported-in-browser-host","provider":"shell","sources":{"workspace/src/shell-state.ts":2,"webview/src/browser/shell/state.ts":1}}
 ]

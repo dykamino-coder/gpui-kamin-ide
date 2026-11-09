@@ -8,8 +8,8 @@ Credential storage, automatic loopback access and reset: [CREDENTIALS.md](CREDEN
 The workspace is a Node Bridge **client** whose local machine is a Linux
 container. Its executable composes the same BridgeHost, client tool handlers,
 plugin hooks, MCP/LSP and monitors used by KaminIDE. It serves the existing
-webview App through an authenticated HTTP/WebSocket adapter implementing the
-same KaminBridgeApi contract. There is one UI and one tool implementation.
+current ChatRoot, Console and Agents components inside a thin browser shell,
+through an authenticated HTTP/WebSocket adapter implementing KaminBridgeApi. There is one UI and one tool implementation.
 Claude CLI and its login remain on the Bridge server.
 
 Status: bounded implementations are available; the full owner request remains
@@ -21,7 +21,7 @@ source revision and image, including failures and unrun scenarios.
 
 `src/cli.ts` builds the shared runtime, pins server administration requests to
 its configured upstream, installs browser environment services, then wraps it
-with `WorkspaceFiles` and `TerminalWorkspaceBackend`. The resulting host serves
+with persistent workspace-shell state, `WorkspaceFiles` and `TerminalWorkspaceBackend`. The resulting host serves
 the production browser bundle. Shutdown disposes terminals, file watches and
 the shared runtime; a lost browser socket only detaches delivery.
 
@@ -31,6 +31,12 @@ persist in project/HOME volumes. Tools can access ordinary container paths,
 including absolute paths and symlink destinations outside `/workspace`.
 The container and its mounts provide isolation; `/workspace` is a project root,
 not a filesystem jail. Client HOME must remain separate from server CLI auth.
+
+New and resumed sessions default missing or blank browser cwd to the configured
+workspace root. A selected project must be an existing container directory;
+relative selections resolve against that root. Each session explains to the
+model that files, shell and client tools live in the workspace container, and
+includes the selected directory alongside the saved project instructions.
 
 The asset handler snapshots only the trusted browser build's entry and supported
 assets before listening. It rejects linked/special files and bounded-size/depth
@@ -76,11 +82,18 @@ receipts/32 MiB, then explicit rejection). Re-attach uses read synchronization,
 not replay of writes or commands. Presentation snapshots remain process-owned;
 full host-authoritative transcript reducers and queued-message state remain open.
 
+The browser shell retains session/project navigation, tabs and pins, and a
+resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,
+active panels, project expansion and sidebar dimensions live in the host and
+synchronize across pages; validated layout operations persist across restart.
+The owner removed FilePanel and the project explorer from browser scope. The
+existing file services remain available for tools and attachments.
+
 Logical FileViews retain file/tree subscriptions with zero sockets and refresh
 watched bytes/directories on re-attach. Identity is an opaque sessionStorage value,
 not authoritative file content. There are at most 32 retained views, each with
-64 file and 8 tree subscriptions. Full per-chat open layout, drafts, selections,
-editor context and preview state still need host projection and acceptance.
+64 file and 8 tree subscriptions. FilePanel drafts, selections, scroll/undo and explorer projection are outside
+the revised browser scope.
 
 Terminals belong to host chat tabs. Spawn is coalesced per tab and re-attach
 receives a bounded headless-xterm screen/scrollback snapshot before live output.
@@ -90,15 +103,15 @@ terminates owned processes. Limits include 32 records (including pending spawns)
 reported. Shells/screens survive browser loss, not host restart. Remaining OSC
 palette/pixel-window query compatibility has not been accepted as full TUI parity.
 
-The same FilePanel and terminal components render these host services. Browser
+The current ChatRoot and terminal components render the shared host services. Browser
 clipboard, downloads, uploads, path dialogs, notifications, links and audio use
 explicit environment adapters; missing services fail explicitly. Actual plugin
 LSP stays shared; unavailable native editor diagnostic commands reject. Native
 KaminIDE editor/reveal/openInVscode features are classified as native host
-operations in the matrix; Bridge FilePanel and editor context remain required.
+operations in the matrix; browser attachments use the explicit environment adapter.
 
-The tracked **PREVIEW panel with HMR** follow-up remains unimplemented and
-unaccepted. Existing file rendering does not provide an agent-controlled preview.
+PREVIEW/HMR adapters have their own behavioral coverage. The retired FilePanel
+is hidden in the browser shell; this layout does not expose an explorer or editor.
 
 ## Verification and remaining gates
 
@@ -123,7 +136,7 @@ Its upstream protocol peer is synthetic; it is not live Claude acceptance.
 
 Production browser smoke uses the real asset handler and boundary with an
 explicit synthetic backend. Linux CI/Podman runs headless Chromium and reports
-all shipped JS chunks (raw/gzip/Brotli) and post-GC page heap. Empty-App metrics
+all shipped JS chunks (raw/gzip/Brotli) and post-GC page heap. Startup metrics
 are baselines, not long-turn retention or thin-page proof. Never launch Chromium
 or Playwright natively on the shared Windows workstation, even headlessly.
 
@@ -137,22 +150,23 @@ and [inventory extractor](test/capability-inventory.ts).
 Current `test:parity` passes its declared provider prerequisites:
 host terminals, title regeneration, finished-toast routing and PREVIEW/HMR.
 Deleting any of these four requirements fails both classification and readiness
-checks. It does **not** encode the remaining full host-page or FilePanel state
+checks. It does **not** encode the remaining full host-page behavior
 gates. A green command therefore cannot close the owner task. Add these requirements
 and exhaustive observable behavior coverage before claiming full parity.
 
 The Linux Podman live harness exercises chat, file tools, Bash, MCP, hooks,
-FilePanel, close-mid-turn continuation, pending permissions after reopen and two
+session pinning, dock synchronization, close-mid-turn continuation, pending permissions after reopen and two
 browser tabs. It retains sanitized summaries outside the checkout. The latest
 executed source/image/report must be checked before marking these gates passed;
 historical failures are not waived by later source changes. The executed
 [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653) records
 15/15 PASS for its listed scenarios on production sources matching main
 `65fa7467`, including #650's title/toast integration; see DESIGN.md for exact
-runner/image provenance and limitations. Pending #655 PREVIEW/HMR and #657
-fallback-receipt changes are outside that run. It does not establish full parity.
+runner/image provenance and limitations. That historical run predates the
+current browser shell and does not establish its visual parity.
 
-The owner task remains open for remaining host-authoritative page/FilePanel
-state, PREVIEW/HMR, exhaustive behavior proof and final composed live acceptance.
+The owner task remains open for remaining host-authoritative page state,
+exhaustive behavior proof and final composed live acceptance. FilePanel state
+polish is explicitly outside the revised browser scope.
 No release, version bump or image publication is part of this work. Claude lead
 reviews/merges implementation and the consolidated documentation PR.

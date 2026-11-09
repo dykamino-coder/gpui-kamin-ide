@@ -1,0 +1,60 @@
+/* Browser equivalent of GPUI webview_theme.rs palette injection. */
+:root {
+  --vscode-font-family: 'Bricolage Grotesque',system-ui,sans-serif;
+  --vscode-font-size: 13px;
+  --font-mono: 'JetBrains Mono',Consolas,monospace;
+}
+[data-theme="dark"] {
+  --vscode-foreground: #cfd4e2;
+  --vscode-disabledForeground: #60667b;
+  --vscode-descriptionForeground: #838aa0;
+  --vscode-focusBorder: #89b4fa;
+  --vscode-editor-background: #313240;
+  --vscode-editor-foreground: #cfd4e2;
+  --editor-bg: #1d1c25;
+  --editor-fg: #dcdce4;
+  --editor-cursor: #a0a0d0;
+  --kamin-menu-background: #3d3f51;
+  --kamin-menu-border: rgba(207,212,226,0.06);
+  --vscode-terminal-background: #1d1d28;
+  --vscode-terminal-foreground: #cfd4e2;
+  --vscode-editorWidget-background: #262533;
+  --vscode-dropdown-background: #262533;
+  --vscode-button-background: #89b4fa;
+  --vscode-button-hoverBackground: #74c7ec;
+  --vscode-button-foreground: #313240;
+  --vscode-input-background: #3d3f51;
+  --vscode-sideBar-background: #1d1d28;
+  --ws-frame: #262533;
+  --ws-sidebar: #1d1d28;
+  --ws-surface: #3d3f51;
+  --ws-overlay: #515567;
+  --vscode-list-hoverBackground: rgba(61,63,81,0.5);
+}
+[data-theme="light"] {
+  --vscode-foreground: #322e28;
+  --vscode-disabledForeground: #938e82;
+  --vscode-descriptionForeground: #6e685d;
+  --vscode-focusBorder: #da8343;
+  --vscode-editor-background: #f6efeb;
+  --vscode-editor-foreground: #322e28;
+  --editor-bg: #fcfaf6;
+  --editor-fg: #48433c;
+  --editor-cursor: #48433c;
+  --kamin-menu-background: #e6e1d4;
+  --kamin-menu-border: rgba(50,46,40,0.06);
+  --vscode-terminal-background: #f4f1ea;
+  --vscode-terminal-foreground: #48433c;
+  --vscode-editorWidget-background: #fbf7f4;
+  --vscode-dropdown-background: #fbf7f4;
+  --vscode-button-background: #da8343;
+  --vscode-button-hoverBackground: #b16527;
+  --vscode-button-foreground: #ffffff;
+  --vscode-input-background: #e6e1d4;
+  --vscode-sideBar-background: #f4f1ea;
+  --ws-frame: #fbf7f4;
+  --ws-sidebar: #f4f1ea;
+  --ws-surface: #e6e1d4;
+  --ws-overlay: #d6d0c0;
+  --vscode-list-hoverBackground: rgba(230,225,212,0.5);
+}

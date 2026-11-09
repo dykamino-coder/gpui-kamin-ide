@@ -6,6 +6,7 @@ import { ipcMain } from '../../extension/src/shim/host-compat'
 import { configureEnvironment, withEnvironment, type WorkspaceEnvironment } from './environment.js'
 import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
 import { WorkspacePresentation } from './presentation.js'
+import { containerSessionInstructions, projectDirectory } from './session-context.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -38,7 +39,8 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const host = new BridgeHost({
     globalStorageUri: { fsPath: storage },
     extension: { packageJSON: { version: options.version } },
-  } as ExtensionContext, { persistConnectionToken: false })
+  } as ExtensionContext, { persistConnectionToken: false,
+    sessionInstructions: cwd => containerSessionInstructions(cwd || root) })
   const config = host.getConfigStore()
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
@@ -61,7 +63,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   function pinned(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected connection config')
     return { ...value, serverUrl: options.serverUrl, token: options.token,
-      cwd: typeof (value as { cwd?: unknown }).cwd === 'string' ? (value as { cwd: string }).cwd : root }
+      cwd: projectDirectory(root, (value as { cwd?: unknown }).cwd) }
   }
   function redact(value: unknown): unknown {
     if (typeof value === 'string') return value.split(options.token).join('[workspace credential]')

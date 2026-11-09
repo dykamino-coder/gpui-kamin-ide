@@ -88,16 +88,6 @@ export const serverPathVisible = signal<boolean>(_initialServerPathVisible)
 export const chatAtBottom = signal<boolean>(true)
 export const terminalAtBottom = signal<boolean>(true)
 
-// Auto-update: server version probe vs. local app version. When the server
-// has a newer build, the sidebar "v<ver>" label turns into an "Update" button.
-export interface UpdateInfo {
-  localVersion: string
-  serverVersion: string
-  state: 'idle' | 'downloading' | 'ready' | 'error'
-  error?: string
-}
-export const updateInfo = signal<UpdateInfo | null>(null)
-
 // File-preview column — between chat and the right activity panel.
 // Top region shows file content/details; bottom region shows a tooling
 // pane (console / git history / etc). Both visibilities + width + split

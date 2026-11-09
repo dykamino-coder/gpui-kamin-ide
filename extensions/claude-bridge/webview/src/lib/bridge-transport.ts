@@ -1,6 +1,6 @@
 // postMessage transport for the Bridge webview ↔ extension host.
 //
-// Mirrors the three legacy Electron-IPC-shaped primitives over the webview channel:
+// Shared request, send and event primitives over the webview channel:
 //   inv(channel, ...args)  → request/response by id  (was ipcRenderer.invoke)
 //   snd(channel, ...args)  → fire-and-forget         (was ipcRenderer.send)
 //   sub(channel, cb)       → event subscription      (was ipcRenderer.on)

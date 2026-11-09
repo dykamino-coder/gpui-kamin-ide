@@ -1,7 +1,6 @@
 // BridgeHost — the VSIX postMessage router for the Kamin bridge API.
 //
-// The webview calls canonical `window.kaminBridge.*`; the deprecated
-// `window.electronBridge.*` alias is retained for compatibility. Calls serialise
+// The webview calls `window.kaminBridge.*`. Calls serialise
 // to postMessage frames: `{kind:'invoke',id,channel,args}` (request/response) and
 // `{kind:'send',channel,args}` (fire-and-forget). This host turns those back into
 // the exact `ipcMain.handle/.on` calls the vendored handlers expect, and turns
@@ -184,6 +183,7 @@ export class BridgeHost {
     onOpenChat?: () => void
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
+    sessionInstructions?: (cwd?: string) => string
   }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
@@ -391,7 +391,8 @@ export class BridgeHost {
     // APPENDED server-side to the technical prompt. Read through the store on
     // each session so an edit takes effect on the next one, and so it follows
     // the CURRENT token (the store keys it by token).
-    ConnectionManager.getBasePrompt = () => this.configStore.getBasePrompt()
+    ConnectionManager.getBasePrompt = (cwd) => [this.configStore.getBasePrompt(), opts?.sessionInstructions?.(cwd)]
+      .filter(Boolean).join("\n\n")
     const prevOnAuth = ConnectionManager.onAuthenticated
     ConnectionManager.onAuthenticated = (connection) => {
       if (this.disposed) return

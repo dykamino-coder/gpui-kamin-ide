@@ -9,7 +9,7 @@ Status: implementation in progress; the current live suite passed, while full pa
 The Bridge server owns Claude CLI sessions. Its client owns project operations,
 shells, executable plugins and UI delivery. A dashboard alone cannot replace that
 client. The browser workspace runs the same client host in a Linux container,
-with persistent `/workspace` and the existing webview App served to a browser.
+with persistent `/workspace` and current webview roots served in a browser shell.
 
 Owner requirement, 2026-11-09 (verbatim): «важно что бы страница в браузере
 тонкой была и если ее закрыть и открыть работа с агентом не прервется».
@@ -17,10 +17,11 @@ Sessions, connections, tools, queues, prompts, files/watches and terminal state
 must belong to the host. Zero attached browsers must not interrupt work.
 Reopening must restore current transcript, streaming/tool/prompt state, files
 and scrollback without repeating a mutation. Bounded recovery implementations
-exist; full host-authoritative page/FilePanel state remains an acceptance gate.
+exist; remaining host-authoritative page state remains an acceptance gate.
+FilePanel and explorer are excluded by the corrected browser scope below.
 
-The tracked agent-controlled **PREVIEW panel with HMR** follow-up remains open
-until its source and executed acceptance are incorporated.
+The agent-controlled PREVIEW/HMR adapter is merged and has synthetic browser
+coverage; exhaustive actual-model behavior acceptance remains open.
 
 Completion requires reviewed Change PRs with applicable green CI, an exhaustive
 capability gate and actual headless browser acceptance in Linux Podman. The
@@ -28,10 +29,33 @@ Claude lead merges implementation and final documentation. Registration #638
 was merged separately; it did not accept the product. Release, version bumps,
 image publication and owner-performed testing are outside this task.
 
+## Browser shell scope correction
+
+The browser entry previously mounted the imported standalone `App`, whereas
+KaminIDE registers `chat.html` (`ChatRoot`), `tools.html` (`ToolsRoot`) and the
+customize roots. The browser now needs its own small shell around those current
+tools. It must not reuse the standalone titlebar, updater or window controls.
+The shell follows GPUI's titlebar, activity rail, sessions list and panel slots:
+42 px top bar, 48 px rail, 270 px resizable sessions sidebar, 8 px dock gutters,
+session tabs and movable Claude Bridge, Bridge Console and Agents panels.
+FilePanel and the explorer are outside the corrected browser layout scope.
+
+The shared `ChatRoot` remains mounted once, including while settings or another
+dock tool is selected. Its existing listeners initialize and route chat, terminal
+and agent state. The console uses the same `TerminalPanel` as `ToolsRoot` and
+settings use the current customize section router. Existing BridgeHost APIs own
+sessions, saved sessions, pins and tab order. A browser-specific host wrapper owns
+validated dock/sidebar preferences and broadcasts revisions to all views; atomic
+storage commits precede acknowledgement. Disconnected pages never replay layout
+mutations. Layout is checked visually in Linux Podman; tests cover meaningful
+state transitions, malformed operations, persistence and multi-view delivery.
+The first shell deliverable does not claim pixel parity with an unavailable
+full reference capture or completion of the remaining live acceptance matrix.
+
 ## Architecture
 
 ```text
-browser: existing webview App + same KaminBridgeApi/channel tables
+browser: thin shell + current ChatRoot/Console/Agents + KaminBridgeApi
   | authenticated same-origin WebSocket: invoke/send/event/invoke-reply
 workspace HTTP host: browser effects + files/views + host PTYs
   | shared BridgeHost + IPC registry + TabManager + ConnectionManager
@@ -41,7 +65,8 @@ Bridge server: Claude CLI PTYs and session-local proxy plugin
 ```
 
 `src/cli.ts` composes `createBrowserEnvironment`, `createSharedBackend`,
-`withBrowserServer`, `WorkspaceFiles` and `TerminalWorkspaceBackend` before
+`withBrowserServer`, persisted workspace-shell state, `WorkspaceFiles` and
+`TerminalWorkspaceBackend` before
 listening. Disposal unwinds terminals, watches and shared runtime. The workspace
 build imports the actual extension modules and aliases the small VS Code
 environment surface at build time; the native build retains its normal APIs.
@@ -110,15 +135,15 @@ Stable submission IDs are deduplicated; the 10,000-receipt/32 MiB limit rejects
 new entries rather than evicting identities and allowing duplicate execution.
 Lost invoke results are unknown outcomes, never automatically retried mutations.
 These mechanisms do not complete the host-authoritative transcript reducer and
-queued-message migration; browser App still processes authoritative page state.
+queued-message migration; the browser still processes substantial page state.
 
 Logical FileViews keep file/tree subscriptions alive with zero sockets, associate
 an opaque view identity with the page and refresh snapshots on attach. The host
-currently adopts detached views into the attached UI. Full per-chat file layout,
-drafts, selections, editor context and PREVIEW state still require host projection
-and multi-page acceptance. The inventory classifies native IDE
-editor/reveal/openInVscode separately; the existing Bridge FilePanel/editor-context
-contract remains required.
+retains detached view services independently of browser visibility. FilePanel,
+its editor state and the explorer are excluded from this browser layout. Shared
+file tools and attachments remain available. The inventory classifies native IDE
+editor/reveal/openInVscode separately; PREVIEW state and general host-page recovery
+retain their own behavioral acceptance requirements.
 
 Host PTYs belong to chat tabs. Concurrent spawn coalesces per tab; re-attach
 restores a sequenced headless-xterm screen/scrollback snapshot before live output,
@@ -157,14 +182,14 @@ Source classification or a named test path alone is not behavioral coverage.
 | Chat, tabs, sessions, streaming, submissions | Shared host/session dispatch and recovery | Create/resume/switch/close, once-only queue, full turn, permissions, two pages |
 | File tools and shells | Exact shared Read/Write/Edit/Glob/Grep/NotebookEdit/Bash/PowerShell handlers | Real bytes/search/cwd/env/output, background work, errors/cancellation |
 | Agent/team/task/plan/skill/widget/todo tools | Exact tool registry and routing | Actual requests, responses, state and identity isolation |
-| Files and editor context | WorkspaceFiles and existing FilePanel | Read/binary/write/rename/tree/watch, selections, detached updates/layout recovery |
+| Files and attachments | WorkspaceFiles and browser environment | Shared file tools and attachment services; FilePanel/explorer hidden by owner scope |
 | Interactive terminals | Host PTY registry/headless screen and same terminal UI | Input/output/resize/exit/kill, zero-view work, scrollback and TUI behavior |
 | Hooks | Shared approval/hash store and relay | Inert before approval, real execution, changed hash reapproval |
 | MCP and plugin discovery/configuration | Shared manager, IPC, sync and registry | Local stdio/HTTP tools/resources/prompts, OAuth/elicitation/cancellation/cleanup |
 | LSP and monitors | Shared plugin managers | Real fixture server diagnostics/hover/definition/references, restart and cleanup |
 | Settings and browser effects | Pinned administration proxy and browser adapters | Durable settings, export/upload/clipboard/notifications/navigation/audio |
 | Compatibility/generic invoke/events | Explicit environment semantics and event routing | Producer/consumer assertions, unknown-channel errors, no silent stubs |
-| PREVIEW with HMR | Unimplemented follow-up | Agent-controlled project preview and observable hot updates |
+| PREVIEW with HMR | Shared preview adapter | Synthetic browser HMR/rebuild/zero-page coverage; actual-model acceptance remains open |
 
 Existing plugin boundaries in PLUGIN_HARNESS.md remain unchanged. The image
 supplies the executable dependencies it advertises, including PowerShell.
@@ -174,8 +199,8 @@ testing the shared plugin LSP path.
 At main `65fa7467`, #650 supplies the bidirectional source inventory and
 mutation tests. Its readiness manifest declares only `host-terminal`,
 `title-regeneration` and `finished-toast-route`, all implemented. Thus the current
-`test:parity` passes even though host-page state, full FilePanel state and
-PREVIEW/HMR remain open. Provider/test-file existence is checked; executing an
+`test:parity` checks its declared implemented prerequisites; exhaustive host-page
+and actual-model behavior coverage remains open. Provider/test-file existence is checked; executing an
 observable contract for every classified operation is a separate outstanding
 gate. Extend readiness to encode the missing completion requirements rather
 than interpreting the current success message as full parity.
@@ -193,16 +218,16 @@ server or inspect its volumes. Execute the same browser UI in headless Linux
 Playwright; never launch a native Windows browser, including headless Chromium.
 
 Required live scenarios: complete chat turn; real Read/Write/Edit and Bash;
-fixture MCP tool and approved hook; FilePanel read/edit/selection; close during
+fixture MCP tool and approved hook; session pins and dock synchronization; close during
 long Bash/MCP work with zero browsers; reopen with complete nonduplicated
 transcript/tool state; retain a permission and answer it once across two pages;
-restore file watches/layout and terminal scrollback; explicit disconnect and
+restore service watches, shell layout and terminal scrollback; explicit disconnect and
 shutdown cancellation; persistence after owned container replacement; PREVIEW/HMR.
 
 Record source/dirty state, locks, image ID/source, browser version and executed
 scenario results. Measure all production JS chunks raw/gzip/Brotli and post-GC
 heap at startup, long turn, zero-view continuation and repeated re-attach.
-Empty-App figures do not prove long-turn retention or a thin page. Raw logs,
+Startup figures do not prove long-turn retention or a thin page. Raw logs,
 transcripts, credentials, screenshots and traces stay outside the public repo;
 publish only sanitized summaries. FAIL stays failure; BLOCKED means unrun;
 XFAIL remains incomplete acceptance. A later source fix needs an executed rerun.
@@ -211,7 +236,7 @@ The task stays open until full host state, strict behavioral parity, PREVIEW/HMR
 and the final composed live candidate pass. The agent performs acceptance and
 reports exact residual blockers to the lead; the owner is never asked to test.
 
-## Latest executed live subset
+## Latest executed live subset (historical)
 
 The [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653)
 records **15/15 PASS, exit 0**, run `2026-11-09T14:49:15.369Z`, runner and

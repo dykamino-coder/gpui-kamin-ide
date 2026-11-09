@@ -75,7 +75,7 @@ async function main() {
     if (workspaceReady) {
       const loggedIn = await record('browser-login', async () => {
         browser = await chromium.launch({ headless: true })
-        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+        const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, colorScheme: 'dark' })
         const page = await context.newPage()
         await page.goto(owned.origin, { waitUntil: 'domcontentloaded' })
         await page.waitForFunction(() => !!window.bridgeCmd, null, { timeout: 30_000 })
@@ -83,7 +83,7 @@ async function main() {
         check(await page.evaluate(secret => ![...Object.values(localStorage), ...Object.values(sessionStorage)].some(v => v.includes(secret)), token.token), 'NO_TOKEN_IN_STORAGE')
         report.metrics.heapStartup = await heap(context, page)
         report.metrics.browser = browser.version()
-        report.state = { owned, context, page, metrics: report.metrics }
+        report.state = { owned, context, page, metrics: report.metrics, screenshot: path.join(reportDir, 'layout.png') }
       })
       if (loggedIn) {
         const tests = liveScenarios(report.state)

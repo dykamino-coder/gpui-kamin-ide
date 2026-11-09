@@ -23,7 +23,7 @@ test('agent MCP mounts MF next to chat, HMR keeps the root, reopen restores and 
   await page.goto(fixture.origin)
   await page.locator('#workspace-token').fill('synthetic-preview-token')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await page.locator('#app-wrapper').waitFor()
+  await page.waitForFunction(() => !!window.bridgeCmd)
   const tab = await page.evaluate(async () => window.kaminBridge.createTab(await window.kaminBridge.getConfig()))
   await fixture.wait(frame => frame.type === 'session:create')
   // Same public submit path as the chat input. Peer models the agent's response.
