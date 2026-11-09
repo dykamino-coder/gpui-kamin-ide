@@ -29,6 +29,26 @@ Claude lead merges implementation and final documentation. Registration #638
 was merged separately; it did not accept the product. Release, version bumps,
 image publication and owner-performed testing are outside this task.
 
+### Strict completion gate follow-up
+
+The existing `test:parity` validates source classifications and four implemented
+provider prerequisites. Preserve that CI contract. A separate
+`test:parity:complete` must reject absent observable evidence for every supported
+inventory item, remaining host-state/lifetime contracts and final composed live
+scenarios. Its input is an external sanitized execution receipt for the exact
+clean runner/image revision, with individually named passing assertions and
+successful cleanup. Missing, skipped, failed, duplicate, stale or unknown proof
+IDs fail. Native exclusions retain the reviewed matrix reasons; FilePanel and
+explorer UI remain outside the corrected scope.
+
+This bounded follow-up implements receipt validation, negative regression
+coverage and a partial receipt from the existing live harness. It preserves
+executed scenario outcomes and never invents capability/remaining-contract proof.
+No current receipt is sufficient to close INC-0087. Execution harnesses must emit assertions
+after exercising behavior; hand-authored PASS receipts and test-path existence
+are not acceptance evidence. The lead reviews this Change PR; the full task
+remains open until the remaining suites actually run on the composed candidate.
+
 ## Browser shell scope correction
 
 The browser entry previously mounted the imported standalone `App`, whereas
@@ -196,14 +216,13 @@ supplies the executable dependencies it advertises, including PowerShell.
 Native editor LSP fallback commands reject explicitly; this does not replace
 testing the shared plugin LSP path.
 
-At main `65fa7467`, #650 supplies the bidirectional source inventory and
-mutation tests. Its readiness manifest declares only `host-terminal`,
-`title-regeneration` and `finished-toast-route`, all implemented. Thus the current
-`test:parity` checks its declared implemented prerequisites; exhaustive host-page
-and actual-model behavior coverage remains open. Provider/test-file existence is checked; executing an
-observable contract for every classified operation is a separate outstanding
-gate. Extend readiness to encode the missing completion requirements rather
-than interpreting the current success message as full parity.
+#650 supplies the bidirectional source inventory and mutation tests. The current
+`test:parity` checks four implemented provider prerequisites: `host-terminal`,
+`title-regeneration`, `finished-toast-route` and `preview-hmr`. Provider/test-file
+existence is checked; executing an observable contract for every classified
+operation remains outstanding. The separate `test:parity:complete` encodes that
+missing proof and the remaining completion contracts. It rejects absent evidence;
+the current prerequisite success message does not establish full parity.
 
 ## Acceptance and remaining work
 
@@ -236,7 +255,7 @@ The task stays open until full host state, strict behavioral parity, PREVIEW/HMR
 and the final composed live candidate pass. The agent performs acceptance and
 reports exact residual blockers to the lead; the owner is never asked to test.
 
-## Latest executed live subset (historical)
+## Historical executed live subset (#653)
 
 The [#653 report](https://github.com/dykamino-coder/gpui-kamin-ide/pull/653)
 records **15/15 PASS, exit 0**, run `2026-11-09T14:49:15.369Z`, runner and
@@ -257,13 +276,17 @@ Chromium `158.0.8127.18`; 34 production JS chunks total 2,268,318 raw bytes,
 points, not a complete long-turn/repeated-attach retention study.
 
 This is executed subset evidence supplied by bridgeweb2, not a rerun by the
-final documentation author. It does not include pending #655 PREVIEW/HMR or
-#657 fallback-receipt recovery and does not prove full host-owned page/FilePanel
-state, host/container restart, or every desktop tool behavior. The committed
-readiness manifest does not yet encode these remaining completion requirements;
-the inventory's passing state is a narrower result.
+final documentation author. It predates #655 PREVIEW/HMR and #657 fallback-receipt
+recovery and does not prove full host-owned page state, host/container restart,
+or every desktop tool behavior. The readiness manifest at that snapshot did not
+encode the remaining completion requirements. The strict completion gate above
+now rejects missing execution proof; it does not extend this historical evidence.
 
-## Bounded follow-up: host-owned FilePanel controls (2026-11-09)
+## Historical follow-up: host-owned FilePanel controls (2026-11-09)
+
+This records the earlier implementation scope. The owner's later correction
+above excludes FilePanel/explorer UI and its unfinished state polish from browser
+acceptance; shared file/context services remain available.
 
 The watch list is not the open-file model: it cannot recover per-chat file
 order, an explicitly closed file, active editor, selection context, attach
@@ -285,5 +308,5 @@ cover zero-page recovery, chat mapping/order, closed files and independent
 pages; renderer tests cover restoration without feedback sends; Linux Podman
 Chromium runs the production App and real file adapter across close/reopen.
 This increment does not retain unsaved drafts, undo history, scroll, multiple
-selection ranges or state after host restart. Those gaps keep full FilePanel
-and full browser-client parity open.
+selection ranges or state after host restart. Those were gaps in the earlier
+FilePanel scope, not requirements of the corrected browser layout.
