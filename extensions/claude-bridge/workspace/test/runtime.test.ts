@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import { WebSocket, WebSocketServer } from 'ws'
 import { assertProcessStopped, deadline, externalMcp } from './fixtures/external-mcp.js'
 import { startRuntimeProcess } from './fixtures/runtime-process.js'
+import { assertTitleRegeneration, waitFrame as wait } from './fixtures/runtime-protocol.js'
 
 // Protocol peer only: the CLIENT, handlers, filesystem and socket routing are
 // real. This is deliberately not live Claude/Podman/browser acceptance.
@@ -64,14 +65,6 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
   b.on('message', raw => { framesB.push(JSON.parse(raw.toString())); eventsB.emit('frame') })
   await Promise.all([once(a, 'open'), once(b, 'open')])
   cleanup.push(() => { a.terminate(); b.terminate() })
-  async function wait(frames: any[], events: EventEmitter, predicate: (value: any) => boolean) {
-    const signal = AbortSignal.timeout(5000)
-    while (true) {
-      const result = frames.find(predicate)
-      if (result) return result
-      await once(events, 'frame', { signal })
-    }
-  }
   let id = 0
   async function invoke(channel: string, args: unknown[] = []) {
     const requestId = ++id
@@ -119,15 +112,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(persisted.config.serverUrl, upstreamUrl)
     assertCredentialPrivate()
   }
-  // Same header action and shared handler as the desktop webview, without
-  // loading native SessionsBridge. Malformed/stale tabs must not reach the CLI.
-  const activeTab = (await invoke('tab:get-active')).result
-  for (const tabId of [null, {}, 'missing-tab', activeTab]) {
-    a.send(JSON.stringify({ kind: 'send', channel: 'bridge:regenerate-title', args: [tabId] }))
-  }
-  await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.data === '/rename')
-  await invoke('get-version') // Ordered ingress barrier after the header action.
-  assert.equal(upstreamFrames.filter(frame => frame.type === 'session:submitText' && frame.data === '/rename').length, 1)
+  await assertTitleRegeneration(a, invoke, upstreamFrames, upstreamEvents)
   const file = path.join(root, 'proof.txt')
   async function tool(toolName: string, input: Record<string, unknown>) {
     const requestId = `tool-${++id}`
