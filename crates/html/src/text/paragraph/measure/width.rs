@@ -19,18 +19,26 @@ impl Paragraph {
         let key = self.measure_key();
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
         crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
-        if let Some(hit) = hit {
-            return hit;
+        if let Some((segs, chunks)) = hit {
+            // Части держатся в памяти, пока держится их замер.
+            let mut shaped = self.measures.shaped.borrow_mut();
+            chunks.iter().for_each(|k| _ = shaped.get(k));
+            return segs;
         }
-        let out = self.measure_uncached(window);
-        self.measures.measured.borrow_mut().insert(key, out.clone());
+        let (out, chunks) = self.measure_uncached(window);
+        let chunks = chunks.into();
+        self.measures
+            .measured
+            .borrow_mut()
+            .insert(key, (out.clone(), chunks));
         out
     }
 }
 
 impl Paragraph {
-    pub(crate) fn measure_uncached(&self, window: &mut Window) -> Vec<Seg> {
+    fn measure_uncached(&self, window: &mut Window) -> (Vec<Seg>, Vec<u64>) {
         let mut out = Vec::new();
+        let mut chunks = Vec::new();
         let mut start = 0usize;
         let mut offset = px(0.);
         loop {
@@ -41,33 +49,32 @@ impl Paragraph {
                 .find(['\n', '\t', SOFT_HYPHEN])
                 .map(|i| start + i)
                 .unwrap_or(self.text.len());
-            let runs = self.own_runs(&(start..end));
-            let layout = window
-                .text_system()
-                .with_ligature_breaking(false)
-                .layout_line_spaced(
-                    &self.text[start..end],
-                    self.font_size,
-                    &runs,
-                    None,
-                    if self.joined_spacing() {
-                        px(0.)
-                    } else {
-                        self.letter_spacing
-                    },
-                );
-            // Ширина куска вместе с трекингом кусков и `word-spacing`: набор
-            // их не знает, `x_at` добавляет их сам — и позиция табуляции за
-            // куском обязана их учесть (`word-spacing-characters-001`:
-            // табуляция после растянутых пробелов вставала раньше).
-            let width = layout.width + self.seg_extra(start, end);
-            out.push(Seg {
-                positions: Default::default(),
-                start,
-                end,
-                layout,
-                offset,
-            });
+            // Длинный кусок набирается частями (`chunks`): каждая — свой `Seg`
+            // со сдвигом, как кусок за мягким переносом.
+            let ends = self.chunk_ends(start, end, window);
+            let (mut from, mut width) = (start, px(0.));
+            for &to in &ends {
+                let layout = if ends.len() > 1 {
+                    self.shape_chunk(from..to, &mut chunks, window)
+                } else {
+                    self.shape(from..to, window)
+                };
+                // Ширина вместе с трекингом кусков и `word-spacing`: набор их
+                // не знает, `x_at` добавляет их сам — и позиция табуляции за
+                // куском обязана их учесть (`word-spacing-characters-001`).
+                width = layout.width + self.seg_extra(from, to);
+                out.push(Seg {
+                    positions: Default::default(),
+                    start: from,
+                    end: to,
+                    layout,
+                    offset,
+                });
+                if to < end {
+                    offset += width;
+                }
+                from = to;
+            }
             if end >= self.text.len() {
                 break;
             }
@@ -87,7 +94,7 @@ impl Paragraph {
             }
             start = end + mark.len_utf8();
         }
-        out
+        (out, chunks)
     }
 }
 
