@@ -18,7 +18,8 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
   if (data.state === 'fallback') {
-    if (existing) enqueueLocal(tabId, existing.text)
+    const text = data.text ?? existing?.text
+    if (text) enqueueLocal(tabId, text)
     submissions.value = new Map(submissions.value).set(tabId, current.filter(item => item.id !== data.id))
     return
   }

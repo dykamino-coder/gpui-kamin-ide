@@ -5,6 +5,7 @@ import { orderEntries } from './order-entries'
 import { setReplayProgress } from './replay-progress'
 import { dropRenderModelCache } from '../components/jsonl-viewer/derived-cache'
 import { trimHeavyToolResults } from './heavy-tool-result'
+import { appendStreamingText } from '../../../extension/src/shared/streaming-delta'
 
 // Global per-tab JSONL entries store — single source of truth.
 // Updated by useBridgeListeners (onJsonlEntries handler).
@@ -298,8 +299,6 @@ export function applyStreamingDelta(
   // Canonical wins — never mutate a watcher-delivered entry (mirrors the
   // applyStreamingEntry guard at line 31).
   if (stub.__streaming === undefined) return
-  const content = Array.isArray(stub.message?.content) ? stub.message!.content : []
-  const block: any = content[d.blockIdx]
   // INVARIANT (load-bearing): a delta only ever appends text to an ALREADY-
   // EXISTING block — it never creates, removes, or reorders one. This is what
   // lets scheduleStreamFlush stay TEXT-ONLY (no structureVersion bump): the
@@ -307,10 +306,7 @@ export function applyStreamingDelta(
   // Materializing a missing block here would silently change structure with no
   // bump → stale-cache frozen chat. New blocks arrive via applyStreamingEntry
   // (a snapshot, which DOES bump). So: bail if the block isn't there yet.
-  if (!block) return
-  if (d.kind === 'text' && block.type === 'text') block.text = (block.text ?? '') + d.appendText
-  else if (d.kind === 'thinking' && block.type === 'thinking') block.thinking = (block.thinking ?? '') + d.appendText
-  else return
+  if (!appendStreamingText(stub, d)) return
   // Block mutated IN PLACE above; defer the ref-snapshot + signal write to a
   // coalesced rAF flush (was a per-delta reassign → per-delta O(N) memo+reconcile).
   dirtyStreamTabs.add(tabId)

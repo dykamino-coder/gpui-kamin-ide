@@ -13,7 +13,7 @@ import { scheduleSaveTabsState, ghostifyClosedPinned, reclaimGhostIfMatch } from
 import { mcpLoading, tabPromptReady, lastSendAt, reconnectNonce } from '../signals/connection'
 import { mcpServers } from '../signals/customize'
 import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../signals/ui'
-import { hostEditorSelection } from '../signals/file-viewer'
+import { hostEditorSelection, getOpenFiles, openFileInTab } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
 import { tabAgentTrees, tabJsonlLive, ingestAgentEntries, clearAgentTabState } from '../signals/agents'
@@ -33,6 +33,7 @@ import { setReplayProgress } from '../signals/replay-progress'
 import { touchTab, sweepTabMemory, forgetTabRecency } from '../signals/jsonl-eviction'
 import { projectPlanTodoEntries } from '../signals/jsonl-project'
 import { recordToolUsage, resetToolUsage } from '../signals/tool-usage'
+import { vscodeApi } from '../lib/webview-api'
 import {
   applyConnectionEvent,
   ConnectionSnapshotRequestGate,
@@ -718,7 +719,39 @@ export function useBridgeListeners(
     // разу на соединение — до 5 циклов × панели × табы × тысячи записей,
     // мини-«reload storm» (аудит #70 C4). Пропущенные фоновые табы догонят
     // при переключении (lazy attach + watchdog).
-    if (reconnectNonce.peek() > 0 && role !== 'customize') {
+    const browserWorkspace = !!vscodeApi.onHostMessage
+    const unsubWorkspaceSnapshot = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const event = frame as { kind?: string; channel?: string; args?: unknown[] } | null
+      if (event?.kind !== 'event' || event.channel !== 'workspace:snapshot-start') return
+      const active = event.args?.[1]
+      // A disposable projection is replaced from one authoritative host point.
+      // Pending questions answered in another page must disappear as well.
+      activeWidgets.value = []
+      if (typeof active === 'string') {
+        clearJsonlEntries(active)
+        activeTabId.value = active
+      }
+    }) ?? (() => {})
+    const unsubWorkspaceQuestion = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const event = frame as { kind?: string; channel?: string; args?: unknown[] } | null
+      if (event?.kind !== 'event' || event.channel !== 'workspace:question-resolved') return
+      const requestId = event.args?.[0]
+      activeWidgets.value = activeWidgets.value.filter(widget => widget.requestId !== requestId)
+    }) ?? (() => {})
+    const unsubWorkspaceFiles = vscodeApi.onHostMessage?.((frame: unknown) => {
+      const event = frame as { kind?: string; channel?: string; args?: { files?: unknown }[] } | null
+      if (event?.kind !== 'event' || event.channel !== 'workspace:files-state') return
+      const tab = activeTabId.peek()
+      const files = event.args?.[0]?.files
+      // Bootstrap a fresh document from the host's retained file view. Existing
+      // mounted views keep their active file and receive fresh bytes below.
+      if (tab && Array.isArray(files) && getOpenFiles(tab).length === 0) {
+        for (const path of files) if (typeof path === 'string') openFileInTab(tab, path)
+      }
+    }) ?? (() => {})
+    if (browserWorkspace) vscodeApi.postMessage({ kind: 'send', channel: 'workspace:sync', args: [] })
+
+    if (!browserWorkspace && reconnectNonce.peek() > 0 && role !== 'customize') {
       const now = Date.now()
       if (now - lastReconnectReplayAt > RECONNECT_REPLAY_DEBOUNCE_MS) {
         lastReconnectReplayAt = now
@@ -764,6 +797,9 @@ export function useBridgeListeners(
         reconnectSnapshotRequests.current.invalidate(reconnectSnapshotRequest)
       }
       unsubEditorSel()
+      unsubWorkspaceSnapshot()
+      unsubWorkspaceQuestion()
+      unsubWorkspaceFiles()
       unsubTabCreated()
       unsubTabClosed()
       unsubTabSwitched()

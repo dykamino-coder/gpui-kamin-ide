@@ -11,6 +11,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock('vscode', () => ({ window: { showWarningMessage: vi.fn() } }))
 vi.mock('../mcp/permission-manager', () => ({ PermissionManager: class {} }))
 vi.mock('../mcp/tools/shell', () => ({
+  disposeBackgroundShells: vi.fn(),
   clearLocalCompletedShells: fixture.clear,
   localBackgroundShellSnapshot: fixture.local,
   backgroundShellSnapshot: fixture.report,
