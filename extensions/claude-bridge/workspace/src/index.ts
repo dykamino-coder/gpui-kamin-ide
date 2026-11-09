@@ -1,5 +1,7 @@
 export { WorkspaceAuth, serverTokenResolver } from './auth.js'
 export { startWorkspaceServer } from './server.js'
 export { createAppAssetHandler } from './assets.js'
+export { createBrowserEnvironment } from './browser-environment.js'
+export type { WorkspaceEnvironment } from './environment.js'
 export type { WorkspaceServerOptions } from './server.js'
 export type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'

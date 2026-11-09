@@ -8,7 +8,7 @@ Container build, compose profiles and repeatable live acceptance:
 This increment provides an HTTP/WebSocket boundary library and a headless
 composition of the real shared `BridgeHost`, alongside the merged browser entry
 for the existing App. It is not yet a runnable browser workspace: executable
-composition, environment services, capability matrix and Podman acceptance remain open.
+composition, remaining environment services, capability matrix and Podman acceptance remain open.
 There is no second tool implementation or alternative chat UI in this package.
 
 Owner requirement (2026-11-09): the browser must be a thin view and closing it
@@ -182,6 +182,35 @@ JS heap after GC at initial App mount and after socket re-attach. These are
 synthetic empty-workspace baselines, not long-turn/retention acceptance or proof
 that the page is already thin. The design requires the remaining measurements.
 
-Native window/file/PTY/editor/browser environment adaptations, dashboard-admin login, the
+File/PTY and audio adaptations, dashboard-admin login, the
 exhaustive capability gate and live Podman acceptance remain open. The presence
 of UI controls in this build is not a claim those adapters already exist.
+
+## Browser environment effects
+
+`createBrowserEnvironment({ root })` returns `{ environment, wrap }`. Pass the
+environment to `createSharedBackend`, then pass `wrap(backend)` to the HTTP/WS
+server. The wrapper owns only view effects; disposing a view does not dispose
+the runtime or its sessions. This increment does not change session persistence.
+
+Existing shared handlers keep their dialog/clipboard/external-link behavior via
+request-local effects. A thin browser dialog performs browser clipboard access,
+file selection, downloads and navigation after a user gesture. Cancellation,
+permission denial, timeout or detach returns an explicit error/cancel result;
+effects are never queued or replayed on reconnect. Background notifications are
+best effort when no browser is attached.
+
+Browser uploads and existing paste/drop attachments use the same attachment
+writer as the native client, with sanitized filenames below
+`<root>/.bridge-uploads` (`/workspace/.bridge-uploads` in the container). Upload
+selections and each exported file are limited to 8 MiB to fit the bounded socket
+frames. Existing export handlers write into request-owned staging directories;
+the wrapper transfers those exact bytes to browser downloads before replying and
+removes its staging files. Folder selection addresses existing absolute
+container paths; the whole container filesystem remains available.
+
+Bridge's own FilePanel viewer and attachment context remain in scope. IDE editor
+open/reveal/openInVscode operations are excluded: **KaminIDE host feature, not
+Bridge**. Native window controls belong to the browser. The production-bundle
+environment smoke proves actual upload/download bytes and clipboard round trips
+against an enumerated fixture; it does not prove live server/model parity.
