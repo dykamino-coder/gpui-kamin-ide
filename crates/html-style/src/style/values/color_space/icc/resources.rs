@@ -25,7 +25,7 @@ pub fn load_profiles_sheets(
         .clone()
         .map(Admission::new)
         .unwrap_or_default();
-    vcx.doc.profiles.borrow_mut().clear();
+    *vcx.doc.profiles.borrow_mut() = None;
     for css in sheets {
         for rule in crate::style::css::resource_rules::resources(css.as_ref(), vcx.doc.media(), vcx)
         {
@@ -42,7 +42,11 @@ pub fn load_profiles_sheets(
             let revision = vcx.doc.revision_budget();
             let read = crate::resources::url_loader::read(&path, &revision);
             if let Ok(bytes) = read.inspect_err(|error| vcx.doc.record_load_failure(error)) {
-                vcx.doc.profiles.borrow_mut().insert(rule.prelude, bytes);
+                vcx.doc
+                    .profiles
+                    .borrow_mut()
+                    .get_or_insert_default()
+                    .insert(rule.prelude, bytes);
             }
         }
     }

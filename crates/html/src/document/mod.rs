@@ -104,6 +104,14 @@ pub struct Document {
     timings: BuildTimings,
 }
 
+impl Drop for Document {
+    /// Значения документа живут дольше него в отложенных кадрах: выведенные группы стиля
+    /// отпускаются с последним документом этих значений, а не с ними самими.
+    fn drop(&mut self) {
+        self.state.values.release_document();
+    }
+}
+
 impl Document {
     /// Настроить источник и носитель до единственного разбора документа.
     pub fn builder<'a>(html: &'a str, theme_css: &'a str) -> DocumentBuilder<'a> {

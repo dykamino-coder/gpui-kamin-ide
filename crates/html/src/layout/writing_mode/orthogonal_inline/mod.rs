@@ -85,7 +85,7 @@ pub(crate) fn resolve(
     viewport: (f32, f32),
     principal: bool,
 ) {
-    style.reset_context.orthogonal_scrollport = if [
+    let scrollport = if [
         style.reset_box_layout.overflow_x,
         style.reset_box_layout.overflow_y,
     ]
@@ -98,7 +98,7 @@ pub(crate) fn resolve(
     };
     let vertical = style.wm().vertical();
     let parent_vertical = parent.wm().vertical();
-    style.reset_context.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
+    let inline = if vertical == parent_vertical && ordinary(style) {
         crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent).map(
             |constraint| {
                 crate::layout::writing_mode::orthogonal_fixed_child::inherit(style, constraint)
@@ -107,6 +107,14 @@ pub(crate) fn resolve(
     } else {
         None
     };
+    // Equal values are not written: the context group stays shared with the
+    // computed style (Blink `ComputedStyle` setters compare first).
+    if style.reset_context.orthogonal_scrollport != scrollport
+        || style.reset_context.orthogonal_inline != inline
+    {
+        style.reset_context.orthogonal_scrollport = scrollport;
+        style.reset_context.orthogonal_inline = inline;
+    }
     if principal || !vertical || parent_vertical || !ordinary(style) || !ordinary(parent) {
         return;
     }

@@ -20,6 +20,16 @@ impl ImageSource {
         }
     }
 
+    /// Может ли `resolve_lengths` что-то записать: без длин обход группу не трогает.
+    pub fn has_lengths(&self) -> bool {
+        match self {
+            Self::Gradient { value, .. } => value.has_lengths(),
+            Self::CrossFade(items) => items.iter().any(|(image, _)| image.has_lengths()),
+            Self::Conic(_) | Self::Filter { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         match self {
             Self::Gradient { value, .. } => value.resolve_lengths(fix, vcx),

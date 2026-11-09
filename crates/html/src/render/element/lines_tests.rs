@@ -14,7 +14,7 @@ fn independent_oof_root_records_only_its_own_lines(cx: &mut gpui::TestAppContext
             viewport: (400., 400.), normal_line_height: 1.2,
             text: Default::default(), cx: Default::default(), frag: Default::default(),
         };
-        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;
         crate::style::cascade::materialize::materialize(&tree, opts.root_style().style_rc(), opts.cx.vcx());
         let mut pending: Vec<_> = tree.iter().collect();

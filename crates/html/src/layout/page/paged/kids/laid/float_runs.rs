@@ -75,7 +75,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         cx: Default::default(),
         frag: Default::default(),
     };
-    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
     opts.cx.values.viewport = opts.viewport;
     let (nodes, contexts) = flow::page_percentages(&tree, &opts.root_style(), &opts);
     let source = &super::tests::authored(&nodes).children;

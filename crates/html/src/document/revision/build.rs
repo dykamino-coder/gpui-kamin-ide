@@ -125,6 +125,8 @@ impl Document {
             return Err((failure, Box::new(source)));
         }
         state.values.traversal.retain(source.input);
+        // Документ отпускает выведенные группы стиля в Drop.
+        state.values.hold_document();
         Ok(Document {
             state,
             nodes: Rc::new(nodes),

@@ -45,6 +45,8 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // проход только сверяет входы.
     let changed =
         crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
+    // Прежние вычисленные группы отпущены: выведенные из них группы больше не нужны.
+    vcx.doc.derived.release_unowned();
     let prepared = opts.cx.layout().preparation.get(nodes, stable, changed);
     let opts = &*opts.inner(|cx| {
         cx.values.inert_clear = !prepared.clearance_possible;
