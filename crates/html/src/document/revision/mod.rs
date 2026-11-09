@@ -3,6 +3,7 @@
 mod adopt;
 mod apply;
 mod build;
+mod commit;
 mod mentions;
 mod mutation;
 mod patch;
@@ -78,10 +79,10 @@ impl Document {
         {
             #[cfg(feature = "engine-bench")]
             let started = std::time::Instant::now();
-            if let Some(nodes) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
+            if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
                 batch.write();
-                *self = self.adopted(
-                    nodes,
+                self.commit(
+                    plan,
                     source.key,
                     &revision,
                     #[cfg(feature = "engine-bench")]

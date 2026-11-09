@@ -41,11 +41,14 @@ impl DocState {
     /// документ в смысле HTML, поэтому значения (арены каскадных стилей, шрифты,
     /// at-правила, картинки) и текстовый бэкенд остаются прежними, а факты
     /// прошлого дерева (раскладка прошлого кадра, размеры повёрнутых поддеревьев)
-    /// начинаются заново, как у полной сборки.
+    /// начинаются заново, как у полной сборки; подготовка прошлого дерева —
+    /// основа подготовки нового (`LayoutState::continuing`).
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
             values: previous.values.clone(),
-            layout: Default::default(),
+            layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
+                &previous.layout,
+            )),
             text: previous.text.clone(),
             paragraph: crate::text::paragraph_state::ParagraphState::continuing(
                 &previous.paragraph,

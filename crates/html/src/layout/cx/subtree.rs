@@ -74,11 +74,31 @@ impl SubtreeFacts {
         }
     }
 
+    /// Факты списка по его идентичности в этом слое или в основах. Снимок
+    /// неизменяем, пока жива его метка, поэтому у одной идентичности во всех
+    /// слоях одни факты, и порядок поиска не влияет на ответ: сначала свой
+    /// слой (поддеревья этой сборки), затем нижний (полная подготовка, где
+    /// почти все списки), затем промежуточные.
     fn cached(&self, identity: usize) -> Option<u8> {
-        self.children
-            .get(&identity)
-            .map(|entry| entry.1)
-            .or_else(|| self.base.as_ref().and_then(|base| base.cached(identity)))
+        let own = |layer: &Self| layer.children.get(&identity).map(|entry| entry.1);
+        if let Some(flags) = own(self) {
+            return Some(flags);
+        }
+        let mut bottom = self.base.as_deref()?;
+        while let Some(next) = bottom.base.as_deref() {
+            bottom = next;
+        }
+        if let Some(flags) = own(bottom) {
+            return Some(flags);
+        }
+        let mut at = self.base.as_deref();
+        while let Some(layer) = at.filter(|layer| !std::ptr::eq(*layer, bottom)) {
+            if let Some(flags) = own(layer) {
+                return Some(flags);
+            }
+            at = layer.base.as_deref();
+        }
+        None
     }
 
     pub(crate) fn breaks_absent(&mut self, root: &Element) -> bool {
