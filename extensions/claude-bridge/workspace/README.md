@@ -209,6 +209,19 @@ discovery, hover/definition/references/diagnostics, document changes, shared and
 separate project processes, zero-page continuation and identified-session cleanup.
 Its upstream protocol peer is synthetic; it is not live Claude acceptance.
 
+`test/core-tools.smoke.mjs` creates a session in the production browser UI,
+closes every page and invokes eleven actual shared client tools over upstream
+MCP frames. Independent checks cover filesystem bytes, search results, foreground
+and background shell output/cursors/termination, notebook edits and todo state.
+A fresh browser then reads the edited file through the existing bridge API and
+reattaches to the same session. The fixture emits `core-tool-checks.json` outside
+the checkout with 22 reviewed tool/handler assertion IDs. Collector tests reject
+omitted, unknown, duplicate and failed cases; inventory tests validate bindings.
+This is partial synthetic execution evidence. It explicitly records
+`candidateImageTested: false`: the fixture runner builds current sources inside
+an existing image. It is not a full-completion receipt, candidate-image or
+actual-model acceptance, and it does not lower the strict completion gate.
+
 Production browser smoke uses the real asset handler and boundary with an
 explicit synthetic backend. Linux CI/Podman runs headless Chromium and reports
 all shipped JS chunks (raw/gzip/Brotli) and post-GC page heap. Startup metrics
