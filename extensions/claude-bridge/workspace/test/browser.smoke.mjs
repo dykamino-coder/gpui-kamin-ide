@@ -154,7 +154,12 @@ test('browser signs in, mounts current tools, rejects forged replies and resyncs
   assert.equal(await page.locator('#root').getAttribute('inert'), '')
   valid = true
   await signIn()
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  // Revoking the cookie can expose the old document's login before logout's
+  // explicit reload completes. Inspect the fresh document, not that transient gate.
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.getByRole('button', { name: 'Sign out', exact: true }).click(),
+  ])
   await page.locator('#workspace-login:not([hidden])').waitFor()
   assert.equal(await page.evaluate(() => typeof window.kaminBridge), 'undefined')
   assert.deepEqual([...unexpected], [], 'Fixture must enumerate all observed invokes; unknown calls never succeed')
