@@ -1,5 +1,6 @@
 import type { JSX } from 'preact'
-import { activeLocalQueue, localQueue } from '../../signals/queue'
+import { activeLocalQueue, localQueue, removeLocalQueueItem } from '../../signals/queue'
+import { showToast } from '../../signals/toasts'
 import { activeTabId } from '../../signals/tabs'
 import { tabWorking } from '../../signals/ui'
 import { useBridge } from '../../hooks/useBridge'
@@ -38,11 +39,12 @@ export function QueueWidget(): JSX.Element | null {
     if (!tabId) return
     const list = localQueue.value.get(tabId)
     if (!list) return
-    const next = new Map(localQueue.value)
-    const kept = list.filter(i => i.id !== id)
-    if (kept.length === 0) next.delete(tabId)
-    else next.set(tabId, kept)
-    localQueue.value = next
+    if (list.find(item => item.id === id)?.hostOwned) {
+      // Host обновляет receipt всех страниц, без interrupt и повторной отправки CLI.
+      void bridge.invoke('workspace:queue-dismiss', tabId, [id]).catch(() => {
+        showToast({ type: 'error', title: 'Queue removal failed', message: 'Reconnect and try again.' })
+      })
+    } else removeLocalQueueItem(tabId, id)
   }
 
   return (
@@ -76,6 +78,7 @@ export function QueueWidget(): JSX.Element | null {
             <button
               style="background:none;border:none;color:var(--text-disabled);cursor:pointer;font-size:11px;flex-shrink:0;padding:2px 4px"
               data-tooltip="Remove from queue"
+              aria-label="Remove from queue"
               onClick={() => removeItem(item.id)}
             >
               <i class="fas fa-xmark" />

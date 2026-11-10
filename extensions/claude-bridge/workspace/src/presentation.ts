@@ -70,16 +70,17 @@ export class WorkspacePresentation {
 
   /** Called once at host ingress. Never re-send accepted submissions on attach. */
   accept(frame: ClientFrame): boolean {
+    if (frame.kind === 'invoke' && frame.channel === 'workspace:queue-dismiss') {
+      const [tabId, ids] = frame.args
+      if (typeof tabId !== 'string' || !Array.isArray(ids) || ids.length > 256 ||
+          ids.some(id => typeof id !== 'string' || !id || id.length > 1024)) throw new Error('Expected queue item IDs')
+      this.dismissQueue(tabId, ids)
+      return true
+    }
     if (frame.kind !== 'send') return true
     const { channel, args } = frame
     if (channel === 'session:interrupt' && typeof args[0] === 'string' && Array.isArray(args[1])) {
-      for (const id of new Set(args[1].filter((id: unknown) => typeof id === 'string'))) {
-        const receipt = (this.submissions.get(`${args[0]}:${id}`)?.args as [string, SubmissionUpdate] | undefined)?.[1]
-        if (!receipt?.fallbackQueue || receipt.fallbackQueue.consumed || receipt.fallbackQueue.dismissed) continue
-        // Это сброс отображаемой очереди, не подтверждение отмены доставки CLI.
-        receipt.fallbackQueue = { ...receipt.fallbackQueue, dismissed: true }
-        this.publish('session:submission', args[0], receipt)
-      }
+      this.dismissQueue(args[0], args[1].filter((id: unknown) => typeof id === 'string'))
     }
     if (channel === 'pty-submit-text' && typeof args[0] === 'string' && typeof args[1] === 'string' && typeof args[2] === 'string') {
       const key = `${args[0]}:${args[2]}`
@@ -102,6 +103,16 @@ export class WorkspacePresentation {
     if (['mcp-respond', 'mcp-deny'].includes(channel)) this.resolve(args[0])
     if (channel.startsWith('mcp-elicitation-response:')) return this.resolve(channel.slice('mcp-elicitation-response:'.length))
     return true
+  }
+
+  private dismissQueue(tabId: string, ids: string[]): void {
+    for (const id of new Set(ids)) {
+      const receipt = (this.submissions.get(`${tabId}:${id}`)?.args as [string, SubmissionUpdate] | undefined)?.[1]
+      if (!receipt?.fallbackQueue || receipt.fallbackQueue.consumed || receipt.fallbackQueue.dismissed) continue
+      // Это сброс отображаемой очереди, не подтверждение отмены доставки CLI.
+      receipt.fallbackQueue = { ...receipt.fallbackQueue, dismissed: true }
+      this.publish('session:submission', tabId, receipt)
+    }
   }
 
   private reconcileFallback(tabId: string, entries: readonly QueueEntry[]): void {

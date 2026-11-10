@@ -145,6 +145,12 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
         try {
           if (frame.kind === 'send' && frame.channel === 'workspace:sync') { snapshot(undefined, true); return }
           if (frame.kind === 'send' && frame.channel === 'jsonl:request-replay') { snapshot(typeof frame.args[0] === 'string' ? frame.args[0] : undefined); return }
+          if (frame.kind === 'invoke' && frame.channel === 'workspace:queue-dismiss') {
+            if (typeof frame.args[0] !== 'string' || !manager.getConnection(frame.args[0])) throw new Error('Unknown queue session')
+            presentation.accept(frame)
+            await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation, ok: true })
+            return
+          }
           if (blocked.has(frame.channel)) throw new Error(`Browser adapter is pending for ${frame.channel}`)
           if (frame.kind === 'invoke' && !ipcMain.hasHandler(frame.channel)) throw new Error(`Unsupported workspace invoke: ${frame.channel}`)
           if (frame.kind === 'send' && ipcMain.listenerCount(frame.channel) === 0) throw new Error(`Unsupported workspace send: ${frame.channel}`)

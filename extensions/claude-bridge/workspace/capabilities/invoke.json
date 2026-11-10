@@ -109,6 +109,7 @@
   {"id":"invoke:skills:read","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/skills-agents.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:skills:show-in-folder","status":"explicitly-not-applicable-with-reason","reason":"KaminIDE host feature, not Bridge","evidence":"extension/src/core-ipc.ts","sources":{"extension/src/main/ipc/skills-agents.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:sync:force","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sync.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"invoke:workspace:queue-dismiss","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/presentation.ts":1,"workspace/src/runtime.ts":1}},
   {"id":"invoke:tab:create","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:tab:get-active","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:tab:list","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
