@@ -144,7 +144,7 @@ pub struct Scene {
     /// KaminIDE patch: ink sinks of retained subtrees open at this point of the
     /// paint (Window::with_ink_sink); each one takes the placed bounds of every
     /// primitive offered to the scene, before culling.
-    pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
+    pub(crate) ink: Vec<crate::window::InkScope>,
     /// Mouse listeners and element state reads declared inert while unseen
     /// (Window::offscreen_inert), counted so ink probes can allow them.
     pub(crate) ink_allowed: (usize, usize),

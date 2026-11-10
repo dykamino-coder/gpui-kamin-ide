@@ -20,11 +20,8 @@ pub(crate) struct FrameFar {
     /// The flow's options tracking `widths`, made for the first candidate
     /// and lent to each one's build (`FlowCx::child_opts`).
     pub(in crate::layout::reuse) opts: Option<Box<crate::layout::options::RenderOpts>>,
-    /// The ink sink of the recorders' paints, emptied after each one. A
-    /// recorder whose paint left snapshots holding it (paint deferred past
-    /// the block, `Window::paint_ctx`) records nothing and leaves it to them:
-    /// the next one paints into a new sink, so no deferred ink or taint
-    /// reaches another block.
+    /// The ink sink of the recorders' paints, one scope per recorder
+    /// (`InkSink::begin_scope`).
     pub(in crate::layout::reuse) sink: Rc<InkSink>,
 }
 
@@ -50,21 +47,12 @@ impl FlowReuse {
         out
     }
 
-    /// The recorders' ink sink of this build (empty, held by no snapshot).
+    /// The recorders' ink sink of this build.
     pub(in crate::layout::reuse) fn far_sink(&self) -> Option<Rc<InkSink>> {
         let far = self.far.take()?;
         let sink = far.sink.clone();
         self.far.set(Some(far));
         Some(sink)
-    }
-
-    /// The recorders' sink `sink` is held by snapshots of the last paint:
-    /// the next recorder paints into a new one (`FrameFar::sink`).
-    pub(in crate::layout::reuse) fn renew_far_sink(&self) {
-        if let Some(mut far) = self.far.take() {
-            far.sink = Rc::default();
-            self.far.set(Some(far));
-        }
     }
 
     /// After paint: far records claimed in this frame and those recorded.
@@ -83,7 +71,7 @@ impl FlowReuse {
         kept.retain(|_, record| record.claimed.replace(false) && claimed > 0);
         for (pending, source) in frame.pending {
             let node = source.id();
-            match pending.finish(source) {
+            match pending.finish(source, &frame.sink) {
                 Some(record) => {
                     self.store.forget_near(node);
                     kept.insert(node, record);

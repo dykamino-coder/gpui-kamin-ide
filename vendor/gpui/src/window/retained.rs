@@ -147,18 +147,51 @@ impl Window {
 /// snapshots) keeps feeding the sinks open at capture. A sink is tainted when
 /// a scope it observes does more than offer primitives: input state, element
 /// state, composition groups, a non-root paint environment, accessibility.
+///
+/// One sink may measure several scopes in turn (`begin_scope`): paint
+/// deferred past a scope feeds the scope open at capture, whose ink is no
+/// longer kept and whose taint is kept for `scope_tainted`.
 #[derive(Default)]
 pub struct InkSink {
     bounds: std::cell::Cell<Option<Bounds<ScaledPixels>>>,
     tainted: std::cell::Cell<bool>,
+    scope: std::cell::Cell<u32>,
+    /// Ended scopes tainted by deferred paint.
+    late: std::cell::RefCell<Vec<u32>>,
 }
 
 impl InkSink {
-    pub(crate) fn add(&self, bounds: Bounds<ScaledPixels>) {
+    fn add_in(&self, scope: u32, bounds: Bounds<ScaledPixels>) {
+        if scope != self.scope.get() {
+            return;
+        }
         self.bounds.set(Some(match self.bounds.get() {
             Some(ink) => ink.union(&bounds),
             None => bounds,
         }));
+    }
+
+    fn taint_in(&self, scope: u32) {
+        if scope == self.scope.get() {
+            self.tainted.set(true);
+        } else if !self.late.borrow().contains(&scope) {
+            self.late.borrow_mut().push(scope);
+        }
+    }
+
+    /// End the scope being measured and begin a new, empty one; its id.
+    pub fn begin_scope(&self) -> u32 {
+        let scope = self.scope.get() + 1;
+        self.scope.set(scope);
+        self.bounds.set(None);
+        self.tainted.set(false);
+        scope
+    }
+
+    /// Whether scope `scope` was tainted, while open or by paint deferred
+    /// past it.
+    pub fn scope_tainted(&self, scope: u32) -> bool {
+        (scope == self.scope.get() && self.tainted.get()) || self.late.borrow().contains(&scope)
     }
 
     /// Union of the placed bounds offered so far; `None` when nothing painted.
@@ -170,11 +203,27 @@ impl InkSink {
     pub fn tainted(&self) -> bool {
         self.tainted.get()
     }
+}
 
-    /// The bounds and taint observed so far, leaving the sink empty: one sink
-    /// may then measure several scopes in turn.
-    pub fn take(&self) -> (Option<Bounds<ScaledPixels>>, bool) {
-        (self.bounds.take(), self.tainted.take())
+/// KaminIDE patch: an open ink sink with the scope it measures.
+#[derive(Clone)]
+pub(crate) struct InkScope {
+    sink: Rc<InkSink>,
+    scope: u32,
+}
+
+impl InkScope {
+    pub(crate) fn add(&self, bounds: Bounds<ScaledPixels>) {
+        self.sink.add_in(self.scope, bounds);
+    }
+
+    fn taint(&self) {
+        self.sink.taint_in(self.scope);
+    }
+
+    /// The same sink measuring the same scope.
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.sink, &other.sink) && self.scope == other.scope
     }
 }
 
@@ -212,8 +261,8 @@ impl InkProbe {
             && self.groups == window.next_frame.scene.groups.len()
             && self.callbacks == window.next_frame_callback_count();
         if !quiet {
-            for sink in &window.next_frame.scene.ink {
-                sink.tainted.set(true);
+            for scope in &window.next_frame.scene.ink {
+                scope.taint();
             }
         }
     }
@@ -301,7 +350,8 @@ impl LayoutSnapshot {
 impl Window {
     /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
-        self.next_frame.scene.ink.push(sink);
+        let scope = sink.scope.get();
+        self.next_frame.scene.ink.push(InkScope { sink, scope });
         let probe = InkProbe::open(self);
         let result = f(self);
         if let Some(probe) = probe {
@@ -329,8 +379,8 @@ impl Window {
             scene.ink_allowed.1 +=
                 end.accessed_element_states_index - start.accessed_element_states_index;
         } else {
-            for sink in &scene.ink {
-                sink.tainted.set(true);
+            for scope in &scene.ink {
+                scope.taint();
             }
         }
         result

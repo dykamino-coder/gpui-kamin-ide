@@ -74,16 +74,12 @@ impl Wrap for FarRecorder {
             self.child.paint(window, cx);
             return;
         };
+        // One sink per build, one scope per block: deferred paint of the
+        // block feeds its scope, not the next block's (`InkSink::begin_scope`).
+        let scope = sink.begin_scope();
         let callbacks = window.next_frame_callback_count();
         window.with_ink_sink(sink.clone(), |window| self.child.paint(window, cx));
-        let (ink, tainted) = sink.take();
-        // Held beyond this build's state and `sink`: snapshots of this paint
-        // feed it later. The block keeps it, so a taint from them still
-        // refuses its record, and the next recorder paints into a new one.
-        let deferred = (Rc::strong_count(&sink) > 2).then(|| {
-            self.reuse.renew_far_sink();
-            sink
-        });
+        let (ink, tainted) = (sink.bounds(), sink.tainted());
         let quiet = !tainted && callbacks == window.next_frame_callback_count();
         let Some((boxes, hits, layout)) = self
             .reuse
@@ -102,7 +98,7 @@ impl Wrap for FarRecorder {
         if clear_of(boxes, excess, screen_of(window)) {
             self.reuse.with_pending(self.index, |p| {
                 p.excess = Some(excess);
-                p.deferred = deferred;
+                p.scope = scope;
             });
             // Kept for the next pass as their requests made them: the
             // recording frame allocates nothing for the keep. The first pass

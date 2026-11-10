@@ -86,9 +86,9 @@ pub(super) struct PendingFar {
     placed: Option<Placed>,
     /// Set when the block painted far from the screen.
     excess: Option<Excess>,
-    /// The sink its deferred paint feeds (`FrameFar::sink`): a taint there
-    /// refuses the record.
-    deferred: Option<Rc<InkSink>>,
+    /// Its ink scope in the build's sink (`FrameFar::sink`): a taint of it
+    /// by deferred paint refuses the record.
+    scope: u32,
 }
 
 impl PendingFar {
@@ -100,12 +100,12 @@ impl PendingFar {
             layout: None,
             placed: None,
             excess: None,
-            deferred: None,
+            scope: 0,
         }
     }
 
-    fn finish(self, source: Source) -> Option<FarRecord> {
-        if self.deferred.is_some_and(|sink| sink.tainted()) {
+    fn finish(self, source: Source, sink: &InkSink) -> Option<FarRecord> {
+        if sink.scope_tainted(self.scope) {
             return None;
         }
         Some(FarRecord {

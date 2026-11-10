@@ -24,7 +24,7 @@ pub struct PaintCtx {
     content_mask_stack: Vec<ContentMask<Pixels>>,
     image_cache_stack: Vec<AnyImageCache>,
     /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
-    ink: Vec<Rc<InkSink>>,
+    ink: Vec<InkScope>,
 }
 
 /// Full paint environment, including device scale and exact raster placement.
