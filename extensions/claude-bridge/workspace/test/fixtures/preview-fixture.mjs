@@ -14,7 +14,7 @@ const webpack = require('webpack')
 const DevServer = require('webpack-dev-server')
 const cleanups = new Map()
 
-export async function previewFixture(t, { conversations = false, holdSync = false } = {}) {
+export async function previewFixture(t, { conversations = false, holdSync = false, prepare } = {}) {
   const base = process.env.BRIDGE_PREVIEW_ROOT || os.tmpdir()
   const root = await fs.mkdtemp(path.join(base, 'bridgeweb-acc-preview-'))
   const cleanup = []
@@ -32,6 +32,7 @@ export async function previewFixture(t, { conversations = false, holdSync = fals
     assert.ok(path.basename(root).startsWith('bridgeweb-acc-preview-'))
     await fs.rm(root, { recursive: true })
   })
+  await prepare?.({ root, home, tmp })
   const heldSync = []
   let syncArrived
   const syncPending = new Promise(resolve => { syncArrived = resolve })
@@ -82,8 +83,11 @@ export async function previewFixture(t, { conversations = false, holdSync = fals
       if (child.exitCode !== null || child.signalCode !== null) return
       if (crash) { child.kill('SIGKILL'); await exited; return }
       if (child.connected) child.send('shutdown')
+      let forced = false
       try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
-      catch { child.kill(); await exited }
+      catch { forced = true; child.kill(); await exited }
+      const [code, signal] = await exited
+      return { code, signal, forced }
     }
     cleanup.push(stop)
     const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) })
@@ -98,9 +102,11 @@ export async function previewFixture(t, { conversations = false, holdSync = fals
       await once(events, 'frame', { signal })
     }
   }
-  async function tool(toolName, input) {
+  async function tool(toolName, input, conversationId) {
     const requestId = `preview-${++id}`
-    peer.send(JSON.stringify({ type: 'mcp:call', requestId, toolName, input }))
+    const socket = conversationId === undefined ? peer : peers.get(conversationId)
+    assert.ok(socket, 'Synthetic upstream needs an established session')
+    socket.send(JSON.stringify({ type: 'mcp:call', requestId, toolName, input }))
     const result = await wait(frame => frame.type === 'mcp:response' && frame.requestId === requestId)
     assert.equal(result.isError, undefined)
     assert.equal(result.result?.isError, undefined, 'Shared MCP handler must succeed')
@@ -120,6 +126,7 @@ export async function previewFixture(t, { conversations = false, holdSync = fals
     receivedFrames() { return structuredClone(frames) },
     send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
     async restart(crash = false) { await runtime.stop(crash); runtime = await boot() },
+    async shutdown() { return await runtime.stop() },
   }
 }
 
