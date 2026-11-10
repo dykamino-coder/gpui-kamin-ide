@@ -8,8 +8,11 @@
 //! values of a restyled `html`/`body` reach every block as paint-only values:
 //! the records are repainted in place, without a walk of either tree.
 
+mod keys;
+
 use super::{Store, flow_blocks};
 use crate::dom::{CascadedMemo, Element, Node, same_cascaded_box, same_cascaded_tree};
+use keys::Roots;
 use std::collections::HashMap;
 
 impl Store {
@@ -41,34 +44,42 @@ impl Store {
         };
         let mut records = self.records.take();
         let recorded = records.len();
+        // What the root boxes' comparison tells the flow keys (`carry_keys`).
+        let mut roots_seen = match (&a, &b) {
+            (Some(_), Some(_)) => Roots::Differ,
+            _ => Roots::Unknown,
+        };
         let keep = |far: bool, exact: bool, layout: &dyn Fn() -> bool| match exact {
             true => Some(false),
             false => (far && layout()).then_some(true),
         };
         match known {
             Some((None, _)) => records.clear(),
-            Some((Some(roots), blocks)) => records.retain(|id, record| {
-                // Most rebuilds restyle no block: no lookup per record then.
-                let pair = if blocks.is_empty() {
-                    None
-                } else {
-                    blocks.get(id)
-                };
-                let verdict = match pair {
-                    Some(&(x, y)) => keep(
-                        record.far,
-                        roots && same_cascaded_tree(x, y, false, &mut memo),
-                        &|| same_cascaded_tree(x, y, true, &mut CascadedMemo::default()),
-                    ),
-                    None => keep(record.far, roots, &|| true),
-                };
-                verdict
-                    .inspect(|&repaint| {
-                        record.rebased(repaint);
-                        record.kept.set(false);
-                    })
-                    .is_some()
-            }),
+            Some((Some(roots), blocks)) => {
+                roots_seen = Roots::Equal(roots);
+                records.retain(|id, record| {
+                    // Most rebuilds restyle no block: no lookup per record then.
+                    let pair = if blocks.is_empty() {
+                        None
+                    } else {
+                        blocks.get(id)
+                    };
+                    let verdict = match pair {
+                        Some(&(x, y)) => keep(
+                            record.far,
+                            roots && same_cascaded_tree(x, y, false, &mut memo),
+                            &|| same_cascaded_tree(x, y, true, &mut CascadedMemo::default()),
+                        ),
+                        None => keep(record.far, roots, &|| true),
+                    };
+                    verdict
+                        .inspect(|&repaint| {
+                            record.rebased(repaint);
+                            record.kept.set(false);
+                        })
+                        .is_some()
+                })
+            }
             None => {
                 let roots = match (&a, &b) {
                     (Some(a), Some(b)) => {
@@ -79,6 +90,15 @@ impl Store {
                     }
                     _ => false,
                 };
+                if let (Some(a), Some(b)) = (&a, &b)
+                    && (roots
+                        || a.len() == b.len()
+                            && a.iter()
+                                .zip(b)
+                                .all(|(&x, &y)| same_cascaded_box(x, y, true, &mut memo)))
+                {
+                    roots_seen = Roots::Equal(roots);
+                }
                 // The same source DOM: the flows have the same children in
                 // the same order, so the blocks pair by position.
                 for (x, y) in elements(was, now) {
@@ -100,6 +120,7 @@ impl Store {
         // restyle drops it again (Blink keeps no display items of an object
         // that needs paint until it is painted clean).
         self.rebased.set(true);
+        self.carry_keys(roots_seen);
         if records.len() < recorded {
             self.restyled.set(true);
         }

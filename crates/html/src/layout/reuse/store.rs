@@ -55,6 +55,9 @@ pub(crate) struct Store {
     pub(super) restyled: Cell<bool>,
     /// The document was rebuilt since the last frame (`rebase`).
     pub(super) rebased: Cell<bool>,
+    /// The rebuild that stripped the last flow key's boxes
+    /// (`FlowKey::strip_boxes`) found them different in paint-only values.
+    pub(super) repainted_roots: Cell<bool>,
 }
 
 impl Store {
@@ -116,6 +119,13 @@ impl Store {
         None
     }
 
+    /// The last flow key holds `html`/`body` boxes, for tests.
+    #[cfg(test)]
+    pub(crate) fn key_holds_boxes(&self) -> Option<bool> {
+        let last = self.last.borrow();
+        last.as_ref().map(|key| key.body.is_some())
+    }
+
     /// Build inputs of the kept records, for tests.
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
@@ -175,7 +185,9 @@ impl Store {
     }
 
     /// Nothing recorded holds (`rebase`): the state of a fresh document, so
-    /// the next build is not settled and records nothing, as a fresh one.
+    /// the next build is not settled and records nothing, as a fresh one. A
+    /// run of restyles (`restyled`) goes on: a block whose record a restyle
+    /// dropped is not recorded again while every frame follows a rebuild.
     pub(super) fn start_over(&self) {
         self.reset();
         self.reset_replays();
@@ -185,7 +197,6 @@ impl Store {
         self.prev.take();
         self.settled.set(false);
         self.warm.set(false);
-        self.restyled.set(false);
     }
 
     /// The flow key changed outside its widths: no replay record holds.

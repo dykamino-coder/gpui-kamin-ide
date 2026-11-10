@@ -97,7 +97,11 @@ impl FlowReuse {
             self.store.prev.replace(last.clone());
             last
         };
-        let last_exact = last.as_ref().map(|last| last.same_paint(&key));
+        // A key whose boxes a rebuild compared and dropped (`Store::rebase`)
+        // takes the rebuild's verdict on their paint-only values.
+        let last_exact = last.as_ref().map(|last| {
+            last.same_paint(&key) && !(last.stripped(&key) && self.store.repainted_roots.get())
+        });
         let (settled, resized, settled_outside_widths) = match last {
             Some(last) => (
                 last.same(&key),

@@ -158,3 +158,55 @@ fn the_frame_after_a_restyle_dropped_records_wraps_no_block_for_recording(cx: &m
     let (_, skipped, _) = reused(&view, cx);
     assert!(skipped > 0, "the offscreen records were dropped too");
 }
+
+/// A document of three rows, all on the screen, whose class on `html`
+/// recolours `body`: every record is near, so each such restyle drops all.
+fn near(class: &str) -> String {
+    format!(
+        "<!doctype html><html class='{class}'><head><style>\
+         html,body{{margin:0;background:#fff;color:#000}} .r{{height:20px}} \
+         html.paint body{{color:#123456}}</style></head>\
+         <body><div class=r>a</div><div class=r>b</div><div class=r>c</div></body></html>"
+    )
+}
+
+#[gpui::test]
+fn restyles_that_drop_every_record_record_nothing_again(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, &near(""));
+    frame(cx);
+    update(&view, cx, &near("x"));
+    let tracked = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.tracked_blocks())
+    };
+    // The first restyle drops the records of the settled frame; the store
+    // starts over, and the frames that keep following rebuilds wrap nothing.
+    update(&view, cx, &near("paint"));
+    let after = tracked(&view, cx);
+    for class in ["", "paint", "", "paint"] {
+        update(&view, cx, &near(class));
+    }
+    assert_eq!(
+        tracked(&view, cx),
+        after,
+        "a restyled block was recorded again"
+    );
+}
+
+#[gpui::test]
+fn a_rebuild_keeps_the_flow_key_without_the_previous_root_boxes(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, &page("", "row"));
+    frame(cx);
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    assert_eq!(store.key_holds_boxes(), Some(true));
+    let html = page("paint", "row");
+    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
+    assert_eq!(
+        store.key_holds_boxes(),
+        Some(false),
+        "the flow key held the previous html/body boxes over the rebuild"
+    );
+    frame(cx);
+    // The stripped key still counts as the same flow: this build records.
+    assert!(cx.update(|_, cx| view.read(cx).doc.tracked_blocks()) > 400);
+    assert_eq!(store.key_holds_boxes(), Some(true));
+}

@@ -71,8 +71,8 @@ impl FlowKey {
         let (a, b) = (&self.constraints, &other.constraints);
         // The root style folds the unwrapped `html`/`body` (see `same_boxes`).
         self.root.same_layout(&other.root)
-            && same_boxes(&self.html, &other.html)
-            && same_boxes(&self.body, &other.body)
+            && (self.stripped(other)
+                || same_boxes(&self.html, &other.html) && same_boxes(&self.body, &other.body))
             && a.avail_h == b.avail_h
             && a.cell_bfc == b.cell_bfc
             && self.viewport.1 == other.viewport.1
@@ -81,7 +81,25 @@ impl FlowKey {
             && self.fonts == other.fonts
     }
 
+    /// The `html`/`body` boxes of this key were compared with those of the
+    /// next document at a rebuild (`Store::rebase`) and dropped, so the
+    /// previous document's root styles do not live beside the new ones.
+    /// Computed boxes are a function of the cascaded values, compared then,
+    /// and of the document inputs this key still compares (viewport, fonts).
+    pub(super) fn strip_boxes(&mut self) {
+        self.html = None;
+        self.body = None;
+    }
+
+    /// This key's boxes went at a rebuild (`strip_boxes`): a key of a flow
+    /// below `body` always has its box.
+    pub(super) fn stripped(&self, other: &Self) -> bool {
+        self.body.is_none() && other.body.is_some()
+    }
+
     /// The root style and boxes are equal in their paint-only values too.
+    /// A stripped key (`stripped`) answers for its root style only: the
+    /// rebuild that dropped its boxes knows how they compared.
     pub(super) fn same_paint(&self, other: &Self) -> bool {
         let boxes = |a: &Option<Element>, b: &Option<Element>| match (a, b) {
             (None, None) => true,
@@ -89,8 +107,8 @@ impl FlowKey {
             _ => false,
         };
         *self.root == *other.root
-            && boxes(&self.html, &other.html)
-            && boxes(&self.body, &other.body)
+            && (self.stripped(other)
+                || boxes(&self.html, &other.html) && boxes(&self.body, &other.body))
     }
     /// The widths of the flow (see `same_outside_widths`).
     pub(super) fn same_widths(&self, other: &Self) -> bool {
