@@ -36,18 +36,53 @@ pub(crate) struct BoxConstraints {
 /// a measured column) is its own, and any outside width it was computed from
 /// was already read through an accessor. Like the revalidation selectors of
 /// Servo's style sharing: what the build consulted is recorded, not guessed.
-#[derive(Clone, Debug, Default)]
+///
+/// The set is in cells, so a flow can record the reads of each of its
+/// children's builds in its own context, without a copy per child
+/// (`BoxConstraints::track_widths_in_place`).
+#[derive(Default)]
 struct WidthReads {
-    sink: Option<Rc<Cell<bool>>>,
-    cb: bool,
-    avail: bool,
+    sink: Cell<Option<Rc<Cell<bool>>>>,
+    cb: Cell<bool>,
+    avail: Cell<bool>,
 }
 
 impl WidthReads {
     fn note(&self, outside: bool) {
-        if outside && let Some(sink) = &self.sink {
+        if !outside {
+            return;
+        }
+        let sink = self.sink.take();
+        if let Some(sink) = &sink {
             sink.set(true);
         }
+        self.sink.set(sink);
+    }
+
+    fn sink(&self) -> Option<Rc<Cell<bool>>> {
+        let sink = self.sink.take();
+        self.sink.set(sink.clone());
+        sink
+    }
+}
+
+impl Clone for WidthReads {
+    fn clone(&self) -> Self {
+        Self {
+            sink: Cell::new(self.sink()),
+            cb: self.cb.clone(),
+            avail: self.avail.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for WidthReads {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WidthReads")
+            .field("tracked", &self.sink().is_some())
+            .field("cb", &self.cb.get())
+            .field("avail", &self.avail.get())
+            .finish()
     }
 }
 
@@ -64,27 +99,27 @@ impl BoxConstraints {
     /// Containing-block width (see the field); a read of an outside width
     /// is recorded.
     pub(crate) fn cb_width(&self) -> Option<f32> {
-        self.widths.note(self.widths.cb);
+        self.widths.note(self.widths.cb.get());
         self.cb_width
     }
 
     /// Available width of `width: auto` blocks (see the field); a read of an
     /// outside width is recorded.
     pub(crate) fn avail_w(&self) -> Option<f32> {
-        self.widths.note(self.widths.avail);
+        self.widths.note(self.widths.avail.get());
         self.avail_w
     }
 
     /// A containing-block width the box sets itself.
     pub(crate) fn set_cb_width(&mut self, width: Option<f32>) {
         self.cb_width = width;
-        self.widths.cb = false;
+        self.widths.cb.set(false);
     }
 
     /// An available width the box sets itself.
     pub(crate) fn set_avail_w(&mut self, width: Option<f32>) {
         self.avail_w = width;
-        self.widths.avail = false;
+        self.widths.avail.set(false);
     }
 
     /// The available width of a child box: `inner(outer)`. When the result
@@ -107,7 +142,7 @@ impl BoxConstraints {
         }
         let seen = f(self.avail_w);
         if seen != blind {
-            self.widths.note(self.widths.avail);
+            self.widths.note(self.widths.avail.get());
         }
         seen
     }
@@ -121,11 +156,27 @@ impl BoxConstraints {
     /// Start recording outside width reads of a subtree into `sink`: both
     /// widths of this context come from outside it.
     pub(crate) fn track_widths(&mut self, sink: Rc<Cell<bool>>) {
-        self.widths = WidthReads {
-            sink: Some(sink),
-            cb: true,
-            avail: true,
-        };
+        self.track_widths_in_place(sink);
+    }
+
+    /// `track_widths` in this shared context, until `untrack_widths`: the
+    /// subtrees built with it and with its copies record into `sink`. For a
+    /// context that tracks nothing itself (a document's root flow).
+    pub(crate) fn track_widths_in_place(&self, sink: Rc<Cell<bool>>) {
+        debug_assert!(
+            self.widths.sink().is_none() && !self.widths.cb.get() && !self.widths.avail.get(),
+            "a tracking context"
+        );
+        self.widths.sink.set(Some(sink));
+        self.widths.cb.set(true);
+        self.widths.avail.set(true);
+    }
+
+    /// End `track_widths_in_place`: the context tracks nothing again.
+    pub(crate) fn untrack_widths(&self) {
+        self.widths.sink.set(None);
+        self.widths.cb.set(false);
+        self.widths.avail.set(false);
     }
 }
 

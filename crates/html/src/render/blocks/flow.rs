@@ -191,7 +191,7 @@ pub(super) async fn blocks_flow(
             )
             .await;
             if let (Some(flow), Some(mark)) = (&reuse, mark) {
-                flow.give_back(&mark, tracked);
+                flow.give_back(&mark, opts);
                 flow.record(e, edge, mark, opts, &mut out);
                 flow.built(n);
             }

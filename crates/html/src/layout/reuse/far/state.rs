@@ -2,7 +2,6 @@
 //! build that uses them, one allocation kept between frames (`Store::far`).
 
 use super::{FarRecord, FarSlot};
-use crate::layout::options::RenderOpts;
 use crate::layout::reuse::FlowReuse;
 use gpui::InkSink;
 use std::cell::Cell;
@@ -26,9 +25,7 @@ pub(crate) struct FrameFar {
     /// Outside width reads of the far candidate being built, shared by all
     /// candidates of the build (`Mark::shared_widths`).
     pub(in crate::layout::reuse) widths: Rc<Cell<bool>>,
-    /// The flow's options tracking `widths`, made for the first candidate
-    /// and lent to each one's build (`FlowCx::child_opts`).
-    pub(in crate::layout::reuse) opts: Option<Box<RenderOpts>>,
+
     /// The ink sink of the recorders' paints, one scope per recorder
     /// (`InkSink::begin_scope`).
     pub(in crate::layout::reuse) sink: Rc<InkSink>,
@@ -41,7 +38,6 @@ impl FrameFar {
         self.recorders = 0;
         self.done.clear();
         self.slots.clear();
-        self.opts = None;
         self.sink.clear();
     }
 

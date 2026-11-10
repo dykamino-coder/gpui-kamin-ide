@@ -26,6 +26,9 @@ pub struct PaintCtx {
     /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
     ink: Vec<Rc<InkSink>>,
     ink_scope: u32,
+    /// KaminIDE patch: deferred paint keeps the line-layout release scope it
+    /// was captured in (`Window::with_line_layouts_released`).
+    layouts_released: bool,
 }
 
 /// Full paint environment, including device scale and exact raster placement.
@@ -63,6 +66,7 @@ impl PaintCtx {
         mem::swap(&mut window.image_cache_stack, &mut self.image_cache_stack);
         mem::swap(&mut window.next_frame.scene.ink, &mut self.ink);
         mem::swap(&mut window.next_frame.scene.ink_scope, &mut self.ink_scope);
+        crate::text_system::swap_layouts_released(&mut self.layouts_released);
     }
 }
 
@@ -86,6 +90,7 @@ impl Window {
             image_cache_stack: self.image_cache_stack.clone(),
             ink: self.next_frame.scene.ink.clone(),
             ink_scope: self.next_frame.scene.ink_scope,
+            layouts_released: crate::text_system::layouts_released(),
         }
     }
 

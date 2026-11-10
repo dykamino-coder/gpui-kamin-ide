@@ -20,7 +20,7 @@ pub(crate) struct Mark {
     /// The child may be recorded as a far block (`FlowCx::far_candidate`).
     pub(super) far: bool,
     /// `widths` is the build's shared flag (`FrameFar::widths`): the child is
-    /// built with the build's shared tracked options (`FlowCx::child_opts`).
+    /// built with the flow's own options recording into it (`FlowCx::child_opts`).
     pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
@@ -28,24 +28,23 @@ pub(crate) struct Mark {
 
 impl super::FlowCx {
     /// Опции сборки ребёнка: с записью чтений ширин, если его записывают. A
-    /// child whose replay record keeps its own flag gets its own copy; far
-    /// candidates borrow the build's one copy with the shared flag, which
-    /// `mark` clears before each of them (`FrameFar::opts`), and hand it
-    /// back to `record`.
+    /// child whose replay record keeps its own flag gets its own copy; a far
+    /// candidate is built with the flow's own options, which record into the
+    /// build's shared flag (cleared by `mark`) until `give_back`, with no copy
+    /// (`BoxConstraints::track_widths_in_place`).
     pub(crate) fn child_opts(&self, mark: &Mark, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
         let sink = mark.widths.clone()?;
-        let lent = match mark.shared_widths {
-            true => self.reuse.with_far(|far| far.opts.take()),
-            false => None,
-        };
-        Some(lent.unwrap_or_else(|| opts.inner(|cx| cx.constraints.track_widths(sink))))
+        if mark.shared_widths {
+            opts.cx.constraints.track_widths_in_place(sink);
+            return None;
+        }
+        Some(opts.inner(|cx| cx.constraints.track_widths(sink)))
     }
 
-    /// The options `child_opts` lent for the build of a far candidate go
-    /// back to the build's far state.
-    pub(crate) fn give_back(&self, mark: &Mark, tracked: Option<Box<RenderOpts>>) {
-        if mark.shared_widths && tracked.is_some() {
-            self.reuse.with_far(|far| far.opts = tracked);
+    /// The build of the child is over: the flow's options stop recording.
+    pub(crate) fn give_back(&self, mark: &Mark, opts: &RenderOpts) {
+        if mark.shared_widths {
+            opts.cx.constraints.untrack_widths();
         }
     }
 }

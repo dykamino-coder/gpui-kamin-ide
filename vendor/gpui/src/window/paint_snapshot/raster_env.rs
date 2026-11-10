@@ -103,6 +103,7 @@ impl RasterEnv {
             && b.ink.len() == window.next_frame.scene.ink.len()
             && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(a, b))
             && b.ink_scope == window.next_frame.scene.ink_scope
+            && b.layouts_released == crate::text_system::layouts_released()
             && self.contexts == window.raster_frame.contexts
     }
 }
@@ -152,6 +153,7 @@ impl ReplayBuffers {
             image_cache_stack: mem::take(&mut self.images),
             ink: mem::take(&mut self.ink),
             ink_scope: b.ink_scope,
+            layouts_released: b.layouts_released,
         }
     }
 

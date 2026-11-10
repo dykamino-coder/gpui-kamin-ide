@@ -550,8 +550,14 @@ thread_local! {
     static LAYOUTS_RELEASED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-fn layouts_released() -> bool {
+pub(crate) fn layouts_released() -> bool {
     LAYOUTS_RELEASED.with(|released| released.get())
+}
+
+/// KaminIDE patch: exchange the release scope with `released` (deferred
+/// paint runs in the scope it was captured in, `PaintCtx`).
+pub(crate) fn swap_layouts_released(released: &mut bool) {
+    *released = LAYOUTS_RELEASED.with(|scope| scope.replace(*released));
 }
 
 /// KaminIDE patch: run `f` with the line layouts it looks up released from
