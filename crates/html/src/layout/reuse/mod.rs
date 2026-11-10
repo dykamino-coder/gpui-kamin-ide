@@ -81,8 +81,6 @@ pub(crate) struct FlowReuse {
     /// pointers, not thousands of pending records.
     #[allow(clippy::vec_box)]
     pending: RefCell<Vec<Box<recorder::Pending>>>,
-    /// The pending record in prepaint (`lines::with_sink`).
-    open: lines::Open,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
@@ -155,7 +153,6 @@ impl FlowReuse {
             resized: Cell::new(false),
             narrowed: Default::default(),
             pending: Default::default(),
-            open: Default::default(),
             shells: Shells::default(),
             placeholders: Default::default(),
             next_replays: Default::default(),
