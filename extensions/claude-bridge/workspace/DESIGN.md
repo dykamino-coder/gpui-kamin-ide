@@ -461,6 +461,37 @@ receipts and a reopened page through the shared BridgeHost and production UI.
 The upstream fixture is synthetic. Restart durability, exhaustive capability
 proof and composed actual-model acceptance remain open in INC-2026-0087.
 
+## Bounded follow-up: core tool execution evidence
+
+The inventory validates registrations and providers; it does not demonstrate
+handler behavior. Add a Linux production-browser fixture using the existing
+shared BridgeHost and synthetic upstream. Create a session through the shared
+UI, close every page, then execute Read, Write, Edit, Glob, Grep, Bash,
+BashOutput, KillShell, NotebookEdit, TodoWrite and TodoList through upstream MCP
+frames. Assert independent filesystem bytes, search results, shell output and
+process termination, notebook cells and todo round trips. Reopen the browser
+and verify that the same session and edited file remain accessible.
+
+A small reviewed mapping ties each asserted tool case to its tool and handler
+capability IDs. Record a PASS only after the case's assertions complete; reject
+unknown, duplicate, failed or omitted cases. Validate that mapping against the
+independent inventory. Emit sanitized partial execution evidence with source,
+browser and synthetic-upstream provenance, never filesystem contents or tool
+payloads. The fixture runner builds current sources inside an existing image;
+it must explicitly disclaim candidate-image acceptance and must not generate
+a full-completion receipt. Keep the strict parity validator unchanged.
+
+Acceptance: evidence collector negative tests, inventory checks, existing
+workspace tests and the complete Linux Podman production-browser fixture suite.
+This is a bounded test Change PR under INC-2026-0087; registration #638 already
+exists. Claude lead owns review/merge. Full per-capability coverage and composed
+actual-model/image acceptance remain open.
+
+Implementation: [#691](https://github.com/dykamino-coder/gpui-kamin-ide/pull/691).
+The partial artifact intentionally has no completion-receipt schema or image
+provenance fields. Only an entirely passing fixture run can support its listed
+assertions; it cannot establish restart survival or exhaustive input coverage.
+
 Implemented in [#686](https://github.com/dykamino-coder/gpui-kamin-ide/pull/686).
 The host ingress regression failed before the fix and now passes; Windows
 workspace passes 92 tests (three Linux-only skips), shared webview passes 469,
