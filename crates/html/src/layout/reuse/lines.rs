@@ -2,7 +2,6 @@
 //! которого каждый абзац уложился в одну строку, раскладывается так же в
 //! любом потоке, где эти строки не короче места (`width::Width::Stretch`).
 
-use super::FlowReuse;
 use gpui::Window;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -50,23 +49,20 @@ impl LineSink {
     }
 }
 
-/// Открытые приёмники prepaint: внутренний и внешние записи. Приёмник —
-/// ожидающая запись номер `at` сборки `reuse` (`FlowReuse::pending`).
+/// Открытые приёмники prepaint: внутренний и внешние записи.
 struct Open {
-    reuse: Rc<FlowReuse>,
-    at: usize,
+    sink: Rc<LineSink>,
     outer: Option<Rc<Open>>,
 }
 
-/// Выполнить prepaint `f` со строками абзацев, собранными и в ожидающей
-/// записи `at` сборки `reuse`.
+/// Выполнить prepaint `f` со строками абзацев, собранными и в `sink`.
 pub(super) fn with_sink<R>(
-    (reuse, at): (Rc<FlowReuse>, usize),
+    sink: Rc<LineSink>,
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
     let outer = window.render_context::<Open>();
-    window.with_render_context(Some(Rc::new(Open { reuse, at, outer })), f)
+    window.with_render_context(Some(Rc::new(Open { sink, outer })), f)
 }
 
 /// Абзац ширины `width` уложен в строки шириной (с отступом) `lines`.
@@ -84,9 +80,7 @@ pub(crate) fn report(
         .then(|| lines.next())
         .flatten();
     while let Some(scope) = open {
-        if let Some(pending) = scope.reuse.pending.borrow().get(scope.at) {
-            pending.lines.note(width, one);
-        }
+        scope.sink.note(width, one);
         open = scope.outer.clone();
     }
 }

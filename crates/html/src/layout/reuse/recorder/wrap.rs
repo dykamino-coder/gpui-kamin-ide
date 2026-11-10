@@ -45,9 +45,9 @@ impl Wrap for Recorder {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let Some(unpainted) = self.with(|p| {
+        let Some((unpainted, sink)) = self.with(|p| {
             p.border.set(bounds.size.width.as_f32());
-            p.unpainted
+            (p.unpainted, p.lines.clone())
         }) else {
             self.child.prepaint(window, cx);
             return;
@@ -55,7 +55,6 @@ impl Wrap for Recorder {
         let callbacks = window.next_frame_callback_count();
         let root = window.retained_root_environment()
             && window.element_offset() == point(px(0.0), px(0.0));
-        let sink = (self.reuse.clone(), self.at);
         let (_, range) = window.record_retained_prepaint(|window| {
             with_sink(sink, window, |window| self.child.prepaint(window, cx));
         });

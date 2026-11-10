@@ -52,7 +52,7 @@ pub(super) struct Pending {
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
     /// Строки абзацев блока в этом кадре.
-    pub(super) lines: LineSink,
+    lines: Rc<LineSink>,
     /// Вывод prepaint и краски этого кадра для повтора; только у блока
     /// рядом с экраном (Output).
     output: RefCell<Option<Box<Output>>>,
@@ -102,7 +102,7 @@ impl Pending {
             unpainted,
             tracks_flow,
             border: Cell::new(0.0),
-            lines: LineSink::default(),
+            lines: Rc::default(),
             output: RefCell::new(None),
         }
     }
