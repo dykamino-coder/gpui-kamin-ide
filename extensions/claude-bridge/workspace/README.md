@@ -250,5 +250,16 @@ current browser shell and does not establish its visual parity.
 The owner task remains open for remaining host-authoritative page state,
 exhaustive behavior proof and final composed live acceptance. FilePanel state
 polish is explicitly outside the revised browser scope.
+
+`test/browser-retention.smoke.mjs` adds a deterministic load regression to
+`test:browser:container`: the real shared host receives 10,000 synthetic
+transcript records, continues with zero pages, executes Bash, and restores five
+fresh pages without resubmitting or interrupting the session. TAP diagnostics
+record all production JS chunks (raw/gzip/Brotli), Chromium/source provenance
+and post-GC page heap. The test checks existing store/snapshot/render bounds,
+a 128 MiB page-heap ceiling and a 16 MiB spread between equal-tail reopens.
+These coarse renderer regression budgets do not measure host memory or browser
+RSS and do not replace the actual-model/composed-image acceptance contract.
+
 No release, version bump or image publication is part of this work. Claude lead
 reviews/merges implementation and the consolidated documentation PR.

@@ -97,6 +97,7 @@ export async function previewFixture(t, { conversations = false } = {}) {
     return result
   }
   return { root, get origin() { return runtime.origin }, wait, tool,
+    receivedFrames() { return structuredClone(frames) },
     send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
     async restart() { await runtime.stop(); runtime = await boot() },
   }
