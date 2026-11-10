@@ -3,6 +3,27 @@ import { test } from 'node:test'
 import headless from '@xterm/headless'
 import { TerminalScreen } from '../src/terminal-screen.js'
 
+test('host reports current text-area dimensions and keeps unrelated window operations disabled', async t => {
+  const replies: string[] = []
+  const screen = new TerminalScreen(80, 24, () => assert.fail('Unexpected parser overflow'), data => replies.push(data))
+  t.after(() => screen.dispose())
+  const write = async (value: string) => { screen.write(value, () => {}); await screen.order(() => {}) }
+  await write('\x1b[18t')
+  assert.deepEqual(replies.splice(0), ['\x1b[8;24;80t'])
+  await screen.order(() => screen.resize(111, 37))
+  await write('\x1b[18')
+  assert.deepEqual(replies, [], 'Incomplete queries cannot produce replies')
+  await write('t\x1b[18t')
+  assert.deepEqual(replies.splice(0), ['\x1b[8;37;111t', '\x1b[8;37;111t'])
+  // No pixel geometry exists in the host. Terminal output must not resize it.
+  await write('\x1b[14t\x1b[16t\x1b[8;2;3t\x1b[18t')
+  assert.deepEqual(replies.splice(0), ['\x1b[8;37;111t'])
+  await screen.order(() => screen.resize(40, 10))
+  await write('\x1b[?1049h\x1b[18t\x1b[?1049l\x1b[18t')
+  assert.deepEqual(replies, ['\x1b[8;10;40t', '\x1b[8;10;40t'])
+  assert.doesNotMatch(screen.snapshot().screen, /\x1b\[18t/, 'Replay must not repeat queries')
+})
+
 test('host answers color queries with no pages and retains mutations across screen sync', async t => {
   const replies: string[] = []
   const screen = new TerminalScreen(80, 24, () => assert.fail('Unexpected parser overflow'), data => replies.push(data))
