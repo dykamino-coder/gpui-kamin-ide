@@ -146,8 +146,10 @@ Browser shell replicas apply that same shared state without emitting query
 replies as duplicate keyboard input. Their palette is consistently dark,
 independent of each page's UI theme. Hexadecimal X11 `#RGB` through
 `#RRRRGGGGBBBB` and `rgb:R/G/B` forms use 8-bit renderer precision; named colors
-are currently ignored. Pixel/window reports and other TUI compatibility remain
-open and are not covered by this bounded color-query contract.
+are currently ignored. The host also answers `CSI 18 t` with its current text-area
+rows/columns, including after resize and with zero pages. Browser replicas
+suppress this reply so multiple pages cannot inject duplicate reports. Pixel
+reports and other window/TUI compatibility remain open.
 
 The current ChatRoot and terminal components render the shared host services. Browser
 clipboard, downloads, uploads, path dialogs, notifications, links and audio use

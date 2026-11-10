@@ -19,7 +19,9 @@ export class TerminalScreen {
   private overflowed = false
 
   constructor(cols: number, rows: number, private overflow: () => void, respond: (data: string) => void = () => {}) {
-    this.terminal = new Terminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true })
+    this.terminal = new Terminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true,
+      // Character geometry belongs to the host even when no browser exists.
+      windowOptions: { getWinSizeChars: true } })
     this.terminal.loadAddon(this.serializer)
     this.terminal.onData(respond)
     this.colors.attach(this.terminal.parser, respond)

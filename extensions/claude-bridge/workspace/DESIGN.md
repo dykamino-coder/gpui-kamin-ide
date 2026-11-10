@@ -4,6 +4,23 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Runtime overview: [README.md](README.md). Podman runbook: [PACKAGING.md](PACKAGING.md).
 Status: implementation in progress; the current live suite passed, while full parity and final composed acceptance remain open.
 
+## Host text-area size query follow-up
+
+Terminal applications can query the current character dimensions with `CSI 18 t`.
+The browser suppresses replica query responses, but the headless host currently
+leaves xterm's `getWinSizeChars` option disabled, so no parser answers this query.
+Enable only that existing xterm response in the authoritative `TerminalScreen`.
+The reply must use its current rows/columns, including after an ordered resize,
+and work with zero pages. Browser replicas remain silent even when their own
+window-report option is enabled; user input must remain unaffected.
+
+Acceptance: parser regression before the fix, initial/resized/split queries,
+real Linux PTY with zero attached pages and after reopen/resize, and two production
+browser xterm replicas. Retain disabled unrelated pixel/window operations and
+existing resource limits. This bounded change does not establish full TUI parity,
+actual-model acceptance or exhaustive capability proof. Completion is a green
+Change PR and READY handoff; the Claude lead reviews and merges implementation.
+
 ## Restart persistence follow-up (INC-2026-0092)
 
 The client host owns the open set and active selection across process restarts,
