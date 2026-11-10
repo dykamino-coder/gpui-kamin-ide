@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fixture, nodeCommand, until, alive } from './terminal-fixture.js'
+
+test('real PTY receives host color replies with zero attached views', { skip: process.platform === 'win32' && 'ConPTY translates OSC before the host parser; Linux wire contract' }, async t => {
+  const f = await fixture(t), a = f.attach()
+  await writeFile(join(f.root, 'color-query.cjs'), `
+    const fs = require('node:fs');
+    process.stdin.setRawMode(true); process.stdin.resume();
+    let data = ''; process.stdin.on('data', chunk => { data += chunk });
+    fs.writeFileSync('color-query.pid', String(process.pid));
+    setTimeout(() => process.stdout.write('\\x1b]10;?\\x07\\x1b]11;?\\x1b\\\\'), 200);
+    setTimeout(() => { fs.writeFileSync('color-query.json', JSON.stringify(data)); process.exit(0) }, 1000);
+  `)
+  const id = await a.spawn('color-tab')
+  await a.send('pty:write', { ptyId: id, data: nodeCommand("require('./color-query.cjs')") })
+  a.view.dispose()
+  await until(async () => !!await f.read('color-query.pid'))
+  await until(async () => !!await f.read('color-query.json'), 'Program did not receive replies with zero views')
+  assert.equal(JSON.parse(await f.read('color-query.json')), '\x1b]10;rgb:cfcf/d4d4/e2e2\x1b\\\x1b]11;rgb:0b0b/0c0c/0f0f\x1b\\')
+})
 
 test('PTY survives zero pages and restores output produced after the last detach', async t => {
   const f = await fixture(t), a = f.attach()
