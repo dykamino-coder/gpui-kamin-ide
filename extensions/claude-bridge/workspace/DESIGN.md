@@ -588,3 +588,11 @@ in Linux Podman. This bounded Change PR is prepared by bridgeweb for Claude
 lead review/merge under the existing registration #638.
 
 Implementation review: [#696](https://github.com/dykamino-coder/gpui-kamin-ide/pull/696).
+
+Validation dependency: two source-fixture runs reached the final terminal tests
+but retained idle Bash PTYs on base main `f121842e`. Keep the incomplete runs;
+do not force a successful test-worker exit. Integrate the existing shared POSIX
+disposal candidate [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694)
+by normal merge for a combined exact-head gate, rather than copying its logic.
+Lead should review/merge #694 before #696. The LSP additions do not change that
+fix; the combined candidate must pass the full workspace/browser suites naturally.
