@@ -101,16 +101,21 @@ impl<F: FnMut(Paragraph) -> Paragraph + 'static> gpui::CompactMeasure for ProbeM
         };
         Some(PlainMeasure {
             plain: PlainProbe::of(probe),
+            pass: None,
             atom_fit: self.atom_fit.clone(),
             normal_static: self.normal_static.clone(),
         })
     }
 }
 
-/// The measure of a far block's kept paragraph leaf: a fresh probe from the
-/// plain form for each measure.
+/// The measure of a far block's kept paragraph leaf: a probe made from the
+/// plain form at the first measure of a pass serves every measure of that
+/// pass, as the built probe served its request's pass. It is dropped when the
+/// leaf is kept again after the pass (`compact`), so between frames only the
+/// plain form lives.
 pub(super) struct PlainMeasure {
     plain: PlainProbe,
+    pass: Option<Paragraph>,
     atom_fit: Rc<RefCell<AtomFit>>,
     normal_static: NormalStatic,
 }
@@ -126,9 +131,10 @@ impl gpui::CompactMeasure for PlainMeasure {
         window: &mut Window,
         cx: &mut App,
     ) -> MeasuredContent {
-        let mut probe = self.plain.probe();
+        let plain = &self.plain;
+        let probe = self.pass.get_or_insert_with(|| plain.probe());
         measure(
-            &mut probe,
+            probe,
             &self.atom_fit,
             &self.normal_static,
             known,
@@ -138,7 +144,10 @@ impl gpui::CompactMeasure for PlainMeasure {
         )
     }
 
+    /// Kept again after its pass: the pass probe is dropped, the plain form
+    /// stays.
     fn compact(&mut self) -> Option<Self> {
+        self.pass = None;
         None
     }
 }
